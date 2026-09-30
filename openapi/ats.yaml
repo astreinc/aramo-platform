@@ -6362,6 +6362,56 @@ paths:
       security:
         - BearerAuth: []
 
+  # ── Enterprise Search Program Directive GS-1 (Aramo-Enterprise-Search-GS1-3) ──
+  # The single tenant-safe enterprise-search entry point: one free-text query fans out
+  # server-side over the authorized entity types (Talent · Requisition · Company · Contact)
+  # and returns grouped lean hits. Per-entity authorization is enforced against each
+  # <entity>:search scope; results are visibility-, masking-, and consent-safe by
+  # construction (lean hits carry no compensation or contact-channel PII). Global search
+  # omits entity types the actor cannot search; an explicit module request for an
+  # unauthorized type returns an honest empty `unauthorized` group.
+  /v1/search:
+    get:
+      operationId: enterpriseSearch
+      summary: Tenant-safe enterprise search across Talent, Requisition, Company, Contact.
+      description: |
+        Free-text search over the entities the actor is authorized to see. `q` is the query;
+        `entity_types` (comma-separated) scopes to a module (absent = global); `limit` bounds
+        results per entity type. Requires the `ats` capability; each returned entity group is
+        gated on that entity's `<entity>:search` scope. Exact identifiers (requisition number,
+        talent email) outrank lexical matches. Never widens authority.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: entity_types
+          in: query
+          required: false
+          description: Comma-separated subset of TALENT,REQUISITION,COMPANY,CONTACT. Absent = global.
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Grouped search results (one group per authorized, requested entity type).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnterpriseSearchResults'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -6396,6 +6446,56 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── Enterprise Search Program Directive GS-1 ──
+    EnterpriseSearchResults:
+      type: object
+      additionalProperties: false
+      required: [query, groups]
+      properties:
+        query: { type: string }
+        groups:
+          type: array
+          items: { $ref: '#/components/schemas/EnterpriseSearchGroup' }
+    EnterpriseSearchGroup:
+      type: object
+      additionalProperties: false
+      required: [entity_type, hits]
+      properties:
+        entity_type:
+          type: string
+          enum: [TALENT, REQUISITION, COMPANY, CONTACT]
+        hits:
+          type: array
+          items: { $ref: '#/components/schemas/EnterpriseSearchHit' }
+        unauthorized:
+          type: boolean
+          description: True when the type was explicitly requested but the actor lacks its search scope.
+    EnterpriseSearchHit:
+      type: object
+      additionalProperties: false
+      required: [entity_type, entity_id, display_label, subtitle, snippet, route, match]
+      properties:
+        entity_type:
+          type: string
+          enum: [TALENT, REQUISITION, COMPANY, CONTACT]
+        entity_id: { type: string, format: uuid }
+        display_label: { type: string }
+        subtitle:
+          type: [string, 'null']
+        snippet:
+          type: [string, 'null']
+        route: { type: string }
+        match: { $ref: '#/components/schemas/EnterpriseSearchMatch' }
+    EnterpriseSearchMatch:
+      type: object
+      additionalProperties: false
+      required: [signal, relevance]
+      properties:
+        signal:
+          type: string
+          enum: [exact, lexical]
+        field: { type: string }
+        relevance: { type: number }
     # ── TALENT-INTEL-1 TI-1D-C — résumé editions ──
     PipelineResumeEditionAvailable:
       type: object

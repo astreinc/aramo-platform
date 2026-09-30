@@ -141,6 +141,11 @@
       "to": "apps/ats-web/src/ui/ui.css"
     },
     {
+      "from": "apps/api/src/search/enterprise-search.port.ts",
+      "status": "production",
+      "to": "libs/requisition/src/lib/requisition.module.ts"
+    },
+    {
       "from": "apps/api/src/talent-anchor/erase-talent.command.ts",
       "status": "production",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
@@ -3702,6 +3707,12 @@
       "from": "apps/api/src/tests/email-template-authz.integration.spec.ts",
       "status": "excluded",
       "to": "libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/enterprise-search-requisition.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/requisition/src/tests/_capacity-b2-harness.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11968,6 +11979,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/rtr/rtr.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/search/enterprise-search.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",

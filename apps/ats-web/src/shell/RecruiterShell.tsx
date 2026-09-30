@@ -30,6 +30,7 @@ import {
   UserMenu,
   initialsOf,
 } from '../ui';
+import { CommandPalette } from '../search/CommandPalette';
 
 import { AramoBrand } from './AramoBrand';
 // BreadcrumbProvider is retained so routed detail views may still publish their
@@ -194,6 +195,21 @@ function RecruiterShellInner({
   // surface internals (R10/R12).
   const handleLogout = () => logout(onLogoutComplete);
 
+  // Enterprise Search GS-1 — the global ⌘K / Ctrl-K command palette. A keyboard-first entry
+  // into the SAME /v1/search authority as the full Search page (the palette is a lean consumer
+  // of that contract, not a second search). ⌘K opens it; the palette owns Escape/close.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
   // P2-A (REQ-PIXEL-PARITY-1-A2) — rail nav count pills. Truthful counts from
   // the report endpoints (report:read-gated; skipped without the scope).
   // Requisitions total is A3-scoped; talent is tenant-wide. Degrades silently
@@ -255,7 +271,7 @@ function RecruiterShellInner({
 
   const topBar = (
     <TopBar>
-      <CmdKSearch />
+      <CmdKSearch onActivate={() => setPaletteOpen(true)} />
       <NotificationButton />
       {/* Org-context label (M365 pattern) — the tenant display_name as plain
           text, NOT a logo. The internal brand stays pure-Aramo (ShellBrand);
@@ -297,6 +313,7 @@ function RecruiterShellInner({
         </div>
       ) : null}
       {children}
+      <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </AppShell>
   );
 }

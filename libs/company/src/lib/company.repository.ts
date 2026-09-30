@@ -422,6 +422,24 @@ function buildBaseWhere(
   return where;
 }
 
+// Enterprise Search (GS-1) — the lean projection the search adapter maps to a SearchHit.
+// Excludes every commercial/relationship column so a hit can never carry gated data.
+const COMPANY_SEARCH_SELECT = {
+  id: true,
+  name: true,
+  city: true,
+  state: true,
+  industry: true,
+} as const;
+
+export interface CompanySearchRow {
+  id: string;
+  name: string;
+  city: string | null;
+  state: string | null;
+  industry: string | null;
+}
+
 function quietCutoff(): Date {
   return new Date(Date.now() - QUIET_DAYS * 86_400_000);
 }
@@ -741,6 +759,46 @@ export class CompanyRepository {
       include: RELATIONSHIP_INCLUDE,
     });
     return (rows as CompanyRow[]).map(projectView);
+  }
+
+  // Enterprise Search (GS-1) — lean, VISIBILITY-AWARE search leg for the search adapter.
+  // Consumes the RESOLVED company visibility exactly as listForActor does (id ∈
+  // visible_client_ids unless see_all_company) — it applies resolved authority, it does not
+  // recreate a rule. Matches name OR description OR key_technologies (directive §7). The
+  // visibility filter uses `id: { in }` (no OR), so the text OR sits at top level without
+  // collision. Lean select → a hit never carries commercial fields.
+  async searchLexicalForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    q: string;
+    limit?: number;
+  }): Promise<CompanySearchRow[]> {
+    const q = args.q.trim();
+    if (q === '') return [];
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      OR: [
+        { name: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+        { key_technologies: { contains: q, mode: 'insensitive' } },
+      ],
+    };
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null) {
+        where['id'] = { in: Array.from(visible) };
+      }
+    }
+    const rows = await this.prisma.company.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: COMPANY_SEARCH_SELECT,
+    });
+    return rows as CompanySearchRow[];
   }
 
   // Phase 2 — native server-side faceted search + keyset pagination. The page
