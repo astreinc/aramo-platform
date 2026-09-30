@@ -227,6 +227,25 @@ function buildSelectionWhere(
   return where;
 }
 
+// Enterprise Search (GS-1) — the lean projection the search adapter maps to a SearchHit.
+// DELIBERATELY excludes email/phone: a generic search hit must never become a way to expose
+// contact channels, even when a channel was internally matched for retrieval.
+const CONTACT_SEARCH_SELECT = {
+  id: true,
+  first_name: true,
+  last_name: true,
+  title: true,
+  company_id: true,
+} as const;
+
+export interface ContactSearchRow {
+  id: string;
+  first_name: string;
+  last_name: string;
+  title: string | null;
+  company_id: string;
+}
+
 interface ContactGroupRow {
   readonly _count: { readonly _all: number };
   readonly [key: string]: unknown;
@@ -440,6 +459,45 @@ export class ContactRepository {
       take: limit,
     });
     return (rows as ContactRow[]).map((r) => projectView(r));
+  }
+
+  // Enterprise Search (GS-1) — lean, VISIBILITY-AWARE search leg for the search adapter.
+  // Consumes the RESOLVED contact visibility exactly as the visibility-scoped reads do
+  // (company_id ∈ visible_client_ids unless see_all_company) — it applies resolved authority,
+  // it does not recreate a rule. Matches first_name OR last_name OR title (mirrors the domain
+  // read's name lexical, plus title). The visibility filter uses `company_id: { in }` (no OR),
+  // so the text OR sits at top level without collision. Lean select → the hit never carries
+  // email/phone.
+  async searchLexicalForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    q: string;
+    limit?: number;
+  }): Promise<ContactSearchRow[]> {
+    const q = args.q.trim();
+    if (q === '') return [];
+    const limit = Math.min(args.limit ?? 50, 200);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+      OR: [
+        { first_name: { contains: q, mode: 'insensitive' } },
+        { last_name: { contains: q, mode: 'insensitive' } },
+        { title: { contains: q, mode: 'insensitive' } },
+      ],
+    };
+    if (!args.visibility.see_all_company) {
+      const visible = args.visibility.visible_client_ids;
+      if (visible !== null) where['company_id'] = { in: Array.from(visible) };
+    }
+    const rows = await this.prisma.contact.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: CONTACT_SEARCH_SELECT,
+    });
+    return rows as ContactSearchRow[];
   }
 
   // AUTHZ-D4b — visibility-scoped read paths. Contact's visibility is

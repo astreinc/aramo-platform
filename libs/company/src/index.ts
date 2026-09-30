@@ -3,6 +3,7 @@ export { CompanyController } from './lib/company.controller.js';
 export { CompanyRepository } from './lib/company.repository.js';
 export { CompanyDepartmentRepository } from './lib/company-department.repository.js';
 export { PrismaService as CompanyPrismaService } from './lib/prisma/prisma.service.js';
+export type { CompanySearchRow } from './lib/company.repository.js';
 // AUTHZ-D4b — exported for libs/visibility consumption (the resolver
 // reads UserClientAssignment for the Axis-0 direct + Axis-1 transitive-
 // reports lookup; reads TeamClientOwnership for the Axis-2 pod→client

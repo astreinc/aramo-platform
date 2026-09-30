@@ -87,6 +87,7 @@ import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
 import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
+import { EnterpriseSearchModule } from './search/enterprise-search.module.js';
 import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
 import { MyDeskModule } from './my-desk/my-desk.module.js';
 import { Talent360Module } from './talent-360/talent-360.module.js';
@@ -473,6 +474,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // projection over the scope:ats owners, 404-conceals a non-visible requisition,
     // reads only (STATE ENUMS ONLY — no compensation/bill field).
     RequisitionTalentBoardModule,
+    // Enterprise Search GS-1 — the single tenant-safe search entry point (GET /v1/search);
+    // one orchestrator fans out over four per-domain adapters (Talent/Requisition/Company/
+    // Contact), reusing each domain's visibility-aware reads. GET-only; reads only.
+    EnterpriseSearchModule,
     // Accidental-Add Correction — the governed VOID orchestrator (POST
     // /v1/pipelines/:id/void); composes the engagement + downstream guards across the
     // ADR-0029 wall and delegates the transition to the pipeline VOID command.

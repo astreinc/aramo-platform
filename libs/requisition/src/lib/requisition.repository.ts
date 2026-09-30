@@ -186,6 +186,27 @@ function buildVisibilityWhere(
   };
 }
 
+// Enterprise Search (GS-1) — the lean projection the search adapter maps to a SearchHit.
+// Deliberately excludes every commercial/financial column so a search hit can never carry
+// gated compensation data (directive §5/§8).
+const REQUISITION_SEARCH_SELECT = {
+  id: true,
+  title: true,
+  requisition_number: true,
+  city: true,
+  state: true,
+  status: true,
+} as const;
+
+export interface RequisitionSearchRow {
+  id: string;
+  title: string;
+  requisition_number: number;
+  city: string | null;
+  state: string | null;
+  status: string;
+}
+
 // Compensation-Field Modeling v1.1 §2 — translate the create DTO's
 // optional comp fields into the Prisma create data payload. All
 // fields default to null when omitted (existing rows pre-migration
@@ -1832,6 +1853,69 @@ export class RequisitionRepository {
       args.visibility.actor_user_id,
       withClientStatus,
     );
+  }
+
+  // Enterprise Search (GS-1) — lean, VISIBILITY-AWARE lexical leg for the search adapter.
+  // Reuses buildVisibilityWhere (the SAME A3/D4b predicate the list/detail reads use) — it
+  // does NOT recreate visibility. Matches title OR description (ILIKE-contains) within the
+  // actor's visible set. The title/description OR is nested under AND so it does not collide
+  // with buildVisibilityWhere's top-level OR. No status filter — mirrors listForActor's read
+  // semantics (Search invents no lifecycle rule). Lean select → no commercial leak.
+  async searchLexicalForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    q: string;
+    limit?: number;
+  }): Promise<RequisitionSearchRow[]> {
+    const q = args.q.trim();
+    if (q === '') return [];
+    const limit = Math.min(args.limit ?? 50, 200);
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        AND: [
+          {
+            OR: [
+              { title: { contains: q, mode: 'insensitive' } },
+              { description: { contains: q, mode: 'insensitive' } },
+            ],
+          },
+          buildVisibilityWhere(args.visibility),
+        ],
+      },
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: REQUISITION_SEARCH_SELECT,
+    });
+    return rows as RequisitionSearchRow[];
+  }
+
+  // Enterprise Search (GS-1) — lean, VISIBILITY-AWARE exact requisition-number leg. The exact
+  // reference (REQ-<n>) is an exact identifier and outranks title/description matches
+  // (directive §6/§18); it stays INSIDE the same visible set (buildVisibilityWhere) — it is
+  // not a lookup bypass. requisition_number is the only OR-free predicate besides the
+  // visibility union, so it spreads safely alongside buildVisibilityWhere.
+  async searchByReferenceForActor(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    requisition_number: number;
+    limit?: number;
+  }): Promise<RequisitionSearchRow[]> {
+    const limit = Math.min(args.limit ?? 50, 200);
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        requisition_number: args.requisition_number,
+        ...buildVisibilityWhere(args.visibility),
+      },
+      take: limit,
+      select: REQUISITION_SEARCH_SELECT,
+    });
+    return rows as RequisitionSearchRow[];
   }
 
   /**

@@ -31,6 +31,7 @@
     "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
     "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts": "AP",
+    "apps/api/src/search/enterprise-search.controller.ts": "AP",
     "apps/api/src/pipeline-void/pipeline-void.controller.ts": "AP",
     "apps/api/src/documents/documents-esign.controller.ts": "SS",
     "apps/api/src/integrations/esign/esign-events.controller.ts": "SS",
