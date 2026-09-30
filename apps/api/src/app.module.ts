@@ -90,6 +90,8 @@ import { RequisitionTalentBoardModule } from './requisition-talent-board/requisi
 import { EnterpriseSearchModule } from './search/enterprise-search.module.js';
 import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
 import { MyDeskModule } from './my-desk/my-desk.module.js';
+import { InterviewsModule } from './interviews/interviews.module.js';
+import { InterviewerValidatorModule } from './interviews/interviewer-validator.module.js';
 import { CommunicationsApiModule } from './communications/communications-api.module.js';
 import { EngagementApiModule } from './engagement/engagement-api.module.js';
 import { ClientSubmittalPolicyModule } from './client-submittal-policy/client-submittal-policy.module.js';
@@ -486,6 +488,13 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // client-selection/placement/offer reads across the A7 seam into one
     // visibility-scoped projection, reads only (dashboard:read).
     MyDeskModule,
+    // GET /v1/interviews — the interview CALENDAR read (Calendar/Interview §6).
+    // Composes InterviewSession (authority) with Talent/Requisition/company display;
+    // reads only (client-selection:read). Never an interview authority.
+    InterviewsModule,
+    // @Global — binds the lib's INTERVIEWER_VALIDATOR port (Slice B §9 schedule-time
+    // interviewer tenant-user validation) to an IdentityService-backed adapter.
+    InterviewerValidatorModule,
     CommunicationsApiModule,
     EngagementApiModule,
     ClientSubmittalPolicyModule,

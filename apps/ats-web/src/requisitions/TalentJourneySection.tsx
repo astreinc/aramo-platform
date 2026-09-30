@@ -285,9 +285,20 @@ export function TalentJourneySection({
                   ? 'Await client decision'
                   : 'Submit this Talent to the client'}
             </p>
-            {selectionId != null ? (
+            {interviewState != null ? (
+              // Calendar/Interview §19 — the authoritative interview surface (the
+              // interview calendar filtered to this Talent + requisition), NOT the
+              // selection detail. The journey stays a consumer; no schedule state
+              // lives here.
+              <Link
+                to={`/interviews?requisition_id=${encodeURIComponent(requisitionId)}&talent_id=${encodeURIComponent(talentRecordId)}`}
+                className="rc-cjr__cta"
+              >
+                View interview
+              </Link>
+            ) : selectionId != null ? (
               <Link to={`/selections/${selectionId}`} className="rc-cjr__cta">
-                {interviewState != null ? 'View interview' : 'View submittal'}
+                View submittal
               </Link>
             ) : submittalId != null ? (
               <Link

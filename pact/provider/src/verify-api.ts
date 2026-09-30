@@ -1243,6 +1243,17 @@ const CLIENT_SELECTION_INTERVIEW_ROUND_MIGRATION = resolve(
   ROOT,
   'libs/client-selection/prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
 );
+// Calendar/Interview Slice B — additive scheduled_end_at + timezone. SEPARATE const
+// (never a 2nd resolve() arg). Applied AFTER the session table + round index exist.
+const CLIENT_SELECTION_INTERVIEW_SCHEDULING_MIGRATION = resolve(
+  ROOT,
+  'libs/client-selection/prisma/migrations/20260930120000_calint_b_interview_scheduling_fields/migration.sql',
+);
+// Calendar/Interview Slice C — additive meeting_interaction_id. SEPARATE const.
+const CLIENT_SELECTION_INTERVIEW_MEETING_MIGRATION = resolve(
+  ROOT,
+  'libs/client-selection/prisma/migrations/20260930130000_calint_c_interview_meeting_link/migration.sql',
+);
 // Track 4 / T4-B2 §6 — the dedicated stored openings_available DROP. Applied here so
 // the provider schema matches the retired-column reality; the requisition read is
 // derived and does not depend on the physical column.
@@ -1743,6 +1754,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // ===================================================================
     const ATSW_JOB_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
     const ATSW_REQUISITION_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccccc';
+    // Calendar/Interview fixtures — mirror pact/consumers/ats-web/src/interviews.consumer.test.ts.
+    const ATSW_INTERVIEW_PROCESS_ID = '22222222-2222-7222-8222-222222222222';
+    const ATSW_INTERVIEW_SESSION_ID = '33333333-3333-7333-8333-333333333333';
+    const ATSW_INTERVIEW_SUBMITTAL_ID = '66666666-6666-7666-8666-666666666666';
     // Selection fixtures — one id per seeded state (mirror the consumer).
     const ATSW_SURFACED_ID = '00000000-0000-7000-8000-a00000000001';
     const ATSW_AWAITING_ID = '00000000-0000-7000-8000-a00000000002';
@@ -1854,6 +1869,55 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                  (SELECT COALESCE(MAX(requisition_number), 999) + 1 FROM requisition."Requisition" WHERE tenant_id = $2))`,
         [ATSW_REQUISITION_ID, TENANT_ID, ATSW_JOB_ID, PACT_RECRUITER_ACTOR_ID],
       );
+    }
+
+    // Calendar/Interview — seed the ClientSelectionProcess (+ optionally its scheduled
+    // InterviewSession) the interview pacts verify against. Idempotent per interaction
+    // (DELETE then INSERT) so a mutating interaction (transition/associate/panel) never
+    // leaks into the next. Requisition + talent come from seedAtsWebSelectionBasics.
+    async function seedAtsWebInterview(
+      c: Client,
+      opts: { withInterview: boolean },
+    ): Promise<void> {
+      await seedAtsWebSelectionBasics(c);
+      await c.query(
+        `DELETE FROM client_selection."InterviewSession" WHERE tenant_id = $1`,
+        [TENANT_ID],
+      );
+      await c.query(
+        `DELETE FROM client_selection."ClientSelectionProcess" WHERE tenant_id = $1`,
+        [TENANT_ID],
+      );
+      await c.query(
+        `INSERT INTO client_selection."ClientSelectionProcess"
+           (id, tenant_id, submittal_id, requisition_id, talent_id, state, version, created_at, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                 'CLIENT_REVIEW'::client_selection."ClientSelectionState", 0, NOW(), NOW())`,
+        [
+          ATSW_INTERVIEW_PROCESS_ID,
+          TENANT_ID,
+          ATSW_INTERVIEW_SUBMITTAL_ID,
+          ATSW_REQUISITION_ID,
+          PACT_TALENT_ID,
+        ],
+      );
+      if (opts.withInterview) {
+        await c.query(
+          `INSERT INTO client_selection."InterviewSession"
+             (id, tenant_id, client_selection_process_id, requisition_id, talent_record_id,
+              interview_type, round, scheduled_at, interviewer_user_ids, state, version, created_at, updated_at)
+           VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+                   'onsite', 1, '2026-10-06T15:00:00.000Z'::timestamptz, '{}'::uuid[],
+                   'SCHEDULED'::client_selection."InterviewSessionState", 0, NOW(), NOW())`,
+          [
+            ATSW_INTERVIEW_SESSION_ID,
+            TENANT_ID,
+            ATSW_INTERVIEW_PROCESS_ID,
+            ATSW_REQUISITION_ID,
+            PACT_TALENT_ID,
+          ],
+        );
+      }
     }
 
     async function seedAtsWebSelection(
@@ -3706,6 +3770,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         CLIENT_SELECTION_INIT_MIGRATION,
         CLIENT_SELECTION_INTERVIEW_SESSION_MIGRATION,
         CLIENT_SELECTION_INTERVIEW_ROUND_MIGRATION,
+        // Calendar/Interview Slice B — additive scheduled_end_at + timezone (ALTER after
+        // the session table + round index exist).
+        CLIENT_SELECTION_INTERVIEW_SCHEDULING_MIGRATION,
+        // Calendar/Interview Slice C — additive meeting_interaction_id (ALTER).
+        CLIENT_SELECTION_INTERVIEW_MEETING_MIGRATION,
         // T4-B2 §6 — retire the stored openings_available column (derived-only).
         REQUISITION_DROP_OPENINGS_AVAILABLE_MIGRATION,
         // T8-P1 — the external-identity partial-unique index (applied last;
@@ -3928,6 +3997,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'pipeline:resume:set',
           'activity:read',
           'activity:create',
+          // Calendar/Interview (Slices A–D) — the interview read + command scopes the
+          // ats-web FE now consumes. client-selection:read gates the calendar + detail
+          // reads; interview:schedule/transition gate the writes; communication:meeting:create
+          // gates the Teams meeting create that the create→associate flow reuses.
+          'client-selection:read',
+          'client-selection:interview:schedule',
+          'client-selection:interview:transition',
+          'communication:meeting:create',
           // PC-5d — task + attachment RolesGuard @RequireScopes. task:write
           // gates create/patch/delete; attachment:create gates upload;
           // attachment:delete omitted (DELETE is EXCLUDE-R2). Task/attachment
@@ -4648,6 +4725,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     const stateHandlers: Record<string, () => Promise<void>> = {
+      // ===== Calendar/Interview (Slices A–D) interview command/read pacts =====
+      // A scheduled interview (+ its process, requisition, talent) so the calendar read,
+      // detail read, transition, meeting-association, and participant-update interactions
+      // resolve. Reset per interaction so a mutating call never leaks into the next.
+      'an ats-web recruiter and a scheduled interview exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebInterview(c, { withInterview: true });
+        });
+      },
+      // A non-terminal process with NO interview at round 1, so the schedule command
+      // creates round 1 (201) rather than tripping INTERVIEW_ROUND_EXISTS.
+      'an ats-web recruiter and a schedulable client-selection process exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebInterview(c, { withInterview: false });
+        });
+      },
       // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====
       // Seed a frozen Document + revision + SOURCE_UPLOAD artifact so
       // RevisionSourceService.getSourceBase64 resolves (object storage is the mock
