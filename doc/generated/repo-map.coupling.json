@@ -12318,6 +12318,21 @@
       "to": "ci/scripts/check-integration-roots.ts"
     },
     {
+      "from": "ci/scripts/check-api-spec-location.ts",
+      "status": "unscoped",
+      "to": "apps/api/src/my-desk/my-desk.service.ts"
+    },
+    {
+      "from": "ci/scripts/check-api-spec-location.ts",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/my-desk.service.spec.ts"
+    },
+    {
+      "from": "ci/scripts/check-api-spec-location.ts",
+      "status": "unscoped",
+      "to": "apps/api/vitest.config.ts"
+    },
+    {
       "from": "ci/scripts/check-integration-roots.ts",
       "status": "unscoped",
       "to": "ci/integration-roots.json"
@@ -18349,6 +18364,7 @@
     },
     { "from": "openapi/portal.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "apps/api/src/policy/seed-lifecycle.ts" },
+    { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-api-spec-location.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-integration-roots.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-version-sync.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/compare-spec-to-openapi.ts" },
@@ -20702,7 +20718,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 73,
+    "files": 74,
     "huskyPresent": false
   },
   "scripts": [
@@ -20713,6 +20729,20 @@
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" }
+      ]
+    },
+    {
+      "name": "api-spec-location:check",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" }
+      ]
+    },
+    {
+      "name": "api-spec-location:self-test",
+      "references": [
+        { "kind": "npm-run", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/ci.yml" }
       ]
     },
     {
@@ -20732,6 +20762,7 @@
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/deploy-public-staging.yml" },
+        { "kind": "prose", "path": "ci/scripts/check-api-spec-location.ts" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
         { "kind": "prose", "path": "ci/scripts/generate-offer-sql.ts" },
@@ -21098,6 +21129,7 @@
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": "ci/scripts/boot-smoke-loader.cjs" },
+        { "kind": "prose", "path": "ci/scripts/check-api-spec-location.ts" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/check-version-sync.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
