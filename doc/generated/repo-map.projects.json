@@ -3612,6 +3612,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-360.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
