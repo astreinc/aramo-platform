@@ -11669,11 +11669,6 @@
       "to": "libs/identity/src/lib/identity.repository.ts"
     },
     {
-      "from": "apps/ats-web/visual-harness/talent-360-parity.mjs",
-      "status": "unscoped",
-      "to": "openapi/auth.yaml"
-    },
-    {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"

@@ -448,6 +448,7 @@
     "apps/api/src/tests/identity-module-split.di.spec.ts",
     "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
     "apps/api/src/tests/indeed-apply-webhook.spec.ts",
+    "apps/api/src/tests/interview-today-timezone.unit.spec.ts",
     "apps/api/src/tests/interviewer-validator.adapter.spec.ts",
     "apps/api/src/tests/interviews.service.spec.ts",
     "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
