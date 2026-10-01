@@ -99,8 +99,22 @@ model InterviewSession {
   interview_type String
   round          Int    @default(1)
   scheduled_at   DateTime @db.Timestamptz
-  // Store-only participants: identity.User interviewer refs (no FK, unvalidated at F2).
+  // Calendar/Interview Slice B — additive scheduling fields. scheduled_at is the
+  // authoritative START instant; scheduled_end_at is the authoritative END instant
+  // (nullable for legacy rows — NEVER fabricated); timezone is an IANA display/input
+  // zone (nullable for legacy rows). scheduled_end_at > scheduled_at is enforced at the
+  // write boundary, not by a DB constraint (legacy rows carry neither).
+  scheduled_end_at DateTime? @db.Timestamptz
+  timezone         String?
+  // Store-only participants: identity.User interviewer refs (no FK; tenant-user validity
+  // is asserted at the write boundary in Slice B).
   interviewer_user_ids String[] @db.Uuid
+
+  // Calendar/Interview Slice C — provider-neutral association to an already-created
+  // meeting interaction (communications.CommunicationInteraction, channel='meeting';
+  // UUID-ref, no FK). The canonical meeting evidence stays in Communications; the session
+  // stores ONLY this reference. NEVER a teams_url / provider / mailbox on the session.
+  meeting_interaction_id String? @db.Uuid
 
   state InterviewSessionState @default(SCHEDULED)
 

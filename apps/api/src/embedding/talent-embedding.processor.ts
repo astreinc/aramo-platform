@@ -5,6 +5,7 @@ import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 
 import { TalentEmbeddingReconcileService } from './talent-embedding-reconcile.service.js';
 import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
+import { RequisitionEmbeddingWorker } from './requisition-embedding.worker.js';
 import { TALENT_EMBEDDING_QUEUE_NAME } from './talent-embedding.queue.constants.js';
 
 // Enterprise Search GS-2A Slice-5b — the talent-embedding worker. The SCHEDULES tick
@@ -23,6 +24,8 @@ export class TalentEmbeddingProcessor extends WorkerHost implements OnApplicatio
     private readonly reconcile: TalentEmbeddingReconcileService,
     // Named embeddingWorker (not `worker`) — WorkerHost already owns a `worker` member.
     private readonly embeddingWorker: TalentEmbeddingWorker,
+    // GS-2B — the same dark tick also drives requisition reconcile + drain.
+    private readonly requisitionWorker: RequisitionEmbeddingWorker,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('TalentEmbeddingProcessorLogger') private readonly logger: AramoLogger,
@@ -31,10 +34,12 @@ export class TalentEmbeddingProcessor extends WorkerHost implements OnApplicatio
   }
 
   async process(_job: Job): Promise<void> {
-    // Reconcile first (enqueue new live Talents), then drain the pending set. Both no-op when
-    // EMBEDDING_PROCESSING_ENABLED is off.
+    // Reconcile then drain, for both entity types. Every step no-ops when EMBEDDING_PROCESSING_ENABLED
+    // is off (each worker/reconcile self-gates).
     await this.reconcile.runOnce();
     await this.embeddingWorker.runOnce();
+    await this.requisitionWorker.reconcileOnce();
+    await this.requisitionWorker.runOnce();
   }
 
   onApplicationBootstrap(): void {

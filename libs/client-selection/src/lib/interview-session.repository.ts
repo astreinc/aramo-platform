@@ -8,6 +8,7 @@ import {
 } from './client-selection-state.js';
 import {
   canTransitionInterviewSession,
+  isTerminalInterviewSessionState,
   type InterviewSessionState,
 } from './interview-session-state.js';
 import type { InterviewSessionView } from './dto/interview-session.view.js';
@@ -23,7 +24,10 @@ interface SessionRow {
   interview_type: string;
   round: number;
   scheduled_at: Date;
+  scheduled_end_at: Date | null;
+  timezone: string | null;
   interviewer_user_ids: string[];
+  meeting_interaction_id: string | null;
   state: InterviewSessionState;
   version: number;
   created_at: Date;
@@ -49,7 +53,11 @@ function projectView(row: SessionRow): InterviewSessionView {
     interview_type: row.interview_type,
     round: row.round,
     scheduled_at: row.scheduled_at.toISOString(),
+    scheduled_end_at:
+      row.scheduled_end_at === null ? null : row.scheduled_end_at.toISOString(),
+    timezone: row.timezone,
     interviewer_user_ids: [...row.interviewer_user_ids],
+    meeting_interaction_id: row.meeting_interaction_id,
     state: row.state,
     version: row.version,
     created_at: row.created_at.toISOString(),
@@ -80,6 +88,8 @@ export class InterviewSessionRepository {
     interview_type: string;
     round?: number;
     scheduled_at: Date;
+    scheduled_end_at?: Date;
+    timezone?: string;
     interviewer_user_ids?: readonly string[];
     created_by_id?: string;
     requestId: string;
@@ -129,6 +139,10 @@ export class InterviewSessionRepository {
           interview_type: args.interview_type,
           round,
           scheduled_at: args.scheduled_at,
+          ...(args.scheduled_end_at === undefined
+            ? {}
+            : { scheduled_end_at: args.scheduled_end_at }),
+          ...(args.timezone === undefined ? {} : { timezone: args.timezone }),
           interviewer_user_ids: interviewerIds,
           state: 'SCHEDULED',
           ...(args.created_by_id === undefined
@@ -286,6 +300,60 @@ export class InterviewSessionRepository {
     return rows.map(projectView);
   }
 
+  // Slice A (Calendar/Interview §6) — the canonical bounded interview CALENDAR read.
+  // Sources InterviewSession (NEVER CalendarEvent). Half-open [from, to) instant window,
+  // visibility-scoped to the caller's visible requisitions (null = see-all short-circuit;
+  // empty set = nothing visible). Optional narrowing filters (requisition / talent /
+  // interviewer / state) are ANDed. A caller-supplied requisition_id outside the visible
+  // set is CONCEALED (empty result), never widened. Earliest first. A read projection only.
+  async listForCalendar(args: {
+    tenant_id: string;
+    from: Date;
+    to: Date;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    requisition_id?: string;
+    talent_record_id?: string;
+    interviewer_user_id?: string;
+    state?: InterviewSessionState;
+    limit?: number;
+  }): Promise<InterviewSessionView[]> {
+    const limit = Math.min(args.limit ?? 200, 500);
+    const where: Record<string, unknown> = {
+      tenant_id: args.tenant_id,
+      scheduled_at: { gte: args.from, lt: args.to },
+    };
+    if (args.visible_requisition_ids !== null) {
+      if (args.visible_requisition_ids.size === 0) return [];
+      if (
+        args.requisition_id !== undefined &&
+        !args.visible_requisition_ids.has(args.requisition_id)
+      ) {
+        return []; // concealed — a requisition outside the visible set is never widened
+      }
+      where['requisition_id'] =
+        args.requisition_id !== undefined
+          ? args.requisition_id
+          : { in: Array.from(args.visible_requisition_ids) };
+    } else if (args.requisition_id !== undefined) {
+      where['requisition_id'] = args.requisition_id;
+    }
+    if (args.talent_record_id !== undefined) {
+      where['talent_record_id'] = args.talent_record_id;
+    }
+    if (args.interviewer_user_id !== undefined) {
+      where['interviewer_user_ids'] = { has: args.interviewer_user_id };
+    }
+    if (args.state !== undefined) {
+      where['state'] = args.state;
+    }
+    const rows = (await this.prisma.interviewSession.findMany({
+      where,
+      orderBy: { scheduled_at: 'asc' },
+      take: limit,
+    })) as SessionRow[];
+    return rows.map(projectView);
+  }
+
   // Drive a legal, CAS-guarded session transition. Concealment (404) + CAS (409) +
   // legality (422) precede the atomic tx (UPDATE + event + outbox). RESCHEDULED also
   // sets the new scheduled_at. There is NO no-op short-circuit: the only same-state
@@ -296,6 +364,8 @@ export class InterviewSessionRepository {
     to_state: InterviewSessionState;
     expected_version: number;
     scheduled_at?: Date;
+    scheduled_end_at?: Date;
+    timezone?: string;
     changed_by_id: string;
     requestId: string;
     visible_requisition_ids: ReadonlySet<string> | null;
@@ -351,20 +421,66 @@ export class InterviewSessionRepository {
 
     const fromState = current.state;
     const note = args.note ?? null;
+    const isReschedule = args.to_state === 'RESCHEDULED';
     const rescheduleAt =
-      args.to_state === 'RESCHEDULED' && args.scheduled_at !== undefined
+      isReschedule && args.scheduled_at !== undefined
         ? args.scheduled_at
         : undefined;
+    // Slice B — a RESCHEDULED transition may also carry a new end instant + zone.
+    const rescheduleEndAt =
+      isReschedule && args.scheduled_end_at !== undefined
+        ? args.scheduled_end_at
+        : undefined;
+    const rescheduleTz =
+      isReschedule && args.timezone !== undefined ? args.timezone : undefined;
 
     const updated = await this.prisma.$transaction(async (tx) => {
-      const u = await tx.interviewSession.update({
-        where: { id: args.id },
+      // ATOMIC CAS — the version guard lives in the WRITE, not in the prior in-memory
+      // read. The pre-read check above is advisory (a fast, friendly 409 for the common
+      // non-concurrent case); it is NOT the concurrency floor. Concurrent writers that
+      // all passed that stale check funnel here, where the row lock serializes them and
+      // ONLY the writer still matching `version: expected_version` advances the row.
+      // Everyone else matches 0 rows → conflict, with NO event/outbox written (the throw
+      // rolls the tx back). A non-guarded `update({ where: { id } })` here was a
+      // read-then-write TOCTOU that let two concurrent transitions both commit. Mirrors
+      // ClientSelectionProcess.transition (the sibling atomic-CAS reference).
+      const res = await tx.interviewSession.updateMany({
+        where: {
+          id: args.id,
+          tenant_id: args.tenant_id,
+          version: args.expected_version,
+        },
         data: {
           state: args.to_state,
           version: { increment: 1 },
           ...(rescheduleAt === undefined ? {} : { scheduled_at: rescheduleAt }),
+          ...(rescheduleEndAt === undefined
+            ? {}
+            : { scheduled_end_at: rescheduleEndAt }),
+          ...(rescheduleTz === undefined ? {} : { timezone: rescheduleTz }),
         },
       });
+      if (res.count === 0) {
+        const latest = (await tx.interviewSession.findFirst({
+          where: { tenant_id: args.tenant_id, id: args.id },
+        })) as SessionRow | null;
+        throw new AramoError(
+          'INTERVIEW_SESSION_TRANSITION_CONFLICT',
+          'Interview session was modified concurrently; refresh and retry',
+          409,
+          {
+            requestId: args.requestId,
+            details: {
+              interview_session_id: args.id,
+              current_state: latest?.state ?? current.state,
+              current_version: latest?.version ?? current.version,
+            },
+          },
+        );
+      }
+      const u = (await tx.interviewSession.findFirstOrThrow({
+        where: { id: args.id },
+      })) as SessionRow;
       await tx.clientSelectionEvent.create({
         data: {
           id: uuidv7(),
@@ -408,6 +524,199 @@ export class InterviewSessionRepository {
       to_state: args.to_state,
     });
     return projectView(updated as SessionRow);
+  }
+
+  // Slice C (§14) — associate a provider-neutral meeting interaction to a session. A PURE
+  // association: it NEVER changes lifecycle state (the meeting is neither attendance nor
+  // completion). Version-guarded CAS in the write; concealment 404; one event + outbox in
+  // the tx. The join link itself lives in Communications — only the UUID ref is stored.
+  async associateMeeting(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    meeting_interaction_id: string;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<InterviewSessionView> {
+    const current = await this.loadVisibleOrThrow(args);
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.interviewSession.updateMany({
+        where: {
+          id: args.id,
+          tenant_id: args.tenant_id,
+          version: args.expected_version,
+        },
+        data: {
+          meeting_interaction_id: args.meeting_interaction_id,
+          version: { increment: 1 },
+        },
+      });
+      if (res.count === 0) throw await this.conflict(args, current);
+      const u = (await tx.interviewSession.findFirstOrThrow({
+        where: { id: args.id },
+      })) as SessionRow;
+      const payload = {
+        interview_session_id: args.id,
+        meeting_interaction_id: args.meeting_interaction_id,
+        version: u.version,
+        changed_by_id: args.changed_by_id,
+      };
+      await tx.clientSelectionEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: args.tenant_id,
+          subject_type: 'session',
+          subject_id: args.id,
+          event_type: 'client_selection.interview.meeting_associated',
+          event_payload: payload,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: args.tenant_id,
+          event_type: 'client_selection.interview.meeting_associated',
+          event_payload: {
+            interview_session_id: args.id,
+            meeting_interaction_id: args.meeting_interaction_id,
+          },
+        },
+      });
+      return u;
+    });
+    this.logger.log({
+      event: 'interview_session_meeting_associated',
+      tenant_id: args.tenant_id,
+      interview_session_id: args.id,
+    });
+    return projectView(updated as SessionRow);
+  }
+
+  // Slice C (§10) — replace the interviewer panel on a NON-TERMINAL session. Version-guarded
+  // CAS in the write; concealment 404; a terminal session's panel is frozen (422). Tenant-
+  // user validity of the ids is asserted at the controller (the INTERVIEWER_VALIDATOR port)
+  // before this call. One event + outbox in the tx. No lifecycle-state change.
+  async updateInterviewers(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    interviewer_user_ids: readonly string[];
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<InterviewSessionView> {
+    const current = await this.loadVisibleOrThrow(args);
+    if (isTerminalInterviewSessionState(current.state)) {
+      throw new AramoError(
+        'INVALID_INTERVIEW_SESSION_TRANSITION',
+        `Cannot change interviewers on a ${current.state} interview`,
+        422,
+        {
+          requestId: args.requestId,
+          details: { interview_session_id: args.id, state: current.state },
+        },
+      );
+    }
+    const nextIds = [...args.interviewer_user_ids];
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.interviewSession.updateMany({
+        where: {
+          id: args.id,
+          tenant_id: args.tenant_id,
+          version: args.expected_version,
+        },
+        data: { interviewer_user_ids: nextIds, version: { increment: 1 } },
+      });
+      if (res.count === 0) throw await this.conflict(args, current);
+      const u = (await tx.interviewSession.findFirstOrThrow({
+        where: { id: args.id },
+      })) as SessionRow;
+      const payload = {
+        interview_session_id: args.id,
+        interviewer_user_ids: nextIds,
+        version: u.version,
+        changed_by_id: args.changed_by_id,
+      };
+      await tx.clientSelectionEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: args.tenant_id,
+          subject_type: 'session',
+          subject_id: args.id,
+          event_type: 'client_selection.interview.participants_updated',
+          event_payload: payload,
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: uuidv7(),
+          tenant_id: args.tenant_id,
+          event_type: 'client_selection.interview.participants_updated',
+          event_payload: {
+            interview_session_id: args.id,
+            interviewer_user_ids: nextIds,
+          },
+        },
+      });
+      return u;
+    });
+    this.logger.log({
+      event: 'interview_session_participants_updated',
+      tenant_id: args.tenant_id,
+      interview_session_id: args.id,
+    });
+    return projectView(updated as SessionRow);
+  }
+
+  // Shared concealment read for the Slice C mutations: load the session in-tenant and
+  // conceal a non-visible requisition as 404 (never 403).
+  private async loadVisibleOrThrow(args: {
+    tenant_id: string;
+    id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+  }): Promise<SessionRow> {
+    const current = (await this.prisma.interviewSession.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    })) as SessionRow | null;
+    if (
+      current === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has(current.requisition_id))
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Interview session not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    return current;
+  }
+
+  // Shared CAS-miss conflict for the Slice C mutations — re-reads the latest row for the
+  // (informational) conflict detail, mirroring transitionInterview.
+  private async conflict(
+    args: { tenant_id: string; id: string; requestId: string },
+    current: SessionRow,
+  ): Promise<AramoError> {
+    const latest = (await this.prisma.interviewSession.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    })) as SessionRow | null;
+    return new AramoError(
+      'INTERVIEW_SESSION_TRANSITION_CONFLICT',
+      'Interview session was modified concurrently; refresh and retry',
+      409,
+      {
+        requestId: args.requestId,
+        details: {
+          interview_session_id: args.id,
+          current_state: latest?.state ?? current.state,
+          current_version: latest?.version ?? current.version,
+        },
+      },
+    );
   }
 }
 

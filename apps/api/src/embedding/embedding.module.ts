@@ -10,8 +10,11 @@ import { SettingsModule } from '@aramo/settings';
 import { TalentEmbeddingModule } from '@aramo/talent-embedding';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
+import { RequisitionModule } from '@aramo/requisition';
 
 import { EmbeddingProcessingConfig } from './embedding-processing.config.js';
+import { RequisitionEmbeddingLifecycleService } from './requisition-embedding-lifecycle.service.js';
+import { RequisitionEmbeddingWorker } from './requisition-embedding.worker.js';
 import { SettingsActiveEmbeddingProviderResolver } from './settings-active-embedding-provider.resolver.js';
 import { TalentEmbeddingConsentGate } from './talent-embedding-consent.gate.js';
 import { TALENT_EMBEDDING_CONSENT_PORT } from './talent-embedding-consent.port.js';
@@ -36,6 +39,8 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     TalentEmbeddingModule,
     TalentRecordModule,
     TalentEvidenceModule,
+    // GS-2B — the requisition schema owns RequisitionEmbeddingRepository (lifecycle + OR-union retrieval).
+    RequisitionModule,
   ],
   providers: [
     {
@@ -49,6 +54,9 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     TalentEmbeddingLifecycleService,
     TalentEmbeddingReconcileService,
     TalentEmbeddingWorker,
+    // GS-2B requisition embedding (no consent gate — directive ruling 2).
+    RequisitionEmbeddingLifecycleService,
+    RequisitionEmbeddingWorker,
   ],
   exports: [
     EMBEDDING_PORT,
@@ -56,7 +64,9 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     TalentEmbeddingWorker,
     // The dark reconcile sweep + worker, consumed by the BullMQ processor module.
     TalentEmbeddingReconcileService,
-    // Exported so the GS-2A Talent search adapter can dark-gate its semantic leg.
+    // GS-2B requisition worker, consumed by the same BullMQ processor tick.
+    RequisitionEmbeddingWorker,
+    // Exported so the GS-2A/GS-2B search adapters can dark-gate their semantic legs.
     EmbeddingProcessingConfig,
   ],
 })

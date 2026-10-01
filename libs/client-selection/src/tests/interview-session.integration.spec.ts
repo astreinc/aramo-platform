@@ -21,6 +21,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql',
   '../../prisma/migrations/20260830120000_l2f2_interview_session/migration.sql',
   '../../prisma/migrations/20260831130000_l3d_interview_round_unique/migration.sql',
+  '../../prisma/migrations/20260930120000_calint_b_interview_scheduling_fields/migration.sql',
+  '../../prisma/migrations/20260930130000_calint_c_interview_meeting_link/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -211,27 +213,79 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ----------------------------------------------------------------------
     // F2.2 — session CAS + legality + reschedule.
     // ----------------------------------------------------------------------
-    it('F2.2: two session transitions with the same expected_version — one commits (+1), one conflicts, no extra event', async () => {
+    // Slice 0 (Calendar/Interview LOCKED §4) — DETERMINISTIC concurrency proof of the
+    // version-in-write CAS. A `SELECT ... FOR UPDATE` row-lock barrier, held on a SEPARATE
+    // connection, forces BOTH transitions to complete their advisory pre-read (each reads
+    // version 0) and then PARK at their guarded write. We release the barrier only once
+    // pg_stat_activity proves both writers are blocked on the lock — so determinism comes
+    // from the lock, NOT from which task the pool happens to run first. Under the fixed
+    // (updateMany WHERE version) write exactly one commits; the previous unguarded
+    // `update({ where: { id } })` let BOTH commit (version 2, two transition events).
+    async function blockedInterviewWriters(): Promise<number> {
+      const rows = await setup.$queryRawUnsafe<Array<{ n: number }>>(
+        `SELECT count(*)::int AS n
+           FROM pg_stat_activity
+          WHERE wait_event_type = 'Lock'
+            AND state = 'active'
+            AND query ILIKE '%InterviewSession%'
+            AND query ILIKE '%UPDATE%'`,
+      );
+      return Number(rows[0]!.n);
+    }
+
+    it('F2.2: two same-version transitions race past a row-lock barrier — exactly one commits (+1), one conflicts, no extra event', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
       const p = await seedProcess(tenant, req);
       const s = await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'video', scheduled_at: new Date(), requestId: 'x', visible_requisition_ids: null });
 
-      const results = await Promise.allSettled([
-        repo.transitionInterview({ tenant_id: tenant, id: s.id, to_state: 'COMPLETED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'a', visible_requisition_ids: null }),
-        repo.transitionInterview({ tenant_id: tenant, id: s.id, to_state: 'CANCELED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'b', visible_requisition_ids: null }),
-      ]);
-      const ok = results.filter((r) => r.status === 'fulfilled');
-      const bad = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
-      expect(ok).toHaveLength(1);
-      expect(bad).toHaveLength(1);
-      expect(bad[0]!.reason?.code).toBe('INTERVIEW_SESSION_TRANSITION_CONFLICT');
+      // Barrier: hold the row FOR UPDATE (no data change → committed version stays 0) so
+      // both writers pass their pre-read and block at the write.
+      let releaseBarrier!: () => void;
+      const barrierReleased = new Promise<void>((r) => { releaseBarrier = r; });
+      let signalHeld!: () => void;
+      const barrierHeld = new Promise<void>((r) => { signalHeld = r; });
+      const holder = setup.$transaction(async (tx) => {
+        await tx.$queryRawUnsafe(
+          `SELECT id FROM "client_selection"."InterviewSession" WHERE id = $1::uuid FOR UPDATE`,
+          s.id,
+        );
+        signalHeld();
+        await barrierReleased;
+      }, { timeout: 30_000, maxWait: 30_000 });
+
+      try {
+        await barrierHeld; // lock is held before we launch the writers
+
+        const a = repo.transitionInterview({ tenant_id: tenant, id: s.id, to_state: 'COMPLETED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'a', visible_requisition_ids: null });
+        const b = repo.transitionInterview({ tenant_id: tenant, id: s.id, to_state: 'CANCELED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'b', visible_requisition_ids: null });
+
+        // Wait until BOTH writers are provably parked on the row lock (past their pre-read).
+        for (let i = 0; i < 400 && (await blockedInterviewWriters()) < 2; i++) {
+          await new Promise((r) => setTimeout(r, 25));
+        }
+        expect(await blockedInterviewWriters()).toBe(2);
+
+        releaseBarrier();
+        await holder;
+
+        const results = await Promise.allSettled([a, b]);
+        const ok = results.filter((r) => r.status === 'fulfilled');
+        const bad = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+        expect(ok).toHaveLength(1);
+        expect(bad).toHaveLength(1);
+        expect(bad[0]!.reason?.code).toBe('INTERVIEW_SESSION_TRANSITION_CONFLICT');
+        expect(bad[0]!.reason?.statusCode).toBe(409);
+      } finally {
+        releaseBarrier();
+        await holder.catch(() => undefined);
+      }
 
       const after = await repo.findSessionById({ tenant_id: tenant, id: s.id, visible_requisition_ids: null });
-      expect(after!.version).toBe(1);
-      // birth (scheduled) + exactly one transition.
+      expect(after!.version).toBe(1); // old + 1, NOT +2
+      // birth (scheduled) + EXACTLY ONE transition — the loser's tx rolled back (no event).
       expect(await sessionEvents(s.id)).toHaveLength(2);
-    });
+    }, 60_000);
 
     it('F2.2(legality): a terminal session refuses any transition (INVALID_INTERVIEW_SESSION_TRANSITION 422)', async () => {
       const tenant = randomUUID();
@@ -259,6 +313,151 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(r2.state).toBe('RESCHEDULED');
       expect(r2.version).toBe(2);
     });
+
+    // ----------------------------------------------------------------------
+    // F2-CAL (Slice A, Calendar/Interview §6) — the bounded interview CALENDAR
+    // read projection sourced from InterviewSession. Window-bounded, visibility-
+    // scoped, optional ANDed filters (requisition / talent / interviewer / state).
+    // ----------------------------------------------------------------------
+    it('F2-CAL: listForCalendar bounds by [from,to), filters by requisition/talent/interviewer/state, and conceals non-visible requisitions', async () => {
+      const tenant = randomUUID();
+      const reqA = randomUUID();
+      const reqB = randomUUID();
+      const pA = await seedProcess(tenant, reqA);
+      const pB = await seedProcess(tenant, reqB);
+      const ivrX = randomUUID();
+      const ivrY = randomUUID();
+
+      // In-window sessions.
+      const a1 = await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: pA.id, interview_type: 'video', round: 1, scheduled_at: new Date('2026-10-05T15:00:00Z'), interviewer_user_ids: [ivrX], requestId: 'c1', visible_requisition_ids: null });
+      const b1 = await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: pB.id, interview_type: 'phone', round: 1, scheduled_at: new Date('2026-10-06T09:00:00Z'), interviewer_user_ids: [ivrY], requestId: 'c2', visible_requisition_ids: null });
+      // Out-of-window session (excluded by the half-open window).
+      await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: pA.id, interview_type: 'onsite', round: 2, scheduled_at: new Date('2026-10-20T10:00:00Z'), interviewer_user_ids: [ivrX], requestId: 'c3', visible_requisition_ids: null });
+
+      const from = new Date('2026-10-01T00:00:00Z');
+      const to = new Date('2026-10-10T00:00:00Z');
+
+      // Window + see-all (null visibility) → both in-window sessions, earliest first.
+      const all = await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null });
+      expect(all.map((r) => r.id)).toEqual([a1.id, b1.id]);
+
+      // Visibility set restricts to reqA only.
+      const visA = await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: new Set([reqA]) });
+      expect(visA.map((r) => r.id)).toEqual([a1.id]);
+
+      // requisition_id filter.
+      expect((await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null, requisition_id: reqB })).map((r) => r.id)).toEqual([b1.id]);
+
+      // A requisition_id OUTSIDE the visible set is concealed (empty).
+      expect(await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: new Set([reqA]), requisition_id: reqB })).toEqual([]);
+
+      // talent filter.
+      expect((await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null, talent_record_id: pB.talent_id })).map((r) => r.id)).toEqual([b1.id]);
+
+      // interviewer filter (array membership).
+      expect((await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null, interviewer_user_id: ivrX })).map((r) => r.id)).toEqual([a1.id]);
+
+      // state filter — drive b1 to CANCELED, then filter SCHEDULED (only a1) vs CANCELED (only b1).
+      await repo.transitionInterview({ tenant_id: tenant, id: b1.id, to_state: 'CANCELED', expected_version: 0, changed_by_id: randomUUID(), requestId: 'c4', visible_requisition_ids: null });
+      expect((await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null, state: 'SCHEDULED' })).map((r) => r.id)).toEqual([a1.id]);
+      expect((await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: null, state: 'CANCELED' })).map((r) => r.id)).toEqual([b1.id]);
+
+      // Empty visible set → nothing visible.
+      expect(await repo.listForCalendar({ tenant_id: tenant, from, to, visible_requisition_ids: new Set() })).toEqual([]);
+    }, 60_000);
+
+    // ----------------------------------------------------------------------
+    // F2-B (Slice B) — additive scheduled_end_at + timezone: persisted on schedule,
+    // null for legacy-style rows (never fabricated), updated on RESCHEDULE.
+    // ----------------------------------------------------------------------
+    it('F2-B: schedule persists end/timezone; a schedule without them leaves both null; reschedule updates start+end+timezone', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const p = await seedProcess(tenant, req);
+
+      const withEnd = await repo.scheduleInterview({
+        tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'onsite', round: 1,
+        scheduled_at: new Date('2026-10-05T15:00:00Z'),
+        scheduled_end_at: new Date('2026-10-05T16:00:00Z'),
+        timezone: 'America/New_York',
+        requestId: 'b1', visible_requisition_ids: null,
+      });
+      expect(withEnd.scheduled_end_at).toBe('2026-10-05T16:00:00.000Z');
+      expect(withEnd.timezone).toBe('America/New_York');
+
+      // No end/tz → both null (backward-compatible with legacy rows).
+      const noEnd = await repo.scheduleInterview({
+        tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'phone', round: 2,
+        scheduled_at: new Date('2026-10-06T09:00:00Z'),
+        requestId: 'b2', visible_requisition_ids: null,
+      });
+      expect(noEnd.scheduled_end_at).toBeNull();
+      expect(noEnd.timezone).toBeNull();
+
+      // Reschedule updates start + end + timezone atomically (version +1).
+      const r = await repo.transitionInterview({
+        tenant_id: tenant, id: withEnd.id, to_state: 'RESCHEDULED', expected_version: 0,
+        scheduled_at: new Date('2026-10-07T10:00:00Z'),
+        scheduled_end_at: new Date('2026-10-07T11:30:00Z'),
+        timezone: 'America/Los_Angeles',
+        changed_by_id: randomUUID(), requestId: 'b3', visible_requisition_ids: null,
+      });
+      expect(r.scheduled_at).toBe('2026-10-07T10:00:00.000Z');
+      expect(r.scheduled_end_at).toBe('2026-10-07T11:30:00.000Z');
+      expect(r.timezone).toBe('America/Los_Angeles');
+      expect(r.version).toBe(1);
+    }, 60_000);
+
+    // ----------------------------------------------------------------------
+    // F2-C (Slice C) — provider-neutral meeting association + participant update, both
+    // CAS-guarded; association never changes lifecycle; terminal panel is frozen.
+    // ----------------------------------------------------------------------
+    it('F2-C(meeting): associateMeeting sets meeting_interaction_id (+1), does NOT change state; stale version conflicts; concealment 404', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const p = await seedProcess(tenant, req);
+      const s = await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'video', scheduled_at: new Date(), requestId: 'm0', visible_requisition_ids: null });
+      const meetingId = randomUUID();
+
+      const linked = await repo.associateMeeting({ tenant_id: tenant, id: s.id, expected_version: 0, meeting_interaction_id: meetingId, changed_by_id: randomUUID(), requestId: 'm1', visible_requisition_ids: null });
+      expect(linked.meeting_interaction_id).toBe(meetingId);
+      expect(linked.state).toBe('SCHEDULED'); // lifecycle unchanged
+      expect(linked.version).toBe(1);
+
+      // Stale version → conflict.
+      await expect(
+        repo.associateMeeting({ tenant_id: tenant, id: s.id, expected_version: 0, meeting_interaction_id: randomUUID(), changed_by_id: randomUUID(), requestId: 'm2', visible_requisition_ids: null }),
+      ).rejects.toMatchObject({ code: 'INTERVIEW_SESSION_TRANSITION_CONFLICT', statusCode: 409 });
+
+      // Concealment — not visible → 404.
+      await expect(
+        repo.associateMeeting({ tenant_id: tenant, id: s.id, expected_version: 1, meeting_interaction_id: randomUUID(), changed_by_id: randomUUID(), requestId: 'm3', visible_requisition_ids: new Set([randomUUID()]) }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    }, 60_000);
+
+    it('F2-C(participants): updateInterviewers replaces the panel (+1) on a non-terminal session; a terminal session is frozen (422); stale version conflicts', async () => {
+      const tenant = randomUUID();
+      const req = randomUUID();
+      const p = await seedProcess(tenant, req);
+      const s = await repo.scheduleInterview({ tenant_id: tenant, client_selection_process_id: p.id, interview_type: 'video', scheduled_at: new Date(), interviewer_user_ids: [randomUUID()], requestId: 'pu0', visible_requisition_ids: null });
+      const newPanel = [randomUUID(), randomUUID()];
+
+      const updated = await repo.updateInterviewers({ tenant_id: tenant, id: s.id, expected_version: 0, interviewer_user_ids: newPanel, changed_by_id: randomUUID(), requestId: 'pu1', visible_requisition_ids: null });
+      expect(updated.interviewer_user_ids).toEqual(newPanel);
+      expect(updated.version).toBe(1);
+      expect(updated.state).toBe('SCHEDULED');
+
+      // Stale version → conflict.
+      await expect(
+        repo.updateInterviewers({ tenant_id: tenant, id: s.id, expected_version: 0, interviewer_user_ids: [randomUUID()], changed_by_id: randomUUID(), requestId: 'pu2', visible_requisition_ids: null }),
+      ).rejects.toMatchObject({ code: 'INTERVIEW_SESSION_TRANSITION_CONFLICT', statusCode: 409 });
+
+      // Drive terminal, then the panel is frozen.
+      const done = await repo.transitionInterview({ tenant_id: tenant, id: s.id, to_state: 'COMPLETED', expected_version: 1, changed_by_id: randomUUID(), requestId: 'pu3', visible_requisition_ids: null });
+      await expect(
+        repo.updateInterviewers({ tenant_id: tenant, id: s.id, expected_version: done.version, interviewer_user_ids: [randomUUID()], changed_by_id: randomUUID(), requestId: 'pu4', visible_requisition_ids: null }),
+      ).rejects.toMatchObject({ code: 'INVALID_INTERVIEW_SESSION_TRANSITION', statusCode: 422 });
+    }, 60_000);
 
     // ----------------------------------------------------------------------
     // F2.3 — session events on the SHARED log are immutable; visibility 404.

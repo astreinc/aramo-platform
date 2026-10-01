@@ -53,6 +53,12 @@ export type {
   ScheduleInterviewRequestDto,
   TransitionInterviewSessionRequestDto,
 } from './lib/dto/interview-session-request.dto.js';
+// Slice B (Calendar/Interview §9) — interviewer tenant-user validation seam (adapter
+// bound by apps/api over IdentityService).
+export {
+  INTERVIEWER_VALIDATOR,
+  type InterviewerValidatorPort,
+} from './lib/interviewer-validator.port.js';
 
 // Lane 2 / L2-F (F3) — the owner-sourced journey-stage projection (consumed by L2-H).
 export { JourneyProjectionRepository } from './lib/journey-projection.repository.js';

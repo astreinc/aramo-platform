@@ -1,5 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { RequisitionRepository, type RequisitionSearchRow } from '@aramo/requisition';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  RequisitionRepository,
+  RequisitionEmbeddingRepository,
+  type RequisitionSearchRow,
+  type RequisitionSemanticMatch,
+} from '@aramo/requisition';
+import { EMBEDDING_PORT, type EmbeddingPort } from '@aramo/ai-draft';
 
 import type {
   SearchAuthorityContext,
@@ -7,27 +13,37 @@ import type {
   SearchMatchSignal,
 } from '../enterprise-search.port.js';
 import type { SearchEntityAdapter } from '../search-entity-adapter.js';
+import { EmbeddingProcessingConfig } from '../../embedding/embedding-processing.config.js';
 
 // Parse an exact requisition reference: "REQ-1042", "REQ1042", or a bare "1042".
 const REFERENCE_RE = /^\s*(?:REQ-?)?(\d{1,9})\s*$/i;
 
-// Exact reference outranks any title/description lexical hit (directive §6/§18); the small
-// per-position decrement preserves the lexical leg's own source order deterministically.
 const RELEVANCE_EXACT = 1;
 const RELEVANCE_LEXICAL = 0.7;
 const POSITION_STEP = 0.001;
 
-// Enterprise Search (GS-1) — the Requisition adapter. Requisition is a visibility-set domain:
-// the adapter passes the RESOLVED visibility straight into the repository's visibility-aware
-// reads (it never recreates the A3/D4b rule), so no leg — including exact-number — widens
-// authority. Hits are lean (no commercial fields); a requisition matched by more than one leg
-// collapses to exactly one hit, exact preferred.
+// Signal precedence for one-hit-per-record dedupe: exact > lexical > semantic.
+const SIGNAL_RANK: Record<SearchMatchSignal, number> = { exact: 0, lexical: 1, semantic: 2 };
+
+// Enterprise Search (GS-1 + GS-2B) — the Requisition adapter. Requisition is a visibility-set domain:
+// every leg (exact-number, title/description lexical, and the GS-2B semantic vector leg) passes the
+// RESOLVED visibility into the repository / the OR-union-co-located vector SQL, so no leg widens
+// authority. Terminal Requisitions stay eligible (no lifecycle-state filter). Hits are lean (no
+// commercial fields). The semantic leg is DARK-gated + FAIL-SOFT: any failure is swallowed with a
+// warning so exact + lexical always return unchanged (the GS-1 stability invariant).
 @Injectable()
 export class RequisitionSearchAdapter implements SearchEntityAdapter {
   readonly entity_type = 'REQUISITION' as const;
   readonly required_scope = 'requisition:search';
 
-  constructor(private readonly repo: RequisitionRepository) {}
+  private readonly logger = new Logger(RequisitionSearchAdapter.name);
+
+  constructor(
+    private readonly repo: RequisitionRepository,
+    @Inject(EMBEDDING_PORT) private readonly embedding: EmbeddingPort,
+    private readonly embeddingRepo: RequisitionEmbeddingRepository,
+    private readonly embeddingConfig: EmbeddingProcessingConfig,
+  ) {}
 
   async search(query: string, authority: SearchAuthorityContext, limit: number): Promise<SearchHit[]> {
     const q = query.trim();
@@ -45,44 +61,101 @@ export class RequisitionSearchAdapter implements SearchEntityAdapter {
     ]);
 
     const byId = new Map<string, SearchHit>();
-    const merge = (row: RequisitionSearchRow, signal: SearchMatchSignal, relevance: number, field: string): void => {
-      const existing = byId.get(row.id);
-      if (existing === undefined) {
-        byId.set(row.id, this.toHit(row, signal, relevance, field));
-        return;
-      }
-      const upgrade = signal === 'exact' && existing.match.signal !== 'exact';
-      byId.set(row.id, {
-        ...existing,
-        match: {
-          signal: upgrade ? 'exact' : existing.match.signal,
-          relevance: Math.max(existing.match.relevance, relevance),
-          field: upgrade ? field : existing.match.field,
-        },
-      });
-    };
+    const mergeRow = (row: RequisitionSearchRow, signal: SearchMatchSignal, relevance: number, field: string): void =>
+      this.merge(byId, row.id, this.toHit(row.id, row.title, row.requisition_number, row.city, row.state, signal, relevance, field), signal, relevance, field);
 
-    exactRows.forEach((row) => merge(row, 'exact', RELEVANCE_EXACT, 'requisition_number'));
-    lexicalRows.forEach((row, i) => merge(row, 'lexical', RELEVANCE_LEXICAL - i * POSITION_STEP, 'title'));
+    exactRows.forEach((row) => mergeRow(row, 'exact', RELEVANCE_EXACT, 'requisition_number'));
+    lexicalRows.forEach((row, i) => mergeRow(row, 'lexical', RELEVANCE_LEXICAL - i * POSITION_STEP, 'title'));
+
+    // GS-2B semantic leg — dark-gated + fail-soft; visibility co-located in the vector SQL.
+    if (this.embeddingConfig.isEnabled()) {
+      await this.mergeSemantic(q, authority, limit, byId);
+    }
 
     return [...byId.values()];
   }
 
-  private toHit(row: RequisitionSearchRow, signal: SearchMatchSignal, relevance: number, field: string): SearchHit {
-    return {
-      entity_type: 'REQUISITION',
-      entity_id: row.id,
-      display_label: row.title,
-      subtitle: this.subtitle(row),
-      snippet: null,
-      route: `/requisitions/${row.id}`,
-      match: { signal, relevance, field },
-    };
+  private async mergeSemantic(
+    q: string,
+    authority: SearchAuthorityContext,
+    limit: number,
+    byId: Map<string, SearchHit>,
+  ): Promise<void> {
+    try {
+      const embedded = await this.embedding.embed({ tenant_id: authority.tenant_id, text: q });
+      const matches: RequisitionSemanticMatch[] = await this.embeddingRepo.searchSemanticForActor({
+        tenant_id: authority.tenant_id,
+        visibility: authority.visibility,
+        site_id: authority.site_id,
+        query_vector: embedded.vector,
+        limit,
+      });
+      for (const m of matches) {
+        const relevance = Math.max(0, 1 - m.distance);
+        this.merge(
+          byId,
+          m.requisition_id,
+          this.toHit(m.requisition_id, m.title, m.requisition_number, m.city, m.state, 'semantic', relevance, 'semantic'),
+          'semantic',
+          relevance,
+          'semantic',
+        );
+      }
+    } catch (err) {
+      // Fail-soft: any semantic-leg failure must NEVER regress exact/lexical.
+      this.logger.warn(
+        `requisition semantic leg skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
-  private subtitle(row: RequisitionSearchRow): string | null {
-    const location = [row.city, row.state].filter((p): p is string => !!p).join(', ');
-    const parts = [`REQ-${row.requisition_number}`, location || null].filter((p): p is string => !!p);
-    return parts.length > 0 ? parts.join(' · ') : null;
+  // One hit per requisition: keep the highest-precedence signal (exact > lexical > semantic) and that
+  // signal's relevance; same-band → max relevance.
+  private merge(
+    byId: Map<string, SearchHit>,
+    id: string,
+    fresh: SearchHit,
+    signal: SearchMatchSignal,
+    relevance: number,
+    field: string,
+  ): void {
+    const existing = byId.get(id);
+    if (existing === undefined) {
+      byId.set(id, fresh);
+      return;
+    }
+    const newBetter = SIGNAL_RANK[signal] < SIGNAL_RANK[existing.match.signal];
+    const sameBand = SIGNAL_RANK[signal] === SIGNAL_RANK[existing.match.signal];
+    byId.set(id, {
+      ...existing,
+      match: {
+        signal: newBetter ? signal : existing.match.signal,
+        relevance: newBetter ? relevance : sameBand ? Math.max(existing.match.relevance, relevance) : existing.match.relevance,
+        field: newBetter ? field : existing.match.field,
+      },
+    });
+  }
+
+  private toHit(
+    id: string,
+    title: string,
+    requisitionNumber: number,
+    city: string | null,
+    state: string | null,
+    signal: SearchMatchSignal,
+    relevance: number,
+    field: string,
+  ): SearchHit {
+    const location = [city, state].filter((p): p is string => !!p).join(', ');
+    const parts = [`REQ-${requisitionNumber}`, location || null].filter((p): p is string => !!p);
+    return {
+      entity_type: 'REQUISITION',
+      entity_id: id,
+      display_label: title,
+      subtitle: parts.length > 0 ? parts.join(' · ') : null,
+      snippet: null,
+      route: `/requisitions/${id}`,
+      match: { signal, relevance, field },
+    };
   }
 }

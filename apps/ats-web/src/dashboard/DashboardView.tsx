@@ -299,7 +299,13 @@ export function DashboardView() {
               <p className="rc-empty">No interviews scheduled today.</p>
             ) : (
               desk.interviews_today.map((iv) => (
-                <div key={iv.id} className="rc-desk-iv">
+                // Consumer-only link to the authoritative interview detail
+                // (Calendar/Interview §17). My Desk stays a read projection.
+                <Link
+                  key={iv.id}
+                  to={`/interviews/${iv.id}`}
+                  className="rc-desk-iv rc-desk-iv--link"
+                >
                   <span className="rc-desk-iv__time num">{formatTime(iv.scheduled_at)}</span>
                   <span className="rc-desk-iv__body">
                     <span className="rc-desk-iv__who">{iv.talent_name ?? 'Talent'}</span>
@@ -309,7 +315,7 @@ export function DashboardView() {
                       {iv.requisition_label !== null ? ` · ${iv.requisition_label}` : ''}
                     </span>
                   </span>
-                </div>
+                </Link>
               ))
             )}
           </div>
