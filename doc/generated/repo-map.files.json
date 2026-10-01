@@ -1234,6 +1234,7 @@
     "apps/ats-web/tsconfig.app.json",
     "apps/ats-web/tsconfig.json",
     "apps/ats-web/tsconfig.spec.json",
+    "apps/ats-web/visual-harness/requisition-workspace-shots.mjs",
     "apps/ats-web/visual-harness/talent-360-parity.mjs",
     "apps/ats-web/vite.config.ts",
     "apps/auth-service/Dockerfile",
