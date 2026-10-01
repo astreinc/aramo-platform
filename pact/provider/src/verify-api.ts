@@ -1017,6 +1017,12 @@ const SAVED_LIST_LIST_KIND_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
 );
+// CRM-1 — visibility + purpose columns; the regenerated SavedList client SELECTs
+// them, so apply after init + list_kind (backfill UPDATE references list_kind).
+const SAVED_LIST_VISIBILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql',
+);
 // PC-7d — import model (ImportBatch + ImportFailure). The GET /v1/imports +
 // :id/failures reads live-verify against these tables; only the import_batch_id
 // FK COLUMNS were in-list previously, not the import schema itself.
@@ -3731,6 +3737,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
+        SAVED_LIST_VISIBILITY_MIGRATION,
         IMPORT_INIT_MIGRATION,
         CALENDAR_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),

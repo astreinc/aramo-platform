@@ -3,6 +3,12 @@ export {
   isSavedListItemType,
   type SavedListItemType,
 } from './saved-list-item-type.js';
+export {
+  SAVED_LIST_VISIBILITY_VALUES,
+  SAVED_LIST_DEFAULT_VISIBILITY,
+  isSavedListVisibility,
+  type SavedListVisibility,
+} from './saved-list-visibility.js';
 export type {
   SavedListView,
   SavedListEntryView,

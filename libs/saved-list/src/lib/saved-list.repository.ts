@@ -8,6 +8,13 @@ import { TalentRecordRepository } from '@aramo/talent-record';
 import type { AddSavedListEntryRequestDto } from './dto/add-saved-list-entry-request.dto.js';
 import type { CreateSavedListRequestDto } from './dto/create-saved-list-request.dto.js';
 import type { SavedListItemType } from './dto/saved-list-item-type.js';
+import type { SavedListVisibility } from './dto/saved-list-visibility.js';
+import { SAVED_LIST_DEFAULT_VISIBILITY } from './dto/saved-list-visibility.js';
+import {
+  mutateDecision,
+  readableWhere,
+  type VisibilityActor,
+} from './saved-list-visibility-policy.js';
 import type {
   SavedListEntryView,
   SavedListView,
@@ -59,6 +66,8 @@ interface SavedListRow {
   owner_id: string;
   name: string;
   item_type: SavedListItemType;
+  visibility: SavedListVisibility;
+  purpose: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -80,6 +89,8 @@ function projectListView(row: SavedListRow): SavedListView {
     owner_id: row.owner_id,
     name: row.name,
     item_type: row.item_type,
+    visibility: row.visibility,
+    purpose: row.purpose,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -228,6 +239,31 @@ export class SavedListRepository {
     }
   }
 
+  // CRM-1 — throw the right status for a mutate attempt (creator + admin only).
+  private assertCanMutate(
+    list: { owner_id: string; visibility: SavedListVisibility },
+    actor: VisibilityActor,
+    ctx: { requestId: string; saved_list_id: string },
+  ): void {
+    const decision = mutateDecision(list, actor);
+    if (decision === 'ok') return;
+    if (decision === 'not_found') {
+      throw new AramoError('NOT_FOUND', 'SavedList not found in tenant', 404, {
+        requestId: ctx.requestId,
+        details: { saved_list_id: ctx.saved_list_id },
+      });
+    }
+    throw new AramoError(
+      'INSUFFICIENT_PERMISSIONS',
+      'Only the list creator or an administrator may modify this saved list',
+      403,
+      {
+        requestId: ctx.requestId,
+        details: { saved_list_id: ctx.saved_list_id },
+      },
+    );
+  }
+
   // -------------------------------------------------------------------------
   // SavedList write + read
   // -------------------------------------------------------------------------
@@ -244,6 +280,8 @@ export class SavedListRepository {
         owner_id: args.owner_id,
         name: args.input.name,
         item_type: args.input.item_type,
+        visibility: args.input.visibility ?? SAVED_LIST_DEFAULT_VISIBILITY,
+        purpose: args.input.purpose ?? null,
       },
     });
     return projectListView(row as SavedListRow);
@@ -266,6 +304,8 @@ export class SavedListRepository {
           name: TENANT_BENCH_NAME,
           item_type: 'talent_record',
           list_kind: TENANT_BENCH_LIST_KIND,
+          // CRM-1 — the bench is a shared (tenant-visible) list.
+          visibility: 'tenant',
         },
       });
       return projectListView(row as SavedListRow);
@@ -321,9 +361,12 @@ export class SavedListRepository {
   async getListWithEntries(args: {
     tenant_id: string;
     id: string;
+    actor: VisibilityActor;
   }): Promise<SavedListWithEntriesView | null> {
     const row = await this.prisma.savedList.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
+      // CRM-1 — not-visible (another actor's PRIVATE list) resolves to null →
+      // the controller returns 404 (no existence leak).
+      where: { tenant_id: args.tenant_id, id: args.id, ...readableWhere(args.actor) },
       include: { entries: { orderBy: { created_at: 'asc' } } },
     });
     if (row === null) return null;
@@ -347,6 +390,7 @@ export class SavedListRepository {
 
   async listLists(args: {
     tenant_id: string;
+    actor: VisibilityActor;
     site_id?: string;
     item_type?: SavedListItemType;
     limit?: number;
@@ -357,6 +401,8 @@ export class SavedListRepository {
         tenant_id: args.tenant_id,
         ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
         ...(args.item_type === undefined ? {} : { item_type: args.item_type }),
+        // CRM-1 — PRIVATE lists of other actors never leave the DB.
+        ...readableWhere(args.actor),
       },
       orderBy: { created_at: 'desc' },
       take: limit,
@@ -392,6 +438,7 @@ export class SavedListRepository {
   async addEntry(args: {
     tenant_id: string;
     saved_list_id: string;
+    actor: VisibilityActor;
     input: AddSavedListEntryRequestDto;
     requestId: string;
   }): Promise<SavedListEntryView> {
@@ -411,6 +458,14 @@ export class SavedListRepository {
         },
       );
     }
+
+    // 1b. CRM-1 — mutate authority (creator + admin only; PO ruling). A list the
+    // actor cannot SEE is reported as NOT_FOUND (no existence leak); a visible
+    // but not-owned non-admin list as 403.
+    this.assertCanMutate(parent, args.actor, {
+      requestId: args.requestId,
+      saved_list_id: args.saved_list_id,
+    });
 
     // 2. Homogeneity invariant — entry.item_type == parent.item_type.
     if (args.input.item_type !== parent.item_type) {
@@ -453,8 +508,26 @@ export class SavedListRepository {
     tenant_id: string;
     saved_list_id: string;
     entry_id: string;
+    actor: VisibilityActor;
     requestId: string;
   }): Promise<void> {
+    // CRM-1 — mutate authority on the parent list (creator + admin only). Not-
+    // visible → NOT_FOUND; visible-but-not-owned non-admin → 403.
+    const parent = await this.findListById({
+      tenant_id: args.tenant_id,
+      id: args.saved_list_id,
+    });
+    if (parent === null) {
+      throw new AramoError('NOT_FOUND', 'SavedList not found in tenant', 404, {
+        requestId: args.requestId,
+        details: { saved_list_id: args.saved_list_id },
+      });
+    }
+    this.assertCanMutate(parent, args.actor, {
+      requestId: args.requestId,
+      saved_list_id: args.saved_list_id,
+    });
+
     const row = await this.prisma.savedListEntry.findFirst({
       where: {
         tenant_id: args.tenant_id,

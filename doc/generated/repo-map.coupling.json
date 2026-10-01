@@ -1179,6 +1179,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {
@@ -1516,6 +1522,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -19345,6 +19357,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

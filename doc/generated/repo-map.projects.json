@@ -1326,12 +1326,15 @@
       "extractResumeText"
     ],
     "@aramo/saved-list": [
+      "SAVED_LIST_DEFAULT_VISIBILITY",
       "SAVED_LIST_ITEM_TYPE_VALUES",
+      "SAVED_LIST_VISIBILITY_VALUES",
       "SavedListController",
       "SavedListModule",
       "SavedListPrismaService",
       "SavedListRepository",
-      "isSavedListItemType"
+      "isSavedListItemType",
+      "isSavedListVisibility"
     ],
     "@aramo/selection": [
       "CreateSelectionRequestDto",

@@ -59,6 +59,20 @@ import { SavedListRepository } from './saved-list.repository.js';
 export class SavedListController {
   constructor(private readonly savedListRepository: SavedListRepository) {}
 
+  // CRM-1 — the visibility actor. `is_admin` = the actor holds
+  // `saved-list:delete` (tenant_admin / tenant_owner only, Ruling 1) — the
+  // architecture-supported admin-tier signal (directive §5.2 "existing
+  // administrator authority"). Never trusts an FE-supplied flag.
+  private actorOf(authContext: AuthContextType): {
+    actor_id: string;
+    is_admin: boolean;
+  } {
+    return {
+      actor_id: authContext.sub,
+      is_admin: authContext.scopes.includes('saved-list:delete'),
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // SavedList routes
   // ---------------------------------------------------------------------------
@@ -73,6 +87,7 @@ export class SavedListController {
   ): Promise<{ items: SavedListView[] }> {
     const items = await this.savedListRepository.listLists({
       tenant_id: authContext.tenant_id,
+      actor: this.actorOf(authContext),
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
     });
     return { items };
@@ -90,6 +105,7 @@ export class SavedListController {
     const view = await this.savedListRepository.getListWithEntries({
       tenant_id: authContext.tenant_id,
       id,
+      actor: this.actorOf(authContext),
     });
     if (view === null) {
       throw new AramoError(
@@ -150,6 +166,7 @@ export class SavedListController {
     return this.savedListRepository.addEntry({
       tenant_id: authContext.tenant_id,
       saved_list_id: listId,
+      actor: this.actorOf(authContext),
       input: body,
       requestId,
     });
@@ -169,6 +186,7 @@ export class SavedListController {
       tenant_id: authContext.tenant_id,
       saved_list_id: listId,
       entry_id: entryId,
+      actor: this.actorOf(authContext),
       requestId,
     });
   }

@@ -1,4 +1,5 @@
 import type { SavedListItemType } from './saved-list-item-type.js';
+import type { SavedListVisibility } from './saved-list-visibility.js';
 
 export interface SavedListView {
   id: string;
@@ -7,6 +8,9 @@ export interface SavedListView {
   owner_id: string;
   name: string;
   item_type: SavedListItemType;
+  // CRM-1 — visibility posture + optional free-text label (additive).
+  visibility: SavedListVisibility;
+  purpose: string | null;
   created_at: string;
   updated_at: string;
 }

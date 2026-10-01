@@ -423,6 +423,13 @@ export const SEED_IDS = {
     // Talent contact-anchor edit (owner/admin data correction). Next free scope
     // suffix after 0xfd (append-don't-renumber): 0xfe.
     'talent:edit:contact': '01900000-0000-7000-8000-0000000000fe',
+    // CRM-1 — SavedList activation (4 scopes). Dedicated clear node block
+    // 0x1400..0x1403 (append-don't-renumber; all prior scope-node ranges
+    // untouched). Mirrors the SEED_SCOPE_KEYS catalog order.
+    'saved-list:read': '01900000-0000-7000-8000-000000001400',
+    'saved-list:create': '01900000-0000-7000-8000-000000001401',
+    'saved-list:edit': '01900000-0000-7000-8000-000000001402',
+    'saved-list:delete': '01900000-0000-7000-8000-000000001403',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2261,6 +2268,42 @@ const EMAIL_TEMPLATE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// CRM-1 — SavedList activation grant bundle. read/create/edit → the 9
+// operational roles (the task:* tier — SavedList is a recruiter working tool);
+// delete → tenant_admin + tenant_owner only (Ruling 1, destructive: a list
+// delete CASCADE-drops its entries, and the delete-scope is ALSO the repo's
+// admin-tier visibility signal). 29 grants total.
+export const SAVED_LIST_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_owner', ['saved-list:read', 'saved-list:create', 'saved-list:edit', 'saved-list:delete']],
+  ['tenant_admin', ['saved-list:read', 'saved-list:create', 'saved-list:edit', 'saved-list:delete']],
+  ['account_manager', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['recruiting_manager', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['recruiter', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['lead_recruiter', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['back_office', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['delivery_manager', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+  ['sourcer', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
+];
+
+// Deterministic RoleScope row ids for the 29 saved-list grants. Disjoint range
+// 0x1370+ (the next clear range after EMAIL-TPL's 0x1360..0x1365; all prior
+// ranges untouched — append-don't-renumber). The (role, scope) iteration order
+// pins the assignment.
+const SAVED_LIST_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1370;
+  for (const [role, scopes] of SAVED_LIST_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // COMM PART A — Engagement Policy OVERRIDE grants. engagement:policy:override ->
 // tenant_admin + tenant_owner (the authorized-user/manager tier; recruiter/
 // account_manager excluded). A DEDICATED, DISJOINT bundle (range 0xf40+,
@@ -3089,6 +3132,10 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:template:read'], 'communication:template:read', 'D-EMAIL-TPL-1 — read reusable email templates (list/get/preview) under Settings. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:template:manage'], 'communication:template:manage', 'D-EMAIL-TPL-1 — manage reusable email templates (create/update/deactivate the tenant override; the code-owned default is never mutated). GRANTED to tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['saved-list:read'], 'saved-list:read', 'CRM-1 — read saved lists (GET /v1/saved-lists + /:id). The repository enforces PRIVATE/TENANT visibility (a PRIVATE list of another actor is absent). GRANTED to the 9 operational roles. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['saved-list:create'], 'saved-list:create', 'CRM-1 — create a saved list (POST /v1/saved-lists). owner_id = the actor; visibility defaults to private. GRANTED to the 9 operational roles. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['saved-list:edit'], 'saved-list:edit', 'CRM-1 — add/remove saved-list entries (POST/DELETE /v1/saved-lists/:id/entries). The repository restricts mutation to the list creator + admin-tier (creator+admin only, PO ruling). GRANTED to the 9 operational roles. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['saved-list:delete'], 'saved-list:delete', 'CRM-1 — delete a saved list (DELETE /v1/saved-lists/:id; CASCADE-drops entries). Destructive (Ruling 1) and the repository admin-tier signal. GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create:establish'], 'requisition:create:establish', 'Requisition Lane 1-A (Create-Governance) — the functional create qualifier that unlocks the governed initial-state establishment mode (MANUAL-ESTABLISH + SYSTEM). Grants authority to ENTER the governed establishment mode; never permits arbitrary statuses (the establishment-authorization gate still bounds { draft, open }). CATALOG-ONLY in v1: GRANTED to NO human tenant role (recruiter / recruiting_manager / delivery_manager / account_manager never receive it, so no human bypasses draft->approval via the manual create path); held programmatically by system/bootstrap establishment identities + passed by bootstrap/test helpers only. The INTEGRATION import path does NOT use this scope — it reuses the existing requisition:import:write. NO scope.created (scope-seed precedent); NO RoleScope grant.');
   await upsertScope(prisma, SEED_IDS.scopes['address:lookup'], 'address:lookup', 'WL-B2 (R6/R14) — query the shared address-lookup proxy (GET /v1/address-lookup/autocomplete + /details) off the external provider. DEDICATED, least-privilege: grants ONLY the authority to query the lookup service; it NEVER implies authority to create/update a Company or Requisition or to mutate any aggregate (those keep their own company:create / requisition:create|edit gates). GRANTED to the UNION of address-enabled surface authors — every company:create holder ∪ every requisition:create/:edit holder: tenant_admin + recruiter (ROLE_SCOPE_ASSIGNMENTS) and tenant_owner + account_manager + recruiting_manager + lead_recruiter (ADDRESS_LOOKUP_SEED_BUNDLES). NO scope.created (scope-seed precedent).');
 
@@ -3655,6 +3702,25 @@ export async function runIdentitySeed(
       const rsId = EMAIL_TEMPLATE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`D-EMAIL-TPL-1 Email-Template-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // CRM-1 — SavedList activation RoleScope assignments — 29 rows (read/create/
+  // edit × 9 operational roles + delete × tenant_admin/tenant_owner) per
+  // SAVED_LIST_SEED_BUNDLES. UUID range 0x1370+ (append-don't-renumber).
+  for (const [roleKey, scopeKeys] of SAVED_LIST_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = SAVED_LIST_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`CRM-1 SavedList-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
