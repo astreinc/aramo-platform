@@ -17,11 +17,18 @@ import type {
 
 vi.mock('./talent-360-api');
 vi.mock('../shell/breadcrumb', () => ({ useEntityCrumb: () => undefined }));
-vi.mock('../talent/components/TrustPanel', () => ({
-  TrustPanel: ({ talentId }: { talentId: string }) => <div data-testid="trust-panel">{talentId}</div>,
-}));
-vi.mock('../talent/WorkHistoryPanel', () => ({
-  WorkHistoryPanel: ({ talentId }: { talentId: string }) => <div data-testid="work-history">{talentId}</div>,
+// Trust & Evidence reads the SAME authoritative dossier via a recruiter-facing
+// adapter; stub getDossier so the spec exercises the adapter's projection.
+vi.mock('../talent/dossier-api', () => ({
+  getDossier: vi.fn().mockResolvedValue({
+    ledger_established: false,
+    dimensions: {},
+    verifications: [],
+    merge_provenance: [],
+    statements: [],
+    contradictions: [],
+    proposal_pointers: [],
+  }),
 }));
 vi.mock('../communications/CallButton', () => ({
   CallButton: () => <button type="button">Call</button>,
@@ -168,7 +175,7 @@ describe('Talent360View — renders the composed contract, owns only presentatio
   it('renders the header, badges, KPI strip and opportunities from the payload', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
-    expect(await screen.findByText('Divya Vasudevan')).toBeInTheDocument();
+    expect(await screen.findByText('Divya Vasudevan', { selector: '.t360-name' })).toBeInTheDocument();
     expect(screen.getByText('Recruiting ready')).toBeInTheDocument();
     expect(screen.getByText('Contact permitted')).toBeInTheDocument();
     expect(screen.getAllByText('REQ-1001').length).toBeGreaterThan(0);
@@ -209,7 +216,7 @@ describe('Talent360View — renders the composed contract, owns only presentatio
       makeModel({ documents: null, authorized_sections: { opportunities: true, attention: true, tasks: true, activity: true, communications: true, documents: false, identity: true } }),
     );
     renderView();
-    await screen.findByText('Divya Vasudevan');
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
     // The Documents SECTION (its "All N documents" link + rows) is gone; the tab
     // label still exists, so assert the section content is absent, not the tab.
     expect(screen.queryByText(/All 3 documents/)).not.toBeInTheDocument();
@@ -228,11 +235,70 @@ describe('Talent360View — renders the composed contract, owns only presentatio
     expect(await screen.findByText('No active opportunities right now.')).toBeInTheDocument();
   });
 
-  it('reuses the authoritative TrustPanel on the Trust & Evidence tab', async () => {
+  it('renders the recruiter-facing Trust & Evidence projection (claim → evidence → state, no number)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
     fireEvent.click(await screen.findByRole('tab', { name: /Trust & Evidence/ }));
-    expect(await screen.findByTestId('trust-panel')).toBeInTheDocument();
+    // The recruiter-facing adapter: a subtitle that commits to "never an opaque
+    // number", and claim rows projected from the authoritative identity facts —
+    // not the internal dimension/anchor/evidence-timeline dump.
+    expect(await screen.findByText(/never an opaque number/i)).toBeInTheDocument();
+    expect(screen.getByText('Identity · email and mobile')).toBeInTheDocument();
+    expect(screen.getByText('Duplicate check')).toBeInTheDocument();
+  });
+
+  it('keeps the full right rail on a non-overview tab (attention · tasks · relationship)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    // Profile tab has no activity filter chips, so these titles are unambiguous.
+    fireEvent.click(await screen.findByRole('tab', { name: /Profile/ }));
+    // The rail persists across tabs (not just Overview): all five cards render.
+    expect(await screen.findByText('Your attention')).toBeInTheDocument();
+    expect(screen.getByText('Tasks')).toBeInTheDocument();
+    expect(screen.getByText('Relationship & ownership')).toBeInTheDocument();
+    expect(screen.getByText('Contactability')).toBeInTheDocument();
+  });
+
+  it('renders the category filter chips with authoritative counts on the Activity tab', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: /Activity/ }));
+    // Chips come from the fixed filter set; counts from category_counts (payload).
+    expect(await screen.findByRole('button', { name: /Communications/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Requisitions/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Documents/ })).toBeInTheDocument();
+  });
+
+  it('shows the honest unavailable state for per-requisition contact evidence on Engagement', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    fireEvent.click(await screen.findByRole('tab', { name: /Engagement/ }));
+    // Contact-requirement geometry is preserved; per-req evidence is honestly
+    // unavailable (never fabricated), while overall contactability still shows.
+    expect(await screen.findByText('Contact requirement')).toBeInTheDocument();
+    // One honest per-requisition row (evidence unavailable, never fabricated).
+    expect(screen.getAllByText('Evidence unavailable').length).toBeGreaterThan(0);
+    expect(screen.getByText('Consent state')).toBeInTheDocument();
+    // The Communications timeline renders on the Engagement tab (prototype parity).
+    expect(screen.getByText('Communications')).toBeInTheDocument();
+  });
+
+  it('renders the opportunity fact grid as fixed honest-empty slots (no commercial fields)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    fireEvent.click(await screen.findByText('Freddie Mac'));
+    // Fixed slots present even when the contract does not supply them; BILL RATE
+    // / commercial facts are deliberately absent (ruling R3).
+    await waitFor(() => expect(screen.getByText('RECRUITER')).toBeInTheDocument());
+    expect(screen.getByText('IN STAGE')).toBeInTheDocument();
+    // The prototype's six slots are all present as labels — including the ones
+    // the contract does not supply (ACCOUNT MANAGER / RTR / RÉSUMÉ SUBMITTED) and
+    // the R3-excluded BILL RATE — each rendered as an honest em-dash, value never
+    // fabricated. Slot geometry preserved.
+    expect(screen.getByText('ACCOUNT MANAGER')).toBeInTheDocument();
+    expect(screen.getByText('RÉSUMÉ SUBMITTED')).toBeInTheDocument();
+    expect(screen.getByText('BILL RATE')).toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('surfaces a retry affordance on load error', async () => {
@@ -246,7 +312,7 @@ describe('Talent360View — accessibility', () => {
   it('opportunity rows are keyboard-operable (role=button, aria-expanded, Enter expands)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
-    await screen.findByText('Divya Vasudevan');
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
     const oppRow = screen.getAllByRole('button', { expanded: false })[0] as HTMLElement;
     expect(oppRow).toBeDefined();
     expect(oppRow).toHaveAttribute('aria-expanded', 'false');
@@ -257,7 +323,7 @@ describe('Talent360View — accessibility', () => {
   it('tabs expose tablist/tab semantics with aria-selected on the active tab', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
-    await screen.findByText('Divya Vasudevan');
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
     expect(screen.getByRole('tablist')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /Overview/ })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: /Profile/ })).toHaveAttribute('aria-selected', 'false');
@@ -266,7 +332,7 @@ describe('Talent360View — accessibility', () => {
   it('header actions are real buttons (not clickable divs)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
-    await screen.findByText('Divya Vasudevan');
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
     expect(screen.getByRole('button', { name: 'Email' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to requisition' })).toBeInTheDocument();
   });

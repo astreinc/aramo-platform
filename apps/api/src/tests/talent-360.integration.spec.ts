@@ -166,6 +166,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let reqClosed = '';
     let reqHidden = '';
     const NOW = Date.now();
+    // Deterministic "interview today" instant. The interviews-today derivation
+    // compares calendar DATES in the app timezone (ARAMO_APP_TIME_ZONE, default
+    // America/New_York): an interview counts as today iff its scheduled_at date in
+    // that zone equals now's date in that zone. `NOW + 3h` straddles app-tz
+    // midnight when the suite runs late-evening app-tz (e.g. a 03:22 UTC run =
+    // 23:22 EDT, +3h = the NEXT EDT day), making interviews_today flake to 0.
+    // Noon UTC on today's app-tz date is 07:00–08:00 app-tz — ALWAYS the same
+    // app-tz calendar day as now, at any wall-clock hour. Test determinism only;
+    // production logic is unchanged.
+    const APP_TIME_ZONE = process.env['ARAMO_APP_TIME_ZONE'] ?? 'America/New_York';
+    const INTERVIEW_TODAY_MS = Date.parse(
+      `${new Intl.DateTimeFormat('en-CA', {
+        timeZone: APP_TIME_ZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(NOW))}T12:00:00Z`,
+    );
 
     async function jwt(scopes: readonly string[], tenant = TENANT_A, sub = RECRUITER): Promise<string> {
       return new SignJWT({
@@ -398,7 +416,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(req1, mainTalent, 'qualified');
       const s1 = await seedSubmittal({ talent: mainTalent, req: req1, state: 'submitted_to_ats' });
       const cs1 = await seedSelection({ submittalId: s1, req: req1, talent: mainTalent, state: 'INTERVIEW', createdMs: NOW - 5 * DAY });
-      await seedInterview({ processId: cs1, req: req1, talent: mainTalent, whenMs: NOW + 3 * 3_600_000, state: 'SCHEDULED' });
+      await seedInterview({ processId: cs1, req: req1, talent: mainTalent, whenMs: INTERVIEW_TODAY_MS, state: 'SCHEDULED' });
       // req2: waiting for client (CLIENT_REVIEW 3 days).
       await seedPipeline(req2, mainTalent, 'qualified');
       const s2 = await seedSubmittal({ talent: mainTalent, req: req2, state: 'submitted_to_ats' });
