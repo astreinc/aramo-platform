@@ -16,6 +16,8 @@ import { IdentityAdvisoriesView } from './identity-advisories/IdentityAdvisories
 import { PortalDisputesView } from './portal-disputes/PortalDisputesView';
 import { TrustProposalsView } from './trust-proposals/TrustProposalsView';
 import { IndexRoute } from './dashboard/IndexRoute';
+import { InterviewsView } from './interviews/InterviewsView';
+import { InterviewDetailView } from './interviews/InterviewDetailView';
 import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
 import { LoginPage } from './routes/LoginPage';
@@ -130,6 +132,32 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <MyTasksView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* Calendar / Interview workspace (Calendar/Interview §15) —
+                        the recruiter interview calendar + the authoritative
+                        interview detail. Reads only (client-selection:read);
+                        InterviewSession is the authority, this only consumes it. */}
+                    <Route
+                      path="interviews"
+                      element={
+                        <RouteGuard
+                          requireScope="client-selection:read"
+                          sessionStateOverride={state}
+                        >
+                          <InterviewsView />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="interviews/:sessionId"
+                      element={
+                        <RouteGuard
+                          requireScope="client-selection:read"
+                          sessionStateOverride={state}
+                        >
+                          <InterviewDetailView />
                         </RouteGuard>
                       }
                     />

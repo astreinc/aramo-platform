@@ -252,6 +252,7 @@
       "ClientSelectionOutboxRepository",
       "ClientSelectionPrismaService",
       "ClientSelectionProcessRepository",
+      "INTERVIEWER_VALIDATOR",
       "INTERVIEW_SESSION_INITIAL_STATE",
       "INTERVIEW_SESSION_STATE_VALUES",
       "INTERVIEW_SESSION_TERMINAL_STATES",
@@ -5773,6 +5774,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/integrations/LlmProvidersPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/interviews/InterviewDetailView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

@@ -11938,6 +11938,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/interviews/interviews.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/microsoft/microsoft-authorization.controller.ts"
     },
     {
@@ -18621,6 +18626,16 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/client-selection/prisma/migrations/20260930120000_calint_b_interview_scheduling_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/migrations/20260930130000_calint_c_interview_meeting_link/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/client-talent-restriction/prisma/migrations/20260803163000_init_client_talent_restriction_model/migration.sql"
     },
     {
@@ -19557,6 +19572,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "pact/consumers/ats-web/src/integration.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/interviews.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

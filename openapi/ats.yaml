@@ -228,6 +228,292 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  # ── Calendar / Interview Recruiter Workspace Directive v1.0 (Slice 0) ──
+  # Contract closure for the EXISTING InterviewSession routes (previously in
+  # transitionalUndocumented). InterviewSession is the authoritative interview
+  # lifecycle aggregate — a child of a ClientSelectionProcess. Slice 0 hardened the
+  # transition to an atomic version-guarded CAS (a stale expected_version →
+  # INTERVIEW_SESSION_TRANSITION_CONFLICT 409). Scheduling is Idempotency-Key gated.
+  /v1/client-selection/{id}/interviews:
+    post:
+      operationId: scheduleInterviewSession
+      summary: Schedule an interview under a client-selection process.
+      description: |
+        Creates a SCHEDULED InterviewSession under the client-selection process
+        `{id}` (which must exist in-tenant, be visible to the actor, and be
+        non-terminal — else CLIENT_SELECTION_PROCESS_INVALID 409, concealing). The
+        session denormalizes requisition_id / talent_record_id / site_id from the
+        parent. Idempotency-gated: a required-UUID `Idempotency-Key` header makes the
+        schedule replay-safe. A duplicate (process, round) is refused with
+        INTERVIEW_ROUND_EXISTS 409. Requires `client-selection:interview:schedule`
+        and the `ats` capability. Participants (`interviewer_user_ids`) are
+        store-only identity user refs (unvalidated at this stage).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The parent ClientSelectionProcess id.
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Client-generated UUID making the schedule replay-safe.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleInterviewRequest'
+      responses:
+        '201':
+          description: The scheduled interview session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '409':
+          description: Parent process invalid/terminal/not-visible, or a duplicate (process, round).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Missing/invalid interview_type or scheduled_at, or an absent Idempotency-Key.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/client-selection/interview-sessions/{sessionId}:
+    get:
+      operationId: getInterviewSession
+      summary: Read an interview session by id.
+      description: |
+        Returns the InterviewSession `{sessionId}` in the caller's tenant. A session
+        whose requisition is not visible to the actor is concealed as 404 (never
+        403). Requires `client-selection:read` and the `ats` capability.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The interview session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: 'common.yaml#/components/responses/NotFound' }
+      security:
+        - BearerAuth: []
+  /v1/client-selection/interview-sessions/{sessionId}/transition:
+    post:
+      operationId: transitionInterviewSession
+      summary: Drive an interview-session state transition (atomic CAS).
+      description: |
+        Transitions the InterviewSession `{sessionId}` along the enforced state
+        machine (SCHEDULED / RESCHEDULED → COMPLETED | CANCELED | NO_SHOW;
+        RESCHEDULED self-loops). The version guard lives in the write: a stale
+        `expected_version` is refused with INTERVIEW_SESSION_TRANSITION_CONFLICT
+        (409), an illegal edge with INVALID_INTERVIEW_SESSION_TRANSITION (422).
+        `scheduled_at` is REQUIRED when `to_state` is RESCHEDULED and ignored
+        otherwise. A non-visible session is concealed as 404. Requires
+        `client-selection:interview:transition` and the `ats` capability.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TransitionInterviewSessionRequest'
+      responses:
+        '200':
+          description: The updated interview session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: 'common.yaml#/components/responses/NotFound' }
+        '409':
+          description: Stale expected_version (concurrent modification).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Illegal transition, or missing expected_version / RESCHEDULED scheduled_at.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/client-selection/interview-sessions/{sessionId}/meeting:
+    post:
+      operationId: associateInterviewMeeting
+      summary: Associate a provider-neutral meeting interaction to an interview.
+      description: |
+        Links an already-created communications meeting interaction to the
+        InterviewSession `{sessionId}` (Calendar/Interview §14). Provider-neutral: only the
+        interaction UUID is stored — never a provider URL / id / mailbox. CAS on
+        `expected_version` (stale → INTERVIEW_SESSION_TRANSITION_CONFLICT 409). This NEVER
+        changes lifecycle state (the meeting is neither attendance nor completion). Requires
+        `client-selection:interview:transition` and the `ats` capability.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociateMeetingRequest'
+      responses:
+        '200':
+          description: The interview with the meeting associated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: 'common.yaml#/components/responses/NotFound' }
+        '409':
+          description: Stale expected_version (concurrent modification).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Missing/invalid expected_version or meeting_interaction_id.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/client-selection/interview-sessions/{sessionId}/interviewers:
+    patch:
+      operationId: updateInterviewInterviewers
+      summary: Replace the interviewer panel on a non-terminal interview.
+      description: |
+        Replaces InterviewSession `{sessionId}`'s interviewer panel (Calendar/Interview
+        §10). Each id is validated as a current tenant user (422 otherwise). CAS on
+        `expected_version` (stale → 409). A terminal interview's panel is frozen
+        (INVALID_INTERVIEW_SESSION_TRANSITION 422). Requires
+        `client-selection:interview:transition` and the `ats` capability.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInterviewersRequest'
+      responses:
+        '200':
+          description: The interview with the updated panel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewSessionView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: 'common.yaml#/components/responses/NotFound' }
+        '409':
+          description: Stale expected_version (concurrent modification).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Terminal session, an invalid interviewer, or a missing expected_version.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/interviews:
+    get:
+      operationId: listInterviewCalendar
+      summary: The recruiter interview calendar read (window-bounded, enriched).
+      description: |
+        Returns interviews scheduled within a required half-open [from, to) instant
+        window (max 62 days), sourced from InterviewSession (the interview authority;
+        NEVER CalendarEvent) and enriched server-side with Talent / Requisition /
+        company display so the calendar renders without N+1 reads. Visibility-scoped:
+        only interviews whose requisition is visible to the actor are returned; a
+        `requisition_id` filter outside the visible set is concealed (empty). Optional
+        filters (requisition_id / talent_id / interviewer_user_id / state) are ANDed.
+        READ ONLY. Requires `client-selection:read` and the `ats` capability.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Inclusive window start (ISO-8601 instant).
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: true
+          description: Exclusive window end (ISO-8601 instant); after `from`, within 62 days.
+          schema: { type: string, format: date-time }
+        - name: requisition_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: talent_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: interviewer_user_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/InterviewSessionState' }
+        - name: site_id
+          in: query
+          required: false
+          description: Optional site scope for a multi-site principal (server-validated).
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The window's interview calendar rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InterviewCalendarView'
+        '401': { $ref: 'common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: 'common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: Missing/invalid from or to, window too large, or an invalid state.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
   # GET /v1/talent-360/{talentId} — the person-centric recruiter workspace read
   # projection, replacing the Talent Detail experience. A READ COMPOSITION over
   # authoritative domains (Talent / Pipeline / Submittal / ClientSelection /
@@ -7061,6 +7347,159 @@ components:
           description: Canonical postal code (UI label "ZIP / Postal code").
         work_arrangement:
           type: [string, 'null']
+    # ── Calendar / Interview (InterviewSession) ──
+    InterviewSessionState:
+      type: string
+      enum: [SCHEDULED, RESCHEDULED, COMPLETED, CANCELED, NO_SHOW]
+      description: The enforced InterviewSession lifecycle state.
+    ScheduleInterviewRequest:
+      type: object
+      additionalProperties: false
+      required: [interview_type, scheduled_at]
+      properties:
+        interview_type:
+          type: string
+          description: Free-text descriptor (e.g. phone, video, onsite).
+        round:
+          type: integer
+          minimum: 1
+          description: Interview round; defaults to 1. Unique per (process, round).
+        scheduled_at:
+          type: string
+          format: date-time
+        scheduled_end_at:
+          type: string
+          format: date-time
+          description: Optional authoritative end instant; when supplied MUST be after scheduled_at.
+        timezone:
+          type: string
+          description: Optional IANA display/input zone.
+        interviewer_user_ids:
+          type: array
+          items: { type: string, format: uuid }
+          description: identity user refs; each is validated as a current tenant user at schedule time.
+    TransitionInterviewSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [to_state, expected_version]
+      properties:
+        to_state:
+          $ref: '#/components/schemas/InterviewSessionState'
+        expected_version:
+          type: integer
+          description: Optimistic-concurrency token the caller last read.
+        scheduled_at:
+          type: string
+          format: date-time
+          description: Required when to_state is RESCHEDULED; ignored otherwise.
+        scheduled_end_at:
+          type: string
+          format: date-time
+          description: Optional new end instant on a RESCHEDULED transition; when supplied MUST be after scheduled_at.
+        timezone:
+          type: string
+          description: Optional new IANA zone on a RESCHEDULED transition.
+        note:
+          type: string
+          description: Optional free-text operational note recorded on the transition event.
+    InterviewSessionView:
+      type: object
+      additionalProperties: false
+      description: The projected InterviewSession returned by the schedule / detail / transition operations.
+      required: [id, tenant_id, client_selection_process_id, requisition_id, talent_record_id, site_id, interview_type, round, scheduled_at, scheduled_end_at, timezone, interviewer_user_ids, meeting_interaction_id, state, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        client_selection_process_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        talent_record_id: { type: string, format: uuid }
+        site_id:
+          type: [string, 'null']
+          format: uuid
+        interview_type: { type: string }
+        round: { type: integer }
+        scheduled_at: { type: string, format: date-time }
+        scheduled_end_at:
+          type: [string, 'null']
+          format: date-time
+          description: Authoritative end instant (nullable for legacy rows, never fabricated).
+        timezone:
+          type: [string, 'null']
+          description: IANA display/input zone (nullable for legacy rows).
+        interviewer_user_ids:
+          type: array
+          items: { type: string, format: uuid }
+        meeting_interaction_id:
+          type: [string, 'null']
+          format: uuid
+          description: Provider-neutral ref to a communications meeting interaction (null when unlinked).
+        state:
+          $ref: '#/components/schemas/InterviewSessionState'
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AssociateMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, meeting_interaction_id]
+      properties:
+        expected_version: { type: integer }
+        meeting_interaction_id: { type: string, format: uuid }
+    UpdateInterviewersRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, interviewer_user_ids]
+      properties:
+        expected_version: { type: integer }
+        interviewer_user_ids:
+          type: array
+          items: { type: string, format: uuid }
+    # ── Calendar / Interview (calendar read, Slice A) ──
+    InterviewCalendarRowView:
+      type: object
+      additionalProperties: false
+      description: An enriched interview calendar row (InterviewSession + Talent/Requisition/company display).
+      required: [id, scheduled_at, scheduled_end_at, timezone, state, round, interview_type, talent_record_id, talent_name, requisition_id, requisition_number, requisition_title, company_id, company_name, interviewer_user_ids, version]
+      properties:
+        id: { type: string, format: uuid }
+        scheduled_at: { type: string, format: date-time }
+        scheduled_end_at:
+          type: [string, 'null']
+          format: date-time
+        timezone: { type: [string, 'null'] }
+        state:
+          $ref: '#/components/schemas/InterviewSessionState'
+        round: { type: integer }
+        interview_type: { type: string }
+        talent_record_id: { type: string, format: uuid }
+        talent_name: { type: [string, 'null'] }
+        requisition_id: { type: string, format: uuid }
+        requisition_number: { type: [integer, 'null'] }
+        requisition_title: { type: [string, 'null'] }
+        company_id:
+          type: [string, 'null']
+          format: uuid
+        company_name: { type: [string, 'null'] }
+        interviewer_user_ids:
+          type: array
+          items: { type: string, format: uuid }
+        version: { type: integer }
+    InterviewCalendarView:
+      type: object
+      additionalProperties: false
+      required: [interviews, window]
+      properties:
+        interviews:
+          type: array
+          items:
+            $ref: '#/components/schemas/InterviewCalendarRowView'
+        window:
+          type: object
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from: { type: string, format: date-time }
+            to: { type: string, format: date-time }
     # ── Pipeline episode (VOID response) ──
     PipelineEpisodeView:
       type: object
