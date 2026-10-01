@@ -1292,6 +1292,7 @@
       "REQUISITION_RESOURCE",
       "RequisitionAssignmentRepository",
       "RequisitionController",
+      "RequisitionEmbeddingRepository",
       "RequisitionLifecycleEventStore",
       "RequisitionModule",
       "RequisitionPrismaService",
@@ -1619,6 +1620,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-requisition.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -1632,6 +1639,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-semantic.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3437,6 +3456,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-transition.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3582,6 +3607,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-360.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7319,6 +7350,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-event.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7338,6 +7375,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-onsite-days.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-semantic.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

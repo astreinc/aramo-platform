@@ -8,10 +8,20 @@ import {
 } from '@testcontainers/postgresql';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
-import { RequisitionRepository, RequisitionPrismaService } from '@aramo/requisition';
+import { RequisitionRepository, RequisitionPrismaService, RequisitionEmbeddingRepository } from '@aramo/requisition';
+import type { EmbeddingPort } from '@aramo/ai-draft';
 
 import { RequisitionSearchAdapter } from '../search/adapters/requisition-search.adapter.js';
+import { EmbeddingProcessingConfig } from '../embedding/embedding-processing.config.js';
 import type { SearchAuthorityContext } from '../search/enterprise-search.port.js';
+
+// GS-1 legs only: the semantic leg is dark (EMBEDDING_PROCESSING_ENABLED unset), so this disabled
+// embedding port is never invoked and GS-1 retrieval stays byte-identical.
+const DISABLED_EMBEDDING = {
+  embed: async () => {
+    throw new Error('semantic leg must be dark in this GS-1 spec');
+  },
+} as unknown as EmbeddingPort;
 
 // Enterprise Search GS-1 — the Requisition adapter against a REAL Postgres 17. Requisition
 // is a visibility-set domain: retrieval MUST go through the actor-aware visibility predicate
@@ -128,7 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         {} as never, // capacity — unused (lean reads do not enrich)
         {} as never, // clientStatus — unused
       );
-      adapter = new RequisitionSearchAdapter(repo);
+      adapter = new RequisitionSearchAdapter(repo, DISABLED_EMBEDDING, new RequisitionEmbeddingRepository(prisma), new EmbeddingProcessingConfig());
 
       await prisma.requisition.create({
         data: { id: reqVisible, tenant_id: TENANT_A, company_id: COMPANY_VISIBLE, title: 'Senior Java Developer', requisition_number: 1042, description: 'Java AWS cloud role', pay_rate_amount: '100', bill_rate_amount: '150' },
