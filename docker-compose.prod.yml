@@ -163,6 +163,13 @@ services:
       # env var here — it is fetched via the existing Secrets Manager custody.
       - CI_PROCESSING_ENABLED=${CI_PROCESSING_ENABLED:-false}
       - CI_ANTHROPIC_MODEL=${CI_ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      # GS-2 Enterprise Search — the semantic embedding reconcile+worker + the search semantic leg.
+      # DARK by default: must be exactly "true" to enable. Absent / "false" ⇒ reconcile + worker are
+      # no-ops and the /v1/search semantic leg is skipped (GS-1 behavior, byte-identical). Safe default
+      # (${VAR:-default} form) → exempt from the env-passthrough assertion; landing this changes NO
+      # runtime behavior. Only flip to "true" per doc/runbooks/pgvector-prod-enablement.md (STEP 10),
+      # AFTER the pgvector runtime + both vector migrations are verified.
+      - EMBEDDING_PROCESSING_ENABLED=${EMBEDDING_PROCESSING_ENABLED:-false}
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
