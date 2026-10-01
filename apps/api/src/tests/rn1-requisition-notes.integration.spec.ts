@@ -467,5 +467,52 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // responses prove the write path is confined to the activity schema.
       expect(after.rows[0].n - before.rows[0].n).toBe(2);
     });
+
+    // ---- FIX 3B / FIX 4 — note-create authority (no new scope; R2) ----------
+    // activity:create is the SOLE authority to create a requisition note and to
+    // choose its TEAM/PRIVATE visibility + initial pinned state (the positive
+    // TEAM/PRIVATE/pin cases are proven above). Here we prove the NEGATIVE: an
+    // actor that can READ the requisition but lacks activity:create cannot create
+    // a note in ANY shape, and no Activity / ActivityNoteEvent row is written.
+    describe('FIX 3B/4 — activity:create is required to create a note', () => {
+      const NO_CREATE = '00000000-0000-7000-8000-00000000db09';
+      const NO_CREATE_SCOPES = ['activity:read', 'requisition:read:all', 'company:read:all']; // NO activity:create
+
+      async function counts(): Promise<{ act: number; ev: number }> {
+        const a = await db.query(`SELECT count(*)::int AS n FROM activity."Activity" WHERE subject_id=$1::uuid`, [REQ_SUBJECT]);
+        const e = await db.query(`SELECT count(*)::int AS n FROM activity."ActivityNoteEvent"`);
+        return { act: a.rows[0].n, ev: e.rows[0].n };
+      }
+
+      it('without activity:create → TEAM / PRIVATE / pinned note all 403, NO Activity or ActivityNoteEvent row', async () => {
+        const jwt = await jwtFor(NO_CREATE, NO_CREATE_SCOPES);
+        const before = await counts();
+        for (const overrides of [
+          { visibility: 'TEAM' },
+          { visibility: 'PRIVATE' },
+          { visibility: 'TEAM', pinned: true },
+        ]) {
+          const res = await createNote(jwt, overrides);
+          expect(res.status).toBe(403);
+          expect((res.body as { error?: { code?: string } }).error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+        }
+        const after = await counts();
+        expect(after.act).toBe(before.act); // no note row written
+        expect(after.ev).toBe(before.ev); // no CREATED event written
+      });
+
+      it('with activity:create → TEAM, PRIVATE, and pinned-at-create notes are all accepted (no extra scope)', async () => {
+        const jwt = await jwtFor(AUTHOR, READER_SCOPES); // READER_SCOPES carries activity:create
+        const team = await createNote(jwt, { visibility: 'TEAM' });
+        expect(team.status).toBe(201);
+        expect((await noteRow(String(team.body['id'])))?.visibility).toBe('TEAM');
+        const priv = await createNote(jwt, { visibility: 'PRIVATE' });
+        expect(priv.status).toBe(201);
+        expect((await noteRow(String(priv.body['id'])))?.visibility).toBe('PRIVATE');
+        const pinned = await createNote(jwt, { visibility: 'TEAM', pinned: true });
+        expect(pinned.status).toBe(201);
+        expect((await noteRow(String(pinned.body['id'])))?.is_pinned).toBe(true);
+      });
+    });
   },
 );

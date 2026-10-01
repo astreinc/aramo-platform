@@ -150,7 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('EVERY cell (24) evaluates per the matrix against the PUBLISHED + RETRIEVED package', async () => {
       const resolved = await store.getActiveVersion(TENANT, PKG_NAME);
-      expect(resolved?.version).toBe('6.0.0');
+      expect(resolved?.version).toBe('7.0.0');
       for (const [status, row] of Object.entries(EXPECTED)) {
         for (const [resource, expected] of Object.entries(row)) {
           const d = evaluate(resolved!.definition, contextFor(status, resource));

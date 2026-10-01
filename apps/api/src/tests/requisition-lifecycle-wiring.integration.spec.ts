@@ -312,7 +312,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(events[0]?.reason_code).toBe('REQUISITION_IMPORTED');
     });
 
-    it('delete → ZERO new events, and PRIOR events for that requisition SURVIVE (R5)', async () => {
+    it('delete → appends a terminal REQUISITION_DELETED event (next_status NULL); PRIOR events SURVIVE (R5, FIX 5)', async () => {
       const created = await createReq(); // event 1
       await repo.update({
         visibility: SEE_ALL_VISIBILITY,
@@ -326,16 +326,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const before = await store.listByRequisition(TENANT_A, created.id);
       expect(before).toHaveLength(2);
 
-      await repo.delete({ tenant_id: TENANT_A, id: created.id, visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
+      await repo.delete({ tenant_id: TENANT_A, id: created.id, actor_id: ACTOR_2, visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
 
-      // The requisition is gone…
+      // The requisition row is gone…
       expect(
         await repo.findByIdAdmin({ tenant_id: TENANT_A, id: created.id }),
       ).toBeNull();
-      // …but its history survives (bare-UUID, no FK — R5).
+      // …but its history survives (bare-UUID, no FK — R5) AND now carries the
+      // terminal delete-audit event (FIX 5): a deletion is NOT a transition, so
+      // next_status is NULL and the reason_code is REQUISITION_DELETED.
       const after = await store.listByRequisition(TENANT_A, created.id);
-      expect(after).toHaveLength(2);
-      expect(after.map((e) => e.next_status)).toEqual(['open', 'closed']);
+      expect(after).toHaveLength(3);
+      expect(after.map((e) => e.next_status)).toEqual(['open', 'closed', null]);
+      const del = after[2];
+      expect(del?.reason_code).toBe('REQUISITION_DELETED');
+      expect(del?.previous_status).toBe('closed'); // the actual status before deletion
+      expect(del?.next_status).toBeNull();
+      expect(del?.actor_id).toBe(ACTOR_2);
     });
 
     it('deleteByImportBatch → prior events SURVIVE the bulk reversion (R5)', async () => {

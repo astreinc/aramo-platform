@@ -139,6 +139,13 @@ const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
 );
+// FIX 5 — next_status nullable so a destructive DELETE audits as a terminal
+// REQUISITION_DELETED event; required here because this spec performs a
+// SUCCESSFUL requisition DELETE (tenant_admin → 204), which now writes that event.
+const REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261001120000_lifecycle_next_status_nullable/migration.sql',
+);
 const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
@@ -251,7 +258,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 
@@ -488,6 +495,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       });
       expect(admitted.status).toBe(201);
+    });
+
+    // FIX 3A — create negative authorization. An authenticated, ats-entitled,
+    // site-matched actor that LACKS requisition:create cannot create a requisition:
+    // the request is refused at the scope gate and NO row is written.
+    it('FIX 3A — actor without requisition:create → 403 on POST, NO requisition row created', async () => {
+      const title = 'FIX3A — must never be created (no create scope)';
+      const res = await fetch(`http://127.0.0.1:${port}/v1/requisitions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${unscopedJwt_Ats_SiteA}`, // authenticated, ats, no requisition:create
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title, company_id: COMPANY_ID, site_id: SITE_A }),
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+      // No side effect: the requisition was never written.
+      const n = await setupClient.query(
+        `SELECT count(*)::int AS c FROM requisition."Requisition" WHERE tenant_id=$1 AND title=$2`,
+        [TENANT_ATS, title],
+      );
+      expect(n.rows[0].c).toBe(0);
     });
 
     // -------------------------------------------------------------------------

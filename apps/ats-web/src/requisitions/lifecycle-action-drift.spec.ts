@@ -24,8 +24,10 @@ const BE_TARGETS_SOURCE = resolve(
   '../../../../libs/requisition/src/lib/dto/requisition-transitions.ts',
 );
 
-// The seven GOVERNED transition actions (the matrix keys). Close-submittals is
-// NOT governed (it is an ordinary declared-status edit) and is asserted separately.
+// The eight GOVERNED transition actions (the matrix keys). FIX 6 — CLOSE_SUBMITTALS
+// is now governed on the same footing, so it joins the parity loop (no longer a
+// separate non-governed assertion): the matrix proves it is offered at exactly the
+// ALLOW statuses (open only) and targets submittals_closed.
 const GOVERNED_ACTIONS: readonly LifecycleActionId[] = [
   'CLOSE',
   'REOPEN',
@@ -34,6 +36,7 @@ const GOVERNED_ACTIONS: readonly LifecycleActionId[] = [
   'SUBMIT_FOR_APPROVAL',
   'APPROVE',
   'REJECT',
+  'CLOSE_SUBMITTALS',
 ];
 
 // Extract one `ACTION: { ... }` block body from the TRANSITION_MATRIX literal.
@@ -121,13 +124,6 @@ describe('L1-E lifecycle-action drift — FE table mirrors the BE authority', ()
     }
     for (const action of GOVERNED_ACTIONS) {
       expect(feTargets[action], `${action} target`).toBe(targets[action]);
-    }
-  });
-
-  it('Close-submittals (the non-governed edit) is offered on `open` ONLY', () => {
-    for (const status of RECRUITING_STATUS_VALUES) {
-      const offered = feActionsAt(status).has('CLOSE_SUBMITTALS');
-      expect(offered, `CLOSE_SUBMITTALS @ ${status}`).toBe(status === 'open');
     }
   });
 });

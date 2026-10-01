@@ -493,13 +493,16 @@ model RequisitionLifecycleEvent {
   // happened, it is not live state.
   requisition_id String @db.Uuid
 
-  // WHAT changed. next_status is REQUIRED — every event has a destination.
-  // previous_status is NULLABLE (T1-c R1): a CREATE emits an event with no
-  // predecessor status — the first status a requisition ever has is part of
-  // its history but has nothing before it. It is null ONLY on a create; every
+  // WHAT changed. previous_status is NULLABLE (T1-c R1): a CREATE emits an event
+  // with no predecessor status — the first status a requisition ever has is part
+  // of its history but has nothing before it. It is null ONLY on a create; every
   // update-driven transition carries a non-null previous_status.
+  // next_status is NULLABLE (FIX 5): a destructive DELETE emits a terminal
+  // REQUISITION_DELETED event with next_status = NULL — a deletion is NOT a
+  // transition into another recruiting status. It is null ONLY on a delete; every
+  // create/transition event carries a non-null next_status.
   previous_status RecruitingStatus?
-  next_status     RecruitingStatus
+  next_status     RecruitingStatus?
 
   // WHO initiated it, and from WHERE.
   actor_id String

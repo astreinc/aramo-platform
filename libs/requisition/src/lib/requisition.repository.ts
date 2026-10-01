@@ -587,6 +587,13 @@ const LIFECYCLE_REASON_ESTABLISHED = 'REQUISITION_ESTABLISHED';
 // lifecycle event (client/VMS), traversing the same gate -> CAS -> event
 // pipeline as a human transition but stamped origin='integration'.
 const LIFECYCLE_REASON_EXTERNAL = 'REQUISITION_EXTERNAL_TRANSITION';
+// FIX 5 — a destructive requisition DELETE is audited with a terminal
+// REQUISITION_DELETED lifecycle event: previous_status = the actual status just
+// before deletion, next_status = NULL (a deletion is NOT a transition into
+// another recruiting status). Written in the SAME transaction as the row delete
+// so the two commit/abort together; the event survives the requisition row
+// because requisition_id is a bare UUID (no FK) and the table is append-only.
+const LIFECYCLE_REASON_DELETED = 'REQUISITION_DELETED';
 
 @Injectable()
 export class RequisitionRepository {
@@ -1738,6 +1745,8 @@ export class RequisitionRepository {
   async delete(args: {
     tenant_id: string;
     id: string;
+    // FIX 5 — the deleting actor, recorded on the REQUISITION_DELETED audit event.
+    actor_id: string;
     // L1-B — the resolved read-side visibility context (same as update()).
     visibility: VisibilityContextShape;
     requestId: string;
@@ -1752,7 +1761,9 @@ export class RequisitionRepository {
         id: args.id,
         ...buildVisibilityWhere(args.visibility),
       },
-      select: { id: true },
+      // FIX 5 — status is read so the delete-audit event records the ACTUAL
+      // previous_status (the status immediately before deletion).
+      select: { id: true, status: true },
     });
     if (existing === null) {
       throw new AramoError(
@@ -1762,7 +1773,29 @@ export class RequisitionRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
-    await this.prisma.requisition.delete({ where: { id: args.id } });
+    // FIX 5 — audit the destructive delete atomically with the row removal. The
+    // REQUISITION_DELETED event is appended FIRST, then the requisition row is
+    // deleted, both inside ONE transaction: if the audit INSERT fails the delete
+    // rolls back (no silent unaudited deletion), and if the delete fails the
+    // event is not committed. The event survives the row (bare-UUID requisition_id,
+    // no FK) and is immutable (append-only trigger). next_status = NULL — a
+    // deletion is NOT a transition into another recruiting status; policy_decision_id
+    // = null because delete authority is requisition:delete (scope), not a lifecycle
+    // policy decision.
+    await this.prisma.$transaction(async (tx) => {
+      await this.recordLifecycleEventInTx(tx, {
+        tenant_id: args.tenant_id,
+        requisition_id: args.id,
+        previous_status: existing.status as RecruitingStatus,
+        next_status: null,
+        actor_id: args.actor_id,
+        origin: 'ui',
+        reason_code: LIFECYCLE_REASON_DELETED,
+        policy_decision_id: null,
+        correlation_id: args.requestId,
+      });
+      await tx.requisition.delete({ where: { id: args.id } });
+    });
   }
 
   // -------------------------------------------------------------------------

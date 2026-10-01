@@ -25,6 +25,11 @@ export const TRANSITION_ACTIONS = [
   'SUBMIT_FOR_APPROVAL',
   'APPROVE',
   'REJECT',
+  // FIX 6 — CLOSE_SUBMITTALS is now a GOVERNED transition (open → submittals_closed),
+  // no longer an ungoverned ordinary edit. Authority is unchanged (requisition:edit
+  // OR requisition:edit:status via the status-edit gate); governance adds the policy
+  // decision + the §D17a decision record linked from the lifecycle event.
+  'CLOSE_SUBMITTALS',
 ] as const;
 export type TransitionAction = (typeof TRANSITION_ACTIONS)[number];
 
@@ -43,16 +48,19 @@ export const ACTION_TARGET_STATUS: Readonly<Record<TransitionAction, RecruitingS
   SUBMIT_FOR_APPROVAL: 'pending_approval',
   APPROVE: 'open',
   REJECT: 'draft',
+  CLOSE_SUBMITTALS: 'submittals_closed',
 };
 
 // Amendment B — resolve the governing action for a status change along the
 // (from, to) EDGE. The target alone no longer determines the action: `open` is
 // the target of BOTH REOPEN (from a governed reopen edge) and APPROVE (from
 // `pending_approval`), disambiguated here by the from-status. Targets with a
-// single governing edge regardless of origin (closed / on_hold / canceled) still
-// resolve by target. `null` means "not a governed transition" — an ORDINARY
-// declared-status edit (version-CAS + lifecycle event, no policy gate), e.g.
-// `submittals_closed`, `lead`, or ordinary entry into `draft` — NOT "forbidden".
+// single governing edge regardless of origin (closed / on_hold / canceled /
+// submittals_closed) still resolve by target. `null` means "not a governed
+// transition" — an ORDINARY declared-status edit (version-CAS + lifecycle event,
+// no policy gate), e.g. `lead`, or ordinary entry into `draft` — NOT "forbidden".
+// (FIX 6: →submittals_closed is now GOVERNED via CLOSE_SUBMITTALS for every
+// from-status; the matrix ALLOWs it from `open` only and DENIES the rest.)
 // (The old "target uniquely determines the action" invariant is superseded.)
 export function governingAction(
   from: RecruitingStatus,
@@ -72,6 +80,15 @@ export function governingAction(
       return from === 'draft' ? 'SUBMIT_FOR_APPROVAL' : null;
     case 'draft':
       return from === 'pending_approval' ? 'REJECT' : null;
+    case 'submittals_closed':
+      // FIX 6 — every →submittals_closed edge resolves to the governed
+      // CLOSE_SUBMITTALS action (target-keyed, exactly like CLOSE/PUT_ON_HOLD/
+      // CANCEL — there is only one action for this target). The TRANSITION_MATRIX
+      // then enforces eligibility: ALLOW from `open` ONLY, DENY every other
+      // from-status. Resolving (not nulling) non-open edges is what makes
+      // "submittals_closed is reachable from OPEN only" a policy DENY (403)
+      // rather than a silent ungoverned ordinary edit.
+      return 'CLOSE_SUBMITTALS';
     default:
       return null;
   }

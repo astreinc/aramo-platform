@@ -183,6 +183,13 @@ const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
 );
+// FIX 5 — next_status nullable so a destructive DELETE audits as a terminal
+// REQUISITION_DELETED event; required here because P5 performs a SUCCESSFUL
+// requisition DELETE (visible req → 204), which now writes that event.
+const REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261001120000_lifecycle_next_status_nullable/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-l1b-write-visibility-spec';
@@ -468,6 +475,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         REQUISITION_USER_STATE_MIGRATION,
         REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
+        REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE,
         resolve(
           ROOT,
           'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql',
@@ -641,6 +649,45 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         title: 'L1-B cross-tenant intruder edit',
       });
       expect(crosser.status).toBe(404);
+    });
+
+    // FIX 2 — cross-tenant MUTATION leaves NO side effect. A foreign-tenant actor
+    // with otherwise-valid edit/status authority cannot mutate another tenant's
+    // requisition: the 404 concealment rides the existence read BEFORE any write,
+    // so no field changes, no status transition, and NO lifecycle event is appended
+    // (a governed status transition would ALSO write an event, so zero new events
+    // proves no policy decision ran either). Non-vacuous: the owner edit in P4 ran
+    // first on the SAME row.
+    it('FIX 2 — cross-tenant PATCH (field AND status) → 404, row UNCHANGED, NO new lifecycle event', async () => {
+      const eventsBefore = await setupClient.query(
+        `SELECT count(*)::int AS c FROM requisition."RequisitionLifecycleEvent" WHERE requisition_id=$1`,
+        [reqCrossTenant],
+      );
+      const rowBefore = await setupClient.query(
+        `SELECT title, status FROM requisition."Requisition" WHERE id=$1 AND tenant_id=$2`,
+        [reqCrossTenant, TENANT_OTHER],
+      );
+      expect(rowBefore.rows).toHaveLength(1); // the foreign row genuinely exists
+
+      // (a) cross-tenant ordinary FIELD edit → concealed 404.
+      expect((await patchReq(editorJwt, reqCrossTenant, { title: 'FIX2 intruder field' })).status).toBe(404);
+      // (b) cross-tenant STATUS transition → concealed 404 (status-scope passes; tenancy conceals).
+      expect((await patchReq(statusEditorJwt, reqCrossTenant, { status: 'on_hold' })).status).toBe(404);
+
+      // No mutation, no leak: the foreign row is byte-for-byte what the owner left it.
+      const rowAfter = await setupClient.query(
+        `SELECT title, status FROM requisition."Requisition" WHERE id=$1 AND tenant_id=$2`,
+        [reqCrossTenant, TENANT_OTHER],
+      );
+      expect(rowAfter.rows).toHaveLength(1);
+      expect(rowAfter.rows[0].title).toBe(rowBefore.rows[0].title);
+      expect(rowAfter.rows[0].status).toBe(rowBefore.rows[0].status);
+      // No audit was written by the intruder (⇒ no governed transition / decision ran).
+      const eventsAfter = await setupClient.query(
+        `SELECT count(*)::int AS c FROM requisition."RequisitionLifecycleEvent" WHERE requisition_id=$1`,
+        [reqCrossTenant],
+      );
+      expect(eventsAfter.rows[0].c).toBe(eventsBefore.rows[0].c);
     });
 
     // ----------------------------------------------------------------------

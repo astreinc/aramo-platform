@@ -115,7 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await create(tenant); // 1001
       const top = await create(tenant); // 1002
       expect(top.requisition_number).toBe(1002);
-      await repo.delete({ tenant_id: tenant, id: top.id, visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
+      await repo.delete({ tenant_id: tenant, id: top.id, actor_id: uuidv7(), visibility: SEE_ALL_VISIBILITY, requestId: uuidv7() });
       const next = await create(tenant);
       expect(next.requisition_number).toBe(1003); // NOT 1002 — the gap stays
     });

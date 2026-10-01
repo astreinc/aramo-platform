@@ -59,8 +59,8 @@ interface ActionMeta {
 
 // Label + target-status + authorising scope per action. Targets mirror
 // ACTION_TARGET_STATUS (libs/requisition/.../requisition-transitions.ts);
-// CLOSE_SUBMITTALS is the NON-governed open-only edit (target submittals_closed).
-// Labels are the locked L1-E copy — Tier-2-clean, never reworded.
+// CLOSE_SUBMITTALS is the governed open-only transition (target submittals_closed,
+// FIX 6). Labels are the locked L1-E copy — Tier-2-clean, never reworded.
 const ACTION_META: Readonly<Record<LifecycleActionId, ActionMeta>> = {
   SUBMIT_FOR_APPROVAL: { label: 'Submit for approval', toStatus: 'pending_approval', scope: 'canEditStatus' },
   APPROVE: { label: 'Approve', toStatus: 'open', scope: 'canApprove' },
@@ -77,9 +77,9 @@ const ACTION_META: Readonly<Record<LifecycleActionId, ActionMeta>> = {
 // pending_approval: APPROVE/REJECT; CLOSE from lead/open/on_hold/submittals_closed;
 // REOPEN from lead/on_hold/submittals_closed/closed; PUT_ON_HOLD from
 // lead/open/submittals_closed; CANCEL from lead/open/on_hold/submittals_closed).
-// CLOSE_SUBMITTALS is the non-governed edit and appears on `open` ONLY. Terminal
+// CLOSE_SUBMITTALS is governed (FIX 6) and appears on `open` ONLY. Terminal
 // `canceled` and gated `archived` expose nothing. The drift spec proves the
-// governed set equals the matrix.
+// governed set (now including CLOSE_SUBMITTALS) equals the matrix.
 const STATUS_ACTIONS: Readonly<Record<RecruitingStatus, readonly LifecycleActionId[]>> = {
   lead: ['REOPEN', 'PUT_ON_HOLD', 'CLOSE', 'CANCEL'],
   draft: ['SUBMIT_FOR_APPROVAL'],
