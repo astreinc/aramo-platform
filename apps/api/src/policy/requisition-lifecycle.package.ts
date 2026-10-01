@@ -193,6 +193,19 @@ const TRANSITION_MATRIX: Readonly<Record<TransitionAction, Readonly<Record<strin
     lead: 'DENY', draft: 'DENY', open: 'DENY', on_hold: 'DENY',
     submittals_closed: 'DENY', closed: 'DENY', canceled: 'DENY', archived: 'DENY',
   },
+  // FIX 6 — CLOSE_SUBMITTALS (open → submittals_closed) is now GOVERNED on the
+  // same footing as the others. It fires from `open` ONLY (the owner declares no
+  // further client submittals); every other from-status DENIES (fail-closed on
+  // the ALLOW default). Authority is unchanged (requisition:edit OR
+  // requisition:edit:status via the status-edit gate) — this matrix governs only
+  // the from-status eligibility, producing a §D17a decision record + lifecycle
+  // event linkage where the edge previously recorded policy_decision_id=null.
+  CLOSE_SUBMITTALS: {
+    open: 'ALLOW',
+    lead: 'DENY', on_hold: 'DENY', submittals_closed: 'DENY',
+    closed: 'DENY', canceled: 'DENY',
+    draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
+  },
 };
 
 // Serialize the transition matrix into engine rules: one predicate per rule,
@@ -211,12 +224,14 @@ const TRANSITION_RULES: PolicyPackage['rules'] = TRANSITION_ACTIONS.flatMap((act
 
 export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
   name: REQUISITION_LIFECYCLE_PACKAGE_NAME,
-  // Approval sub-workflow (Amendment B) — version 6.0.0. New MAJOR: the three
-  // approval-transition actions (SUBMIT_FOR_APPROVAL / APPROVE / REJECT) are a
-  // new behavioural surface. v5.0.0 (the four T1-e transitions) and v4.0.0 stay
-  // in the store, windows closed; earlier provenance still names the version it
-  // was decided under when re-read from the DB (§D17b).
-  version: '6.0.0',
+  // FIX 6 — version 7.0.0. New MAJOR: CLOSE_SUBMITTALS becomes a governed
+  // transition action (open → submittals_closed), a new behavioural surface on the
+  // transition gate (the edge previously recorded policy_decision_id=null). Follows
+  // the documented convention (v4.0.0 re-key → v5.0.0 four T1-e transitions →
+  // v6.0.0 Amendment B approval actions → v7.0.0 CLOSE_SUBMITTALS). Prior versions
+  // stay in the store with their windows closed; earlier provenance still names the
+  // version it was decided under when re-read from the DB (§D17b).
+  version: '7.0.0',
   registry: {
     resources: [
       'REQUISITION_TALENT',
@@ -225,10 +240,11 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
       'REQUISITION_DOCUMENT',
       'REQUISITION',
     ],
-    // The seven governed-transition actions (T1-e's four + the Approval
-    // sub-workflow's SUBMIT_FOR_APPROVAL / APPROVE / REJECT) join ADD/CREATE/
-    // SET_PRIORITY. The engine REJECTS an unregistered action at evaluate time,
-    // so they MUST be registered for the transition gate to resolve.
+    // The eight governed-transition actions (T1-e's four + the Approval
+    // sub-workflow's SUBMIT_FOR_APPROVAL / APPROVE / REJECT + FIX 6's
+    // CLOSE_SUBMITTALS) join ADD/CREATE/SET_PRIORITY. The engine REJECTS an
+    // unregistered action at evaluate time, so they MUST be registered for the
+    // transition gate to resolve.
     actions: ['ADD', 'CREATE', 'SET_PRIORITY', ...TRANSITION_ACTIONS],
   },
   // R3 — a package MUST declare its own no-match disposition. ALLOW (permissive

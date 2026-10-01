@@ -83,6 +83,10 @@ const MIGRATIONS = [
   // (reject-UPDATE/DELETE triggers + governed tenant-reset escape). Trigger-only,
   // applied after the lifecycle-event table CREATE above.
   mig('20260827120000_requisition_lifecycle_event_append_only'),
+  // FIX 5 — next_status nullable so a destructive requisition DELETE audits as a
+  // terminal REQUISITION_DELETED event; required here because the cascade test
+  // performs a SUCCESSFUL requisition DELETE, which now writes that event.
+  mig('20261001120000_lifecycle_next_status_nullable'),
   // WL-B1 — additive Requisition.postal_code (the regenerated client SELECTs it).
   mig('20260907120000_add_requisition_postal_code'),
   // Track 4 T4-B2 — requisition read DERIVES openings_available from the

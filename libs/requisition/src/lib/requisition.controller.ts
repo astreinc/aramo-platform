@@ -332,6 +332,8 @@ export class RequisitionController {
     await this.requisitionRepository.delete({
       tenant_id: authContext.tenant_id,
       id,
+      // FIX 5 — the deleting actor is recorded on the REQUISITION_DELETED event.
+      actor_id: authContext.sub,
       visibility,
       requestId,
     });

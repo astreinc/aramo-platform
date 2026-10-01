@@ -6,6 +6,7 @@ import {
   isGatedRecruitingStatus,
 } from '../lib/dto/requisition-status.js';
 import {
+  ACTION_TARGET_STATUS,
   TRANSITION_ACTIONS,
   governingAction,
 } from '../lib/dto/requisition-transitions.js';
@@ -35,12 +36,22 @@ describe('Approval sub-workflow — governingAction(from, to) edge re-key', () =
     expect(governingAction('open', 'canceled')).toBe('CANCEL');
   });
 
-  it('REGRESSION — ungoverned targets remain ordinary edits (null)', () => {
-    // submittals_closed + lead have NO governing action (R8 boundary) — ordinary
-    // version-CAS edits, not policy-gated. Unchanged.
-    expect(governingAction('open', 'submittals_closed')).toBeNull();
+  it('ungoverned targets remain ordinary edits (null)', () => {
+    // `lead` has NO governing action (R8 boundary) — an ordinary version-CAS edit,
+    // not policy-gated. Ordinary (non-approval) entry into draft is ungoverned too.
     expect(governingAction('open', 'lead')).toBeNull();
-    expect(governingAction('lead', 'submittals_closed')).toBeNull();
+    expect(governingAction('submittals_closed', 'lead')).toBeNull();
+    expect(governingAction('open', 'draft')).toBeNull();
+  });
+
+  it('FIX 6 — every →submittals_closed edge resolves to CLOSE_SUBMITTALS (matrix DENIES non-open)', () => {
+    // Target-keyed like CLOSE: the action resolves for ALL from-statuses so the
+    // TRANSITION_MATRIX can DENY non-open sources (open-only is a policy DENY,
+    // not a silent ungoverned edit).
+    expect(governingAction('open', 'submittals_closed')).toBe('CLOSE_SUBMITTALS');
+    expect(governingAction('on_hold', 'submittals_closed')).toBe('CLOSE_SUBMITTALS');
+    expect(governingAction('lead', 'submittals_closed')).toBe('CLOSE_SUBMITTALS');
+    expect(ACTION_TARGET_STATUS.CLOSE_SUBMITTALS).toBe('submittals_closed');
   });
 
   it('the three approval edges resolve to their ratified actions', () => {

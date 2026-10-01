@@ -168,7 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // provenance recorded for every governed decision (ALLOW + DENY), naming v6.0.0.
       const recs = await setPriorityRecords();
       expect(recs.length).toBeGreaterThanOrEqual(6);
-      expect(recs.every((r) => r.policy_version === '6.0.0')).toBe(true);
+      expect(recs.every((r) => r.policy_version === '7.0.0')).toBe(true);
       expect(recs.filter((r) => r.decision === 'DENY').length).toBeGreaterThanOrEqual(2);
     });
 

@@ -5153,6 +5153,22 @@ button.rc-snapcard:hover {
 }
 .rc-attn__link:hover { color: #3355e0; }
 
+/* Requisition Workspace tab — the operational projection (two columns: main +
+   rail). Reuses rc-card / rc-filelist / rc-deflist / rc-attn chrome; adds only
+   body padding, a small section sub-heading, and the stacked Talent-in-play
+   row. No new decorative widget. */
+.rc-ws__body { padding: 11px 18px 14px; }
+.rc-ws .rc-deflist.rc-ws__body { padding-top: 6px; }
+.rc-ws__sub {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--faint);
+  margin: 12px 18px 2px;
+}
+.rc-ws__row { flex-wrap: wrap; gap: 4px 10px; }
+.rc-ws__stage { margin-left: 8px; }
+.rc-ws__checks { flex-basis: 100%; font-size: 0.78rem; }
+.rc-ws__cta { margin-left: auto; }
+
 /* Underline tabs — scoped to the workspace; the global Tabs primitive is
  * untouched (the wrapper class raises specificity over theme.css). */
 .rc-ws-tabs .tabs__list {

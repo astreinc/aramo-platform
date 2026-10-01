@@ -187,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decisions = await decisionsByCorr(corr, 'CLOSE');
       expect(decisions).toHaveLength(1);
       expect(decisions[0]?.decision).toBe('ALLOW');
-      expect(decisions[0]?.policy_version).toBe('6.0.0');
+      expect(decisions[0]?.policy_version).toBe('7.0.0');
       // §2.2 — the lifecycle event names the very decision the engine recorded.
       expect(events[0]?.policy_decision_id).toBe(decisions[0]?.id);
     });
@@ -285,7 +285,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await decisionsByCorr(corr, 'CLOSE')).toHaveLength(0);
     });
 
-    it('R8 boundary — an UNGOVERNED status change (submittals_closed) stays an ordinary edit: event with NULL policy_decision_id, no decision record', async () => {
+    it('FIX 6 — CLOSE_SUBMITTALS (open → submittals_closed) is GOVERNED: ONE event carrying the decision id + exactly one CLOSE_SUBMITTALS decision record', async () => {
       const token = await jwt();
       const id = await seedReq('open');
       const corr = uuid();
@@ -293,10 +293,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(200);
       const events = await eventsOf(id);
       expect(events).toHaveLength(1);
+      expect(events[0]?.previous_status).toBe('open');
       expect(events[0]?.next_status).toBe('submittals_closed');
-      expect(events[0]?.policy_decision_id).toBeNull(); // ungoverned → no decision
-      // No governed action ran for this target — zero decision records.
-      expect(await decisionCountByCorr(corr)).toBe(0);
+      // FIX 6 — now governed: the edge carries a decision id (was null) and
+      // exactly one CLOSE_SUBMITTALS decision record was written for this corr.
+      expect(events[0]?.policy_decision_id).not.toBeNull();
+      const decisions = await decisionsByCorr(corr, 'CLOSE_SUBMITTALS');
+      expect(decisions).toHaveLength(1);
+      expect(decisions[0]?.decision).toBe('ALLOW');
+      expect(decisions[0]?.policy_version).toBe('7.0.0');
+      expect(events[0]?.policy_decision_id).toBe(decisions[0]?.id);
+      expect(await decisionCountByCorr(corr)).toBe(1);
+    });
+
+    it('FIX 6 — CLOSE_SUBMITTALS is DENIED from a non-open from-status (e.g. on_hold): no mutation, no event', async () => {
+      const token = await jwt();
+      const id = await seedReq('on_hold');
+      const corr = uuid();
+      const res = await patchStatus(token, id, { status: 'submittals_closed', version: 0 }, corr);
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error?.code).toBe('POLICY_DENIED');
+      expect((await rowOf(id)).status).toBe('on_hold');
+      expect(await eventsOf(id)).toHaveLength(0);
     });
 
     it('§D17b — a transition decision made under v4.0.0 still names it after v6.0.0 is published (re-read from the DB)', async () => {
@@ -410,6 +429,102 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const v2 = (await g2.json()) as { status: string; pending_approval_submitter_id: string | null };
         expect(v2.status).toBe('open');
         expect(v2.pending_approval_submitter_id).toBeNull();
+      });
+    });
+
+    // FIX 5 — a destructive requisition DELETE leaves an immutable, surviving
+    // audit trail (REQUISITION_DELETED, next_status NULL), written atomically
+    // with the row removal. Authority stays requisition:delete (scope).
+    describe('FIX 5 — requisition delete audit', () => {
+      async function deleteReq(token: string, id: string): Promise<Response> {
+        return fetch(`${baseUrl()}/v1/requisitions/${id}?site_id=${SITE}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+      async function deleteEventsOf(
+        id: string,
+      ): Promise<Array<{ previous_status: string | null; next_status: string | null; reason_code: string; actor_id: string }>> {
+        return (
+          await db.query(
+            `SELECT previous_status, next_status, reason_code, actor_id FROM requisition."RequisitionLifecycleEvent" WHERE requisition_id=$1 ORDER BY occurred_at ASC`,
+            [id],
+          )
+        ).rows;
+      }
+      async function reqExists(id: string): Promise<boolean> {
+        return (await db.query(`SELECT 1 FROM requisition."Requisition" WHERE id=$1`, [id])).rows.length === 1;
+      }
+
+      it('authorized delete → exactly one REQUISITION_DELETED event (previous_status=actual, next_status=NULL), row gone, audit survives', async () => {
+        const id = await seedReq('on_hold');
+        const token = await jwt(['requisition:delete', 'requisition:read', 'requisition:read:all']);
+        const res = await deleteReq(token, id);
+        expect(res.status).toBe(204);
+        // Row is gone…
+        expect(await reqExists(id)).toBe(false);
+        // …but the audit row SURVIVES the deletion (bare-UUID requisition_id, no FK)
+        // and is the single truthful terminal event.
+        const events = await deleteEventsOf(id);
+        expect(events).toHaveLength(1);
+        expect(events[0]?.reason_code).toBe('REQUISITION_DELETED');
+        expect(events[0]?.previous_status).toBe('on_hold'); // the ACTUAL pre-delete status
+        expect(events[0]?.next_status).toBeNull(); // deletion is NOT a status transition
+        expect(events[0]?.actor_id).toBe(ACTOR);
+      });
+
+      it('unauthorized delete (no requisition:delete) → 403, NO audit row, row remains', async () => {
+        const id = await seedReq('open');
+        const token = await jwt(['requisition:read', 'requisition:read:all']); // lacks :delete
+        const res = await deleteReq(token, id);
+        expect(res.status).toBe(403);
+        const body = (await res.json()) as { error: { code: string } };
+        expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+        expect(await reqExists(id)).toBe(true);
+        expect(await deleteEventsOf(id)).toHaveLength(0);
+      });
+
+      it('cross-tenant delete → concealed 404 (NOT_FOUND), NO audit row, foreign row remains', async () => {
+        // A requisition owned by ANOTHER tenant; the caller is scoped to TENANT.
+        const otherTenant = '01900000-0000-7000-8000-0000000000f5';
+        const id = uuid();
+        await db.query(
+          `INSERT INTO requisition."Requisition" (id, tenant_id, site_id, title, company_id, status, requisition_number)
+           VALUES ($1,$2,$3,'cross-tenant',$4,'open',(SELECT COALESCE(MAX(rn.requisition_number),9000)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id=$2))`,
+          [id, otherTenant, SITE, uuid()],
+        );
+        const token = await jwt(['requisition:delete', 'requisition:read', 'requisition:read:all']); // tenant_id=TENANT
+        const res = await deleteReq(token, id);
+        expect(res.status).toBe(404); // concealment convention — never 403, never leaks existence
+        expect(await reqExists(id)).toBe(true); // foreign row untouched
+        expect(await deleteEventsOf(id)).toHaveLength(0); // no foreign audit write
+      });
+
+      it('audit write failure → delete rolls back (row remains, no event): atomicity', async () => {
+        const id = await seedReq('open');
+        // Deterministically fail the audit INSERT with a transient BEFORE INSERT
+        // trigger on the append-only event table. Because the event is written
+        // FIRST inside the same $transaction as the row delete, the failure aborts
+        // the whole transaction — the requisition is NOT deleted.
+        await db.query(`
+          CREATE OR REPLACE FUNCTION requisition.__fix5_fail_insert() RETURNS TRIGGER AS $fix5$
+          BEGIN RAISE EXCEPTION 'fix5 forced audit insert failure'; END; $fix5$ LANGUAGE plpgsql;
+          CREATE TRIGGER trg_fix5_fail BEFORE INSERT ON "requisition"."RequisitionLifecycleEvent"
+            FOR EACH ROW EXECUTE FUNCTION requisition.__fix5_fail_insert();
+        `);
+        try {
+          const token = await jwt(['requisition:delete', 'requisition:read', 'requisition:read:all']);
+          const res = await deleteReq(token, id);
+          expect(res.status).toBeGreaterThanOrEqual(500); // the forced failure surfaces as a server error
+        } finally {
+          await db.query(`
+            DROP TRIGGER IF EXISTS trg_fix5_fail ON "requisition"."RequisitionLifecycleEvent";
+            DROP FUNCTION IF EXISTS requisition.__fix5_fail_insert();
+          `);
+        }
+        // Rolled back: the row is still present and NO audit event was committed.
+        expect(await reqExists(id)).toBe(true);
+        expect(await deleteEventsOf(id)).toHaveLength(0);
       });
     });
   },

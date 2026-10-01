@@ -25,12 +25,14 @@ export interface RecordRequisitionLifecycleEventInput {
   readonly tenant_id: string;
   readonly requisition_id: string;
   /**
-   * WHAT changed. next_status is always present. previous_status is null ONLY
-   * on a create (T1-c R1) — the first status has no predecessor; every
-   * update-driven transition carries a non-null previous_status.
+   * WHAT changed. previous_status is null ONLY on a create (T1-c R1) — the first
+   * status has no predecessor. next_status is null ONLY on a destructive DELETE
+   * (FIX 5) — a REQUISITION_DELETED event is terminal, not a transition into
+   * another recruiting status. Every create/transition carries a non-null
+   * next_status; every transition/delete carries a non-null previous_status.
    */
   readonly previous_status: RecruitingStatus | null;
-  readonly next_status: RecruitingStatus;
+  readonly next_status: RecruitingStatus | null;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
   readonly reason_code: string;
@@ -53,7 +55,8 @@ export interface RequisitionLifecycleEvent {
   readonly requisition_id: string;
   /** Null only for a create event (T1-c R1). */
   readonly previous_status: RecruitingStatus | null;
-  readonly next_status: RecruitingStatus;
+  /** Null only for a destructive-delete event (REQUISITION_DELETED, FIX 5). */
+  readonly next_status: RecruitingStatus | null;
   readonly actor_id: string;
   readonly origin: RequisitionLifecycleOrigin;
   readonly reason_code: string;
@@ -67,7 +70,7 @@ interface EventRow {
   tenant_id: string;
   requisition_id: string;
   previous_status: string | null;
-  next_status: string;
+  next_status: string | null;
   actor_id: string;
   origin: string;
   reason_code: string;
@@ -89,7 +92,10 @@ export class RequisitionLifecycleEventStore {
         row.previous_status === null
           ? null
           : (row.previous_status as RecruitingStatus),
-      next_status: row.next_status as RecruitingStatus,
+      next_status:
+        row.next_status === null
+          ? null
+          : (row.next_status as RecruitingStatus),
       actor_id: row.actor_id,
       origin: row.origin as RequisitionLifecycleOrigin,
       reason_code: row.reason_code,

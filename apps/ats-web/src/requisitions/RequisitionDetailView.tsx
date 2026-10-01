@@ -9,6 +9,10 @@ import { LogNoteDialog } from '../activity/LogNoteDialog';
 import type { ActivityView } from '../activity/types';
 import { getCompany } from '../companies/companies-api';
 import { getContact } from '../contacts/contacts-api';
+import { getInterviewCalendar, type InterviewCalendarRow } from '../interviews/interviews-api';
+import { listTasksForOwner } from '../task/task-api';
+import type { TaskView } from '../task/types';
+import { resolveUserNames } from '../users/users-api';
 import { OfferLetterPanel } from '../offer-document/OfferLetterPanel';
 import { RtrPanel } from '../rtr/RtrPanel';
 import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
@@ -46,8 +50,12 @@ import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
-import { getRequisitionTalentBoard } from './requisition-talent-board-api';
+import {
+  getRequisitionTalentBoard,
+  type RequisitionTalentBoardView,
+} from './requisition-talent-board-api';
 import { AddTalentDialog } from './AddTalentDialog';
+import { WorkspacePanel } from './WorkspacePanel';
 import {
   CLOSE_SUBMITTALS_HELPER,
   SELF_APPROVAL_SOD_LINE,
@@ -120,7 +128,8 @@ const COMMERCIAL_APPROVE = 'assignment:commercials:approve';
 // BE-gated by submittal:create (read rides create-authority, like offers).
 const SUBMITTAL_READ = 'submittal:create';
 
-type TabId =
+export type TabId =
+  | 'workspace'
   | 'overview'
   | 'talent'
   | 'offers'
@@ -132,28 +141,14 @@ type TabId =
   | 'tasks'
   | 'guarantee-terms';
 
-// PRESENTATION-EMPHASIS default tab. Grounded ONLY in the actor's real scopes —
-// documented, never persisted, and NEVER a substitute for the per-tab scope
-// gate or the BE authority (it only decides which already-permitted tab opens
-// first). This is NOT persona impersonation: no persona is inferred or stored;
-// the signal is the caller's own scope set. Order per ruling #2:
-//   assignment:commercials:approve            → Commercial
-//   else pipeline:change-status | pipeline:read → Talent
-//   else assignment:extend | pre_start_requirement:act → Assignments
-//   else                                       → Overview
-// The resolved tab is clamped to the AVAILABLE set (fallback Overview) so the
-// default can never point at a tab the actor cannot see.
-function defaultTabFor(scopes: readonly string[], available: ReadonlySet<TabId>): TabId {
-  // Talent is the default working surface when the actor can read the pipeline
-  // (recruiters, owners); Commercial/Assignments are fallbacks for actors whose
-  // only relevant scope is approval/assignment.
-  let preferred: TabId = 'overview';
-  if (scopes.includes(PIPELINE_CHANGE_STATUS) || scopes.includes(PIPELINE_READ))
-    preferred = 'talent';
-  else if (scopes.includes(COMMERCIAL_APPROVE)) preferred = 'commercial';
-  else if (scopes.includes(ASSIGNMENT_EXTEND) || scopes.includes(PRE_START_ACT))
-    preferred = 'assignments';
-  return available.has(preferred) ? preferred : 'overview';
+// Default tab. The WORKSPACE (the operational, do-the-work projection) opens
+// first for EVERYONE — it composes only already-permitted, scope-gated reads, so
+// it is always safe to show and is never a substitute for the per-tab scope gate
+// or the BE authority. Clamped to the AVAILABLE set (fallback Overview/Details)
+// so the default can never point at a tab the actor cannot see; Workspace is
+// always available, so in practice it is always the default.
+function defaultTabFor(available: ReadonlySet<TabId>): TabId {
+  return available.has('workspace') ? 'workspace' : 'overview';
 }
 
 interface RequisitionDetailViewProps {
@@ -173,6 +168,14 @@ export function RequisitionDetailView({
   const [activities, setActivities] = useState<readonly ActivityView[]>([]);
   const [offers, setOffers] = useState<readonly OfferView[]>([]);
   const [placements, setPlacements] = useState<readonly PlacementView[]>([]);
+  // Workspace-tab requisition-grain reads (one board read, one interview read,
+  // the requisition tasks summary, the recruiter display name). All eager +
+  // best-effort — the Workspace opens first, so they hydrate at first paint, but
+  // every leg is allSettled and degrades to an empty/neutral section on refusal.
+  const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
+  const [interviews, setInterviews] = useState<readonly InterviewCalendarRow[]>([]);
+  const [reqTasks, setReqTasks] = useState<readonly TaskView[]>([]);
+  const [recruiterName, setRecruiterName] = useState<string | null>(null);
   // Lazy attention: populated by the Pre-Start tab AFTER it is opened (its
   // per-placement reads are lazy). Keyed so re-opens replace, never accumulate.
   const [preStartBlocked, setPreStartBlocked] = useState<number | null>(null);
@@ -198,6 +201,12 @@ export function RequisitionDetailView({
   const canEditHot = scopes.includes('talent:edit');
   const canAddTalent = scopes.includes('pipeline:add');
   const canLogNote = scopes.includes('activity:create');
+  // FIX 1 (least-visibility) — the full whole-form Edit button is gated on
+  // requisition:edit ONLY. requisition:edit:status authorises lifecycle/status
+  // changes (the named action buttons below), NOT the general field-edit UI, so
+  // it must NOT reveal Edit. A requisition:read actor sees no Edit affordance;
+  // the BE PATCH remains independently authoritative (status-edit-gate).
+  const canEditRequisition = scopes.includes('requisition:edit');
   // Downstream-lifecycle tab availability (least-visibility: no read issued, and
   // no tab shown, without the read scope).
   const canReadPipeline = scopes.includes(PIPELINE_READ);
@@ -227,6 +236,10 @@ export function RequisitionDetailView({
           new Set(pipelineRes.items.map((p) => p.talent_record_id)),
         );
         const pids = pipelineRes.items.map((p) => p.id);
+        // Workspace interview window — the calendar read REQUIRES from/to; a
+        // now..+90d horizon is the upcoming-interviews range (bounded, one call).
+        const nowIso = new Date().toISOString();
+        const horizonIso = new Date(Date.now() + 90 * 86_400_000).toISOString();
         const [
           coRes,
           contactRes,
@@ -236,6 +249,10 @@ export function RequisitionDetailView({
           pipeActResults,
           offersRes,
           placementsRes,
+          boardRes,
+          interviewsRes,
+          tasksRes,
+          recruiterRes,
         ] = await Promise.allSettled([
           getCompany(reqRes.company_id),
           reqRes.contact_id !== null
@@ -251,6 +268,22 @@ export function RequisitionDetailView({
           canReadPlacements
             ? listPlacements({ requisition_id: reqId })
             : Promise.reject(new Error('no placement scope')),
+          // Workspace: one Talent-Board read (pipeline-grain counts + per-card
+          // stage/readiness/next-actions), gated on the pipeline read scope.
+          canReadPipeline
+            ? getRequisitionTalentBoard(reqId)
+            : Promise.reject(new Error('no pipeline scope')),
+          // Workspace: one interview-calendar read (upcoming window).
+          getInterviewCalendar({ requisition_id: reqId, from: nowIso, to: horizonIso }),
+          // Workspace: the requisition tasks summary (gated on task:read).
+          canReadTasks
+            ? listTasksForOwner('requisition', reqId)
+            : Promise.reject(new Error('no task scope')),
+          // Workspace: the recruiter display name (the ONLY modeled ownership
+          // role shown; account manager has no modeled source and is omitted).
+          reqRes.recruiter_id !== null
+            ? resolveUserNames([reqRes.recruiter_id])
+            : Promise.reject(new Error('no recruiter')),
         ]);
         if (cancelled) return;
         if (coRes.status === 'fulfilled') setCompanyName(coRes.value.name);
@@ -279,6 +312,21 @@ export function RequisitionDetailView({
         ) {
           setPlacements(placementsRes.value.items);
         }
+        if (boardRes.status === 'fulfilled' && Array.isArray(boardRes.value.columns)) {
+          setBoard(boardRes.value);
+        }
+        if (
+          interviewsRes.status === 'fulfilled' &&
+          Array.isArray(interviewsRes.value.interviews)
+        ) {
+          setInterviews(interviewsRes.value.interviews);
+        }
+        if (tasksRes.status === 'fulfilled' && Array.isArray(tasksRes.value.items)) {
+          setReqTasks(tasksRes.value.items);
+        }
+        if (recruiterRes.status === 'fulfilled' && reqRes.recruiter_id !== null) {
+          setRecruiterName(recruiterRes.value[reqRes.recruiter_id] ?? null);
+        }
         // Merge requisition-level notes + per-pipeline transition activities
         // (Q6 — the auto pipeline_status_change emits subject_type='pipeline').
         // Feeds the Activity-tab count only; the tab itself re-reads via
@@ -304,7 +352,7 @@ export function RequisitionDetailView({
     return () => {
       cancelled = true;
     };
-  }, [reqId, refreshKey, canReadOffers, canReadPlacements]);
+  }, [reqId, refreshKey, canReadOffers, canReadPlacements, canReadPipeline, canReadTasks]);
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -412,13 +460,58 @@ export function RequisitionDetailView({
   const headerType =
     req.type ?? (req.duration !== null ? `Contract ${req.duration}` : null);
 
+  // Grounded attention items — the SINGLE source for both the page-level rail
+  // and the Workspace "Needs attention" section (identical derivation; the
+  // Workspace additionally layers Board blockers on top).
+  const attentionItems = buildAttentionItems({
+    req,
+    offers,
+    preStartBlocked,
+    canReadOffers,
+    canReadPreStart,
+  });
+  // Talent display names for the Workspace Board rows — reuses the already-loaded
+  // talents enrichment (no per-card re-fetch).
+  const talentNames: Record<string, string> = Object.fromEntries(
+    Object.entries(talents).map(([id, t]) => [id, `${t.first_name} ${t.last_name}`.trim()]),
+  );
+
   // ── Tab assembly (scope-gated availability) ──
   const tabs: TabItem[] = [];
-  const available = new Set<TabId>(['overview']);
+  const available = new Set<TabId>(['workspace', 'overview']);
+
+  tabs.push({
+    id: 'workspace',
+    label: 'Workspace',
+    content: (
+      <WorkspacePanel
+        req={req}
+        companyName={companyName}
+        contactName={contactName}
+        recruiterName={recruiterName}
+        locationLabel={headerPlace}
+        arrangementLabel={headerArrangement}
+        board={board}
+        talentNames={talentNames}
+        interviews={interviews}
+        tasks={reqTasks}
+        canReadTasks={canReadTasks}
+        activities={activities}
+        attentionItems={attentionItems}
+        scopes={scopes}
+        existingTalentIds={pipelines.map((p) => p.talent_record_id)}
+        canAddTalent={canAddTalent}
+        canSource={scopes.includes('talent:source')}
+        canLogNote={canLogNote}
+        onNavigate={setTab}
+        onRefresh={refresh}
+      />
+    ),
+  });
 
   tabs.push({
     id: 'overview',
-    label: 'Overview',
+    label: 'Details',
     content: (
       <DetailsPanel
         req={req}
@@ -580,7 +673,7 @@ export function RequisitionDetailView({
     });
   }
 
-  const defaultTab = defaultTabFor(scopes, available);
+  const defaultTab = defaultTabFor(available);
   const activeTab: TabId = tab !== null && available.has(tab) ? tab : defaultTab;
 
   // PR-14 — personal bookmark toggle (optimistic). PERSONAL to the caller;
@@ -662,19 +755,23 @@ export function RequisitionDetailView({
             />
           ) : null}
           {/* G2.5b — Edit enters whole-form Overview edit (switching to the
-              Overview tab from anywhere); it reads "Editing" while active. */}
-          <Button
-            unstyled
-            className={`rc-hbtn${editing ? ' rc-hbtn--primary' : ''}`}
-            aria-pressed={editing}
-            onClick={() => {
-              setTab('overview');
-              setEditing(true);
-            }}
-          >
-            <Icons.IconPencil />
-            {editing ? 'Editing' : 'Edit'}
-          </Button>
+              Overview tab from anywhere); it reads "Editing" while active.
+              FIX 1 — hidden unless requisition:edit (least-visibility); status-only
+              actors get the named lifecycle actions below, never the field-edit UI. */}
+          {canEditRequisition ? (
+            <Button
+              unstyled
+              className={`rc-hbtn${editing ? ' rc-hbtn--primary' : ''}`}
+              aria-pressed={editing}
+              onClick={() => {
+                setTab('overview');
+                setEditing(true);
+              }}
+            >
+              <Icons.IconPencil />
+              {editing ? 'Editing' : 'Edit'}
+            </Button>
+          ) : null}
           {/* L1-E — the named LIFECYCLE ACTIONS, gated by (current status × scope
               × submitter-context). Status is DISPLAYED as the pill above; the user
               changes the lifecycle ONLY through these named actions mirroring the
@@ -733,15 +830,7 @@ export function RequisitionDetailView({
         onNavigate={setTab}
       />
 
-      <AttentionRail
-        req={req}
-        offers={offers}
-        preStartBlocked={preStartBlocked}
-        scopes={scopes}
-        canReadOffers={canReadOffers}
-        canReadPreStart={canReadPreStart}
-        onNavigate={setTab}
-      />
+      <AttentionRail items={attentionItems} scopes={scopes} onNavigate={setTab} />
 
       <div className="rc-mt-16 rc-ws-tabs">
         <Tabs
@@ -897,7 +986,96 @@ function SnapshotStrip({
 // modelled data source for either (masked-by-absence discipline extended to the
 // attention feed), so they are OMITTED, never mocked.
 
-type AttnTone = 'blue' | 'red' | 'amber';
+export type AttnTone = 'blue' | 'red' | 'amber';
+
+// A single grounded attention item — plain data (not a node) so BOTH the
+// page-level rail and the Workspace "Needs attention" section render it
+// identically. `target` is the tab the drill-link opens.
+export interface AttentionItem {
+  readonly key: string;
+  readonly tone: AttnTone;
+  readonly what: string;
+  readonly detail?: string;
+  readonly age?: string;
+  readonly linkLabel: string;
+  readonly target: TabId;
+}
+
+// Grounded-only attention derivation (the ONE source). EAGER requisition-grain
+// rules: offer expiry, over-capacity, client paused/closed. LAZY: pre-start
+// blocked (populated after the Pre-Start tab's per-placement reads return).
+// DELIBERATELY ABSENT — "interviews today" / any "submittal deadline countdown":
+// no modelled source, so OMITTED, never mocked.
+function buildAttentionItems({
+  req,
+  offers,
+  preStartBlocked,
+  canReadOffers,
+  canReadPreStart,
+}: {
+  readonly req: RequisitionView;
+  readonly offers: readonly OfferView[];
+  readonly preStartBlocked: number | null;
+  readonly canReadOffers: boolean;
+  readonly canReadPreStart: boolean;
+}): AttentionItem[] {
+  const items: AttentionItem[] = [];
+
+  if (canReadOffers) {
+    const expiring = offers.filter((o) => isOfferExpiringSoon(o));
+    if (expiring.length > 0) {
+      const soonest = Math.min(...expiring.map((o) => offerDaysLeft(o)));
+      items.push({
+        key: 'offer-expiring',
+        tone: 'amber',
+        what: `${expiring.length} offer${expiring.length === 1 ? '' : 's'} expiring soon`,
+        detail: 'offer window closing',
+        age: soonest <= 0 ? 'overdue' : `${soonest}d left`,
+        linkLabel: 'Offers →',
+        target: 'offers',
+      });
+    }
+  }
+
+  if (req.capacity_balance < 0) {
+    items.push({
+      key: 'over-capacity',
+      tone: 'red',
+      what: `Over capacity by ${-req.capacity_balance}`,
+      detail: 'active placements exceed openings',
+      linkLabel: 'Talent →',
+      target: 'talent',
+    });
+  }
+
+  const clientStatus = req.client_submittal_status ?? null;
+  if (clientStatus === 'paused' || clientStatus === 'closed') {
+    items.push({
+      key: 'client-status',
+      tone: clientStatus === 'closed' ? 'red' : 'amber',
+      what: `Client submittals ${clientStatus}`,
+      detail:
+        req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
+          ? req.client_submittal_reason.replace(/_/g, ' ')
+          : undefined,
+      linkLabel: 'Details →',
+      target: 'overview',
+    });
+  }
+
+  if (canReadPreStart && preStartBlocked !== null && preStartBlocked > 0) {
+    items.push({
+      key: 'prestart-blocked',
+      tone: 'red',
+      what: `${preStartBlocked} pre-start item${preStartBlocked === 1 ? '' : 's'} blocked`,
+      detail: 'blocking requirements unresolved',
+      linkLabel: 'Pre-Start →',
+      target: 'prestart',
+    });
+  }
+
+  return items;
+}
 
 function AttnRow({
   tone,
@@ -944,88 +1122,15 @@ function presentationRole(scopes: readonly string[]): string {
 }
 
 function AttentionRail({
-  req,
-  offers,
-  preStartBlocked,
+  items,
   scopes,
-  canReadOffers,
-  canReadPreStart,
   onNavigate,
 }: {
-  readonly req: RequisitionView;
-  readonly offers: readonly OfferView[];
-  readonly preStartBlocked: number | null;
+  readonly items: readonly AttentionItem[];
   readonly scopes: readonly string[];
-  readonly canReadOffers: boolean;
-  readonly canReadPreStart: boolean;
   readonly onNavigate: (tab: TabId) => void;
 }) {
-  const rows: ReactNode[] = [];
-
-  if (canReadOffers) {
-    const expiring = offers.filter((o) => isOfferExpiringSoon(o));
-    if (expiring.length > 0) {
-      // Age = the soonest remaining offer window (grounded on offer_expires_at).
-      const soonest = Math.min(...expiring.map((o) => offerDaysLeft(o)));
-      rows.push(
-        <AttnRow
-          key="offer-expiring"
-          tone="amber"
-          what={`${expiring.length} offer${expiring.length === 1 ? '' : 's'} expiring soon`}
-          detail="offer window closing"
-          age={soonest <= 0 ? 'overdue' : `${soonest}d left`}
-          linkLabel="Offers →"
-          onClick={() => onNavigate('offers')}
-        />,
-      );
-    }
-  }
-
-  if (req.capacity_balance < 0) {
-    rows.push(
-      <AttnRow
-        key="over-capacity"
-        tone="red"
-        what={`Over capacity by ${-req.capacity_balance}`}
-        detail="active placements exceed openings"
-        linkLabel="Talent →"
-        onClick={() => onNavigate('talent')}
-      />,
-    );
-  }
-
-  const clientStatus = req.client_submittal_status ?? null;
-  if (clientStatus === 'paused' || clientStatus === 'closed') {
-    rows.push(
-      <AttnRow
-        key="client-status"
-        tone={clientStatus === 'closed' ? 'red' : 'amber'}
-        what={`Client submittals ${clientStatus}`}
-        detail={
-          req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
-            ? req.client_submittal_reason.replace(/_/g, ' ')
-            : undefined
-        }
-        linkLabel="Overview →"
-        onClick={() => onNavigate('overview')}
-      />,
-    );
-  }
-
-  if (canReadPreStart && preStartBlocked !== null && preStartBlocked > 0) {
-    rows.push(
-      <AttnRow
-        key="prestart-blocked"
-        tone="red"
-        what={`${preStartBlocked} pre-start item${preStartBlocked === 1 ? '' : 's'} blocked`}
-        detail="blocking requirements unresolved"
-        linkLabel="Pre-Start →"
-        onClick={() => onNavigate('prestart')}
-      />,
-    );
-  }
-
-  if (rows.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <section className="rc-attn" aria-label="Needs attention">
@@ -1033,7 +1138,17 @@ function AttentionRail({
         <b>Your attention</b>
         <small>— as {presentationRole(scopes)}</small>
       </div>
-      {rows}
+      {items.map((item) => (
+        <AttnRow
+          key={item.key}
+          tone={item.tone}
+          what={item.what}
+          detail={item.detail}
+          age={item.age}
+          linkLabel={item.linkLabel}
+          onClick={() => onNavigate(item.target)}
+        />
+      ))}
     </section>
   );
 }

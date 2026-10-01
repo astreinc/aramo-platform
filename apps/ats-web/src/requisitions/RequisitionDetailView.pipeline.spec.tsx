@@ -146,26 +146,35 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
 
   it('NO MetaStrip (prototype removal); header line 2 carries location + type; Capacity is a snapshot card', async () => {
     mockApi();
-    mountDetail();
+    const { container } = mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
     // The old MetaStrip is gone — its labels no longer render.
     expect(screen.queryByText('Max rate')).toBeNull();
     expect(screen.queryByText('Opened')).toBeNull();
     expect(screen.queryByText('1 of 3')).toBeNull();
-    // The data moved to the header line 2 (as " · {value}" clauses).
-    expect(screen.getByText(/Austin, TX/)).toBeInTheDocument();
-    expect(screen.getByText(/· C2H/)).toBeInTheDocument();
+    // The data moved to the header line 2 (as " · {value}" clauses). Scope to the
+    // header — the Workspace rail's "Requisition context" also echoes location.
+    const head = container.querySelector('.rc-dhead');
+    if (head === null) throw new Error('missing detail header');
+    expect(within(head).getByText(/Austin, TX/)).toBeInTheDocument();
+    expect(within(head).getByText(/· C2H/)).toBeInTheDocument();
     // Capacity is a derived snapshot card (never a status).
-    expect(screen.getByText('Capacity')).toBeInTheDocument();
-    expect(screen.getByText('1/3 filled')).toBeInTheDocument();
+    const snap = container.querySelector('.rc-snap');
+    if (snap === null) throw new Error('missing snapshot strip');
+    expect(within(snap).getByText('Capacity')).toBeInTheDocument();
+    expect(within(snap).getByText('1/3 filled')).toBeInTheDocument();
   });
 
   it('§0: no owner name is shown on the detail header (ownership not modeled)', async () => {
     mockApi();
-    mountDetail();
+    const { container } = mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    // §0 — the recruiter/owner name is never surfaced as an owner in the header.
-    expect(screen.queryByText('Priya Recruiter')).toBeNull();
+    // §0 — the recruiter/owner name is never surfaced as an OWNER in the header.
+    // (The Workspace rail's "Requisition context" does show the Recruiter — the
+    // only modeled ownership role — so this assertion is header-scoped.)
+    const head = container.querySelector('.rc-dhead');
+    if (head === null) throw new Error('missing detail header');
+    expect(within(head).queryByText('Priya Recruiter')).toBeNull();
     // Location still carries the work-arrangement suffix (work_arrangement=remote).
     expect(screen.getByText('· Remote ok')).toBeInTheDocument();
   });
@@ -174,6 +183,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    // Workspace is the default tab now — open the Talent tab to reach the grid.
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     // No inline hot toggle on the journey grid.
     expect(screen.queryByRole('button', { name: /is marked hot|Mark .* as hot/ })).toBeNull();
     // Open the talent row → the side panel owns the HOT toggle.
@@ -200,6 +211,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     // Grid header columns.
     const grid = screen.getByRole('table', { name: 'Talent journey' });
     // Ruling 2 — canonical journey column labels. Email/Phone/RTR added to match
@@ -232,6 +244,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     // Email renders as a mailto link; phone as text.
     const mail = await screen.findByRole('link', { name: 'marcus@example.com' });
     expect(mail).toHaveAttribute('href', 'mailto:marcus@example.com');
@@ -267,6 +280,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
       </ToastProvider>,
     );
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     fireEvent.click(screen.getByRole('button', { name: /Find Talent/ }));
     expect(screen.getByText('Rediscover existing Talent')).toBeInTheDocument();
     expect(screen.getByText('Source new Talent')).toBeInTheDocument();
@@ -330,6 +344,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
       </ToastProvider>,
     );
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     // Option A — the move IS the panel: open Sofia's row, then toggle HOT there.
     fireEvent.click(await screen.findByRole('button', { name: /Sofia Ramos/ }));
     const sofiaHot = await screen.findByRole('button', {
