@@ -47,6 +47,8 @@
     "error-codes:check": "node --import jiti/register ci/scripts/verify-error-codes.ts",
     "orphan-scopes:check": "node --import jiti/register ci/scripts/verify-orphan-scopes.ts",
     "orphan-scopes:self-test": "SELF_TEST=1 node --import jiti/register ci/scripts/verify-orphan-scopes.ts",
+    "api-spec-location:check": "node --import jiti/register ci/scripts/check-api-spec-location.ts",
+    "api-spec-location:self-test": "SELF_TEST=1 node --import jiti/register ci/scripts/check-api-spec-location.ts",
     "dead-error-codes:check": "node --import jiti/register ci/scripts/verify-dead-error-codes.ts",
     "dead-error-codes:self-test": "SELF_TEST=1 node --import jiti/register ci/scripts/verify-dead-error-codes.ts",
     "repo-map:generate": "node --import jiti/register ci/scripts/generate-repo-map.ts",

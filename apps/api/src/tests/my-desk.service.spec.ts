@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MyDeskService } from './my-desk.service.js';
+import { MyDeskService } from '../my-desk/my-desk.service.js';
 import type {
   DeskActorContext,
   DeskAwaitingRow,
@@ -10,7 +10,7 @@ import type {
   DeskRequisitionRow,
   DeskTaskRow,
   MyDeskReadPort,
-} from './my-desk.ports.js';
+} from '../my-desk/my-desk.ports.js';
 
 const TZ = 'America/New_York';
 const NOW = Date.parse('2026-09-29T16:00:00Z'); // Tue Sep 29, midday EDT

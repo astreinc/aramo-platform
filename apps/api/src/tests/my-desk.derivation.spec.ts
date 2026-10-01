@@ -6,8 +6,8 @@ import {
   comparePriorityItems,
   dueBadgeLabel,
   isoDateInTimeZone,
-} from './my-desk.derivation.js';
-import type { DeskPriorityItemView, DeskUrgency } from './dto/my-desk.view.js';
+} from '../my-desk/my-desk.derivation.js';
+import type { DeskPriorityItemView, DeskUrgency } from '../my-desk/dto/my-desk.view.js';
 
 // The app timezone the derivation is proven against. EDT is UTC-4 in September,
 // so instants near midnight UTC fall on the PRIOR civil day locally — the exact
