@@ -445,7 +445,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedAssignment(TENANT_A, reqA1, RECRUITER);
       await seedAssignment(TENANT_A, reqA2, RECRUITER);
 
-      const now = Date.now();
+      // Deterministic app-timezone "today" anchor (same pattern as talent-360 #876). My Desk's
+      // civil-day surfaces — interviews_today and task 'today' urgency — compare calendar DATES in
+      // the app timezone (ARAMO_APP_TIME_ZONE, default America/New_York): an item is "today" iff its
+      // instant's date in that zone equals now's date in that zone. A raw `Date.now()` base let the
+      // relative seeds below (interview whenMs: now, task dueMs: now) straddle app-tz midnight when the
+      // suite runs late-evening app-tz, flaking those counts. Noon UTC on today's app-tz date is
+      // 07:00–08:00 app-tz — ALWAYS the same app-tz calendar day as now, at any wall-clock hour.
+      // Test determinism only; production logic is unchanged.
+      const APP_TIME_ZONE = process.env['ARAMO_APP_TIME_ZONE'] ?? 'America/New_York';
+      const now = Date.parse(
+        `${new Intl.DateTimeFormat('en-CA', {
+          timeZone: APP_TIME_ZONE,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date())}T12:00:00Z`,
+      );
       // --- Priority queue: tasks ---
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'requisition', owner_id: reqA1, title: 'Send RTR reminder', type: 'follow_up', dueMs: now - 3 * DAY }); // overdue
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'talent_record', owner_id: tal['kevin'], title: 'Log qualifying call', type: 'call', dueMs: now }); // today + enriched (Kevin on 1 pipeline)
