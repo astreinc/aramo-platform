@@ -79,7 +79,17 @@ interface MockOpts {
   readonly submittal?: Record<string, unknown> | null;
   readonly preStart?: Record<string, unknown>;
   readonly profile?: Record<string, unknown>;
+  // Workspace reads — the Talent Board projection + the interview calendar window.
+  readonly board?: Record<string, unknown>;
+  readonly interviews?: Record<string, unknown>;
 }
+
+const EMPTY_BOARD = {
+  requisition_id: 'req-1',
+  columns: [],
+  closed: { total: 0, by_reason: [] },
+  total_active: 0,
+};
 
 // Installs the app fetch and returns the captured GET urls (for fan-out proofs).
 function mockApi(opts: MockOpts = {}): { urls: string[] } {
@@ -95,6 +105,12 @@ function mockApi(opts: MockOpts = {}): { urls: string[] } {
     // Profile read must be matched BEFORE the generic requisition GET.
     if (url.includes('/v1/requisitions/req-1/profile')) {
       return json(opts.profile ?? { has_profile: false });
+    }
+    // Workspace Talent-Board + interview-calendar reads (requisition-grain) — must
+    // also be matched BEFORE the generic requisition GET.
+    if (url.includes('/talent-board')) return json(opts.board ?? EMPTY_BOARD);
+    if (url.includes('/v1/interviews')) {
+      return json(opts.interviews ?? { interviews: [], window: { from: '', to: '' } });
     }
     if (url.includes('/v1/requisitions/req-1')) return json(opts.req ?? reqView());
     if (url.includes('/v1/pipelines')) return json({ items: opts.pipelines ?? [] });
@@ -149,42 +165,43 @@ function selectedTabName(): string | null {
   return tabs.find((t) => t.getAttribute('aria-selected') === 'true')?.textContent ?? null;
 }
 
-describe('RequisitionDetailView workspace — scope-driven default order', () => {
+describe('RequisitionDetailView workspace — Workspace is the default tab for everyone', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('commercials:approve → default Commercial', async () => {
+  // The scope-driven emphasis is gone: Workspace opens first for EVERY actor
+  // (clamped to the available set — Workspace is always available). The per-tab
+  // scope gates are unchanged, so each test ALSO proves the scope-specific tab
+  // is available/gated.
+
+  it('commercials:approve → default Workspace; Commercial tab available', async () => {
     mount(['requisition:read', 'assignment:commercials:read', 'assignment:commercials:approve']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    await waitFor(() => expect(selectedTabName()).toMatch(/Commercial/));
+    await waitFor(() => expect(selectedTabName()).toMatch(/Workspace/));
+    expect(screen.getByRole('tab', { name: /Commercial/ })).toBeTruthy();
   });
 
-  it('pipeline:read → default Talent', async () => {
+  it('pipeline:read → default Workspace; Talent tab available', async () => {
     mount(['requisition:read', 'pipeline:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
+    await waitFor(() => expect(selectedTabName()).toMatch(/Workspace/));
+    expect(screen.getByRole('tab', { name: /Talent/ })).toBeTruthy();
   });
 
-  it('pipeline:read + commercials:approve → default Talent (pipeline wins)', async () => {
-    mount([
-      'requisition:read',
-      'pipeline:read',
-      'assignment:commercials:read',
-      'assignment:commercials:approve',
-    ]);
-    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    await waitFor(() => expect(selectedTabName()).toMatch(/Talent/));
-  });
-
-  it('assignment:extend (+placement:read) → default Assignments', async () => {
+  it('assignment:extend (+placement:read) → default Workspace; Assignments tab available', async () => {
     mount(['requisition:read', 'assignment:extend', 'placement:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    await waitFor(() => expect(selectedTabName()).toMatch(/Assignments/));
+    await waitFor(() => expect(selectedTabName()).toMatch(/Workspace/));
+    expect(screen.getByRole('tab', { name: /Assignments/ })).toBeTruthy();
   });
 
-  it('no emphasis scope → default Overview', async () => {
+  it('a plain reader (no downstream scope) → default Workspace; only Details/Activity/Attachments', async () => {
     mount(['requisition:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    await waitFor(() => expect(selectedTabName()).toMatch(/Overview/));
+    await waitFor(() => expect(selectedTabName()).toMatch(/Workspace/));
+    expect(screen.getByRole('tab', { name: 'Details' })).toBeTruthy();
+    // Scope-gated tabs stay hidden without their read scope.
+    expect(screen.queryByRole('tab', { name: /Talent/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Commercial/ })).toBeNull();
   });
 });
 
@@ -326,10 +343,14 @@ describe('RequisitionDetailView workspace — masked-by-absence', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('financial-planning fields render only when PRESENT in the payload (omitted, not nulled)', async () => {
+    // The form lives in the Details tab (Workspace is now the default), so open
+    // Details before asserting on the form's financial section.
     // Absent → no Financial planning section.
-    mount(['requisition:read']);
+    const first = mount(['requisition:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(screen.queryByText('Financial planning')).toBeNull();
+    first.unmount();
     vi.restoreAllMocks();
 
     // Present (un-masked actor) → the section + a financial field render.
@@ -337,6 +358,7 @@ describe('RequisitionDetailView workspace — masked-by-absence', () => {
       req: reqView({ target_margin_percent: '32.0', max_pay_rate: '95.00' }),
     });
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(await screen.findByText('Financial planning')).toBeInTheDocument();
   });
 });
@@ -464,6 +486,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
       </ToastProvider>,
     );
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    // Workspace is the default tab — open the Talent tab to reach the journey grid.
+    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
 
     const submittalCalls = () => cap.urls.filter((u) => u.includes('/v1/submittals')).length;
     const preStartCalls = () =>
@@ -487,6 +511,120 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     await screen.findByRole('list', { name: 'Talent journey' }); // panel reopened
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
+  });
+});
+
+describe('RequisitionDetailView workspace — Workspace panel sections', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const PIPELINE_TAL1 = [
+    {
+      id: 'pp-1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1',
+      requisition_id: 'req-1', status: 'qualifying',
+      created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
+    },
+  ];
+
+  // A Board card hand-mirroring the backend projection DTO (state enums only).
+  function card(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      talent_record_id: 'tal-1', pipeline_id: 'pp-1', column: 'qualified',
+      owner: 'pipeline', source_object_id: 'pp-1', owner_state: 'qualified',
+      resume: { resume_edition_id: null, source: 'none', locked: false },
+      rtr_state: 'not_started',
+      readiness: {
+        requisition_state: 'open', requisition_reason: null,
+        blockers: ['rtr_not_executed'], band: 'needs_action',
+      },
+      days_in_stage: 4, stage_entered_at: '2026-08-01T00:00:00Z',
+      assigned_recruiter_user_id: null,
+      next_actions: [
+        {
+          key: 'pipeline.advance', label: 'Advance stage', owner: 'pipeline',
+          command_route: '/x', required_scope: 'pipeline:change-status',
+        },
+      ],
+      handoff: false,
+      ...extra,
+    };
+  }
+
+  function boardWith(columns: unknown[]): Record<string, unknown> {
+    return {
+      requisition_id: 'req-1', total_active: 1,
+      closed: { total: 0, by_reason: [] }, columns,
+    };
+  }
+
+  it('is the default tab, labels the record form tab "Details" (not "Overview"), and renders all six sections', async () => {
+    mount(['requisition:read']);
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    await waitFor(() => expect(selectedTabName()).toMatch(/Workspace/));
+    expect(screen.getByRole('tab', { name: 'Details' })).toBeTruthy();
+    expect(screen.queryByRole('tab', { name: 'Overview' })).toBeNull();
+    for (const name of [
+      'Needs attention', 'Pipeline', 'Talent in play',
+      'Requisition context', 'Upcoming & tasks', 'Recent activity',
+    ]) {
+      expect(screen.getByRole('heading', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('Pipeline counts come from the Talent Board projection', async () => {
+    mount(['requisition:read', 'pipeline:read'], {
+      board: boardWith([
+        { key: 'qualified', owner: 'pipeline', count: 3, cards: [] },
+        { key: 'submitted', owner: 'submittal', count: 2, cards: [] },
+      ]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    const qualified = await screen.findByText('Qualified');
+    expect(qualified.closest('.rc-filelist__row')?.textContent).toContain('3');
+    expect(screen.getByText('Submitted').closest('.rc-filelist__row')?.textContent).toContain('2');
+  });
+
+  it('Talent in play renders a row with the Board stage + grounded checks (aging / readiness / blocker)', async () => {
+    mount(['requisition:read', 'pipeline:read'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card()] }]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    const nameEl = await screen.findByText('Marcus Adeyemi');
+    const row = nameEl.closest('.rc-filelist__row');
+    if (row === null) throw new Error('no talent-in-play row');
+    expect(within(row).getByText('Qualified')).toBeInTheDocument(); // authoritative stage
+    expect(row.textContent).toContain('4d in stage');
+    expect(row.textContent).toContain('Needs action');
+    expect(row.textContent).toContain('Right to represent not executed'); // blocker label
+  });
+
+  it('a next-action CTA is hidden from an actor lacking its required scope, shown to one who holds it', async () => {
+    const board = boardWith([{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card()] }]);
+    // Restricted — pipeline:read only (can SEE the Board, cannot advance).
+    const restricted = mount(['requisition:read', 'pipeline:read'], { pipelines: PIPELINE_TAL1, board });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    await screen.findByText('Marcus Adeyemi');
+    expect(screen.queryByRole('button', { name: 'Advance stage' })).toBeNull();
+    restricted.unmount();
+    vi.restoreAllMocks();
+
+    // Authorised — + pipeline:change-status → the CTA renders.
+    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status'], {
+      pipelines: PIPELINE_TAL1, board,
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    await screen.findByText('Marcus Adeyemi');
+    expect(await screen.findByRole('button', { name: 'Advance stage' })).toBeInTheDocument();
+  });
+
+  it('renders useful empty states when there is no talent / attention / interviews / activity', async () => {
+    mount(['requisition:read', 'pipeline:read']); // empty board + empty reads (defaults)
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    expect(await screen.findByText('No talent in play yet.')).toBeInTheDocument();
+    expect(screen.getByText('No talent in the pipeline yet.')).toBeInTheDocument();
+    expect(screen.getByText('Nothing needs attention right now.')).toBeInTheDocument();
+    expect(screen.getByText('None scheduled.')).toBeInTheDocument();
+    expect(screen.getByText('No activity yet.')).toBeInTheDocument();
   });
 });
 

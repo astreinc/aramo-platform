@@ -37,12 +37,13 @@ vi.mock('./RequirementSkills', () => ({
   RequirementSkills: () => <div data-testid="skills-panel" />,
 }));
 
-// The cockpit (inline-edit sections + workbench) lives in the Overview tab
-// (the scope-driven default for a requisition:read/edit actor with no pipeline/
-// commercial/assignment scopes). Select it explicitly before asserting.
+// The cockpit (inline-edit sections + workbench) lives in the Details tab (the
+// requisition record form, formerly labelled "Overview" — the internal TabId is
+// still 'overview'). Workspace is now the default tab, so select Details
+// explicitly before asserting.
 async function openDetails() {
   await screen.findByRole('heading', { name: /Senior Engineer/ });
-  fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+  fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
 }
 
 function render(ui: ReactElement) {

@@ -122,6 +122,46 @@ describe('RequisitionDetailView — named lifecycle actions (L1-E)', () => {
   });
 });
 
+describe('RequisitionDetailView — Edit button least-visibility (FIX 1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  // A — requisition:read only → no Edit affordance (anchored on the loaded page).
+  it('requisition:read only → Edit button is ABSENT', async () => {
+    mockApi('open');
+    mount('open', ['requisition:read']);
+    await screen.findByRole('link', { name: 'Northwind Robotics' });
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Editing' })).toBeNull();
+  });
+
+  // B — requisition:edit → Edit renders.
+  it('requisition:edit → Edit button is PRESENT', async () => {
+    mockApi('open');
+    mount('open', ['requisition:read', 'requisition:edit']);
+    expect(await screen.findByRole('button', { name: 'Edit' })).toBeTruthy();
+  });
+
+  // C — requisition:edit:status ONLY authorises lifecycle actions, NOT the
+  // field-edit UI: full Edit absent, named status actions still render.
+  it('requisition:edit:status only → full Edit ABSENT, lifecycle actions remain', async () => {
+    mockApi('open');
+    mount('open', ['requisition:read', 'requisition:edit:status']);
+    expect(await screen.findByRole('button', { name: 'Close submittals' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Put on hold' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Editing' })).toBeNull();
+  });
+
+  // D — requisition:approve without requisition:edit → full Edit absent (approval
+  // authority is not edit authority).
+  it('requisition:approve only (no requisition:edit) → full Edit ABSENT', async () => {
+    mockApi('pending_approval', { submitterId: 'someone-else' });
+    mount('pending_approval', ['requisition:read', 'requisition:approve']);
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+});
+
 describe('RequisitionDetailView — approval + segregation of duties (L1-E)', () => {
   afterEach(() => vi.restoreAllMocks());
 
