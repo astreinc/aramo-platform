@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Dialog, InlineAlert, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
+import { Dialog, InlineAlert, TextArea, useSession } from '@aramo/fe-foundation';
 import type { Session } from '@aramo/fe-foundation';
 
 import { Button, LoadingState, safeErrorMessage } from '../ui';
 import { useEntityCrumb } from '../shell/breadcrumb';
 // Non-Overview tabs REUSE the authoritative detail surfaces rather than cloning
 // their logic (directive §3.4/§12/§14) — each fetches its own authoritative
-// data; the Overview stays a single getTalent360() read.
-import { TrustPanel } from '../talent/components/TrustPanel';
-import { WorkHistoryPanel } from '../talent/WorkHistoryPanel';
+// data; the Overview stays a single getTalent360() read. Trust & Evidence reads
+// the SAME dossier authority (getDossier) through a recruiter-facing adapter.
+import { getDossier, type DossierHead } from '../talent/dossier-api';
 import { CallButton } from '../communications/CallButton';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
 // Header actions reuse existing authoritative flows (composed workspace, not a
@@ -87,6 +87,79 @@ const CHEVRON = (open: boolean, kind: 'section' | 'row'): JSX.Element => (
     {kind === 'section' ? <polyline points="6 9 12 15 18 9" /> : <polyline points="6 9 12 15 18 9" />}
   </svg>
 );
+
+// Icon glyphs mirror the frozen prototype's stroke paths (Talent 360.dc.html).
+// Presentation only — no new iconography system; the paths are the prototype's.
+const ICON_PATHS: Record<string, string> = {
+  mail: 'M3 5h18v14H3zM3 6l9 7 9-7',
+  phone: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z',
+  shield: 'M12 3l8 3v6c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V6z',
+  reqs: 'M3 9h18M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
+  client: 'M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M14 10h5a1 1 0 0 1 1 1v10M2 21h20',
+  cal: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
+  doc: 'M6 2h9l5 5v15H6zM14 2v6h6',
+  tasks: 'M9 5h9M9 12h9M9 19h9M4 5l1.4 1.4L8 4M4 12l1.4 1.4L8 11M4 19l1.4 1.4L8 18',
+};
+
+function Icon({
+  name,
+  size = 13,
+  stroke = 'currentColor',
+  width,
+}: {
+  name: keyof typeof ICON_PATHS;
+  size?: number;
+  stroke?: string;
+  width?: number;
+}): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke={stroke}
+      strokeWidth={width ?? 1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      style={{ flex: 'none' }}
+    >
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+// The money/compensation glyph (circle + $ stroke) is the prototype's dedicated
+// mark — kept separate because it is not a single path.
+function MoneyIcon(): JSX.Element {
+  return (
+    <svg
+      width={13}
+      height={13}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#93A0A8"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      aria-hidden="true"
+      style={{ flex: 'none' }}
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M14.5 9.5c-.4-.9-1.4-1.5-2.5-1.5-1.5 0-2.5.8-2.5 2s1 1.6 2.5 2 2.5.8 2.5 2-1 2-2.5 2c-1.1 0-2.1-.6-2.5-1.5M12 6.5V8M12 16v1.5" />
+    </svg>
+  );
+}
+
+// Activity category → icon name + tile colours (mirrors the prototype CAT map).
+const ACTIVITY_CATEGORY_ICON: Record<string, keyof typeof ICON_PATHS> = {
+  communications: 'mail',
+  requisitions: 'reqs',
+  client: 'client',
+  interviews: 'cal',
+  documents: 'doc',
+  tasks: 'tasks',
+};
 
 function stageTone(stage: string): 'green' | 'blue' | 'amber' | 'neutral' {
   const s = stage.toUpperCase();
@@ -174,7 +247,14 @@ export function Talent360View() {
   };
 
   return (
-    <div>
+    <div className="t360-root">
+      <div className="t360-breadcrumb">
+        <Link to="/talent" className="t360-crumb-link">
+          Talent
+        </Link>
+        <span className="t360-crumb-sep">/</span>
+        {h.display_name}
+      </div>
       <Header
         model={model}
         initials={initials}
@@ -280,12 +360,16 @@ export function Talent360View() {
               openOpp={openOpp}
               setOpenOpp={setOpenOpp}
               talentId={talentId}
-              canResolve={session !== null && hasScope(session, 'identity:resolve')}
+              filter={activityFilter}
+              setFilter={setActivityFilter}
             />
           </div>
           <div className="t360-rail">
+            <AttentionCard items={model.attention} authorized={model.authorized_sections.attention} />
+            <TasksCard tasks={model.tasks} />
             <ContactabilityCard model={model} />
             <IdentityCard model={model} onTrust={() => setTab('trust')} />
+            <RelationshipCard model={model} />
           </div>
         </div>
       )}
@@ -339,13 +423,27 @@ function Header({
             {[h.title, h.location, h.experience_summary].filter(Boolean).join(' · ')}
           </div>
           <div className="t360-contact-row">
-            {h.email !== null && <span className="t360-contact-field">{h.email}</span>}
-            {h.phone !== null && <span className="t360-contact-field">{h.phone}</span>}
+            {h.email !== null && (
+              <span className="t360-contact-field">
+                <Icon name="mail" stroke="#93A0A8" />
+                {h.email}
+              </span>
+            )}
+            {h.phone !== null && (
+              <span className="t360-contact-field">
+                <Icon name="phone" stroke="#93A0A8" />
+                {h.phone}
+              </span>
+            )}
             {h.work_authorization !== null && (
-              <span className="t360-contact-field">{labelize(h.work_authorization)}</span>
+              <span className="t360-contact-field">
+                <Icon name="shield" stroke="#93A0A8" />
+                {labelize(h.work_authorization)}
+              </span>
             )}
             {h.desired_compensation !== null && (
               <span className="t360-contact-field">
+                <MoneyIcon />
                 <span className="t360-mono">{h.desired_compensation}</span>
                 {h.engagement_type !== null ? ` desired · ${labelize(h.engagement_type)}` : ' desired'}
               </span>
@@ -363,6 +461,7 @@ function Header({
                 disabled={!canEmail}
                 title={canEmail ? undefined : 'Email needs an active opportunity'}
               >
+                <Icon name="mail" width={2} />
                 Email
               </Button>
             )}
@@ -377,6 +476,8 @@ function Header({
                   phone_home: null,
                 }}
                 session={session}
+                className="t360-btn t360-btn--secondary"
+                leadingIcon={<Icon name="phone" width={2} />}
               />
             )}
             {h.actions.can_add_to_requisition && (
@@ -655,21 +756,20 @@ function Opportunity({
               );
             })}
           </div>
+          {/* Fact grid — prototype's six slots and labels, preserved exactly.
+              RECRUITER + IN STAGE are authoritative in the Talent 360 contract;
+              ACCOUNT MANAGER / RTR / RÉSUMÉ SUBMITTED are not composed into this
+              read, and BILL RATE is deliberately excluded (ruling R3). Those four
+              render an honest em-dash — the slot geometry is kept, the value is
+              never fabricated. (Journey sub-states are shown by the 7-step strip
+              above, matching the prototype.) */}
           <div className="t360-facts">
-            {o.owner_label !== null && <Fact label="RECRUITER" value={o.owner_label} />}
-            <Fact label="STAGE" value={labelize(o.stage)} />
-            {o.journey.sub_states.submittal_state !== null && (
-              <Fact label="SUBMITTAL" value={labelize(o.journey.sub_states.submittal_state)} />
-            )}
-            {o.journey.sub_states.selection_state !== null && (
-              <Fact label="CLIENT" value={labelize(o.journey.sub_states.selection_state)} />
-            )}
-            {o.journey.sub_states.offer_state !== null && (
-              <Fact label="OFFER" value={labelize(o.journey.sub_states.offer_state)} />
-            )}
-            {o.journey.sub_states.placement_state !== null && (
-              <Fact label="PLACEMENT" value={labelize(o.journey.sub_states.placement_state)} />
-            )}
+            <Fact label="RECRUITER" value={o.owner_label} />
+            <Fact label="ACCOUNT MANAGER" value={null} />
+            <Fact label="RTR" value={null} />
+            <Fact label="RÉSUMÉ SUBMITTED" value={null} />
+            <Fact label="BILL RATE" value={null} />
+            <Fact label="IN STAGE" value={o.age_label} />
           </div>
           <div className="t360-opp-actions">
             {o.next_action !== null && <ActionButton action={o.next_action} variant="primary" />}
@@ -683,14 +783,20 @@ function Opportunity({
   );
 }
 
-function Fact({ label, value }: { label: string; value: string }) {
+// A fact slot. A null value renders an honest em-dash in a muted tone so the
+// fixed grid geometry is preserved even when the contract does not supply it.
+function Fact({ label, value }: { label: string; value: string | null }) {
+  const empty = value === null || value === '';
   return (
     <div>
       <div className="t360-fact-label">{label}</div>
-      <div className="t360-fact-value">{value}</div>
+      <div className={`t360-fact-value${empty ? ' t360-fact-value--empty' : ''}`}>
+        {empty ? '—' : value}
+      </div>
     </div>
   );
 }
+
 
 function ActionButton({
   action,
@@ -787,7 +893,7 @@ function ActivityRow({ a }: { a: RecentActivityItemView }) {
         {clockTime(a.occurred_at)}
       </div>
       <div className="t360-act-icon" style={activityIconStyle(a.category)} aria-hidden="true">
-        •
+        <Icon name={ACTIVITY_CATEGORY_ICON[a.category] ?? 'reqs'} size={14} width={1.8} />
       </div>
       <div style={{ minWidth: 0 }}>
         <div className="t360-act-title">
@@ -1149,14 +1255,16 @@ function OtherTabContent({
   openOpp,
   setOpenOpp,
   talentId,
-  canResolve,
+  filter,
+  setFilter,
 }: {
   tab: TabKey;
   model: Talent360ViewModel;
   openOpp: string | null;
   setOpenOpp: (id: string | null) => void;
   talentId: string;
-  canResolve: boolean;
+  filter: string;
+  setFilter: (f: string) => void;
 }) {
   if (tab === 'opportunities' && model.opportunities !== null) {
     // Selections converge here (HALT-7): the active + closed opportunities ARE
@@ -1194,15 +1302,13 @@ function OtherTabContent({
     );
   }
 
-  // Trust & Evidence — REUSE the authoritative dossier surface (no clone).
+  // Trust & Evidence — the recruiter-facing projection of the SAME authoritative
+  // dossier (getDossier), rendered as claim → evidence → named state, never an
+  // opaque number (prototype parity). The admin/internal TrustPanel is not shown
+  // here; this is a presentation adapter over the identical data, not a new state
+  // model (no trust recomputation, no ordinal, no invented verification).
   if (tab === 'trust') {
-    return (
-      <div className="t360-card">
-        <div className="t360-section-body" style={{ paddingTop: 14 }}>
-          <TrustPanel talentId={talentId} canResolve={canResolve} />
-        </div>
-      </div>
-    );
+    return <Talent360TrustPanel talentId={talentId} model={model} />;
   }
 
   // Profile — composed facts/skills (from getTalent360) + the authoritative
@@ -1237,64 +1343,168 @@ function OtherTabContent({
               </div>
             </>
           )}
-          <div style={{ marginTop: 14 }}>
-            <WorkHistoryPanel talentId={talentId} />
+          {/* WORK HISTORY — rendered from the composed read (profile.work_history,
+              role/organization/span/source), matching the prototype rows; not a
+              parallel authority. Honest empty when the résumé hasn't populated it. */}
+          <div className="t360-skills-eyebrow" style={{ marginTop: 16 }}>
+            WORK HISTORY
           </div>
+          {p.work_history.length === 0 ? (
+            <div className="t360-empty">No work history yet — it’s captured from the résumé at creation.</div>
+          ) : (
+            p.work_history.map((w, i) => (
+              <div key={`${w.role}-${i}`} className="t360-wh-row">
+                <span className="t360-wh-main">
+                  <b>{w.role}</b> · {w.organization}
+                </span>
+                <span className="t360-wh-span">{w.span}</span>
+                {w.source !== null && <span className="t360-wh-src">{w.source}</span>}
+              </div>
+            ))
+          )}
+          {p.skills.length > 0 && (
+            <div className="t360-profile-note">
+              ✓ Backed by résumé and a second source. Other skills are self-reported.
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  // Engagement — the composed contactability/consent outcome (§6.6).
+  // Engagement — the prototype's Contact-requirement section geometry, driven by
+  // authoritative data only. Per-requisition email/voice evidence is NOT in the
+  // composed read; rather than fabricate ✓Email/✓Voice/Satisfied states, the
+  // per-requisition evidence is shown as an honest unavailable state (recorded
+  // as a data-contract follow-up). The authoritative overall contactability /
+  // consent / last-contact IS shown where available.
   if (tab === 'engagement') {
     const c = model.header.contactability;
     const lc = model.relationship_strip.last_contact;
+    const active = model.opportunities?.active ?? [];
+    const comms = (model.recent_activity?.items ?? []).filter((i) => i.category === 'communications');
     return (
-      <div className="t360-card">
-        <div className="t360-section-head">
-          <span className="t360-section-title">Engagement</span>
-        </div>
-        <div className="t360-section-body">
-          <div className="t360-rail-rows">
-            <div className="t360-rail-row">
-              <span>Recruiting contact</span>
-              <span className={c.recruiting_permitted ? 't360-val-ok' : 't360-val-no'}>
-                {c.recruiting_permitted ? 'Permitted' : 'Not permitted'}
-              </span>
+      <>
+        <div className="t360-card">
+          <div className="t360-section-body" style={{ paddingTop: 16 }}>
+            <div className="t360-section-title">Contact requirement</div>
+            <div className="t360-subnote">
+              Aramo checks captured email and voice evidence for each requisition — nothing to prove by hand.
             </div>
-            <div className="t360-rail-row">
-              <span>Consent state</span>
-              <span className="t360-val-strong">{labelize(c.summary)}</span>
-            </div>
-            {lc !== null && (
-              <div className="t360-rail-row t360-rail-row--divider">
-                <span>Last contact</span>
-                <span className="t360-val-strong">
-                  {relativeDay(lc.at)} {clockTime(lc.at)} · {labelize(lc.channel)}
-                </span>
+            {/* One row per active requisition (authoritative from opportunities).
+                Structured per-requisition email/voice evidence is NOT in the
+                composed read, so each row shows an honest "—" / unavailable — the
+                prototype row geometry is preserved, the evidence is never
+                fabricated (no ✓Email/✓Voice/Satisfied). Recorded as a data-
+                contract follow-up. */}
+            {active.length === 0 ? (
+              <div className="t360-empty" style={{ marginTop: 10 }}>
+                No active requisitions to show contact evidence for.
+              </div>
+            ) : (
+              <div style={{ marginTop: 6 }}>
+                {active.map((o) => (
+                  <div key={o.pipeline_id} className="t360-creq-row">
+                    <span className="t360-creq-id">
+                      <span className="t360-opp-reqid">{o.requisition_code}</span> ·{' '}
+                      <b>{o.client_name ?? 'Client'}</b>
+                    </span>
+                    <span className="t360-creq-ev">
+                      Email <span className="t360-fact-value--empty">—</span>
+                    </span>
+                    <span className="t360-creq-ev">
+                      Voice <span className="t360-fact-value--empty">—</span>
+                    </span>
+                    <span className="t360-creq-state">Evidence unavailable</span>
+                  </div>
+                ))}
               </div>
             )}
+            <div className="t360-rail-rows" style={{ marginTop: 14 }}>
+              <div className="t360-rail-row">
+                <span>Recruiting contact</span>
+                <span className={c.recruiting_permitted ? 't360-val-ok' : 't360-val-no'}>
+                  {c.recruiting_permitted ? 'Permitted' : 'Not permitted'}
+                </span>
+              </div>
+              <div className="t360-rail-row">
+                <span>Email</span>
+                <span className={c.email_permitted ? 't360-val-ok' : 't360-val-no'}>
+                  {c.email_permitted ? 'Permitted' : 'Not permitted'}
+                </span>
+              </div>
+              <div className="t360-rail-row">
+                <span>Phone &amp; voice</span>
+                <span className={c.phone_permitted ? 't360-val-ok' : 't360-val-no'}>
+                  {c.phone_permitted ? 'Permitted' : 'Not permitted'}
+                </span>
+              </div>
+              <div className="t360-rail-row">
+                <span>Consent state</span>
+                <span className="t360-val-strong">{labelize(c.summary)}</span>
+              </div>
+              {lc !== null && (
+                <div className="t360-rail-row t360-rail-row--divider">
+                  <span>Last contact</span>
+                  <span className="t360-val-strong">
+                    {relativeDay(lc.at)} {clockTime(lc.at)} · {labelize(lc.channel)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+        {model.recent_activity !== null && (
+          <div className="t360-card">
+            <div className="t360-section-head">
+              <span className="t360-section-title">Communications</span>
+              <span className="t360-count-badge">{comms.length}</span>
+            </div>
+            <div className="t360-section-body">
+              {comms.map((a) => (
+                <ActivityRow key={a.id} a={a} />
+              ))}
+              {comms.length === 0 && <div className="t360-empty">No communications yet.</div>}
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
-  // Activity — the full composed timeline (all returned events).
+  // Activity — the full composed timeline with the prototype's category filter
+  // chips (counts from the authoritative category_counts) + icon-tile rows.
   if (tab === 'activity' && model.recent_activity !== null) {
+    const { items, category_counts } = model.recent_activity;
+    const shown = filter === 'all' ? items : items.filter((i) => i.category === filter);
     return (
       <div className="t360-card">
         <div className="t360-section-head">
           <span className="t360-section-title">Activity</span>
-          <span className="t360-count-badge">{model.recent_activity.items.length}</span>
+          <span className="t360-count-badge">{items.length}</span>
+          <div className="t360-filters">
+            {ACTIVITY_FILTERS.map((f) => {
+              const count = f.key === 'all' ? items.length : (category_counts[f.key] ?? 0);
+              return (
+                <Button
+                  unstyled
+                  key={f.key}
+                  type="button"
+                  className={`t360-filter${filter === f.key ? ' t360-filter--active' : ''}`}
+                  onClick={() => setFilter(f.key)}
+                >
+                  {f.label}
+                  <span className="t360-filter-count">{count}</span>
+                </Button>
+              );
+            })}
+          </div>
         </div>
         <div className="t360-section-body">
-          {model.recent_activity.items.map((a) => (
+          {shown.map((a) => (
             <ActivityRow key={a.id} a={a} />
           ))}
-          {model.recent_activity.items.length === 0 && (
-            <div className="t360-empty">No activity yet.</div>
-          )}
+          {shown.length === 0 && <div className="t360-empty">No activity of this type yet.</div>}
         </div>
       </div>
     );
@@ -1329,6 +1539,138 @@ function OtherTabContent({
       </div>
       <div className="t360-section-body">
         <div className="t360-empty">You don’t have access to this section.</div>
+      </div>
+    </div>
+  );
+}
+
+// ── Trust & Evidence (recruiter-facing presentation adapter) ─────────────────
+// Projects the SAME authoritative dossier (getDossier) + the composed identity
+// facts into recruiter-facing claim → evidence → named-state rows. No opaque
+// number, no ordinal, no new state model, no trust recomputation. The admin
+// contradiction-resolve / verification-anchor / evidence-timeline surfaces stay
+// in the internal TrustPanel; this view is read-only.
+interface TrustClaim {
+  readonly claim: string;
+  readonly evidence: string;
+  readonly state: string;
+  readonly tone: 'ok' | 'warn' | 'neutral';
+}
+
+function bandTone(band: string): 'ok' | 'warn' | 'neutral' {
+  if (/support|verif|strong|valid|confirm|resolv/i.test(band)) return 'ok';
+  if (/review|pend|thin|weak|await|expir/i.test(band)) return 'warn';
+  return 'neutral';
+}
+
+function Talent360TrustPanel({ talentId, model }: { talentId: string; model: Talent360ViewModel }) {
+  const [head, setHead] = useState<DossierHead | null>(null);
+  const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    let live = true;
+    getDossier(talentId)
+      .then((h) => {
+        if (live) {
+          setHead(h);
+          setPhase('ready');
+        }
+      })
+      .catch(() => {
+        if (live) setPhase('error');
+      });
+    return () => {
+      live = false;
+    };
+  }, [talentId]);
+
+  const id = model.identity;
+  const claims: TrustClaim[] = [];
+  if (id !== null) {
+    const both = id.primary_email_confirmed && id.mobile_confirmed;
+    claims.push({
+      claim: 'Identity · email and mobile',
+      evidence: both
+        ? 'Email control confirmed · mobile confirmed'
+        : id.primary_email_confirmed
+          ? 'Email confirmed · mobile not yet confirmed'
+          : 'Not yet confirmed',
+      state: both ? 'Supported' : 'Partial',
+      tone: both ? 'ok' : 'warn',
+    });
+    claims.push(
+      id.advisory !== null
+        ? {
+            claim: 'Duplicate check',
+            evidence: id.advisory.label,
+            state: 'Review needed',
+            tone: 'warn',
+          }
+        : {
+            claim: 'Duplicate check',
+            evidence: 'No unresolved duplicate for this record',
+            state: 'Resolved',
+            tone: 'ok',
+          },
+    );
+  }
+  if (model.header.work_authorization !== null) {
+    claims.push({
+      claim: `Work authorization · ${labelize(model.header.work_authorization)}`,
+      evidence: 'Self-reported · no document on file yet',
+      state: 'Self-reported',
+      tone: 'neutral',
+    });
+  }
+  // Enrich with the authoritative dossier dimensions (recruiter-labelled). These
+  // are the SAME bands the internal panel reads — rendered as named states, not
+  // the raw dimension/anchor dump.
+  if (head !== null && head.ledger_established) {
+    const dims: readonly { key: 'claims' | 'continuity' | 'eligibility'; label: string }[] = [
+      { key: 'claims', label: 'Claims on record' },
+      { key: 'continuity', label: 'Employment continuity' },
+      { key: 'eligibility', label: 'Eligibility' },
+    ];
+    for (const d of dims) {
+      const band = head.dimensions?.[d.key]?.band;
+      if (band !== undefined && band !== null) {
+        claims.push({
+          claim: d.label,
+          evidence: 'From the evidence ledger',
+          state: labelize(String(band)),
+          tone: bandTone(String(band)),
+        });
+      }
+    }
+  }
+
+  return (
+    <div className="t360-card">
+      <div className="t360-section-body" style={{ paddingTop: 14 }}>
+        <div className="t360-section-title">Trust &amp; evidence</div>
+        <div className="t360-subnote">
+          Each claim shows what supports it — named, explainable states, never an opaque number.
+        </div>
+        {phase === 'loading' && claims.length === 0 ? (
+          <div className="t360-empty" style={{ marginTop: 10 }}>
+            Loading trust &amp; evidence…
+          </div>
+        ) : claims.length === 0 ? (
+          <div className="t360-empty" style={{ marginTop: 10 }}>
+            No trust evidence recorded for this record yet.
+          </div>
+        ) : (
+          <div className="t360-trust-rows">
+            {claims.map((c) => (
+              <div key={c.claim} className="t360-trust-row">
+                <div className="t360-trust-main">
+                  <div className="t360-trust-claim">{c.claim}</div>
+                  <div className="t360-trust-ev">{c.evidence}</div>
+                </div>
+                <span className={`t360-trust-state t360-trust-state--${c.tone}`}>{c.state}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

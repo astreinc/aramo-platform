@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { hasScope, type Session, Button } from '@aramo/fe-foundation';
 
 import { getCommunicationCapabilities, getMyCommunicationProviderIdentity } from './communications-api';
@@ -33,6 +33,10 @@ export interface CallButtonProps {
   readonly capabilitiesFn?: () => Promise<CommunicationCapabilities>;
   readonly providerIdentityFn?: () => Promise<CommunicationProviderIdentity>;
   readonly embedLoader?: ZoomEmbedLoader;
+  /** Optional leading glyph rendered before the label (opt-in; e.g. Talent 360 header parity). */
+  readonly leadingIcon?: ReactNode;
+  /** Optional class override for the button (opt-in; default keeps the rc-comm-call style). */
+  readonly className?: string;
 }
 
 export function CallButton({
@@ -44,6 +48,8 @@ export function CallButton({
   capabilitiesFn = getCommunicationCapabilities,
   providerIdentityFn = getMyCommunicationProviderIdentity,
   embedLoader,
+  leadingIcon,
+  className = 'rc-comm-call',
 }: CallButtonProps) {
   const gated = canCall ?? (session !== null && hasScope(session, COMMUNICATION_VOICE_CALL_SCOPE));
   const [cap, setCap] = useState<CapState>({ kind: 'loading' });
@@ -72,7 +78,8 @@ export function CallButton({
   if (cap.kind === 'available') {
     return (
       <>
-        <Button unstyled type="button" className="rc-comm-call" onClick={() => setOpen(true)}>
+        <Button unstyled type="button" className={className} onClick={() => setOpen(true)}>
+          {leadingIcon}
           Call
         </Button>
         {open ? (
@@ -92,11 +99,12 @@ export function CallButton({
   return (
     <Button unstyled
       type="button"
-      className="rc-comm-call"
+      className={className}
       disabled
       title={cap.kind === 'loading' ? 'Checking calling availability…' : 'Calling isn’t available'}
       aria-busy={cap.kind === 'loading'}
     >
+      {leadingIcon}
       Call
     </Button>
   );
