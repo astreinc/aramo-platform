@@ -11,10 +11,13 @@ import { TalentEmbeddingModule } from '@aramo/talent-embedding';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { RequisitionModule } from '@aramo/requisition';
+import { CompanyModule } from '@aramo/company';
 
 import { EmbeddingProcessingConfig } from './embedding-processing.config.js';
 import { RequisitionEmbeddingLifecycleService } from './requisition-embedding-lifecycle.service.js';
 import { RequisitionEmbeddingWorker } from './requisition-embedding.worker.js';
+import { CompanyEmbeddingLifecycleService } from './company-embedding-lifecycle.service.js';
+import { CompanyEmbeddingWorker } from './company-embedding.worker.js';
 import { SettingsActiveEmbeddingProviderResolver } from './settings-active-embedding-provider.resolver.js';
 import { TalentEmbeddingConsentGate } from './talent-embedding-consent.gate.js';
 import { TALENT_EMBEDDING_CONSENT_PORT } from './talent-embedding-consent.port.js';
@@ -41,6 +44,8 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     TalentEvidenceModule,
     // GS-2B — the requisition schema owns RequisitionEmbeddingRepository (lifecycle + OR-union retrieval).
     RequisitionModule,
+    // GS-2C — the company schema owns CompanyEmbeddingRepository (lifecycle + visibility-set retrieval).
+    CompanyModule,
   ],
   providers: [
     {
@@ -57,6 +62,9 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     // GS-2B requisition embedding (no consent gate — directive ruling 2).
     RequisitionEmbeddingLifecycleService,
     RequisitionEmbeddingWorker,
+    // GS-2C company embedding (no consent gate — companies are not Talent-consent subjects).
+    CompanyEmbeddingLifecycleService,
+    CompanyEmbeddingWorker,
   ],
   exports: [
     EMBEDDING_PORT,
@@ -66,7 +74,9 @@ import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
     TalentEmbeddingReconcileService,
     // GS-2B requisition worker, consumed by the same BullMQ processor tick.
     RequisitionEmbeddingWorker,
-    // Exported so the GS-2A/GS-2B search adapters can dark-gate their semantic legs.
+    // GS-2C company worker, consumed by the same BullMQ processor tick.
+    CompanyEmbeddingWorker,
+    // Exported so the GS-2A/GS-2B/GS-2C search adapters can dark-gate their semantic legs.
     EmbeddingProcessingConfig,
   ],
 })

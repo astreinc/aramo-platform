@@ -15041,6 +15041,26 @@
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-run-link.sh" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
+      "from": "doc/runbooks/pgvector-prod-enablement.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/pgvector-prod-enablement.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/runbooks/pgvector-prod-enablement.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/migrations/20260930130000_gs2b_requisition_embedding/migration.sql"
+    },
+    {
+      "from": "doc/runbooks/pgvector-prod-enablement.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/prisma/migrations/20260930120000_init_talent_embedding/migration.sql"
+    },
+    {
       "from": "doc/runbooks/run-layer.md",
       "status": "unscoped",
       "to": "doc/step4-deploy-substrate-recon.md"
@@ -15334,6 +15354,11 @@
     },
     { "from": "docker-compose.images.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": "docker-compose.prod.yml", "status": "unscoped", "to": "deploy/build-images.sh" },
+    {
+      "from": "docker-compose.prod.yml",
+      "status": "unscoped",
+      "to": "doc/runbooks/pgvector-prod-enablement.md"
+    },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     {

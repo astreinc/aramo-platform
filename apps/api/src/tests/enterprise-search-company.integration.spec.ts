@@ -8,10 +8,20 @@ import {
 } from '@testcontainers/postgresql';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
-import { CompanyRepository, CompanyPrismaService } from '@aramo/company';
+import { CompanyRepository, CompanyPrismaService, CompanyEmbeddingRepository } from '@aramo/company';
+import type { EmbeddingPort } from '@aramo/ai-draft';
 
 import { CompanySearchAdapter } from '../search/adapters/company-search.adapter.js';
+import { EmbeddingProcessingConfig } from '../embedding/embedding-processing.config.js';
 import type { SearchAuthorityContext } from '../search/enterprise-search.port.js';
+
+// GS-1 legs only: the semantic leg is dark (EMBEDDING_PROCESSING_ENABLED unset), so this disabled
+// embedding port is never invoked and GS-1 retrieval stays byte-identical.
+const DISABLED_EMBEDDING = {
+  embed: async () => {
+    throw new Error('semantic leg must be dark in this GS-1 spec');
+  },
+} as unknown as EmbeddingPort;
 
 // Enterprise Search GS-1 — the Company adapter against a REAL Postgres 17. Company is a
 // visibility-set domain (id ∈ visible_client_ids unless see_all_company). Proves:
@@ -106,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       prisma = new CompanyPrismaService(url);
       await prisma.$connect();
-      adapter = new CompanySearchAdapter(new CompanyRepository(prisma));
+      adapter = new CompanySearchAdapter(new CompanyRepository(prisma), DISABLED_EMBEDDING, new CompanyEmbeddingRepository(prisma), new EmbeddingProcessingConfig());
 
       await prisma.company.create({
         data: { id: companyVisible, tenant_id: TENANT_A, name: 'Freddie Mac', description: 'Freddie mortgage secondary market', industry: 'Finance', fee_model: 'contingent' },

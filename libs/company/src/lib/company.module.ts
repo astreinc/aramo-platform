@@ -9,6 +9,7 @@ import { AddressLookupService } from './address-lookup.service.js';
 import { CompanyController } from './company.controller.js';
 import { CompanyDepartmentRepository } from './company-department.repository.js';
 import { CompanyRepository } from './company.repository.js';
+import { CompanyEmbeddingRepository } from './company-embedding.repository.js';
 import { D4aCompanyController } from './d4a.controller.js';
 import { D4aCompanyService } from './d4a.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -53,6 +54,8 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
     D4aCompanyService,
     // Address-Autocomplete v1.0 — provider selection + enablement gate.
     AddressLookupService,
+    // GS-2C — the pgvector Company embedding repository (lifecycle + semantic retrieval).
+    CompanyEmbeddingRepository,
   ],
   exports: [
     CompanyRepository,
@@ -60,6 +63,7 @@ import { UserClientAssignmentRepository } from './user-client-assignment.reposit
     // AUTHZ-D4a — exported for cross-lib consumption + direct testing.
     UserClientAssignmentRepository,
     TeamClientOwnershipRepository,
+    CompanyEmbeddingRepository,
   ],
 })
 export class CompanyModule {}

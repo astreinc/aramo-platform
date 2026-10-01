@@ -10,7 +10,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 import { TalentRecordRepository, TalentRecordPrismaService, ResumeTextService } from '@aramo/talent-record';
 import { RequisitionRepository, RequisitionPrismaService, RequisitionEmbeddingRepository } from '@aramo/requisition';
-import { CompanyRepository, CompanyPrismaService } from '@aramo/company';
+import { CompanyRepository, CompanyPrismaService, CompanyEmbeddingRepository } from '@aramo/company';
 import { ContactRepository, ContactPrismaService } from '@aramo/contact';
 import type { EmbeddingPort } from '@aramo/ai-draft';
 import type { TalentEmbeddingSearchPort } from '@aramo/talent-embedding';
@@ -149,7 +149,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       svc = new EnterpriseSearchReadService([
         new TalentSearchAdapter(talentRepo, DISABLED_EMBEDDING, EMPTY_SEMANTIC, new EmbeddingProcessingConfig()),
         new RequisitionSearchAdapter(reqRepo, DISABLED_EMBEDDING, new RequisitionEmbeddingRepository(reqPrisma), new EmbeddingProcessingConfig()),
-        new CompanySearchAdapter(companyRepo),
+        new CompanySearchAdapter(companyRepo, DISABLED_EMBEDDING, new CompanyEmbeddingRepository(companyPrisma), new EmbeddingProcessingConfig()),
         new ContactSearchAdapter(contactRepo),
       ]);
 

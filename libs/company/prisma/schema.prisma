@@ -326,3 +326,36 @@ model CompanyRelationship {
 
   @@schema("company")
 }
+
+// Enterprise Search GS-2C — the Company semantic index (pgvector). SAME-schema (company) so the
+// visibility predicate (see_all_company OR id ∈ visible_client_ids) co-locates in the vector SQL via
+// a same-schema join. company_id is a same-schema FK with ON DELETE CASCADE (migration-owned); the
+// embedding vector(1536) is migration-owned (Unsupported — Prisma never reads/writes it; raw SQL
+// only). Companies carry no personal PII / are not RTBF subjects → rides in the company schema.
+enum CompanyEmbeddingStatus {
+  pending
+  ready
+  failed
+
+  @@schema("company")
+}
+
+model CompanyEmbedding {
+  id              String                  @id @db.Uuid
+  tenant_id       String                  @db.Uuid
+  company_id      String                  @db.Uuid
+  status          CompanyEmbeddingStatus  @default(pending)
+  embedding       Unsupported("vector(1536)")?
+  source_hash     String?
+  embedding_model String?
+  dimension       Int?
+  attempt_count   Int                     @default(0)
+  last_error      String?
+  created_at      DateTime                @db.Timestamptz
+  updated_at      DateTime                @db.Timestamptz
+
+  @@unique([tenant_id, company_id])
+  @@index([tenant_id, status])
+  @@index([status])
+  @@schema("company")
+}

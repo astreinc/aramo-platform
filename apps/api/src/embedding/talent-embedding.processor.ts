@@ -6,6 +6,7 @@ import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 import { TalentEmbeddingReconcileService } from './talent-embedding-reconcile.service.js';
 import { TalentEmbeddingWorker } from './talent-embedding.worker.js';
 import { RequisitionEmbeddingWorker } from './requisition-embedding.worker.js';
+import { CompanyEmbeddingWorker } from './company-embedding.worker.js';
 import { TALENT_EMBEDDING_QUEUE_NAME } from './talent-embedding.queue.constants.js';
 
 // Enterprise Search GS-2A Slice-5b — the talent-embedding worker. The SCHEDULES tick
@@ -24,8 +25,9 @@ export class TalentEmbeddingProcessor extends WorkerHost implements OnApplicatio
     private readonly reconcile: TalentEmbeddingReconcileService,
     // Named embeddingWorker (not `worker`) — WorkerHost already owns a `worker` member.
     private readonly embeddingWorker: TalentEmbeddingWorker,
-    // GS-2B — the same dark tick also drives requisition reconcile + drain.
+    // GS-2B / GS-2C — the same dark tick also drives requisition + company reconcile + drain.
     private readonly requisitionWorker: RequisitionEmbeddingWorker,
+    private readonly companyWorker: CompanyEmbeddingWorker,
     private readonly registrar: BullRegistrar,
     private readonly redisConfig: RedisConnectionConfig,
     @Inject('TalentEmbeddingProcessorLogger') private readonly logger: AramoLogger,
@@ -40,6 +42,8 @@ export class TalentEmbeddingProcessor extends WorkerHost implements OnApplicatio
     await this.embeddingWorker.runOnce();
     await this.requisitionWorker.reconcileOnce();
     await this.requisitionWorker.runOnce();
+    await this.companyWorker.reconcileOnce();
+    await this.companyWorker.runOnce();
   }
 
   onApplicationBootstrap(): void {
