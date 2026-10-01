@@ -13349,6 +13349,76 @@
       "to": "apps/api/src/app.module.ts"
     },
     {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-config.resolver.ts"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/companies/components/CompanyQuickEditForm.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/microsoft/MicrosoftRecruiterActions.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/microsoft/RequisitionContactEmailComposer.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisitions/NewRequisitionView.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/task/components/TaskDrawer.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/task/components/TaskRowItem.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/ui/ui.css"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/skills/skill-action-dialogs.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/skills/skill-form-dialogs.tsx"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "libs/activity/src/lib/dto/note-category.ts"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/components/index.ts"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/ui.css"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/domain/oauth-state.ts"
+    },
+    {
       "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
       "status": "unscoped",
       "to": "libs/talent-evidence/src/lib/talent-evidence.repository.ts"
