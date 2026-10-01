@@ -134,7 +134,12 @@ describe('ats-web → interview writes', () => {
         });
       })
       .willRespondWith(201, (b) => {
-        b.jsonBody(sessionView());
+        // The created session echoes the supplied (non-null) end instant + zone.
+        b.jsonBody({
+          ...sessionView(),
+          scheduled_end_at: regex(ISO_TIMESTAMP, '2026-10-06T16:00:00.000Z'),
+          timezone: like('America/New_York'),
+        });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/client-selection/${PROCESS_ID}/interviews`, {
