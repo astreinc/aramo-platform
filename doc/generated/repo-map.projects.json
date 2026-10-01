@@ -413,6 +413,7 @@
     "@aramo/company": [
       "CompanyController",
       "CompanyDepartmentRepository",
+      "CompanyEmbeddingRepository",
       "CompanyModule",
       "CompanyPrismaService",
       "CompanyRepository",
@@ -1616,6 +1617,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6p-composition.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/company-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/company-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/enterprise-search-company.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3098,6 +3117,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/communications-authz.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/company-semantic.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5159,6 +5184,18 @@
     ],
     "@aramo/company": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/company-embedding-lifecycle.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/company-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-company.integration.spec.ts",
