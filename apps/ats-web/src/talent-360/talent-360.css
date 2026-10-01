@@ -5,6 +5,32 @@
  * danger, borders, ink/muted/faint, radii, mono). No parallel design language:
  * only presentation of the composed getTalent360 contract. Class prefix t360-. */
 
+/* Talent 360 root — match the frozen prototype's typographic metrics. The app
+ * shell sets line-height 1.5, which makes every single-line label/title ~5-6px
+ * taller than the prototype's `line-height: normal` (~1.2), accumulating into a
+ * growing vertical drift down the page. Scoping normal line-height here (NOT a
+ * global token change) restores per-line parity; multi-line blocks that need a
+ * looser rhythm set their own line-height below. The -6px top offsets the shell
+ * rc-content padding-top (24px) to the prototype's 18px effective top. */
+.t360-root {
+  line-height: normal;
+  margin-top: -6px;
+}
+
+/* breadcrumb (above the identity card) — prototype: 12px muted, 12px below */
+.t360-breadcrumb {
+  font-size: 12px;
+  color: var(--c-text-subtle);
+  margin-bottom: 12px;
+}
+.t360-crumb-link {
+  color: var(--c-accent);
+  font-weight: 600;
+}
+.t360-crumb-sep {
+  margin: 0 4px;
+}
+
 .t360-body {
   display: flex;
   flex-wrap: wrap;
@@ -152,6 +178,10 @@
   cursor: pointer;
   border: 1px solid transparent;
   font-family: inherit;
+}
+.t360-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .t360-btn--primary {
   background: var(--c-accent);
@@ -878,6 +908,34 @@
   color: var(--c-text-subtle);
   margin: 14px 0 7px;
 }
+/* work history (profile) — prototype: role·org / span / right-aligned source */
+.t360-wh-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px solid #f2f4f6;
+}
+.t360-wh-main {
+  flex: 1 1 260px;
+  font-size: 12.5px;
+}
+.t360-wh-span {
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+}
+.t360-wh-src {
+  font-size: 11px;
+  color: var(--c-text-subtle);
+  width: 140px;
+  text-align: right;
+}
+.t360-profile-note {
+  font-size: 11px;
+  color: var(--c-text-subtle);
+  margin-top: 10px;
+}
 .t360-skills {
   display: flex;
   gap: 6px;
@@ -944,6 +1002,104 @@
 .t360-doc-action {
   margin-left: auto;
   flex: none;
+}
+
+.t360-fact-value--empty {
+  color: var(--c-text-subtle);
+  font-weight: 500;
+}
+
+/* engagement — per-requisition contact-requirement rows (honest-empty evidence) */
+.t360-creq-row {
+  display: flex;
+  align-items: center;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-top: 1px solid #f2f4f6;
+  font-size: 12.5px;
+}
+.t360-creq-id {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.t360-creq-ev {
+  font-size: 12px;
+  color: var(--c-text-muted);
+}
+.t360-creq-state {
+  border-radius: 12px;
+  padding: 2px 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #eef1f4;
+  color: #54606a;
+}
+
+/* section explanatory copy (engagement / trust) */
+.t360-subnote {
+  font-size: 12px;
+  color: var(--c-text-subtle);
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+/* ── trust & evidence (recruiter-facing claim rows) ─────────────────────────── */
+.t360-trust-rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+.t360-trust-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px 14px;
+  padding: 11px 0;
+  border-top: 1px solid #f2f4f6;
+  flex-wrap: wrap;
+}
+.t360-trust-main {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.t360-trust-claim {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+.t360-trust-ev {
+  font-size: 11.5px;
+  color: var(--c-text-muted);
+  margin-top: 2px;
+}
+.t360-trust-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 14px;
+  padding: 2.5px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  flex: none;
+}
+.t360-trust-state::before {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.t360-trust-state--ok {
+  background: var(--c-success-soft);
+  color: var(--c-success);
+}
+.t360-trust-state--warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+.t360-trust-state--neutral {
+  background: #eef1f4;
+  color: #54606a;
 }
 
 /* superseded redirect notice */
