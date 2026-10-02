@@ -106,6 +106,10 @@ const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
 );
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
+);
 // PR-A1c §4 — metering schema required because every metered submittal
 // transition (confirm / markReady / confirmAts /
 // revokeSubmittal) now emits a UsageEvent INSERT inside the existing
@@ -225,7 +229,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // repository methods.
         readFileSync(SUBMITTAL_EVENT_LOG_MIGRATION_PATH, 'utf8'),
         // M5 PR-8b2 — canonical 5-state rename + cutover. RENAMES M4
-        // values (draft→created, submitted→submitted_to_ats) + ADDS 3
+        // values (draft→created, submitted→submitted_to_client) + ADDS 3
         // new values + ALTER TABLE SET DEFAULT 'created' + CREATE OR
         // REPLACE FUNCTION rewrites trigger with canonical 5-state
         // matrix (4 mainline + 4 sibling-revoke).
@@ -237,6 +241,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK, 'utf8'),
         // TI-1D-D — resume_edition_id snapshot column + trigger rewrite.
         readFileSync(SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH, 'utf8'),
+        readFileSync(SUBMITTAL_SW2_PROVENANCE_MIGRATION_PATH, 'utf8'),
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT).
         readFileSync(METERING_INIT_MIGRATION_PATH, 'utf8'),
       ];
@@ -419,10 +424,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.failed_criterion_acknowledgments).toBeNull();
     });
 
-    it('Immutability trigger: legal canonical mainline chain (created -> handoff_draft -> ready_for_review -> submitted_to_ats with confirmed_at) succeeds', async () => {
+    it('Immutability trigger: legal canonical mainline chain (created -> handoff_draft -> ready_for_review -> submitted_to_client with confirmed_at) succeeds', async () => {
       // M5 PR-8b2 trigger rewrite: legal transitions now encode the
       // canonical 5-state mainline. Confirmed_at populates atomically
-      // at mainline 3 (ready_for_review -> submitted_to_ats) per
+      // at mainline 3 (ready_for_review -> submitted_to_client) per
       // Ruling 6. This test walks the chain to verify the rewritten
       // trigger permits the full mainline.
       const view = await repo.createSubmittal(makeInput({ examination_id: ENT_EXAM_ID }));
@@ -438,15 +443,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
            SET state = 'ready_for_review'::submittal."SubmittalState"
            WHERE id = '${view.id}'::uuid`,
       );
-      // Mainline 3: ready_for_review -> submitted_to_ats with confirmed_at.
+      // Mainline 3: ready_for_review -> submitted_to_client with confirmed_at.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T15:00:00Z'::timestamptz
            WHERE id = '${view.id}'::uuid`,
       );
       const rereadView = await repo.findById({ tenant_id: TENANT_A, id: view.id });
-      expect(rereadView?.state).toBe('submitted_to_ats');
+      expect(rereadView?.state).toBe('submitted_to_client');
       expect(rereadView?.confirmed_at).toBeInstanceOf(Date);
     });
 
@@ -904,7 +909,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk the canonical mainline chain (created ->
-      // handoff_draft -> ready_for_review -> submitted_to_ats with
+      // handoff_draft -> ready_for_review -> submitted_to_client with
       // confirmed_at populated per Ruling 6) via raw SQL through the
       // rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
@@ -919,7 +924,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -963,7 +968,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('M5 PR-8b2 Q3: revoke on created (sibling-revoke 1) → 200 success; transitions to revoked', async () => {
       // M5 PR-8b2 Q3 + Ruling 5: revoke is now legal from any
       // non-terminal state (created, handoff_draft, ready_for_review,
-      // submitted_to_ats). M4's REVOKE_NOT_ALLOWED-from-draft semantic
+      // submitted_to_client). M4's REVOKE_NOT_ALLOWED-from-draft semantic
       // flips to 200 success post-rename. Tests sibling-revoke
       // branch 1 of 4 (created -> revoked).
       const talentRd = 'aaaaaaaa-0000-7000-8000-0000000a7011';
@@ -998,7 +1003,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(reread?.state).toBe('revoked');
       expect(reread?.revoked_at).toBeInstanceOf(Date);
       // confirmed_at NEVER set on this row (sibling-revoke from created;
-      // chain did not reach the ready_for_review -> submitted_to_ats step).
+      // chain did not reach the ready_for_review -> submitted_to_client step).
       expect(reread?.confirmed_at).toBeNull();
     });
 
@@ -1023,7 +1028,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       // Drive draft → submitted then submitted → revoked via raw SQL.
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1037,7 +1042,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1100,7 +1105,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1114,7 +1119,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1164,7 +1169,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1178,7 +1183,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1252,7 +1257,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1266,7 +1271,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1307,7 +1312,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1321,7 +1326,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1362,7 +1367,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1376,7 +1381,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1412,7 +1417,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1426,7 +1431,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1461,7 +1466,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         }),
       );
       // M5 PR-8b2: walk canonical chain (created -> handoff_draft ->
-      // ready_for_review -> submitted_to_ats with confirmed_at per
+      // ready_for_review -> submitted_to_client with confirmed_at per
       // Ruling 6) through the rewritten 5-state trigger.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
@@ -1475,7 +1480,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${draft.id}'::uuid`,
       );
@@ -1499,7 +1504,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenantBDraft = await repo.createSubmittal(
         makeInput({ tenant_id: TENANT_B, examination_id: TENANT_B_EXAM_ID }),
       );
-      // M5 PR-8b2: walk canonical chain to submitted_to_ats.
+      // M5 PR-8b2: walk canonical chain to submitted_to_client.
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
            SET state = 'handoff_draft'::submittal."SubmittalState"
@@ -1512,7 +1517,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await submittalPrisma.$executeRawUnsafe(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState",
+           SET state = 'submitted_to_client'::submittal."SubmittalState",
                confirmed_at = '2026-05-23T13:00:00Z'::timestamptz
            WHERE id = '${tenantBDraft.id}'::uuid`,
       );

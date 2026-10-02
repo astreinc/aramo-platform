@@ -224,11 +224,11 @@ export function SubmittalWizard() {
       )}
 
       {/* Steps 3, 4, 5 — mainline advance (handoff_draft, ready_for_review,
-          submitted_to_ats). Confirmed is the terminal. */}
+          submitted_to_client). Confirmed is the terminal. */}
       {submittal !== null
         && (submittal.state === 'handoff_draft'
           || submittal.state === 'ready_for_review'
-          || submittal.state === 'submitted_to_ats') && (
+          || submittal.state === 'submitted_to_client') && (
           <AdvanceStep
             submittal={submittal}
             idempotencyKey={

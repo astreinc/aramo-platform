@@ -104,7 +104,7 @@ describe('TalentJourneySection — workflow sequencing', () => {
         ],
         {
           pipeline_stage: 'qualified',
-          submittal_state: 'submitted_to_ats',
+          submittal_state: 'submitted_to_client',
           selection_state: 'CLIENT_REVIEW',
           offer_state: null,
         },
@@ -127,7 +127,7 @@ describe('TalentJourneySection — workflow sequencing', () => {
         ],
         {
           pipeline_stage: 'qualified',
-          submittal_state: 'submitted_to_ats',
+          submittal_state: 'submitted_to_client',
           selection_state: 'INTERVIEW',
           interview_state: 'SCHEDULED',
           offer_state: null,
@@ -150,7 +150,7 @@ describe('TalentJourneySection — workflow sequencing', () => {
         ],
         {
           pipeline_stage: 'qualified',
-          submittal_state: 'submitted_to_ats',
+          submittal_state: 'submitted_to_client',
           selection_state: 'SELECTED',
           offer_state: null,
         },

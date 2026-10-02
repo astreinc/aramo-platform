@@ -10,7 +10,7 @@ export const SUBMITTAL_STATE_VALUES = [
   'created',
   'handoff_draft',
   'ready_for_review',
-  'submitted_to_ats',
+  'submitted_to_client',
   'confirmed',
   'revoked',
 ] as const;
@@ -21,7 +21,7 @@ export const SUBMITTAL_STATE_LABELS: Record<SubmittalStateValue, string> = {
   created: 'Created',
   handoff_draft: 'Handoff draft',
   ready_for_review: 'Ready for review',
-  submitted_to_ats: 'Submitted to ATS',
+  submitted_to_client: 'Submitted to ATS',
   confirmed: 'Confirmed',
   revoked: 'Revoked',
 };
@@ -32,7 +32,7 @@ export const WIZARD_STEPS: readonly SubmittalStateValue[] = [
   'created',
   'handoff_draft',
   'ready_for_review',
-  'submitted_to_ats',
+  'submitted_to_client',
   'confirmed',
 ];
 

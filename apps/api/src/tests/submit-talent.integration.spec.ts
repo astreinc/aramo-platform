@@ -41,9 +41,9 @@ import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
 // are the six non-negotiable Gate-5 proofs:
-//   P1  happy path — submitted_to_ats AUTHORITATIVE + Pipeline UNTOUCHED (mirror retired)
+//   P1  happy path — submitted_to_client AUTHORITATIVE + Pipeline UNTOUCHED (mirror retired)
 //   P2  concurrent submittal_limit=1 → exactly ONE commit / ONE consumption / ONE typed refusal
-//   P3  forced failure AFTER submitted_to_ats, mid-command →
+//   P3  forced failure AFTER submitted_to_client, mid-command →
 //       ZERO durable rows across ALL participating schemas (strong atomicity)
 //   P4  invalid link (null / identity-mismatch) → SUBMITTAL_PIPELINE_LINK_INVALID, no writes
 //   P6  idempotent repeat → refused, slot consumed exactly once
@@ -53,13 +53,13 @@ import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/
 // The forced-failure (P3) is injected by wrapping @aramo/activity's
 // insertActivityInTx: it throws ONLY when the runtime flag is set, so P1/P2 use
 // the real helper. The wrap runs INSIDE the orchestrator's one transaction, AFTER
-// the authoritative submitted_to_ats write and the pipeline UPDATE — exactly the
+// the authoritative submitted_to_client write and the pipeline UPDATE — exactly the
 // window the atomic guarantee must cover.
 
 const failFlag = { fail: false };
 // Lane 2 / L2-E — the Pipeline mirror (which used insertActivityInTx) is retired, so
 // the atomicity injection re-points to `recordUsage` (the metering write that still
-// runs mid-command, AFTER the authoritative submitted_to_ats state + event write and
+// runs mid-command, AFTER the authoritative submitted_to_client state + event write and
 // BEFORE the policy-provenance write). A failure here must still roll back EVERYTHING.
 vi.mock('@aramo/metering', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@aramo/metering')>();
@@ -120,6 +120,7 @@ const MIGRATIONS = [
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
   // TALENT-INTEL-1 TI-1D-D — resume_edition_id snapshot col + trigger rewrite (Layer B).
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+  'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
   'libs/client-talent-restriction/prisma/migrations/20260803163000_init_client_talent_restriction_model/migration.sql',
   'libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql',
   // COMM-C3 — the engagement gate reads/writes policy_store (StoredPolicyVersion +
@@ -265,8 +266,106 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const count = (table: string, where: string, v: unknown[]) =>
       one(`SELECT count(*)::text AS c FROM ${table} WHERE ${where}`, v);
 
+    // ---- SW-2 (R4-A/R4-B) — immutable submittal provenance + delivery-channel ----
+    const ACTOR_SW2 = '00000000-0000-7000-8000-0000000000a2';
+    async function seedRequisitionWithRate(
+      t: string, req: string, amount: string, currency: string, period: string, status = 'open',
+    ): Promise<void> {
+      await sql.query(
+        `INSERT INTO requisition."Requisition"
+           (id,tenant_id,title,company_id,status,bill_rate_amount,bill_rate_currency,bill_rate_period)
+         VALUES ($1,$2,'SW-2 fixture',$3,$4::requisition."RecruitingStatus",$5::numeric,$6,$7::requisition."RatePeriod")`,
+        [req, t, randomUUID(), status, amount, currency, period],
+      );
+    }
+    const provenance = (id: string) =>
+      sql.query<{
+        submitted_at: Date | null;
+        submitted_by_actor_id: string | null;
+        delivery_channel: string | null;
+        submitted_bill_rate: string | null;
+        submitted_rate_currency: string | null;
+        submitted_rate_period: string | null;
+        external_reference: string | null;
+        external_submitted_at: Date | null;
+      }>(
+        `SELECT submitted_at, submitted_by_actor_id, delivery_channel,
+                submitted_bill_rate::text AS submitted_bill_rate, submitted_rate_currency,
+                submitted_rate_period, external_reference, external_submitted_at
+           FROM submittal."TalentSubmittalRecord" WHERE id=$1`,
+        [id],
+      ).then((r) => r.rows[0]!);
+
+    it('SW-2: the send FREEZES submittal provenance (who/when/how + client-facing rate + external ref)', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisitionWithRate(t, req, '92.00', 'USD', 'HOURLY');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+
+      await svc.submitToClient({
+        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-prov',
+        delivery_channel: 'manual_vms', external_reference: 'FG-938273',
+        external_submitted_at: '2026-10-01T15:42:00.000Z',
+      });
+
+      const p = await provenance(sub);
+      expect(p.submitted_at).not.toBeNull();            // WHEN
+      expect(p.submitted_by_actor_id).toBe(ACTOR_SW2);  // WHO
+      expect(p.delivery_channel).toBe('manual_vms');    // HOW
+      expect(p.submitted_bill_rate).toBe('92.00');      // frozen client-facing rate
+      expect(p.submitted_rate_currency).toBe('USD');
+      expect(p.submitted_rate_period).toBe('HOURLY');
+      expect(p.external_reference).toBe('FG-938273');
+      expect(p.external_submitted_at).not.toBeNull();
+    });
+
+    it('SW-2: delivery_channel=aramo_connector is refused in V1 (no outbound connector); no state change', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+
+      await expect(
+        svc.submitToClient({
+          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-ac',
+          delivery_channel: 'aramo_connector',
+        }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_DELIVERY_CHANNEL_INVALID', statusCode: 422 });
+      expect(await submittalState(sub)).toBe('ready_for_review|false'); // unchanged
+    });
+
+    it('SW-2: a CLIENT_VMS requisition requires manual_vms (authority mismatch refused; manual_vms accepted)', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await sql.query(
+        `INSERT INTO submittal_policy."RequisitionSubmittalPolicy"
+           (tenant_id,requisition_id,submittal_limit,submittal_authority,updated_at)
+         VALUES ($1,$2,NULL,'CLIENT_VMS',NOW())`,
+        [t, req],
+      );
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+
+      await expect(
+        svc.submitToClient({
+          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-vms-no',
+          delivery_channel: 'manual_email',
+        }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_DELIVERY_CHANNEL_INVALID' });
+
+      // manual_vms is accepted under CLIENT_VMS authority.
+      await svc.submitToClient({
+        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-vms-ok',
+        delivery_channel: 'manual_vms',
+      });
+      expect(await submittalState(sub)).toBe('submitted_to_client|true');
+    });
+
     // ---- P1: happy path — authoritative fact + mirror --------------------------
-    it('P1 happy path: submitted_to_ats is AUTHORITATIVE and the Pipeline is UNTOUCHED (mirror retired)', async () => {
+    it('P1 happy path: submitted_to_client is AUTHORITATIVE and the Pipeline is UNTOUCHED (mirror retired)', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
       await seedRequisition(t, req, 'open'); // L1-C proof 6 — open requisition → the submit SUCCEEDS.
@@ -282,10 +381,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p1' });
       // Lane 2 / L2-E (SB-5) — the result no longer carries a pipeline_status (the
       // mirror is retired). The submittal is the single authoritative fact.
-      expect(res).toEqual({ submittal_id: sub, pipeline_id: pipe, state: 'submitted_to_ats' });
+      expect(res).toEqual({ submittal_id: sub, pipeline_id: pipe, state: 'submitted_to_client' });
 
-      // AUTHORITATIVE fact: the submittal is submitted_to_ats with confirmed_at set.
-      expect(await submittalState(sub)).toBe('submitted_to_ats|true');
+      // AUTHORITATIVE fact: the submittal is submitted_to_client with confirmed_at set.
+      expect(await submittalState(sub)).toBe('submitted_to_client|true');
       // TI-1D-D — the exact sent edition is frozen on the submittal.
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(TI1DD_EDITION);
       // L2-E — Pipeline is UNTOUCHED (D-2 episode stays LIVE): status rests at
@@ -348,14 +447,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Exactly one durable commit across the board.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
-      expect(await count('submittal."TalentSubmittalRecord"', "job_id=$1 AND state='submitted_to_ats'", [req])).toBe('1');
+      expect(await count('submittal."TalentSubmittalRecord"', "job_id=$1 AND state='submitted_to_client'", [req])).toBe('1');
       // Legacy-Pipeline-Canonicalization — submit-to-ats writes NO Pipeline status; the
       // `submitted` mirror no longer exists (the value cannot be represented by
       // PipelineStatus), so there is no mirror-count invariant to assert.
     });
 
     // ---- P3: forced failure after authoritative write → zero durable rows -------
-    it('P3 forced failure after submitted_to_ats, mid-command → ZERO durable writes across all schemas', async () => {
+    it('P3 forced failure after submitted_to_client, mid-command → ZERO durable writes across all schemas', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();
       await seedRequisition(t, req, 'open'); // L1-C — the gate admits open; the forced-failure atomicity proof is unchanged.
@@ -416,7 +515,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p6-1' });
-      // Re-submit the now-submitted_to_ats submittal — the state machine refuses it.
+      // Re-submit the now-submitted_to_client submittal — the state machine refuses it.
       await expect(
         svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p6-2' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_STATE_INVALID' });
@@ -538,7 +637,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const t = randomUUID();
       const { sub } = await setupSubmit(t);
       const res = await submit(t, sub, 'c3-dormant');
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
     });
 
     it('C3-1: governed tenant with NO effective policy → fail-closed POLICY_MISSING', async () => {
@@ -567,7 +666,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { talent, req, sub } = await setupSubmit(t);
       await seedVoiceEvidence(t, talent, req, { status: 'initiated', disposition: 'connected' });
       const res = await submit(t, sub, 'c3-3');
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
       // Provenance: an ALLOW engagement decision is recorded (append-only).
       const prov = await sql.query(
         `SELECT decision FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='ENGAGEMENT_GATE'`,
@@ -592,7 +691,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { talent, req, sub } = await setupSubmit(t);
       await seedVoiceEvidence(t, talent, req, { status: 'connected' });
       const res = await submit(t, sub, 'c3-5');
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
     });
 
     // COMM-C3 (post-C2B) — email-requirement enforcement. Publishing an email
@@ -657,7 +756,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const { talent, req, sub } = await setupSubmit(t);
       await seedEmailEvidence(t, talent, req);
       const res = await submit(t, sub, 'c3-c-allow');
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
     });
 
     it('C3-D: email + qualifying voice required, email only (voice missing) → blocked', async () => {
@@ -677,7 +776,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedEmailEvidence(t, talent, req);
       await seedVoiceEvidence(t, talent, req, { status: 'initiated', disposition: 'connected' });
       const res = await submit(t, sub, 'c3-d-allow');
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
     });
 
     // ───────── COMM PART A — enforcement modes + authoritative override (real-PG) ─────────
@@ -713,7 +812,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await publishVoicePolicyMode(t, 'ADVISORY');
       const { sub } = await setupSubmit(t);
       const res = await submit(t, sub, 'partA-advisory');
-      expect(res.state).toBe('submitted_to_ats'); // advisory does not block
+      expect(res.state).toBe('submitted_to_client'); // advisory does not block
       expect(await reasonCodeOf(t)).toBe('ENGAGEMENT_ADVISORY_PROCEED');
     });
 
@@ -756,7 +855,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         engagement_override: { reason: 'Client phone-screened; evidence sync pending.' },
         requestId: 'partA-override',
       });
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
       const rows = await sql.query(
         `SELECT decision, reason_code, inputs FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 AND action='ENGAGEMENT_GATE' ORDER BY occurred_at DESC LIMIT 1`,
         [t],
@@ -847,7 +946,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         actor_id: randomUUID(),
         requestId: 'csp-allow',
       });
-      expect(res.state).toBe('submitted_to_ats');
+      expect(res.state).toBe('submitted_to_client');
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
       const rows = await sql.query(
         `SELECT decision, reason_code, inputs FROM policy_store."PolicyDecisionRecord"

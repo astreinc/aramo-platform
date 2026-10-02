@@ -1905,6 +1905,7 @@ components:
         - PIPELINE_SUBMIT_REQUIRES_SUBMITTAL
         - SUBMITTAL_PIPELINE_LINK_INVALID
         - SUBMITTAL_NO_LIVE_PIPELINE_EPISODE
+        - SUBMITTAL_DELIVERY_CHANNEL_INVALID
         - SUBMITTAL_RESUME_SELECTION_REQUIRED
         - OFFER_ALREADY_LIVE
         - OFFER_ILLEGAL_TRANSITION
@@ -2392,7 +2393,7 @@ components:
     # per the PR-3 directive Ruling 9 then expanded to 3 values at PR-7
     # (+ revoked). M5 PR-8b2 closes F37 via the canonical 5-state
     # rename + cutover: created -> handoff_draft -> ready_for_review ->
-    # submitted_to_ats -> confirmed (+ revoked sibling).
+    # submitted_to_client -> confirmed (+ revoked sibling).
     # =====================================================================
 
     # M4 PR-6 amendment — TalentJobEvidencePackageView. Structural
@@ -2476,16 +2477,16 @@ components:
         machine per Group 2 §2.3b Loop 5 + sibling lifecycle-exit
         `revoked`. M5 PR-8b2 closes F37 via the rename + cutover phase:
         M4's `draft` renames to `created` (lifecycle start); M4's
-        `submitted` renames to `submitted_to_ats` (explicit canonical
+        `submitted` renames to `submitted_to_client` (explicit canonical
         name); 3 intermediate states added (`handoff_draft`,
         `ready_for_review`, `confirmed`).
 
         Mainline (4 transitions): `created` -> `handoff_draft` ->
-        `ready_for_review` -> `submitted_to_ats` -> `confirmed`.
+        `ready_for_review` -> `submitted_to_client` -> `confirmed`.
 
         Sibling lifecycle-exit (Q3 Lead-Rulings Brief): revocable from
         `created`, `handoff_draft`, `ready_for_review`,
-        `submitted_to_ats`. NOT revocable from `confirmed` (terminal —
+        `submitted_to_client`. NOT revocable from `confirmed` (terminal —
         ATS confirmation closes the workflow lifecycle).
 
         Terminal states (no outgoing transitions): `confirmed`,
@@ -2494,7 +2495,7 @@ components:
         - created
         - handoff_draft
         - ready_for_review
-        - submitted_to_ats
+        - submitted_to_client
         - confirmed
         - revoked
 
@@ -2866,7 +2867,7 @@ components:
     #
     # POST /v1/submittals/{submittal_id}/revoke transitions a
     # TalentSubmittalRecord from any non-terminal state (`created`,
-    # `handoff_draft`, `ready_for_review`, `submitted_to_ats`) to
+    # `handoff_draft`, `ready_for_review`, `submitted_to_client`) to
     # state='revoked' and stamps revoked_at + revoked_by +
     # revocation_justification atomically. The response carries the locked invariant
     # `evidence_package_mutated: const: false` — every successful revoke
@@ -2926,9 +2927,9 @@ components:
     #   - POST /v1/submittals/{id}/mark-ready
     #       (handoff_draft -> ready_for_review)
     #   - POST /v1/submittals/{id}/submit-to-ats
-    #       (ready_for_review -> submitted_to_ats; populates confirmed_at)
+    #       (ready_for_review -> submitted_to_client; populates confirmed_at)
     #   - POST /v1/submittals/{id}/confirm-ats
-    #       (submitted_to_ats -> confirmed; lifecycle terminal)
+    #       (submitted_to_client -> confirmed; lifecycle terminal)
     #
     # Per Ruling 13 request bodies are empty; the URL identifies the
     # action and the path parameter identifies the resource. Per Ruling

@@ -14,15 +14,15 @@ describe('submittal-state helpers', () => {
     it('permits the 4 mainline forward moves', () => {
       expect(canTransition('created', 'handoff_draft')).toBe(true);
       expect(canTransition('handoff_draft', 'ready_for_review')).toBe(true);
-      expect(canTransition('ready_for_review', 'submitted_to_ats')).toBe(true);
-      expect(canTransition('submitted_to_ats', 'confirmed')).toBe(true);
+      expect(canTransition('ready_for_review', 'submitted_to_client')).toBe(true);
+      expect(canTransition('submitted_to_client', 'confirmed')).toBe(true);
     });
 
     it('permits the 4 sibling-revoke moves', () => {
       expect(canTransition('created', 'revoked')).toBe(true);
       expect(canTransition('handoff_draft', 'revoked')).toBe(true);
       expect(canTransition('ready_for_review', 'revoked')).toBe(true);
-      expect(canTransition('submitted_to_ats', 'revoked')).toBe(true);
+      expect(canTransition('submitted_to_client', 'revoked')).toBe(true);
     });
 
     it('rejects backward moves', () => {
@@ -51,7 +51,7 @@ describe('submittal-state helpers', () => {
       expect(isTerminal('created')).toBe(false);
       expect(isTerminal('handoff_draft')).toBe(false);
       expect(isTerminal('ready_for_review')).toBe(false);
-      expect(isTerminal('submitted_to_ats')).toBe(false);
+      expect(isTerminal('submitted_to_client')).toBe(false);
     });
   });
 
@@ -59,8 +59,8 @@ describe('submittal-state helpers', () => {
     it('walks the chain forward', () => {
       expect(nextMainlineState('created')).toBe('handoff_draft');
       expect(nextMainlineState('handoff_draft')).toBe('ready_for_review');
-      expect(nextMainlineState('ready_for_review')).toBe('submitted_to_ats');
-      expect(nextMainlineState('submitted_to_ats')).toBe('confirmed');
+      expect(nextMainlineState('ready_for_review')).toBe('submitted_to_client');
+      expect(nextMainlineState('submitted_to_client')).toBe('confirmed');
     });
 
     it('returns null at terminal states', () => {
@@ -74,7 +74,7 @@ describe('submittal-state helpers', () => {
       expect(canRevoke('created')).toBe(true);
       expect(canRevoke('handoff_draft')).toBe(true);
       expect(canRevoke('ready_for_review')).toBe(true);
-      expect(canRevoke('submitted_to_ats')).toBe(true);
+      expect(canRevoke('submitted_to_client')).toBe(true);
     });
 
     it('forbids revoke from terminal states', () => {
@@ -94,7 +94,7 @@ describe('submittal-state helpers', () => {
       expect(LEGAL_TRANSITIONS.created).toHaveLength(2);
       expect(LEGAL_TRANSITIONS.handoff_draft).toHaveLength(2);
       expect(LEGAL_TRANSITIONS.ready_for_review).toHaveLength(2);
-      expect(LEGAL_TRANSITIONS.submitted_to_ats).toHaveLength(2);
+      expect(LEGAL_TRANSITIONS.submitted_to_client).toHaveLength(2);
     });
 
     it('terminal entries carry zero targets', () => {

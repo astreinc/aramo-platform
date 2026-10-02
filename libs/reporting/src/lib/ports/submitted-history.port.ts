@@ -3,10 +3,10 @@
 // This is the seam that lets ReportingService derive the submitted fact from the
 // authoritative Submittal EVENT history WITHOUT libs/reporting importing
 // @aramo/submittal. libs/reporting OWNS this interface (it defines the semantic —
-// "the first canonical submitted_to_ats transition per (talent, requisition)
+// "the first canonical submitted_to_client transition per (talent, requisition)
 // grain"); the IMPLEMENTATION is a @aramo/submittal-backed adapter wired at the
 // apps/api composition root. The port carries typed values only — no bare string
-// literals (e.g. 'submitted_to_ats') cross it; that predicate lives on the
+// literals (e.g. 'submitted_to_client') cross it; that predicate lives on the
 // submittal side of the adapter.
 //
 // Architecture (Architect ruling Q3): DEPENDENCY-ON-DATA = YES;
@@ -24,7 +24,7 @@ export interface SubmittedHistoryGrain {
   // R3 time-to-submit can join pipeline.created_at. Null if the submittal had no
   // linked episode.
   readonly pipeline_id: string | null;
-  // The transition instant (first submitted_to_ats event's created_at).
+  // The transition instant (first submitted_to_client event's created_at).
   readonly first_submitted_at: Date;
 }
 

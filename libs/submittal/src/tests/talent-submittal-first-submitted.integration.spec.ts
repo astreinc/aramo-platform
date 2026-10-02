@@ -14,10 +14,10 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // Lane 2 / L2-E (SB-5) — the AUTHORITATIVE submitted-history read + the decay-hazard
 // proof that makes retiring the Pipeline mirror safe. `findFirstSubmittedByGrain`
-// keys on the immutable `state_transition → submitted_to_ats` EVENT, so a grain
+// keys on the immutable `state_transition → submitted_to_client` EVENT, so a grain
 // stays "submitted" across the record's later confirmed/revoked transitions —
 // exactly reproducing the mirror (which never un-set Pipeline.status). The negative
-// control proves a current-state (`record.state='submitted_to_ats'`) query DROPS the
+// control proves a current-state (`record.state='submitted_to_client'`) query DROPS the
 // confirmed/revoked grains, i.e. the decay hazard the event-history read closes.
 
 const MIGRATIONS = [
@@ -28,6 +28,7 @@ const MIGRATIONS = [
   '20260812120000_t2p1_relocate_submittal_to_submittal_schema',
   '20260822130000_l8b1_submittal_pipeline_link',
   '20260920130000_talent_intel_1d_d_submittal_resume_edition',
+  '20261002120000_sw2_submitted_to_client_provenance',
 ].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
@@ -71,14 +72,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let client: PrismaService;
     let repo: TalentSubmittalEventRepository;
 
-    // Seed a submittal record at a given final state + a submitted_to_ats event at
+    // Seed a submittal record at a given final state + a submitted_to_client event at
     // `submittedAt` (the immutable transition, regardless of the record's final
     // state). Returns the submittal id.
     async function seedSubmitted(opts: {
       talent_id: string;
       job_id: string;
       pipeline_id: string;
-      final_state: 'submitted_to_ats' | 'confirmed' | 'revoked';
+      final_state: 'submitted_to_client' | 'confirmed' | 'revoked';
       submittedAt: string;
     }): Promise<string> {
       const submittalId = uuid();
@@ -90,13 +91,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             '${opts.job_id}'::uuid, '${opts.pipeline_id}'::uuid, '${EVIDENCE}'::uuid,
             '${EXAM}'::uuid, '${opts.final_state}'::submittal."SubmittalState", '${RECRUITER}'::uuid)`,
       );
-      // The immutable submitted_to_ats transition event (durable across later states).
+      // The immutable submitted_to_client transition event (durable across later states).
       await client.$executeRawUnsafe(
         `INSERT INTO submittal."TalentSubmittalEvent"
            (id, tenant_id, submittal_id, event_type, event_payload, created_at)
          VALUES ('${uuid()}'::uuid, '${TENANT}'::uuid, '${submittalId}'::uuid,
             'state_transition'::submittal."SubmittalEventType",
-            '{"from_state":"handoff_draft","to_state":"submitted_to_ats"}'::jsonb,
+            '{"from_state":"handoff_draft","to_state":"submitted_to_client"}'::jsonb,
             '${opts.submittedAt}'::timestamptz)`,
       );
       return submittalId;
@@ -128,7 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const pStill = uuid();
       const pConfirmed = uuid();
       const pRevoked = uuid();
-      await seedSubmitted({ talent_id: TALENT_1, job_id: REQ_1, pipeline_id: pStill, final_state: 'submitted_to_ats', submittedAt: '2026-08-10T10:00:00Z' });
+      await seedSubmitted({ talent_id: TALENT_1, job_id: REQ_1, pipeline_id: pStill, final_state: 'submitted_to_client', submittedAt: '2026-08-10T10:00:00Z' });
       await seedSubmitted({ talent_id: TALENT_2, job_id: REQ_1, pipeline_id: pConfirmed, final_state: 'confirmed', submittedAt: '2026-08-10T11:00:00Z' });
       await seedSubmitted({ talent_id: TALENT_3, job_id: REQ_1, pipeline_id: pRevoked, final_state: 'revoked', submittedAt: '2026-08-10T12:00:00Z' });
 
@@ -141,7 +142,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const currentState = await client.$queryRawUnsafe<Array<{ n: number }>>(
         `SELECT count(*)::int AS n FROM submittal."TalentSubmittalRecord"
            WHERE tenant_id = '${TENANT}'::uuid AND job_id = '${REQ_1}'::uuid
-             AND state = 'submitted_to_ats'::submittal."SubmittalState"`,
+             AND state = 'submitted_to_client'::submittal."SubmittalState"`,
       );
       expect(currentState[0]!.n).toBe(1); // the decay hazard, proven closed by the 3-vs-1 gap
     });
@@ -150,11 +151,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // FIRST-per-grain: two submitted events on one grain → the EARLIEST wins,
     // carrying that submittal's pipeline_id + instant (for time-to-submit joins).
     // -----------------------------------------------------------------------
-    it('FIRST-per-grain: earliest submitted_to_ats event wins; pipeline_id + instant carried', async () => {
+    it('FIRST-per-grain: earliest submitted_to_client event wins; pipeline_id + instant carried', async () => {
       const pEarly = uuid();
       const pLate = uuid();
       await seedSubmitted({ talent_id: TALENT_1, job_id: REQ_2, pipeline_id: pEarly, final_state: 'revoked', submittedAt: '2026-08-05T09:00:00Z' });
-      await seedSubmitted({ talent_id: TALENT_1, job_id: REQ_2, pipeline_id: pLate, final_state: 'submitted_to_ats', submittedAt: '2026-08-06T09:00:00Z' });
+      await seedSubmitted({ talent_id: TALENT_1, job_id: REQ_2, pipeline_id: pLate, final_state: 'submitted_to_client', submittedAt: '2026-08-06T09:00:00Z' });
 
       const grains = await repo.findFirstSubmittedByGrain({ tenant_id: TENANT, requisition_ids: [REQ_2] });
       expect(grains).toHaveLength(1); // one (talent, req) grain
@@ -196,7 +197,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             '{"from_state":"created","to_state":"handoff_draft"}'::jsonb, now())`,
       );
       const grains = await repo.findFirstSubmittedByGrain({ tenant_id: TENANT, talent_ids: [TALENT_2], requisition_ids: [REQ_2] });
-      expect(grains).toHaveLength(0); // TALENT_2 on REQ_2 never reached submitted_to_ats
+      expect(grains).toHaveLength(0); // TALENT_2 on REQ_2 never reached submitted_to_client
     });
   },
 );

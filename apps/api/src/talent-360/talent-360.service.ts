@@ -40,7 +40,7 @@ import type {
 const ACTIVE_STAGES = new Set<string>(ACTIVE_FLOW_STAGES);
 // Submittal states that count as a live submittal for the KPI (submitted to the
 // client/ATS or confirmed there).
-const SUBMITTED_STATES = new Set(['submitted_to_ats', 'confirmed']);
+const SUBMITTED_STATES = new Set(['submitted_to_client', 'confirmed']);
 // Offer states that count as a live offer (matches OfferRepository.countLive).
 const LIVE_OFFER_STATES = new Set(['SENT', 'NEGOTIATION', 'ACCEPTED']);
 // Live interview states (eligible for the scheduled-for-today check).

@@ -648,21 +648,21 @@ export class SubmittalController {
   // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/submit-to-ats.
   //
   // Fires the canonical mainline transition ready_for_review ->
-  // submitted_to_ats (mainline transition 3). Per Ruling 6 this is the
+  // submitted_to_client (mainline transition 3). Per Ruling 6 this is the
   // transition that populates confirmed_at NULL -> non-NULL (preserving
   // M4 confirmed_at column semantic post-rename).
   //
   // 9-step idempotency flow per markReady precedent.
   // L8-B1 Amendment A1 — the submit-to-ats route was RE-POINTED to the
   // apps/api SubmitTalentController (the "Submit Talent to Client" atomic
-  // command: submitted_to_ats is the authoritative fact; the Pipeline is not
+  // command: submitted_to_client is the authoritative fact; the Pipeline is not
   // written). This legacy write path is removed so no parallel path can
   // create the client-submittal fact. `submitToAts` on the repository remains for
   // its lib-local integration spec only; it is no longer reachable via any route.
 
   // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/confirm-ats.
   //
-  // Fires the canonical mainline transition submitted_to_ats ->
+  // Fires the canonical mainline transition submitted_to_client ->
   // confirmed (mainline transition 4; lifecycle terminal). `confirmed`
   // is fully terminal -- not even sibling-revoke applies (Ruling 5).
   //

@@ -224,10 +224,10 @@ describe('Talent360Service — composes authorized truth, is not the authority',
         episode('pipe-3', 'req-3', 'qualified'),
       ];
       const journeys: Record<string, TalentRequisitionJourney> = {
-        'pipe-1': journey('req-1', { submittal_state: 'submitted_to_ats', selection_state: 'INTERVIEW', interview_state: 'SCHEDULED' }, [
+        'pipe-1': journey('req-1', { submittal_state: 'submitted_to_client', selection_state: 'INTERVIEW', interview_state: 'SCHEDULED' }, [
           { stage: 'INTERVIEW', owner: 'client-selection', source_object_id: 'csp-1' },
         ]),
-        'pipe-2': journey('req-2', { submittal_state: 'submitted_to_ats', selection_state: 'CLIENT_REVIEW' }, [
+        'pipe-2': journey('req-2', { submittal_state: 'submitted_to_client', selection_state: 'CLIENT_REVIEW' }, [
           { stage: 'CLIENT_REVIEW', owner: 'client-selection', source_object_id: 'csp-2', occurred_at: '2026-09-26T12:00:00Z' },
         ]),
         'pipe-3': journey('req-3', { submittal_state: 'confirmed', offer_state: 'ACCEPTED', placement_state: 'STARTED' }),
@@ -332,7 +332,7 @@ describe('Talent360Service — composes authorized truth, is not the authority',
             episode('pipe-1', 'req-1', 'qualified'),
             episode('pipe-2', 'req-2', 'not_in_consideration'),
           ],
-          composeJourney: async () => journey('req-1', { submittal_state: 'submitted_to_ats', interview_state: 'SCHEDULED' }),
+          composeJourney: async () => journey('req-1', { submittal_state: 'submitted_to_client', interview_state: 'SCHEDULED' }),
           resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)], ['req-2', req('req-2', 1032)]]),
         }),
       );

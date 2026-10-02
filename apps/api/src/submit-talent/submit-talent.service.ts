@@ -31,7 +31,7 @@ import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 // Order (§6 + §7 Amendment A1; Lane 2 / L2-E): read+lock submittal → submittal
 // state machine → resolve pipeline via `submittal.pipeline_id` (tenant+req+talent
 // identity match + LIVE, else SUBMITTAL_PIPELINE_LINK_INVALID) → eligibility →
-// serialized consumeSlot → `submitted_to_ats` (authoritative) + event + outbox +
+// serialized consumeSlot → `submitted_to_client` (authoritative) + event + outbox +
 // usage → policy provenance → commit. Any failure rolls back EVERYTHING. L2-E (SB-5)
 // retired the Pipeline mirror: this command no longer writes Pipeline —
 // the episode stays LIVE and readers derive the submit-to-client signal from the event.
@@ -42,6 +42,18 @@ import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 // (LIVE_EPISODE_EXCLUSION_STATUSES / the Pipeline_live_episode_key partial index),
 // so a voided episode is correctly NON-live here too. Submit re-validates the link
 // fail-closed regardless of how the submittal's pipeline_id was derived at create.
+
+// SW-2 (R4-B) — the ACTUAL delivery-channel vocabulary (provenance). Mirrors the
+// submittal.SubmittalDeliveryChannel enum. Manual channels are the V1 reality;
+// aramo_connector exists for forward-compat only (refused at submit until an outbound
+// connector exists).
+const ALL_DELIVERY_CHANNELS = new Set<string>([
+  'manual_vms',
+  'manual_client_portal',
+  'manual_email',
+  'manual_other',
+  'aramo_connector',
+]);
 
 export interface SubmitTalentToClientInput {
   readonly tenant_id: string;
@@ -62,12 +74,19 @@ export interface SubmitTalentToClientInput {
   // scope membership; never a role name), and the recorded override reason.
   readonly submittal_actor_can_override?: boolean;
   readonly submittal_override_reason?: string | null;
+  // SW-2 (R4-A/R4-B) — V1 submittal delivery provenance (how the client handoff
+  // ACTUALLY happened). All optional: captured when the caller provides them;
+  // submitted_at / submitted_by_actor_id are always set from NOW()/actor_id, and the
+  // client-facing rate is frozen from the requisition when present.
+  readonly delivery_channel?: string | null;
+  readonly external_reference?: string | null;
+  readonly external_submitted_at?: string | null;
 }
 
 export interface SubmitTalentToClientResult {
   readonly submittal_id: string;
   readonly pipeline_id: string;
-  readonly state: 'submitted_to_ats';
+  readonly state: 'submitted_to_client';
 }
 
 interface SubmittalRow {
@@ -148,10 +167,10 @@ export class SubmitTalentToClientService {
       }
 
       // 2 — submittal state machine (single-sourced).
-      if (!canTransitionSubmittal(submittal.state as never, 'submitted_to_ats')) {
+      if (!canTransitionSubmittal(submittal.state as never, 'submitted_to_client')) {
         throw err(
           'SUBMITTAL_STATE_INVALID',
-          `Illegal submittal state transition: ${submittal.state} -> submitted_to_ats`,
+          `Illegal submittal state transition: ${submittal.state} -> submitted_to_client`,
           422,
           { submittal_id, from_state: submittal.state },
         );
@@ -202,9 +221,19 @@ export class SubmitTalentToClientService {
       // current status (null when absent). This gate only READS status; it never
       // writes it (Rule 3 / H4 one-way).
       const reqStatusRows = await tx.$queryRawUnsafe<
-        Array<{ status: string; company_id: string | null; bill_rate_amount: string | number | null }>
+        Array<{
+          status: string;
+          company_id: string | null;
+          bill_rate_amount: string | number | null;
+          bill_rate_currency: string | null;
+          bill_rate_period: string | null;
+        }>
       >(
-        `SELECT "status","company_id","bill_rate_amount" FROM "requisition"."Requisition"
+        // SW-2 (R4-A) — also read the bill-rate VALUE + currency + period so the send
+        // can FREEZE a client-facing commercial snapshot onto the submittal (historical
+        // truth). The live requisition remains the sole editable commercial authority.
+        `SELECT "status","company_id","bill_rate_amount","bill_rate_currency","bill_rate_period"
+           FROM "requisition"."Requisition"
           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
         requisition_id,
         tenant_id,
@@ -212,7 +241,10 @@ export class SubmitTalentToClientService {
       const requisition_status = reqStatusRows[0]?.status;
       const company_id = reqStatusRows[0]?.company_id ?? null;
       // CSP PR-3 — Client Submittal Policy fact: a bill rate is recorded on the requisition.
-      const bill_rate_present = reqStatusRows[0]?.bill_rate_amount != null;
+      const bill_rate_amount = reqStatusRows[0]?.bill_rate_amount ?? null;
+      const bill_rate_currency = reqStatusRows[0]?.bill_rate_currency ?? null;
+      const bill_rate_period = reqStatusRows[0]?.bill_rate_period ?? null;
+      const bill_rate_present = bill_rate_amount != null;
       if (requisition_status !== 'open') {
         throw err(
           'REQUISITION_NOT_OPEN',
@@ -391,15 +423,65 @@ export class SubmitTalentToClientService {
         );
       }
 
-      // 6 — authoritative submittal write: submitted_to_ats + confirmed_at + the
-      // FROZEN résumé-edition snapshot (TI-1D-D) + event + outbox + usage.
+      // SW-2 (R4-B) — validate the ACTUAL delivery channel (when provided) against the
+      // requisition's SubmittalAuthority EXPECTATION. V1 has no outbound connector, so
+      // `aramo_connector` is refused; CLIENT_VMS expects `manual_vms`; CLIENT_MANUAL /
+      // ARAMO accept any manual channel (manual recording is the V1 reality). Channel
+      // is OPTIONAL (legacy callers omit it); only a PROVIDED channel is validated.
+      const deliveryChannel = input.delivery_channel ?? null;
+      if (deliveryChannel !== null) {
+        const invalid = (reason: string, message: string) =>
+          err('SUBMITTAL_DELIVERY_CHANNEL_INVALID', message, 422, {
+            submittal_id,
+            delivery_channel: deliveryChannel,
+            submittal_authority: inputs.submittal_authority,
+            reason,
+          });
+        if (!ALL_DELIVERY_CHANNELS.has(deliveryChannel)) {
+          throw invalid('unknown_value', `Unknown delivery_channel: ${deliveryChannel}`);
+        }
+        if (deliveryChannel === 'aramo_connector') {
+          throw invalid(
+            'not_executable',
+            'aramo_connector is not executable in V1 (no outbound connector); record a manual channel',
+          );
+        }
+        if (inputs.submittal_authority === 'CLIENT_VMS' && deliveryChannel !== 'manual_vms') {
+          throw invalid(
+            'authority_mismatch',
+            'This requisition expects CLIENT_VMS submittal; delivery_channel must be manual_vms',
+          );
+        }
+      }
+
+      // 6 — authoritative submittal write: submitted_to_client + confirmed_at + the
+      // FROZEN résumé-edition snapshot (TI-1D-D) + SW-2 immutable submittal provenance
+      // (who/when/how + frozen client-facing rate + external ref/time) + event + outbox
+      // + usage. The provenance columns are pinned ONCE here and frozen by the trigger.
       await tx.$executeRawUnsafe(
         `UPDATE "submittal"."TalentSubmittalRecord"
-            SET "state" = 'submitted_to_ats', "confirmed_at" = NOW(), "resume_edition_id" = $3::uuid
-          WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
+            SET "state" = 'submitted_to_client',
+                "confirmed_at" = NOW(),
+                "submitted_at" = NOW(),
+                "submitted_by_actor_id" = $2::uuid,
+                "resume_edition_id" = $3::uuid,
+                "delivery_channel" = $4::"submittal"."SubmittalDeliveryChannel",
+                "submitted_bill_rate" = $5::numeric,
+                "submitted_rate_currency" = $6,
+                "submitted_rate_period" = $7,
+                "external_reference" = $8,
+                "external_submitted_at" = $9::timestamptz
+          WHERE "id" = $1::uuid AND "tenant_id" = $10::uuid`,
         submittal_id,
-        tenant_id,
+        input.actor_id,
         resume_edition_id,
+        deliveryChannel,
+        bill_rate_present ? bill_rate_amount : null,
+        bill_rate_present ? bill_rate_currency : null,
+        bill_rate_present ? bill_rate_period : null,
+        input.external_reference ?? null,
+        input.external_submitted_at ?? null,
+        tenant_id,
       );
       await tx.$executeRawUnsafe(
         `INSERT INTO "submittal"."TalentSubmittalEvent"
@@ -408,7 +490,7 @@ export class SubmitTalentToClientService {
         input.event_id,
         tenant_id,
         submittal_id,
-        JSON.stringify({ from_state: submittal.state, to_state: 'submitted_to_ats', resume_edition_id }),
+        JSON.stringify({ from_state: submittal.state, to_state: 'submitted_to_client', resume_edition_id }),
       );
       await tx.$executeRawUnsafe(
         `INSERT INTO "submittal"."OutboxEvent"
@@ -420,14 +502,14 @@ export class SubmitTalentToClientService {
           submittal_id,
           tenant_id,
           from_state: submittal.state,
-          to_state: 'submitted_to_ats',
+          to_state: 'submitted_to_client',
           transition_event_id: input.event_id,
         }),
       );
       await recordUsage(tx, { tenant_id, event_type: 'submittal.state_transition' });
 
       // Lane 2 / L2-E (SB-5 / D-4) — submit-to-ats does NOT write Pipeline. The
-      // authoritative fact is `Submittal.submitted_to_ats` + its immutable
+      // authoritative fact is `Submittal.submitted_to_client` + its immutable
       // state_transition event (written above); the retired Pipeline mirror is gone.
       // The episode stays LIVE (D-2) at its recruiter stage; the submit-to-client
       // signal is derived from the Submittal event history by all readers.
@@ -454,7 +536,7 @@ export class SubmitTalentToClientService {
       return {
         submittal_id,
         pipeline_id: pipeline.id,
-        state: 'submitted_to_ats',
+        state: 'submitted_to_client',
       };
     });
   }

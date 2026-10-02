@@ -414,12 +414,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // MAIN — 3 active opportunities across distinct stages + 1 closed + 1 hidden.
       // req1: interview today.
       await seedPipeline(req1, mainTalent, 'qualified');
-      const s1 = await seedSubmittal({ talent: mainTalent, req: req1, state: 'submitted_to_ats' });
+      const s1 = await seedSubmittal({ talent: mainTalent, req: req1, state: 'submitted_to_client' });
       const cs1 = await seedSelection({ submittalId: s1, req: req1, talent: mainTalent, state: 'INTERVIEW', createdMs: NOW - 5 * DAY });
       await seedInterview({ processId: cs1, req: req1, talent: mainTalent, whenMs: INTERVIEW_TODAY_MS, state: 'SCHEDULED' });
       // req2: waiting for client (CLIENT_REVIEW 3 days).
       await seedPipeline(req2, mainTalent, 'qualified');
-      const s2 = await seedSubmittal({ talent: mainTalent, req: req2, state: 'submitted_to_ats' });
+      const s2 = await seedSubmittal({ talent: mainTalent, req: req2, state: 'submitted_to_client' });
       await seedSelection({ submittalId: s2, req: req2, talent: mainTalent, state: 'CLIENT_REVIEW', createdMs: NOW - 3 * DAY });
       // req3: offer accepted + placement started.
       await seedPipeline(req3, mainTalent, 'qualified');

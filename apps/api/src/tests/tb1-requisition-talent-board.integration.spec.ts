@@ -312,16 +312,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // TB1-1 — the deepest owner with a row owns the column; SUBMITTED attributes to the
     // Submittal even while the Pipeline is still `qualified`.
     // ---------------------------------------------------------------------------------------
-    it('TB1-1: pipeline `qualified` + submitted_to_ats submittal → card in `submitted`, owner=submittal, attributed to the submittal row', async () => {
+    it('TB1-1: pipeline `qualified` + submitted_to_client submittal → card in `submitted`, owner=submittal, attributed to the submittal row', async () => {
       const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats', pipe, null);
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client', pipe, null);
 
       const board = await call(tenant, req);
       const submitted = cardsIn(board, 'submitted');
       expect(submitted).toHaveLength(1);
       expect(submitted[0]!.owner).toBe('submittal');
-      expect(submitted[0]!.owner_state).toBe('submitted_to_ats');
+      expect(submitted[0]!.owner_state).toBe('submitted_to_client');
       expect(submitted[0]!.source_object_id).toBe(sub);
       expect(submitted[0]!.pipeline_id).toBe(pipe);
       // The card is NOT double-counted in the pipeline `qualified` column.
@@ -336,7 +336,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('TB1-2: full chain with STARTED placement → card in `started`, owner=placement', async () => {
       const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats', pipe, null);
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client', pipe, null);
       await seedSelection(tenant, sub, req, talent, 'SELECTED');
       await seedOffer(tenant, sub, req, talent, 'ACCEPTED', null, null);
       const placement = await seedPlacement(tenant, sub, req, talent, 'STARTED');
@@ -357,7 +357,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const mk = async (state: string, kind: 'interview' | 'selected' | 'offer' | 'accepted'): Promise<void> => {
         const talent = randomUUID();
         const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-        const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats', pipe, null);
+        const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client', pipe, null);
         if (kind === 'interview') await seedSelection(tenant, sub, req, talent, state);
         else if (kind === 'selected') await seedSelection(tenant, sub, req, talent, state);
         else await seedOffer(tenant, sub, req, talent, state, null, null);
@@ -384,11 +384,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(tenant, req, randomUUID(), 'not_in_consideration');
       // offer DECLINED (deepest owner is a closed-position offer).
       const t2 = randomUUID(); const p2 = await seedPipeline(tenant, req, t2, 'qualified');
-      const s2 = await seedSubmittal(tenant, t2, req, 'submitted_to_ats', p2, null);
+      const s2 = await seedSubmittal(tenant, t2, req, 'submitted_to_client', p2, null);
       await seedOffer(tenant, s2, req, t2, 'DECLINED', null, 'client_passed');
       // placement FELL_THROUGH (deepest owner is a negative placement terminal).
       const t3 = randomUUID(); const p3 = await seedPipeline(tenant, req, t3, 'completed');
-      const s3 = await seedSubmittal(tenant, t3, req, 'submitted_to_ats', p3, null);
+      const s3 = await seedSubmittal(tenant, t3, req, 'submitted_to_client', p3, null);
       await seedPlacement(tenant, s3, req, t3, 'FELL_THROUGH');
 
       const board = await call(tenant, req);
@@ -453,7 +453,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('TB1-8: an offer carrying offer_terms_summary never leaks a compensation field (state-only)', async () => {
       const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats', pipe, null);
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client', pipe, null);
       await seedOffer(tenant, sub, req, talent, 'SENT', 'CONFIDENTIAL $250k base + equity', null);
 
       const board = await call(tenant, req);
@@ -473,7 +473,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (let i = 0; i < 30; i++) {
         const talent = randomUUID();
         const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-        await seedSubmittal(tenant, talent, req, 'submitted_to_ats', pipe, null);
+        await seedSubmittal(tenant, talent, req, 'submitted_to_client', pipe, null);
       }
       const spies = [
         vi.spyOn(pipelineRepo, 'listByRequisitionsAndStatus'),
@@ -508,7 +508,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Post-submit: a submittal with a frozen resume_edition_id.
       const t2 = randomUUID(); const p2 = await seedPipeline(tenant, req, t2, 'qualified');
       const frozen = randomUUID();
-      await seedSubmittal(tenant, t2, req, 'submitted_to_ats', p2, frozen);
+      await seedSubmittal(tenant, t2, req, 'submitted_to_client', p2, frozen);
 
       const board = await call(tenant, req);
       const q = cardsIn(board, 'qualified').find((c) => c.talent_record_id === t1)!;
@@ -590,10 +590,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('TB3-2: Create offer appears only on a SELECTED card, never on INTERVIEW (SELECTED-gated handoff)', async () => {
       const tenant = randomUUID(); const req = randomUUID();
       const tI = randomUUID(); const pI = await seedPipeline(tenant, req, tI, 'qualified');
-      const sI = await seedSubmittal(tenant, tI, req, 'submitted_to_ats', pI, null);
+      const sI = await seedSubmittal(tenant, tI, req, 'submitted_to_client', pI, null);
       await seedSelection(tenant, sI, req, tI, 'INTERVIEW');
       const tS = randomUUID(); const pS = await seedPipeline(tenant, req, tS, 'qualified');
-      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_ats', pS, null);
+      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_client', pS, null);
       await seedSelection(tenant, sS, req, tS, 'SELECTED');
 
       const board = await call(tenant, req);
@@ -614,7 +614,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const req = randomUUID();
       await seedPipeline(tenant, req, randomUUID(), 'not_in_consideration');
       const tSub = randomUUID(); const pSub = await seedPipeline(tenant, req, tSub, 'qualified');
-      await seedSubmittal(tenant, tSub, req, 'submitted_to_ats', pSub, null); // post-submit, client owns next
+      await seedSubmittal(tenant, tSub, req, 'submitted_to_client', pSub, null); // post-submit, client owns next
 
       const board = await call(tenant, req);
       expect(board.closed.total).toBe(1);
@@ -779,11 +779,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tQ = randomUUID(); await seedPipeline(tenant, req, tQ, 'qualified');
       // A Client-Selected card — the LAST Board-owned column (handoff point, not yet handoff).
       const tS = randomUUID(); const pS = await seedPipeline(tenant, req, tS, 'qualified');
-      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_ats', pS, null);
+      const sS = await seedSubmittal(tenant, tS, req, 'submitted_to_client', pS, null);
       await seedSelection(tenant, sS, req, tS, 'SELECTED');
       // A Started placement — downstream/handoff.
       const tP = randomUUID(); const pP = await seedPipeline(tenant, req, tP, 'qualified');
-      const sP = await seedSubmittal(tenant, tP, req, 'submitted_to_ats', pP, null);
+      const sP = await seedSubmittal(tenant, tP, req, 'submitted_to_client', pP, null);
       await seedPlacement(tenant, sP, req, tP, 'STARTED');
 
       const board = await call(tenant, req);

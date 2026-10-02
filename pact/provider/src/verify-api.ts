@@ -376,7 +376,7 @@ const SUBMITTAL_EVENT_LOG_MIGRATION = resolve(
 // M5 PR-8b2 §4.13 — submittal canonical rename + cutover migration.
 // Replaces M4's 2-value subset (draft, submitted) plus PR-7's revoked
 // sibling with the canonical 5-state machine (created -> handoff_draft
-// -> ready_for_review -> submitted_to_ats -> confirmed + revoked
+// -> ready_for_review -> submitted_to_client -> confirmed + revoked
 // sibling). Closes F37. Applied AFTER the event-log substrate so the
 // pre-rename event-log integrity is preserved across the rename.
 // Required by the M5 PR-8b2 pact verification so the state handlers
@@ -550,6 +550,8 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
 const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+  // SW-2 — submitted_to_client rename + immutable submittal provenance columns + enum.
+  'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 );
 const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
   ROOT,
@@ -3125,12 +3127,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         submittalId: params.submittalId,
       });
       // Ruling 6: submit-to-ats populates confirmed_at (NULL -> non-NULL);
-      // it persists through 'confirmed'. A legitimately submitted_to_ats /
+      // it persists through 'confirmed'. A legitimately submitted_to_client /
       // confirmed row therefore ALWAYS carries confirmed_at — seed it so
       // the confirm-ats happy-path response projects a real timestamp
       // (direct-seed without it returned confirmed_at='' → pact regex fail).
       const confirmedAt =
-        params.state === 'submitted_to_ats' || params.state === 'confirmed'
+        params.state === 'submitted_to_client' || params.state === 'confirmed'
           ? '2026-05-25T00:00:00.000Z'
           : null;
       await seedAtsWebSubmittal(c, {
@@ -3350,7 +3352,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // Seeds Requisition + TalentJobEvidencePackage + TalentSubmittalRecord
     // (when submittalExists=true) at the requested submittalState. The
     // chain walks the canonical 5-state mainline (created ->
-    // handoff_draft -> ready_for_review -> submitted_to_ats ->
+    // handoff_draft -> ready_for_review -> submitted_to_client ->
     // confirmed) in order via raw SQL UPDATEs, each going through
     // the M5 PR-8b2-rewritten column-scoped trigger
     // (selection.reject_submittal_record_update). For
@@ -3375,7 +3377,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // walk needed. INSERT bypasses the UPDATE-only trigger (Ruling 7),
     // so the row can be inserted at any state directly.
     //
-    // Confirmed_at is populated for submitted_to_ats/confirmed seed
+    // Confirmed_at is populated for submitted_to_client/confirmed seed
     // states (preserving M4 column semantic per Ruling 6); NULL
     // otherwise. revoke columns stay NULL (no revoke pre-state seeded
     // by this helper; revoke pre-states use seedSubmittalRevokeFixture
@@ -3388,11 +3390,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         examinationId: string;
         talentId: string;
         jobId: string;
-        state: 'created' | 'handoff_draft' | 'ready_for_review' | 'submitted_to_ats' | 'confirmed';
+        state: 'created' | 'handoff_draft' | 'ready_for_review' | 'submitted_to_client' | 'confirmed';
       },
     ): Promise<void> {
       const confirmedAt =
-        opts.state === 'submitted_to_ats' || opts.state === 'confirmed'
+        opts.state === 'submitted_to_client' || opts.state === 'confirmed'
           ? "'2026-05-22T13:00:00Z'::timestamptz"
           : 'NULL';
       await c.query(
@@ -5883,7 +5885,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8210',
               requestHash: hashCanonicalizedBody({ _placeholder: true }),
               responseStatus: 200,
-              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000961', state: 'submitted_to_ats' } },
+              responseBody: { submittal: { id: '99990000-0000-7000-8000-000000000961', state: 'submitted_to_client' } },
             });
           });
         },
@@ -6335,7 +6337,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await resetAllRows(c);
           });
         },
-      'a recruiter has authenticated and a TalentSubmittalRecord in submitted_to_ats state exists for the tenant':
+      'a recruiter has authenticated and a TalentSubmittalRecord in submitted_to_client state exists for the tenant':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -6345,7 +6347,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               examinationId: '11110000-0000-7000-8000-0000000e00a3',
               talentId: 'aaaaaaaa-0000-7000-8000-0000000a7071',
               jobId: 'cccccccc-0000-7000-8000-0000000c7071',
-              state: 'submitted_to_ats',
+              state: 'submitted_to_client',
             });
           });
         },
@@ -6771,13 +6773,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // -- submitted_to_ats fixture (confirm-ats-happy).
-      'an ats-web recruiter and a submitted_to_ats submittal exist': async () => {
+      // -- submitted_to_client fixture (confirm-ats-happy).
+      'an ats-web recruiter and a submitted_to_client submittal exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebSubmittalChain(c, {
             submittalId: ATSW_SUB_SUBMITTED_ID,
-            state: 'submitted_to_ats',
+            state: 'submitted_to_client',
           });
         });
       },
@@ -6893,7 +6895,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               requestHash: hashCanonicalizedBody(ATSW_SUB_EMPTY_BODY),
               responseStatus: 200,
               responseBody: {
-                submittal: atswSubmittalBody(ATSW_SUB_READY_ID, 'submitted_to_ats', {
+                submittal: atswSubmittalBody(ATSW_SUB_READY_ID, 'submitted_to_client', {
                   confirmedAt: true,
                 }),
               },

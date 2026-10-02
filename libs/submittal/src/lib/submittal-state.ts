@@ -8,11 +8,11 @@
 // at PR-8b2 merge.
 //
 // Mainline chain (4 transitions):
-//   created -> handoff_draft -> ready_for_review -> submitted_to_ats
+//   created -> handoff_draft -> ready_for_review -> submitted_to_client
 //   -> confirmed
 //
 // Sibling lifecycle-exit (Q3 + Ruling 5): revocable from `created`,
-// `handoff_draft`, `ready_for_review`, `submitted_to_ats`. NOT
+// `handoff_draft`, `ready_for_review`, `submitted_to_client`. NOT
 // revocable from `confirmed` (terminal — ATS confirmation closes the
 // workflow lifecycle).
 //
@@ -27,7 +27,7 @@ export const SUBMITTAL_STATE_VALUES = [
   'created',
   'handoff_draft',
   'ready_for_review',
-  'submitted_to_ats',
+  'submitted_to_client',
   'confirmed',
   'revoked',
 ] as const;
@@ -41,14 +41,14 @@ export type SubmittalStateValue = (typeof SUBMITTAL_STATE_VALUES)[number];
 //   Mainline (4):
 //     1. created          -> handoff_draft
 //     2. handoff_draft    -> ready_for_review
-//     3. ready_for_review -> submitted_to_ats   (confirmed_at populated)
-//     4. submitted_to_ats -> confirmed
+//     3. ready_for_review -> submitted_to_client   (confirmed_at populated)
+//     4. submitted_to_client -> confirmed
 //
 //   Sibling-revoke (4; Q3 + Ruling 5):
 //     5. created          -> revoked
 //     6. handoff_draft    -> revoked
 //     7. ready_for_review -> revoked
-//     8. submitted_to_ats -> revoked
+//     8. submitted_to_client -> revoked
 //
 // Terminal states (no outgoing transitions): `confirmed`, `revoked`.
 export function canTransition(
@@ -58,8 +58,8 @@ export function canTransition(
   const ALLOWED: Record<SubmittalStateValue, SubmittalStateValue[]> = {
     created: ['handoff_draft', 'revoked'],
     handoff_draft: ['ready_for_review', 'revoked'],
-    ready_for_review: ['submitted_to_ats', 'revoked'],
-    submitted_to_ats: ['confirmed', 'revoked'],
+    ready_for_review: ['submitted_to_client', 'revoked'],
+    submitted_to_client: ['confirmed', 'revoked'],
     confirmed: [],
     revoked: [],
   };

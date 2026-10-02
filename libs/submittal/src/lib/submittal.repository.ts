@@ -34,11 +34,11 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //     submitted' becomes canonical 'created to handoff_draft'.
 //     confirmed_at NO LONGER populated here (moved to submitToAts per
 //     Ruling 6 — preserves M4 confirmed_at column semantic at the
-//     ready_for_review to submitted_to_ats transition).
+//     ready_for_review to submitted_to_client transition).
 //   - revokeSubmittal semantic expansion per Q3 ruling: revocable from
 //     any non-confirmed non-revoked state (Ruling 5 — `confirmed` is
 //     terminal). Now spans created / handoff_draft / ready_for_review /
-//     submitted_to_ats.
+//     submitted_to_client.
 //   - canTransition guard wired into all 5 state-changing methods as
 //     defense-in-depth atop the DB trigger.
 //   - SubmittalEventRepository.appendEvent wired into all 5 state-
@@ -48,9 +48,9 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //   - createSubmittal (M4 PR-3 — UNCHANGED per Ruling 15; no event)
 //   - confirmSubmittal (M4 PR-4 + rename; state created -> handoff_draft)
 //   - markReady (M5 PR-8b2; state handoff_draft -> ready_for_review)
-//   - submitToAts (M5 PR-8b2; state ready_for_review -> submitted_to_ats
+//   - submitToAts (M5 PR-8b2; state ready_for_review -> submitted_to_client
 //     + confirmed_at populated)
-//   - confirmAts (M5 PR-8b2; state submitted_to_ats -> confirmed)
+//   - confirmAts (M5 PR-8b2; state submitted_to_client -> confirmed)
 //   - revokeSubmittal (M4 PR-7 + Q3 expansion; any non-terminal -> revoked)
 //   - findById / findByTenantAndEvidencePackage (READ; tenant-scoped)
 //
@@ -392,7 +392,7 @@ export class SubmittalRepository {
   // validity at confirm-time.
   //
   // Per Ruling 6: confirmed_at NO LONGER populated here (moved to
-  // submitToAts at the ready_for_review -> submitted_to_ats transition).
+  // submitToAts at the ready_for_review -> submitted_to_client transition).
   // Preserves M4 confirmed_at column semantic + name.
   //
   // M5 PR-8b2 §4.7 additions:
@@ -455,7 +455,7 @@ export class SubmittalRepository {
     }
 
     // Step 2b — M5 PR-8b2 canTransition guard for OTHER invalid from-states
-    // (ready_for_review / submitted_to_ats / confirmed / revoked).
+    // (ready_for_review / submitted_to_client / confirmed / revoked).
     if (!canTransition(submittal.state, 'handoff_draft')) {
       this.logger.log({
         event: 'submittal_confirm_refused',
@@ -800,7 +800,7 @@ export class SubmittalRepository {
   }
 
   // M5 PR-8b2 §4.7 — confirmAts. Mainline transition 4:
-  // submitted_to_ats -> confirmed. `confirmed` is lifecycle-terminal
+  // submitted_to_client -> confirmed. `confirmed` is lifecycle-terminal
   // (Ruling 5 — not even sibling-revoke applies; ATS confirmation
   // closes the workflow).
   async confirmAts(input: SubmittalConfirmAtsInput): Promise<SubmittalConfirmAtsResult> {
@@ -907,7 +907,7 @@ export class SubmittalRepository {
   // M4 PR-7 revoke flow + M5 PR-8b2 Q3 expansion.
   //
   // Per Q3 + Ruling 5: revoke applicable from any non-terminal state
-  // (`created`, `handoff_draft`, `ready_for_review`, `submitted_to_ats`).
+  // (`created`, `handoff_draft`, `ready_for_review`, `submitted_to_client`).
   // NOT applicable from `confirmed` (terminal — ATS confirmation closes
   // workflow) or `revoked` (already revoked). canTransition is the
   // gatekeeping guard; REVOKE_NOT_ALLOWED 422 fires on terminal-state

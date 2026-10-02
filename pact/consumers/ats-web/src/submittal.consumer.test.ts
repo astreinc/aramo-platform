@@ -414,7 +414,7 @@ describe('ats-web → POST /v1/submittals/:id/mark-ready', () => {
 // POST /v1/submittals/:id/submit-to-ats — happy + illegal-state + idempotency
 // ======================================================================
 describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
-  it('returns 200 advancing ready_for_review -> submitted_to_ats', async () => {
+  it('returns 200 advancing ready_for_review -> submitted_to_client', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a ready_for_review submittal exist')
@@ -423,7 +423,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000301')).jsonBody(EMPTY_BODY);
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_ats', { confirmedAt: true }) });
+        b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_client', { confirmedAt: true }) });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
@@ -433,7 +433,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as { submittal: { state: string } };
-        expect(body.submittal.state).toBe('submitted_to_ats');
+        expect(body.submittal.state).toBe('submitted_to_client');
       });
   });
 
@@ -469,7 +469,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         b.headers(jsonHeaders(K_SUBMIT_REPLAY)).jsonBody(EMPTY_BODY);
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_ats', { confirmedAt: true }) });
+        b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_client', { confirmedAt: true }) });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
@@ -729,11 +729,11 @@ describe('ats-web → POST /v1/submittals/:id/confirm', () => {
 // POST /v1/submittals/:id/confirm-ats — happy + illegal-state + idempotency
 // ======================================================================
 describe('ats-web → POST /v1/submittals/:id/confirm-ats', () => {
-  it('returns 200 advancing submitted_to_ats -> confirmed', async () => {
+  it('returns 200 advancing submitted_to_client -> confirmed', async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a submitted_to_ats submittal exist')
-      .uponReceiving('a confirm-ats on a submitted_to_ats submittal')
+      .given('an ats-web recruiter and a submitted_to_client submittal exist')
+      .uponReceiving('a confirm-ats on a submitted_to_client submittal')
       .withRequest('POST', `/v1/submittals/${SUB_SUBMITTED_ID}/confirm-ats`, (b) => {
         b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000501')).jsonBody(EMPTY_BODY);
       })
@@ -752,7 +752,7 @@ describe('ats-web → POST /v1/submittals/:id/confirm-ats', () => {
       });
   });
 
-  it('returns 422 SUBMITTAL_STATE_INVALID when not in submitted_to_ats', async () => {
+  it('returns 422 SUBMITTAL_STATE_INVALID when not in submitted_to_client', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist')

@@ -53,7 +53,7 @@ interface TalentSubmittalEventRow {
 }
 
 // Lane 2 / L2-E (SB-5 / D-4) — the authoritative submitted-transition-history
-// grain. The FIRST canonical `state_transition → submitted_to_ats` event per
+// grain. The FIRST canonical `state_transition → submitted_to_client` event per
 // (talent, requisition) grain, carrying the linked pipeline_id (for time-to-submit
 // joins) and the transition instant. DURABLE: keyed on the immutable EVENT, not the
 // mutable record.state, so it survives the record's later confirmed/revoked
@@ -192,7 +192,7 @@ export class TalentSubmittalEventRepository {
   // Lane 2 / L2-E (SB-5) — the authoritative submitted-history read the L2-E
   // repoints consume (reporting via a reporting-owned port; apps/api enrichment
   // directly). Bulk-oriented: ONE tenant-scoped query returns the first
-  // submitted_to_ats transition per (talent, requisition) grain. DISTINCT ON picks
+  // submitted_to_client transition per (talent, requisition) grain. DISTINCT ON picks
   // the earliest event per grain (carrying that submittal's pipeline_id); the
   // optional `since` filters on the FIRST transition instant (outer WHERE on the
   // derived value — never on the raw event, which would wrongly admit a grain whose
@@ -239,7 +239,7 @@ export class TalentSubmittalEventRepository {
              ON sr.id = se.submittal_id AND sr.tenant_id = se.tenant_id
           WHERE se.tenant_id = $1::uuid
             AND se.event_type = 'state_transition'
-            AND se.event_payload->>'to_state' = 'submitted_to_ats'
+            AND se.event_payload->>'to_state' = 'submitted_to_client'
             ${innerClauses.join('\n            ')}
           ORDER BY sr.talent_id, sr.job_id, se.created_at ASC, se.id ASC
        ) g

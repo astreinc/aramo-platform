@@ -75,7 +75,7 @@ export class TalentPresetResolverService {
         const since = new Date(ctx.now.getTime() - 7 * 86_400_000);
         // Lane 2 / L2-E (SB-5) — event-sourced from the authoritative Submittal
         // history (the retired Pipeline mirror is gone): distinct talents whose FIRST
-        // submitted_to_ats transition is within the week window. DURABLE across the
+        // submitted_to_client transition is within the week window. DURABLE across the
         // submittal's later confirmed/revoked states (reproducing the mirror).
         const grains = await this.submittalEvents.findFirstSubmittedByGrain({
           tenant_id: ctx.tenant_id,

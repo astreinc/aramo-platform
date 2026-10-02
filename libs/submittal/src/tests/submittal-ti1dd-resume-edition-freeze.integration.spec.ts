@@ -8,7 +8,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 
 // TALENT-INTEL-1 TI-1D-D (Layer B) — the DB-layer proofs for the frozen send-time
-// résumé snapshot on TalentSubmittalRecord: the ready_for_review → submitted_to_ats
+// résumé snapshot on TalentSubmittalRecord: the ready_for_review → submitted_to_client
 // send transition is the ONE place resume_edition_id may be pinned (from NULL);
 // any later mutation of resume_edition_id is rejected; and the previously-leaky
 // pipeline_id is now frozen too. The record is raw-INSERTed (bypassing the
@@ -22,6 +22,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql',
   '../../prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
   '../../prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+  '../../prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -99,12 +100,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
-    it('the send transition (ready_for_review → submitted_to_ats) pins resume_edition_id', async () => {
+    it('the send transition (ready_for_review → submitted_to_client) pins resume_edition_id', async () => {
       const id = await seedCreated(randomUUID());
       const edition = randomUUID();
       await c.query(
         `UPDATE submittal."TalentSubmittalRecord"
-           SET state = 'submitted_to_ats'::submittal."SubmittalState", confirmed_at = NOW(), resume_edition_id = $2::uuid
+           SET state = 'submitted_to_client'::submittal."SubmittalState", confirmed_at = NOW(), resume_edition_id = $2::uuid
          WHERE id = $1::uuid`,
         [id, edition],
       );
@@ -116,10 +117,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = await seedCreated(randomUUID());
       const edition = randomUUID();
       await c.query(
-        `UPDATE submittal."TalentSubmittalRecord" SET state = 'submitted_to_ats'::submittal."SubmittalState", confirmed_at = NOW(), resume_edition_id = $2::uuid WHERE id = $1::uuid`,
+        `UPDATE submittal."TalentSubmittalRecord" SET state = 'submitted_to_client'::submittal."SubmittalState", confirmed_at = NOW(), resume_edition_id = $2::uuid WHERE id = $1::uuid`,
         [id, edition],
       );
-      // submitted_to_ats → confirmed while ALSO changing resume_edition_id → rejected.
+      // submitted_to_client → confirmed while ALSO changing resume_edition_id → rejected.
       await expect(
         c.query(
           `UPDATE submittal."TalentSubmittalRecord" SET state = 'confirmed'::submittal."SubmittalState", resume_edition_id = $2::uuid WHERE id = $1::uuid`,
@@ -138,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // A legal state transition that ALSO mutates pipeline_id → rejected.
       await expect(
         c.query(
-          `UPDATE submittal."TalentSubmittalRecord" SET state = 'submitted_to_ats'::submittal."SubmittalState", confirmed_at = NOW(), pipeline_id = $2::uuid WHERE id = $1::uuid`,
+          `UPDATE submittal."TalentSubmittalRecord" SET state = 'submitted_to_client'::submittal."SubmittalState", confirmed_at = NOW(), pipeline_id = $2::uuid WHERE id = $1::uuid`,
           [id, randomUUID()],
         ),
       ).rejects.toThrow(/state machine|check_violation|immutable/i);

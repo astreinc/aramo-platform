@@ -11,7 +11,7 @@ import type {
 // event history. This is the ONLY place the reporting submitted-history semantic
 // touches @aramo/submittal: libs/reporting owns the port interface + overlay and
 // imports no submittal domain/repo/schema (Architect ruling Q3 — DEPENDENCY-ON-DATA
-// yes, DIRECT-IMPORT no). The `to_state='submitted_to_ats'` predicate + the
+// yes, DIRECT-IMPORT no). The `to_state='submitted_to_client'` predicate + the
 // first-per-grain JOIN live on the submittal side (TalentSubmittalEventRepository).
 @Injectable()
 export class SubmittedHistoryAdapter implements SubmittedHistoryPort {

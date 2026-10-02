@@ -530,7 +530,7 @@ function buildRevoke(): RevokeMockSetup {
       tenant_id: TENANT_A,
       submittal_id: SUBMITTAL_ID,
       event_type: 'state_transition' as const,
-      event_payload: { from_state: 'submitted_to_ats', to_state: 'revoked' },
+      event_payload: { from_state: 'submitted_to_client', to_state: 'revoked' },
       created_at: new Date('2026-05-23T15:00:00Z'),
     },
   });
