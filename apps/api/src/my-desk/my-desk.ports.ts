@@ -185,6 +185,14 @@ export interface MyDeskReadPort {
     ctx: DeskActorContext,
     talent_ids: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
+
+  // CRM-7 (§11) — per-talent communication authority for the follow-up CTA:
+  // can_call / can_email = contacting-consent permits (contactable) AND the
+  // channel exists (phone / email present). The Talent-360 precedent.
+  resolveTalentContactability(
+    ctx: DeskActorContext,
+    talent_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, { can_call: boolean; can_email: boolean }>>;
   resolveCompanyNames(
     ctx: DeskActorContext,
     company_ids: readonly string[],

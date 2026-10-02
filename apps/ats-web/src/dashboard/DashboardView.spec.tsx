@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DashboardView } from './DashboardView';
 import { getMyDesk } from './my-desk-api';
@@ -14,6 +14,20 @@ vi.mock('../shell/me-api', () => ({
     tenant: { display_name: 'Astre', status: 'active' },
   }),
 }));
+// CRM-7 — Done/Snooze call the Task PATCH; gate on task:write.
+const h = vi.hoisted(() => ({ scopes: ['task:read', 'task:write'], updateTask: vi.fn() }));
+vi.mock('../task/task-api', () => ({ updateTask: h.updateTask }));
+vi.mock('@aramo/fe-foundation', async (importActual) => {
+  const actual = await importActual<typeof import('@aramo/fe-foundation')>();
+  return {
+    ...actual,
+    useSession: () => ({
+      status: 'authenticated' as const,
+      session: { sub: 'u1', consumer_type: 'recruiter' as const, tenant_id: 't', scopes: h.scopes, iat: 0, exp: 9_999_999_999 },
+    }),
+    hasScope: (s: { scopes?: string[] } | null, scope: string) => s?.scopes?.includes(scope) ?? false,
+  };
+});
 
 const getMyDeskMock = vi.mocked(getMyDesk);
 
@@ -22,9 +36,9 @@ function makeDesk(overrides: Partial<MyDeskView> = {}): MyDeskView {
     generated_at: '2026-09-29T16:00:00.000Z',
     server_date: '2026-09-29',
     priority_items: [
-      { id: 'a', kind: 'rtr', talent_id: 't1', talent_name: 'Marcus Lee', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Marcus Lee', reason: 'Qualified 4 days ago · RTR not sent.', due_at: '2026-09-27T12:00:00Z', urgency: 'overdue', primary_action: { kind: 'open_task', label: 'Open task', href: '/talent/t1' } },
-      { id: 'b', kind: 'submittal', talent_id: 't2', talent_name: 'Hannah Kim', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Hannah Kim', reason: 'Ready to submit — all Submittal Policy checks met.', due_at: null, urgency: 'today', primary_action: { kind: 'submit_to_client', label: 'Submit to client', href: '/talent/t2/submittal/r1' } },
-      { id: 'c', kind: 'task', talent_id: null, talent_name: null, requisition_id: 'r2', requisition_label: 'REQ-1004', label: 'Send prep notes', reason: '', due_at: '2026-10-01T12:00:00Z', urgency: 'upcoming', primary_action: { kind: 'open_task', label: 'Open task', href: '/requisitions/r2' } },
+      { id: 'a', kind: 'rtr', talent_id: 't1', talent_name: 'Marcus Lee', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Marcus Lee', reason: 'Qualified 4 days ago · RTR not sent.', due_at: '2026-09-27T12:00:00Z', urgency: 'overdue', primary_action: { kind: 'open_task', label: 'Open task', href: '/talent/t1' }, task_id: null },
+      { id: 'b', kind: 'submittal', talent_id: 't2', talent_name: 'Hannah Kim', requisition_id: 'r1', requisition_label: 'REQ-1001', label: 'Hannah Kim', reason: 'Ready to submit — all Submittal Policy checks met.', due_at: null, urgency: 'today', primary_action: { kind: 'submit_to_client', label: 'Submit to client', href: '/talent/t2/submittal/r1' }, task_id: null },
+      { id: 'c', kind: 'task', talent_id: null, talent_name: null, requisition_id: 'r2', requisition_label: 'REQ-1004', label: 'Send prep notes', reason: '', due_at: '2026-10-01T12:00:00Z', urgency: 'upcoming', primary_action: { kind: 'open_task', label: 'Open task', href: '/requisitions/r2' }, task_id: 'c' },
     ],
     interviews_today: [
       { id: 'iv1', scheduled_at: '2026-09-29T15:00:00Z', talent_id: 't3', talent_name: 'Rahul Nair', requisition_id: 'r1', requisition_label: 'REQ-1001', interview_type: 'client_interview', round: 1, confirmation: 'unknown' },
@@ -50,6 +64,10 @@ function renderDesk() {
   );
 }
 
+beforeEach(() => {
+  h.scopes = ['task:read', 'task:write'];
+  h.updateTask.mockResolvedValue({});
+});
 afterEach(() => vi.clearAllMocks());
 
 describe('DashboardView (My Desk)', () => {
@@ -159,5 +177,59 @@ describe('DashboardView (My Desk)', () => {
     fireEvent.click(retry);
     expect(await screen.findByText('Marcus Lee')).toBeInTheDocument();
     expect(getMyDeskMock).toHaveBeenCalledTimes(2);
+  });
+
+  // --- CRM-7 (§11) — follow-up CTA + Task controls (Done/Snooze) ---
+  // A follow-up Task with a Call CTA (no requisition + voice permitted), kept
+  // OUT of the shared fixture so it doesn't perturb the count assertions above.
+  const FOLLOW_UP = {
+    id: 'd', kind: 'follow_up' as const, talent_id: 't6', talent_name: 'Sofia Alvarez',
+    requisition_id: null, requisition_label: null, label: 'Sofia Alvarez',
+    reason: 'Call back about hybrid days', due_at: '2026-09-29T12:00:00Z', urgency: 'today' as const,
+    primary_action: { kind: 'call' as const, label: 'Call', href: null }, task_id: 'd',
+  };
+  const deskWithFollowUp = () => makeDesk({ priority_items: [FOLLOW_UP] });
+  function followUpRow(): HTMLElement {
+    return screen.getByText('Call back about hybrid days').closest('.rc-desk-row') as HTMLElement;
+  }
+
+  it('renders the communication-authority CTA (Call) on a follow-up row', async () => {
+    getMyDeskMock.mockResolvedValue(deskWithFollowUp());
+    renderDesk();
+    await screen.findByText('Sofia Alvarez');
+    // Call routes to the talent surface (where the authority executes it).
+    const cta = within(followUpRow()).getByRole('link', { name: 'Call' });
+    expect(cta).toHaveAttribute('href', '/talent/t6');
+  });
+
+  it('Done completes the Task via PATCH (status=done) and refreshes the desk', async () => {
+    getMyDeskMock.mockResolvedValue(deskWithFollowUp());
+    renderDesk();
+    await screen.findByText('Sofia Alvarez');
+    fireEvent.click(within(followUpRow()).getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(h.updateTask).toHaveBeenCalledWith('d', { status: 'done' }));
+    expect(getMyDeskMock.mock.calls.length).toBeGreaterThanOrEqual(2); // desk refreshed
+  });
+
+  it('Snooze → Tomorrow bumps the Task due_date via PATCH', async () => {
+    getMyDeskMock.mockResolvedValue(deskWithFollowUp());
+    renderDesk();
+    await screen.findByText('Sofia Alvarez');
+    fireEvent.click(within(followUpRow()).getByRole('button', { name: 'Snooze' }));
+    fireEvent.click(within(followUpRow()).getByRole('button', { name: 'Tomorrow' }));
+    await waitFor(() => expect(h.updateTask).toHaveBeenCalledTimes(1));
+    const [id, body] = h.updateTask.mock.calls[0]!;
+    expect(id).toBe('d');
+    expect(body).toHaveProperty('due_date');
+    expect(typeof body.due_date).toBe('string'); // an ISO instant in the future
+  });
+
+  it('hides Done/Snooze for a read-only actor (no task:write)', async () => {
+    h.scopes = ['task:read'];
+    getMyDeskMock.mockResolvedValue(deskWithFollowUp());
+    renderDesk();
+    await screen.findByText('Sofia Alvarez');
+    expect(within(followUpRow()).queryByRole('button', { name: 'Done' })).toBeNull();
+    expect(within(followUpRow()).queryByRole('button', { name: 'Snooze' })).toBeNull();
   });
 });

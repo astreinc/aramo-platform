@@ -28,7 +28,10 @@ export type DeskActionKind =
   | 'update_talent'
   | 'open_task'
   | 'review_advisory'
-  | 'update_email';
+  | 'update_email'
+  // CRM-7 (§11) — follow-up communication-authority CTAs (resolved FE-side).
+  | 'call'
+  | 'email';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;
@@ -48,6 +51,9 @@ export interface DeskPriorityItemView {
   readonly due_at: string | null;
   readonly urgency: DeskUrgency;
   readonly primary_action: DeskActionView | null;
+  // CRM-7 (§11) — backing Task id when the row IS a Task (Done/Snooze target);
+  // null for domain-derived work items.
+  readonly task_id: string | null;
 }
 
 export type DeskInterviewConfirmation =

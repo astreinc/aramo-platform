@@ -6261,6 +6261,11 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-desk-due--today { color: var(--ink); }
 .rc-desk-due--upcoming { color: var(--muted); }
 .rc-desk-action-pending { font-size: 0.76rem; color: var(--muted); }
+/* CRM-7 (§11) — row Task controls (Done/Snooze) separated from the primary CTA. */
+.rc-desk-taskctl { display: inline-flex; align-items: center; gap: 10px; position: relative; }
+.rc-desk-snooze { position: absolute; top: 100%; right: 0; z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; background: var(--surface, #fff); border: 1px solid var(--border, #e2e6ea); border-radius: 8px; box-shadow: 0 6px 20px rgba(16, 24, 40, 0.12); }
+.rc-desk-snooze-date { margin-top: 2px; }
+.rc-desk-cta { font-weight: 600; }
 
 .rc-desk-reqcell { display: flex; flex-direction: column; min-width: 0; }
 .rc-desk-reqcell__t { font-weight: 700; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

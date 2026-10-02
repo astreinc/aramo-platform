@@ -5803,6 +5803,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/dashboard/DashboardView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

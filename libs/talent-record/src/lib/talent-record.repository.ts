@@ -752,6 +752,29 @@ export class TalentRecordRepository {
     return out;
   }
 
+  // CRM-7 (§11) — BATCH channel presence (has a phone / has an email) for a set
+  // of talent ids. The My Desk follow-up CTA pairs this with the contacting-
+  // consent summary to decide Call / Email / Open (the Talent-360 can_call /
+  // can_email precedent). Absent id ⇒ both false.
+  async findContactChannelsByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, { has_phone: boolean; has_email: boolean }>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.talentRecord.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: [...new Set(args.ids)] } },
+      select: { id: true, phone_cell: true, email1: true },
+    });
+    const out = new Map<string, { has_phone: boolean; has_email: boolean }>();
+    for (const r of rows as Array<{ id: string; phone_cell: string | null; email1: string | null }>) {
+      out.set(r.id, {
+        has_phone: (r.phone_cell ?? '') !== '',
+        has_email: (r.email1 ?? '') !== '',
+      });
+    }
+    return out;
+  }
+
   // TR-2a-1 — stable keyset enumeration over ALL of a tenant's TalentRecords,
   // ordered (created_at, id) ascending, for the anchor-producer backfill (an
   // apps/api system op — no visibility scoping; it must see every record). The
