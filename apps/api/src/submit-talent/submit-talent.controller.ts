@@ -100,8 +100,10 @@ export class SubmitTalentController {
     // policy is ENFORCING_WITH_OVERRIDE and a required evidence item is missing.
     const engagementOverride = parseEngagementOverride(body);
 
-    // The single atomic operation: submitted_to_ats (authoritative) + pipeline
-    // `submitted` mirror + serialized slot consumption + provenance, all-or-nothing.
+    // The single atomic operation: submitted_to_ats (authoritative) + serialized
+    // slot consumption + provenance, all-or-nothing. L2-E (SB-5) retired the
+    // Pipeline mirror — this command does NOT write Pipeline; the episode stays
+    // LIVE and readers derive the submit-to-client signal from the event.
     const eventId = randomUUID();
     await this.command.submitToClient({
       tenant_id: authContext.tenant_id,
@@ -120,7 +122,7 @@ export class SubmitTalentController {
 
     // Preserve the public `{ submittal, event }` envelope (Ruling 14) — the
     // authoritative result is the submittal now in submitted_to_ats plus the
-    // state_transition event the command wrote; the pipeline mirror is internal.
+    // state_transition event the command wrote (the Pipeline is not written).
     const submittal = await this.submittalRepository.findById({
       tenant_id: authContext.tenant_id,
       id: submittal_id,

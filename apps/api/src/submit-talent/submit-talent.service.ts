@@ -3,6 +3,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { recordUsage } from '@aramo/metering';
 import { canTransitionSubmittal } from '@aramo/submittal';
+import { isLiveStatus, type PipelineStatus } from '@aramo/pipeline';
 import {
   consumeSlot,
   evaluateEligibility,
@@ -35,12 +36,12 @@ import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 // retired the Pipeline mirror: this command no longer writes Pipeline —
 // the episode stays LIVE and readers derive the submit-to-client signal from the event.
 
-// LIVE = the live-episode predicate (mirror of the partial-unique WHERE). After
-// Legacy-Pipeline-Canonicalization the exclusion set is the two canonical terminals.
-const NON_LIVE_PIPELINE_STATUSES = new Set([
-  'not_in_consideration',
-  'completed',
-]);
+// SW-1 (Submittal Workspace, R1-A) — the live-episode predicate is the Pipeline
+// domain's canonical `isLiveStatus` (single authority), NOT a local set. This
+// reconciles the prior two-value drift: `voided` is a canonical terminal
+// (LIVE_EPISODE_EXCLUSION_STATUSES / the Pipeline_live_episode_key partial index),
+// so a voided episode is correctly NON-live here too. Submit re-validates the link
+// fail-closed regardless of how the submittal's pipeline_id was derived at create.
 
 export interface SubmitTalentToClientInput {
   readonly tenant_id: string;
@@ -183,7 +184,7 @@ export class SubmitTalentToClientService {
       if (pipeline.tenant_id !== submittal.tenant_id) throw linkInvalid('tenant_mismatch');
       if (pipeline.requisition_id !== submittal.job_id) throw linkInvalid('requisition_mismatch');
       if (pipeline.talent_record_id !== submittal.talent_id) throw linkInvalid('talent_mismatch');
-      if (NON_LIVE_PIPELINE_STATUSES.has(pipeline.status)) throw linkInvalid('not_live');
+      if (!isLiveStatus(pipeline.status as PipelineStatus)) throw linkInvalid('not_live');
       // Lane 2 / L2-E (SB-5) — the mirror precondition (canTransition→'submitted') is
       // removed with the mirror: submit-to-ats no longer transitions Pipeline, so
       // there is no target-legality to check. The live-episode link validation above

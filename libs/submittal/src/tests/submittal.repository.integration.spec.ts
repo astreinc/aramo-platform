@@ -333,6 +333,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pkg['selection_event_refs']).toBeDefined();
     });
 
+    it('SW-1 (R1-A): persists the server-derived pipeline_id link passed by the orchestrator', async () => {
+      const pipelineId = randomUUID();
+      const view = await repo.createSubmittal(
+        makeInput({ examination_id: ENT_EXAM_ID, pipeline_id: pipelineId }),
+      );
+      // The create path is the single write surface; the apps/api orchestrator
+      // derives pipeline_id server-side and forwards it here. Prove it is durably
+      // persisted on the row (the seam that unblocks submit-to-client — a null
+      // link is refused with SUBMITTAL_PIPELINE_LINK_INVALID at submit time).
+      const rows = (await submittalPrisma.$queryRawUnsafe(
+        `SELECT pipeline_id::text AS pid FROM submittal."TalentSubmittalRecord" WHERE id = '${view.id}'::uuid`,
+      )) as Array<{ pid: string | null }>;
+      expect(rows[0]?.pid).toBe(pipelineId);
+    });
+
     it('Stretch refusal: throws SUBMITTAL_STRETCH_BLOCKED; no rows on either table', async () => {
       const submittalRowsBefore = await countSubmittalRowsByExam(submittalPrisma, STRETCH_EXAM_ID);
       const pkgRowsBefore = await countPackageRowsByExam(submittalPrisma, STRETCH_EXAM_ID);

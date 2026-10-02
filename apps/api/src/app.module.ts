@@ -77,6 +77,7 @@ import { CompanyClientCheckModule } from './company-client-check/company-client-
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
+import { CreateSubmittalModule } from './create-submittal/create-submittal.module.js';
 import { ClientSelectionOrchestrationModule } from './client-selection/client-selection-orchestration.module.js';
 import { ClientDecisionOrchestrationModule } from './client-decision-orchestration/client-decision-orchestration.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
@@ -447,6 +448,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // SKILL-TAX-1F-B1 — the durable correction/propagation engine (internal).
     SkillGovernanceModule,
     SubmittalModule,
+    CreateSubmittalModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,
     ClientDecisionOrchestrationModule,

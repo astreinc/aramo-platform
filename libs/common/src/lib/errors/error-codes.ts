@@ -657,6 +657,13 @@ export const ERROR_CODES = [
   // SUBMITTAL_PIPELINE_LINK_INVALID (409): the submittal has no valid linked LIVE pipeline
   // episode to mirror (pipeline_id null, or the linked episode is not live / cannot transition).
   'SUBMITTAL_PIPELINE_LINK_INVALID',
+  // SUBMITTAL_NO_LIVE_PIPELINE_EPISODE (409): SW-1 (R1-A) — a submittal CREATE was
+  // refused because there is no live Pipeline episode for the (tenant, talent,
+  // requisition) triple to derive the authoritative pipeline_id from (none created,
+  // or every episode has reached a canonical terminal status). The caller never
+  // supplies pipeline_id; it is derived server-side from the sole live episode. The
+  // Talent must be in a live pipeline for the requisition before a submittal exists.
+  'SUBMITTAL_NO_LIVE_PIPELINE_EPISODE',
   // SUBMITTAL_RESUME_SELECTION_REQUIRED (422): TALENT-INTEL-1 TI-1D-D — client
   // send requires an EXPLICIT current TalentRequisitionResume selection for the
   // (tenant, talent, requisition). No automatic Talent-default fallback: the exact
