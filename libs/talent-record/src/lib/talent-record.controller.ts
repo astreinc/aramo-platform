@@ -256,6 +256,9 @@ export class TalentRecordController {
       // lib never reads activity/pipeline/tasks/teams itself.
       talentPresetAllowlist?: readonly string[];
       talentScopeOwnerIds?: readonly string[];
+      // CRM-4 — "Not contacted 90+ days" exclusion set (recently-contacted ids);
+      // folds into id_denylist (id NOT IN), ANDed with the native filters.
+      talentExcludeIds?: readonly string[];
     },
     @RequestId() requestId: string,
   ): Promise<{ items: TalentRecordView[] } | TalentSearchPage> {
@@ -309,6 +312,8 @@ export class TalentRecordController {
         // CRM-3 — a FE `ids` param folds in too; when BOTH are present they are
         // INTERSECTED (a single id_allowlist is ANDed downstream).
         id_allowlist: mergeAllowlists(req.talentPresetAllowlist, splitCsv(ids)),
+        // CRM-4 — "Not contacted 90+ days" exclusion (id NOT IN recently-contacted).
+        id_denylist: req.talentExcludeIds,
         sort: parseSort(sort),
         dir: dir === 'asc' ? 'asc' : 'desc',
         cursor,

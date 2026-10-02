@@ -35,6 +35,10 @@ function fakeRepo() {
       const owners = new Set(query.owner_id as string[]);
       items = items.filter((i) => owners.has(i.owner_id));
     }
+    if (query.id_denylist != null) {
+      const deny = new Set(query.id_denylist as string[]);
+      items = items.filter((i) => !deny.has(i.id));
+    }
     return {
       items,
       next_cursor: null,
@@ -108,6 +112,7 @@ async function listPaged(
     undefined, // skills
     undefined, // skill_match
     undefined, // location
+    undefined, // ids (CRM-3)
     req,
     'req-1',
   );
@@ -126,6 +131,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       {} as never, // CRM-2 requisition-assignments (unused in this case)
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const interceptor = new TalentPresetInterceptor(resolver);
     const req = makeReq({ preset: 'in_touch_6mo' });
@@ -157,6 +163,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never, // team
       submittalEvents as never,
       {} as never, // CRM-2 requisition-assignments (unused in this case)
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const req = makeReq({ preset: 'submitted_this_week' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -184,6 +191,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       {} as never, // CRM-2 requisition-assignments (unused in this case)
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const req = makeReq({ preset: 'needs_follow_up' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -215,6 +223,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       team as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       {} as never, // CRM-2 requisition-assignments (unused in this case)
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const req = makeReq({ scope: 'my_team' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -237,6 +246,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       {} as never, // CRM-2 requisition-assignments (unused in this case)
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const req = makeReq({});
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -265,6 +275,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never, // team
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
       requisitionAssignments as never, // CRM-2 requisition-assignments
+      {} as never, // CRM-4 communications (unused in this case)
     );
     const req = makeReq({ scope: 'working_with_me' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -282,5 +293,39 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
 
     const items = await listPaged(controllerWith(fakeRepo()), req);
     expect(items.map((i) => i.id).sort()).toEqual(['t1', 't2']); // t3 (not in active pipeline) excluded
+  });
+
+  it('CRM-4 Not contacted 90+ days → DENYLIST (recently-contacted excluded; never-contacted included)', async () => {
+    // Comms contacted t1; Activity contacted t3 (both within 90d) → excluded.
+    const communications = {
+      findContactedTalentIdsSince: vi.fn().mockResolvedValue(['t1']),
+    };
+    const activity = {
+      findContactedTalentIdsSince: vi.fn().mockResolvedValue(['t3']),
+    };
+    const resolver = new TalentPresetResolverService(
+      activity as never,
+      {} as never, // pipeline
+      {} as never, // task
+      {} as never, // team
+      { findFirstSubmittedByGrain: async () => [] } as never, // submittal-events
+      {} as never, // requisition-assignments
+      communications as never, // CRM-4 communications
+    );
+    const req = makeReq({ preset: 'not_contacted_90d' });
+    await runInterceptor(new TalentPresetInterceptor(resolver), req);
+
+    // the exclusion set (NOT an allowlist); never-contacted t2 is NOT in it.
+    expect(new Set(req.talentExcludeIds)).toEqual(new Set(['t1', 't3']));
+    expect(req.talentPresetAllowlist).toBeUndefined();
+    // ~90 days back.
+    const since = communications.findContactedTalentIdsSince.mock.calls[0]![0].since as Date;
+    const days = (Date.now() - since.getTime()) / 86_400_000;
+    expect(days).toBeGreaterThan(89);
+    expect(days).toBeLessThan(91);
+
+    const items = await listPaged(controllerWith(fakeRepo()), req);
+    // t1 + t3 recently contacted → excluded; t2 (never contacted) remains.
+    expect(items.map((i) => i.id)).toEqual(['t2']);
   });
 });

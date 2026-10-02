@@ -48,6 +48,9 @@ export interface TalentSearchQuery {
   readonly location?: string; // city/state ILIKE
   // preset / My-team resolved-ids allowlist (resolve-then-filter; null = none).
   readonly id_allowlist?: readonly string[] | null;
+  // CRM-4 — exclusion set (id NOT IN); the "Not contacted 90+ days" denylist of
+  // recently-contacted ids. ANDed with the native filters + any id_allowlist.
+  readonly id_denylist?: readonly string[] | null;
   // sort + keyset cursor
   readonly sort?: TalentSortKey;
   readonly dir?: SortDir;

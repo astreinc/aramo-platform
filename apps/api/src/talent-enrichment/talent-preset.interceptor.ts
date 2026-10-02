@@ -30,6 +30,9 @@ type PresetRequest = Request & {
   authContext?: AuthContextType;
   talentPresetAllowlist?: readonly string[];
   talentScopeOwnerIds?: readonly string[];
+  // CRM-4 — "Not contacted 90+ days" exclusion set (recently-contacted ids);
+  // the controller folds this into id_denylist (id NOT IN).
+  talentExcludeIds?: readonly string[];
 };
 
 @Injectable()
@@ -59,8 +62,17 @@ export class TalentPresetInterceptor implements NestInterceptor {
     // talent"). Resolves to a talent-id allowlist (assigned reqs × active
     // pipeline), NOT owner_id.
     const wantsWorkingWithMe = scopeParam === 'working_with_me';
+    // CRM-4 — "Not contacted 90+ days": a DENYLIST (exclude recently-contacted),
+    // not an allowlist — never-contacted must be INCLUDED. Handled explicitly
+    // (not via isTalentPreset, which gates the positive-allowlist presets).
+    const wantsNotContacted = presetParam === 'not_contacted_90d';
 
-    if (preset === undefined && !wantsTeam && !wantsWorkingWithMe) {
+    if (
+      preset === undefined &&
+      !wantsTeam &&
+      !wantsWorkingWithMe &&
+      !wantsNotContacted
+    ) {
       return next.handle();
     }
 
@@ -91,6 +103,10 @@ export class TalentPresetInterceptor implements NestInterceptor {
         }
         if (wantsTeam) {
           req.talentScopeOwnerIds = await this.resolver.resolveTeamOwnerIds(ctx);
+        }
+        if (wantsNotContacted) {
+          req.talentExcludeIds =
+            await this.resolver.resolveNotContacted90dExclude(ctx);
         }
       })(),
     ).pipe(switchMap(() => next.handle()));

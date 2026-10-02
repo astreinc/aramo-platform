@@ -1123,6 +1123,7 @@
     "apps/ats-web/src/talent/components/BulkBar.tsx",
     "apps/ats-web/src/talent/components/ContradictionResolveDialog.tsx",
     "apps/ats-web/src/talent/components/FilterBar.tsx",
+    "apps/ats-web/src/talent/components/LastContactCell.tsx",
     "apps/ats-web/src/talent/components/ListsPanel.spec.tsx",
     "apps/ats-web/src/talent/components/ListsPanel.tsx",
     "apps/ats-web/src/talent/components/TalentTriageDrawer.tsx",

@@ -48,6 +48,13 @@ export interface TalentRecordView {
   // current_stage: most-advanced ACTIVE pipeline stage (+ which req), or null
   //   ("none" — in no active pipeline).
   readonly last_activity_at?: string | null;
+  // CRM-4 — authoritative last contact (Communications ∪ Activity call/email);
+  // null ⇒ "Never". NOT last_activity_at (type-blind).
+  readonly last_contact?: {
+    readonly occurred_at: string;
+    readonly channel: 'Call' | 'Email';
+    readonly actor_id: string | null;
+  } | null;
   readonly consent_summary?: 'contactable' | 'expiring_lt_30d' | 'do_not_contact' | null;
   readonly current_stage?: { stage: string; requisition_id: string } | null;
   readonly date_available: string | null;

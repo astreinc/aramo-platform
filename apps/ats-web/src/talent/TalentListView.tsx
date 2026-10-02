@@ -26,6 +26,7 @@ import { Avatar, Card, Icons, StagePill, StatusPill, type PillTone } from '../ui
 import type { PipelineStatus } from '../pipeline/types';
 
 import { AddToListDialog } from './components/AddToListDialog';
+import { LastContactCell } from './components/LastContactCell';
 import { ListsPanel } from './components/ListsPanel';
 import { listTalentMemberships } from './saved-list-api';
 import { BulkBar } from './components/BulkBar';
@@ -37,7 +38,6 @@ import { listErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
   VIEWS,
-  CROSS_SCHEMA_VIEWS,
   buildTalentQuery,
   deriveSkillCounts,
   fullName,
@@ -250,8 +250,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const myId = session?.sub ?? null;
   const canCreate =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:create');
-  const canEdit =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
   // CRM-2 — "Add to list" bulk action requires saved-list:edit (CRM-1 seeded).
   const canManageLists =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'saved-list:edit');
@@ -885,10 +883,14 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                           </td>
                         ) : null}
                         {cols.lastContacted ? (
-                          // CRM-2 — authoritative last-contact (date · channel ·
-                          // actor) composes in CRM-4; NEVER proxied by activity.
+                          // CRM-4 — authoritative last-contact (date · channel ·
+                          // actor); "Never" when none. NEVER proxied by activity.
                           <td className="lastcell">
-                            <span className="rc-muted">—</span>
+                            <LastContactCell
+                              last={t.last_contact ?? null}
+                              userNames={userNames}
+                              myId={myId}
+                            />
                           </td>
                         ) : null}
                         {cols.lists ? (

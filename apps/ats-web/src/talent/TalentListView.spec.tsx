@@ -529,7 +529,7 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     );
   });
 
-  it('CRM-2 renders exactly the four quick filters; Not-contacted-90+ is pending/disabled; no My-hot-list / Save-view', async () => {
+  it('CRM-2/4 renders exactly the four quick filters (Not-contacted-90+ ACTIVE in CRM-4); no My-hot-list / Save-view', async () => {
     mockServer({
       talent: [
         makeTalent('1', 'Ada', 'Lovelace', { is_hot: true }),
@@ -544,12 +544,10 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     );
     expect(within(bar).getByRole('button', { name: /available now/i })).toBeInTheDocument();
     expect(within(bar).getByRole('button', { name: /follow-up due/i })).toBeInTheDocument();
-    // TEMPORARY DEPENDENCY RESIDUAL — control geometry landed; authoritative
-    // behavior activates in CRM-4. Rendered disabled, with NO recruiter-facing
-    // "coming later" copy (the engineering marker lives in the parity harness).
+    // CRM-4 activated the chip (authoritative last-contact denylist) — now enabled.
     expect(
       within(bar).getByRole('button', { name: /not contacted 90\+ days/i }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     // retired views + save-view stub are gone.
     expect(screen.queryByRole('button', { name: /my hot list/i })).not.toBeInTheDocument();
     expect(

@@ -13,6 +13,11 @@ describe('TalentRecordEnrichmentService', () => {
       findLastActivityForTalentIds: vi
         .fn()
         .mockResolvedValue(new Map([['t1', '2026-06-10T00:00:00.000Z']])),
+      findLatestContactForTalentIds: vi
+        .fn()
+        .mockResolvedValue(
+          new Map([['t1', { occurred_at: '2026-06-09T00:00:00.000Z', channel: 'Call', actor_id: 'u1' }]]),
+        ),
     };
     const pipeline = {
       findCurrentStageForTalentIds: vi
@@ -26,11 +31,20 @@ describe('TalentRecordEnrichmentService', () => {
         .fn()
         .mockResolvedValue(new Map([['t1', 'contactable']])),
     };
+    const communications = {
+      // CRM-4 — a MORE-recent email contact than the activity Call (06-09) →
+      // last_contact must be the MAX across sources (this email), proving the
+      // compose picks real contacts, never last_activity_at.
+      findLatestContactForTalentIds: vi.fn().mockResolvedValue(
+        new Map([['t1', { occurred_at: '2026-06-10T09:00:00.000Z', channel: 'Email', actor_id: 'u2' }]]),
+      ),
+    };
     const svc = new TalentRecordEnrichmentService(
       activity as never,
       consent as never,
       pipeline as never,
       {} as never,
+      communications as never, // CRM-4 communications
     );
 
     const out = await svc.enrich([view('t1'), view('t2')], {
@@ -43,13 +57,16 @@ describe('TalentRecordEnrichmentService', () => {
       last_activity_at: '2026-06-10T00:00:00.000Z',
       current_stage: { stage: 'qualifying', requisition_id: 'r1' },
       consent_summary: 'contactable',
+      // last_contact = MAX(Call 06-09, Email 06-10) = the email.
+      last_contact: { occurred_at: '2026-06-10T09:00:00.000Z', channel: 'Email', actor_id: 'u2' },
     });
-    // unlinked t2 → null activity/stage, do_not_contact
+    // unlinked t2 → null activity/stage/contact, do_not_contact ("Never").
     expect(out[1]).toMatchObject({
       id: 't2',
       last_activity_at: null,
       current_stage: null,
       consent_summary: 'do_not_contact',
+      last_contact: null,
     });
 
     // BATCH, never loop — one call each.
@@ -72,10 +89,14 @@ describe('TalentRecordEnrichmentService', () => {
       findContactingConsentSummaryForTalentIds: vi.fn().mockResolvedValue(new Map()),
     };
     const svc = new TalentRecordEnrichmentService(
-      { findLastActivityForTalentIds: vi.fn().mockResolvedValue(new Map()) } as never,
+      {
+        findLastActivityForTalentIds: vi.fn().mockResolvedValue(new Map()),
+        findLatestContactForTalentIds: vi.fn().mockResolvedValue(new Map()),
+      } as never,
       consent as never,
       { findCurrentStageForTalentIds: vi.fn().mockResolvedValue(new Map()) } as never,
       {} as never,
+      { findLatestContactForTalentIds: async () => new Map() } as never, // CRM-4 communications
     );
     const out = await svc.enrich([view('t1')], {
       tenant_id: 't',
@@ -97,6 +118,7 @@ describe('TalentRecordEnrichmentService', () => {
       {} as never,
       {} as never,
       {} as never,
+      { findLatestContactForTalentIds: async () => new Map() } as never, // CRM-4 communications
     );
     expect(
       await svc.enrich([], { tenant_id: 't', visible_requisition_ids: null }),
@@ -151,6 +173,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
       consent as never,
       pipeline as never,
       talent as never,
+      { findLatestContactForTalentIds: async () => new Map() } as never, // CRM-4 communications
     );
 
     const query = { tenant_id: 't', sort: 'name' as const };
@@ -203,6 +226,7 @@ describe('TalentRecordEnrichmentService.crossFacets (Segment 4b)', () => {
         consent as never,
         pipeline as never,
         talent as never,
+        { findLatestContactForTalentIds: async () => new Map() } as never, // CRM-4 communications
       );
 
       const out = await svc.crossFacets({ tenant_id: 't' } as never, {

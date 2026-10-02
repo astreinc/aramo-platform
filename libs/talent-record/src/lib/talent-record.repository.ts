@@ -344,8 +344,13 @@ function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
   if (q.owner_id && q.owner_id.length > 0) {
     where['owner_id'] = { in: [...q.owner_id] };
   }
-  if (q.id_allowlist != null) {
-    where['id'] = { in: [...q.id_allowlist] };
+  // CRM-4 — id allow/deny. Allowlist = INCLUDE (presets / working-with-me / FE
+  // ids); denylist = EXCLUDE (Not-contacted-90+). Both compose on `id` (AND).
+  if (q.id_allowlist != null || q.id_denylist != null) {
+    where['id'] = {
+      ...(q.id_allowlist != null ? { in: [...q.id_allowlist] } : {}),
+      ...(q.id_denylist != null ? { notIn: [...q.id_denylist] } : {}),
+    };
   }
   // availability "unknown" bucket matches BOTH null and the explicit 'unknown'.
   if (q.availability_status && q.availability_status.length > 0) {

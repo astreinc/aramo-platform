@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityRepository } from '@aramo/activity';
+import { CommunicationsRepository } from '@aramo/communications';
 import { ACTIVE_FLOW_STAGES, PipelineRepository } from '@aramo/pipeline';
 import { TaskRepository } from '@aramo/task';
 import { TeamRepository } from '@aramo/identity';
@@ -58,7 +59,32 @@ export class TalentPresetResolverService {
     // "Working with me" input). apps/api composes it with Pipeline here; the
     // talent-record lib stays single-schema.
     private readonly requisitionAssignments: RequisitionAssignmentRepository,
+    // CRM-4 — Communications SoR for the "Not contacted 90+ days" denylist.
+    private readonly communications: CommunicationsRepository,
   ) {}
+
+  // CRM-4 — the "Not contacted 90+ days" DENYLIST: talent ids WITH a real
+  // contact (Communications connected/completed voice|email ∪ Activity call/
+  // email_logged) in the last 90 days. The controller excludes these (id NOT IN)
+  // so the result = never-contacted ∪ last-contact>90d-ago. Bounded by the guard;
+  // NEVER derived from last_activity_at / record / pipeline / task signals (§8).
+  async resolveNotContacted90dExclude(ctx: PresetCtx): Promise<string[]> {
+    const guard = xfacetGuard();
+    const since = new Date(ctx.now.getTime() - 90 * 86_400_000);
+    const [comms, activity] = await Promise.all([
+      this.communications.findContactedTalentIdsSince({
+        tenant_id: ctx.tenant_id,
+        since,
+        limit: guard,
+      }),
+      this.activity.findContactedTalentIdsSince({
+        tenant_id: ctx.tenant_id,
+        since,
+        limit: guard,
+      }),
+    ]);
+    return [...new Set([...comms, ...activity])].slice(0, guard);
+  }
 
   // CRM-2 — "Working with me" talent allowlist: talent in ACTIVE pipelines on
   // requisitions the actor is ASSIGNED to. Authoritative basis = RequisitionAssignment

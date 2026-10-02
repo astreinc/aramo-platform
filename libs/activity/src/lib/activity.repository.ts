@@ -392,6 +392,62 @@ export class ActivityRepository {
   // (the §5 boundary), so this is tenant-wide — no visibility filter.
   // Returns talent_record_id → most-recent activity timestamp (ISO); ids with
   // no activity are simply absent from the map.
+  // CRM-4 — latest REAL contact logged as Activity (kinds call | email_logged
+  // ONLY; note / pipeline_status_change are NOT contact, per directive §8). Per
+  // talent: the most-recent such row's instant + channel + actor. Distinct from
+  // findLastActivityForTalentIds, which is type-blind (last *activity*, not
+  // last *contact*) and must NOT be re-pointed (CRM-2 facets + in_touch_6mo use it).
+  async findLatestContactForTalentIds(args: {
+    tenant_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Map<string, { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null }>> {
+    if (args.talent_record_ids.length === 0) return new Map();
+    const rows = await this.prisma.activity.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record',
+        subject_id: { in: [...args.talent_record_ids] },
+        type: { in: ['call', 'email_logged'] },
+      },
+      select: { subject_id: true, created_at: true, type: true, created_by_id: true },
+      orderBy: { created_at: 'desc' },
+    });
+    const out = new Map<string, { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null }>();
+    for (const r of rows) {
+      if (r.subject_id === null || out.has(r.subject_id)) continue; // first = latest
+      out.set(r.subject_id, {
+        occurred_at: r.created_at.toISOString(),
+        channel: r.type === 'call' ? 'Call' : 'Email',
+        actor_id: (r.created_by_id as string | null) ?? null,
+      });
+    }
+    return out;
+  }
+
+  // CRM-4 — talent ids with a REAL contact (call | email_logged) since a cutoff.
+  // Feeds the "Not contacted 90+ days" DENYLIST (exclude the recently-contacted);
+  // never-contacted are naturally absent → correctly NOT excluded.
+  async findContactedTalentIdsSince(args: {
+    tenant_id: string;
+    since: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.activity.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record',
+        type: { in: ['call', 'email_logged'] },
+        created_at: { gte: args.since },
+      },
+      select: { subject_id: true },
+      distinct: ['subject_id'],
+      take: args.limit,
+    });
+    return rows
+      .map((r) => r.subject_id)
+      .filter((x): x is string => x !== null);
+  }
+
   async findLastActivityForTalentIds(args: {
     tenant_id: string;
     talent_record_ids: readonly string[];

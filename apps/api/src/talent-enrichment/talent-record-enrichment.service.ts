@@ -1,13 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { ActivityRepository } from '@aramo/activity';
+import { CommunicationsRepository } from '@aramo/communications';
 import { ConsentRepository, type ConsentSummary } from '@aramo/consent';
 import { PipelineRepository } from '@aramo/pipeline';
-import { TalentRecordRepository } from '@aramo/talent-record';
-import type {
-  CrossFacets,
-  TalentRecordView,
-  TalentSearchQuery,
+import {
+  TalentRecordRepository,
+  type CrossFacets,
+  type TalentRecordView,
+  type TalentSearchQuery,
 } from '@aramo/talent-record';
+
+// CRM-4 — a composed last-contact (authoritative: Communications real-contacts +
+// Activity call/email_logged ONLY). Shape {occurred_at, channel, actor_id};
+// null ⇒ "Never". Never derived from record/pipeline/task/note signals (§8).
+type LastContact = { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null };
+function pickLatest(
+  a: LastContact | undefined,
+  b: LastContact | undefined,
+): LastContact | null {
+  if (a === undefined) return b ?? null;
+  if (b === undefined) return a;
+  return a.occurred_at >= b.occurred_at ? a : b;
+}
 
 // Segment 4b — the materialize guard. Beyond this many MATCHED ids, a
 // cross-schema facet count would force a large in-app materialization, so we
@@ -40,6 +54,8 @@ export class TalentRecordEnrichmentService {
     private readonly consent: ConsentRepository,
     private readonly pipeline: PipelineRepository,
     private readonly talent: TalentRecordRepository,
+    // CRM-4 — Communications SoR for the authoritative last-contact.
+    private readonly communications: CommunicationsRepository,
   ) {}
 
   async enrich(
@@ -53,23 +69,33 @@ export class TalentRecordEnrichmentService {
 
     const ids = items.map((i) => i.id);
 
-    const [lastActivity, stages, consent] = await Promise.all([
-      this.activity.findLastActivityForTalentIds({
-        tenant_id: ctx.tenant_id,
-        talent_record_ids: ids,
-      }),
-      this.pipeline.findCurrentStageForTalentIds({
-        tenant_id: ctx.tenant_id,
-        talent_record_ids: ids,
-        visible_requisition_ids: ctx.visible_requisition_ids,
-      }),
-      // Consent is keyed by TalentRecord.id (i.id) — a direct lookup, no
-      // indirection. items.length > 0 guarded above.
-      this.consent.findContactingConsentSummaryForTalentIds({
-        tenant_id: ctx.tenant_id,
-        talent_record_ids: ids,
-      }),
-    ]);
+    const [lastActivity, stages, consent, commsContact, activityContact] =
+      await Promise.all([
+        this.activity.findLastActivityForTalentIds({
+          tenant_id: ctx.tenant_id,
+          talent_record_ids: ids,
+        }),
+        this.pipeline.findCurrentStageForTalentIds({
+          tenant_id: ctx.tenant_id,
+          talent_record_ids: ids,
+          visible_requisition_ids: ctx.visible_requisition_ids,
+        }),
+        // Consent is keyed by TalentRecord.id (i.id) — a direct lookup, no
+        // indirection. items.length > 0 guarded above.
+        this.consent.findContactingConsentSummaryForTalentIds({
+          tenant_id: ctx.tenant_id,
+          talent_record_ids: ids,
+        }),
+        // CRM-4 — authoritative last-contact sources (real contacts only).
+        this.communications.findLatestContactForTalentIds({
+          tenant_id: ctx.tenant_id,
+          talent_record_ids: ids,
+        }),
+        this.activity.findLatestContactForTalentIds({
+          tenant_id: ctx.tenant_id,
+          talent_record_ids: ids,
+        }),
+      ]);
 
     return items.map((i) => ({
       ...i,
@@ -78,6 +104,9 @@ export class TalentRecordEnrichmentService {
       // Keyed by TalentRecord.id; no contacting grant ⇒ do_not_contact (only a
       // positive grant is contactable).
       consent_summary: consent.get(i.id) ?? 'do_not_contact',
+      // CRM-4 — latest REAL contact across Communications + Activity(call/email);
+      // null ⇒ "Never". NEVER proxied by last_activity_at (which is type-blind).
+      last_contact: pickLatest(commsContact.get(i.id), activityContact.get(i.id)),
     }));
   }
 

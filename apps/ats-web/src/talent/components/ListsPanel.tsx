@@ -26,6 +26,8 @@ import { searchTalent } from '../talent-api';
 import { AVAILABILITY_LABELS, CONSENT_LABELS, fullName } from '../talent-workspace';
 import type { TalentRecordView } from '../types';
 
+import { LastContactCell } from './LastContactCell';
+
 // CRM-3 — the in-tab Lists surface (prototype Talent CRM.dc.html §7.1/§7.3):
 // an INDEX (five columns) that opens a DETAIL (list members). All authority is
 // backend: visibility-scoped reads, member_count aggregate, batch Talent read
@@ -204,8 +206,12 @@ export function ListsPanel({
                         ? (AVAILABILITY_LABELS[t.availability_status] ?? t.availability_status)
                         : '—'}
                     </span>
-                    {/* CRM-4 owns authoritative last-contact; never proxied. */}
-                    <span className="rc-muted">—</span>
+                    {/* CRM-4 — authoritative last-contact; "Never" when none. */}
+                    <LastContactCell
+                      last={t.last_contact ?? null}
+                      userNames={owners}
+                      myId={session?.sub ?? null}
+                    />
                     <span>{CONSENT_LABELS[t.consent_summary ?? 'do_not_contact']}</span>
                     <span>
                       {t.current_stage == null ? (

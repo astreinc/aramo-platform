@@ -90,8 +90,8 @@ describe('ListsPanel (CRM-3)', () => {
     // governed actions present (scopes held)
     expect(screen.getAllByRole('button', { name: /add to requisition/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('button', { name: /^remove$/i }).length).toBe(2);
-    // last-contacted stays "—" (CRM-4); never proxied by activity.
-    const rows = screen.getAllByRole('row');
-    expect(within(rows[rows.length - 1]!).getByText('—')).toBeInTheDocument();
+    // CRM-4 — last-contacted renders authoritative state: the fixture talent have
+    // no real contact → "Never" (never proxied by activity/provenance).
+    expect(screen.getAllByText('Never').length).toBeGreaterThanOrEqual(1);
   });
 });

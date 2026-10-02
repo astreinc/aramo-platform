@@ -1854,6 +1854,13 @@ button.rc-link-action {
 .rc-listcell__nm { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rc-listcell__more { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--line-1, #eef1f4); border-radius: 10px; padding: 1px 6px; }
 
+/* CRM-4 — "Last contacted" cell: relative date + Channel · Actor; amber when
+   stale (months/years) or Never. */
+.rc-lastc { display: inline-flex; flex-direction: column; min-width: 0; }
+.rc-lastc__d { font-size: 12px; font-weight: 600; color: var(--ink); }
+.rc-lastc--stale .rc-lastc__d, .rc-lastc--never .rc-lastc__d { color: var(--warn, #946011); }
+.rc-lastc__m { font-size: 10.5px; color: var(--faint); }
+
 /* CRM-2 — bulk bar primary action (Add to list). */
 .rc-bulkbar__primary { background: #fff; color: var(--brand-strong); }
 .rc-bulkbar__primary:hover:not(:disabled) { background: #fff; opacity: .92; }

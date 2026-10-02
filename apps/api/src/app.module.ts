@@ -45,6 +45,11 @@ import { ClientSelectionModule } from '@aramo/client-selection';
 import { PortalModule } from '@aramo/portal';
 import { ReportingModule } from '@aramo/reporting';
 import { RequisitionModule, RequisitionSkillCanonicalizationModule } from '@aramo/requisition';
+// CRM-4 — CommunicationsRepository for the last-contact enrichment composer
+// (TalentRecordEnrichmentService). Nest dedups this module (also imported by
+// several sub-modules); importing it here exposes the repo to the app-level
+// provider scope.
+import { CommunicationsModule } from '@aramo/communications';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
@@ -249,6 +254,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // all). Leaf import set: AuthModule + AuthorizationModule +
     // EntitlementModule only (no @aramo/company / @aramo/contact).
     RequisitionModule,
+    CommunicationsModule, // CRM-4 — last-contact enrichment (dedup-safe)
     // Company Party/Role (ADR-0032, R7) — @Global adapter binding the
     // requisition CompanyClientCheckPort to CompanyRepository. Imported AFTER
     // both CompanyModule and RequisitionModule so the token is available to the

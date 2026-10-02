@@ -50,6 +50,21 @@ export {
 // (?scope=working_with_me), NEVER owner_id.
 export type ScopeMode = 'working_with_me' | 'all';
 
+// CRM-4 — relative date for the "Last contacted" cell. Day-granular up to 90d
+// ("61 days ago"), then month/year ("4 months ago") — matching the prototype.
+export function relativeDate(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 90) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
+  const years = Math.round(days / 365);
+  return `${years} year${years > 1 ? 's' : ''} ago`;
+}
+
 // ── Token search ────────────────────────────────────────────────────────────
 // Grammar: `key:value` tokens + free text. Supported keys map to SERVER params
 // (name→q, skill→skills, loc→location); unsupported keys surface as flagged,
@@ -201,13 +216,19 @@ export const VIEWS: readonly {
 }[] = [
   { key: 'all', label: 'All' },
   { key: 'available_now', label: 'Available now' },
-  { key: 'not_contacted_90d', label: 'Not contacted 90+ days', pending: true },
+  // CRM-4 — activated: authoritative last-contact denylist (recently-contacted
+  // excluded). No longer pending.
+  { key: 'not_contacted_90d', label: 'Not contacted 90+ days' },
   { key: 'needs_follow_up', label: 'Follow-up due' },
 ];
 
-// Views resolved server-side via the ?preset= cross-schema path (4c). Only
-// needs_follow_up is wired here; not_contacted_90d activates in CRM-4.
-export const CROSS_SCHEMA_VIEWS: readonly ViewKey[] = ['needs_follow_up'];
+// Views resolved server-side via the ?preset= cross-schema path (4c).
+// not_contacted_90d is CRM-4 — a DENYLIST handled explicitly by the interceptor
+// (not a positive-allowlist preset), but still sent as ?preset=not_contacted_90d.
+export const CROSS_SCHEMA_VIEWS: readonly ViewKey[] = [
+  'needs_follow_up',
+  'not_contacted_90d',
+];
 
 // ── Sort — NATIVE columns only (4a buildOrderBy). NO rate (free-text, never an
 // ordering — R10) and NO last_activity (cross-schema sort, not BE-backed). ────
