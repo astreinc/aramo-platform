@@ -927,6 +927,8 @@
     "apps/ats-web/src/requisitions/GuaranteeTermsFormDialog.tsx",
     "apps/ats-web/src/requisitions/GuaranteeTermsPanel.spec.tsx",
     "apps/ats-web/src/requisitions/GuaranteeTermsPanel.tsx",
+    "apps/ats-web/src/requisitions/KnownTalentDrawer.spec.tsx",
+    "apps/ats-web/src/requisitions/KnownTalentDrawer.tsx",
     "apps/ats-web/src/requisitions/NewRequisitionView.spec.tsx",
     "apps/ats-web/src/requisitions/NewRequisitionView.tsx",
     "apps/ats-web/src/requisitions/NewRequisitionView.worklocation.spec.tsx",

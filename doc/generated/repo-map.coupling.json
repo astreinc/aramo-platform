@@ -11462,6 +11462,11 @@
       "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
     },
     {
+      "from": "apps/ats-web/src/requisitions/KnownTalentDrawer.tsx",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/ats-web/src/requisitions/approval-affordance.ts",
       "status": "production",
       "to": "apps/api/src/policy/requisition-lifecycle.package.ts"

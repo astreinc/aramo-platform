@@ -5977,6 +5977,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/KnownTalentDrawer.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/NewRequisitionView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
