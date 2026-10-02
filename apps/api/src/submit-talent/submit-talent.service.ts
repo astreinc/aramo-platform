@@ -7,6 +7,8 @@ import { isLiveStatus, type PipelineStatus } from '@aramo/pipeline';
 import {
   consumeSlot,
   evaluateEligibility,
+  isRequisitionSubmittable,
+  pipelineLinkVerdict,
   type SubmittalPolicyInputs,
 } from '@aramo/submittal-eligibility';
 import {
@@ -177,37 +179,60 @@ export class SubmitTalentToClientService {
       }
 
       // 3 — resolve + validate the linked pipeline (R-LINK / R-REFUSAL + identity match).
-      if (submittal.pipeline_id === null) {
+      // The pipeline row is still read in-tx (FOR UPDATE) for atomicity, but the link
+      // RULE is the shared `pipelineLinkVerdict` — the IDENTICAL rule the unified
+      // evaluateSubmittalReadiness authority composes (SW-3), so submit + readiness
+      // never diverge. isLiveStatus is the Pipeline domain's canonical live predicate.
+      let pipeline: PipelineRow | undefined;
+      if (submittal.pipeline_id !== null) {
+        const pipes = await tx.$queryRawUnsafe<PipelineRow[]>(
+          `SELECT "id","tenant_id","talent_record_id","requisition_id","site_id","status"
+             FROM "pipeline"."Pipeline" WHERE "id" = $1::uuid FOR UPDATE`,
+          submittal.pipeline_id,
+        );
+        pipeline = pipes[0];
+      }
+      const linkVerdict = pipelineLinkVerdict({
+        pipeline_id: submittal.pipeline_id,
+        episode:
+          pipeline !== undefined
+            ? {
+                tenant_id: pipeline.tenant_id,
+                requisition_id: pipeline.requisition_id,
+                talent_record_id: pipeline.talent_record_id,
+              }
+            : null,
+        episode_is_live:
+          pipeline !== undefined && isLiveStatus(pipeline.status as PipelineStatus),
+        expected: {
+          tenant_id: submittal.tenant_id,
+          requisition_id: submittal.job_id,
+          talent_id: submittal.talent_id,
+        },
+      });
+      if (!linkVerdict.ok) {
+        // Preserve the exact refusal envelope: 'missing' carries only submittal_id;
+        // every identity/liveness reason carries pipeline_id + the reason.
+        if (linkVerdict.reason === 'missing') {
+          throw err('SUBMITTAL_PIPELINE_LINK_INVALID', 'Submittal has no linked pipeline episode', 409, {
+            submittal_id,
+          });
+        }
         throw err(
           'SUBMITTAL_PIPELINE_LINK_INVALID',
-          'Submittal has no linked pipeline episode',
+          `Linked pipeline episode is not valid for this submittal: ${linkVerdict.reason}`,
           409,
-          { submittal_id },
+          { submittal_id, pipeline_id: submittal.pipeline_id, reason: linkVerdict.reason },
         );
       }
-      const pipes = await tx.$queryRawUnsafe<PipelineRow[]>(
-        `SELECT "id","tenant_id","talent_record_id","requisition_id","site_id","status"
-           FROM "pipeline"."Pipeline" WHERE "id" = $1::uuid FOR UPDATE`,
-        submittal.pipeline_id,
-      );
-      const pipeline = pipes[0];
-      const linkInvalid = (reason: string) =>
-        err(
-          'SUBMITTAL_PIPELINE_LINK_INVALID',
-          `Linked pipeline episode is not valid for this submittal: ${reason}`,
-          409,
-          { submittal_id, pipeline_id: submittal.pipeline_id, reason },
-        );
-      if (pipeline === undefined) throw linkInvalid('not_found');
-      // IDENTITY MATCH — same tenant, requisition, and Talent as the submittal.
-      if (pipeline.tenant_id !== submittal.tenant_id) throw linkInvalid('tenant_mismatch');
-      if (pipeline.requisition_id !== submittal.job_id) throw linkInvalid('requisition_mismatch');
-      if (pipeline.talent_record_id !== submittal.talent_id) throw linkInvalid('talent_mismatch');
-      if (!isLiveStatus(pipeline.status as PipelineStatus)) throw linkInvalid('not_live');
-      // Lane 2 / L2-E (SB-5) — the mirror precondition (canTransition→'submitted') is
-      // removed with the mirror: submit-to-ats no longer transitions Pipeline, so
-      // there is no target-legality to check. The live-episode link validation above
-      // (tenant/req/talent identity + not-terminal) is the submit-time guard.
+      // linkVerdict.ok guarantees a live, identity-matched episode (narrows for TS).
+      if (pipeline === undefined) {
+        throw err('SUBMITTAL_PIPELINE_LINK_INVALID', 'Linked pipeline episode is not valid for this submittal: not_found', 409, {
+          submittal_id,
+          pipeline_id: submittal.pipeline_id,
+          reason: 'not_found',
+        });
+      }
 
       const requisition_id = submittal.job_id;
       const talent_record_id = submittal.talent_id;
@@ -245,7 +270,8 @@ export class SubmitTalentToClientService {
       const bill_rate_currency = reqStatusRows[0]?.bill_rate_currency ?? null;
       const bill_rate_period = reqStatusRows[0]?.bill_rate_period ?? null;
       const bill_rate_present = bill_rate_amount != null;
-      if (requisition_status !== 'open') {
+      // SW-3 — the SAME shared rule the unified readiness authority composes.
+      if (!isRequisitionSubmittable(requisition_status ?? null)) {
         throw err(
           'REQUISITION_NOT_OPEN',
           'The requisition must be open before Talent can be submitted to the client',

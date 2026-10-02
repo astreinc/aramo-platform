@@ -25,6 +25,21 @@ export type {
   SubmittalEngagementApplicability,
   SubmittalReadinessResult,
 } from './lib/submittal-readiness.js';
+// SW-3 (Decision 3) — the unified authoritative Submittal Readiness composition +
+// the shared structural rules the submit command enforces identically.
+export {
+  evaluateSubmittalReadiness,
+  isRequisitionSubmittable,
+  pipelineLinkVerdict,
+} from './lib/submittal-readiness.js';
+export type {
+  SubmittalReadiness,
+  SubmittalRequirement,
+  SubmittalRequirementKey,
+  SubmittalRequirementSource,
+  PipelineLinkReason,
+  ClientPolicyReadinessVerdict,
+} from './lib/submittal-readiness.js';
 export type {
   EligibilityDenyCode,
   EngagementEligibilityDenyCode,
