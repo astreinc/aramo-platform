@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Talent360View } from './Talent360View';
 import { getTalent360 } from './talent-360-api';
@@ -42,6 +42,24 @@ vi.mock('../microsoft/RequisitionContactEmailComposer', () => ({
     open ? <div data-testid="email-composer">{requisitionId}</div> : null,
 }));
 vi.mock('../activity/activity-api', () => ({ createNote: vi.fn().mockResolvedValue({}) }));
+
+// CRM-5 — mutable scopes (per-test authority) + spies for the new task / lists
+// deps the page now reaches (createTask/updateTask, reverse-membership read).
+const BASE_SCOPES = [
+  'talent:read', 'pipeline:read', 'task:read', 'activity:read',
+  'communication:read', 'document:read', 'identity:resolve',
+];
+const h = vi.hoisted(() => ({
+  scopes: [] as string[],
+  createTask: vi.fn(),
+  updateTask: vi.fn(),
+  listTalentMemberships: vi.fn(),
+}));
+vi.mock('../task/task-api', () => ({ createTask: h.createTask, updateTask: h.updateTask }));
+vi.mock('../talent/saved-list-api', async (importActual) => {
+  const actual = await importActual<typeof import('../talent/saved-list-api')>();
+  return { ...actual, listTalentMemberships: h.listTalentMemberships };
+});
 vi.mock('@aramo/fe-foundation', async (importActual) => {
   const actual = await importActual<typeof import('@aramo/fe-foundation')>();
   return {
@@ -52,7 +70,7 @@ vi.mock('@aramo/fe-foundation', async (importActual) => {
         sub: 'u1',
         consumer_type: 'recruiter' as const,
         tenant_id: 't1',
-        scopes: ['talent:read', 'pipeline:read', 'task:read', 'activity:read', 'communication:read', 'document:read', 'identity:resolve'],
+        scopes: h.scopes,
         iat: 0,
         exp: 9_999_999_999,
       },
@@ -152,7 +170,7 @@ function makeModel(overrides: Partial<Talent360ViewModel> = {}): Talent360ViewMo
     },
     relationship: {
       history: { known_since: '2024-03-01T00:00:00Z', requisitions: 5, submittals: 3, interviews: 2, placements: 0 },
-      ownership: { owner_provenance: { user_id: 'u1', name: 'Purush P.' }, also_working_with: [], source: 'Referral sourcing', source_channel: null },
+      ownership: { owner_provenance: { user_id: 'u1', name: 'Purush P.' }, also_working_with: [], worked_with_before: [], source: 'Referral sourcing', source_channel: null },
     },
     authorized_sections: { opportunities: true, attention: true, tasks: true, activity: true, communications: true, documents: true, identity: true },
     ...overrides,
@@ -169,6 +187,12 @@ function renderView() {
   );
 }
 
+beforeEach(() => {
+  h.scopes = [...BASE_SCOPES];
+  h.createTask.mockResolvedValue({});
+  h.updateTask.mockResolvedValue({});
+  h.listTalentMemberships.mockResolvedValue([]);
+});
 afterEach(() => vi.clearAllMocks());
 
 describe('Talent360View — renders the composed contract, owns only presentation state', () => {
@@ -335,5 +359,119 @@ describe('Talent360View — accessibility', () => {
     await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
     expect(screen.getByRole('button', { name: 'Email' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add to requisition' })).toBeInTheDocument();
+  });
+});
+
+// Scope a role query to the header's primary action cluster (the opportunities
+// list also carries a "Follow up" next-action label — this disambiguates).
+function headerFollowUp(container: HTMLElement): HTMLElement | null {
+  const primary = container.querySelector('.t360-actions-primary');
+  return primary === null
+    ? null
+    : within(primary as HTMLElement).queryByRole('button', { name: 'Follow up' });
+}
+
+describe('Talent360View — CRM-5 CRM deltas', () => {
+  it('Lists rail card renders the saved lists this talent belongs to (reverse membership) + governed Add-to-list', async () => {
+    h.scopes = [...BASE_SCOPES, 'saved-list:edit'];
+    h.listTalentMemberships.mockResolvedValue([
+      { item_id: 'tal-1', lists: [{ id: 'L1', name: 'Hot React', visibility: 'tenant' }] },
+    ]);
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    // batch reverse-membership read, keyed by this talent.
+    await waitFor(() => expect(screen.getByText('Hot React')).toBeInTheDocument());
+    expect(h.listTalentMemberships).toHaveBeenCalledWith(['tal-1']);
+    expect(screen.getAllByText('Shared').length).toBeGreaterThan(0); // tenant → Shared
+    expect(screen.getAllByRole('button', { name: '+ Add to list' }).length).toBeGreaterThan(0);
+  });
+
+  it('Lists Add-to-list affordance is HIDDEN without saved-list:edit', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel()); // base scopes: no saved-list:edit
+    renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(screen.queryByRole('button', { name: '+ Add to list' })).toBeNull();
+  });
+
+  it('relabels ownership as "Record added by" (provenance only — no Talent owner, HALT-2)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(screen.getAllByText('Record added by').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Record owner')).toBeNull();
+  });
+
+  it('Follow up header action is HIDDEN without task:write', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel()); // base: no task:write
+    const { container } = renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(headerFollowUp(container)).toBeNull();
+  });
+
+  it('Follow up header action is SHOWN with task:write + contact permission', async () => {
+    h.scopes = [...BASE_SCOPES, 'task:write'];
+    getTalent360Mock.mockResolvedValue(makeModel()); // recruiting_permitted: true
+    const { container } = renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(headerFollowUp(container)).not.toBeNull();
+  });
+
+  it('Follow up header action is HIDDEN under contact-restriction (task:write but consent absent)', async () => {
+    h.scopes = [...BASE_SCOPES, 'task:write'];
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        header: {
+          ...makeModel().header,
+          contactability: {
+            summary: 'do_not_contact',
+            recruiting_permitted: false,
+            email_permitted: false,
+            phone_permitted: false,
+            sms_permitted: false,
+          },
+        },
+      }),
+    );
+    const { container } = renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(headerFollowUp(container)).toBeNull();
+  });
+
+  it('Tasks card checkbox COMPLETES a task via authoritative updateTask (task:write)', async () => {
+    h.scopes = [...BASE_SCOPES, 'task:write'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    const complete = await screen.findByRole('button', { name: /^Complete:/ });
+    fireEvent.click(complete);
+    await waitFor(() => expect(h.updateTask).toHaveBeenCalledWith('t1', { status: 'done' }));
+  });
+
+  it('Tasks card shows a DISPLAY-ONLY indicator (no complete control) for a read-only actor', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel()); // base: no task:write
+    renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(screen.queryByRole('button', { name: /^Complete:/ })).toBeNull();
+  });
+
+  it('Follow up creates a REAL follow-up task (owner talent_record, type follow_up)', async () => {
+    h.scopes = [...BASE_SCOPES, 'task:write'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    const { container } = renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    fireEvent.click(headerFollowUp(container) as HTMLElement);
+    const reason = await screen.findByLabelText('Follow-up reason');
+    fireEvent.change(reason, { target: { value: 'Call back next week' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create follow-up' }));
+    await waitFor(() =>
+      expect(h.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Call back next week',
+          owner_type: 'talent_record',
+          owner_id: 'tal-1',
+          type: 'follow_up',
+        }),
+      ),
+    );
   });
 });

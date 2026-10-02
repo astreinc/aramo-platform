@@ -1150,6 +1150,23 @@ export class PipelineRepository {
     return (rows as PipelineRow[]).map(projectView);
   }
 
+  // CRM-5 §9.5 — BATCH authoritative terminal-reason read for a set of (closed)
+  // pipeline ids. Surfaces the LOCKED `reason` ONLY (never the free-text `note`
+  // — no narrative disposition). Additive: leaves listForActor/projectView (and
+  // their N integration consumers) untouched. Absent id ⇒ "reason not recorded"
+  // at the read layer (null), rendered by the caller.
+  async findDispositionReasons(args: {
+    tenant_id: string;
+    pipeline_ids: readonly string[];
+  }): Promise<Map<string, string>> {
+    if (args.pipeline_ids.length === 0) return new Map();
+    const rows = await this.prisma.pipelineDisposition.findMany({
+      where: { tenant_id: args.tenant_id, pipeline_id: { in: [...args.pipeline_ids] } },
+      select: { pipeline_id: true, reason: true },
+    });
+    return new Map(rows.map((r) => [r.pipeline_id, r.reason]));
+  }
+
   // Segment 3 — BATCH current-stage read for the talent-records list
   // enrichment. Set-based over the page's talent_record_id set (ONE query),
   // never per-row. Visibility honored: only pipelines on the actor's visible

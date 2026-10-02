@@ -113,6 +113,7 @@ export class Talent360Service {
     let reqMap: ReadonlyMap<string, RequisitionSummaryRow> = new Map();
     let companyNames: ReadonlyMap<string, string> = new Map();
     let userNames: ReadonlyMap<string, string> = new Map();
+    let dispositionReasons: ReadonlyMap<string, string> = new Map();
     if (authorized.opportunities) {
       const episodes = await this.port.listEpisodes(ctx, talent_id);
       const active = episodes.filter((e) => ACTIVE_STAGES.has(e.status));
@@ -131,9 +132,11 @@ export class Talent360Service {
           [r.recruiter_id, r.owner_id].filter((x): x is string => x !== null),
         ),
       );
-      [companyNames, userNames] = await Promise.all([
+      [companyNames, userNames, dispositionReasons] = await Promise.all([
         this.port.resolveCompanyNames(ctx, companyIds),
         this.port.resolveUserNames(ctx, ownerIds),
+        // CRM-5 §9.5 — terminal reasons for the closed episodes only.
+        this.port.resolveDispositionReasons(ctx, closedEpisodes.map((e) => e.id)),
       ]);
       bundles = active.map((episode, i) => ({
         episode,
@@ -154,7 +157,12 @@ export class Talent360Service {
             this.toActiveOpportunity(b, interviewByPipeline, companyNames, userNames, nowMs, timeZone),
           ),
           closed: closedEpisodes.map((e) =>
-            this.toClosedOpportunity(e, reqMap.get(e.requisition_id) ?? null, companyNames),
+            this.toClosedOpportunity(
+              e,
+              reqMap.get(e.requisition_id) ?? null,
+              companyNames,
+              dispositionReasons.get(e.id) ?? null,
+            ),
           ),
         }
       : null;
@@ -319,6 +327,7 @@ export class Talent360Service {
     e: EpisodeRow,
     req: RequisitionSummaryRow | null,
     companyNames: ReadonlyMap<string, string>,
+    reason: string | null,
   ): ClosedOpportunityView {
     return {
       pipeline_id: e.id,
@@ -327,6 +336,7 @@ export class Talent360Service {
       client_name: req !== null ? (companyNames.get(req.company_id) ?? null) : null,
       role_title: req?.title ?? null,
       outcome: terminalOutcome(e.status),
+      reason,
       closed_at: e.updated_at,
       open_journey_href: `/requisitions/${e.requisition_id}`,
     };
@@ -559,6 +569,23 @@ export class Talent360Service {
         });
       }
     }
+
+    // CRM-5 §9.4 — "Worked with before": the recruiters attributed to the
+    // Talent's CLOSED episodes (via the authoritative per-requisition owner in
+    // reqMap), minus anyone already surfaced as actively working with them.
+    // Historical relationship — never inferred from activity, never an owner.
+    const workedBefore = new Map<string, { user_id: string; requisition_id: string; requisition_label: string | null }>();
+    for (const e of closedEpisodes) {
+      const req = reqMap.get(e.requisition_id) ?? null;
+      const ownerId = req?.recruiter_id ?? req?.owner_id ?? null;
+      if (ownerId === null) continue;
+      if (alsoWorking.has(ownerId) || workedBefore.has(ownerId)) continue;
+      workedBefore.set(ownerId, {
+        user_id: ownerId,
+        requisition_id: e.requisition_id,
+        requisition_label: req !== null ? `REQ-${req.requisition_number}` : null,
+      });
+    }
     return {
       history: {
         known_since: core.created_at,
@@ -573,6 +600,12 @@ export class Talent360Service {
             ? null
             : { user_id: core.owner_id, name: userNames.get(core.owner_id) ?? null },
         also_working_with: [...alsoWorking.values()].map((a) => ({
+          user_id: a.user_id,
+          name: userNames.get(a.user_id) ?? null,
+          requisition_id: a.requisition_id,
+          requisition_label: a.requisition_label,
+        })),
+        worked_with_before: [...workedBefore.values()].map((a) => ({
           user_id: a.user_id,
           name: userNames.get(a.user_id) ?? null,
           requisition_id: a.requisition_id,
@@ -650,7 +683,7 @@ export class Talent360Service {
       profile: { summary: null, facts: [], skills: [], work_history: [] },
       relationship: {
         history: { known_since: core.created_at, requisitions: 0, submittals: 0, interviews: 0, placements: 0 },
-        ownership: { owner_provenance: null, also_working_with: [], source: core.source, source_channel: null },
+        ownership: { owner_provenance: null, also_working_with: [], worked_with_before: [], source: core.source, source_channel: null },
       },
       authorized_sections: authorized,
     };

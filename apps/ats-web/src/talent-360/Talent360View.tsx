@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Dialog, InlineAlert, TextArea, useSession } from '@aramo/fe-foundation';
+import { Dialog, InlineAlert, Input, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
 import type { Session } from '@aramo/fe-foundation';
 
 import { Button, LoadingState, safeErrorMessage } from '../ui';
@@ -12,11 +12,17 @@ import { useEntityCrumb } from '../shell/breadcrumb';
 import { getDossier, type DossierHead } from '../talent/dossier-api';
 import { CallButton } from '../communications/CallButton';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
+import { AddToListDialog } from '../talent/components/AddToListDialog';
+import {
+  listTalentMemberships,
+  type SavedListVisibility,
+} from '../talent/saved-list-api';
 // Header actions reuse existing authoritative flows (composed workspace, not a
 // new workflow authority): Email = requisition-contextual composer (COMM-C4);
 // Log activity = the existing POST /v1/activities mutation (activity:create).
 import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
 import { createNote } from '../activity/activity-api';
+import { createTask, updateTask } from '../task/task-api';
 
 import { getTalent360 } from './talent-360-api';
 import type {
@@ -175,6 +181,11 @@ export function Talent360View() {
   const sessionState = useSession();
   const session =
     sessionState.status === 'authenticated' ? sessionState.session : null;
+  // CRM-5 — "Add to list" affordance requires saved-list:edit (CRM-1 seeded).
+  const canAddToList = session !== null && hasScope(session, 'saved-list:edit');
+  // CRM-5 — task-write authority (FE-derived from scopes, consistent with every
+  // other task control in the app: RequisitionDetail/MyTasks/CompanyDetail).
+  const canTaskWrite = session !== null && hasScope(session, 'task:write');
   const [model, setModel] = useState<Talent360ViewModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +197,7 @@ export function Talent360View() {
   const [emailCtx, setEmailCtx] = useState<{ requisitionId: string; pipelineId: string } | null>(null);
   const [emailChooser, setEmailChooser] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [followUpOpen, setFollowUpOpen] = useState(false);
 
   const load = useCallback(() => {
     if (talentId === '') return;
@@ -263,6 +275,8 @@ export function Talent360View() {
         onEmail={onEmail}
         canEmail={h.actions.can_email && activeOpps.length > 0}
         onLogActivity={() => setLogOpen(true)}
+        onFollowUp={() => setFollowUpOpen(true)}
+        canFollowUp={canTaskWrite && h.contactability.recruiting_permitted}
       />
       <AddToRequisitionDialog open={addOpen} onClose={() => setAddOpen(false)} talentId={talentId} />
       {emailCtx !== null && (
@@ -304,6 +318,16 @@ export function Talent360View() {
         </Dialog>
       )}
       {logOpen && <LogActivityDialog talentId={talentId} onClose={() => setLogOpen(false)} />}
+      {followUpOpen && (
+        <FollowUpDialog
+          talentId={talentId}
+          onClose={() => setFollowUpOpen(false)}
+          onDone={() => {
+            setFollowUpOpen(false);
+            load();
+          }}
+        />
+      )}
 
       <KpiStrip strip={strip} onOpen={(t) => setTab(t)} />
 
@@ -343,7 +367,14 @@ export function Talent360View() {
           </div>
           <div className="t360-rail">
             <AttentionCard items={model.attention} authorized={model.authorized_sections.attention} />
-            <TasksCard tasks={model.tasks} />
+            <ListsCard talentId={talentId} canAddToList={canAddToList} />
+            <TasksCard
+              tasks={model.tasks}
+              talentId={talentId}
+              canTaskWrite={canTaskWrite}
+              canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
+              onChanged={load}
+            />
             <ContactabilityCard model={model} />
             <IdentityCard model={model} onTrust={() => setTab('trust')} />
             <RelationshipCard model={model} />
@@ -366,7 +397,14 @@ export function Talent360View() {
           </div>
           <div className="t360-rail">
             <AttentionCard items={model.attention} authorized={model.authorized_sections.attention} />
-            <TasksCard tasks={model.tasks} />
+            <ListsCard talentId={talentId} canAddToList={canAddToList} />
+            <TasksCard
+              tasks={model.tasks}
+              talentId={talentId}
+              canTaskWrite={canTaskWrite}
+              canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
+              onChanged={load}
+            />
             <ContactabilityCard model={model} />
             <IdentityCard model={model} onTrust={() => setTab('trust')} />
             <RelationshipCard model={model} />
@@ -386,6 +424,8 @@ function Header({
   onEmail,
   canEmail,
   onLogActivity,
+  onFollowUp,
+  canFollowUp,
 }: {
   model: Talent360ViewModel;
   initials: string;
@@ -394,6 +434,8 @@ function Header({
   onEmail: () => void;
   canEmail: boolean;
   onLogActivity: () => void;
+  onFollowUp: () => void;
+  canFollowUp: boolean;
 }) {
   const h = model.header;
   const rr = h.recruiting_ready;
@@ -479,6 +521,13 @@ function Header({
                 className="t360-btn t360-btn--secondary"
                 leadingIcon={<Icon name="phone" width={2} />}
               />
+            )}
+            {/* CRM-5 §9.1 — Follow up: task authority ∧ contact permission;
+                HIDDEN (not disabled) when consent absent (contact-restricted). */}
+            {canFollowUp && (
+              <Button unstyled type="button" className="t360-btn t360-btn--secondary" onClick={onFollowUp}>
+                Follow up
+              </Button>
             )}
             {h.actions.can_add_to_requisition && (
               <Button unstyled type="button" className="t360-btn t360-btn--primary" onClick={onAddToRequisition}>
@@ -1095,12 +1144,114 @@ function AttentionItem({ a }: { a: AttentionItemView }) {
   );
 }
 
-function TasksCard({ tasks }: { tasks: Talent360ViewModel['tasks'] }) {
+// CRM-5 — Lists rail card (prototype Talent 360 CRM.dc.html §Lists): the saved
+// lists this talent belongs to (reverse membership, visibility-scoped server-
+// side — another actor's PRIVATE list never surfaces), plus a governed "+ Add
+// to list" reusing the CRM-2/3 AddToListDialog. Composition only: no new BE.
+function ListsCard({ talentId, canAddToList }: { talentId: string; canAddToList: boolean }) {
+  const [lists, setLists] = useState<
+    readonly { id: string; name: string; visibility: SavedListVisibility }[]
+  >([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    if (talentId === '') return;
+    try {
+      const rows = await listTalentMemberships([talentId]);
+      setLists(rows[0]?.lists ?? []);
+    } catch {
+      // Fail-soft: a lists-read fault must not break the Talent 360 page.
+    }
+  }, [talentId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <div className="t360-card">
+      <div className="t360-rail-head">
+        <span className="t360-rail-title">Lists</span>
+        {canAddToList ? (
+          <Button unstyled type="button" className="t360-link" onClick={() => setAddOpen(true)}>
+            + Add to list
+          </Button>
+        ) : null}
+      </div>
+      <div className="t360-provenance">Where they’ve been grouped to come back to.</div>
+      {lists.length === 0 ? (
+        <div className="t360-empty">Not on any list yet.</div>
+      ) : (
+        <div className="t360-rail-rows">
+          {lists.map((l) => (
+            <div key={l.id} className="t360-rail-row">
+              <span>{l.name}</span>
+              <span className="t360-val-strong">
+                {l.visibility === 'tenant' ? 'Shared' : 'Private'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {notice !== null ? (
+        <div className="t360-empty" role="status">
+          {notice}
+        </div>
+      ) : null}
+      <AddToListDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        talentIds={[talentId]}
+        onDone={(m) => {
+          setAddOpen(false);
+          setNotice(m);
+          void load();
+        }}
+      />
+    </div>
+  );
+}
+
+function TasksCard({
+  tasks,
+  talentId,
+  canTaskWrite,
+  canFollowUp,
+  onChanged,
+}: {
+  tasks: Talent360ViewModel['tasks'];
+  talentId: string;
+  canTaskWrite: boolean;
+  canFollowUp: boolean;
+  onChanged: () => void;
+}) {
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   if (tasks === null) return null;
+
+  // CRM-5 §9.3 — complete a person-task (task:write). Read-only actors keep the
+  // display-only indicator (no toggle), per Ruling 4. Authoritative PATCH; the
+  // whole model reloads so counts/sections stay truthful (never locally faked).
+  async function complete(id: string): Promise<void> {
+    setBusyId(id);
+    try {
+      await updateTask(id, { status: 'done' });
+      onChanged();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="t360-card">
       <div className="t360-rail-head">
         <span className="t360-rail-title">Tasks</span>
+        {canFollowUp ? (
+          <Button unstyled type="button" className="t360-link" onClick={() => setFollowUpOpen(true)}>
+            + Follow up
+          </Button>
+        ) : null}
       </div>
       <div className="t360-provenance">
         <span className="t360-prov-chip t360-prov-chip--people">FROM PEOPLE</span>
@@ -1113,9 +1264,20 @@ function TasksCard({ tasks }: { tasks: Talent360ViewModel['tasks'] }) {
           const done = t.status === 'done' || t.status === 'cancelled';
           return (
             <div key={t.id} className="t360-task-row">
-              <span className={`t360-check${done ? ' t360-check--done' : ''}`} aria-hidden="true">
-                {done ? '✓' : ''}
-              </span>
+              {canTaskWrite && !done ? (
+                <Button
+                  unstyled
+                  type="button"
+                  className="t360-check"
+                  aria-label={`Complete: ${t.title}`}
+                  disabled={busyId === t.id}
+                  onClick={() => void complete(t.id)}
+                />
+              ) : (
+                <span className={`t360-check${done ? ' t360-check--done' : ''}`} aria-hidden="true">
+                  {done ? '✓' : ''}
+                </span>
+              )}
               <div>
                 <div className={`t360-task-title${done ? ' t360-task-title--done' : ''}`}>{t.title}</div>
                 <div className="t360-task-meta">
@@ -1127,7 +1289,94 @@ function TasksCard({ tasks }: { tasks: Talent360ViewModel['tasks'] }) {
           );
         })
       )}
+      {followUpOpen && (
+        <FollowUpDialog
+          talentId={talentId}
+          onClose={() => setFollowUpOpen(false)}
+          onDone={() => {
+            setFollowUpOpen(false);
+            onChanged();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// CRM-5 §9.3/§10 — the follow-up create affordance (shared by the header
+// "Follow up" action and the Tasks card). A REAL task: owner_type talent_record,
+// type follow_up, assignee defaults to the actor server-side. Reason + When;
+// the fuller assignee/requisition-link surface is CRM-6's shared path.
+function FollowUpDialog({
+  talentId,
+  onClose,
+  onDone,
+}: {
+  talentId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [reason, setReason] = useState('');
+  const [due, setDue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(): Promise<void> {
+    if (reason.trim() === '') return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createTask({
+        title: reason.trim(),
+        owner_type: 'talent_record',
+        owner_id: talentId,
+        type: 'follow_up',
+        ...(due === '' ? {} : { due_date: due }),
+      });
+      onDone();
+    } catch {
+      setError('Couldn’t create the follow-up. Please try again.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title="Follow up"
+      description="Create a follow-up task for this person."
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" disabled={busy || reason.trim() === ''} onClick={() => void submit()}>
+            {busy ? 'Creating…' : 'Create follow-up'}
+          </Button>
+        </>
+      }
+    >
+      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+      <label className="talent-detail__dialog-field">
+        <span>Reason</span>
+        <TextArea
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          placeholder="What's the next step?"
+          rows={2}
+          className="t360-textarea"
+          aria-label="Follow-up reason"
+        />
+      </label>
+      <label className="talent-detail__dialog-field">
+        <span>When (optional)</span>
+        <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Follow-up due date" />
+      </label>
+    </Dialog>
   );
 }
 
@@ -1224,13 +1473,24 @@ function RelationshipCard({ model }: { model: Talent360ViewModel }) {
       <div className="t360-rail-rows">
         {r.ownership.owner_provenance !== null && (
           <div className="t360-rail-row">
-            <span>Record owner</span>
+            {/* CRM-5 §9.4 — provenance only; there is NO Talent-level owner (HALT-2). */}
+            <span>Record added by</span>
             <span className="t360-val-strong">{r.ownership.owner_provenance.name ?? '—'}</span>
           </div>
         )}
         {r.ownership.also_working_with.map((w) => (
           <div key={w.user_id} className="t360-rail-row">
             <span>Also working with</span>
+            <span className="t360-val-strong">
+              {w.name ?? '—'}
+              {w.requisition_label !== null ? ` · ${w.requisition_label}` : ''}
+            </span>
+          </div>
+        ))}
+        {/* CRM-5 §9.4 — historical recruiter relationships (closed episodes). */}
+        {r.ownership.worked_with_before.map((w) => (
+          <div key={`wb-${w.user_id}`} className="t360-rail-row">
+            <span>Worked with before</span>
             <span className="t360-val-strong">
               {w.name ?? '—'}
               {w.requisition_label !== null ? ` · ${w.requisition_label}` : ''}
@@ -1293,6 +1553,10 @@ function OtherTabContent({
                 <span className="t360-opp-client">{c.client_name ?? 'Client'}</span>
                 <span>{c.role_title ?? ''}</span>
                 <span className="t360-stage t360-stage--neutral">{c.outcome}</span>
+                {/* CRM-5 §9.5 — authoritative reason or honest "reason not recorded". */}
+                <span className="t360-closed-reason">
+                  {c.reason !== null ? labelize(c.reason) : 'reason not recorded'}
+                </span>
                 <span className="t360-closed-when">{c.closed_at !== null ? shortDate(c.closed_at) : ''}</span>
               </div>
             ))}

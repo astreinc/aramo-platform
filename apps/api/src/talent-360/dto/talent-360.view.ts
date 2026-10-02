@@ -190,6 +190,9 @@ export interface ClosedOpportunityView {
   readonly role_title: string | null;
   // Terminal outcome label (e.g. "Not selected" / "Withdrew" / "Completed").
   readonly outcome: string;
+  // CRM-5 §9.5 — the authoritative terminal reason (LOCKED disposition reason,
+  // never the free-text note); null ⇒ the FE renders "reason not recorded".
+  readonly reason: string | null;
   readonly closed_at: string | null;
   readonly open_journey_href: string;
 }
@@ -375,6 +378,10 @@ export interface OwnershipView {
   // "Talent owner". null when owner_id is absent.
   readonly owner_provenance: { readonly user_id: string; readonly name: string | null } | null;
   readonly also_working_with: readonly OwnershipContactView[];
+  // CRM-5 §9.4 — "Worked with before": recruiter attribution DERIVED from the
+  // Talent's CLOSED (terminal) episodes, excluding recruiters already surfaced
+  // in `also_working_with` (active). Historical relationship, never an owner.
+  readonly worked_with_before: readonly OwnershipContactView[];
   // Free-text sourcing origin (`source`) / closed-vocab `source_channel`.
   readonly source: string | null;
   readonly source_channel: string | null;

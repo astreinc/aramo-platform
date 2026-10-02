@@ -127,6 +127,7 @@ function fakePort(overrides: Partial<Talent360ReadPort> = {}): Talent360ReadPort
     resolveRequisitions: async () => new Map(),
     resolveCompanyNames: async () => new Map(),
     resolveUserNames: async () => new Map(),
+    resolveDispositionReasons: async () => new Map(),
     findLatestInterview: async () => null,
     lastContact: async () => null,
     listRecentCommunications: async () => [],
@@ -437,6 +438,60 @@ describe('Talent360Service — composes authorized truth, is not the authority',
       expect(v.relationship.ownership.owner_provenance).toEqual({ user_id: 'u-1', name: 'Purush P.' });
       const also = v.relationship.ownership.also_working_with;
       expect(also.map((a) => a.name)).toContain('Sanjay Kumar');
+    });
+  });
+
+  describe('CRM-5 — relationship + past-opportunity deltas', () => {
+    it('§9.4 derives "worked with before" from CLOSED episodes (recruiter attribution), excluding the active set', async () => {
+      const service = svc(
+        fakePort({
+          loadTalent: async () => core({ owner_id: 'u-1' }),
+          listEpisodes: async () => [
+            episode('pipe-1', 'req-1', 'qualified'), // active → also_working_with (u-2)
+            episode('pipe-2', 'req-2', 'not_in_consideration'), // closed → worked_with_before (u-3)
+          ],
+          composeJourney: async () => journey('req-1', {}),
+          resolveRequisitions: async () =>
+            new Map([
+              ['req-1', req('req-1', 1001)], // recruiter u-2
+              ['req-2', { ...req('req-2', 1002), recruiter_id: 'u-3', owner_id: 'u-3' }],
+            ]),
+          resolveUserNames: async () =>
+            new Map([
+              ['u-1', 'Purush P.'],
+              ['u-2', 'Sanjay Kumar'],
+              ['u-3', 'Dana Ortiz'],
+            ]),
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      const before = v.relationship.ownership.worked_with_before;
+      expect(before.map((w) => w.name)).toEqual(['Dana Ortiz']);
+      // the active recruiter is NOT duplicated into the historical set.
+      expect(before.map((w) => w.user_id)).not.toContain('u-2');
+      expect(v.relationship.ownership.also_working_with.map((a) => a.user_id)).toEqual(['u-2']);
+    });
+
+    it('§9.5 surfaces the authoritative terminal reason on a closed opportunity; absent ⇒ null ("reason not recorded")', async () => {
+      const service = svc(
+        fakePort({
+          listEpisodes: async () => [
+            episode('pipe-2', 'req-2', 'not_in_consideration'), // reason present
+            episode('pipe-3', 'req-3', 'completed'), // no disposition reason
+          ],
+          resolveRequisitions: async () =>
+            new Map([
+              ['req-2', req('req-2', 1002)],
+              ['req-3', req('req-3', 1003)],
+            ]),
+          // reason ONLY for pipe-2 — pipe-3 is absent from the map.
+          resolveDispositionReasons: async () => new Map([['pipe-2', 'CLIENT_PASSED']]),
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      const closed = v.opportunities!.closed;
+      expect(closed.find((c) => c.pipeline_id === 'pipe-2')!.reason).toBe('CLIENT_PASSED');
+      expect(closed.find((c) => c.pipeline_id === 'pipe-3')!.reason).toBeNull();
     });
   });
 });

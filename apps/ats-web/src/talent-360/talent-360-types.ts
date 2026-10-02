@@ -138,6 +138,8 @@ export interface ClosedOpportunityView {
   readonly client_name: string | null;
   readonly role_title: string | null;
   readonly outcome: string;
+  // CRM-5 §9.5 — authoritative terminal reason; null ⇒ "reason not recorded".
+  readonly reason: string | null;
   readonly closed_at: string | null;
   readonly open_journey_href: string;
 }
@@ -254,6 +256,8 @@ export interface OwnershipContactView {
 export interface OwnershipView {
   readonly owner_provenance: { readonly user_id: string; readonly name: string | null } | null;
   readonly also_working_with: readonly OwnershipContactView[];
+  // CRM-5 §9.4 — historical recruiter relationships from closed episodes.
+  readonly worked_with_before: readonly OwnershipContactView[];
   readonly source: string | null;
   readonly source_channel: string | null;
 }
