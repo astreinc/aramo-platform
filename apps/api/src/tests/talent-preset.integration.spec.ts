@@ -125,6 +125,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
+      {} as never, // CRM-2 requisition-assignments (unused in this case)
     );
     const interceptor = new TalentPresetInterceptor(resolver);
     const req = makeReq({ preset: 'in_touch_6mo' });
@@ -155,6 +156,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never, // task
       {} as never, // team
       submittalEvents as never,
+      {} as never, // CRM-2 requisition-assignments (unused in this case)
     );
     const req = makeReq({ preset: 'submitted_this_week' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -181,6 +183,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       task as never,
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
+      {} as never, // CRM-2 requisition-assignments (unused in this case)
     );
     const req = makeReq({ preset: 'needs_follow_up' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -211,6 +214,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       team as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
+      {} as never, // CRM-2 requisition-assignments (unused in this case)
     );
     const req = makeReq({ scope: 'my_team' });
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -232,6 +236,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
       {} as never,
       {} as never,
       { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
+      {} as never, // CRM-2 requisition-assignments (unused in this case)
     );
     const req = makeReq({});
     await runInterceptor(new TalentPresetInterceptor(resolver), req);
@@ -240,5 +245,42 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
     expect(req.talentScopeOwnerIds).toBeUndefined();
     const items = await listPaged(controllerWith(fakeRepo()), req);
     expect(items.map((i) => i.id)).toEqual(['t1', 't2', 't3']); // unnarrowed
+  });
+
+  it('Working with me → assigned reqs × active pipeline → talent allowlist (NOT owner_id)', async () => {
+    const requisitionAssignments = {
+      listRequisitionIdsForUser: vi.fn().mockResolvedValue(['r1', 'r2']),
+    };
+    const pipeline = {
+      listByRequisitionsAndStatus: vi.fn().mockResolvedValue([
+        { id: 'p1', talent_record_id: 't1', requisition_id: 'r1', status: 'qualified' },
+        { id: 'p2', talent_record_id: 't2', requisition_id: 'r2', status: 'contacted' },
+        { id: 'p3', talent_record_id: 't1', requisition_id: 'r2', status: 'qualifying' }, // dup t1
+      ]),
+    };
+    const resolver = new TalentPresetResolverService(
+      {} as never, // activity
+      pipeline as never, // pipeline
+      {} as never, // task
+      {} as never, // team
+      { findFirstSubmittedByGrain: async () => [] } as never, // L2-E submittal-events
+      requisitionAssignments as never, // CRM-2 requisition-assignments
+    );
+    const req = makeReq({ scope: 'working_with_me' });
+    await runInterceptor(new TalentPresetInterceptor(resolver), req);
+
+    expect(requisitionAssignments.listRequisitionIdsForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: 'T', user_id: 'me' }),
+    );
+    expect(pipeline.listByRequisitionsAndStatus.mock.calls[0]![0].requisition_ids).toEqual([
+      'r1',
+      'r2',
+    ]);
+    // allowlist = distinct active-pipeline talent ids; NO owner_id override.
+    expect(new Set(req.talentPresetAllowlist)).toEqual(new Set(['t1', 't2']));
+    expect(req.talentScopeOwnerIds).toBeUndefined();
+
+    const items = await listPaged(controllerWith(fakeRepo()), req);
+    expect(items.map((i) => i.id).sort()).toEqual(['t1', 't2']); // t3 (not in active pipeline) excluded
   });
 });

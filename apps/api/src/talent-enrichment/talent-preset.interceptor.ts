@@ -55,8 +55,12 @@ export class TalentPresetInterceptor implements NestInterceptor {
         ? presetParam
         : undefined;
     const wantsTeam = scopeParam === 'my_team';
+    // CRM-2 — "Working with me" scope tab (replaces the owner_id-based "My
+    // talent"). Resolves to a talent-id allowlist (assigned reqs × active
+    // pipeline), NOT owner_id.
+    const wantsWorkingWithMe = scopeParam === 'working_with_me';
 
-    if (preset === undefined && !wantsTeam) {
+    if (preset === undefined && !wantsTeam && !wantsWorkingWithMe) {
       return next.handle();
     }
 
@@ -68,11 +72,22 @@ export class TalentPresetInterceptor implements NestInterceptor {
 
     return from(
       (async () => {
-        if (preset !== undefined) {
-          req.talentPresetAllowlist = await this.resolver.resolvePreset(
-            preset,
-            ctx,
-          );
+        const presetIds =
+          preset !== undefined
+            ? await this.resolver.resolvePreset(preset, ctx)
+            : undefined;
+        const wwmIds = wantsWorkingWithMe
+          ? await this.resolver.resolveWorkingWithMe(ctx)
+          : undefined;
+        // Both active → INTERSECT (the single id_allowlist is ANDed in the
+        // query, so pre-intersect here). Either alone → that set.
+        if (wwmIds !== undefined && presetIds !== undefined) {
+          const keep = new Set(presetIds);
+          req.talentPresetAllowlist = wwmIds.filter((id) => keep.has(id));
+        } else if (wwmIds !== undefined) {
+          req.talentPresetAllowlist = wwmIds;
+        } else if (presetIds !== undefined) {
+          req.talentPresetAllowlist = presetIds;
         }
         if (wantsTeam) {
           req.talentScopeOwnerIds = await this.resolver.resolveTeamOwnerIds(ctx);

@@ -359,10 +359,20 @@ function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
     }
   }
   if (q.q !== undefined && q.q.trim() !== '') {
+    // CRM-2 — the Talent page's single free-text box matches "name, title,
+    // skill, or location" in one OR (no visible key:value grammar). This is the
+    // PAGED/faceted path only; the name-only list() path (enterprise-search
+    // lexical leg) is unchanged. Structured skill/location FILTERS stay separate
+    // (ANDed) via q.skills / q.location below.
+    const term = q.q;
     and.push({
       OR: [
-        { first_name: { contains: q.q, mode: 'insensitive' } },
-        { last_name: { contains: q.q, mode: 'insensitive' } },
+        { first_name: { contains: term, mode: 'insensitive' } },
+        { last_name: { contains: term, mode: 'insensitive' } },
+        { title: { contains: term, mode: 'insensitive' } },
+        { key_skills: { contains: term, mode: 'insensitive' } },
+        { city: { contains: term, mode: 'insensitive' } },
+        { state: { contains: term, mode: 'insensitive' } },
       ],
     });
   }
