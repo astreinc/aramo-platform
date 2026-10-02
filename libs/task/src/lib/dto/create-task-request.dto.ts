@@ -17,4 +17,8 @@ export interface CreateTaskRequestDto {
   assignee_id?: string;
   type?: TaskType;
   priority?: TaskPriority;
+  // CRM-6 (§10, PO ruling) — OPTIONAL contextual requisition association. Not
+  // ownership; validated server-side (same-tenant, visible, and for a Talent
+  // owner a real Talent↔Requisition pipeline relationship).
+  requisition_id?: string;
 }

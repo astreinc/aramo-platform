@@ -30,6 +30,9 @@ type PresetRequest = Request & {
   authContext?: AuthContextType;
   talentPresetAllowlist?: readonly string[];
   talentScopeOwnerIds?: readonly string[];
+  // CRM-4 — "Not contacted 90+ days" exclusion set (recently-contacted ids);
+  // the controller folds this into id_denylist (id NOT IN).
+  talentExcludeIds?: readonly string[];
 };
 
 @Injectable()
@@ -55,8 +58,21 @@ export class TalentPresetInterceptor implements NestInterceptor {
         ? presetParam
         : undefined;
     const wantsTeam = scopeParam === 'my_team';
+    // CRM-2 — "Working with me" scope tab (replaces the owner_id-based "My
+    // talent"). Resolves to a talent-id allowlist (assigned reqs × active
+    // pipeline), NOT owner_id.
+    const wantsWorkingWithMe = scopeParam === 'working_with_me';
+    // CRM-4 — "Not contacted 90+ days": a DENYLIST (exclude recently-contacted),
+    // not an allowlist — never-contacted must be INCLUDED. Handled explicitly
+    // (not via isTalentPreset, which gates the positive-allowlist presets).
+    const wantsNotContacted = presetParam === 'not_contacted_90d';
 
-    if (preset === undefined && !wantsTeam) {
+    if (
+      preset === undefined &&
+      !wantsTeam &&
+      !wantsWorkingWithMe &&
+      !wantsNotContacted
+    ) {
       return next.handle();
     }
 
@@ -68,14 +84,29 @@ export class TalentPresetInterceptor implements NestInterceptor {
 
     return from(
       (async () => {
-        if (preset !== undefined) {
-          req.talentPresetAllowlist = await this.resolver.resolvePreset(
-            preset,
-            ctx,
-          );
+        const presetIds =
+          preset !== undefined
+            ? await this.resolver.resolvePreset(preset, ctx)
+            : undefined;
+        const wwmIds = wantsWorkingWithMe
+          ? await this.resolver.resolveWorkingWithMe(ctx)
+          : undefined;
+        // Both active → INTERSECT (the single id_allowlist is ANDed in the
+        // query, so pre-intersect here). Either alone → that set.
+        if (wwmIds !== undefined && presetIds !== undefined) {
+          const keep = new Set(presetIds);
+          req.talentPresetAllowlist = wwmIds.filter((id) => keep.has(id));
+        } else if (wwmIds !== undefined) {
+          req.talentPresetAllowlist = wwmIds;
+        } else if (presetIds !== undefined) {
+          req.talentPresetAllowlist = presetIds;
         }
         if (wantsTeam) {
           req.talentScopeOwnerIds = await this.resolver.resolveTeamOwnerIds(ctx);
+        }
+        if (wantsNotContacted) {
+          req.talentExcludeIds =
+            await this.resolver.resolveNotContacted90dExclude(ctx);
         }
       })(),
     ).pipe(switchMap(() => next.handle()));

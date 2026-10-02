@@ -77,6 +77,13 @@ const SAVED_LIST_LIST_KIND = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
 );
+// CRM-1 — visibility + purpose columns; the regenerated SavedList client SELECTs
+// them on every list read, so apply after init + list_kind (the backfill UPDATE
+// references list_kind).
+const SAVED_LIST_VISIBILITY = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql',
+);
 // Saved-list typed-polymorphism validation reads the 4 ATS entity
 // repositories. Need their schemas applied so the in-tenant lookups
 // can find seeded rows.
@@ -257,9 +264,9 @@ const TENANT_ADMIN = '00000000-0000-7000-8000-000000000aa1';
 const RECRUITER_SCOPES = [
   'calendar:event-create',
   'calendar:event-edit',
-  // saved-list:* scopes are NOT in the seed catalog at A6 (gap-and-note
-  // per directive §9). The spec passes them in the JWT directly — the
-  // RolesGuard reads them from the token, not from the seeded catalog.
+  // saved-list:* scopes are now seeded (CRM-1 closed the PR-A6 gap-and-note).
+  // The spec still passes them in the JWT directly — the overridden authz
+  // resolver reads scopes from the token, keeping these cases hermetic.
   'saved-list:read',
   'saved-list:create',
   'saved-list:edit',
@@ -325,6 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CALENDAR_INIT,
         SAVED_LIST_INIT,
         SAVED_LIST_LIST_KIND,
+        SAVED_LIST_VISIBILITY,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,
@@ -813,6 +821,179 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         );
         expect(addEntry.status).toBe(201);
       }
+    });
+
+    it('Saved-list visibility (CRM-1): PRIVATE is owner-only; TENANT is tenant-read + creator/admin-mutate; cross-tenant → 404', async () => {
+      // Owner seeds a talent_record for the admin-mutate case.
+      const tRes = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${recruiterOwnerJwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(
+          validTalentCreateBody({ first_name: 'Vis', last_name: 'Member', site_id: SITE_A }),
+        ),
+      });
+      expect(tRes.status).toBe(201);
+      const talent = (await tRes.json()) as { id: string };
+
+      const createList = (visibility: 'private' | 'tenant', name: string) =>
+        fetch(`http://127.0.0.1:${port}/v1/saved-lists?site_id=${SITE_A}`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterOwnerJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name, item_type: 'talent_record', site_id: SITE_A, visibility }),
+        });
+
+      // --- PRIVATE list (owned by RECRUITER_OWNER) ---
+      const privRes = await createList('private', 'My private bench');
+      expect(privRes.status).toBe(201);
+      const priv = (await privRes.json()) as { id: string; visibility: string };
+      expect(priv.visibility).toBe('private');
+
+      // Another recruiter cannot SEE it (404, no existence leak) ...
+      const otherGetPriv = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${priv.id}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterOtherJwt}` } },
+      );
+      expect(otherGetPriv.status).toBe(404);
+
+      // ... nor is it in their collection read ...
+      const otherList = await fetch(`http://127.0.0.1:${port}/v1/saved-lists?site_id=${SITE_A}`, {
+        headers: { Authorization: `Bearer ${recruiterOtherJwt}` },
+      });
+      expect(otherList.status).toBe(200);
+      const otherItems = (await otherList.json()) as { items: Array<{ id: string }> };
+      expect(otherItems.items.some((l) => l.id === priv.id)).toBe(false);
+
+      // ... nor can they mutate it (not visible → 404).
+      const otherAddPriv = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${priv.id}/entries?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterOtherJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ item_type: 'talent_record', item_id: talent.id }),
+        },
+      );
+      expect(otherAddPriv.status).toBe(404);
+
+      // The creator sees their own private list.
+      const ownerGetPriv = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${priv.id}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterOwnerJwt}` } },
+      );
+      expect(ownerGetPriv.status).toBe(200);
+
+      // An admin (holds saved-list:delete) may SEE and MUTATE the private list.
+      const adminGetPriv = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${priv.id}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${tenantAdminJwt}` } },
+      );
+      expect(adminGetPriv.status).toBe(200);
+      const adminAddPriv = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${priv.id}/entries?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${tenantAdminJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ item_type: 'talent_record', item_id: talent.id }),
+        },
+      );
+      expect(adminAddPriv.status).toBe(201);
+
+      // --- TENANT list (owned by RECRUITER_OWNER) ---
+      const tenRes = await createList('tenant', 'Shared bench');
+      expect(tenRes.status).toBe(201);
+      const ten = (await tenRes.json()) as { id: string; visibility: string };
+      expect(ten.visibility).toBe('tenant');
+
+      // Another recruiter CAN SEE a tenant list ...
+      const otherGetTen = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${ten.id}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterOtherJwt}` } },
+      );
+      expect(otherGetTen.status).toBe(200);
+
+      // ... but may NOT mutate it (visible, not creator, not admin → 403).
+      const otherAddTen = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${ten.id}/entries?site_id=${SITE_A}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${recruiterOtherJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ item_type: 'talent_record', item_id: talent.id }),
+        },
+      );
+      expect(otherAddTen.status).toBe(403);
+      const addTenBody = (await otherAddTen.json()) as { error: { code: string } };
+      expect(addTenBody.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
+
+      // Cross-tenant actor cannot see the tenant list (tenant isolation).
+      const crossGetTen = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/${ten.id}?site_id=${SITE_A}`,
+        { headers: { Authorization: `Bearer ${recruiterJwt_OtherTenant}` } },
+      );
+      expect(crossGetTen.status).toBe(404);
+    });
+
+    it('Saved-list CRM-3: add is idempotent (dup → benign, no 500); GET /memberships is visibility-scoped', async () => {
+      // Owner seeds a talent + a PRIVATE list.
+      const tRes = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(validTalentCreateBody({ first_name: 'Mem', last_name: 'Ber', site_id: SITE_A })),
+      });
+      expect(tRes.status).toBe(201);
+      const talent = (await tRes.json()) as { id: string };
+
+      const listRes = await fetch(`http://127.0.0.1:${port}/v1/saved-lists?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Members', item_type: 'talent_record', site_id: SITE_A, visibility: 'private' }),
+      });
+      const list = (await listRes.json()) as { id: string };
+
+      const add = () =>
+        fetch(`http://127.0.0.1:${port}/v1/saved-lists/${list.id}/entries?site_id=${SITE_A}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_type: 'talent_record', item_id: talent.id }),
+        });
+      // CRM-3 — idempotent: first add 201, re-add is a benign no-op (NOT a 500).
+      expect((await add()).status).toBe(201);
+      const second = await add();
+      expect(second.status).toBe(201);
+
+      // Owner sees the membership via the reverse-membership route.
+      const ownerMem = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/memberships?site_id=${SITE_A}&item_type=talent_record&item_ids=${talent.id}`,
+        { headers: { Authorization: `Bearer ${recruiterOwnerJwt}` } },
+      );
+      expect(ownerMem.status).toBe(200);
+      const ownerBody = (await ownerMem.json()) as {
+        items: Array<{ item_id: string; lists: Array<{ id: string }> }>;
+      };
+      expect(ownerBody.items[0]?.lists.map((l) => l.id)).toContain(list.id);
+
+      // Another recruiter does NOT see the owner's PRIVATE list membership.
+      const otherMem = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/memberships?site_id=${SITE_A}&item_type=talent_record&item_ids=${talent.id}`,
+        { headers: { Authorization: `Bearer ${recruiterOtherJwt}` } },
+      );
+      expect(otherMem.status).toBe(200);
+      const otherBody = (await otherMem.json()) as { items: Array<{ item_id: string; lists: unknown[] }> };
+      // either no row for the talent, or a row with zero visible lists.
+      expect(otherBody.items[0]?.lists.length ?? 0).toBe(0);
     });
   },
 );

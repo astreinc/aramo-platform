@@ -217,11 +217,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       title: string;
       type: string;
       dueMs: number | null;
+      requisitionId?: string; // CRM-6 — optional explicit requisition context
     }) {
       await db.query(
         `INSERT INTO task."Task"
-           (id, tenant_id, title, due_date, type, source, assignee_id, created_by_user_id, owner_type, owner_id, created_at, updated_at)
-         VALUES ($1,$2,$3,$4,$5,'manual',$6,$7,$8,$9,now(),now())`,
+           (id, tenant_id, title, due_date, type, source, assignee_id, created_by_user_id, owner_type, owner_id, requisition_id, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,'manual',$6,$7,$8,$9,$10,now(),now())`,
         [
           randomUUID(),
           a.tenant,
@@ -232,6 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ADMIN,
           a.owner_type,
           a.owner_id,
+          a.requisitionId ?? null,
         ],
       );
     }
@@ -466,6 +468,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'requisition', owner_id: reqA1, title: 'Send RTR reminder', type: 'follow_up', dueMs: now - 3 * DAY }); // overdue
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'talent_record', owner_id: tal['kevin'], title: 'Log qualifying call', type: 'call', dueMs: now }); // today + enriched (Kevin on 1 pipeline)
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'talent_record', owner_id: tal['marcus'], title: 'Log call', type: 'call', dueMs: now }); // today + AMBIGUOUS (Marcus on 2 pipelines)
+      // CRM-6 §10 rule 5 — EXPLICIT requisition context wins over the ambiguous
+      // single-pipeline derivation (Marcus is on 2 pipelines → derivation=null).
+      await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'talent_record', owner_id: tal['marcus'], title: 'Follow up re Freddie Mac', type: 'follow_up', dueMs: now, requisitionId: reqA1 });
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER, owner_type: 'requisition', owner_id: reqU, title: 'HIDDEN unassigned req task', type: 'admin', dueMs: now }); // visibility-hidden
       await seedTask({ tenant: TENANT_A, assignee: RECRUITER_OTHER, owner_type: 'requisition', owner_id: reqA1, title: 'HIDDEN other-recruiter task', type: 'admin', dueMs: now }); // ownership-hidden
       await seedTask({ tenant: TENANT_B, assignee: RECRUITER, owner_type: 'requisition', owner_id: reqA1, title: 'HIDDEN tenant-B task', type: 'admin', dueMs: now }); // tenant-hidden
@@ -566,11 +571,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('task→requisition enrichment: single active pipeline enriches; ambiguous stays null', async () => {
       const { body } = await getMyDesk(recruiterJwt);
       const kevin = body.priority_items.find((i: any) => i.talent_name === 'Kevin Brooks');
-      const marcus = body.priority_items.find((i: any) => i.talent_name === 'Marcus Lee');
+      // disambiguate the two Marcus tasks by reason (both label 'Marcus Lee').
+      const marcusCall = body.priority_items.find(
+        (i: any) => i.talent_name === 'Marcus Lee' && i.reason === 'Log call',
+      );
       expect(kevin.requisition_id).toBe(reqA1);
       expect(kevin.requisition_label).toMatch(/^REQ-\d+$/);
-      expect(marcus.requisition_id).toBeNull();
-      expect(marcus.requisition_label).toBeNull();
+      expect(marcusCall.requisition_id).toBeNull();
+      expect(marcusCall.requisition_label).toBeNull();
+    });
+
+    it('CRM-6 §10: an EXPLICIT task.requisition_id wins over the ambiguous single-pipeline derivation', async () => {
+      const { body } = await getMyDesk(recruiterJwt);
+      // Marcus is on TWO active pipelines (derivation → null), but this follow-up
+      // carries an explicit requisition context → it must resolve to reqA1.
+      const explicit = body.priority_items.find(
+        (i: any) => i.talent_name === 'Marcus Lee' && i.reason === 'Follow up re Freddie Mac',
+      );
+      expect(explicit).toBeDefined();
+      expect(explicit.requisition_id).toBe(reqA1);
+      expect(explicit.requisition_label).toMatch(/^REQ-\d+$/);
     });
 
     it('interview day-window: only the local-today scheduled session appears', async () => {

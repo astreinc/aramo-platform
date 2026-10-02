@@ -147,6 +147,21 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     return this.companies.findNamesByIds({ tenant_id: ctx.tenant_id, ids: company_ids });
   }
 
+  // CRM-5 §9.5 — authoritative terminal reason per closed pipeline id (reason
+  // only; never the free-text note). Visibility is already enforced upstream:
+  // the pipeline ids come from listEpisodes (actor-visible requisitions only).
+  async resolveDispositionReasons(
+    ctx: Talent360ActorContext,
+    pipeline_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const unique = [...new Set(pipeline_ids.filter((id) => id.length > 0))];
+    if (unique.length === 0) return new Map();
+    return this.pipelines.findDispositionReasons({
+      tenant_id: ctx.tenant_id,
+      pipeline_ids: unique,
+    });
+  }
+
   async resolveUserNames(
     ctx: Talent360ActorContext,
     user_ids: readonly string[],

@@ -880,6 +880,11 @@ const TASK_WORKSPACE_MIGRATION = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql',
 );
+// CRM-6 (§10) — the optional contextual requisition_id column.
+const TASK_REQUISITION_CONTEXT_MIGRATION = resolve(
+  ROOT,
+  'libs/task/prisma/migrations/20261002120000_task_requisition_context/migration.sql',
+);
 const ATTACHMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
@@ -1016,6 +1021,12 @@ const SAVED_LIST_INIT_MIGRATION = resolve(
 const SAVED_LIST_LIST_KIND_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
+);
+// CRM-1 — visibility + purpose columns; the regenerated SavedList client SELECTs
+// them, so apply after init + list_kind (backfill UPDATE references list_kind).
+const SAVED_LIST_VISIBILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql',
 );
 // PC-7d — import model (ImportBatch + ImportFailure). The GET /v1/imports +
 // :id/failures reads live-verify against these tables; only the import_batch_id
@@ -3693,6 +3704,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // All self-contained (CREATE SCHEMA in init), no FK.
         TASK_INIT_MIGRATION,
         TASK_WORKSPACE_MIGRATION,
+        TASK_REQUISITION_CONTEXT_MIGRATION,
         ATTACHMENT_INIT_MIGRATION,
         // PC-4b — talent_trust L2 substrate (11) + saved_list write-closure (2).
         TALENT_TRUST_INIT_MIGRATION,
@@ -3731,6 +3743,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
         SAVED_LIST_LIST_KIND_MIGRATION,
+        SAVED_LIST_VISIBILITY_MIGRATION,
         IMPORT_INIT_MIGRATION,
         CALENDAR_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),

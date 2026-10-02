@@ -46,6 +46,7 @@ import {
   type TableColumn,
 } from '../ui';
 
+import { KnownTalentDrawer } from './KnownTalentDrawer';
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
@@ -1265,6 +1266,7 @@ function TalentJourney({
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
   const [findOpen, setFindOpen] = useState(false);
+  const [knownTalentOpen, setKnownTalentOpen] = useState(false);
   const canSource = scopes.includes('talent:source');
 
   // Least-visibility: the read rides its existing scope; without it the cell
@@ -1444,25 +1446,32 @@ function TalentJourney({
                   >
                     <span aria-hidden="true" />
                   </Button>
+                  {/* CRM-8 (§12.1) — mandatory order: Known talent first (opens a
+                      requisition-scoped drawer, NOT global search), then Source new
+                      talent (routes to the existing Sourcing flow, unchanged). */}
                   <div className="rc-tj__findmenu" role="menu">
-                    <Link
-                      to="/sourcing"
+                    <Button
+                      unstyled
+                      type="button"
                       role="menuitem"
                       className="rc-tj__finditem"
-                      onClick={() => setFindOpen(false)}
+                      onClick={() => {
+                        setFindOpen(false);
+                        setKnownTalentOpen(true);
+                      }}
                     >
-                      <span className="rc-tj__findt">Rediscover existing Talent</span>
+                      <span className="rc-tj__findt">Known talent</span>
                       <span className="rc-tj__findd">
-                        Search your tenant&apos;s eligible, known Talent pool for this requisition
+                        Search your tenant&apos;s known Talent for this requisition
                       </span>
-                    </Link>
+                    </Button>
                     <Link
                       to="/sourcing"
                       role="menuitem"
                       className="rc-tj__finditem"
                       onClick={() => setFindOpen(false)}
                     >
-                      <span className="rc-tj__findt">Source new Talent</span>
+                      <span className="rc-tj__findt">Source new talent</span>
                       <span className="rc-tj__findd">
                         Discover people not yet in your working Talent pool
                       </span>
@@ -1471,6 +1480,16 @@ function TalentJourney({
                 </>
               ) : null}
             </div>
+          ) : null}
+          {/* CRM-8 (§12.2) — the requisition-scoped Known Talent drawer. */}
+          {knownTalentOpen ? (
+            <KnownTalentDrawer
+              requisition={req}
+              attachedTalentIds={pipelines.map((p) => p.talent_record_id)}
+              canAddToRequisition={canSource}
+              onClose={() => setKnownTalentOpen(false)}
+              onAdded={() => setBoardRefresh((n) => n + 1)}
+            />
           ) : null}
           {/* Full pipeline → the requisitions list (the prototype target). */}
           <Link to="/requisitions" className="rc-tj__full">

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
+import { ConsentRepository } from '@aramo/consent';
 import {
   ClientSelectionProcessRepository,
   InterviewSessionRepository,
@@ -61,6 +62,7 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
     private readonly restriction: ClientTalentRestrictionRepository,
     private readonly engagement: EngagementGateService,
     private readonly submittals: SubmittalRepository,
+    private readonly consent: ConsentRepository,
   ) {}
 
   async listMyTasks(ctx: DeskActorContext): Promise<readonly DeskTaskRow[]> {
@@ -81,6 +83,7 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
       type: t.type as DeskTaskType | null,
       owner_type: t.owner_type as DeskTaskOwnerType,
       owner_id: t.owner_id,
+      requisition_id: t.requisition_id,
     }));
   }
 
@@ -435,6 +438,35 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
       tenant_id: ctx.tenant_id,
       ids: talent_ids,
     });
+  }
+
+  // CRM-7 (§11) — per-talent communication authority for the follow-up CTA.
+  // can_call/can_email = contacting-consent permits (summary === 'contactable',
+  // the Talent-360 recruitingPermitted rule) AND the channel exists. Two batch
+  // reads (consent + channel presence); absent talent ⇒ both false.
+  async resolveTalentContactability(
+    ctx: DeskActorContext,
+    talent_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, { can_call: boolean; can_email: boolean }>> {
+    const unique = [...new Set(talent_ids.filter((id) => id.length > 0))];
+    if (unique.length === 0) return new Map();
+    const [consent, channels] = await Promise.all([
+      this.consent.findContactingConsentSummaryForTalentIds({
+        tenant_id: ctx.tenant_id,
+        talent_record_ids: unique,
+      }),
+      this.talent.findContactChannelsByIds({ tenant_id: ctx.tenant_id, ids: unique }),
+    ]);
+    const out = new Map<string, { can_call: boolean; can_email: boolean }>();
+    for (const id of unique) {
+      const permitted = consent.get(id) === 'contactable';
+      const ch = channels.get(id);
+      out.set(id, {
+        can_call: permitted && (ch?.has_phone ?? false),
+        can_email: permitted && (ch?.has_email ?? false),
+      });
+    }
+    return out;
   }
 
   async resolveCompanyNames(

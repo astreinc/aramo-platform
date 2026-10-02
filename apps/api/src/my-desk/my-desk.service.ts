@@ -18,6 +18,7 @@ import {
   type MyDeskReadPort,
 } from './my-desk.ports.js';
 import type {
+  DeskActionView,
   DeskExceptionView,
   DeskItemKind,
   DeskPriorityItemView,
@@ -190,9 +191,13 @@ export class MyDeskService {
       ...expiringOffers.map((o) => o.talent_record_id),
       ...readinessRows.map((r) => r.talent_id),
     ]);
-    const [talentNames, companyNames] = await Promise.all([
+    // CRM-7 (§11) — communication authority for the follow-up CTA, batched over
+    // the talent-owned task owners (taskTalentIds, above) — the only rows whose
+    // CTA can be Call/Email.
+    const [talentNames, companyNames, contactability] = await Promise.all([
       this.port.resolveTalentNames(ctx, talentIds),
       this.port.resolveCompanyNames(ctx, dedupe(requisitions.map((r) => r.company_id))),
+      this.port.resolveTalentContactability(ctx, taskTalentIds),
     ]);
 
     // The queue = task-derived items + domain-derived work items (submittal-
@@ -200,7 +205,7 @@ export class MyDeskService {
     // comparator (urgency → kind precedence → due → id).
     const priority_items = [
       ...tasks.map((t) =>
-        this.toPriorityItem(t, nowMs, timeZone, reqLabel, talentNames, talentToReq),
+        this.toPriorityItem(t, nowMs, timeZone, reqLabel, talentNames, talentToReq, contactability),
       ),
       ...toDerivedItems(readinessRows, reqLabel, talentNames),
     ].sort(comparePriorityItems);
@@ -282,19 +287,41 @@ export class MyDeskService {
     reqLabel: ReadonlyMap<string, string | null>,
     talentNames: ReadonlyMap<string, string>,
     talentToReq: ReadonlyMap<string, string | null>,
+    contactability: ReadonlyMap<string, { can_call: boolean; can_email: boolean }>,
   ): DeskPriorityItemView {
     const kind = t.type !== null ? TASK_KIND[t.type] : 'task';
     const isTalent = t.owner_type === 'talent_record';
     const talentName = isTalent ? (talentNames.get(t.owner_id) ?? null) : null;
-    // Requisition context: a req-owned task IS its requisition; a talent-owned
-    // task adopts its requisition only when unambiguous (single active pipeline).
+    // Requisition context (CRM-6 §10 rule 5 — EXPLICIT-first, derived-second): a
+    // req-owned task IS its requisition; otherwise the task's explicit
+    // requisition_id wins; a talent-owned task falls back to its requisition
+    // only when unambiguous (single active pipeline). Historical/current tasks
+    // with no explicit context keep the derivation — backward-compatible.
     const requisitionId =
       t.owner_type === 'requisition'
         ? t.owner_id
-        : isTalent
-          ? (talentToReq.get(t.owner_id) ?? null)
-          : null;
+        : (t.requisition_id ??
+          (isTalent ? (talentToReq.get(t.owner_id) ?? null) : null));
     const route = OWNER_ROUTE[t.owner_type];
+    // The fallback "Open" affordance (§11 "Open talent / Open task") — unchanged
+    // label; the route already lands on the talent/owner surface.
+    const openAction: DeskActionView | null =
+      route === null ? null : { kind: 'open_task', label: 'Open task', href: `${route}/${t.owner_id}` };
+    // CRM-7 (§11) CTA rule — a Task defines WHAT is due; it does NOT grant a
+    // communication action. The CTA comes from communication authority:
+    //   follow_up + requisition + email permitted  → Email (requisition-contextual)
+    //   follow_up + no requisition + voice permitted → Call
+    //   otherwise                                    → Open talent / Open task
+    // Non-follow_up tasks keep the plain Open affordance.
+    let primary_action: DeskActionView | null = openAction;
+    if (kind === 'follow_up' && isTalent) {
+      const c = contactability.get(t.owner_id) ?? { can_call: false, can_email: false };
+      if (requisitionId !== null) {
+        primary_action = c.can_email ? { kind: 'email', label: 'Email', href: null } : openAction;
+      } else {
+        primary_action = c.can_call ? { kind: 'call', label: 'Call', href: null } : openAction;
+      }
+    }
     return {
       id: t.id,
       kind,
@@ -310,10 +337,8 @@ export class MyDeskService {
       reason: talentName !== null ? t.title : '',
       due_at: t.due_date,
       urgency: classifyDueUrgency(parseMs(t.due_date), nowMs, timeZone),
-      primary_action:
-        route === null
-          ? null
-          : { kind: 'open_task', label: 'Open task', href: `${route}/${t.owner_id}` },
+      primary_action,
+      task_id: t.id, // this row IS a Task — Done/Snooze act on it
     };
   }
 
@@ -414,6 +439,7 @@ function toDerivedItems(
       label: talentName ?? 'Talent',
       due_at: null,
       urgency: 'today' as const,
+      task_id: null, // DERIVED work item — no backing Task (no Done/Snooze)
     };
     if (row.submittal_ready) {
       items.push({

@@ -41,7 +41,13 @@ export type DeskActionKind =
   | 'update_talent'
   | 'open_task'
   | 'review_advisory'
-  | 'update_email';
+  | 'update_email'
+  // CRM-7 (§11) — follow-up communication-authority CTAs. 'call' = execute a
+  // voice contact (no requisition, voice permitted); 'email' = requisition-
+  // contextual email (requisition present, email permitted). The FE resolves
+  // each affordance from `kind`; a Task never grants the communication action.
+  | 'call'
+  | 'email';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;
@@ -68,6 +74,10 @@ export interface DeskPriorityItemView {
   readonly due_at: string | null;
   readonly urgency: DeskUrgency;
   readonly primary_action: DeskActionView | null;
+  // CRM-7 (§11) — the backing Task id when this row IS a Task (so the FE can
+  // invoke the Task PATCH for Done/Snooze). null for domain-DERIVED work items
+  // (submittal-ready / RTR / voice) that have no Task to mutate.
+  readonly task_id: string | null;
 }
 
 export type DeskInterviewConfirmation =

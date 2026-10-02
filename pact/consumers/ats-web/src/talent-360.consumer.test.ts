@@ -104,6 +104,7 @@ describe('ats-web → GET /v1/talent-360/:id (composed read)', () => {
             ownership: {
               owner_provenance: null,
               also_working_with: [],
+              worked_with_before: [],
               source: null,
               source_channel: null,
             },

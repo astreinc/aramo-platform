@@ -14,6 +14,7 @@ import {
   StubTaskAssigneeValidator,
   type TaskAssigneeValidator,
 } from '../lib/task-assignee.port.js';
+import { StubTaskRequisitionContextValidator } from '../lib/task-requisition-context.port.js';
 
 // Task-Assignee Binding-Fix v1.0 — §3.3 GATE.
 //
@@ -104,7 +105,12 @@ async function bootController(
   const fakeRepo = { create } as unknown as TaskRepository;
 
   const moduleRef = await Test.createTestingModule({
-    imports: [TaskModule.forRoot({ assigneeValidator: validator })],
+    imports: [
+      TaskModule.forRoot({
+        assigneeValidator: validator,
+        requisitionContextValidator: StubTaskRequisitionContextValidator,
+      }),
+    ],
   })
     .overrideProvider(TaskRepository)
     .useValue(fakeRepo)

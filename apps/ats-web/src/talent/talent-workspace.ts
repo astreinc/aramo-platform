@@ -44,7 +44,26 @@ export {
 
 // 'mine' → owner-is-me (native owner param) · 'team' → ?scope=my_team (4c) ·
 // 'all' → no owner filter. The trio is mutually exclusive.
-export type ScopeMode = 'mine' | 'team' | 'all';
+// CRM-2 — scope tabs are now "All talent" / "Working with me" (prototype). The
+// owner_id-based "My talent" and the "My team" tab are retired from the UI;
+// "working_with_me" resolves server-side to assigned-reqs × active-pipeline
+// (?scope=working_with_me), NEVER owner_id.
+export type ScopeMode = 'working_with_me' | 'all';
+
+// CRM-4 — relative date for the "Last contacted" cell. Day-granular up to 90d
+// ("61 days ago"), then month/year ("4 months ago") — matching the prototype.
+export function relativeDate(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return '—';
+  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 90) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
+  const years = Math.round(days / 365);
+  return `${years} year${years > 1 ? 's' : ''} ago`;
+}
 
 // ── Token search ────────────────────────────────────────────────────────────
 // Grammar: `key:value` tokens + free text. Supported keys map to SERVER params
@@ -178,28 +197,37 @@ export function deriveSkillCounts(
 // and 'my_hot_list' are NATIVE (availability / is_hot); the other three are the
 // cross-schema presets resolved server-side (4c). Each maps to query params in
 // buildTalentQuery — there is no separate "preset" param concept above this.
+// CRM-2 — the prototype quick-filter bar is EXACTLY four chips. The three prior
+// one-click views (in_touch_6mo / my_hot_list / submitted_this_week) are retired
+// from this page. `not_contacted_90d` is a TEMPORARY DEPENDENCY RESIDUAL: its
+// control geometry lands now, but authoritative last-contact composition is
+// CRM-4 — so it renders pending (no backend query) and must NEVER be proxied by
+// last-activity. `needs_follow_up` is the live Task-backed "Follow-up due".
 export type ViewKey =
   | 'all'
   | 'available_now'
-  | 'in_touch_6mo'
-  | 'needs_follow_up'
-  | 'my_hot_list'
-  | 'submitted_this_week';
+  | 'not_contacted_90d'
+  | 'needs_follow_up';
 
-export const VIEWS: readonly { key: ViewKey; label: string }[] = [
+export const VIEWS: readonly {
+  key: ViewKey;
+  label: string;
+  pending?: boolean;
+}[] = [
   { key: 'all', label: 'All' },
   { key: 'available_now', label: 'Available now' },
-  { key: 'in_touch_6mo', label: 'In touch < 6 mo' },
-  { key: 'needs_follow_up', label: 'Needs follow-up' },
-  { key: 'my_hot_list', label: 'My hot list' },
-  { key: 'submitted_this_week', label: 'Submitted · this week' },
+  // CRM-4 — activated: authoritative last-contact denylist (recently-contacted
+  // excluded). No longer pending.
+  { key: 'not_contacted_90d', label: 'Not contacted 90+ days' },
+  { key: 'needs_follow_up', label: 'Follow-up due' },
 ];
 
 // Views resolved server-side via the ?preset= cross-schema path (4c).
+// not_contacted_90d is CRM-4 — a DENYLIST handled explicitly by the interceptor
+// (not a positive-allowlist preset), but still sent as ?preset=not_contacted_90d.
 export const CROSS_SCHEMA_VIEWS: readonly ViewKey[] = [
-  'in_touch_6mo',
   'needs_follow_up',
-  'submitted_this_week',
+  'not_contacted_90d',
 ];
 
 // ── Sort — NATIVE columns only (4a buildOrderBy). NO rate (free-text, never an
@@ -255,17 +283,18 @@ export function buildTalentQuery(i: TalentQueryInput): URLSearchParams {
   if (i.facets.engagementTypes.length > 0)
     p.set('engagement', i.facets.engagementTypes.join(','));
   if (i.facets.sources.length > 0) p.set('source', i.facets.sources.join(','));
-  // hot — the My-hot-list view is a native is_hot shortcut.
-  if (i.facets.hotOnly || i.view === 'my_hot_list') p.set('hot', 'true');
+  // hot — facet filter only (the My-hot-list quick view was retired in CRM-2).
+  if (i.facets.hotOnly) p.set('hot', 'true');
 
   // location ← facet text + loc: token (server: city/state ILIKE).
   const locTok = i.query.tokens.find((t) => t.supported && t.key === 'loc');
   const location = i.facets.location.trim() || (locTok?.value ?? '');
   if (location !== '') p.set('location', location);
 
-  // scope → owner-is-me (native owner param) or ?scope=my_team (4c).
-  if (i.scope === 'mine' && i.sessionSub !== null) p.set('owner', i.sessionSub);
-  else if (i.scope === 'team') p.set('scope', 'my_team');
+  // scope → "Working with me" resolves server-side to assigned-reqs × active
+  // pipeline (CRM-2); "All talent" applies no scope narrowing. owner_id is NEVER
+  // sent as a scope (it is provenance, not relationship ownership).
+  if (i.scope === 'working_with_me') p.set('scope', 'working_with_me');
 
   // cross-schema views resolve via ?preset= (native views already folded in).
   if (CROSS_SCHEMA_VIEWS.includes(i.view)) p.set('preset', i.view);

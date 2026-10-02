@@ -17,6 +17,12 @@ export {
 } from './lib/task-assignee.port.js';
 
 export {
+  TASK_REQUISITION_CONTEXT_VALIDATOR,
+  StubTaskRequisitionContextValidator,
+  type TaskRequisitionContextValidator,
+} from './lib/task-requisition-context.port.js';
+
+export {
   TASK_OWNER_TYPE_VALUES,
   isTaskOwnerType,
   type TaskOwnerType,

@@ -344,8 +344,13 @@ function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
   if (q.owner_id && q.owner_id.length > 0) {
     where['owner_id'] = { in: [...q.owner_id] };
   }
-  if (q.id_allowlist != null) {
-    where['id'] = { in: [...q.id_allowlist] };
+  // CRM-4 — id allow/deny. Allowlist = INCLUDE (presets / working-with-me / FE
+  // ids); denylist = EXCLUDE (Not-contacted-90+). Both compose on `id` (AND).
+  if (q.id_allowlist != null || q.id_denylist != null) {
+    where['id'] = {
+      ...(q.id_allowlist != null ? { in: [...q.id_allowlist] } : {}),
+      ...(q.id_denylist != null ? { notIn: [...q.id_denylist] } : {}),
+    };
   }
   // availability "unknown" bucket matches BOTH null and the explicit 'unknown'.
   if (q.availability_status && q.availability_status.length > 0) {
@@ -359,10 +364,20 @@ function buildSearchWhere(q: TalentSearchQuery): Record<string, unknown> {
     }
   }
   if (q.q !== undefined && q.q.trim() !== '') {
+    // CRM-2 — the Talent page's single free-text box matches "name, title,
+    // skill, or location" in one OR (no visible key:value grammar). This is the
+    // PAGED/faceted path only; the name-only list() path (enterprise-search
+    // lexical leg) is unchanged. Structured skill/location FILTERS stay separate
+    // (ANDed) via q.skills / q.location below.
+    const term = q.q;
     and.push({
       OR: [
-        { first_name: { contains: q.q, mode: 'insensitive' } },
-        { last_name: { contains: q.q, mode: 'insensitive' } },
+        { first_name: { contains: term, mode: 'insensitive' } },
+        { last_name: { contains: term, mode: 'insensitive' } },
+        { title: { contains: term, mode: 'insensitive' } },
+        { key_skills: { contains: term, mode: 'insensitive' } },
+        { city: { contains: term, mode: 'insensitive' } },
+        { state: { contains: term, mode: 'insensitive' } },
       ],
     });
   }
@@ -733,6 +748,29 @@ export class TalentRecordRepository {
       last_name: string;
     }>) {
       out.set(r.id, `${r.first_name} ${r.last_name}`.trim());
+    }
+    return out;
+  }
+
+  // CRM-7 (§11) — BATCH channel presence (has a phone / has an email) for a set
+  // of talent ids. The My Desk follow-up CTA pairs this with the contacting-
+  // consent summary to decide Call / Email / Open (the Talent-360 can_call /
+  // can_email precedent). Absent id ⇒ both false.
+  async findContactChannelsByIds(args: {
+    tenant_id: string;
+    ids: readonly string[];
+  }): Promise<Map<string, { has_phone: boolean; has_email: boolean }>> {
+    if (args.ids.length === 0) return new Map();
+    const rows = await this.prisma.talentRecord.findMany({
+      where: { tenant_id: args.tenant_id, id: { in: [...new Set(args.ids)] } },
+      select: { id: true, phone_cell: true, email1: true },
+    });
+    const out = new Map<string, { has_phone: boolean; has_email: boolean }>();
+    for (const r of rows as Array<{ id: string; phone_cell: string | null; email1: string | null }>) {
+      out.set(r.id, {
+        has_phone: (r.phone_cell ?? '') !== '',
+        has_email: (r.email1 ?? '') !== '',
+      });
     }
     return out;
   }

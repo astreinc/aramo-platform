@@ -1179,6 +1179,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch5-calendar-saved-list.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {
@@ -1516,6 +1522,12 @@
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
       "to": "libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -2326,6 +2338,12 @@
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/task/prisma/migrations/20261002120000_task_requisition_context/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11444,6 +11462,11 @@
       "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
     },
     {
+      "from": "apps/ats-web/src/requisitions/KnownTalentDrawer.tsx",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/ats-web/src/requisitions/approval-affordance.ts",
       "status": "production",
       "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
@@ -19349,6 +19372,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/selection/prisma/migrations/20260525120000_init_selection_model/migration.sql"
     },
     {
@@ -19675,6 +19703,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/task/prisma/migrations/20261002120000_task_requisition_context/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

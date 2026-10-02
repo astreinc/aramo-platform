@@ -46,6 +46,9 @@ export interface DeskTaskRow {
   readonly type: DeskTaskType | null;
   readonly owner_type: DeskTaskOwnerType;
   readonly owner_id: string;
+  // CRM-6 (§10) — explicit contextual requisition (the follow-up picker). When
+  // present it wins over the single-active-pipeline derivation (PO rule 5).
+  readonly requisition_id: string | null;
 }
 
 // Per-requisition counts, each produced by an indexed groupBy in the owning
@@ -182,6 +185,14 @@ export interface MyDeskReadPort {
     ctx: DeskActorContext,
     talent_ids: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
+
+  // CRM-7 (§11) — per-talent communication authority for the follow-up CTA:
+  // can_call / can_email = contacting-consent permits (contactable) AND the
+  // channel exists (phone / email present). The Talent-360 precedent.
+  resolveTalentContactability(
+    ctx: DeskActorContext,
+    talent_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, { can_call: boolean; can_email: boolean }>>;
   resolveCompanyNames(
     ctx: DeskActorContext,
     company_ids: readonly string[],

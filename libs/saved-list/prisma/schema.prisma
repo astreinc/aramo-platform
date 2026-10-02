@@ -50,6 +50,20 @@ enum SavedListItemType {
   @@schema("saved_list")
 }
 
+// CRM-1 — SavedListVisibility. V1 supports exactly two postures (directive §5.2):
+//   - private: readable/mutable only by the creator (owner_id) plus admin-tier
+//     authority (the saved-list:delete holder — tenant_admin/tenant_owner).
+//   - tenant:  readable by any authorized actor in the tenant; mutable only by
+//     the creator plus admin-tier (PO ruling — shared lists are collaborative to
+//     READ, curated by their creator). Team / dynamic / saved-query are NOT V1.
+// Enforcement is backend (repository predicate), never FE hiding alone.
+enum SavedListVisibility {
+  private
+  tenant
+
+  @@schema("saved_list")
+}
+
 // SavedList — the bucket. item_type is fixed at creation (homogeneity
 // invariant — a list is for one type of entity). Static lists only
 // (dynamic-list path dormant, per A6 directive §8).
@@ -64,6 +78,13 @@ model SavedList {
 
   // The homogeneity discriminator. Fixed at creation; cannot be PATCH'd.
   item_type SavedListItemType
+
+  // CRM-1 — visibility posture (backend-enforced, directive §5.2). Defaults to
+  // `private` (least-visibility, directive §17). `purpose` is an optional
+  // free-text label shown in the Lists UI (CRM-3). Both are additive
+  // (ADD-not-rename); nothing existing is altered.
+  visibility SavedListVisibility @default(private)
+  purpose    String?
 
   // Promotion-Trigger slice-A — list-kind marker. NULL = an owner-scoped personal
   // list (unchanged); 'tenant_bench' = the reserved per-tenant sourcing bench
