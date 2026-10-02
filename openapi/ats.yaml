@@ -1376,6 +1376,86 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}/workspace:
+    get:
+      operationId: getSubmittalWorkspace
+      summary: Submittal Workspace read projection (SW-4).
+      description: |
+        The submittal-centric recruiter workspace READ composition. One
+        tenant- + visibility-scoped payload composed from existing authoritative
+        sources (submittal, pipeline, requisition, company, talent, documents/RTR,
+        engagement, client-submittal policy, commercial, delivery provenance,
+        ClientSelection). Read-only: no mutation, no new authority, nothing
+        persisted. `readiness` is the unified SW-3 authority; `commercial` is present
+        ONLY when the caller holds the compensation bill-rate scope (field-level
+        authorization). Absent/optional domains are explicit null.
+
+        Refusal codes (closed list):
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant, or its
+            requisition is outside the caller's visible set (concealed).
+          - 403 INSUFFICIENT_PERMISSIONS / entitlement — missing talent:read / ats.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The composed Submittal Workspace view.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - identity
+                  - context
+                  - pipeline
+                  - submittal
+                  - readiness
+                  - documents
+                  - engagement
+                  - delivery
+                  - client_selection
+                  - actions
+                properties:
+                  identity: { type: object }
+                  context: { type: object }
+                  pipeline: { type: object }
+                  submittal: { type: object }
+                  readiness:
+                    type: object
+                    required: [status, requirements]
+                    properties:
+                      status:
+                        type: string
+                        enum: [READY, NEEDS_ACTION, BLOCKED]
+                      requirements:
+                        type: array
+                        items: { type: object }
+                  documents: { type: object }
+                  engagement: { type: object }
+                  commercial:
+                    description: Present only with compensation visibility; null otherwise.
+                    type:
+                      - object
+                      - 'null'
+                  delivery: { type: object }
+                  client_selection: { type: object }
+                  actions: { type: object }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   /v1/submittals/{submittal_id}/evidence-package:
     get:
       operationId: getEvidencePackage

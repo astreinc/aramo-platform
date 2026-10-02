@@ -78,6 +78,7 @@ import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.m
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
 import { CreateSubmittalModule } from './create-submittal/create-submittal.module.js';
+import { SubmittalWorkspaceModule } from './submittal-workspace/submittal-workspace.module.js';
 import { ClientSelectionOrchestrationModule } from './client-selection/client-selection-orchestration.module.js';
 import { ClientDecisionOrchestrationModule } from './client-decision-orchestration/client-decision-orchestration.module.js';
 // T1-a — composition-root binding of libs/examination's RequisitionStateReader
@@ -449,6 +450,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     SkillGovernanceModule,
     SubmittalModule,
     CreateSubmittalModule,
+    SubmittalWorkspaceModule,
     SubmitTalentModule,
     ClientSelectionOrchestrationModule,
     ClientDecisionOrchestrationModule,

@@ -55,6 +55,7 @@
     "apps/api/src/skill-governance/skill-governance.controller.ts": "AP",
     "apps/api/src/create-submittal/create-submittal.controller.ts": "AP",
     "apps/api/src/submit-talent/submit-talent.controller.ts": "AP",
+    "apps/api/src/submittal-workspace/submittal-workspace.controller.ts": "AP",
     "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/contradiction-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/dispute-resolution.controller.ts": "AP",
