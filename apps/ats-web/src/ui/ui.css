@@ -1846,8 +1846,13 @@ button.rc-link-action {
   font-size: .68rem; color: var(--faint); font-family: var(--font-mono); white-space: nowrap;
 }
 
-/* CRM-2 — muted pending cell placeholder (Last contacted → CRM-4, Lists → CRM-3). */
+/* CRM-2 — muted pending cell placeholder (Last contacted → CRM-4). */
 .rc-muted { color: var(--faint); }
+
+/* CRM-3 — Talent "Lists" column cell: first visible list name + "+n". */
+.rc-listcell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rc-listcell__nm { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-listcell__more { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--line-1, #eef1f4); border-radius: 10px; padding: 1px 6px; }
 
 /* CRM-2 — bulk bar primary action (Add to list). */
 .rc-bulkbar__primary { background: #fff; color: var(--brand-strong); }
@@ -1865,13 +1870,52 @@ button.rc-link-action {
 }
 .rc-lists__body { min-height: 120px; }
 
-/* CRM-2 — add-to-list modal body. */
+/* CRM-3 — Lists index rows (clickable) + detail. Five-column index grid. */
+.rc-lists__row {
+  display: grid;
+  grid-template-columns: minmax(240px,2fr) minmax(150px,1fr) 90px minmax(130px,1fr) 110px;
+  gap: 12px; align-items: center; width: 100%; min-width: 820px;
+  padding: 13px 14px; border: none; border-bottom: 1px solid var(--line-1, #f2f4f6);
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+}
+.rc-lists__row:hover { background: var(--rail-tint, #f5f7fd); }
+.rc-lists__nm { display: flex; flex-direction: column; min-width: 0; }
+.rc-lists__nm small { font-size: 11.5px; color: var(--faint); }
+
+.rc-listdetail__head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.rc-listdetail__back { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-strong); font-weight: 600; font-size: .82rem; border: none; background: none; width: fit-content; }
+.rc-listdetail__name { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.rc-listdetail__purpose { font-size: 12.5px; color: var(--muted); margin: 0; }
+.rc-listdetail__facts { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); }
+
+.rc-listdetailtbl { border-radius: 13px; overflow-x: auto; }
+.rc-listdetailtbl__head, .rc-listdetailtbl__row {
+  display: grid;
+  grid-template-columns: minmax(220px,1.6fr) minmax(120px,.9fr) minmax(140px,1fr) minmax(150px,1fr) minmax(110px,.8fr) 210px;
+  gap: 12px; align-items: center; min-width: 980px;
+}
+.rc-listdetailtbl__head { padding: 11px 14px; border-bottom: 1px solid var(--line-2); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.rc-listdetailtbl__row { padding: 13px 14px; border-bottom: 1px solid var(--line-1, #f2f4f6); font-size: 12.5px; }
+.rc-ldt__talent { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.rc-ldt__nm { display: flex; flex-direction: column; min-width: 0; }
+.rc-ldt__nm small { font-size: 11px; color: var(--faint); }
+.rc-ldt__actions { display: inline-flex; justify-content: flex-end; gap: 6px; }
+
+/* CRM-2/3 — add-to-list modal body. */
 .rc-addlist { display: flex; flex-direction: column; gap: 12px; }
-.rc-addlist__modes { display: inline-flex; gap: 4px; background: var(--line-1, #eef1f4); border-radius: 9px; padding: 3px; }
-.rc-addlist__modes button { border-radius: 7px; padding: 5.5px 14px; font-size: 12.5px; font-weight: 600; border: none; background: transparent; color: var(--muted); }
-.rc-addlist__modes button.on { background: #fff; color: var(--brand-strong); box-shadow: 0 1px 3px rgba(15,25,40,.14); }
 .rc-field { display: flex; flex-direction: column; gap: 5px; }
 .rc-field__lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
+
+/* CRM-3 — multi-list checklist + already-in annotation + inline create. */
+.rc-addlist__pick { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.rc-addlist__opt { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.rc-addlist__opt:hover { background: var(--rail-tint, #f5f7fd); }
+.rc-addlist__optnm { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.rc-addlist__optnm small { font-weight: 500; color: var(--faint); }
+.rc-addlist__already { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--warn, #946011); }
+.rc-addlist__createtoggle { color: var(--brand-strong); font-weight: 600; font-size: 12.5px; width: fit-content; border: none; background: none; }
+.rc-addlist__new { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--brand-tint, #c9d4f2); background: var(--rail-tint, #f5f7fd); border-radius: 10px; padding: 13px 14px; }
+.rc-addlist__donemsg { font-size: 13px; color: var(--ink); }
 
 /* active filter chips */
 

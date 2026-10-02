@@ -945,5 +945,55 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(crossGetTen.status).toBe(404);
     });
+
+    it('Saved-list CRM-3: add is idempotent (dup → benign, no 500); GET /memberships is visibility-scoped', async () => {
+      // Owner seeds a talent + a PRIVATE list.
+      const tRes = await fetch(`http://127.0.0.1:${port}/v1/talent-records?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(validTalentCreateBody({ first_name: 'Mem', last_name: 'Ber', site_id: SITE_A })),
+      });
+      expect(tRes.status).toBe(201);
+      const talent = (await tRes.json()) as { id: string };
+
+      const listRes = await fetch(`http://127.0.0.1:${port}/v1/saved-lists?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Members', item_type: 'talent_record', site_id: SITE_A, visibility: 'private' }),
+      });
+      const list = (await listRes.json()) as { id: string };
+
+      const add = () =>
+        fetch(`http://127.0.0.1:${port}/v1/saved-lists/${list.id}/entries?site_id=${SITE_A}`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${recruiterOwnerJwt}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ item_type: 'talent_record', item_id: talent.id }),
+        });
+      // CRM-3 — idempotent: first add 201, re-add is a benign no-op (NOT a 500).
+      expect((await add()).status).toBe(201);
+      const second = await add();
+      expect(second.status).toBe(201);
+
+      // Owner sees the membership via the reverse-membership route.
+      const ownerMem = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/memberships?site_id=${SITE_A}&item_type=talent_record&item_ids=${talent.id}`,
+        { headers: { Authorization: `Bearer ${recruiterOwnerJwt}` } },
+      );
+      expect(ownerMem.status).toBe(200);
+      const ownerBody = (await ownerMem.json()) as {
+        items: Array<{ item_id: string; lists: Array<{ id: string }> }>;
+      };
+      expect(ownerBody.items[0]?.lists.map((l) => l.id)).toContain(list.id);
+
+      // Another recruiter does NOT see the owner's PRIVATE list membership.
+      const otherMem = await fetch(
+        `http://127.0.0.1:${port}/v1/saved-lists/memberships?site_id=${SITE_A}&item_type=talent_record&item_ids=${talent.id}`,
+        { headers: { Authorization: `Bearer ${recruiterOtherJwt}` } },
+      );
+      expect(otherMem.status).toBe(200);
+      const otherBody = (await otherMem.json()) as { items: Array<{ item_id: string; lists: unknown[] }> };
+      // either no row for the talent, or a row with zero visible lists.
+      expect(otherBody.items[0]?.lists.length ?? 0).toBe(0);
+    });
   },
 );

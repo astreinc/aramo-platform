@@ -21,8 +21,10 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import type { AddSavedListEntryRequestDto } from './dto/add-saved-list-entry-request.dto.js';
 import type { CreateSavedListRequestDto } from './dto/create-saved-list-request.dto.js';
+import { isSavedListItemType } from './dto/saved-list-item-type.js';
 import type {
   SavedListEntryView,
+  SavedListMembershipView,
   SavedListView,
   SavedListWithEntriesView,
 } from './dto/saved-list.view.js';
@@ -89,6 +91,40 @@ export class SavedListController {
       tenant_id: authContext.tenant_id,
       actor: this.actorOf(authContext),
       ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+    });
+    return { items };
+  }
+
+  // CRM-3 — reverse membership: which (visible) lists contain each of the given
+  // items. Backs the Talent-page "Lists" column + the add-to-list "already in"
+  // count. Declared BEFORE :id so "memberships" is not captured as a list id.
+  // Visibility is enforced in the repository (another actor's PRIVATE list never
+  // leaks); reuses saved-list:read (no new scope).
+  @Get('memberships')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('saved-list:read')
+  @RequireSiteMatch()
+  async memberships(
+    @AuthContext() authContext: AuthContextType,
+    @Query('item_type') itemType: string | undefined,
+    @Query('item_ids') itemIds: string | undefined,
+    @RequestId() requestId: string,
+  ): Promise<{ items: SavedListMembershipView[] }> {
+    if (!isSavedListItemType(itemType)) {
+      throw new AramoError('VALIDATION_ERROR', 'item_type is required', 422, {
+        requestId,
+        details: { item_type: itemType ?? null },
+      });
+    }
+    const ids = (itemIds ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s !== '');
+    const items = await this.savedListRepository.listMembershipsForItems({
+      tenant_id: authContext.tenant_id,
+      actor: this.actorOf(authContext),
+      item_type: itemType,
+      item_ids: ids,
     });
     return { items };
   }

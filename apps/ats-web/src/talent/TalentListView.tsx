@@ -26,6 +26,8 @@ import { Avatar, Card, Icons, StagePill, StatusPill, type PillTone } from '../ui
 import type { PipelineStatus } from '../pipeline/types';
 
 import { AddToListDialog } from './components/AddToListDialog';
+import { ListsPanel } from './components/ListsPanel';
+import { listTalentMemberships } from './saved-list-api';
 import { BulkBar } from './components/BulkBar';
 import { FilterBar } from './components/FilterBar';
 import { TalentTriageDrawer } from './components/TalentTriageDrawer';
@@ -234,6 +236,11 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [listsTab, setListsTab] = useState(false);
   // CRM-2 — add-to-list modal (bulk action), unblocked by CRM-1 scope seeding.
   const [addToListOpen, setAddToListOpen] = useState(false);
+  // CRM-3 — the "Lists" column: visibility-scoped reverse membership for the
+  // loaded page (backend-filtered; never fetch-all-and-filter in React).
+  const [membershipsByTalent, setMembershipsByTalent] = useState<
+    Record<string, ReadonlyArray<{ id: string; name: string; visibility: string }>>
+  >({});
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const sessionState = useSession();
@@ -321,6 +328,32 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
       clearTimeout(handle);
     };
   }, [fetchPage]);
+
+  // CRM-3 — Lists column: one batch, visibility-scoped reverse-membership read
+  // for the loaded page. Fail-soft (no column rather than a hard error).
+  useEffect(() => {
+    if (items.length === 0) {
+      setMembershipsByTalent({});
+      return;
+    }
+    let cancelled = false;
+    void listTalentMemberships(items.map((t) => t.id))
+      .then((rows) => {
+        if (cancelled) return;
+        const m: Record<
+          string,
+          ReadonlyArray<{ id: string; name: string; visibility: string }>
+        > = {};
+        for (const r of rows) m[r.item_id] = r.lists;
+        setMembershipsByTalent(m);
+      })
+      .catch(() => {
+        if (!cancelled) setMembershipsByTalent({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   // Real, full-set VIEW COUNTS — the size of each Views pill within the current
   // scope, independent of the ad-hoc search/facets. Native views (All /
@@ -566,7 +599,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           surface, a STRUCTURAL SHELL until the CRM-3 Lists UI lands (no
           fabricated membership/empty state). */}
       {listsTab ? (
-        <ListsShell />
+        <ListsPanel sessionOverride={session ?? undefined} />
       ) : (
       <>
       {/* CRM-2 — quick-filter bar: exactly four chips (prototype). The pending
@@ -859,10 +892,25 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                           </td>
                         ) : null}
                         {cols.lists ? (
-                          // CRM-2 — reverse list-membership read lands in CRM-3
-                          // (no fabricated membership).
+                          // CRM-3 — visibility-scoped list membership (first list
+                          // + "+n"); "—" when the talent is in no visible list.
                           <td>
-                            <span className="rc-muted">—</span>
+                            {(() => {
+                              const ls = membershipsByTalent[t.id] ?? [];
+                              const first = ls[0];
+                              if (first === undefined)
+                                return <span className="rc-muted">—</span>;
+                              return (
+                                <span className="rc-listcell">
+                                  <span className="rc-listcell__nm">{first.name}</span>
+                                  {ls.length > 1 ? (
+                                    <span className="rc-listcell__more">
+                                      +{ls.length - 1}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              );
+                            })()}
                           </td>
                         ) : null}
                         <td>
@@ -925,6 +973,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           setNotice(message);
           setSelected(new Set());
         }}
+        onViewList={() => setListsTab(true)}
       />
 
       <TalentTriageDrawer
@@ -950,28 +999,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 }
 
 // ── Add-to-req picker (real reqs via listRequisitions; pipeline:add per talent) ──
-// CRM-2 — the "Lists" tab surface. STRUCTURAL SHELL only: the prototype Lists
-// index chrome (columns List · Purpose · Visibility · People · Created by ·
-// Updated) with no body. The CRM-3 increment wires the real index/detail reads;
-// CRM-2 fabricates no membership and asserts no "no lists" state.
-function ListsShell() {
-  return (
-    <Card flush>
-      <div className="rc-lists">
-        <div className="rc-lists__head" role="row">
-          <span role="columnheader">List</span>
-          <span role="columnheader">Purpose</span>
-          <span role="columnheader">Visibility</span>
-          <span role="columnheader">People</span>
-          <span role="columnheader">Created by</span>
-          <span role="columnheader">Updated</span>
-        </div>
-        <div className="rc-lists__body" aria-busy="false" />
-      </div>
-    </Card>
-  );
-}
-
 function AddToReqDialog({
   open,
   onClose,

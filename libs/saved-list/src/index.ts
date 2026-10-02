@@ -14,6 +14,7 @@ export {
   type SavedListView,
   type SavedListEntryView,
   type SavedListWithEntriesView,
+  type SavedListMembershipView,
   type CreateSavedListRequestDto,
   type AddSavedListEntryRequestDto,
 } from './lib/dto/index.js';

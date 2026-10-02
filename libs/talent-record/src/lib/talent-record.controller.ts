@@ -111,6 +111,20 @@ function splitCsv(value: string | undefined): string[] | undefined {
   return parts.length > 0 ? parts : undefined;
 }
 
+// CRM-3 — merge the preset allowlist (interceptor) with a FE-supplied id set.
+// Both present ⇒ INTERSECT (the downstream id_allowlist is ANDed); either alone
+// ⇒ that set; neither ⇒ undefined (no id narrowing).
+function mergeAllowlists(
+  preset: readonly string[] | undefined,
+  ids: readonly string[] | undefined,
+): readonly string[] | undefined {
+  if (preset !== undefined && ids !== undefined) {
+    const keep = new Set(ids);
+    return preset.filter((x) => keep.has(x));
+  }
+  return preset ?? ids;
+}
+
 // TalentRecordController — PR-A4 Gate 5 ATS Batch 3.
 //
 // Guard chain (A2 pattern, verbatim):
@@ -229,6 +243,10 @@ export class TalentRecordController {
     @Query('skills') skills: string | undefined,
     @Query('skill_match') skillMatch: string | undefined,
     @Query('location') location: string | undefined,
+    // CRM-3 — explicit id narrowing (the Lists-detail talent composition fetches
+    // exactly a list's entry ids). Folds into id_allowlist, ANDed with the tenant
+    // + visibility scope (never widens beyond what the actor could already see).
+    @Query('ids') ids: string | undefined,
     @Req()
     req: Request & {
       talentSearchQuery?: TalentSearchQuery;
@@ -288,7 +306,9 @@ export class TalentRecordController {
         // Segment 4c — a cross-schema preset's resolved allowlist (resolve-then-
         // filter). Empty array ⇒ preset matched nothing ⇒ zero results (distinct
         // from undefined = no preset). buildSearchWhere ANDs it with the natives.
-        id_allowlist: req.talentPresetAllowlist,
+        // CRM-3 — a FE `ids` param folds in too; when BOTH are present they are
+        // INTERSECTED (a single id_allowlist is ANDed downstream).
+        id_allowlist: mergeAllowlists(req.talentPresetAllowlist, splitCsv(ids)),
         sort: parseSort(sort),
         dir: dir === 'asc' ? 'asc' : 'desc',
         cursor,

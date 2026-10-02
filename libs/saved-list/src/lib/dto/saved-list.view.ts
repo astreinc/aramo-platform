@@ -11,8 +11,21 @@ export interface SavedListView {
   // CRM-1 — visibility posture + optional free-text label (additive).
   visibility: SavedListVisibility;
   purpose: string | null;
+  // CRM-3 — entry count ("People" in the Lists index); set by listLists only.
+  member_count?: number;
   created_at: string;
   updated_at: string;
+}
+
+// CRM-3 — reverse membership: the lists that contain a given item (the Talent
+// page "Lists" column + the add-to-list "already in" count). Visibility-scoped.
+export interface SavedListMembershipView {
+  readonly item_id: string;
+  readonly lists: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly visibility: SavedListVisibility;
+  }>;
 }
 
 export interface SavedListEntryView {

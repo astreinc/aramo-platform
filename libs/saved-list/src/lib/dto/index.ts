@@ -13,6 +13,7 @@ export type {
   SavedListView,
   SavedListEntryView,
   SavedListWithEntriesView,
+  SavedListMembershipView,
 } from './saved-list.view.js';
 export type { CreateSavedListRequestDto } from './create-saved-list-request.dto.js';
 export type { AddSavedListEntryRequestDto } from './add-saved-list-entry-request.dto.js';

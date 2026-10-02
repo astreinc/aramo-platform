@@ -184,6 +184,10 @@ function mockServer(
     rosterStatus?: number;
     presetIds?: Record<string, readonly string[]>;
     workingWithMeIds?: readonly string[];
+    memberships?: ReadonlyArray<{
+      item_id: string;
+      lists: ReadonlyArray<{ id: string; name: string; visibility: string }>;
+    }>;
     overGuard?: boolean;
     secondPage?: readonly TalentRecordView[];
   } = {},
@@ -197,6 +201,10 @@ function mockServer(
       });
     if (url.includes('/v1/tenant/users'))
       return json(opts.roster ?? { items: [] }, opts.rosterStatus ?? 200);
+    // CRM-3 — reverse membership (Lists column). Backend is visibility-scoped;
+    // the mock returns whatever the test seeds (already actor-scoped).
+    if (url.includes('/v1/saved-lists/memberships'))
+      return json({ items: opts.memberships ?? [] });
     if (url.includes('/v1/talent-records')) {
       if (opts.talentStatus && opts.talentStatus !== 200)
         return json({ message: 'denied' }, opts.talentStatus);
@@ -310,6 +318,28 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
     // no token chips / no "ignored" grammar affordance is rendered.
     expect(screen.queryByText(/·ignored/)).not.toBeInTheDocument();
+  });
+
+  it('CRM-3 Lists column renders visibility-scoped membership (first list + "+n"); "—" when none', async () => {
+    mockServer({
+      talent: [makeTalent('1', 'Ada', 'Lovelace'), makeTalent('2', 'Bob', 'Khan')],
+      memberships: [
+        {
+          item_id: '1',
+          lists: [
+            { id: 'L1', name: 'Hot React', visibility: 'private' },
+            { id: 'L2', name: 'West Coast', visibility: 'tenant' },
+          ],
+        },
+      ],
+    });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    // Ada ∈ 2 visible lists → first name + "+1".
+    await waitFor(() => expect(screen.getByText('Hot React')).toBeInTheDocument());
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    // Bob ∈ no visible list → the column shows a muted em-dash for that row.
+    expect(screen.queryByText('West Coast')).not.toBeInTheDocument();
   });
 
   it('CRM-2 "Working with me" tab sends ?scope=working_with_me (NOT owner_id) and narrows to the resolved set', async () => {

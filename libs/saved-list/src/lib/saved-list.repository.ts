@@ -17,6 +17,7 @@ import {
 } from './saved-list-visibility-policy.js';
 import type {
   SavedListEntryView,
+  SavedListMembershipView,
   SavedListView,
   SavedListWithEntriesView,
 } from './dto/saved-list.view.js';
@@ -404,10 +405,54 @@ export class SavedListRepository {
         // CRM-1 — PRIVATE lists of other actors never leave the DB.
         ...readableWhere(args.actor),
       },
+      // CRM-3 — "People" column = per-list entry count (indexed aggregate).
+      include: { _count: { select: { entries: true } } },
       orderBy: { created_at: 'desc' },
       take: limit,
     });
-    return (rows as SavedListRow[]).map(projectListView);
+    return (rows as Array<SavedListRow & { _count: { entries: number } }>).map(
+      (row) => ({ ...projectListView(row), member_count: row._count.entries }),
+    );
+  }
+
+  // CRM-3 — reverse membership: for a set of item ids (one entity type), the
+  // lists each belongs to, visibility-scoped to the actor (another actor's
+  // PRIVATE list never leaks). ONE query over the whole id-set (not N+1). Only
+  // lists the actor may SEE are returned.
+  async listMembershipsForItems(args: {
+    tenant_id: string;
+    actor: VisibilityActor;
+    item_type: SavedListItemType;
+    item_ids: readonly string[];
+  }): Promise<SavedListMembershipView[]> {
+    if (args.item_ids.length === 0) return [];
+    const rows = await this.prisma.savedListEntry.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        item_type: args.item_type,
+        item_id: { in: [...args.item_ids] },
+        // membership is visible only when the PARENT list is readable.
+        saved_list: { is: readableWhere(args.actor) },
+      },
+      select: {
+        item_id: true,
+        saved_list: { select: { id: true, name: true, visibility: true } },
+      },
+    });
+    const byItem = new Map<string, SavedListMembershipView['lists'][number][]>();
+    for (const r of rows as Array<{
+      item_id: string;
+      saved_list: { id: string; name: string; visibility: SavedListVisibility };
+    }>) {
+      const list = byItem.get(r.item_id) ?? [];
+      list.push({
+        id: r.saved_list.id,
+        name: r.saved_list.name,
+        visibility: r.saved_list.visibility,
+      });
+      byItem.set(r.item_id, list);
+    }
+    return [...byItem.entries()].map(([item_id, lists]) => ({ item_id, lists }));
   }
 
   async deleteList(args: {
@@ -492,7 +537,21 @@ export class SavedListRepository {
       requestId: args.requestId,
     });
 
-    // 4. Insert (the @@unique([saved_list_id, item_id]) prevents dupes).
+    // 4. CRM-3 — IDEMPOTENT add (skip-existing): a re-add of the same item is a
+    // benign no-op returning the existing entry, NOT a P2002 → untranslated 500.
+    // Mirrors addToTenantBench's pre-check; the @@unique([saved_list_id,item_id])
+    // stays the backstop under a race.
+    const existing = await this.prisma.savedListEntry.findUnique({
+      where: {
+        saved_list_id_item_id: {
+          saved_list_id: args.saved_list_id,
+          item_id: args.input.item_id,
+        },
+      },
+    });
+    if (existing !== null) {
+      return projectEntryView(existing as SavedListEntryRow);
+    }
     const row = await this.prisma.savedListEntry.create({
       data: {
         tenant_id: args.tenant_id,
