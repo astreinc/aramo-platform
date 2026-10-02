@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { ClientSelectionModule } from '@aramo/client-selection';
+import { ConsentModule } from '@aramo/consent';
 import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 import { CompanyModule } from '@aramo/company';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -51,6 +52,7 @@ import { MyDeskService } from './my-desk.service.js';
     ClientTalentRestrictionModule,
     DocumentReadinessModule,
     EngagementGateModule,
+    ConsentModule,
   ],
   controllers: [MyDeskController],
   providers: [

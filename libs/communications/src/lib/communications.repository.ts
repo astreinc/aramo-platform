@@ -330,6 +330,89 @@ export class CommunicationsRepository {
     return [...new Set(rows.map((r) => r.subject_id))];
   }
 
+  // CRM-4 — latest REAL contact per talent from the Communications SoR: a voice
+  // call that CONNECTED/COMPLETED or an email that was SENT (status ∈ {connected,
+  // completed}; channel ∈ {voice, email}); attempts (created/ringing/missed/
+  // rejected/failed) are NOT contact. occurred_at = connected_at ?? created_at.
+  // Association TRUTH (subject_type=talent_record, relation=subject). Tenant-
+  // scoped, batch over the id-set. Channel normalized to Call/Email.
+  async findLatestContactForTalentIds(args: {
+    tenant_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Map<string, { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null }>> {
+    if (args.talent_record_ids.length === 0) return new Map();
+    const rows = await this.prisma.communicationAssociation.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record' satisfies CommunicationSubjectType,
+        relation_type: 'subject' satisfies CommunicationRelationType,
+        subject_id: { in: [...args.talent_record_ids] },
+        interaction: {
+          status: { in: ['connected', 'completed'] },
+          channel: { in: ['voice', 'email'] },
+        },
+      },
+      select: {
+        subject_id: true,
+        interaction: {
+          select: { channel: true, connected_at: true, created_at: true, initiated_by_id: true },
+        },
+      },
+    });
+    const out = new Map<
+      string,
+      { ms: number; occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null }
+    >();
+    for (const r of rows) {
+      const i = r.interaction;
+      const occ = i.connected_at ?? i.created_at;
+      const ms = occ.getTime();
+      const prev = out.get(r.subject_id);
+      if (prev === undefined || ms > prev.ms) {
+        out.set(r.subject_id, {
+          ms,
+          occurred_at: occ.toISOString(),
+          channel: i.channel === 'voice' ? 'Call' : 'Email',
+          actor_id: i.initiated_by_id ?? null,
+        });
+      }
+    }
+    const result = new Map<string, { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null }>();
+    for (const [id, v] of out) {
+      result.set(id, { occurred_at: v.occurred_at, channel: v.channel, actor_id: v.actor_id });
+    }
+    return result;
+  }
+
+  // CRM-4 — talent ids with a REAL contact (connected/completed voice|email)
+  // since a cutoff. Feeds the "Not contacted 90+ days" DENYLIST. occurred_at =
+  // connected_at ?? created_at.
+  async findContactedTalentIdsSince(args: {
+    tenant_id: string;
+    since: Date;
+    limit: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.communicationAssociation.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        subject_type: 'talent_record' satisfies CommunicationSubjectType,
+        relation_type: 'subject' satisfies CommunicationRelationType,
+        interaction: {
+          status: { in: ['connected', 'completed'] },
+          channel: { in: ['voice', 'email'] },
+          OR: [
+            { connected_at: { gte: args.since } },
+            { AND: [{ connected_at: null }, { created_at: { gte: args.since } }] },
+          ],
+        },
+      },
+      select: { subject_id: true },
+      distinct: ['subject_id'],
+      take: args.limit,
+    });
+    return [...new Set(rows.map((r) => r.subject_id))];
+  }
+
   // CI-B6P §16 — the DURABLE Requisition(s) an interaction is "regarding": the
   // canonical `regarding` CommunicationAssociation(s) of subject_type=requisition,
   // tenant-scoped. This is association TRUTH — never inference from the Talent's

@@ -1,7 +1,8 @@
-import { Button, InlineAlert } from '@aramo/fe-foundation';
+import { Button, InlineAlert, Input, hasScope, useSession } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { updateTask } from '../task/task-api';
 import { useMe } from '../shell/me-api';
 import { DataTable, EmptyState, safeErrorMessage, type TableColumn } from '../ui';
 
@@ -19,8 +20,9 @@ import type {
 // derived and NEVER re-derives business meaning (urgency + ordering are
 // server-authoritative; every card/tab count is derived from the returned
 // arrays, so a badge can never drift from its list). FACTS-ONLY (R10): no
-// verdict, no fabricated confirmation/channel/ownership, no snooze — those are
-// backend Increment-2. The queue answers, per row: why · how urgent · what next.
+// verdict, no fabricated confirmation/channel/ownership. The queue answers, per
+// row: why · how urgent · what next. CRM-7 (§11) adds Task controls (Done /
+// Snooze) that call the Task PATCH — the My Desk GET stays a read-only projection.
 
 const KIND: Record<DeskItemKind, { label: string; tone: string }> = {
   follow_up: { label: 'Follow-up', tone: 'blue' },
@@ -60,6 +62,12 @@ const SECTIONS: readonly { key: DeskUrgency; label: string }[] = [
 
 export function DashboardView() {
   const me = useMe();
+  const sessionState = useSession();
+  const session =
+    sessionState.status === 'authenticated' ? sessionState.session : null;
+  // CRM-7 — Done/Snooze act on the Task domain (PATCH /v1/tasks), gated task:write;
+  // My Desk GET itself stays a read-only projection.
+  const canTaskWrite = session !== null && hasScope(session, 'task:write');
   const [desk, setDesk] = useState<MyDeskView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -257,7 +265,12 @@ export function DashboardView() {
                     {g.label} · {g.items.length}
                   </div>
                   {g.items.map((item) => (
-                    <QueueRow key={item.id} item={item} />
+                    <QueueRow
+                      key={item.id}
+                      item={item}
+                      canTaskWrite={canTaskWrite}
+                      onChanged={load}
+                    />
                   ))}
                 </div>
               ))
@@ -383,7 +396,49 @@ export function DashboardView() {
   );
 }
 
-function QueueRow({ item }: { item: DeskPriorityItemView }) {
+// CRM-7 (§11) — Snooze = a due_date bump (no new Task state). Presets per the
+// locked UX; "Pick date" opens a date input. Each simply PATCHes Task.due_date.
+function snoozePresetMs(preset: 'tomorrow' | 'in_3_days' | 'next_week'): number {
+  const days = preset === 'tomorrow' ? 1 : preset === 'in_3_days' ? 3 : 7;
+  return Date.now() + days * 86_400_000;
+}
+
+function QueueRow({
+  item,
+  canTaskWrite,
+  onChanged,
+}: {
+  item: DeskPriorityItemView;
+  canTaskWrite: boolean;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [pickDate, setPickDate] = useState('');
+  const isTask = item.task_id !== null;
+
+  async function complete(): Promise<void> {
+    if (item.task_id === null) return;
+    setBusy(true);
+    try {
+      await updateTask(item.task_id, { status: 'done' });
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function snooze(dueIso: string): Promise<void> {
+    if (item.task_id === null) return;
+    setBusy(true);
+    setSnoozeOpen(false);
+    try {
+      await updateTask(item.task_id, { due_date: dueIso });
+      onChanged();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const kind = KIND[item.kind];
   const who = item.talent_name ?? item.label;
   const whoHref =
@@ -425,15 +480,80 @@ function QueueRow({ item }: { item: DeskPriorityItemView }) {
         <span className={`rc-desk-due rc-desk-due--${item.urgency}`}>
           {urgencyLabel(item.urgency)}
         </span>
+        {/* Primary action — the communication-authority CTA (Call / Email / Open). */}
         {item.primary_action !== null ? (
-          <DeskAction action={item.primary_action} />
+          <DeskAction action={item.primary_action} item={item} />
+        ) : null}
+        {/* Task controls (§11) — Done + Snooze act on the Task via PATCH. Shown
+            only for rows that ARE a Task, gated task:write. */}
+        {isTask && canTaskWrite ? (
+          <span className="rc-desk-taskctl">
+            <Button
+              unstyled
+              type="button"
+              className="rc-link-action"
+              disabled={busy}
+              onClick={() => setSnoozeOpen((o) => !o)}
+            >
+              Snooze
+            </Button>
+            <Button
+              unstyled
+              type="button"
+              className="rc-link-action"
+              disabled={busy}
+              onClick={() => void complete()}
+            >
+              Done
+            </Button>
+            {snoozeOpen ? (
+              <span className="rc-desk-snooze" role="menu">
+                <Button unstyled type="button" className="rc-link-action" onClick={() => void snooze(new Date(snoozePresetMs('tomorrow')).toISOString())}>
+                  Tomorrow
+                </Button>
+                <Button unstyled type="button" className="rc-link-action" onClick={() => void snooze(new Date(snoozePresetMs('in_3_days')).toISOString())}>
+                  In 3 days
+                </Button>
+                <Button unstyled type="button" className="rc-link-action" onClick={() => void snooze(new Date(snoozePresetMs('next_week')).toISOString())}>
+                  Next week
+                </Button>
+                <Input
+                  type="date"
+                  aria-label="Snooze until a specific date"
+                  className="rc-desk-snooze-date"
+                  value={pickDate}
+                  onChange={(e) => {
+                    setPickDate(e.target.value);
+                    if (e.target.value !== '') void snooze(new Date(`${e.target.value}T12:00:00Z`).toISOString());
+                  }}
+                />
+              </span>
+            ) : null}
+          </span>
         ) : null}
       </span>
     </div>
   );
 }
 
-function DeskAction({ action }: { action: NonNullable<DeskPriorityItemView['primary_action']> }) {
+function DeskAction({
+  action,
+  item,
+}: {
+  action: NonNullable<DeskPriorityItemView['primary_action']>;
+  item: DeskPriorityItemView;
+}) {
+  // CRM-7 (§11) — Call / Email carry no href (the Task never grants the comm
+  // action); the FE routes to the surface that EXECUTES it: Call → the talent,
+  // Email → the requisition-contextual talent surface. A Task defines what work
+  // is due; the communication action lives where its authority is enforced.
+  if ((action.kind === 'call' || action.kind === 'email') && item.talent_id !== null) {
+    return (
+      <Link to={`/talent/${item.talent_id}`} className="rc-link-action rc-desk-cta">
+        {action.label}
+      </Link>
+    );
+  }
   if (action.href !== null) {
     return (
       <Link to={action.href} className="rc-link-action">
@@ -441,9 +561,6 @@ function DeskAction({ action }: { action: NonNullable<DeskPriorityItemView['prim
       </Link>
     );
   }
-  // Non-navigation action kinds arrive with backend Increment-2; until then a
-  // desk item always carries a navigable href, so this branch renders a plain,
-  // non-fabricated label rather than inventing a mutation.
   return <span className="rc-desk-action-pending">{action.label}</span>;
 }
 

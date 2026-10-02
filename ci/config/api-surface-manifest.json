@@ -531,6 +531,10 @@
     },
     {
       "method": "GET",
+      "path": "/v1/saved-lists/memberships"
+    },
+    {
+      "method": "GET",
       "path": "/v1/saved-lists/*"
     },
     {

@@ -5,7 +5,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session, Checkbox, Select,
+  type Session, Checkbox, Select, IconSearch, Input,
 } from '@aramo/fe-foundation';
 import {
   useCallback,
@@ -25,22 +25,23 @@ import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StagePill, StatusPill, type PillTone } from '../ui';
 import type { PipelineStatus } from '../pipeline/types';
 
+import { AddToListDialog } from './components/AddToListDialog';
+import { LastContactCell } from './components/LastContactCell';
+import { ListsPanel } from './components/ListsPanel';
+import { listTalentMemberships } from './saved-list-api';
 import { BulkBar } from './components/BulkBar';
 import { FilterBar } from './components/FilterBar';
 import { TalentTriageDrawer } from './components/TalentTriageDrawer';
-import { TokenSearch } from './components/TokenSearch';
-import { searchTalent, updateTalent } from './talent-api';
+import { searchTalent } from './talent-api';
 import { useDetailsAutoClose } from './use-details-auto-close';
-import { listErrorMessage, updateErrorMessage } from './error-messages';
+import { listErrorMessage } from './error-messages';
 import {
   EMPTY_FACETS,
   VIEWS,
-  CROSS_SCHEMA_VIEWS,
   buildTalentQuery,
   deriveSkillCounts,
   fullName,
   locationOf,
-  parseQuery,
   statedRate,
   AVAILABILITY_LABELS,
   CONSENT_LABELS,
@@ -70,11 +71,15 @@ interface ColsState {
   readonly location: boolean;
   readonly rate: boolean;
   readonly consent: boolean;
-  readonly lastActivity: boolean;
+  readonly lastContacted: boolean;
+  readonly lists: boolean;
 }
-// Talent roster columns (PO-specified): Talent (name + title) · Contact · Location ·
-// Rate · Recruiting activity · Availability · Permission · Last activity. Owner
-// merges into the Last-activity cell (prototype); skills are not shown in the list.
+// CRM-2 — prototype Talent columns: Talent (name + title) · Contact · Location ·
+// Rate · Recruiting activity · Availability · Permission · Last contacted ·
+// Lists. "Last contacted" renders a TEMPORARY "—" (authoritative contact
+// date/channel/actor composition is CRM-4 — never proxied by last-activity).
+// "Lists" renders "—" until the CRM-3 reverse-membership read lands (no
+// fabricated membership). Skills are not shown in the list.
 const COLUMN_OPTIONS: readonly [keyof ColsState, string][] = [
   ['contact', 'Contact'],
   ['location', 'Location'],
@@ -82,7 +87,8 @@ const COLUMN_OPTIONS: readonly [keyof ColsState, string][] = [
   ['stage', 'Recruiting activity'],
   ['availability', 'Availability'],
   ['consent', 'Permission'],
-  ['lastActivity', 'Last activity'],
+  ['lastContacted', 'Last contacted'],
+  ['lists', 'Lists'],
 ];
 // Sort is NATIVE-columns only (server buildOrderBy) — no rate/last-activity (R10
 // / cross-schema). The header Sort menu drives the same sortKey/sortDir as the
@@ -176,18 +182,6 @@ const CONSENT_TONE: Record<string, PillTone> = {
   do_not_contact: 'danger',
 };
 
-function relativeActivity(iso: string | null | undefined): string {
-  if (iso === null || iso === undefined) return '—';
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return '—';
-  const days = Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
-  if (days === 0) return 'today';
-  if (days === 1) return 'yesterday';
-  if (days < 7) return `${days}d ago`;
-  const w = Math.floor(days / 7);
-  return w < 5 ? `${w}w ago` : `${Math.floor(days / 30)}mo ago`;
-}
-
 interface TalentListViewProps {
   readonly sessionOverride?: Session;
 }
@@ -210,7 +204,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     {},
   );
   const [facets, setFacets] = useState<FacetState>(EMPTY_FACETS);
-  const [tokens, setTokens] = useState<readonly SearchToken[]>([]);
+  // CRM-2 — a single plain free-text Talent search (no visible key:value
+  // grammar). The whole string becomes `q`, which the backend matches across
+  // name/title/skill/location in one OR. Structured skill/location FILTERS stay
+  // in the FilterBar below. `draft` is the raw box text.
   const [draft, setDraft] = useState('');
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -225,13 +222,25 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     location: true,
     rate: true,
     consent: true,
-    lastActivity: true,
+    lastContacted: true,
+    lists: true,
   });
   const [busy, setBusy] = useState(false);
   const [reqDialogOpen, setReqDialogOpen] = useState(false);
   // Horizontal filter bar (prototype parity) — shown by default; the activebar's
   // "Filters / Hide filters" toggle collapses it.
   const [filtersOpen, setFiltersOpen] = useState(true);
+  // CRM-2 — the "Lists" scope tab. When active the talent workspace is replaced
+  // by the Lists surface, which is a STRUCTURAL SHELL until the CRM-3 Lists UI
+  // lands (no fabricated membership/empty state).
+  const [listsTab, setListsTab] = useState(false);
+  // CRM-2 — add-to-list modal (bulk action), unblocked by CRM-1 scope seeding.
+  const [addToListOpen, setAddToListOpen] = useState(false);
+  // CRM-3 — the "Lists" column: visibility-scoped reverse membership for the
+  // loaded page (backend-filtered; never fetch-all-and-filter in React).
+  const [membershipsByTalent, setMembershipsByTalent] = useState<
+    Record<string, ReadonlyArray<{ id: string; name: string; visibility: string }>>
+  >({});
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
 
   const sessionState = useSession();
@@ -241,8 +250,9 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const myId = session?.sub ?? null;
   const canCreate =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:create');
-  const canEdit =
-    session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:edit');
+  // CRM-2 — "Add to list" bulk action requires saved-list:edit (CRM-1 seeded).
+  const canManageLists =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'saved-list:edit');
 
   // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
@@ -255,10 +265,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     };
   }, []);
 
-  const parsed = useMemo(() => {
-    const inDraft = parseQuery(draft);
-    return { tokens: [...tokens, ...inDraft.tokens], free: inDraft.free };
-  }, [tokens, draft]);
+  // CRM-2 — the free-text box is NOT tokenized: the raw string is the free query
+  // (no name:/skill:/loc: grammar). tokens stays empty.
+  const parsed = useMemo(
+    () => ({ tokens: [] as readonly SearchToken[], free: draft }),
+    [draft],
+  );
 
   // The fetch closure depends on every filter input, so the search effect below
   // re-runs (debounced) whenever the query changes.
@@ -315,6 +327,32 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     };
   }, [fetchPage]);
 
+  // CRM-3 — Lists column: one batch, visibility-scoped reverse-membership read
+  // for the loaded page. Fail-soft (no column rather than a hard error).
+  useEffect(() => {
+    if (items.length === 0) {
+      setMembershipsByTalent({});
+      return;
+    }
+    let cancelled = false;
+    void listTalentMemberships(items.map((t) => t.id))
+      .then((rows) => {
+        if (cancelled) return;
+        const m: Record<
+          string,
+          ReadonlyArray<{ id: string; name: string; visibility: string }>
+        > = {};
+        for (const r of rows) m[r.item_id] = r.lists;
+        setMembershipsByTalent(m);
+      })
+      .catch(() => {
+        if (!cancelled) setMembershipsByTalent({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
   // Real, full-set VIEW COUNTS — the size of each Views pill within the current
   // scope, independent of the ad-hoc search/facets. Native views (All /
   // Available now / My hot list) come from ONE scope-only probe's facets +
@@ -340,11 +378,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
       return cf.over_guard ? `${cf.guard}+` : String(cf.matched);
     };
     void (async () => {
-      const [base, inTouch, needs, submitted] = await Promise.all([
+      // CRM-2 — only the four prototype quick filters. `needs_follow_up` is the
+      // one cross-schema count; `not_contacted_90d` is pending (CRM-4) so it
+      // carries no count.
+      const [base, needs] = await Promise.all([
         searchTalent(probe('all')).catch(() => null),
-        searchTalent(probe('in_touch_6mo')).catch(() => null),
         searchTalent(probe('needs_follow_up')).catch(() => null),
-        searchTalent(probe('submitted_this_week')).catch(() => null),
       ]);
       if (cancelled) return;
       const next: Partial<Record<ViewKey, string>> = {};
@@ -355,14 +394,9 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           base.facets.availability.find((b) => b.value === 'available_now')
             ?.count ?? 0,
         );
-        next.my_hot_list = String(base.facets.hot);
       }
-      const it = inTouch && matched(inTouch.cross_facets);
-      if (it) next.in_touch_6mo = it;
       const nd = needs && matched(needs.cross_facets);
       if (nd) next.needs_follow_up = nd;
-      const sb = submitted && matched(submitted.cross_facets);
-      if (sb) next.submitted_this_week = sb;
       setViewCounts(next);
     })();
     return () => {
@@ -386,18 +420,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     setFacets(EMPTY_FACETS);
     setScope('all');
     setActiveView('all');
-    setTokens([]);
     setDraft('');
   };
   const pickView = (key: ViewKey) => setActiveView(key); // one active; 'all' clears
   const pickScope = (next: ScopeMode) => setScope(next);
-  const commitTokens = () => {
-    const p = parseQuery(draft);
-    if (p.tokens.length > 0) {
-      setTokens((t) => [...t, ...p.tokens]);
-      setDraft(p.free);
-    }
-  };
   const toggleSel = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -417,24 +443,10 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   };
 
   // ── mutations ──
+  // CRM-2 — "Assign to me" was retired from the Talent bulk bar (owner_id is
+  // provenance, not relationship ownership). The bulk actions are Add-to-list
+  // and Add-to-requisition.
   const selectedTalent = items.filter((t) => selected.has(t.id));
-  const assignToMe = async () => {
-    if (myId === null || selectedTalent.length === 0) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      await Promise.all(selectedTalent.map((t) => updateTalent(t.id, { owner_id: myId })));
-      setItems((prev) =>
-        prev.map((t) => (selected.has(t.id) ? { ...t, owner_id: myId } : t)),
-      );
-      setNotice(`Assigned ${selectedTalent.length} to you.`);
-      setSelected(new Set());
-    } catch (err) {
-      setNotice(updateErrorMessage(err));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const addSelectedToReq = async (req: RequisitionView) => {
     const drawerTarget = drawerIndex !== null ? items[drawerIndex] : undefined;
@@ -467,10 +479,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
 
   // ── active filter chips ──
   const chips: { k: string; label: string; clear: () => void }[] = [];
-  if (scope === 'mine')
-    chips.push({ k: 'Scope', label: 'My talent', clear: () => setScope('all') });
-  if (scope === 'team')
-    chips.push({ k: 'Scope', label: 'My team', clear: () => setScope('all') });
+  if (scope === 'working_with_me')
+    chips.push({ k: 'Scope', label: 'Working with me', clear: () => setScope('all') });
   if (activeView !== 'all')
     chips.push({
       k: 'View',
@@ -507,7 +517,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     });
 
   const hasActiveQuery =
-    chips.length > 0 || parsed.tokens.length > 0 || parsed.free.trim() !== '';
+    chips.length > 0 || parsed.free.trim() !== '';
 
   const drawerTalent = drawerIndex !== null ? (items[drawerIndex] ?? null) : null;
   const colCount =
@@ -518,7 +528,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     (cols.location ? 1 : 0) +
     (cols.rate ? 1 : 0) +
     (cols.consent ? 1 : 0) +
-    (cols.lastActivity ? 1 : 0) +
+    (cols.lastContacted ? 1 : 0) +
+    (cols.lists ? 1 : 0) +
     1;
 
   return (
@@ -529,30 +540,39 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
               the top bar), with Columns/Sort/Add at the right end of the row. */}
           <div className="rc-titlerow">
             <h1 className="rc-h1">Talent</h1>
+            {/* CRM-2 — prototype scope tabs: All talent / Working with me / Lists.
+                "Lists" switches to the Lists surface (structural shell until the
+                CRM-3 Lists UI lands). "My talent"/"My team" retired. */}
             <div className="rc-scopetabs" role="group" aria-label="Scope">
               <Button unstyled
                 type="button"
-                className={scope === 'mine' ? 'on' : ''}
-                aria-pressed={scope === 'mine'}
-                onClick={() => pickScope('mine')}
+                className={!listsTab && scope === 'all' ? 'on' : ''}
+                aria-pressed={!listsTab && scope === 'all'}
+                onClick={() => {
+                  setListsTab(false);
+                  pickScope('all');
+                }}
               >
-                My talent
+                All talent
               </Button>
               <Button unstyled
                 type="button"
-                className={scope === 'team' ? 'on' : ''}
-                aria-pressed={scope === 'team'}
-                onClick={() => pickScope('team')}
+                className={!listsTab && scope === 'working_with_me' ? 'on' : ''}
+                aria-pressed={!listsTab && scope === 'working_with_me'}
+                onClick={() => {
+                  setListsTab(false);
+                  pickScope('working_with_me');
+                }}
               >
-                My team
+                Working with me
               </Button>
               <Button unstyled
                 type="button"
-                className={scope === 'all' ? 'on' : ''}
-                aria-pressed={scope === 'all'}
-                onClick={() => pickScope('all')}
+                className={listsTab ? 'on' : ''}
+                aria-pressed={listsTab}
+                onClick={() => setListsTab(true)}
               >
-                All
+                Lists
               </Button>
             </div>
           </div>
@@ -573,16 +593,29 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         </div>
       </div>
 
-      {/* views bar — one active at a time, with real full-set counts (4b/4c). */}
-      <div className="rc-views" role="group" aria-label="Views">
-        <span className="rc-views__lbl">Views</span>
+      {/* CRM-2 — the "Lists" tab replaces the talent workspace with the Lists
+          surface, a STRUCTURAL SHELL until the CRM-3 Lists UI lands (no
+          fabricated membership/empty state). */}
+      {listsTab ? (
+        <ListsPanel sessionOverride={session ?? undefined} />
+      ) : (
+      <>
+      {/* CRM-2 — quick-filter bar: exactly four chips (prototype). The pending
+          chip (Not contacted 90+ days) renders disabled — its authoritative
+          last-contact behavior activates in CRM-4 (never proxied by activity). */}
+      <div className="rc-views" role="group" aria-label="Quick filters">
+        <span className="rc-views__lbl">Quick filters</span>
         {VIEWS.map((v) => (
           <Button unstyled
             key={v.key}
             type="button"
-            className={`rc-view${activeView === v.key ? ' on' : ''}`}
+            className={`rc-view${activeView === v.key ? ' on' : ''}${v.pending ? ' rc-view--pending' : ''}`}
             aria-pressed={activeView === v.key}
-            onClick={() => pickView(v.key)}
+            disabled={v.pending === true}
+            onClick={() => {
+              if (v.pending === true) return;
+              pickView(v.key);
+            }}
           >
             {v.label}
             {viewCounts[v.key] !== undefined ? (
@@ -590,23 +623,24 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             ) : null}
           </Button>
         ))}
-        <Button unstyled
-          type="button"
-          className="rc-view rc-view--save"
-          disabled
-          title="Saved views need a backend saved-view API (carry)."
-        >
-          <Icons.IconBookmark /> Save current view
-        </Button>
       </div>
 
-      <TokenSearch
-        tokens={tokens}
-        draft={draft}
-        onDraftChange={setDraft}
-        onCommit={commitTokens}
-        onRemove={(i) => setTokens((t) => t.filter((_, idx) => idx !== i))}
-      />
+      {/* CRM-2 — one ordinary Talent-only search box (shared rc-tokenbox chrome);
+          no visible query grammar, separate from the global ⌘K. */}
+      <div className="rc-tokenbox">
+        <IconSearch className="rc-tokenbox__icon" aria-hidden="true" />
+        <Input unstyled
+          className="rc-tokenbox__input"
+          type="search"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Search talent by name, title, skill, or location"
+          aria-label="Search talent by name, title, skill, or location"
+        />
+        <span className="rc-tokenbox__hint" aria-hidden="true">
+          Talent only
+        </span>
+      </div>
 
       <div className="rc-activebar">
         <span className="rc-activebar__count num">
@@ -755,7 +789,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                     {cols.stage ? <th scope="col">Recruiting activity</th> : null}
                     {cols.availability ? <th scope="col">Availability</th> : null}
                     {cols.consent ? <th scope="col">Permission</th> : null}
-                    {cols.lastActivity ? <th scope="col">Last activity</th> : null}
+                    {cols.lastContacted ? <th scope="col">Last contacted</th> : null}
+                    {cols.lists ? <th scope="col">Lists</th> : null}
                     <th scope="col" aria-label="Row actions" />
                   </tr>
                 </thead>
@@ -847,14 +882,37 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                             )}
                           </td>
                         ) : null}
-                        {cols.lastActivity ? (
+                        {cols.lastContacted ? (
+                          // CRM-4 — authoritative last-contact (date · channel ·
+                          // actor); "Never" when none. NEVER proxied by activity.
                           <td className="lastcell">
-                            {relativeActivity(t.last_activity_at)}
-                            {t.owner_id ? (
-                              <span className="rc-lastcell__owner">
-                                {userNames[t.owner_id] ?? '—'}
-                              </span>
-                            ) : null}
+                            <LastContactCell
+                              last={t.last_contact ?? null}
+                              userNames={userNames}
+                              myId={myId}
+                            />
+                          </td>
+                        ) : null}
+                        {cols.lists ? (
+                          // CRM-3 — visibility-scoped list membership (first list
+                          // + "+n"); "—" when the talent is in no visible list.
+                          <td>
+                            {(() => {
+                              const ls = membershipsByTalent[t.id] ?? [];
+                              const first = ls[0];
+                              if (first === undefined)
+                                return <span className="rc-muted">—</span>;
+                              return (
+                                <span className="rc-listcell">
+                                  <span className="rc-listcell__nm">{first.name}</span>
+                                  {ls.length > 1 ? (
+                                    <span className="rc-listcell__more">
+                                      +{ls.length - 1}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              );
+                            })()}
                           </td>
                         ) : null}
                         <td>
@@ -897,14 +955,27 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             consent-governed flow.
           </p>
         </Card>
+      </>
+      )}
 
       <BulkBar
         count={selected.size}
         busy={busy}
-        canAssign={canEdit}
+        canManageLists={canManageLists}
+        onAddToList={() => setAddToListOpen(true)}
         onAddToReq={() => setReqDialogOpen(true)}
-        onAssignToMe={assignToMe}
         onClear={() => setSelected(new Set())}
+      />
+
+      <AddToListDialog
+        open={addToListOpen}
+        onClose={() => setAddToListOpen(false)}
+        talentIds={[...selected]}
+        onDone={(message) => {
+          setNotice(message);
+          setSelected(new Set());
+        }}
+        onViewList={() => setListsTab(true)}
       />
 
       <TalentTriageDrawer

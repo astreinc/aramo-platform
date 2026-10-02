@@ -256,7 +256,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.queryByRole('button', { name: /Find Talent/ })).toBeNull();
   });
 
-  it('Talent tab: Find Talent ▾ (talent:source) opens the two sourcing entry points', async () => {
+  it('Talent tab: Find Talent ▾ (talent:source) offers Known talent then Source new talent (CRM-8 §12.1 order)', async () => {
     mockApi();
     render(
       <ToastProvider>
@@ -282,8 +282,15 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
     fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     fireEvent.click(screen.getByRole('button', { name: /Find Talent/ }));
-    expect(screen.getByText('Rediscover existing Talent')).toBeInTheDocument();
-    expect(screen.getByText('Source new Talent')).toBeInTheDocument();
+    // CRM-8 §12.1 — mandatory order: Known talent first, then Source new talent.
+    const items = screen.getAllByRole('menuitem');
+    expect(items[0]).toHaveTextContent('Known talent');
+    expect(items[1]).toHaveTextContent('Source new talent');
+    // Source new talent still routes to the existing Sourcing flow (unchanged).
+    expect(items[1]).toHaveAttribute('href', '/sourcing');
+    // Known talent opens the requisition-scoped drawer (not a global redirect).
+    fireEvent.click(screen.getByRole('menuitem', { name: /Known talent/ }));
+    expect(await screen.findByText(/Known talent for/)).toBeInTheDocument();
   });
 
   it('no leftover old-styled surfaces: no funnel ribbon / at-a-glance card / reserved seam / inline MoveToMenu', async () => {

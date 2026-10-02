@@ -209,6 +209,11 @@ const SAVED_LIST_LIST_KIND = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260706130000_add_list_kind_tenant_bench/migration.sql',
 );
+// CRM-1 — visibility + purpose columns (regenerated SavedList client SELECTs them).
+const SAVED_LIST_VISIBILITY = resolve(
+  ROOT,
+  'libs/saved-list/prisma/migrations/20261001150000_add_saved_list_visibility_purpose/migration.sql',
+);
 // metering is required because PipelineRepository.transition writes a
 // UsageEvent row inside the same tx (PR-A1c). We don't transition any
 // pipelines in this spec, so the table just needs to exist for the
@@ -511,6 +516,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         CALENDAR_INIT,
         SAVED_LIST_INIT,
         SAVED_LIST_LIST_KIND,
+        SAVED_LIST_VISIBILITY,
         METERING_INIT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         REQUISITION_POSTAL_CODE_MIGRATION,

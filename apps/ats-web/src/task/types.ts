@@ -65,6 +65,8 @@ export interface TaskView {
   readonly created_by_user_id: string;
   readonly owner_type: TaskOwnerType;
   readonly owner_id: string;
+  // CRM-6 (§10) — optional contextual requisition association.
+  readonly requisition_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
 }
@@ -86,6 +88,8 @@ export interface CreateTaskRequest {
   readonly assignee_id?: string;
   readonly type?: TaskType;
   readonly priority?: TaskPriority;
+  // CRM-6 (§10) — optional contextual requisition association (not ownership).
+  readonly requisition_id?: string;
 }
 
 // PATCH /v1/tasks/:id — status/assignee/title/description/due_date/type/

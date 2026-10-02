@@ -12,6 +12,7 @@ import {
   type TaskVisibilityInputs,
 } from '../lib/task.repository.js';
 import type { TaskAssigneeValidator } from '../lib/task-assignee.port.js';
+import type { TaskRequisitionContextValidator } from '../lib/task-requisition-context.port.js';
 
 // Tasks backend proofs. Lead rulings: R1 async-irrelevant (sync CRUD) · R2
 // binary status · R4 create-time 404 assert · R5 active-within-tenant assignee
@@ -59,7 +60,7 @@ function makeReq(v: ReturnType<typeof scopedVis>): Request {
   } as unknown as Request;
 }
 
-function makeController(opts?: { assigneeOk?: boolean }): {
+function makeController(opts?: { assigneeOk?: boolean; requisitionLinked?: boolean }): {
   ctl: TaskController;
   repo: {
     create: ReturnType<typeof vi.fn>;
@@ -70,6 +71,7 @@ function makeController(opts?: { assigneeOk?: boolean }): {
     delete: ReturnType<typeof vi.fn>;
   };
   assignee: { isActiveTenantMember: ReturnType<typeof vi.fn> };
+  requisitionContext: { talentHasRequisitionPipeline: ReturnType<typeof vi.fn> };
 } {
   const repo = {
     create: vi.fn().mockResolvedValue({ id: 't1' }),
@@ -82,11 +84,17 @@ function makeController(opts?: { assigneeOk?: boolean }): {
   const assignee = {
     isActiveTenantMember: vi.fn().mockResolvedValue(opts?.assigneeOk ?? true),
   };
+  // CRM-6 — the requisition-context validator (3rd ctor arg). Accept-any by
+  // default; a test may force a missing Talent↔Requisition link via opts.
+  const requisitionContext = {
+    talentHasRequisitionPipeline: vi.fn().mockResolvedValue(opts?.requisitionLinked ?? true),
+  };
   const ctl = new TaskController(
     repo as unknown as TaskRepository,
     assignee as unknown as TaskAssigneeValidator,
+    requisitionContext as unknown as TaskRequisitionContextValidator,
   );
-  return { ctl, repo, assignee };
+  return { ctl, repo, assignee, requisitionContext };
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +197,57 @@ describe('Tasks proof — create-time 404 assert (controller)', () => {
       makeReq(scopedVis()),
     );
     expect(repo.create).toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PROOF — CRM-6 (§10) optional contextual requisition validation: same-tenant +
+// visible + a REAL Talent↔Requisition pipeline relationship. Never trust an
+// arbitrary requisition UUID from the follow-up picker.
+// ---------------------------------------------------------------------------
+describe('Tasks proof — CRM-6 requisition context validation', () => {
+  it('talent-owned task + VISIBLE + LINKED requisition_id → persisted', async () => {
+    const { ctl, repo, requisitionContext } = makeController({ requisitionLinked: true });
+    await ctl.create(
+      makeAuth(['task:write']),
+      { title: 'Follow up', owner_type: 'talent_record', owner_id: 'tal-1', type: 'follow_up', requisition_id: 'req-1' },
+      'rq-1',
+      makeReq(scopedVis()), // req-1 is in the visible set
+    );
+    expect(requisitionContext.talentHasRequisitionPipeline).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      talent_id: 'tal-1',
+      requisition_id: 'req-1',
+    });
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ input: expect.objectContaining({ requisition_id: 'req-1' }) }),
+    );
+  });
+
+  it('requisition_id NOT visible to the actor → 404, repo.create not called', async () => {
+    const { ctl, repo } = makeController({ requisitionLinked: true });
+    await expect(
+      ctl.create(
+        makeAuth(['task:write']),
+        { title: 'Follow up', owner_type: 'talent_record', owner_id: 'tal-1', requisition_id: 'req-2' },
+        'rq-1',
+        makeReq(scopedVis()), // req-2 is NOT visible
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('visible requisition but the Talent has NO pipeline on it → 422, repo.create not called', async () => {
+    const { ctl, repo } = makeController({ requisitionLinked: false });
+    await expect(
+      ctl.create(
+        makeAuth(['task:write']),
+        { title: 'Follow up', owner_type: 'talent_record', owner_id: 'tal-1', requisition_id: 'req-1' },
+        'rq-1',
+        makeReq(scopedVis()),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 422 });
+    expect(repo.create).not.toHaveBeenCalled();
   });
 });
 

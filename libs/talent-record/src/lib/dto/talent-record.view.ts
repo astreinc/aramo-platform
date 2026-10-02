@@ -68,6 +68,10 @@ export interface TalentRecordView {
   last_activity_at?: string | null;
   consent_summary?: 'contactable' | 'expiring_lt_30d' | 'do_not_contact' | null;
   current_stage?: { stage: string; requisition_id: string } | null;
+  // CRM-4 — authoritative last CONTACT (Communications real-contact ∪ Activity
+  // call/email_logged), MAX by occurred_at; null ⇒ "Never". NOT last_activity_at
+  // (type-blind). Composed in apps/api enrichment; neutral shape here.
+  last_contact?: { occurred_at: string; channel: 'Call' | 'Email'; actor_id: string | null } | null;
 
   // Search PR-2 — the résumé-content-match excerpt (ts_headline over the
   // REDACTED résumé text — D2 snippet, never an SSN). Present ONLY on items

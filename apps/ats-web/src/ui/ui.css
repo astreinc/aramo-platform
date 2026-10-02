@@ -1804,20 +1804,11 @@ button.rc-link-action {
 
 .rc-view.on .rc-view__ct { color: var(--rail-av-text); }
 
-/* Save current view — dashed affordance (no backend yet → disabled stub). */
+/* CRM-2 — pending quick filter (Not contacted 90+ days): control geometry
+   landed; authoritative last-contact behavior activates in CRM-4. Disabled. */
+.rc-view--pending { opacity: .5; cursor: not-allowed; }
 
-.rc-view--save { color: var(--brand-strong); border-style: dashed; background: transparent; }
-
-.rc-view--save:disabled { opacity: .65; cursor: not-allowed; }
-
-.rc-view--stub { opacity: .6; cursor: not-allowed; border-style: dashed; }
-
-.rc-view__soon {
-  font-size: .6rem; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--faint); border: 1px solid var(--line-2); border-radius: 10px; padding: 0 5px;
-}
-
-/* token search */
+/* token search (shared rc-tokenbox chrome — Talent / Contacts / Companies) */
 
 .rc-tokenbox {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -1855,23 +1846,83 @@ button.rc-link-action {
   font-size: .68rem; color: var(--faint); font-family: var(--font-mono); white-space: nowrap;
 }
 
-.rc-token {
-  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
-  font-size: .78rem; font-weight: 600; background: var(--brand-tint); color: var(--brand-strong);
-  padding: 3px 8px; border-radius: 6px;
+/* CRM-2 — muted pending cell placeholder (Last contacted → CRM-4). */
+.rc-muted { color: var(--faint); }
+
+/* CRM-3 — Talent "Lists" column cell: first visible list name + "+n". */
+.rc-listcell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.rc-listcell__nm { font-size: 12.5px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-listcell__more { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--line-1, #eef1f4); border-radius: 10px; padding: 1px 6px; }
+
+/* CRM-4 — "Last contacted" cell: relative date + Channel · Actor; amber when
+   stale (months/years) or Never. */
+.rc-lastc { display: inline-flex; flex-direction: column; min-width: 0; }
+.rc-lastc__d { font-size: 12px; font-weight: 600; color: var(--ink); }
+.rc-lastc--stale .rc-lastc__d, .rc-lastc--never .rc-lastc__d { color: var(--warn, #946011); }
+.rc-lastc__m { font-size: 10.5px; color: var(--faint); }
+
+/* CRM-2 — bulk bar primary action (Add to list). */
+.rc-bulkbar__primary { background: #fff; color: var(--brand-strong); }
+.rc-bulkbar__primary:hover:not(:disabled) { background: #fff; opacity: .92; }
+
+/* CRM-2 — Lists tab structural shell: the prototype Lists-index grid chrome;
+   the body is empty until the CRM-3 Lists UI lands (no fabricated rows). */
+.rc-lists { border: 1px solid var(--line-2); border-radius: 13px; overflow-x: auto; }
+.rc-lists__head {
+  display: grid;
+  grid-template-columns: minmax(240px,2fr) minmax(150px,1fr) 110px 80px minmax(130px,1fr) 110px;
+  gap: 12px; align-items: center; min-width: 820px;
+  padding: 11px 14px; border-bottom: 1px solid var(--line-2);
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint);
 }
+.rc-lists__body { min-height: 120px; }
 
-.rc-token__k { opacity: .7; font-weight: 500; }
+/* CRM-3 — Lists index rows (clickable) + detail. Five-column index grid. */
+.rc-lists__row {
+  display: grid;
+  grid-template-columns: minmax(240px,2fr) minmax(150px,1fr) 90px minmax(130px,1fr) 110px;
+  gap: 12px; align-items: center; width: 100%; min-width: 820px;
+  padding: 13px 14px; border: none; border-bottom: 1px solid var(--line-1, #f2f4f6);
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: var(--ink);
+}
+.rc-lists__row:hover { background: var(--rail-tint, #f5f7fd); }
+.rc-lists__nm { display: flex; flex-direction: column; min-width: 0; }
+.rc-lists__nm small { font-size: 11.5px; color: var(--faint); }
 
-.rc-token--flagged { background: var(--warn-tint); color: var(--warn); }
+.rc-listdetail__head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.rc-listdetail__back { display: inline-flex; align-items: center; gap: 4px; color: var(--brand-strong); font-weight: 600; font-size: .82rem; border: none; background: none; width: fit-content; }
+.rc-listdetail__name { font-size: 18px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.rc-listdetail__purpose { font-size: 12.5px; color: var(--muted); margin: 0; }
+.rc-listdetail__facts { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); }
 
-.rc-token__warn { font-size: .66rem; opacity: .8; }
+.rc-listdetailtbl { border-radius: 13px; overflow-x: auto; }
+.rc-listdetailtbl__head, .rc-listdetailtbl__row {
+  display: grid;
+  grid-template-columns: minmax(220px,1.6fr) minmax(120px,.9fr) minmax(140px,1fr) minmax(150px,1fr) minmax(110px,.8fr) 210px;
+  gap: 12px; align-items: center; min-width: 980px;
+}
+.rc-listdetailtbl__head { padding: 11px 14px; border-bottom: 1px solid var(--line-2); font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.rc-listdetailtbl__row { padding: 13px 14px; border-bottom: 1px solid var(--line-1, #f2f4f6); font-size: 12.5px; }
+.rc-ldt__talent { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.rc-ldt__nm { display: flex; flex-direction: column; min-width: 0; }
+.rc-ldt__nm small { font-size: 11px; color: var(--faint); }
+.rc-ldt__actions { display: inline-flex; justify-content: flex-end; gap: 6px; }
 
-.rc-token button { border: none; background: none; color: inherit; display: grid; place-items: center; padding: 0; opacity: .6; }
+/* CRM-2/3 — add-to-list modal body. */
+.rc-addlist { display: flex; flex-direction: column; gap: 12px; }
+.rc-field { display: flex; flex-direction: column; gap: 5px; }
+.rc-field__lbl { font-size: 11px; font-weight: 600; color: var(--muted); }
 
-.rc-token button:hover { opacity: 1; }
-
-.rc-token button svg { width: 11px; height: 11px; }
+/* CRM-3 — multi-list checklist + already-in annotation + inline create. */
+.rc-addlist__pick { display: flex; flex-direction: column; gap: 2px; max-height: 260px; overflow-y: auto; }
+.rc-addlist__opt { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+.rc-addlist__opt:hover { background: var(--rail-tint, #f5f7fd); }
+.rc-addlist__optnm { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.rc-addlist__optnm small { font-weight: 500; color: var(--faint); }
+.rc-addlist__already { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--warn, #946011); }
+.rc-addlist__createtoggle { color: var(--brand-strong); font-weight: 600; font-size: 12.5px; width: fit-content; border: none; background: none; }
+.rc-addlist__new { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--brand-tint, #c9d4f2); background: var(--rail-tint, #f5f7fd); border-radius: 10px; padding: 13px 14px; }
+.rc-addlist__donemsg { font-size: 13px; color: var(--ink); }
 
 /* active filter chips */
 
@@ -5257,6 +5308,25 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tj__findt { display: block; font-size: 12.5px; font-weight: 700; color: #1b2730; }
 .rc-tj__findd { display: block; font-size: 11px; color: #93a0a8; margin-top: 2px; }
 
+/* CRM-8 (§12) — Known Talent requisition-scoped drawer. */
+.rc-ktd { display: flex; flex-direction: column; gap: 12px; }
+.rc-ktd__head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.rc-ktd__context { font-size: 12.5px; color: var(--c-text-muted, #5a6b78); }
+.rc-ktd__chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rc-ktd__chip { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid #cfd8e0; background: #f2f6fa; color: #1b2730; }
+.rc-ktd__chip:hover { background: #e4ebf2; }
+.rc-ktd__body { display: flex; flex-direction: column; max-height: 56vh; overflow-y: auto; }
+.rc-ktd__row { display: grid; grid-template-columns: 1.6fr 1.4fr 1fr 1fr auto; gap: 12px 16px; align-items: center; padding: 10px 4px; border-top: 1px solid #f2f4f6; font-size: 12.5px; }
+.rc-ktd__who { display: flex; align-items: center; gap: 10px; }
+.rc-ktd__nm { display: flex; flex-direction: column; }
+.rc-ktd__nm small { color: #93a0a8; font-size: 11px; }
+.rc-ktd__facts { display: flex; flex-direction: column; gap: 2px; color: var(--c-text-muted, #5a6b78); }
+.rc-ktd__lists { display: flex; flex-wrap: wrap; gap: 4px; }
+.rc-ktd__listtag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: #eef2f6; color: #42505c; }
+.rc-ktd__matched { font-size: 11.5px; color: #42505c; font-style: italic; }
+.rc-ktd__onreq { font-size: 12px; color: #2e7d46; font-weight: 600; }
+.rc-ktd__foot { font-size: 11.5px; color: #93a0a8; padding-top: 6px; border-top: 1px solid #f2f4f6; }
+
 /* RTR cell — Send button (placeholder until the send slice wires it) */
 .rc-tj__rtr { display: flex; align-items: center; min-width: 0; }
 .rc-tj__rtrbtn {
@@ -6210,6 +6280,11 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-desk-due--today { color: var(--ink); }
 .rc-desk-due--upcoming { color: var(--muted); }
 .rc-desk-action-pending { font-size: 0.76rem; color: var(--muted); }
+/* CRM-7 (§11) — row Task controls (Done/Snooze) separated from the primary CTA. */
+.rc-desk-taskctl { display: inline-flex; align-items: center; gap: 10px; position: relative; }
+.rc-desk-snooze { position: absolute; top: 100%; right: 0; z-index: 5; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 8px 10px; background: var(--surface, #fff); border: 1px solid var(--border, #e2e6ea); border-radius: 8px; box-shadow: 0 6px 20px rgba(16, 24, 40, 0.12); }
+.rc-desk-snooze-date { margin-top: 2px; }
+.rc-desk-cta { font-weight: 600; }
 
 .rc-desk-reqcell { display: flex; flex-direction: column; min-width: 0; }
 .rc-desk-reqcell__t { font-weight: 700; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

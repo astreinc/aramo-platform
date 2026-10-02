@@ -136,4 +136,22 @@ export class RequisitionAssignmentRepository {
     });
     return (rows as RequisitionAssignmentRow[]).map(projectView);
   }
+
+  // CRM-2 — the requisition ids a user is assigned to in the tenant (the
+  // authoritative "Working with me" input: assigned reqs × active pipeline).
+  // Backed by @@index([tenant_id, user_id]); returns ids only (no projection).
+  async listRequisitionIdsForUser(args: {
+    tenant_id: string;
+    user_id: string;
+    limit?: number;
+  }): Promise<string[]> {
+    const rows = await this.prisma.requisitionAssignment.findMany({
+      where: { tenant_id: args.tenant_id, user_id: args.user_id },
+      select: { requisition_id: true },
+      ...(args.limit === undefined ? {} : { take: args.limit }),
+    });
+    return (rows as Array<{ requisition_id: string }>).map(
+      (r) => r.requisition_id,
+    );
+  }
 }

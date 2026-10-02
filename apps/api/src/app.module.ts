@@ -45,6 +45,11 @@ import { ClientSelectionModule } from '@aramo/client-selection';
 import { PortalModule } from '@aramo/portal';
 import { ReportingModule } from '@aramo/reporting';
 import { RequisitionModule, RequisitionSkillCanonicalizationModule } from '@aramo/requisition';
+// CRM-4 — CommunicationsRepository for the last-contact enrichment composer
+// (TalentRecordEnrichmentService). Nest dedups this module (also imported by
+// several sub-modules); importing it here exposes the repo to the app-level
+// provider scope.
+import { CommunicationsModule } from '@aramo/communications';
 import { SavedListModule } from '@aramo/saved-list';
 import { SettingsModule } from '@aramo/settings';
 import { SkillsTaxonomyModule } from '@aramo/skills-taxonomy';
@@ -165,6 +170,7 @@ import { AuditFinancialsGateAdapter } from './settings/audit-financials-gate.ada
 // Tasks backend — live TASK_ASSIGNEE_VALIDATOR adapter (validates an
 // assignee is an active within-tenant member via IdentityService).
 import { TaskAssigneeAdapter } from './tasks/task-assignee.adapter.js';
+import { TaskRequisitionContextAdapter } from './tasks/task-requisition-context.adapter.js';
 // SRC-1 PR-2 — the Indeed Apply inbound webhook (composition root; R13.5).
 import { IndeedApplyController } from './webhooks/indeed-apply.controller.js';
 import { IndeedApplyWebhookService } from './webhooks/indeed-apply.service.js';
@@ -251,6 +257,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // all). Leaf import set: AuthModule + AuthorizationModule +
     // EntitlementModule only (no @aramo/company / @aramo/contact).
     RequisitionModule,
+    CommunicationsModule, // CRM-4 — last-contact enrichment (dedup-safe)
     // Company Party/Role (ADR-0032, R7) — @Global adapter binding the
     // requisition CompanyClientCheckPort to CompanyRepository. Imported AFTER
     // both CompanyModule and RequisitionModule so the token is available to the
@@ -296,9 +303,15 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // only IdentityService; importing the slim IdentityModule statically here
     // would re-create the second stub-bound instance the split removes (this
     // was one of the three apps/api-graph static importers in the defect).
+    // CRM-6 (§10) — requisitionContextValidator binds TaskRequisitionContextAdapter
+    // (PipelineRepository-backed) so a follow-up's OPTIONAL requisition context is
+    // validated against a real Talent↔Requisition pipeline relationship. Threads
+    // PipelineModule (which exports PipelineRepository) into TaskModule's dynamic
+    // scope; libs/task stays leaf (it names only the port, never @aramo/pipeline).
     TaskModule.forRoot({
       assigneeValidator: TaskAssigneeAdapter,
-      imports: [IdentityCoreModule],
+      requisitionContextValidator: TaskRequisitionContextAdapter,
+      imports: [IdentityCoreModule, PipelineModule],
     }),
     // Search PR-2 — the résumé re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the

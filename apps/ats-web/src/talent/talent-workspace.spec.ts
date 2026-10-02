@@ -159,11 +159,10 @@ describe('buildTalentQuery — UI state → ?paged=true server query', () => {
     expect(p.get('location')).toBe('Austin');
   });
 
-  it('scope=mine → owner=<me>; scope=team → scope=my_team; scope=all → neither', () => {
-    expect(buildTalentQuery(baseInput({ scope: 'mine' })).get('owner')).toBe('me');
-    const team = buildTalentQuery(baseInput({ scope: 'team' }));
-    expect(team.get('scope')).toBe('my_team');
-    expect(team.get('owner')).toBeNull();
+  it('CRM-2 scope=working_with_me → ?scope=working_with_me (NO owner_id); scope=all → neither', () => {
+    const wwm = buildTalentQuery(baseInput({ scope: 'working_with_me' }));
+    expect(wwm.get('scope')).toBe('working_with_me');
+    expect(wwm.get('owner')).toBeNull(); // owner_id is NEVER sent as scope
     const all = buildTalentQuery(baseInput({ scope: 'all' }));
     expect(all.get('owner')).toBeNull();
     expect(all.get('scope')).toBeNull();
@@ -175,19 +174,7 @@ describe('buildTalentQuery — UI state → ?paged=true server query', () => {
     expect(p.get('preset')).toBeNull();
   });
 
-  it('My-hot-list view is NATIVE — sends hot=true, NO preset param', () => {
-    const p = buildTalentQuery(baseInput({ view: 'my_hot_list' }));
-    expect(p.get('hot')).toBe('true');
-    expect(p.get('preset')).toBeNull();
-  });
-
-  it('cross-schema views send the preset param', () => {
-    expect(buildTalentQuery(baseInput({ view: 'in_touch_6mo' })).get('preset')).toBe(
-      'in_touch_6mo',
-    );
-    expect(
-      buildTalentQuery(baseInput({ view: 'submitted_this_week' })).get('preset'),
-    ).toBe('submitted_this_week');
+  it('CRM-2 Follow-up due (needs_follow_up) sends the preset param; it is the only cross-schema quick filter', () => {
     expect(
       buildTalentQuery(baseInput({ view: 'needs_follow_up' })).get('preset'),
     ).toBe('needs_follow_up');

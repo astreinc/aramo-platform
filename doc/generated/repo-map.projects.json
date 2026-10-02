@@ -1326,12 +1326,15 @@
       "extractResumeText"
     ],
     "@aramo/saved-list": [
+      "SAVED_LIST_DEFAULT_VISIBILITY",
       "SAVED_LIST_ITEM_TYPE_VALUES",
+      "SAVED_LIST_VISIBILITY_VALUES",
       "SavedListController",
       "SavedListModule",
       "SavedListPrismaService",
       "SavedListRepository",
-      "isSavedListItemType"
+      "isSavedListItemType",
+      "isSavedListVisibility"
     ],
     "@aramo/selection": [
       "CreateSelectionRequestDto",
@@ -1567,10 +1570,12 @@
     ],
     "@aramo/task": [
       "StubTaskAssigneeValidator",
+      "StubTaskRequisitionContextValidator",
       "TASK_ACTIVE_STATUS_VALUES",
       "TASK_ASSIGNEE_VALIDATOR",
       "TASK_OWNER_TYPE_VALUES",
       "TASK_PRIORITY_VALUES",
+      "TASK_REQUISITION_CONTEXT_VALIDATOR",
       "TASK_SOURCE_VALUES",
       "TASK_STATUS_VALUES",
       "TASK_TYPE_VALUES",
@@ -5798,6 +5803,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/dashboard/DashboardView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -5961,6 +5972,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/GuaranteeTermsPanel.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/KnownTalentDrawer.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

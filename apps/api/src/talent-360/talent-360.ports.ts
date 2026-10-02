@@ -194,6 +194,14 @@ export interface Talent360ReadPort {
     user_ids: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
 
+  // CRM-5 §9.5 — authoritative terminal reason per (closed) pipeline id; absent
+  // ⇒ "reason not recorded" (null) at the composition layer. Reason only, never
+  // the free-text disposition note.
+  resolveDispositionReasons(
+    ctx: Talent360ActorContext,
+    pipeline_ids: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
+
   // Latest interview for a client-selection process (the scheduled_at source).
   findLatestInterview(
     ctx: Talent360ActorContext,

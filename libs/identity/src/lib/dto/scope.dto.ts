@@ -452,6 +452,16 @@ export const SEED_SCOPE_KEYS = [
   // tenant_admin/tenant_owner.
   'communication:template:read',
   'communication:template:manage',
+  // CRM-1 — SavedList activation. Closes the PR-A6 gap-and-note (these 4 scopes
+  // were referenced by SavedListController but never seeded, so the capability
+  // was dark). read/create/edit → the 9 operational roles (the task:* tier);
+  // delete → tenant_admin + tenant_owner (Ruling 1, destructive — a list delete
+  // CASCADE-drops its entries). Visibility (PRIVATE/TENANT) is enforced IN the
+  // repository, orthogonal to these access scopes.
+  'saved-list:read',
+  'saved-list:create',
+  'saved-list:edit',
+  'saved-list:delete',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

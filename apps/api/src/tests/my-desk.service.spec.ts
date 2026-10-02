@@ -43,6 +43,7 @@ function fakePort(overrides: Partial<MyDeskReadPort> = {}): MyDeskReadPort {
     listBlockedPlacements: async () => [],
     listExpiringOffers: async () => [],
     resolveTalentNames: async () => new Map(),
+    resolveTalentContactability: async () => new Map(),
     resolveCompanyNames: async () => new Map(),
   };
   return { ...base, ...overrides };
@@ -56,8 +57,50 @@ function task(over: Partial<DeskTaskRow> & { id: string }): DeskTaskRow {
     type: over.type ?? null,
     owner_type: over.owner_type ?? 'requisition',
     owner_id: over.owner_id ?? 'req-1',
+    requisition_id: over.requisition_id ?? null,
   };
 }
+
+describe('MyDeskService.compose — CRM-7 §11 follow-up CTA (from communication authority)', () => {
+  const followUp = (over: Partial<DeskTaskRow> = {}) =>
+    task({ id: 't-fu', type: 'follow_up', owner_type: 'talent_record', owner_id: 'tal-9', ...over });
+
+  it('no requisition + voice permitted → Call', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyTasks: async () => [followUp()],
+        resolveTalentNames: async () => new Map([['tal-9', 'Sofia Alvarez']]),
+        resolveTalentContactability: async () => new Map([['tal-9', { can_call: true, can_email: false }]]),
+      }),
+    );
+    const [item] = (await svc.compose(CTX, NOW, TZ)).priority_items;
+    expect(item.primary_action).toEqual({ kind: 'call', label: 'Call', href: null });
+  });
+
+  it('requisition + email permitted → Email (requisition-contextual)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyTasks: async () => [followUp({ requisition_id: 'req-1' })],
+        resolveTalentNames: async () => new Map([['tal-9', 'Sofia Alvarez']]),
+        resolveTalentContactability: async () => new Map([['tal-9', { can_call: true, can_email: true }]]),
+      }),
+    );
+    const [item] = (await svc.compose(CTX, NOW, TZ)).priority_items;
+    expect(item.primary_action).toEqual({ kind: 'email', label: 'Email', href: null });
+  });
+
+  it('no permitted executable contact → Open task (Task never grants the comm action)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyTasks: async () => [followUp()],
+        resolveTalentNames: async () => new Map([['tal-9', 'Sofia Alvarez']]),
+        resolveTalentContactability: async () => new Map([['tal-9', { can_call: false, can_email: false }]]),
+      }),
+    );
+    const [item] = (await svc.compose(CTX, NOW, TZ)).priority_items;
+    expect(item.primary_action).toEqual({ kind: 'open_task', label: 'Open task', href: '/talent/tal-9' });
+  });
+});
 
 describe('MyDeskService.compose — header metadata (§38)', () => {
   it('emits the app-timezone civil date, not the UTC date', async () => {
