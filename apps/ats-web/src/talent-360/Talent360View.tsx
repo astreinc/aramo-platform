@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Dialog, InlineAlert, Input, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
+import { Dialog, InlineAlert, Input, Select, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
 import type { Session } from '@aramo/fe-foundation';
 
 import { Button, LoadingState, safeErrorMessage } from '../ui';
@@ -23,6 +23,7 @@ import {
 import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
 import { createNote } from '../activity/activity-api';
 import { createTask, updateTask } from '../task/task-api';
+import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 
 import { getTalent360 } from './talent-360-api';
 import type {
@@ -186,6 +187,7 @@ export function Talent360View() {
   // CRM-5 — task-write authority (FE-derived from scopes, consistent with every
   // other task control in the app: RequisitionDetail/MyTasks/CompanyDetail).
   const canTaskWrite = session !== null && hasScope(session, 'task:write');
+  const myId = session?.sub ?? null;
   const [model, setModel] = useState<Talent360ViewModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -244,6 +246,12 @@ export function Talent360View() {
   const h = model.header;
   const strip = model.relationship_strip;
   const initials = `${h.first_name[0] ?? ''}${h.last_name[0] ?? ''}`.toUpperCase();
+  // CRM-6 — the Talent's OWN active opportunities are the valid follow-up
+  // requisition contexts (backend validates the Talent↔Requisition pipeline).
+  const followUpReqOptions: readonly FollowUpReqOption[] = (model.opportunities?.active ?? []).map((o) => ({
+    requisition_id: o.requisition_id,
+    label: o.client_name !== null ? `${o.requisition_code} · ${o.client_name}` : o.requisition_code,
+  }));
 
   // Email is requisition-contextual ONLY (no talent-direct path): 1 active
   // opportunity opens the composer directly; multiple opens a lightweight
@@ -321,6 +329,8 @@ export function Talent360View() {
       {followUpOpen && (
         <FollowUpDialog
           talentId={talentId}
+          myId={myId}
+          reqOptions={followUpReqOptions}
           onClose={() => setFollowUpOpen(false)}
           onDone={() => {
             setFollowUpOpen(false);
@@ -371,6 +381,8 @@ export function Talent360View() {
             <TasksCard
               tasks={model.tasks}
               talentId={talentId}
+              myId={myId}
+              reqOptions={followUpReqOptions}
               canTaskWrite={canTaskWrite}
               canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
               onChanged={load}
@@ -401,6 +413,8 @@ export function Talent360View() {
             <TasksCard
               tasks={model.tasks}
               talentId={talentId}
+              myId={myId}
+              reqOptions={followUpReqOptions}
               canTaskWrite={canTaskWrite}
               canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
               onChanged={load}
@@ -1216,12 +1230,16 @@ function ListsCard({ talentId, canAddToList }: { talentId: string; canAddToList:
 function TasksCard({
   tasks,
   talentId,
+  myId,
+  reqOptions,
   canTaskWrite,
   canFollowUp,
   onChanged,
 }: {
   tasks: Talent360ViewModel['tasks'];
   talentId: string;
+  myId: string | null;
+  reqOptions: readonly FollowUpReqOption[];
   canTaskWrite: boolean;
   canFollowUp: boolean;
   onChanged: () => void;
@@ -1292,6 +1310,8 @@ function TasksCard({
       {followUpOpen && (
         <FollowUpDialog
           talentId={talentId}
+          myId={myId}
+          reqOptions={reqOptions}
           onClose={() => setFollowUpOpen(false)}
           onDone={() => {
             setFollowUpOpen(false);
@@ -1303,23 +1323,56 @@ function TasksCard({
   );
 }
 
-// CRM-5 §9.3/§10 — the follow-up create affordance (shared by the header
-// "Follow up" action and the Tasks card). A REAL task: owner_type talent_record,
-// type follow_up, assignee defaults to the actor server-side. Reason + When;
-// the fuller assignee/requisition-link surface is CRM-6's shared path.
+// §9.3/§10 — the follow-up create affordance (shared by the header "Follow up"
+// action and the Tasks card). A REAL task: owner_type talent_record, type
+// follow_up. CRM-6 — full modal: Reason + When + Assign-to (defaults to the
+// ACTOR here on the FE so the task lands on their My Desk — the backend does
+// NOT default a missing assignee) + optional Requisition context.
+// CRM-6 req-option: the Talent's OWN active opportunities are the only valid
+// requisition contexts (the backend validates the Talent↔Requisition pipeline
+// relationship and 422s otherwise), so the picker is fed from them — no all-reqs
+// fetch, no invalid choices.
+interface FollowUpReqOption {
+  readonly requisition_id: string;
+  readonly label: string;
+}
+
 function FollowUpDialog({
   talentId,
+  myId,
+  reqOptions,
   onClose,
   onDone,
 }: {
   talentId: string;
+  myId: string | null;
+  reqOptions: readonly FollowUpReqOption[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const [reason, setReason] = useState('');
   const [due, setDue] = useState('');
+  // CRM-6 — assignee defaults to the actor (prototype "Me"); this is what makes
+  // the follow-up land on the creator's My Desk (the CRM-5 path left it null).
+  const [assigneeId, setAssigneeId] = useState<string>(myId ?? '');
+  const [reqId, setReqId] = useState<string>('');
+  const [roster, setRoster] = useState<readonly AssignableUser[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAssignableUsers()
+      .then((u) => {
+        if (!cancelled) setRoster(u);
+      })
+      .catch(() => {
+        // Fail-soft: assignee defaults to self even if the roster can't load.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function submit(): Promise<void> {
     if (reason.trim() === '') return;
@@ -1332,6 +1385,8 @@ function FollowUpDialog({
         owner_id: talentId,
         type: 'follow_up',
         ...(due === '' ? {} : { due_date: due }),
+        ...(assigneeId === '' ? {} : { assignee_id: assigneeId }),
+        ...(reqId === '' ? {} : { requisition_id: reqId }),
       });
       onDone();
     } catch {
@@ -1376,6 +1431,40 @@ function FollowUpDialog({
         <span>When (optional)</span>
         <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="Follow-up due date" />
       </label>
+      <label className="talent-detail__dialog-field">
+        <span>Assign to</span>
+        <Select
+          value={assigneeId}
+          onChange={(e) => setAssigneeId(e.target.value)}
+          aria-label="Follow-up assignee"
+        >
+          <option value={myId ?? ''}>Me</option>
+          {roster
+            .filter((u) => u.user_id !== myId)
+            .map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {u.display_name}
+              </option>
+            ))}
+        </Select>
+      </label>
+      {reqOptions.length > 0 ? (
+        <label className="talent-detail__dialog-field">
+          <span>Requisition (optional)</span>
+          <Select
+            value={reqId}
+            onChange={(e) => setReqId(e.target.value)}
+            aria-label="Follow-up requisition"
+          >
+            <option value="">None</option>
+            {reqOptions.map((r) => (
+              <option key={r.requisition_id} value={r.requisition_id}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        </label>
+      ) : null}
     </Dialog>
   );
 }

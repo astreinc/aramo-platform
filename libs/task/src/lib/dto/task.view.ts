@@ -23,6 +23,9 @@ export interface TaskView {
   created_by_user_id: string;
   owner_type: TaskOwnerType;
   owner_id: string;
+  // CRM-6 — optional contextual requisition association (NOT ownership); null
+  // for every non-contextual task. Cross-schema UUID-only ref.
+  requisition_id: string | null;
   created_at: string;
   updated_at: string;
 }

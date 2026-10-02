@@ -46,6 +46,9 @@ export interface DeskTaskRow {
   readonly type: DeskTaskType | null;
   readonly owner_type: DeskTaskOwnerType;
   readonly owner_id: string;
+  // CRM-6 (§10) — explicit contextual requisition (the follow-up picker). When
+  // present it wins over the single-active-pipeline derivation (PO rule 5).
+  readonly requisition_id: string | null;
 }
 
 // Per-requisition counts, each produced by an indexed groupBy in the owning

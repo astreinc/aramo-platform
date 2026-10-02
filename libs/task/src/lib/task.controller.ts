@@ -39,6 +39,10 @@ import {
   type TaskAssigneeValidator,
 } from './task-assignee.port.js';
 import {
+  TASK_REQUISITION_CONTEXT_VALIDATOR,
+  type TaskRequisitionContextValidator,
+} from './task-requisition-context.port.js';
+import {
   isOwnerVisible,
   TaskRepository,
   type TaskListFilters,
@@ -66,6 +70,8 @@ export class TaskController {
     private readonly repo: TaskRepository,
     @Inject(TASK_ASSIGNEE_VALIDATOR)
     private readonly assignee: TaskAssigneeValidator,
+    @Inject(TASK_REQUISITION_CONTEXT_VALIDATOR)
+    private readonly requisitionContext: TaskRequisitionContextValidator,
   ) {}
 
   // GET /v1/tasks
@@ -209,6 +215,37 @@ export class TaskController {
 
     if (body.assignee_id !== undefined) {
       await this.assertAssignee(authContext.tenant_id, body.assignee_id, requestId);
+    }
+
+    // CRM-6 (§10, PO ruling rule 3) — the OPTIONAL contextual requisition is
+    // validated server-side; never trust an arbitrary UUID from the picker.
+    if (body.requisition_id !== undefined && body.requisition_id !== null) {
+      // (a) visible to the actor — the owner-visible helper (404, non-leak).
+      if (!isOwnerVisible('requisition', body.requisition_id, vis)) {
+        throw new AramoError(
+          'NOT_FOUND',
+          'Requisition context not found in tenant (or not visible to actor)',
+          404,
+          { requestId, details: { requisition_id: body.requisition_id } },
+        );
+      }
+      // (b) for a Talent-owned task — a REAL Talent↔Requisition pipeline
+      // relationship (the task stays Talent-owned; this is context only).
+      if (body.owner_type === 'talent_record') {
+        const linked = await this.requisitionContext.talentHasRequisitionPipeline({
+          tenant_id: authContext.tenant_id,
+          talent_id: body.owner_id,
+          requisition_id: body.requisition_id,
+        });
+        if (!linked) {
+          throw new AramoError(
+            'VALIDATION_ERROR',
+            'requisition_id is not a requisition this talent is on',
+            422,
+            { requestId, details: { field: 'requisition_id' } },
+          );
+        }
+      }
     }
 
     return this.repo.create({

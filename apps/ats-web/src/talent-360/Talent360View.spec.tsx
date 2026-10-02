@@ -60,6 +60,13 @@ vi.mock('../talent/saved-list-api', async (importActual) => {
   const actual = await importActual<typeof import('../talent/saved-list-api')>();
   return { ...actual, listTalentMemberships: h.listTalentMemberships };
 });
+// CRM-6 — the follow-up modal's assignee picker roster (self u1 + a teammate).
+vi.mock('../users/users-api', () => ({
+  fetchAssignableUsers: vi.fn().mockResolvedValue([
+    { user_id: 'u1', display_name: 'Me Myself' },
+    { user_id: 'u2', display_name: 'Sanjay Kumar' },
+  ]),
+}));
 vi.mock('@aramo/fe-foundation', async (importActual) => {
   const actual = await importActual<typeof import('@aramo/fe-foundation')>();
   return {
@@ -454,7 +461,7 @@ describe('Talent360View — CRM-5 CRM deltas', () => {
     expect(screen.queryByRole('button', { name: /^Complete:/ })).toBeNull();
   });
 
-  it('Follow up creates a REAL follow-up task (owner talent_record, type follow_up)', async () => {
+  it('Follow up creates a REAL follow-up task assigned to the ACTOR by default (CRM-6 — the My Desk-surfacing fix)', async () => {
     h.scopes = [...BASE_SCOPES, 'task:write'];
     getTalent360Mock.mockResolvedValue(makeModel());
     const { container } = renderView();
@@ -470,6 +477,31 @@ describe('Talent360View — CRM-5 CRM deltas', () => {
           owner_type: 'talent_record',
           owner_id: 'tal-1',
           type: 'follow_up',
+          // the CRM-6 fix: assignee defaults to the actor (session.sub='u1'), so
+          // the follow-up reaches the creator's My Desk (CRM-5 left it null).
+          assignee_id: 'u1',
+        }),
+      ),
+    );
+  });
+
+  it('Follow up carries the optional requisition context when one is picked (CRM-6 §10)', async () => {
+    h.scopes = [...BASE_SCOPES, 'task:write'];
+    getTalent360Mock.mockResolvedValue(makeModel()); // fixture has active opps r1/r2
+    const { container } = renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    fireEvent.click(headerFollowUp(container) as HTMLElement);
+    const reason = await screen.findByLabelText('Follow-up reason');
+    fireEvent.change(reason, { target: { value: 'Check client feedback' } });
+    // the picker is fed from the Talent's OWN active opportunities.
+    fireEvent.change(screen.getByLabelText('Follow-up requisition'), { target: { value: 'r1' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create follow-up' }));
+    await waitFor(() =>
+      expect(h.createTask).toHaveBeenCalledWith(
+        expect.objectContaining({
+          owner_type: 'talent_record',
+          type: 'follow_up',
+          requisition_id: 'r1',
         }),
       ),
     );

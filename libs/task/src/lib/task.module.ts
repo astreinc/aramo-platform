@@ -16,6 +16,11 @@ import {
   UnboundTaskAssigneeValidator,
   type TaskAssigneeValidator,
 } from './task-assignee.port.js';
+import {
+  TASK_REQUISITION_CONTEXT_VALIDATOR,
+  UnboundTaskRequisitionContextValidator,
+  type TaskRequisitionContextValidator,
+} from './task-requisition-context.port.js';
 
 // Options for TaskModule.forRoot — the composition-root entry point.
 // assigneeValidator is the live TaskAssigneeValidator implementation
@@ -33,6 +38,10 @@ import {
 // a dependency-free validator (e.g. a test double) needs no imports.
 export interface TaskModuleOptions {
   assigneeValidator: Type<TaskAssigneeValidator>;
+  // CRM-6 — the live Talent↔Requisition pipeline-relationship validator
+  // (apps/api's PipelineRepository-backed adapter). REQUIRED (same discipline
+  // as assigneeValidator — omission is a compile error, never a silent stub).
+  requisitionContextValidator: Type<TaskRequisitionContextValidator>;
   imports?: ModuleMetadata['imports'];
 }
 
@@ -70,6 +79,10 @@ export interface TaskModuleOptions {
     PrismaService,
     TaskRepository,
     { provide: TASK_ASSIGNEE_VALIDATOR, useClass: UnboundTaskAssigneeValidator },
+    {
+      provide: TASK_REQUISITION_CONTEXT_VALIDATOR,
+      useClass: UnboundTaskRequisitionContextValidator,
+    },
   ],
   exports: [TaskRepository],
 })
@@ -90,6 +103,10 @@ export class TaskModule {
         {
           provide: TASK_ASSIGNEE_VALIDATOR,
           useClass: options.assigneeValidator,
+        },
+        {
+          provide: TASK_REQUISITION_CONTEXT_VALIDATOR,
+          useClass: options.requisitionContextValidator,
         },
       ],
     };

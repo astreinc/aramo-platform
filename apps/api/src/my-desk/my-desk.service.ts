@@ -286,14 +286,16 @@ export class MyDeskService {
     const kind = t.type !== null ? TASK_KIND[t.type] : 'task';
     const isTalent = t.owner_type === 'talent_record';
     const talentName = isTalent ? (talentNames.get(t.owner_id) ?? null) : null;
-    // Requisition context: a req-owned task IS its requisition; a talent-owned
-    // task adopts its requisition only when unambiguous (single active pipeline).
+    // Requisition context (CRM-6 §10 rule 5 — EXPLICIT-first, derived-second): a
+    // req-owned task IS its requisition; otherwise the task's explicit
+    // requisition_id wins; a talent-owned task falls back to its requisition
+    // only when unambiguous (single active pipeline). Historical/current tasks
+    // with no explicit context keep the derivation — backward-compatible.
     const requisitionId =
       t.owner_type === 'requisition'
         ? t.owner_id
-        : isTalent
-          ? (talentToReq.get(t.owner_id) ?? null)
-          : null;
+        : (t.requisition_id ??
+          (isTalent ? (talentToReq.get(t.owner_id) ?? null) : null));
     const route = OWNER_ROUTE[t.owner_type];
     return {
       id: t.id,

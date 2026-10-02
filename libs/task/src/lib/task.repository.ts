@@ -40,6 +40,7 @@ interface TaskRow {
   created_by_user_id: string;
   owner_type: string;
   owner_id: string;
+  requisition_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -59,6 +60,7 @@ function projectView(row: TaskRow): TaskView {
     created_by_user_id: row.created_by_user_id,
     owner_type: row.owner_type as TaskOwnerType,
     owner_id: row.owner_id,
+    requisition_id: row.requisition_id,
     created_at: row.created_at.toISOString(),
     updated_at: row.updated_at.toISOString(),
   };
@@ -117,6 +119,9 @@ export class TaskRepository {
         created_by_user_id: args.created_by_user_id,
         owner_type: args.input.owner_type,
         owner_id: args.input.owner_id,
+        // CRM-6 — optional contextual requisition (NOT ownership); validated
+        // at the controller before reaching here.
+        requisition_id: args.input.requisition_id ?? null,
       },
     });
     return projectView(row as TaskRow);

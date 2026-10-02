@@ -81,6 +81,7 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
       type: t.type as DeskTaskType | null,
       owner_type: t.owner_type as DeskTaskOwnerType,
       owner_id: t.owner_id,
+      requisition_id: t.requisition_id,
     }));
   }
 

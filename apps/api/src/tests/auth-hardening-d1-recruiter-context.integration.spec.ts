@@ -254,6 +254,11 @@ const TASK_WORKSPACE_FIELDS = resolve(
   ROOT,
   'libs/task/prisma/migrations/20260617120000_task_workspace_fields/migration.sql',
 );
+// CRM-6 (§10) — optional contextual requisition_id column.
+const TASK_REQUISITION_CONTEXT = resolve(
+  ROOT,
+  'libs/task/prisma/migrations/20261002120000_task_requisition_context/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-auth-hardening-d1-spec';
@@ -677,6 +682,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
+        TASK_REQUISITION_CONTEXT,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         REQUISITION_POSTAL_CODE_MIGRATION,
         // Track 4 T4-B2 — requisition read DERIVES openings_available from the
