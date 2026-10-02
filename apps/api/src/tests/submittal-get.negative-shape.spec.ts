@@ -23,6 +23,7 @@ import {
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
+import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
@@ -277,6 +278,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+
+      // SW-1 remediation -- provision the Pipeline schema + a live episode so the
+      // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
+      // fix, NOT a bypass/mock of the live-Pipeline invariant).
+      await applyPipelineSchema((s) => setup.query(s), ROOT);
+      await seedLivePipelineEpisode((s, p) => setup.query(s, p), {
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        requisition_id: JOB_ID,
+      });
 
       // Seed the active requisition + the Entrustable examination pinned
       // by the draft submittal we'll create at request time.
