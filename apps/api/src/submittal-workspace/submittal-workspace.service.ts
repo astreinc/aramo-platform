@@ -275,9 +275,14 @@ export class SubmittalWorkspaceService {
       if (ivRow !== undefined) {
         latestInterview = { round: ivRow.round, state: ivRow.state, scheduled_at: iso(ivRow.scheduled_at) };
       }
+      // The append-only ClientSelectionEvent log is keyed by (subject_type, subject_id)
+      // — NOT a `selection_id` column (which does not exist). Process-level events
+      // carry subject_type='process' + subject_id=ClientSelectionProcess.id (written
+      // by the client-selection repository). Matches the
+      // [tenant_id, subject_type, subject_id, created_at] index.
       const events = await this.db.$queryRawUnsafe<Array<{ event_payload: Record<string, unknown>; created_at: Date }>>(
         `SELECT "event_payload","created_at" FROM "client_selection"."ClientSelectionEvent"
-          WHERE "selection_id" = $1::uuid AND "tenant_id" = $2::uuid
+          WHERE "subject_type" = 'process' AND "subject_id" = $1::uuid AND "tenant_id" = $2::uuid
           ORDER BY "created_at" DESC`,
         cs.id,
         tenant_id,

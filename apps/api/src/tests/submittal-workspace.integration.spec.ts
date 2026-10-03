@@ -176,5 +176,44 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r = await service.compose(ctx({ visible_requisition_ids: new Set([JOB]) }), SUB);
       expect(r.identity.submittal_id).toBe(SUB);
     });
+
+    // SW-4 REMEDIATION — proves the client-response section composes against the REAL
+    // event authority (subject_type='process' + subject_id), not the non-existent
+    // `selection_id` column that previously 500'd the whole endpoint for any submittal
+    // with a client-selection process. Seeds a process + process events + decoys
+    // (a session-subject event, another process, another tenant) that MUST be excluded.
+    it('CLIENT-SELECTION: composes state + process feedback from the correct event authority; excludes other subjects/processes/tenants', async () => {
+      const CSP = randomUUID();
+      await setup.query(
+        `INSERT INTO client_selection."ClientSelectionProcess" (id,tenant_id,submittal_id,requisition_id,talent_id,state,version)
+         VALUES ($1,$2,$3,$4,$5,'INTERVIEW'::client_selection."ClientSelectionState",2)`,
+        [CSP, TENANT, SUB, JOB, TALENT],
+      );
+      const ev = (subjectType: string, subjectId: string, tenant: string, type: string, payload: unknown, agoHours: number) =>
+        setup.query(
+          `INSERT INTO client_selection."ClientSelectionEvent" (id,tenant_id,subject_type,subject_id,event_type,event_payload,created_at)
+           VALUES ($1,$2,$3,$4,$5,$6::jsonb, now() - ($7 || ' hours')::interval)`,
+          [randomUUID(), tenant, subjectType, subjectId, type, JSON.stringify(payload), String(agoHours)],
+        );
+      // Two authoritative PROCESS events (newest-first after ORDER BY created_at DESC).
+      await ev('process', CSP, TENANT, 'client_selection.process.created', { to_state: 'CLIENT_REVIEW' }, 3);
+      await ev('process', CSP, TENANT, 'client_selection.process.state_transition', { to_state: 'INTERVIEW', note: 'Client wants a first interview' }, 1);
+      // Decoys that MUST NOT appear: a session-subject event under the same process id,
+      // another process's event, and another tenant's event for the same process id.
+      await ev('session', CSP, TENANT, 'client_selection.session.created', { to_state: 'SCHEDULED', note: 'DECOY-session' }, 2);
+      await ev('process', randomUUID(), TENANT, 'client_selection.process.state_transition', { to_state: 'DECLINED', note: 'DECOY-other-process' }, 2);
+      await ev('process', CSP, OTHER_TENANT, 'client_selection.process.state_transition', { to_state: 'WITHDRAWN', note: 'DECOY-other-tenant' }, 2);
+
+      const r = await service.compose(ctx(), SUB);
+      expect(r.client_selection.present).toBe(true);
+      expect(r.client_selection.state).toBe('INTERVIEW');
+      // exactly the two process events, newest first, from this process + tenant only.
+      expect(r.client_selection.feedback.map((f) => f.to_state)).toEqual(['INTERVIEW', 'CLIENT_REVIEW']);
+      expect(r.client_selection.feedback[0]).toMatchObject({ to_state: 'INTERVIEW', note: 'Client wants a first interview' });
+      const notes = r.client_selection.feedback.map((f) => f.note);
+      expect(notes).not.toContain('DECOY-session');
+      expect(notes).not.toContain('DECOY-other-process');
+      expect(notes).not.toContain('DECOY-other-tenant');
+    });
   },
 );
