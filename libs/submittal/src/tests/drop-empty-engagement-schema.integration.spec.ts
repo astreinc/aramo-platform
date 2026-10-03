@@ -26,6 +26,7 @@ const CHAIN = [
   `${M}/20260812120000_t2p1_relocate_submittal_to_submittal_schema/migration.sql`,
   `${M}/20260822130000_l8b1_submittal_pipeline_link/migration.sql`,
   `${M}/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql`,
+  `${M}/20261002120000_sw2_submitted_to_client_provenance/migration.sql`,
 ].map((p) => resolve(__dirname, p));
 const DROP_MIGRATION = resolve(
   __dirname,

@@ -61,7 +61,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
         total_active: 2,
         columns: [
           { key: 'contacted', owner: 'pipeline', count: 1, cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted' })] },
-          { key: 'submitted', owner: 'submittal', count: 1, cards: [card({ talent_record_id: 't2', pipeline_id: 'p2', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_ats' })] },
+          { key: 'submitted', owner: 'submittal', count: 1, cards: [card({ talent_record_id: 't2', pipeline_id: 'p2', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client' })] },
         ],
       }),
     );
@@ -111,7 +111,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
             key: 'submitted',
             owner: 'submittal',
             count: 1,
-            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_ats', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true } })],
+            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true } })],
           },
         ],
       }),

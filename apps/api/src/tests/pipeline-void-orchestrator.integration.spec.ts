@@ -111,7 +111,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(
         `INSERT INTO submittal."TalentSubmittalRecord"
            (id, tenant_id, talent_id, job_id, evidence_package_id, pinned_examination_id, state, created_by, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,'submitted_to_ats'::"submittal"."SubmittalState",$7,now())`,
+         VALUES ($1,$2,$3,$4,$5,$6,'submitted_to_client'::"submittal"."SubmittalState",$7,now())`,
         [randomUUID(), tenant, talent, req, randomUUID(), randomUUID(), randomUUID()],
       );
     }

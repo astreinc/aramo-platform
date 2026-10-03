@@ -5,14 +5,14 @@
 // regex-extracts the ALLOWED record, and asserts structural deep-equal.
 //
 // Mainline chain (4 transitions):
-//   created -> handoff_draft -> ready_for_review -> submitted_to_ats
+//   created -> handoff_draft -> ready_for_review -> submitted_to_client
 //   -> confirmed
 //
 // Sibling lifecycle-exit (4 from each non-terminal):
 //   created          -> revoked
 //   handoff_draft    -> revoked
 //   ready_for_review -> revoked
-//   submitted_to_ats -> revoked
+//   submitted_to_client -> revoked
 //
 // Terminal: confirmed, revoked.
 
@@ -24,8 +24,8 @@ export const LEGAL_TRANSITIONS: Record<
 > = {
   created: ['handoff_draft', 'revoked'],
   handoff_draft: ['ready_for_review', 'revoked'],
-  ready_for_review: ['submitted_to_ats', 'revoked'],
-  submitted_to_ats: ['confirmed', 'revoked'],
+  ready_for_review: ['submitted_to_client', 'revoked'],
+  submitted_to_client: ['confirmed', 'revoked'],
   confirmed: [],
   revoked: [],
 };
@@ -52,8 +52,8 @@ export function nextMainlineState(
     case 'handoff_draft':
       return 'ready_for_review';
     case 'ready_for_review':
-      return 'submitted_to_ats';
-    case 'submitted_to_ats':
+      return 'submitted_to_client';
+    case 'submitted_to_client':
       return 'confirmed';
     case 'confirmed':
     case 'revoked':

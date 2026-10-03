@@ -26,8 +26,8 @@ interface AdvanceStepProps {
 
 // AdvanceStep — the three plain-button mainline transitions:
 //   handoff_draft -> ready_for_review  via /mark-ready
-//   ready_for_review -> submitted_to_ats  via /submit-to-ats
-//   submitted_to_ats -> confirmed  via /confirm-ats  (terminal)
+//   ready_for_review -> submitted_to_client  via /submit-to-ats
+//   submitted_to_client -> confirmed  via /confirm-ats  (terminal)
 //
 // COMM PART A (A9) — when Submit to ATS is blocked by an ENFORCING_WITH_OVERRIDE
 // engagement policy (CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE), the readiness is
@@ -64,7 +64,7 @@ export function AdvanceStep({
           label: 'Submit to ATS',
           run: () => submitToAts(submittal.id, idempotencyKey),
         };
-      case 'submitted_to_ats':
+      case 'submitted_to_client':
         return {
           label: 'Confirm ATS receipt',
           run: () => confirmAts(submittal.id, idempotencyKey),

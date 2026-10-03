@@ -62,6 +62,25 @@ export class SubmitTalentController {
     private readonly idempotencyService: IdempotencyService,
   ) {}
 
+  // SW-2 (R2-A) — the CANONICAL client-submittal command. `submitted_to_client` is
+  // the authoritative business fact; delivery_channel / external reference / actor /
+  // timestamp are provenance of that fact (captured here, frozen at the send).
+  @Post(':submittal_id/submit-to-client')
+  @RequireScopes('submittal:approve')
+  @HttpCode(HttpStatus.OK)
+  async submitToClient(
+    @Param('submittal_id') submittal_id: string,
+    @Body() body: Record<string, unknown>,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<SubmitToAtsResponse> {
+    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId);
+  }
+
+  // SW-2 (R2-A) — COMPATIBILITY ALIAS. The legacy /submit-to-ats path delegates to
+  // the SAME implementation (no duplicated logic) so existing clients keep working
+  // during the transition. Deprecated; prefer /submit-to-client.
   @Post(':submittal_id/submit-to-ats')
   @RequireScopes('submittal:approve')
   @HttpCode(HttpStatus.OK)
@@ -71,6 +90,16 @@ export class SubmitTalentController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+  ): Promise<SubmitToAtsResponse> {
+    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId);
+  }
+
+  private async submitImpl(
+    submittal_id: string,
+    body: Record<string, unknown>,
+    idempotencyKey: string | undefined,
+    authContext: AuthContextType,
+    requestId: string,
   ): Promise<SubmitToAtsResponse> {
     if (authContext.consumer_type !== 'recruiter') {
       throw new AramoError(
@@ -100,8 +129,17 @@ export class SubmitTalentController {
     // policy is ENFORCING_WITH_OVERRIDE and a required evidence item is missing.
     const engagementOverride = parseEngagementOverride(body);
 
-    // The single atomic operation: submitted_to_ats (authoritative) + pipeline
-    // `submitted` mirror + serialized slot consumption + provenance, all-or-nothing.
+    // SW-2 (R4-A/R4-B) — optional submittal delivery provenance from the body. The
+    // channel's validity (enum membership + executability + authority consistency) is
+    // enforced authoritatively in the command; here we only extract well-typed values.
+    const deliveryChannel = typeof body['delivery_channel'] === 'string' ? body['delivery_channel'] : null;
+    const externalReference = typeof body['external_reference'] === 'string' ? body['external_reference'] : null;
+    const externalSubmittedAt = typeof body['external_submitted_at'] === 'string' ? body['external_submitted_at'] : null;
+
+    // The single atomic operation: submitted_to_client (authoritative) + serialized
+    // slot consumption + provenance, all-or-nothing. L2-E (SB-5) retired the
+    // Pipeline mirror — this command does NOT write Pipeline; the episode stays
+    // LIVE and readers derive the submit-to-client signal from the event.
     const eventId = randomUUID();
     await this.command.submitToClient({
       tenant_id: authContext.tenant_id,
@@ -115,12 +153,15 @@ export class SubmitTalentController {
       // override input and recorded in the decision provenance.
       submittal_actor_can_override: authContext.scopes.includes('client-submittal-policy:override'),
       submittal_override_reason: engagementOverride?.reason ?? null,
+      delivery_channel: deliveryChannel,
+      external_reference: externalReference,
+      external_submitted_at: externalSubmittedAt,
       requestId,
     });
 
     // Preserve the public `{ submittal, event }` envelope (Ruling 14) — the
-    // authoritative result is the submittal now in submitted_to_ats plus the
-    // state_transition event the command wrote; the pipeline mirror is internal.
+    // authoritative result is the submittal now in submitted_to_client plus the
+    // state_transition event the command wrote (the Pipeline is not written).
     const submittal = await this.submittalRepository.findById({
       tenant_id: authContext.tenant_id,
       id: submittal_id,

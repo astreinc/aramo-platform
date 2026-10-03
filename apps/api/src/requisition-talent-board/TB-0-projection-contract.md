@@ -8,7 +8,7 @@ domains — it owns presentation only, never lifecycle/policy/authz truth (§1).
 | Display column | Domain | Persisted state(s) | Command (owner) |
 |---|---|---|---|
 | Pipeline / Contacted / Qualified | `libs/pipeline` `Pipeline.status` | `no_contact, contacted, talent_responded, qualifying, qualified` (+ terminal `not_in_consideration, completed`) | `PipelineRepository.applyAction` (CONTACT/MARK_RESPONDED/START_QUALIFICATION/QUALIFY/DISPOSITION) |
-| Submitted to client | `libs/submittal` `TalentSubmittalRecord.state` | `submitted_to_ats` (+ created/handoff_draft/ready_for_review/confirmed/revoked) | `SubmitTalentToClientService.submitToClient` |
+| Submitted to client | `libs/submittal` `TalentSubmittalRecord.state` | `submitted_to_client` (+ created/handoff_draft/ready_for_review/confirmed/revoked) | `SubmitTalentToClientService.submitToClient` |
 | Interviewing | `libs/client-selection` `ClientSelectionProcess.state` | `CLIENT_REVIEW, INTERVIEW` | ClientSelection transition (`client-selection:transition`) |
 | **Selected (HANDOFF BOUNDARY §3.2)** | `libs/client-selection` | `SELECTED` (terminal) | ClientSelection transition; gates `POST /v1/offers` |
 | Offer / Offer accepted | `libs/placement` (offer schema) `Offer.state` | `DRAFT, SENT, NEGOTIATION, ACCEPTED, DECLINED, EXPIRED, RESCINDED` | `POST /v1/offers` + transitions |
@@ -21,7 +21,7 @@ R3) — no compensation/bill field is ever composed except at an explicitly-scop
 
 ## Résumé version (§13/§31) — REUSE, no gap
 - Working (pre-submit): `pipeline.TalentRequisitionResume` keyed `(tenant, talent_record_id, requisition_id)`; current = MAX(selected_at); `PipelineRepository.getCurrentRequisitionResume`. Write scope `pipeline:resume:set`.
-- Submitted evidence (frozen): `submittal.TalentSubmittalRecord.resume_edition_id`, pinned once at `submitted_to_ats`; refusal `SUBMITTAL_RESUME_SELECTION_REQUIRED` — **no latest-résumé fallback**.
+- Submitted evidence (frozen): `submittal.TalentSubmittalRecord.resume_edition_id`, pinned once at `submitted_to_client`; refusal `SUBMITTAL_RESUME_SELECTION_REQUIRED` — **no latest-résumé fallback**.
 - Drawer: pre-submit shows the working selection (editable by recruiter, `pipeline:resume:set`); post-submit shows the frozen submitted version (locked).
 
 ## Client Submittal readiness (§7/§32) — NOT blocked on the Client-Scoped Business Policy program

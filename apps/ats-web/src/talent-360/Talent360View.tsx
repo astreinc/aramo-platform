@@ -24,6 +24,7 @@ import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContact
 import { createNote } from '../activity/activity-api';
 import { createTask, updateTask } from '../task/task-api';
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
+import { submittalEntryHref, entryActionLabel } from '../submittal-workspace/present';
 
 import { getTalent360 } from './talent-360-api';
 import type {
@@ -836,6 +837,18 @@ function Opportunity({
           </div>
           <div className="t360-opp-actions">
             {o.next_action !== null && <ActionButton action={o.next_action} variant="primary" />}
+            {/* SW-5 — the Submittal Workspace entry, shown only when a submittal
+                already exists (authoritative sub-state); the lifecycle label follows
+                the submittal state. No invented "Prepare" affordance where the server
+                has not signalled one (its next_action owns qualification-driven CTAs). */}
+            {o.journey.sub_states.submittal_state !== null && (
+              <Link
+                to={submittalEntryHref(o.journey.talent_record_id, o.requisition_id, o.journey.sub_states.submittal_state)}
+                className="t360-btn--secondary-neutral"
+              >
+                {entryActionLabel(o.journey.sub_states.submittal_state)}
+              </Link>
+            )}
             <Link to={o.open_journey_href} className="t360-btn--secondary-neutral">
               Open journey
             </Link>

@@ -554,7 +554,7 @@ function decideCard(
   // 4) Submittal — only a SUBMITTED (or client-confirmed) submittal advances past the pipeline
   //    columns; a pre-submit submittal (created/handoff_draft/ready_for_review/revoked) does not,
   //    so it falls through to the Pipeline spine below.
-  if (submittal !== null && (submittal.state === 'submitted_to_ats' || submittal.state === 'confirmed')) {
+  if (submittal !== null && (submittal.state === 'submitted_to_client' || submittal.state === 'confirmed')) {
     return { kind: 'active', column: 'submitted', owner: 'submittal', source_object_id: submittal.id, owner_state: submittal.state };
   }
   // 5) Pipeline spine — the active funnel columns; `not_in_consideration` is the canonical

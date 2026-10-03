@@ -212,7 +212,7 @@ export class TalentJourneyReadService {
     if (pStage !== null) {
       stages.push({ stage: pStage, owner: 'pipeline', source_object_id: episode.id, occurred_at: episode.updated_at ?? undefined });
     }
-    if (submittal !== null && submittal.state === 'submitted_to_ats') {
+    if (submittal !== null && submittal.state === 'submitted_to_client') {
       stages.push({ stage: 'SUBMITTED', owner: 'submittal', source_object_id: submittal.id });
     }
     if (selection !== null) {
@@ -307,8 +307,8 @@ function deriveActions(ctx: {
   if (ctx.episode.status === 'qualifying') {
     actions.push({ action: 'Qualify', owner: 'pipeline', command_route: `POST /v1/pipelines/${ctx.episode.id}/actions` });
   }
-  // Submittal Submit to Client — available before the submittal is submitted_to_ats.
-  if (ctx.submittal !== null && ctx.submittal.state !== 'submitted_to_ats') {
+  // Submittal Submit to Client — available before the submittal is submitted_to_client.
+  if (ctx.submittal !== null && ctx.submittal.state !== 'submitted_to_client') {
     actions.push({ action: 'Submit to Client', owner: 'submittal', command_route: `POST /v1/submittals/${ctx.submittal.id}/submit` });
   }
   // Offer creation — ONLY after ClientSelection is SELECTED (the delivered offer

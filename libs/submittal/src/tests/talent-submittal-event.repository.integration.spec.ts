@@ -47,7 +47,7 @@ const SUBMITTAL_EVENT_LOG_MIGRATION_PATH = resolve(
 );
 // M5 PR-8b2 — canonical 5-state rename + cutover migration. Required
 // so the seed helpers + event_payload fixtures can use canonical state
-// names (M4 'draft'/'submitted' → 'created'/'submitted_to_ats').
+// names (M4 'draft'/'submitted' → 'created'/'submitted_to_client').
 const SUBMITTAL_RENAME_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260527000000_rename_submittal_state_canonical/migration.sql',
@@ -64,6 +64,10 @@ const SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK = resolve(
 const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 );
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
@@ -106,6 +110,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         readFileSync(SUBMITTAL_T2P1_MIGRATION_PATH_L8B1_LINK, 'utf8'),
         // TI-1D-D — resume_edition_id snapshot column + trigger rewrite.
         readFileSync(SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION_PATH, 'utf8'),
+        readFileSync(SUBMITTAL_SW2_PROVENANCE_MIGRATION_PATH, 'utf8'),
       ];
 
       client = new PrismaService(url);

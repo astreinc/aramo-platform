@@ -70,7 +70,7 @@ describe('AdvanceStep — engagement override (PART A / A9)', () => {
   it('authorized override: block → prompt → reason → re-submits with engagement_override → advances', async () => {
     withScopes(['engagement:policy:override']);
     getEngagementReadiness.mockResolvedValue(OVERRIDE_READINESS);
-    submitToAts.mockRejectedValueOnce(blockErr).mockResolvedValueOnce({ submittal: { ...SUBMITTAL, state: 'submitted_to_ats' } });
+    submitToAts.mockRejectedValueOnce(blockErr).mockResolvedValueOnce({ submittal: { ...SUBMITTAL, state: 'submitted_to_client' } });
     const onAdvanced = vi.fn();
     render(<AdvanceStep submittal={SUBMITTAL} idempotencyKey="k1" onAdvanced={onAdvanced} />);
 

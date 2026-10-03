@@ -58,6 +58,7 @@ import { AuditSection } from './settings/audit/AuditSection';
 import { DomainVerificationSection } from './settings/sections/DomainVerificationSection';
 import { RolesSection } from './settings/roles/RolesSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
+import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
 import { Talent360View } from './talent-360/Talent360View';
@@ -417,6 +418,21 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <SubmittalWizard />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* SW-5 — the canonical Submittal Workspace for an existing
+                        submittal (contextual; no left-nav item). Reached from the
+                        Requisition / Talent 360 / My Desk entry points; resolves the
+                        submittal from (talent, requisition) internally. */}
+                    <Route
+                      path="talent/:talentId/submittal/:requisitionId/workspace"
+                      element={
+                        <RouteGuard
+                          requireScope="talent:read"
+                          sessionStateOverride={state}
+                        >
+                          <SubmittalWorkspaceView />
                         </RouteGuard>
                       }
                     />

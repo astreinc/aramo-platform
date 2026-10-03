@@ -24,6 +24,7 @@ import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
@@ -148,6 +149,10 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
 const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 );
 // PR-A1c §4 — metering schema required (in-tx UsageEvent INSERT).
 const METERING_INIT_MIGRATION = resolve(
@@ -288,6 +293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_T2P1_MIGRATION,
         SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
         SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
+        SUBMITTAL_SW2_PROVENANCE_MIGRATION,
         METERING_INIT_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
@@ -298,6 +304,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+
+      // SW-1 remediation — provision the Pipeline schema + a live episode so the
+      // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
+      // fix, NOT a bypass/mock of the live-Pipeline invariant).
+      await applyPipelineSchema((s) => setup.query(s), ROOT);
+      await seedLivePipelineEpisode((s, p) => setup.query(s, p), {
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        requisition_id: JOB_ID,
+      });
 
       // Seed the active requisition + the Entrustable examination pinned by
       // the draft submittal we'll create at request time.

@@ -150,7 +150,7 @@ describe('Segment 4c — preset + My-team resolution → id_allowlist → narrow
   it('Submitted·this week → Submittal-event accessor (since ~7d) → allowlist narrows', async () => {
     // Lane 2 / L2-E (SB-5) — the preset is event-sourced from the authoritative
     // Submittal history (the retired Pipeline mirror is gone): distinct talents whose
-    // first submitted_to_ats transition is within the week window.
+    // first submitted_to_client transition is within the week window.
     const submittalEvents = {
       findFirstSubmittedByGrain: vi.fn().mockResolvedValue([
         { talent_id: 't2', requisition_id: 'r1', pipeline_id: 'p2', first_submitted_at: new Date() },

@@ -24,6 +24,7 @@ import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
 
 import { AppModule } from '../app.module.js';
 
+import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 
@@ -148,6 +149,10 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
 const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
+);
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 );
 
 const ISSUER = 'Aramo Core Auth';
@@ -275,6 +280,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_T2P1_MIGRATION,
         SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
         SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
+        SUBMITTAL_SW2_PROVENANCE_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
       ]) {
@@ -284,6 +290,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+
+      // SW-1 remediation — provision the Pipeline schema + a live episode so the
+      // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
+      // fix, NOT a bypass/mock of the live-Pipeline invariant).
+      await applyPipelineSchema((s) => setup.query(s), ROOT);
+      await seedLivePipelineEpisode((s, p) => setup.query(s, p), {
+        tenant_id: TENANT_ID,
+        talent_record_id: TALENT_ID,
+        requisition_id: JOB_ID,
+      });
 
       // Seed an active requisition + an Entrustable examination so the
       // builder happy-path completes.
@@ -453,6 +469,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       };
       expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
       expect(body.error?.details?.missing_scopes).toEqual(['submittal:create']);
+    });
+
+    // SW-1 HTTP regression (full-stack) — POST /v1/submittals derives the Pipeline
+    // link server-side and REFUSES without a live episode. findLiveEpisode runs before
+    // the examination/create step, so a (talent, requisition) with no live Pipeline
+    // refuses 409 regardless of the rest of the body.
+    it('SW-1 — POST /v1/submittals refuses 409 SUBMITTAL_NO_LIVE_PIPELINE_EPISODE without a live Pipeline episode', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterJwt}`, 'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...VALID_BODY, job_id: '00000000-0000-7000-8000-00000000dead' }),
+      });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('SUBMITTAL_NO_LIVE_PIPELINE_EPISODE');
+    });
+
+    it('SW-1 — POST /v1/submittals with a live Pipeline episode → 201 and a server-derived pipeline_id', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterJwt}`, 'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(VALID_BODY),
+      });
+      // Create SUCCEEDS only because a live Pipeline episode exists for this
+      // (talent, requisition) — the same request 409s without one (test above). The
+      // link is derived server-side (SubmittalRepository.submittal_created logs the
+      // derived pipeline); the create envelope returns { submittal }.
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { submittal?: { id?: string } };
+      expect(body.submittal?.id).toBeTruthy();
     });
   },
 );

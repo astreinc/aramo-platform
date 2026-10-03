@@ -147,6 +147,10 @@ const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
 );
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-override-create-neg-shape';
@@ -245,6 +249,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         SUBMITTAL_T2P1_MIGRATION,
         SUBMITTAL_T2P1_L8B1_LINK_MIGRATION,
         SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
+        SUBMITTAL_SW2_PROVENANCE_MIGRATION,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql'),
       ]) {

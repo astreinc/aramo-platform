@@ -554,6 +554,26 @@ function DeskAction({
       </Link>
     );
   }
+  // SW-5 (§9.4) — Submittal / RTR work items open the Submittal Workspace (RTR
+  // deep-links to its requirement via a presentation-only focus hint; readiness
+  // stays authoritative). The server still decides WHETHER to surface the action
+  // (primary_action presence) and supplies the label; only the destination is
+  // re-pointed to the canonical workspace.
+  if (
+    (item.kind === 'submittal' || item.kind === 'rtr') &&
+    item.talent_id !== null &&
+    item.requisition_id !== null
+  ) {
+    const focus = item.kind === 'rtr' ? '?focus=rtr' : '';
+    return (
+      <Link
+        to={`/talent/${item.talent_id}/submittal/${item.requisition_id}/workspace${focus}`}
+        className="rc-link-action rc-desk-cta"
+      >
+        {action.label}
+      </Link>
+    );
+  }
   if (action.href !== null) {
     return (
       <Link to={action.href} className="rc-link-action">

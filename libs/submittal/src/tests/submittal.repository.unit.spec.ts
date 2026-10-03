@@ -247,7 +247,7 @@ const ENT_EXAM_ID = '11110000-0000-7000-8000-0000000e0001';
 // Helper named for legacy reasons; under M5 PR-8b2 the "draft" baseline
 // is the canonical 'created' lifecycle-start state. Tests pass override
 // to walk further down the chain (handoff_draft, ready_for_review,
-// submitted_to_ats, confirmed, revoked).
+// submitted_to_client, confirmed, revoked).
 function makeStoredDraft(overrides: Record<string, unknown> = {}): unknown {
   return {
     id: SUBMITTAL_ID,
@@ -331,7 +331,7 @@ describe('SubmittalRepository.confirmSubmittal (unit)', () => {
     };
     expect(updateArg.data.state).toBe('handoff_draft');
     // M5 PR-8b2 Ruling 6: confirmed_at NOT populated at this transition;
-    // moves to /submit-to-ats (ready_for_review -> submitted_to_ats).
+    // moves to /submit-to-ats (ready_for_review -> submitted_to_client).
     expect(updateArg.data).not.toHaveProperty('confirmed_at');
     expect(updateArg.where.id).toBe(SUBMITTAL_ID);
     expect(updateArg.where.tenant_id).toBe(TENANT_A);
@@ -577,10 +577,10 @@ const REVOKER_ID = '00000000-0000-7000-8000-000000000bb2';
 const REVOKE_JUSTIFICATION = 'Position frozen by hiring manager; revoking.';
 
 describe('SubmittalRepository.revokeSubmittal (unit)', () => {
-  it('1. successful revoke from submitted_to_ats: state transitions to revoked, revoke metadata stamped (M5 PR-8b2 rename)', async () => {
+  it('1. successful revoke from submitted_to_client: state transitions to revoked, revoke metadata stamped (M5 PR-8b2 rename)', async () => {
     const { repo, update } = buildRevokeMocks({
       findFirstResult: makeStoredDraft({
-        state: 'submitted_to_ats',
+        state: 'submitted_to_client',
         confirmed_at: new Date('2026-05-23T13:00:00Z'),
       }),
     });
@@ -636,7 +636,7 @@ describe('SubmittalRepository.revokeSubmittal (unit)', () => {
   it('3. state=confirmed (terminal) → REVOKE_NOT_ALLOWED 422 (M5 PR-8b2 Ruling 5)', async () => {
     // M5 PR-8b2 Q3 expansion + Ruling 5: revoke is legal from any
     // non-terminal state (`created`, `handoff_draft`,
-    // `ready_for_review`, `submitted_to_ats`). It is REFUSED from the
+    // `ready_for_review`, `submitted_to_client`). It is REFUSED from the
     // 2 terminal states `confirmed` and `revoked`. M4's revoke-from-
     // draft refusal flips to a legal sibling-revoke success
     // post-rename; the new refusal target is the `confirmed` terminal

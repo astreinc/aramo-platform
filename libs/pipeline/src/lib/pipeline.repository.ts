@@ -1091,6 +1091,35 @@ export class PipelineRepository {
     return row === null ? null : projectView(row as PipelineRow);
   }
 
+  // SW-1 (Submittal Workspace, R1-A) — resolve THE sole live Pipeline episode for a
+  // (tenant, talent, requisition) triple using the canonical live/terminal
+  // semantics. The predicate is the SAME `status NOT IN TERMINAL_STATUSES` the
+  // one-live-episode guard in create() (above) uses, which the
+  // `Pipeline_live_episode_key` partial unique index enforces as the race floor —
+  // so at most one row can match and a non-null result IS that guaranteed-unique
+  // live episode. `voided` is a canonical terminal (TERMINAL_STATUSES), so a voided
+  // episode is correctly NOT live here. Returns null when no live episode exists
+  // (none created, or every episode for the triple has reached a terminal status).
+  //
+  // This is the authoritative Pipeline-domain reader the apps/api create-submittal
+  // orchestration composes to derive the submittal's pipeline_id server-side; the
+  // HTTP caller never supplies a pipeline_id.
+  async findLiveEpisode(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    requisition_id: string;
+  }): Promise<PipelineView | null> {
+    const row = await this.prisma.pipeline.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        status: { notIn: [...TERMINAL_STATUSES] },
+      },
+    });
+    return row === null ? null : projectView(row as PipelineRow);
+  }
+
   // AUTHZ-D4b — visibility-scoped read paths. Pipeline inherits its
   // requisition's visibility — the cascade filters on
   // `requisition_id IN visible_requisition_ids`. The visible

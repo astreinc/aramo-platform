@@ -1575,6 +1575,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql"
     },
     {
@@ -2941,6 +2947,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
       "status": "excluded",
       "to": "libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql"
@@ -3405,6 +3417,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/conversation-started.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -3568,6 +3586,12 @@
       "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -4833,6 +4857,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/outreach-send-consent-revoked.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -5001,6 +5031,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/outreach-send.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -5164,6 +5200,12 @@
       "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/outreach-send.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -5326,6 +5368,12 @@
       "from": "apps/api/src/tests/override-create.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/override-create.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6519,6 +6567,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/response-received.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/response-received.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -6682,6 +6736,12 @@
       "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/response-received.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6897,6 +6957,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -7060,6 +7126,12 @@
       "from": "apps/api/src/tests/selection-transition.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/selection-transition.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -7246,6 +7318,12 @@
       "from": "apps/api/src/tests/selection.controller.integration.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/selection.controller.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -7855,6 +7933,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -7995,6 +8079,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -8151,6 +8241,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-create.negative-shape.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-create.negative-shape.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -8307,6 +8403,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-evidence-package.negative-shape.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-evidence-package.negative-shape.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -8458,6 +8560,12 @@
       "from": "apps/api/src/tests/submittal-get.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-get.negative-shape.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -8631,6 +8739,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
       "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
+      "status": "excluded",
       "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
     },
     {
@@ -8665,9 +8779,93 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submittal-workspace.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/support/establish-open-requisition.ts",
       "status": "excluded",
       "to": "tools/seed-e2e-data.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260602150000_init_pipeline_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260807100000_e6_pipeline_live_episode_unique/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260827120000_l2a_pipeline_version_column/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828100000_l2b_pipeline_history_append_only/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828110000_l2b_pipeline_ended_at_nullable_status_from/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828120000_l2b_pipeline_outbox_event/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828130000_l2c_pipeline_qualified_completed_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828140000_l2c_pipeline_live_episode_recreate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828150000_l2c_pipeline_disposition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260828160000_l2d_pipeline_entry_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sw1-live-pipeline.fixture.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9652,6 +9850,12 @@
       "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
       "status": "excluded",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11574,6 +11778,16 @@
       "to": "libs/settings/src/lib/known-settings.ts"
     },
     {
+      "from": "apps/ats-web/src/submittal-workspace/submittal-workspace-types.ts",
+      "status": "production",
+      "to": "apps/api/src/submit-talent/submit-talent.service.ts"
+    },
+    {
+      "from": "apps/ats-web/src/submittal-workspace/submittal-workspace-types.ts",
+      "status": "production",
+      "to": "apps/api/src/submittal-workspace/submittal-workspace.view.ts"
+    },
+    {
       "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/submittals/submittal-state-drift.spec.ts",
       "status": "excluded",
@@ -11953,6 +12167,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/create-submittal/create-submittal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
     },
     {
@@ -12044,6 +12263,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/submit-talent/submit-talent.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/submittal-workspace/submittal-workspace.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -17631,6 +17855,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-sw1-find-live-episode.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-sw1-find-live-episode.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-sw1-find-live-episode.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/pipeline/src/tests/pipeline-sw1-find-live-episode.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/pipeline/src/tests/pipeline-void-correction.integration.spec.ts",
       "status": "excluded",
       "to": "libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql"
@@ -18210,11 +18458,6 @@
       "from": "libs/submittal/src/lib/prisma/prisma.service.ts",
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
-    },
-    {
-      "from": "libs/submittal/src/lib/submittal.controller.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -19463,6 +19706,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

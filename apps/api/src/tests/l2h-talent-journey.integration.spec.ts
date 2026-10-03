@@ -179,7 +179,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
       await seedOffer(tenant, sub, req, talent, 'ACCEPTED', null);
 
       const j = await call(tenant, pipe);
@@ -198,7 +198,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified'); // most-advanced Pipeline-owned status
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
       await seedOffer(tenant, sub, req, talent, 'ACCEPTED', null);
       const placement = await seedPlacement(tenant, sub, req, talent, 'STARTED');
 
@@ -223,7 +223,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
       await seedPlacement(tenant, sub, req, talent, 'PRE_START');
 
       const j = await call(tenant, pipe);
@@ -238,7 +238,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
 
       const j = await call(tenant, pipe);
       const submitted = j.stages.find((s) => s.stage === 'SUBMITTED');
@@ -260,7 +260,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Interview present.
       const t1 = randomUUID(); const talent1 = randomUUID(); const r1 = randomUUID();
       const p1 = await seedPipeline(t1, r1, talent1, 'qualified');
-      const s1 = await seedSubmittal(t1, talent1, r1, 'submitted_to_ats');
+      const s1 = await seedSubmittal(t1, talent1, r1, 'submitted_to_client');
       const proc1 = await seedSelection(t1, s1, r1, talent1, 'INTERVIEW');
       await seedInterview(t1, proc1, r1, talent1, 'COMPLETED');
       const j1 = await call(t1, p1);
@@ -273,7 +273,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // DECLINED process → CLIENT_DECLINED stage (owner-sourced).
       const t2 = randomUUID(); const talent2 = randomUUID(); const r2 = randomUUID();
       const p2 = await seedPipeline(t2, r2, talent2, 'qualified');
-      const s2 = await seedSubmittal(t2, talent2, r2, 'submitted_to_ats');
+      const s2 = await seedSubmittal(t2, talent2, r2, 'submitted_to_client');
       await seedSelection(t2, s2, r2, talent2, 'DECLINED');
       const j2 = await call(t2, p2);
       expect(j2.stages.some((s) => s.stage === 'CLIENT_DECLINED' && s.owner === 'client-selection')).toBe(true);
@@ -306,7 +306,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
       await seedOffer(tenant, sub, req, talent, 'SENT', 'CONFIDENTIAL $250k base + equity'); // commercial field seeded
 
       const j = await call(tenant, pipe);
@@ -325,7 +325,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID(); const talent = randomUUID();
       const req = randomUUID();
       const pipe = await seedPipeline(tenant, req, talent, 'qualified');
-      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_ats');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
       await seedSelection(tenant, sub, req, talent, 'INTERVIEW');
       await seedOffer(tenant, sub, req, talent, 'ACCEPTED', null);
       await seedPlacement(tenant, sub, req, talent, 'STARTED');

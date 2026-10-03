@@ -868,7 +868,7 @@ paths:
         M5 PR-8b2 rename: M4's 'draft -> submitted with confirmed_at
         stamp' semantic becomes canonical 'created -> handoff_draft'
         (no confirmed_at change here per Ruling 6 — confirmed_at moves
-        to the ready_for_review -> submitted_to_ats transition via
+        to the ready_for_review -> submitted_to_client transition via
         the new /submit-to-ats endpoint).
 
         Refusal codes (closed list at PR-4 + M5 PR-8b2):
@@ -949,7 +949,7 @@ paths:
       description: |
         Transitions a TalentSubmittalRecord from any non-terminal
         state (`created`, `handoff_draft`, `ready_for_review`,
-        `submitted_to_ats`) to `revoked` and stamps `revoked_at` /
+        `submitted_to_client`) to `revoked` and stamps `revoked_at` /
         `revoked_by` / `revocation_justification` atomically. The
         response carries the LOCKED invariant
         `evidence_package_mutated: false` — every successful revoke
@@ -1097,17 +1097,117 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}/submit-to-client:
+    post:
+      operationId: submitToClient
+      summary: Submit Talent to client (SW-2 canonical; ready_for_review -> submitted_to_client).
+      description: |
+        The CANONICAL client-submittal command. Fires the mainline transition
+        ready_for_review -> submitted_to_client and FREEZES the immutable V1 submittal
+        provenance (submitted_by_actor_id, submitted_at, delivery_channel, the
+        client-facing bill-rate snapshot when the requisition carries one, and the
+        optional external reference/timestamp) alongside the frozen résumé edition.
+        `submitted_to_client` is the authoritative business fact; delivery_channel and
+        the external reference are provenance OF that fact.
+
+        delivery_channel records HOW the client handoff ACTUALLY happened — a DISTINCT
+        axis from the requisition's SubmittalAuthority EXPECTATION. V1 has no outbound
+        connector, so `aramo_connector` is refused; a CLIENT_VMS requisition requires
+        `manual_vms`.
+
+        Response wraps { submittal, event }.
+
+        Refusal codes (closed list):
+          - 422 SUBMITTAL_STATE_INVALID — submittal not in state='ready_for_review'.
+          - 422 SUBMITTAL_DELIVERY_CHANNEL_INVALID — unknown / not-executable /
+            authority-mismatched delivery_channel.
+          - 409 SUBMITTAL_PIPELINE_LINK_INVALID / REQUISITION_NOT_OPEN /
+            SUBMITTAL_LIMIT_REACHED.
+          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different body.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 VALIDATION_ERROR — submittal_id not a UUID, or Idempotency-Key missing/malformed.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery_channel:
+                  type:
+                    - string
+                    - 'null'
+                  enum:
+                    - manual_vms
+                    - manual_client_portal
+                    - manual_email
+                    - manual_other
+                    - aramo_connector
+                    - null
+                  description: >-
+                    How the client handoff ACTUALLY happened (provenance). aramo_connector
+                    is forward-compat only and is refused in V1 (no outbound connector).
+                external_reference:
+                  type:
+                    - string
+                    - 'null'
+                external_submitted_at:
+                  type:
+                    - string
+                    - 'null'
+                  format: date-time
+      responses:
+        '200':
+          description: Talent submitted to client; state transitioned to `submitted_to_client`; provenance frozen.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/SubmitToAtsResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Pipeline-link / requisition-state / slot / idempotency conflict.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+
   /v1/submittals/{submittal_id}/submit-to-ats:
     post:
       operationId: submitToAts
-      summary: Submit to ATS (M5 PR-8b2; ready_for_review -> submitted_to_ats; populates confirmed_at).
+      deprecated: true
+      summary: '[DEPRECATED alias of submit-to-client] ready_for_review -> submitted_to_client; populates confirmed_at.'
       description: |
         Fires the canonical mainline transition ready_for_review ->
-        submitted_to_ats (M5 PR-8b2 F37 closure; transition 3 of 4).
+        submitted_to_client (M5 PR-8b2 F37 closure; transition 3 of 4).
         Per Ruling 6 this transition populates `confirmed_at`
         NULL -> non-NULL (preserves M4 confirmed_at column semantic
         post-rename; M4's 'draft -> submitted with confirmed_at'
-        becomes canonical 'ready_for_review -> submitted_to_ats with
+        becomes canonical 'ready_for_review -> submitted_to_client with
         confirmed_at'). Per Ruling 13 request body is empty.
 
         Response wraps { submittal, event } per Ruling 14.
@@ -1143,7 +1243,7 @@ paths:
               $ref: 'common.yaml#/components/schemas/SubmitToAtsRequest'
       responses:
         '200':
-          description: Submittal submitted to ATS; state transitioned to `submitted_to_ats`; confirmed_at populated.
+          description: Submittal submitted to ATS; state transitioned to `submitted_to_client`; confirmed_at populated.
           content:
             application/json:
               schema:
@@ -1170,9 +1270,9 @@ paths:
   /v1/submittals/{submittal_id}/confirm-ats:
     post:
       operationId: confirmAts
-      summary: Confirm ATS submission (M5 PR-8b2; submitted_to_ats -> confirmed; lifecycle terminal).
+      summary: Confirm ATS submission (M5 PR-8b2; submitted_to_client -> confirmed; lifecycle terminal).
       description: |
-        Fires the canonical mainline transition submitted_to_ats ->
+        Fires the canonical mainline transition submitted_to_client ->
         confirmed (M5 PR-8b2 F37 closure; transition 4 of 4;
         lifecycle terminal). Per Ruling 5 `confirmed` is fully
         terminal -- not even sibling-revoke applies post-confirm.
@@ -1184,7 +1284,7 @@ paths:
 
         Refusal codes (closed list):
           - 422 SUBMITTAL_STATE_INVALID — submittal is not in
-            state='submitted_to_ats' (canTransition guard refusal).
+            state='submitted_to_client' (canTransition guard refusal).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
             different request body.
           - 404 NOT_FOUND — submittal_id not found for the JWT's
@@ -1265,6 +1365,314 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/TalentSubmittalRecord'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/workspace:
+    get:
+      operationId: getSubmittalWorkspace
+      summary: Submittal Workspace read projection (SW-4).
+      description: |
+        The submittal-centric recruiter workspace READ composition. One
+        tenant- + visibility-scoped payload composed from existing authoritative
+        sources (submittal, pipeline, requisition, company, talent, documents/RTR,
+        engagement, client-submittal policy, commercial, delivery provenance,
+        ClientSelection). Read-only: no mutation, no new authority, nothing
+        persisted. `readiness` is the unified SW-3 authority; `commercial` is present
+        ONLY when the caller holds the compensation bill-rate scope (field-level
+        authorization). Absent/optional domains are explicit null.
+
+        Refusal codes (closed list):
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant, or its
+            requisition is outside the caller's visible set (concealed).
+          - 403 INSUFFICIENT_PERMISSIONS / entitlement — missing talent:read / ats.
+          - 400 VALIDATION_ERROR — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The composed Submittal Workspace view.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - identity
+                  - context
+                  - pipeline
+                  - submittal
+                  - readiness
+                  - documents
+                  - engagement
+                  - delivery
+                  - client_selection
+                  - actions
+                properties:
+                  identity:
+                    type: object
+                    additionalProperties: false
+                    required: [submittal_id, talent, requisition, company]
+                    properties:
+                      submittal_id: { type: string, format: uuid }
+                      talent:
+                        type: object
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      requisition:
+                        type: object
+                        additionalProperties: false
+                        required: [id, title]
+                        properties:
+                          id: { type: string, format: uuid }
+                          title: { type: [string, 'null'] }
+                      company:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                  context:
+                    type: object
+                    additionalProperties: false
+                    required: [recruiter, owner, talent_location, talent_title, work_authorization]
+                    properties:
+                      recruiter:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      owner:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      talent_location: { type: [string, 'null'] }
+                      talent_title: { type: [string, 'null'] }
+                      work_authorization: { type: [string, 'null'] }
+                  pipeline:
+                    type: object
+                    additionalProperties: false
+                    required: [linked_episode_id, current_stage, is_live]
+                    properties:
+                      linked_episode_id: { type: [string, 'null'], format: uuid }
+                      current_stage: { type: [string, 'null'] }
+                      is_live: { type: boolean }
+                  submittal:
+                    type: object
+                    additionalProperties: false
+                    required: [state, created_at, created_by, confirmed_at, revoked_at, resume_edition_id]
+                    properties:
+                      state: { type: string }
+                      created_at: { type: [string, 'null'], format: date-time }
+                      created_by: { type: [string, 'null'] }
+                      confirmed_at: { type: [string, 'null'], format: date-time }
+                      revoked_at: { type: [string, 'null'], format: date-time }
+                      resume_edition_id: { type: [string, 'null'], format: uuid }
+                  readiness:
+                    type: object
+                    additionalProperties: false
+                    required: [status, requirements]
+                    properties:
+                      status:
+                        type: string
+                        enum: [READY, NEEDS_ACTION, BLOCKED]
+                      requirements:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required:
+                            - key
+                            - label
+                            - required
+                            - satisfied
+                            - severity
+                            - source
+                            - reason
+                            - remediation
+                            - deny_code
+                          properties:
+                            key:
+                              type: string
+                              enum:
+                                - submittal_state
+                                - pipeline_link
+                                - requisition_open
+                                - resume_selected
+                                - submittal_window
+                                - client_restriction
+                                - engagement
+                                - rtr
+                                - client_policy
+                            label: { type: string }
+                            required: { type: boolean }
+                            satisfied: { type: boolean }
+                            severity:
+                              type: string
+                              enum: [blocking, overridable, info]
+                            source:
+                              type: string
+                              enum:
+                                - submittal
+                                - pipeline
+                                - requisition
+                                - documents
+                                - submittal_policy
+                                - client_talent_restriction
+                                - engagement
+                                - client_submittal_policy
+                            reason: { type: [string, 'null'] }
+                            remediation: { type: [string, 'null'] }
+                            deny_code: { type: [string, 'null'] }
+                  documents:
+                    type: object
+                    additionalProperties: false
+                    required: [rtr_satisfied, rtr_deny, resume_selected]
+                    properties:
+                      rtr_satisfied: { type: boolean }
+                      rtr_deny: { type: [string, 'null'] }
+                      resume_selected: { type: boolean }
+                  engagement:
+                    type: object
+                    additionalProperties: false
+                    required: [governed, policy_present, satisfied, unavailable]
+                    properties:
+                      governed: { type: boolean }
+                      policy_present: { type: boolean }
+                      satisfied: { type: boolean }
+                      unavailable: { type: boolean }
+                  commercial:
+                    description: Present only with compensation visibility; null otherwise.
+                    type: [object, 'null']
+                    additionalProperties: false
+                    required:
+                      - live_bill_rate_amount
+                      - live_bill_rate_currency
+                      - live_bill_rate_period
+                      - submitted_bill_rate
+                      - submitted_rate_currency
+                      - submitted_rate_period
+                    properties:
+                      live_bill_rate_amount: { type: [string, 'null'] }
+                      live_bill_rate_currency: { type: [string, 'null'] }
+                      live_bill_rate_period: { type: [string, 'null'] }
+                      submitted_bill_rate: { type: [string, 'null'] }
+                      submitted_rate_currency: { type: [string, 'null'] }
+                      submitted_rate_period: { type: [string, 'null'] }
+                  delivery:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - delivery_channel
+                      - external_reference
+                      - external_submitted_at
+                      - submitted_at
+                      - submitted_by_actor_id
+                    properties:
+                      delivery_channel: { type: [string, 'null'] }
+                      external_reference: { type: [string, 'null'] }
+                      external_submitted_at: { type: [string, 'null'], format: date-time }
+                      submitted_at: { type: [string, 'null'], format: date-time }
+                      submitted_by_actor_id: { type: [string, 'null'] }
+                  client_selection:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - present
+                      - process_id
+                      - version
+                      - opened_at
+                      - state
+                      - latest_interview
+                      - feedback
+                      - available_actions
+                    properties:
+                      present: { type: boolean }
+                      process_id: { type: [string, 'null'], format: uuid }
+                      version: { type: [integer, 'null'] }
+                      opened_at: { type: [string, 'null'], format: date-time }
+                      state: { type: [string, 'null'] }
+                      latest_interview:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, round, state, scheduled_at]
+                        properties:
+                          id: { type: string, format: uuid }
+                          round: { type: integer }
+                          state: { type: string }
+                          scheduled_at: { type: [string, 'null'], format: date-time }
+                      feedback:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [at, to_state, reason_code, note]
+                          properties:
+                            at: { type: string, format: date-time }
+                            to_state: { type: [string, 'null'] }
+                            reason_code: { type: [string, 'null'] }
+                            note: { type: [string, 'null'] }
+                      available_actions:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - can_move_to_interview
+                          - can_mark_selected
+                          - can_decline
+                          - can_withdraw
+                          - can_schedule_interview
+                        properties:
+                          can_move_to_interview: { type: boolean }
+                          can_mark_selected: { type: boolean }
+                          can_decline: { type: boolean }
+                          can_withdraw: { type: boolean }
+                          can_schedule_interview: { type: boolean }
+                  actions:
+                    type: object
+                    additionalProperties: false
+                    description: >
+                      Action availability — each flag projects an authority that
+                      already exists (no generic action framework).
+                    required:
+                      - can_submit_to_client
+                      - submit_authority
+                      - can_revoke
+                    properties:
+                      can_submit_to_client:
+                        type: boolean
+                        description: >
+                          Server-owned final CTA authority (SW-5/D-6): readiness READY
+                          AND the caller holds submit authority (submittal:approve +
+                          recruiter). The FE renders the primary CTA iff this is true.
+                      submit_authority:
+                        type: boolean
+                        description: >
+                          Diagnostic: the caller holds submit authority, independent of
+                          readiness (lets the FE show a ready-but-view-only note).
+                      can_revoke:
+                        type: boolean
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':

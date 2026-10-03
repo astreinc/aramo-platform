@@ -209,7 +209,7 @@ export function TalentJourneySection({
                 ? 'Interview'
                 : selectionState != null
                   ? 'Client review'
-                  : submittalState === 'submitted_to_ats'
+                  : submittalState === 'submitted_to_client'
                     ? 'Submitted'
                     : 'Preparing submittal'}
             </span>

@@ -77,9 +77,27 @@ enum SubmittalState {
   created
   handoff_draft
   ready_for_review
-  submitted_to_ats
+  // SW-2 (R2-A) — canonical send state. Renamed in place from the former
+  // `submitted_to_ats` via ALTER TYPE ... RENAME VALUE (20261002120000); the HTTP
+  // /submit-to-ats route is retained as a compatibility alias, but the domain fact
+  // is `submitted_to_client`.
+  submitted_to_client
   confirmed
   revoked
+
+  @@schema("submittal")
+}
+
+// SW-2 (R4-B) — the ACTUAL delivery channel for a specific submittal (provenance),
+// a DISTINCT axis from the requisition-grain SubmittalAuthority EXPECTATION. Manual
+// channels are the V1 reality; `aramo_connector` exists for forward-compat only (no
+// outbound connector exists in V1 — the submit command refuses it).
+enum SubmittalDeliveryChannel {
+  manual_vms
+  manual_client_portal
+  manual_email
+  manual_other
+  aramo_connector
 
   @@schema("submittal")
 }
@@ -159,6 +177,27 @@ model TalentSubmittalRecord {
   // name unchanged for migration safety + historical-data continuity).
   created_at   DateTime  @default(now()) @db.Timestamptz
   confirmed_at DateTime? @db.Timestamptz
+
+  // SW-2 (R4-A) — immutable V1 submittal provenance. All nullable pre-send; pinned
+  // ONCE at the ready_for_review -> submitted_to_client send transition and frozen
+  // thereafter by submittal.reject_submittal_record_update. These answer WHO
+  // submitted / WHEN / HOW / at WHAT client-facing rate, independent of later edits
+  // to the live requisition. NOTE: confirmed_at (above) is the overloaded M4 column
+  // the send ALSO populates; submitted_at is the canonical submit timestamp. The
+  // overlap is preserved (not re-pointed) this slice.
+  submitted_at          DateTime?                 @db.Timestamptz
+  submitted_by_actor_id String?                   @db.Uuid
+  // What ACTUALLY happened for this submittal (R4-B). Distinct from the
+  // requisition-grain SubmittalAuthority EXPECTATION. Nullable until captured.
+  delivery_channel      SubmittalDeliveryChannel?
+  // Frozen client-facing commercial snapshot (when the requisition carries a bill
+  // rate at send) — historical truth, NEVER a second editable commercial authority.
+  submitted_bill_rate     Decimal? @db.Decimal(12, 2)
+  submitted_rate_currency String?
+  submitted_rate_period   String?
+  // External-system provenance for a manually-recorded client handoff (nullable).
+  external_reference    String?
+  external_submitted_at DateTime?                 @db.Timestamptz
 
   // M4 PR-7 §4.1 — revoke metadata. Populated atomically with any-state
   // to revoked transition via the submittal-revoke endpoint (per M5

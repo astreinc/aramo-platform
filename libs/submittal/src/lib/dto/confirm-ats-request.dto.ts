@@ -6,7 +6,7 @@ import type { TalentSubmittalRecordView } from './talent-submittal-record.view.j
 // M5 PR-8b2 §4.6 — HTTP request/response DTOs for POST
 // /v1/submittals/{submittal_id}/confirm-ats.
 //
-// Fires the canonical mainline transition submitted_to_ats -> confirmed
+// Fires the canonical mainline transition submitted_to_client -> confirmed
 // (mainline transition 4; lifecycle terminal). `confirmed` is a fully
 // terminal state -- no outgoing transitions (Ruling 5: not even sibling-
 // revoke applies once ATS confirms).

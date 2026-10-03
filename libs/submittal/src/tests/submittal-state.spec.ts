@@ -27,7 +27,7 @@ const EXPECTED_VALUES: ReadonlyArray<SubmittalStateValue> = [
   'created',
   'handoff_draft',
   'ready_for_review',
-  'submitted_to_ats',
+  'submitted_to_client',
   'confirmed',
   'revoked',
 ];
@@ -36,13 +36,13 @@ const LEGAL_TRANSITIONS: ReadonlyArray<[SubmittalStateValue, SubmittalStateValue
   // Mainline (4 transitions)
   ['created', 'handoff_draft'],
   ['handoff_draft', 'ready_for_review'],
-  ['ready_for_review', 'submitted_to_ats'],
-  ['submitted_to_ats', 'confirmed'],
+  ['ready_for_review', 'submitted_to_client'],
+  ['submitted_to_client', 'confirmed'],
   // Sibling-revoke (4 transitions; Q3 + Ruling 5)
   ['created', 'revoked'],
   ['handoff_draft', 'revoked'],
   ['ready_for_review', 'revoked'],
-  ['submitted_to_ats', 'revoked'],
+  ['submitted_to_client', 'revoked'],
 ];
 
 const TERMINAL_STATES: ReadonlyArray<SubmittalStateValue> = ['confirmed', 'revoked'];
@@ -68,7 +68,7 @@ describe('SUBMITTAL_STATE_VALUES — M5 PR-8b2 canonical 5-state', () => {
     expect(SUBMITTAL_STATE_VALUES).toContain('created');
     expect(SUBMITTAL_STATE_VALUES).toContain('handoff_draft');
     expect(SUBMITTAL_STATE_VALUES).toContain('ready_for_review');
-    expect(SUBMITTAL_STATE_VALUES).toContain('submitted_to_ats');
+    expect(SUBMITTAL_STATE_VALUES).toContain('submitted_to_client');
     expect(SUBMITTAL_STATE_VALUES).toContain('confirmed');
     expect(SUBMITTAL_STATE_VALUES).toContain('revoked');
   });
@@ -83,15 +83,15 @@ describe('canTransition — canonical 5-state matrix (8 legal moves)', () => {
   it('accepts the 4 mainline transitions in chain order', () => {
     expect(canTransition('created', 'handoff_draft')).toBe(true);
     expect(canTransition('handoff_draft', 'ready_for_review')).toBe(true);
-    expect(canTransition('ready_for_review', 'submitted_to_ats')).toBe(true);
-    expect(canTransition('submitted_to_ats', 'confirmed')).toBe(true);
+    expect(canTransition('ready_for_review', 'submitted_to_client')).toBe(true);
+    expect(canTransition('submitted_to_client', 'confirmed')).toBe(true);
   });
 
   it('accepts the 4 sibling-revoke transitions (Q3 + Ruling 5)', () => {
     expect(canTransition('created', 'revoked')).toBe(true);
     expect(canTransition('handoff_draft', 'revoked')).toBe(true);
     expect(canTransition('ready_for_review', 'revoked')).toBe(true);
-    expect(canTransition('submitted_to_ats', 'revoked')).toBe(true);
+    expect(canTransition('submitted_to_client', 'revoked')).toBe(true);
   });
 
   it('accepts all 8 LEGAL_TRANSITIONS pairs', () => {
@@ -136,9 +136,9 @@ describe('canTransition — canonical 5-state matrix (8 legal moves)', () => {
 
   it('rejects skip-ahead mainline transitions (no jumping over states)', () => {
     expect(canTransition('created', 'ready_for_review')).toBe(false);
-    expect(canTransition('created', 'submitted_to_ats')).toBe(false);
+    expect(canTransition('created', 'submitted_to_client')).toBe(false);
     expect(canTransition('created', 'confirmed')).toBe(false);
-    expect(canTransition('handoff_draft', 'submitted_to_ats')).toBe(false);
+    expect(canTransition('handoff_draft', 'submitted_to_client')).toBe(false);
     expect(canTransition('handoff_draft', 'confirmed')).toBe(false);
     expect(canTransition('ready_for_review', 'confirmed')).toBe(false);
   });
@@ -146,8 +146,8 @@ describe('canTransition — canonical 5-state matrix (8 legal moves)', () => {
   it('rejects backward mainline transitions (no rewinding)', () => {
     expect(canTransition('handoff_draft', 'created')).toBe(false);
     expect(canTransition('ready_for_review', 'handoff_draft')).toBe(false);
-    expect(canTransition('submitted_to_ats', 'ready_for_review')).toBe(false);
-    expect(canTransition('confirmed', 'submitted_to_ats')).toBe(false);
+    expect(canTransition('submitted_to_client', 'ready_for_review')).toBe(false);
+    expect(canTransition('confirmed', 'submitted_to_client')).toBe(false);
   });
 
   it('rejects sibling-revoke from confirmed (Ruling 5 terminal)', () => {
