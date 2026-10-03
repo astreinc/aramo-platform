@@ -556,6 +556,7 @@
     "apps/api/src/tests/submittal-evidence-package.negative-shape.spec.ts",
     "apps/api/src/tests/submittal-get.negative-shape.spec.ts",
     "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
+    "apps/api/src/tests/submittal-workspace.http.integration.spec.ts",
     "apps/api/src/tests/submittal-workspace.integration.spec.ts",
     "apps/api/src/tests/submittal-workspace.unit.spec.ts",
     "apps/api/src/tests/support/establish-open-requisition.ts",

@@ -2144,6 +2144,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/test-auth-harness.ts",
         "project": "api",
         "status": "excluded"
@@ -3653,6 +3659,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
