@@ -13,7 +13,8 @@
 #
 # Options (env):
 #   SKIP_BUILD=1   reuse the existing dist/ (skip the nx build — faster restarts)
-#   SKIP_SEED=1    skip the identity catalog seed
+#   SKIP_SEED=1    skip ALL seeds (identity catalog + tenant provisioning +
+#                  policy-lifecycle + entitlements)
 #
 # The apps run as plain background processes (the established build+link pattern,
 # NOT containers); pids + logs live under .local-stack/ (gitignored).
@@ -65,32 +66,58 @@ stop_app() { # name
 cmd_up() {
   command -v docker >/dev/null || die "docker not found (needed for Postgres + Redis)"
   load_env
+  # The canonical local tenant (mirrors deploy/seed-prod.sh:82). Overridable.
+  ASTRE_TENANT_ID="${ARAMO_ASTRE_TENANT_ID:-019000a0-0000-7000-8000-000000000001}"
 
-  log "1/6 infra: docker compose up -d (postgres + redis)"
+  log "1/7 infra: docker compose up -d (postgres + redis)"
   compose up -d
   wait_for_pg
 
-  log "2/6 db: apply migrations (tools/db-sync-local.sh)"
+  log "2/7 db: apply migrations (tools/db-sync-local.sh)"
   bash tools/db-sync-local.sh
 
+  # Host-jiti seeds (identity + tenant provisioning). These graphs transform
+  # cleanly under jiti; the POLICY seed does NOT (see step 5/7) — it must run
+  # from the compiled dist, so it is deferred until AFTER the build.
   if [ "${SKIP_SEED:-0}" = "1" ]; then
-    log "3/6 seed: skipped (SKIP_SEED=1)"
+    log "3/7 seed: skipped (SKIP_SEED=1)"
   else
-    log "3/6 seed: identity catalog"
+    log "3/7 seed (host): identity catalog + Astre tenant + platform owner + auth storage"
     node --import jiti/register libs/identity/prisma/seed.ts
+    npm run prisma:seed-astre
+    npm run prisma:seed-platform-owner
+    npm run prisma:seed-auth-storage
   fi
 
   if [ "${SKIP_BUILD:-0}" = "1" ]; then
-    log "4/6 build: skipped (SKIP_BUILD=1) — reusing dist/"
+    log "4/7 build: skipped (SKIP_BUILD=1) — reusing dist/"
   else
-    log "4/6 build: nx build api auth-service"
+    log "4/7 build: nx build api auth-service"
     npx nx run-many -t build -p api auth-service
   fi
 
-  log "5/6 link: runtime deps for node dist/ (tools/local-run-link.sh)"
+  # Policy-lifecycle + entitlements seed — AFTER the build (mirrors
+  # deploy/seed-prod.sh Stage C/D; BUILD precedes policy SEED). The policy seed
+  # MUST run from the COMPILED dist, never host-jiti: its import graph pulls the
+  # NestJS + class-validator surface, which jiti cannot transform (the repo uses
+  # legacy experimentalDecorators), so `npm run prisma:seed-policy-lifecycle`
+  # fails on a fresh env. Skipping it leaves policy_store EMPTY and the engine
+  # fails closed (NO_POLICY_PUBLISHED) — every governed requisition transition
+  # (Submit for approval, Close, …) and client-policy publish then 403s.
+  if [ "${SKIP_SEED:-0}" = "1" ]; then
+    log "5/7 policy+entitlements seed: skipped (SKIP_SEED=1)"
+  elif [ ! -f dist/apps/api/src/policy/seed-lifecycle.js ]; then
+    log "5/7 policy+entitlements seed: SKIPPED — compiled seed missing at dist/apps/api (build first; do NOT SKIP_BUILD on a fresh env)"
+  else
+    log "5/7 seed (compiled): policy-lifecycle + tenant entitlements"
+    node dist/apps/api/src/policy/seed-lifecycle.js
+    ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
+  fi
+
+  log "6/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
   bash tools/local-run-link.sh
 
-  log "6/6 start: auth-service :3001, api :3000, ats-web :4201"
+  log "7/7 start: auth-service :3001, api :3000, ats-web :4201"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web
