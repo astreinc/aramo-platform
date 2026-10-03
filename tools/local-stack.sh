@@ -15,6 +15,9 @@
 #   SKIP_BUILD=1   reuse the existing dist/ (skip the nx build — faster restarts)
 #   SKIP_SEED=1    skip ALL seeds (identity catalog + tenant provisioning +
 #                  policy-lifecycle + entitlements)
+#   COMPOSE_PROJECT_NAME=<name>   override the fixed `aramo-platform` project (the DB
+#                  volume is aramo-platform_aramo-pgdata, SAME from any directory —
+#                  so the data is NOT lost when launched from another worktree)
 #
 # The apps run as plain background processes (the established build+link pattern,
 # NOT containers); pids + logs live under .local-stack/ (gitignored).
@@ -23,6 +26,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 RUN_DIR=".local-stack"
 mkdir -p "$RUN_DIR"
+
+# Pin the Compose project name so the stack — and critically the Postgres DATA
+# VOLUME — is INDEPENDENT of the directory it is launched from. Compose otherwise
+# derives the project from the working directory, so running this from a
+# different worktree/clone (e.g. a .claude/worktrees/* copy) silently selects a
+# DIFFERENT, empty `<dir>_aramo-pgdata` volume — your data then LOOKS lost though
+# nothing was deleted (it is still in the other project's volume). A fixed name
+# means every up/down/status, from anywhere, uses the SAME aramo-platform_aramo-pgdata
+# volume. Overridable via COMPOSE_PROJECT_NAME for an intentionally isolated stack.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aramo-platform}"
 
 log()  { printf '\033[36m[local-stack]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[local-stack] %s\033[0m\n' "$*" >&2; exit 1; }
