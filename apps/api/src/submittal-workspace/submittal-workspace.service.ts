@@ -254,8 +254,10 @@ export class SubmittalWorkspaceService {
 
     // 6 — client selection + latest interview + feedback history (composed from
     // ClientSelectionProcess / InterviewSession / ClientSelectionEvent; no new model).
-    const csRows = await this.db.$queryRawUnsafe<Array<{ id: string; state: string }>>(
-      `SELECT "id","state" FROM "client_selection"."ClientSelectionProcess"
+    const csRows = await this.db.$queryRawUnsafe<
+      Array<{ id: string; state: string; version: number; created_at: Date | null }>
+    >(
+      `SELECT "id","state","version","created_at" FROM "client_selection"."ClientSelectionProcess"
         WHERE "submittal_id" = $1::uuid AND "tenant_id" = $2::uuid`,
       submittal_id,
       tenant_id,
@@ -264,8 +266,8 @@ export class SubmittalWorkspaceService {
     let latestInterview: SubmittalWorkspaceView['client_selection']['latest_interview'] = null;
     let feedback: SubmittalWorkspaceView['client_selection']['feedback'] = [];
     if (cs !== null) {
-      const iv = await this.db.$queryRawUnsafe<Array<{ round: number; state: string; scheduled_at: Date | null }>>(
-        `SELECT "round","state","scheduled_at" FROM "client_selection"."InterviewSession"
+      const iv = await this.db.$queryRawUnsafe<Array<{ id: string; round: number; state: string; scheduled_at: Date | null }>>(
+        `SELECT "id","round","state","scheduled_at" FROM "client_selection"."InterviewSession"
           WHERE "client_selection_process_id" = $1::uuid AND "tenant_id" = $2::uuid
           ORDER BY "round" DESC LIMIT 1`,
         cs.id,
@@ -273,7 +275,7 @@ export class SubmittalWorkspaceService {
       );
       const ivRow = iv[0];
       if (ivRow !== undefined) {
-        latestInterview = { round: ivRow.round, state: ivRow.state, scheduled_at: iso(ivRow.scheduled_at) };
+        latestInterview = { id: ivRow.id, round: ivRow.round, state: ivRow.state, scheduled_at: iso(ivRow.scheduled_at) };
       }
       // The append-only ClientSelectionEvent log is keyed by (subject_type, subject_id)
       // — NOT a `selection_id` column (which does not exist). Process-level events
@@ -309,8 +311,27 @@ export class SubmittalWorkspaceService {
         }
       : null;
 
-    const csNextStates =
-      cs !== null ? legalNextClientSelectionStates(cs.state as ClientSelectionState) : [];
+    // SW-6 — server-owned client-response action availability. Each flag = the
+    // transition is LEGAL from the current ClientSelection state AND the caller holds
+    // the scope the governed command enforces. Routing is a backend fact the FE never
+    // re-derives: move-to-interview / mark-selected → /transition; decline / withdraw
+    // → /decision; schedule → /interviews. This REPLACES the routing-unaware raw
+    // next-states list (which conflated /transition and /decision targets).
+    const csLegal = new Set<string>(
+      cs !== null ? legalNextClientSelectionStates(cs.state as ClientSelectionState) : [],
+    );
+    const canTransitionScope = ctx.scopes.has('client-selection:transition');
+    const canScheduleScope = ctx.scopes.has('client-selection:interview:schedule');
+    const clientSelectionActions = {
+      can_move_to_interview: csLegal.has('INTERVIEW') && canTransitionScope,
+      can_mark_selected: csLegal.has('SELECTED') && canTransitionScope,
+      can_decline: csLegal.has('DECLINED') && canTransitionScope,
+      can_withdraw: csLegal.has('WITHDRAWN') && canTransitionScope,
+      // Scheduling is legal from any NON-terminal process state (terminal → no legal
+      // transitions). It does NOT itself move the process to INTERVIEW (independent
+      // governed command).
+      can_schedule_interview: cs !== null && csLegal.size > 0 && canScheduleScope,
+    };
 
     return {
       identity: {
@@ -362,9 +383,13 @@ export class SubmittalWorkspaceService {
       },
       client_selection: {
         present: cs !== null,
+        process_id: cs?.id ?? null,
+        version: cs?.version ?? null,
+        opened_at: iso(cs?.created_at ?? null),
         state: cs?.state ?? null,
         latest_interview: latestInterview,
         feedback,
+        available_actions: clientSelectionActions,
       },
       actions: {
         // SW-5/D-6 — the final, server-owned CTA authority: readiness READY AND the
@@ -373,7 +398,6 @@ export class SubmittalWorkspaceService {
         can_submit_to_client: readiness.status === 'READY' && ctx.submit_authority,
         submit_authority: ctx.submit_authority,
         can_revoke: canTransitionSubmittal(submittal.state as never, 'revoked'),
-        client_selection_next_states: csNextStates,
       },
     };
   }

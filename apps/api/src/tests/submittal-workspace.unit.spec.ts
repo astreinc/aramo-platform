@@ -176,28 +176,54 @@ describe('SubmittalWorkspaceService.compose', () => {
     expect(r.readiness.status).toBe('BLOCKED');
   });
 
-  it('CLIENT SELECTION: composes state + latest interview + feedback from events (newest first)', async () => {
+  it('CLIENT SELECTION: composes state + process id/version/opened_at + latest interview (with id) + feedback from events (newest first)', async () => {
     const CS = '77770000-0000-7000-8000-000000000001';
+    const IV = '88880000-0000-7000-8000-000000000001';
+    const opened = new Date('2026-10-02T00:00:00.000Z');
     const rows: Rows = {
       ...READY_ROWS,
-      client_selection: [{ id: CS, state: 'CLIENT_REVIEW' }],
-      interview: [{ round: 2, state: 'SCHEDULED', scheduled_at: new Date() }],
+      client_selection: [{ id: CS, state: 'CLIENT_REVIEW', version: 3, created_at: opened }],
+      interview: [{ id: IV, round: 2, state: 'SCHEDULED', scheduled_at: new Date() }],
       events: [
         { event_payload: { to_state: 'CLIENT_REVIEW', reason_code: 'UNDER_REVIEW', note: 'awaiting panel' }, created_at: new Date() },
       ],
     };
     const r = await svc(makeDb(rows)).compose(ctx(), SUB);
     expect(r.client_selection.present).toBe(true);
-    expect(r.client_selection.state).toBe('CLIENT_REVIEW');
-    expect(r.client_selection.latest_interview).toMatchObject({ round: 2, state: 'SCHEDULED' });
+    expect(r.client_selection).toMatchObject({ process_id: CS, version: 3, state: 'CLIENT_REVIEW', opened_at: opened.toISOString() });
+    expect(r.client_selection.latest_interview).toMatchObject({ id: IV, round: 2, state: 'SCHEDULED' });
     expect(r.client_selection.feedback[0]).toMatchObject({ reason_code: 'UNDER_REVIEW', note: 'awaiting panel' });
-    expect(r.actions.client_selection_next_states.length).toBeGreaterThan(0); // CLIENT_REVIEW is non-terminal
   });
 
-  it('absent optional domains are explicit (no client selection → present:false, empty feedback)', async () => {
+  it('CLIENT SELECTION actions: server-owned (legal transition AND caller scope); CLIENT_REVIEW + scopes → move/select/decline/withdraw/schedule available', async () => {
+    const rows: Rows = { ...READY_ROWS, client_selection: [{ id: 'cs', state: 'CLIENT_REVIEW', version: 0, created_at: new Date() }] };
+    const scoped = ctx({ scopes: new Set(['talent:read', 'compensation:view:bill', 'client-selection:transition', 'client-selection:interview:schedule']) });
+    const r = await svc(makeDb(rows)).compose(scoped, SUB);
+    expect(r.client_selection.available_actions).toEqual({
+      can_move_to_interview: true, can_mark_selected: true, can_decline: true, can_withdraw: true, can_schedule_interview: true,
+    });
+    // Without the client-selection scopes, every action is withheld (not cosmetically disabled).
+    const unscoped = await svc(makeDb(rows)).compose(ctx(), SUB);
+    expect(unscoped.client_selection.available_actions).toEqual({
+      can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
+    });
+  });
+
+  it('CLIENT SELECTION actions: terminal state (SELECTED) → no transition actions even with scopes', async () => {
+    const rows: Rows = { ...READY_ROWS, client_selection: [{ id: 'cs', state: 'SELECTED', version: 1, created_at: new Date() }] };
+    const scoped = ctx({ scopes: new Set(['talent:read', 'client-selection:transition', 'client-selection:interview:schedule']) });
+    const r = await svc(makeDb(rows)).compose(scoped, SUB);
+    expect(r.client_selection.available_actions).toEqual({
+      can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
+    });
+  });
+
+  it('absent optional domains are explicit (no client selection → present:false, empty feedback, all actions false)', async () => {
     const r = await svc(makeDb(READY_ROWS)).compose(ctx(), SUB);
-    expect(r.client_selection).toMatchObject({ present: false, state: null, latest_interview: null, feedback: [] });
-    expect(r.actions.client_selection_next_states).toEqual([]);
+    expect(r.client_selection).toMatchObject({ present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [] });
+    expect(r.client_selection.available_actions).toEqual({
+      can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
+    });
   });
 
   it('throws AramoError (not a raw throw) on NOT_FOUND', async () => {

@@ -6178,6 +6178,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/submittal-workspace/ClientResponseDialogs.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/submittal-workspace/ClientResponseSection.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/submittal-workspace/RecordSubmittalDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

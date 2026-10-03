@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { ToastProvider } from '@aramo/fe-foundation';
 
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 
@@ -44,19 +45,23 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
     engagement: { governed: false, policy_present: false, satisfied: true, override_available: false, unavailable: false },
     commercial: { live_bill_rate_amount: '92.00', live_bill_rate_currency: 'USD', live_bill_rate_period: 'HOURLY', submitted_bill_rate: null, submitted_rate_currency: null, submitted_rate_period: null },
     delivery: { delivery_channel: null, external_reference: null, external_submitted_at: null, submitted_at: null, submitted_by_actor_id: null },
-    client_selection: { present: false, state: null, latest_interview: null, feedback: [] },
-    actions: { can_submit_to_client: true, submit_authority: true, can_revoke: true, client_selection_next_states: [] },
+    client_selection: { present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
+    actions: { can_submit_to_client: true, submit_authority: true, can_revoke: true },
     ...overrides,
   };
 }
 
+const NO_CS_ACTIONS = { can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false };
+
 function renderWorkspace() {
   return render(
-    <MemoryRouter initialEntries={['/talent/t1/submittal/r1/workspace']}>
-      <Routes>
-        <Route path="talent/:talentId/submittal/:requisitionId/workspace" element={<SubmittalWorkspaceView />} />
-      </Routes>
-    </MemoryRouter>,
+    <ToastProvider>
+      <MemoryRouter initialEntries={['/talent/t1/submittal/r1/workspace']}>
+        <Routes>
+          <Route path="talent/:talentId/submittal/:requisitionId/workspace" element={<SubmittalWorkspaceView />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
   );
 }
 
@@ -77,7 +82,7 @@ describe('SubmittalWorkspaceView', () => {
   });
 
   it('READY but NO submit authority → no CTA, renders a view-only note (§3/§D)', async () => {
-    viewMock.mockResolvedValue(makeView({ actions: { can_submit_to_client: false, submit_authority: false, can_revoke: true, client_selection_next_states: [] } }));
+    viewMock.mockResolvedValue(makeView({ actions: { can_submit_to_client: false, submit_authority: false, can_revoke: true } }));
     renderWorkspace();
     await screen.findByText('Divya Vasudevan');
     expect(screen.queryByRole('button', { name: 'Record submittal' })).not.toBeInTheDocument();
@@ -92,7 +97,7 @@ describe('SubmittalWorkspaceView', () => {
           { key: 'rtr', label: 'Right to Represent executed', required: true, satisfied: false, severity: 'blocking', source: 'documents', reason: 'A Right to Represent is required but not executed', remediation: 'Obtain an executed Right to Represent for this requisition', deny_code: 'SUBMITTAL_RTR_NOT_EXECUTED' },
         ],
       },
-      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true, client_selection_next_states: [] },
+      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true },
     }));
     renderWorkspace();
     await screen.findByText('Divya Vasudevan');
@@ -132,8 +137,8 @@ describe('SubmittalWorkspaceView', () => {
       submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
       commercial: { live_bill_rate_amount: '95.00', live_bill_rate_currency: 'USD', live_bill_rate_period: 'HOURLY', submitted_bill_rate: '92.00', submitted_rate_currency: 'USD', submitted_rate_period: 'HOURLY' },
       delivery: { delivery_channel: 'manual_vms', external_reference: 'FG-938273', external_submitted_at: null, submitted_at: '2026-10-02T14:42:00.000Z', submitted_by_actor_id: 'u1' },
-      client_selection: { present: true, state: 'CLIENT_REVIEW', latest_interview: null, feedback: [] },
-      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true, client_selection_next_states: ['INTERVIEW'] },
+      client_selection: { present: true, process_id: 'csp1', version: 0, opened_at: '2026-10-02T14:42:00.000Z', state: 'CLIENT_REVIEW', latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
+      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true },
     }));
     renderWorkspace();
     await screen.findByText('Divya Vasudevan');
@@ -150,15 +155,18 @@ describe('SubmittalWorkspaceView', () => {
     viewMock.mockResolvedValue(makeView({
       submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
       client_selection: {
-        present: true, state: 'INTERVIEW',
-        latest_interview: { round: 1, state: 'SCHEDULED', scheduled_at: '2026-10-07T15:00:00.000Z' },
+        present: true, process_id: 'csp1', version: 1, opened_at: '2026-10-02T00:00:00.000Z', state: 'INTERVIEW',
+        latest_interview: { id: 'iv1', round: 1, state: 'SCHEDULED', scheduled_at: '2026-10-07T15:00:00.000Z' },
         feedback: [{ at: '2026-10-04T00:00:00.000Z', to_state: 'INTERVIEW', reason_code: null, note: 'Would like to schedule a first interview.' }],
+        available_actions: NO_CS_ACTIONS,
       },
-      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true, client_selection_next_states: ['SELECTED', 'DECLINED'] },
+      actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true },
     }));
     renderWorkspace();
     await screen.findByText('Divya Vasudevan');
-    expect(screen.getByText('Interview')).toBeInTheDocument();
+    // The client state "Interview" surfaces (pill + interview summary + history).
+    expect(screen.getAllByText('Interview').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Open interview →')).toBeInTheDocument();
     // The note appears in the latest-feedback block and the history list — both
     // composed from the same authoritative ClientSelection events.
     expect(screen.getAllByText('Would like to schedule a first interview.').length).toBeGreaterThanOrEqual(1);

@@ -1453,7 +1453,6 @@ paths:
                       - can_submit_to_client
                       - submit_authority
                       - can_revoke
-                      - client_selection_next_states
                     properties:
                       can_submit_to_client:
                         type: boolean
@@ -1468,9 +1467,6 @@ paths:
                           readiness (lets the FE show a ready-but-view-only note).
                       can_revoke:
                         type: boolean
-                      client_selection_next_states:
-                        type: array
-                        items: { type: string }
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':

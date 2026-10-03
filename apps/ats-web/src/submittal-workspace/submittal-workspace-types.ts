@@ -100,15 +100,33 @@ export interface WorkspaceClientFeedbackEntry {
   readonly note: string | null;
 }
 
+// SW-6 — server-owned client-response action availability (legal transition AND the
+// caller holds the governed scope). The FE renders each CTA iff its flag is true and
+// never re-derives routing or authorization.
+export interface WorkspaceClientSelectionActions {
+  readonly can_move_to_interview: boolean;
+  readonly can_mark_selected: boolean;
+  readonly can_decline: boolean;
+  readonly can_withdraw: boolean;
+  readonly can_schedule_interview: boolean;
+}
+
 export interface WorkspaceClientSelectionSection {
   readonly present: boolean;
+  readonly process_id: string | null;
+  readonly version: number | null;
+  /** ClientSelectionProcess.created_at — sole basis for the presentation-only
+   *  "in client review / with client · N days" projection. Never a persisted counter. */
+  readonly opened_at: string | null;
   readonly state: string | null;
   readonly latest_interview: {
+    readonly id: string;
     readonly round: number;
     readonly state: string;
     readonly scheduled_at: string | null;
   } | null;
   readonly feedback: readonly WorkspaceClientFeedbackEntry[];
+  readonly available_actions: WorkspaceClientSelectionActions;
 }
 
 export interface WorkspaceActionsSection {
@@ -119,8 +137,20 @@ export interface WorkspaceActionsSection {
   // "ready but view-only" from "not ready" without recomputing authorization).
   readonly submit_authority: boolean;
   readonly can_revoke: boolean;
-  readonly client_selection_next_states: readonly string[];
 }
+
+// SW-6 — the closed set of client-withdrawal reason codes (mirrors the domain's
+// WITHDRAW_REASON_EFFECT; the server validates the code authoritatively). WITHDRAWN
+// via POST /:id/decision REQUIRES one of these.
+export const WITHDRAW_REASON_CODES = [
+  'TALENT_WITHDREW',
+  'TALENT_UNAVAILABLE',
+  'RECRUITER_DISPOSITIONED',
+  'ADMIN_CORRECTION',
+  'RESUBMITTAL',
+  'CLIENT_PROCESS_CANCELLED',
+] as const;
+export type WithdrawReasonCode = (typeof WITHDRAW_REASON_CODES)[number];
 
 export interface SubmittalWorkspaceView {
   readonly identity: WorkspaceIdentitySection;

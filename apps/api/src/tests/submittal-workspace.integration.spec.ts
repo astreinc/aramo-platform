@@ -214,6 +214,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(notes).not.toContain('DECOY-session');
       expect(notes).not.toContain('DECOY-other-process');
       expect(notes).not.toContain('DECOY-other-tenant');
+      // SW-6 projections against real data: process id/version/opened_at exposed.
+      expect(r.client_selection.process_id).toBe(CSP);
+      expect(r.client_selection.version).toBe(2);
+      expect(typeof r.client_selection.opened_at).toBe('string');
+    });
+
+    it('CLIENT-SELECTION actions: server-owned from real state × scope (INTERVIEW → select/decline/withdraw legal, move-to-interview not)', async () => {
+      const scoped = ctx({ scopes: new Set(['talent:read', 'client-selection:transition', 'client-selection:interview:schedule']) });
+      const r = await service.compose(scoped, SUB);
+      expect(r.client_selection.state).toBe('INTERVIEW');
+      expect(r.client_selection.available_actions).toEqual({
+        can_move_to_interview: false, // INTERVIEW → INTERVIEW is not a legal transition
+        can_mark_selected: true, can_decline: true, can_withdraw: true, can_schedule_interview: true,
+      });
+      // No client-selection scopes → every action withheld.
+      const r2 = await service.compose(ctx(), SUB);
+      expect(r2.client_selection.available_actions.can_mark_selected).toBe(false);
     });
   },
 );

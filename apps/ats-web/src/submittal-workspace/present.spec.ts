@@ -10,6 +10,9 @@ import {
   requiredCounts,
   requirementRow,
   submittalEntryHref,
+  waitingDays,
+  waitingLabel,
+  withdrawReasonLabel,
 } from './present';
 import type { SubmittalReadiness, SubmittalRequirement } from './submittal-workspace-types';
 
@@ -88,6 +91,29 @@ describe('present — requirement rows + counts (display-only; readiness stays a
     expect(remediationOnRequisition(req({ satisfied: false, source: 'requisition' }))).toBe(true);
     expect(remediationOnRequisition(req({ satisfied: false, source: 'pipeline' }))).toBe(false);
     expect(remediationOnRequisition(req({ satisfied: true, source: 'requisition' }))).toBe(false);
+  });
+});
+
+describe('present — waiting duration (§15; deterministic from opened_at only)', () => {
+  const now = new Date('2026-10-05T12:00:00.000Z');
+  it('derives whole days from the authoritative opened_at', () => {
+    expect(waitingDays('2026-10-02T12:00:00.000Z', now)).toBe(3);
+    expect(waitingDays('2026-10-05T06:00:00.000Z', now)).toBe(0);
+    expect(waitingDays(null, now)).toBeNull();
+    expect(waitingDays('not-a-date', now)).toBeNull();
+  });
+  it('labels the age (singular/plural/today)', () => {
+    expect(waitingLabel('2026-10-04T12:00:00.000Z', now)).toBe('1 day');
+    expect(waitingLabel('2026-10-02T12:00:00.000Z', now)).toBe('3 days');
+    expect(waitingLabel('2026-10-05T06:00:00.000Z', now)).toBe('today');
+    expect(waitingLabel(null, now)).toBeNull();
+  });
+});
+
+describe('present — withdraw reason labels (closed set)', () => {
+  it('maps each closed code to a human label', () => {
+    expect(withdrawReasonLabel('TALENT_WITHDREW')).toBe('Talent withdrew');
+    expect(withdrawReasonLabel('CLIENT_PROCESS_CANCELLED')).toBe('Client process cancelled');
   });
 });
 

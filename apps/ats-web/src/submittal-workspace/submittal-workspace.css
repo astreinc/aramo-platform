@@ -253,7 +253,29 @@
 .sw-client__fb-note { display: block; font-size: 13px; color: #1b2730; margin-top: 3px; line-height: 1.5; }
 .sw-client__fb-meta { display: block; font-size: 11.5px; color: #93a0a8; margin-top: 3px; }
 .sw-client__nofb { margin-top: 8px; font-size: 12.5px; color: #5c6770; }
-.sw-client__interview { margin-top: 10px; font-size: 12.5px; color: #3a454e; }
+.sw-client__age { font-size: 12px; color: #5c6770; }
+.sw-client__interview {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid #f2f4f6;
+  border-radius: 9px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.sw-client__interview-line { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: #3a454e; }
+.sw-client__interview-line b { font-size: 13px; color: #1b2730; }
+.sw-client__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f2f4f6;
+}
+.sw-cr-field { margin-top: 10px; }
 .sw-client__hist-label { margin-top: 14px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; color: #93a0a8; }
 .sw-client__hist {
   display: grid;

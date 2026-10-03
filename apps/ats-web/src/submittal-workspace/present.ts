@@ -106,6 +106,52 @@ export function remediationOnRequisition(req: SubmittalRequirement): boolean {
   return !req.satisfied && REQUISITION_SCOPED_SOURCES.has(req.source);
 }
 
+export function formatDate(iso: string | null): string {
+  if (iso === null) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+export function formatDateTime(iso: string | null): string {
+  if (iso === null) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+// §15 — the presentation-only "waiting" age, derived DETERMINISTICALLY from the
+// authoritative ClientSelectionProcess.created_at (`opened_at`). Never persisted. The
+// `now` arg is injected so the projection is testable/deterministic.
+export function waitingDays(openedAtIso: string | null, now: Date = new Date()): number | null {
+  if (openedAtIso === null) return null;
+  const opened = new Date(openedAtIso);
+  if (Number.isNaN(opened.getTime())) return null;
+  const ms = now.getTime() - opened.getTime();
+  if (ms < 0) return null;
+  return Math.floor(ms / 86_400_000);
+}
+
+export function waitingLabel(openedAtIso: string | null, now: Date = new Date()): string | null {
+  const d = waitingDays(openedAtIso, now);
+  if (d === null) return null;
+  if (d === 0) return 'today';
+  return `${d} day${d === 1 ? '' : 's'}`;
+}
+
+const WITHDRAW_REASON_LABELS: Record<string, string> = {
+  TALENT_WITHDREW: 'Talent withdrew',
+  TALENT_UNAVAILABLE: 'Talent unavailable',
+  RECRUITER_DISPOSITIONED: 'Recruiter dispositioned',
+  ADMIN_CORRECTION: 'Administrative correction',
+  RESUBMITTAL: 'Re-submittal',
+  CLIENT_PROCESS_CANCELLED: 'Client process cancelled',
+};
+
+export function withdrawReasonLabel(code: string): string {
+  return WITHDRAW_REASON_LABELS[code] ?? titleCase(code);
+}
+
 function titleCase(s: string): string {
   return s
     .toLowerCase()

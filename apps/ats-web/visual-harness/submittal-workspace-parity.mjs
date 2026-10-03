@@ -39,7 +39,12 @@ const STATES = [
   { id: 'E', hash: '#st=E&sc=divya1001', label: 'Record submittal modal' },
   { id: 'F', hash: '#st=F&sc=divya1001', label: 'Submitted to client' },
   { id: 'G', hash: '#st=G&sc=divya1001', label: 'Submitted — rate changed' },
+  // SW-6 — the client-response spectrum.
+  { id: 'H', hash: '#st=H&sc=divya1001', label: 'Client review' },
   { id: 'I', hash: '#st=I&sc=divya1001', label: 'Interview' },
+  { id: 'J', hash: '#st=J&sc=divya1001', label: 'Declined' },
+  { id: 'K', hash: '#st=K&sc=divya1001', label: 'Selected' },
+  { id: 'L', hash: '#st=L&sc=divya1001', label: 'Withdrawn' },
   { id: 'M', hash: '#st=M&sc=divya1001', label: 'Revoked' },
   { id: 'N', hash: '#st=N&sc=divya1001', label: 'Submit refused (race)' },
   { id: 'RTR', hash: '#st=A&sc=marcus&focus=rtr', label: 'RTR-focus entry' },

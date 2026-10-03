@@ -89,16 +89,45 @@ export interface WorkspaceClientFeedbackEntry {
   readonly note: string | null;
 }
 
+/**
+ * SW-6 — server-owned client-response action availability. Each flag is the FINAL
+ * answer (the transition is legal from the current ClientSelection state AND the
+ * caller holds the scope the governed command enforces). The FE renders each CTA iff
+ * its flag is true and NEVER re-derives routing or authorization. Move-to-interview /
+ * mark-selected go via POST /:id/transition; decline / withdraw via POST /:id/decision
+ * (withdraw requires a closed reason_code); schedule via POST /:id/interviews.
+ */
+export interface WorkspaceClientSelectionActions {
+  readonly can_move_to_interview: boolean;
+  readonly can_mark_selected: boolean;
+  readonly can_decline: boolean;
+  readonly can_withdraw: boolean;
+  readonly can_schedule_interview: boolean;
+}
+
 export interface WorkspaceClientSelectionSection {
   readonly present: boolean;
+  /** The ClientSelectionProcess id — required to target a governed mutation. */
+  readonly process_id: string | null;
+  /** Optimistic-concurrency version for CAS on /transition and /decision. */
+  readonly version: number | null;
+  /**
+   * The authoritative ClientSelectionProcess.created_at — the SOLE basis for the
+   * presentation-only "in client review / waiting with client · N days" projection
+   * (the same authority My Desk uses). Never persisted as a counter.
+   */
+  readonly opened_at: string | null;
   readonly state: string | null;
   readonly latest_interview: {
+    /** InterviewSession id — enables the deep-link to the existing Interview detail. */
+    readonly id: string;
     readonly round: number;
     readonly state: string;
     readonly scheduled_at: string | null;
   } | null;
   /** Response history composed from ClientSelectionEvent (reason_code + note). Newest first. */
   readonly feedback: readonly WorkspaceClientFeedbackEntry[];
+  readonly available_actions: WorkspaceClientSelectionActions;
 }
 
 /**
@@ -123,8 +152,6 @@ export interface WorkspaceActionsSection {
   readonly submit_authority: boolean;
   /** The submittal is in a state that may be revoked (submittal state machine). */
   readonly can_revoke: boolean;
-  /** Legal next ClientSelection states from the current state (empty when no process / terminal). */
-  readonly client_selection_next_states: readonly string[];
 }
 
 export interface SubmittalWorkspaceView {

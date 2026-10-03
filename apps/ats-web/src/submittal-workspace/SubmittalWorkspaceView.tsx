@@ -15,15 +15,19 @@ import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 
 import { getSubmittalWorkspace } from './submittal-workspace-api';
 import { RecordSubmittalDialog } from './RecordSubmittalDialog';
+import { ClientResponseSection } from './ClientResponseSection';
 import {
   clientSelectionPill,
   deliveryLabel,
   entryActionLabel,
+  formatDate,
+  formatDateTime,
   isHistorical,
   lifecyclePill,
   remediationOnRequisition,
   requirementRow,
   requiredCounts,
+  waitingLabel,
 } from './present';
 import type { SubmittalWorkspaceView as WorkspaceView } from './submittal-workspace-types';
 
@@ -44,22 +48,6 @@ function formatRate(amount: string | null, currency: string | null, period: stri
   const sym = currency === 'USD' ? '$' : currency ? `${currency} ` : '';
   const per = period === 'HOURLY' ? ' / hour' : period === 'DAILY' ? ' / day' : period === 'ANNUAL' ? ' / year' : period ? ` / ${period.toLowerCase()}` : '';
   return `${sym}${amount}${per}`;
-}
-
-function formatDateTime(iso: string | null): string {
-  if (iso === null) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-  });
-}
-
-function formatDate(iso: string | null): string {
-  if (iso === null) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 // SW-5 — the Submittal Workspace: the canonical surface for an EXISTING submittal
@@ -198,14 +186,14 @@ export function SubmittalWorkspaceView() {
   const reviewBlockers = !ready && actions.submit_authority && !historical && !raceConflict;
 
   const missing = readiness.requirements.filter((r) => r.required && !r.satisfied);
-  const latestFeedback = client_selection.feedback[0] ?? null;
 
   // Header next-step copy — derived from authoritative facts only.
   let headLine: string;
   if (raceConflict) headLine = 'The available submittal slot was filled by another submittal.';
   else if (revoked) headLine = `Revoked${delivery.external_submitted_at ? '' : ''} · no longer presented to the client`;
   else if (submittedFamily) {
-    headLine = `Submitted to ${client ?? 'the client'}${delivery.submitted_at ? ` ${formatDate(delivery.submitted_at)}` : ''}${delivery.delivery_channel ? ` · ${deliveryLabel(delivery.delivery_channel)}` : ''}${cPill ? ` · ${cPill.label}` : ''}`;
+    const csWaiting = waitingLabel(client_selection.opened_at);
+    headLine = `Submitted to ${client ?? 'the client'}${delivery.submitted_at ? ` ${formatDate(delivery.submitted_at)}` : ''}${delivery.delivery_channel ? ` · ${deliveryLabel(delivery.delivery_channel)}` : ''}${cPill ? ` · ${cPill.label}` : ''}${cPill && csWaiting ? ` ${csWaiting}` : ''}`;
   } else if (!ready) {
     headLine = `Not ready to submit · ${missing.length} required item${missing.length === 1 ? ' needs' : 's need'} attention`;
   } else if (readyButViewOnly) {
@@ -342,37 +330,12 @@ export function SubmittalWorkspaceView() {
             })}
           </Card>
 
+          {/* SW-6 — the post-handoff client-response experience (ClientSelection
+              authority): state, waiting-duration, feedback, governed outcome actions,
+              interview summary + deep-link, history. Rendered once a submittal has been
+              handed to the client (historical). */}
           {historical ? (
-            <Card className="sw-client">
-              <div className="sw-client__head">
-                <span className="sw-client__title">Client response</span>
-                {cPill ? <StatusPill tone={cPill.tone}>{cPill.label}</StatusPill> : null}
-              </div>
-              {latestFeedback !== null ? (
-                <div className="sw-client__fb">
-                  <span className="sw-client__fb-k">LATEST FEEDBACK</span>
-                  <span className="sw-client__fb-note">{latestFeedback.note ?? latestFeedback.reason_code ?? '—'}</span>
-                  <span className="sw-client__fb-meta">
-                    {latestFeedback.to_state ? `${latestFeedback.to_state} · ` : ''}{formatDate(latestFeedback.at)}
-                  </span>
-                </div>
-              ) : (
-                <div className="sw-client__nofb">No client feedback yet.</div>
-              )}
-              {client_selection.latest_interview ? (
-                <div className="sw-client__interview">
-                  Interview round {client_selection.latest_interview.round} · {client_selection.latest_interview.state}
-                  {client_selection.latest_interview.scheduled_at ? ` · ${formatDateTime(client_selection.latest_interview.scheduled_at)}` : ''}
-                </div>
-              ) : null}
-              <div className="sw-client__hist-label">HISTORY</div>
-              {buildHistory(model).map((h, i) => (
-                <div key={i} className="sw-client__hist">
-                  <span className="sw-mono">{h.date}</span>
-                  <span><b>{h.title}</b><span className="sw-client__hist-sub">{h.sub}</span></span>
-                </div>
-              ))}
-            </Card>
+            <ClientResponseSection view={model} onChanged={() => void load()} />
           ) : null}
 
           <Card className="sw-eng">
@@ -476,27 +439,4 @@ function recordRows(delivery: WorkspaceView['delivery'], submittedBillLabel: str
   ];
   if (submittedBillLabel !== null) rows.push({ k: 'Client rate submitted', v: submittedBillLabel });
   return rows;
-}
-
-// Client-response history composed from SW-4 facts only: the submitted-to-client
-// milestone (delivery provenance) + the ClientSelection event feedback (newest first
-// in SW-4, shown oldest→newest here). No invented status or taxonomy.
-function buildHistory(model: WorkspaceView): { date: string; title: string; sub: string }[] {
-  const out: { date: string; title: string; sub: string }[] = [];
-  if (model.delivery.submitted_at !== null) {
-    out.push({
-      date: formatDate(model.delivery.submitted_at),
-      title: 'Submitted to client',
-      sub: deliveryLabel(model.delivery.delivery_channel),
-    });
-  }
-  const events = model.client_selection.feedback.slice().reverse();
-  for (const ev of events) {
-    out.push({
-      date: formatDate(ev.at),
-      title: ev.to_state ?? 'Client update',
-      sub: ev.note ?? ev.reason_code ?? '',
-    });
-  }
-  return out;
 }
