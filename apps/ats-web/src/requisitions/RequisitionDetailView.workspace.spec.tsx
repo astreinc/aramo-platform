@@ -1,7 +1,7 @@
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BreadcrumbProvider } from '../shell/breadcrumb';
 
@@ -458,6 +458,12 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
   ];
 
   it('opening a Talent row LAZILY populates the Client + Pre-Start cells with that talent\'s own reads, and caches them (reopen does NOT refetch)', async () => {
+    // The talent surface defaults to Board now; this spec opens a LIST row.
+    try {
+      localStorage.setItem('aramo.req.talentView.v2', 'list');
+    } catch {
+      /* jsdom localStorage */
+    }
     const cap = mockApi({
       pipelines: PIPELINE_TAL1,
       placements: PLACEMENTS,
@@ -516,6 +522,16 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
 
 describe('RequisitionDetailView workspace — Workspace panel sections', () => {
   afterEach(() => vi.restoreAllMocks());
+  // Talent-in-play now defaults to the embedded Board (shared preference). These
+  // section specs assert the LIST (funnel) rows, so pin the preference to list;
+  // the Board default is covered by its own test below.
+  beforeEach(() => {
+    try {
+      localStorage.setItem('aramo.req.talentView.v2', 'list');
+    } catch {
+      /* jsdom localStorage */
+    }
+  });
 
   const PIPELINE_TAL1 = [
     {
@@ -531,7 +547,7 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
       talent_record_id: 'tal-1', pipeline_id: 'pp-1', column: 'qualified',
       owner: 'pipeline', source_object_id: 'pp-1', owner_state: 'qualified',
       resume: { resume_edition_id: null, source: 'none', locked: false },
-      rtr_state: 'not_started',
+      rtr_state: 'NOT_EXECUTED',
       readiness: {
         requisition_state: 'open', requisition_reason: null,
         blockers: ['rtr_not_executed'], band: 'needs_action',
@@ -556,6 +572,23 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     };
   }
 
+  it('Talent in play defaults to the embedded Board (shared preference) with a List | Board toggle — the SAME board as the Talent tab', async () => {
+    localStorage.setItem('aramo.req.talentView.v2', 'board');
+    mount(['requisition:read', 'pipeline:read'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card()] }]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    // The shared List | Board segmented control is present in the Workspace.
+    expect(screen.getByRole('tab', { name: 'Board' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'List' })).toBeInTheDocument();
+    // The embedded Board renders by default (not the funnel List rows).
+    const tip = screen
+      .getByRole('heading', { name: 'Talent in play' })
+      .closest('.rc-tip');
+    expect(tip?.querySelector('.rc-tip__board')).not.toBeNull();
+  });
+
   it('is the default tab, labels the record form tab "Details" (not "Overview"), and renders all six sections', async () => {
     mount(['requisition:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
@@ -570,7 +603,7 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     }
   });
 
-  it('Pipeline counts come from the Talent Board projection', async () => {
+  it('Pipeline tile + With-the-client counts come from the Talent Board projection', async () => {
     mount(['requisition:read', 'pipeline:read'], {
       board: boardWith([
         { key: 'qualified', owner: 'pipeline', count: 3, cards: [] },
@@ -578,24 +611,28 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
       ]),
     });
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
-    const qualified = await screen.findByText('Qualified');
-    expect(qualified.closest('.rc-filelist__row')?.textContent).toContain('3');
-    expect(screen.getByText('Submitted').closest('.rc-filelist__row')?.textContent).toContain('2');
+    // 'Qualified' is a 1:1 recruiting tile → reads the authoritative column count.
+    const qualifiedTile = (await screen.findByText('Qualified')).closest('.rc-pipe__tile');
+    expect(qualifiedTile?.textContent).toContain('3');
+    // Downstream (submitted) is summarised in the 'With the client' line, not a tile.
+    expect(screen.getByText(/submitted to client/).textContent).toContain('2');
   });
 
-  it('Talent in play renders a row with the Board stage + grounded checks (aging / readiness / blocker)', async () => {
+  it('Talent in play renders a row with the Board stage, age and the grounded funnel (RTR from the backend verdict)', async () => {
     mount(['requisition:read', 'pipeline:read'], {
       pipelines: PIPELINE_TAL1,
       board: boardWith([{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card()] }]),
     });
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     const nameEl = await screen.findByText('Marcus Adeyemi');
-    const row = nameEl.closest('.rc-filelist__row');
+    const row = nameEl.closest('.rc-tip__row');
     if (row === null) throw new Error('no talent-in-play row');
-    expect(within(row).getByText('Qualified')).toBeInTheDocument(); // authoritative stage
-    expect(row.textContent).toContain('4d in stage');
-    expect(row.textContent).toContain('Needs action');
-    expect(row.textContent).toContain('Right to represent not executed'); // blocker label
+    expect(within(row).getByText('Qualified')).toBeInTheDocument(); // authoritative stage pill
+    expect(row.textContent).toContain('4 days'); // days_in_stage, humanised
+    // Funnel milestones are read projections of the single authoritative stage +
+    // rtr_state; RTR is 'Required' only because the backend flagged NOT_EXECUTED.
+    expect(within(row).getByText('Required')).toBeInTheDocument();
+    expect(within(row).getAllByText('✓ Complete').length).toBeGreaterThanOrEqual(1);
   });
 
   it('a next-action CTA is hidden from an actor lacking its required scope, shown to one who holds it', async () => {
@@ -621,9 +658,12 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     mount(['requisition:read', 'pipeline:read']); // empty board + empty reads (defaults)
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     expect(await screen.findByText('No talent in play yet.')).toBeInTheDocument();
-    expect(screen.getByText('No talent in the pipeline yet.')).toBeInTheDocument();
-    expect(screen.getByText('Nothing needs attention right now.')).toBeInTheDocument();
-    expect(screen.getByText('None scheduled.')).toBeInTheDocument();
+    // Pipeline always shows the 5 recruiting tiles (zeroed) — there is no
+    // "empty pipeline" copy any more.
+    expect(
+      screen.getByText('Nothing needs attention on this requisition right now.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('None scheduled')).toBeInTheDocument();
     expect(screen.getByText('No activity yet.')).toBeInTheDocument();
   });
 });

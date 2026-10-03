@@ -19,7 +19,7 @@ import { mkdirSync } from 'node:fs';
 
 const BASE = process.env.RWS_BASE || 'http://localhost:4201';
 const OUT = process.env.RWS_OUT_DIR || '/tmp/req-ws';
-const VIEWPORT = { width: 1440, height: 900 };
+const VIEWPORT = { width: Number(process.env.RWS_WIDTH) || 1440, height: Number(process.env.RWS_HEIGHT) || 900 };
 const REQ_ID = 'req-ws-1';
 const TENANT = '00000000-0000-7000-8000-00000000t001';
 const RECRUITER_ID = 'u-recruiter-1';
@@ -356,11 +356,12 @@ async function probe(page) {
   return page.evaluate(() => {
     const tabs = [...document.querySelectorAll('button.tabs__tab[role="tab"]')].map((b) => b.textContent.trim());
     const selected = document.querySelector('button.tabs__tab[aria-selected="true"]')?.textContent.trim() ?? null;
-    const cardTitles = [...document.querySelectorAll('.rc-ws .rc-card__head h2')].map((h) => h.textContent.trim());
-    const ctas = [...document.querySelectorAll('.rc-ws .rc-ws__cta, .rc-ws .rc-link-action, .rc-ws .rc-card__head-more')]
+    const cardTitles = [...document.querySelectorAll('.rc-ws h2')].map((h) => h.textContent.trim());
+    const ctas = [...document.querySelectorAll('.rc-ws .rc-link, .rc-ws .rc-btn-outline, .rc-ws .rc-btn-primary')]
       .map((e) => e.textContent.trim());
-    const empties = [...document.querySelectorAll('.rc-ws .rc-empty')].map((e) => e.textContent.trim());
-    return { tabs, selected, cardTitles, ctas, empties };
+    const empties = [...document.querySelectorAll('.rc-ws .rc-empty, .rc-ws .rc-attn-card__empty')].map((e) => e.textContent.trim());
+    const tiles = [...document.querySelectorAll('.rc-ws .rc-pipe__tile')].map((t) => t.textContent.trim());
+    return { tabs, selected, cardTitles, ctas, empties, tiles };
   });
 }
 
@@ -373,6 +374,20 @@ const report = {};
   report.populated = { probe: await probe(page), errors };
   await page.screenshot({ path: `${OUT}/workspace-populated.png` });
   await page.screenshot({ path: `${OUT}/workspace-populated.full.png`, fullPage: true });
+
+  // Talent-in-play List toggle (shared preference) → the funnel List view.
+  await page.getByRole('tab', { name: 'List' }).first().click().catch(() => {});
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/workspace-list.full.png`, fullPage: true });
+  await page.getByRole('tab', { name: 'Board' }).first().click().catch(() => {});
+  await page.waitForTimeout(300);
+
+  // Narrow viewport → the rail wraps below the main column; the board scrolls.
+  await page.setViewportSize({ width: 820, height: 900 });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: `${OUT}/workspace-narrow.full.png`, fullPage: true });
+  await page.setViewportSize({ width: VIEWPORT.width, height: VIEWPORT.height });
+  await page.waitForTimeout(200);
 
   await clickTab(page, 'Details');
   report.detailsTab = { probe: await probe(page), errors };

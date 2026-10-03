@@ -295,13 +295,13 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, onSelectCar
           />
         ))}
       </div>
-      {board.closed.total > 0 && (
+      {(board.closed?.total ?? 0) > 0 && (
         <details className="rc-tboard__closed">
           <summary className="rc-tboard__closed-summary">
-            Closed <span className="rc-tboard__col-count">{board.closed.total}</span>
+            Closed <span className="rc-tboard__col-count">{board.closed?.total ?? 0}</span>
           </summary>
           <ul className="rc-tboard__closed-list">
-            {board.closed.by_reason.map((r) => (
+            {(board.closed?.by_reason ?? []).map((r) => (
               <li key={r.reason} className="rc-tboard__closed-row">
                 <span>{closedReasonLabel(r.reason)}</span>
                 <span className="rc-tboard__col-count">{r.count}</span>

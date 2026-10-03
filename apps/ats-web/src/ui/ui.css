@@ -5204,21 +5204,189 @@ button.rc-snapcard:hover {
 }
 .rc-attn__link:hover { color: #3355e0; }
 
-/* Requisition Workspace tab — the operational projection (two columns: main +
-   rail). Reuses rc-card / rc-filelist / rc-deflist / rc-attn chrome; adds only
-   body padding, a small section sub-heading, and the stacked Talent-in-play
-   row. No new decorative widget. */
-.rc-ws__body { padding: 11px 18px 14px; }
-.rc-ws .rc-deflist.rc-ws__body { padding-top: 6px; }
-.rc-ws__sub {
-  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em;
-  text-transform: uppercase; color: var(--faint);
-  margin: 12px 18px 2px;
+/* ═══════════════════════════════════════════════════════════════════════
+   Requisition Workspace tab — prototype-parity pixel-match (Requisition
+   Detail CRM.dc.html §showWorkspace). All values copied verbatim from the
+   inline prototype styles. Scoped under .rc-ws so nothing leaks to other
+   surfaces; the global .rc-card chrome (shadow / overflow:hidden) is
+   explicitly reset here so the Find-talent dropdown is not clipped.
+   ═══════════════════════════════════════════════════════════════════════ */
+.rc-ws {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start;
+  margin-top: 14px;
+  font-family: 'Hanken Grotesk', sans-serif;
 }
-.rc-ws__row { flex-wrap: wrap; gap: 4px 10px; }
-.rc-ws__stage { margin-left: 8px; }
-.rc-ws__checks { flex-basis: 100%; font-size: 0.78rem; }
-.rc-ws__cta { margin-left: auto; }
+.rc-ws__main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.rc-ws__rail { flex: 1 1 300px; max-width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+
+/* Card reset for the workspace (no shadow except Needs attention; 13px radius;
+   visible overflow for the Find-talent popover). */
+.rc-ws .rc-card {
+  background: #fff; border: 1px solid #E5E9ED; border-radius: 13px;
+  box-shadow: none; overflow: visible;
+}
+.rc-ws h2 { margin: 0; font-family: 'Hanken Grotesk', sans-serif; }
+
+/* Shared atoms */
+.rc-ws .rc-caps {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .07em;
+  color: #93A0A8; text-transform: uppercase;
+}
+.rc-ws .rc-link {
+  color: #022AC0; font: 600 12px 'Hanken Grotesk', sans-serif; cursor: pointer;
+  background: none; border: none; padding: 0; white-space: nowrap; text-decoration: none;
+}
+.rc-ws .rc-link:hover { color: #011F8D; }
+.rc-ws .rc-btn-outline {
+  display: inline-flex; align-items: center; gap: 6px; border: 1px solid #9DB0F5;
+  background: #fff; color: #022AC0; border-radius: 7px; padding: 6px 12px;
+  font: 600 12px 'Hanken Grotesk', sans-serif; cursor: pointer; white-space: nowrap;
+}
+.rc-ws .rc-btn-outline:hover { background: #E8EDFB; }
+.rc-ws .rc-btn-primary {
+  border: 1px solid #022AC0; background: #022AC0; color: #fff; border-radius: 7px;
+  padding: 6px 12px; font: 600 12px 'Hanken Grotesk', sans-serif; cursor: pointer;
+  white-space: nowrap;
+}
+.rc-ws .rc-empty { padding: 14px 18px; color: #5C6770; font-size: 12.5px; margin: 0; }
+
+/* 2.1 Needs attention — the only raised card. */
+.rc-attn-card { padding: 15px 18px 6px; box-shadow: 0 1px 0 #E5E9ED, 0 6px 18px -12px rgba(2,42,192,.25) !important; }
+.rc-attn-card__head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; }
+.rc-attn-card__head h2 { font-size: 15px; font-weight: 700; color: #1B2730; }
+.rc-attn-card__count {
+  border-radius: 10px; padding: 0 7px; font-size: 10.5px; font-weight: 700;
+  background: #FAEFD8; color: #946011;
+}
+.rc-attn-card__sub { margin: 0 0 6px; font-size: 11.5px; color: #93A0A8; }
+.rc-attn-card__empty { padding: 14px 0 12px; border-top: 1px solid #F2F4F6; font-size: 12.5px; color: #5C6770; }
+.rc-ws .rc-attn__row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid #F2F4F6; }
+.rc-ws .rc-attn__dot { width: 8px; height: 8px; }
+.rc-attn__body { flex: 1; min-width: 0; }
+.rc-attn__body b { display: block; font-size: 12.5px; font-weight: 700; color: #1B2730; }
+.rc-attn__detail { display: block; font-size: 12px; color: #5C6770; margin-top: 1px; }
+.rc-attn__cta { flex: none; padding: 6px 12px; }
+.rc-attn__more { padding: 9px 0 8px; border-top: 1px solid #F2F4F6; font-size: 12px; color: #5C6770; }
+
+/* 2.2 Pipeline — 5-stage strip + With-the-client line. */
+.rc-pipe { padding: 14px 18px 16px; }
+.rc-pipe__head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.rc-pipe__head h2 { font-size: 13.5px; font-weight: 700; color: #1B2730; }
+.rc-pipe__inplay { font-size: 12px; color: #5C6770; }
+.rc-pipe__find { position: relative; margin-left: auto; flex: none; display: inline-flex; }
+.rc-pipe__findbtn { padding: 5px 11px; }
+.rc-pipe__findscrim { position: fixed; inset: 0; z-index: 29; display: block; }
+.rc-pipe__findmenu {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; display: block;
+  width: 300px; background: #fff; border: 1px solid #E5E9ED; border-radius: 11px;
+  box-shadow: 0 16px 40px -16px rgba(11,16,34,.28); padding: 5px;
+}
+.rc-pipe__findhead { display: block; padding: 7px 11px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .07em; color: #93A0A8; }
+.rc-pipe__findknown { display: block; border-radius: 8px; background: #F5F7FD; margin-bottom: 2px; }
+.rc-pipe__finditem { display: block; border-radius: 8px; padding: 9px 11px; color: #1B2730; text-decoration: none; }
+.rc-pipe__finditem:hover { background: #E8EDFB; }
+.rc-pipe__finditem-t { display: block; font-size: 13px; font-weight: 700; }
+.rc-pipe__finditem-s { display: block; font-size: 11.5px; color: #5C6770; margin-top: 2px; }
+.rc-pipe__opentalent { flex: none; }
+.rc-pipe__strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 6px; }
+.rc-pipe__tile {
+  text-align: left; border: 1px solid #E5E9ED; background: #fff; border-radius: 9px;
+  padding: 8px 10px; cursor: pointer; font-family: 'Hanken Grotesk', sans-serif;
+}
+.rc-pipe__tile:hover { border-color: #9DB0F5; }
+.rc-pipe__tile--on { background: #E8EDFB; border-color: #C6D1F5; }
+.rc-pipe__tile-n { display: block; font-size: 18px; font-weight: 700; color: #93A0A8; font-variant-numeric: tabular-nums; }
+.rc-pipe__tile--on .rc-pipe__tile-n { color: #022AC0; }
+.rc-pipe__tile-l { display: block; font-size: 11px; font-weight: 600; color: #5C6770; white-space: nowrap; }
+.rc-pipe__client {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px;
+  padding-top: 10px; border-top: 1px solid #F2F4F6; font-size: 12px; color: #5C6770;
+}
+.rc-pipe__client b { color: #1B2730; }
+.rc-pipe__client-src { color: #93A0A8; }
+
+/* 2.3 Talent in play — List rows (Phase 1). */
+.rc-tip__head { display: flex; align-items: center; gap: 10px; padding: 14px 18px 10px; }
+.rc-tip__head h2 { font-size: 13.5px; font-weight: 700; color: #1B2730; }
+.rc-tip__hint { font-size: 11.5px; color: #93A0A8; }
+.rc-tip__empty { padding: 0 0 4px; }
+.rc-tip__empty .rc-mt-8 { padding: 0 18px 14px; }
+.rc-tip__row { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid #F2F4F6; }
+.rc-tip__person { display: flex; align-items: center; gap: 10px; flex: 1 1 210px; min-width: 0; }
+.rc-ws .rc-avatar {
+  width: 32px; height: 32px; border-radius: 50%; background: #5C6770; color: #fff;
+  display: grid; place-items: center; font-size: 11.5px; font-weight: 700; flex: none;
+}
+.rc-tip__id { min-width: 0; }
+.rc-tip__name { display: block; font-size: 13px; font-weight: 700; color: #1B2730; text-decoration: none; }
+.rc-tip__sub { display: flex; align-items: center; gap: 7px; margin-top: 3px; flex-wrap: wrap; }
+.rc-ws .rc-stage-pill {
+  border-radius: 5px; padding: 1.5px 7px; font-size: 10px; font-weight: 700;
+  letter-spacing: .06em; background: #EEF1F4; color: #5C6770; text-transform: uppercase;
+}
+.rc-tip__age { font-size: 11.5px; color: #5C6770; font-weight: 600; }
+.rc-tip__age--warn { color: #946011; }
+.rc-tip__grid { display: grid; grid-template-columns: repeat(4, minmax(86px, auto)); gap: 4px 16px; flex: 2 1 380px; }
+.rc-tip__cell { min-width: 0; }
+.rc-tip__val { display: block; font-size: 12px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+.rc-tip__val--ok { color: #1F7A4D; }
+.rc-tip__val--warn { color: #946011; }
+.rc-tip__val--bad { color: #B3402A; }
+.rc-tip__val--mute { color: #93A0A8; }
+.rc-tip__cta { flex: none; margin-left: auto; }
+/* List|Board segmented control (shared preference) + embedded compact board. */
+.rc-ws__seg { display: inline-flex; margin-left: auto; flex: none; background: #EEF1F4; border-radius: 8px; padding: 2px; gap: 2px; }
+.rc-ws__seg-opt { border: none; background: transparent; color: #5C6770; font: 500 12px 'Hanken Grotesk', sans-serif; border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+.rc-ws__seg-opt--on { background: #fff; color: #011F8D; font-weight: 700; box-shadow: 0 1px 2px rgba(15,25,40,.14); }
+.rc-tip__board { border-top: 1px solid #F2F4F6; padding: 12px 14px 14px; overflow-x: auto; }
+
+/* 2.4 Requisition context. */
+.rc-ctx { padding: 14px 16px; }
+.rc-ctx__head { display: flex; align-items: center; margin-bottom: 9px; }
+.rc-ctx__head h2 { font-size: 13px; font-weight: 700; color: #1B2730; }
+.rc-ctx__head .rc-link { margin-left: auto; }
+.rc-ctx__facts { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #5C6770; }
+.rc-ctx__row { display: flex; justify-content: space-between; gap: 12px; }
+.rc-ctx__k { color: #5C6770; }
+.rc-ctx__v { color: #1B2730; text-align: right; font-weight: 600; }
+.rc-ctx__v--warn { color: #946011; }
+.rc-ctx__note { margin-top: 10px; padding-top: 9px; border-top: 1px solid #F2F4F6; }
+.rc-ctx__note .rc-caps { display: block; margin-bottom: 4px; }
+.rc-ctx__note-body { font-size: 12px; color: #3A454E; }
+.rc-ctx__note-empty { font-size: 12px; color: #93A0A8; }
+
+/* 2.5 Upcoming & tasks. */
+.rc-up { padding: 14px 16px; }
+.rc-up__title { font-size: 13px; font-weight: 700; color: #1B2730; margin-bottom: 9px; }
+.rc-up .rc-caps { display: block; margin-bottom: 4px; }
+.rc-up__none { font-size: 12px; color: #93A0A8; margin: 0 0 10px; }
+.rc-up__list { list-style: none; margin: 0 0 10px; padding: 0; }
+.rc-up__iv { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; }
+.rc-up__iv-nm { flex: 1; color: #1B2730; font-weight: 600; }
+.rc-up__iv-when { color: #93A0A8; }
+.rc-up__taskhead { display: flex; align-items: center; margin-bottom: 2px; }
+.rc-up__taskhead .rc-caps { margin-bottom: 0; }
+.rc-up__taskhead .rc-link { margin-left: auto; }
+.rc-task { display: flex; gap: 10px; padding: 8px 0; font-size: 12px; }
+.rc-task__box { width: 15px; height: 15px; border-radius: 5px; border: 1.5px solid #C6CDD4; flex: none; box-sizing: border-box; margin-top: 1px; }
+.rc-task__body { flex: 1; min-width: 0; }
+.rc-task__body b { display: block; color: #1B2730; }
+.rc-task__meta { color: #5C6770; }
+.rc-task__due { color: #C0410C; }
+
+/* 2.6 Recent activity. */
+.rc-act { padding: 14px 16px 6px; }
+.rc-act__head { display: flex; align-items: center; margin-bottom: 4px; }
+.rc-act__head h2 { font-size: 13px; font-weight: 700; color: #1B2730; }
+.rc-act__head .rc-link { margin-left: auto; }
+.rc-act__row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid #F2F4F6; font-size: 12px; }
+.rc-act__dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex: none; }
+.rc-act__dot--ok { background: #1F7A4D; }
+.rc-act__dot--mute { background: #A9B3BC; }
+.rc-act__body { flex: 1; min-width: 0; }
+.rc-act__body b { display: block; color: #1B2730; }
+.rc-act__detail { color: #5C6770; }
+.rc-act__when { font-size: 11px; color: #93A0A8; flex: none; }
 
 /* Underline tabs — scoped to the workspace; the global Tabs primitive is
  * untouched (the wrapper class raises specificity over theme.css). */

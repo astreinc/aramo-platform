@@ -57,6 +57,13 @@ import {
 } from './requisition-talent-board-api';
 import { AddTalentDialog } from './AddTalentDialog';
 import { WorkspacePanel } from './WorkspacePanel';
+import { useTalentViewPreference } from './useTalentViewPreference';
+import { useRequisitionTalentActions } from './requisition-talent-actions';
+import {
+  placementFor,
+  talentLabel,
+  type JourneyCells,
+} from './requisition-journey-helpers';
 import {
   CLOSE_SUBMITTALS_HELPER,
   SELF_APPROVAL_SOD_LINE,
@@ -177,6 +184,13 @@ export function RequisitionDetailView({
   const [interviews, setInterviews] = useState<readonly InterviewCalendarRow[]>([]);
   const [reqTasks, setReqTasks] = useState<readonly TaskView[]>([]);
   const [recruiterName, setRecruiterName] = useState<string | null>(null);
+  // Directory-resolved display names for task owners / activity actors shown in
+  // the Workspace rail. Keyed by user id; unresolved ids fall back to a neutral
+  // label in the panel (a raw UUID is never rendered).
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+  // Shared List|Board preference for the talent surface — used by BOTH the
+  // Talent tab and the Workspace → Talent in play (default Board).
+  const [talentView, setTalentView] = useTalentViewPreference();
   // Lazy attention: populated by the Pre-Start tab AFTER it is opened (its
   // per-placement reads are lazy). Keyed so re-opens replace, never accumulate.
   const [preStartBlocked, setPreStartBlocked] = useState<number | null>(null);
@@ -344,6 +358,26 @@ export function RequisitionDetailView({
         }
         merged.sort((a, b) => b.created_at.localeCompare(a.created_at));
         setActivities(merged);
+        // Resolve directory display names for Workspace-rail task owners +
+        // activity actors (best-effort; the panel falls back to a neutral label).
+        const actorIds = new Set<string>();
+        if (tasksRes.status === 'fulfilled' && Array.isArray(tasksRes.value.items)) {
+          for (const t of tasksRes.value.items) {
+            const owner = t.assignee_id ?? t.created_by_user_id;
+            if (owner !== null) actorIds.add(owner);
+          }
+        }
+        for (const a of merged) {
+          if (a.created_by_id !== null) actorIds.add(a.created_by_id);
+        }
+        if (actorIds.size > 0) {
+          try {
+            const names = await resolveUserNames([...actorIds]);
+            if (!cancelled) setUserNames(names);
+          } catch {
+            /* directory best-effort — unresolved ids render as a neutral label */
+          }
+        }
       })
       .catch((err) => {
         if (cancelled) return;
@@ -494,6 +528,7 @@ export function RequisitionDetailView({
         arrangementLabel={headerArrangement}
         board={board}
         talentNames={talentNames}
+        userNames={userNames}
         interviews={interviews}
         tasks={reqTasks}
         canReadTasks={canReadTasks}
@@ -503,7 +538,16 @@ export function RequisitionDetailView({
         existingTalentIds={pipelines.map((p) => p.talent_record_id)}
         canAddTalent={canAddTalent}
         canSource={scopes.includes('talent:source')}
-        canLogNote={canLogNote}
+        pipelines={pipelines}
+        talents={talents}
+        placements={placements}
+        canEditHot={canEditHot}
+        canReadPlacements={canReadPlacements}
+        onToggleHot={handleToggleHot}
+        onPipelineUpdated={handlePipelineUpdated}
+        onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
+        talentView={talentView}
+        onTalentView={setTalentView}
         onNavigate={setTab}
         onRefresh={refresh}
       />
@@ -547,6 +591,8 @@ export function RequisitionDetailView({
           onPipelineUpdated={handlePipelineUpdated}
           onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
           onNavigate={setTab}
+          talentView={talentView}
+          onTalentView={setTalentView}
         />
       ),
     });
@@ -1181,34 +1227,6 @@ function liveOfferFor(
   return [...mine].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
 }
 
-// The relevant placement for a talent — a STARTED one, else the most recent.
-function placementFor(
-  placements: readonly PlacementView[],
-  talentId: string,
-): PlacementView | null {
-  const mine = placements.filter((p) => p.talent_record_id === talentId);
-  if (mine.length === 0) return null;
-  const started = mine.find((p) => p.state === 'STARTED');
-  if (started !== undefined) return started;
-  return [...mine].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
-}
-
-// Authoritative pre-start summary (BE-derived readiness/blocking), rendered
-// verbatim. Null when there is no requirement set for the placement ("—").
-function summarizePreStart(r: PreStartPlacementRequirements): string | null {
-  if (!r.materialized) return null;
-  if (r.blocking_unresolved_count > 0) return `Blocked · ${r.blocking_unresolved_count}`;
-  if (r.ready) return 'Ready';
-  return 'Pending';
-}
-
-// Per-talent lazy cell state for the CLIENT + PRE-START columns. Populated ONLY
-// when a talent row is opened; cached for the page lifetime (reopening does not
-// refetch) and invalidated for that talent when its pipeline is transitioned.
-type JourneyCells =
-  | { readonly status: 'loading' }
-  | { readonly status: 'loaded'; readonly client: string | null; readonly prestart: string | null };
-
 // Render text for a lazy CLIENT/PRE-START cell: "—" before open / on absence,
 // "…" while the opened row is loading, else the authoritative value.
 function journeyCellText(
@@ -1234,6 +1252,8 @@ function TalentJourney({
   onPipelineUpdated,
   onPipelineRemoved,
   onNavigate,
+  talentView,
+  onTalentView,
 }: {
   readonly req: RequisitionView;
   readonly pipelines: readonly PipelineView[];
@@ -1248,138 +1268,32 @@ function TalentJourney({
   readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
   readonly onNavigate: (tab: TabId) => void;
+  // Shared List|Board preference (lifted to RequisitionDetailView so the Talent
+  // tab and the Workspace agree). Approved default is Board.
+  readonly talentView: 'list' | 'board';
+  readonly onTalentView: (next: 'list' | 'board') => void;
 }) {
-  const [selected, setSelected] = useState<PipelineView | null>(null);
-  // TB-2 — the Talent surface's List|Board view mode (List is the default working surface).
-  const [talentView, setTalentView] = useState<'list' | 'board'>('list');
-  // Accidental-Add Correction — the "Remove from requisition" (VOID) flow. `voidTarget` opens
-  // the correction confirmation; `boardRefresh` forces a Board re-fetch after a removal.
-  const [voidTarget, setVoidTarget] = useState<{ pipelineId: string; talentName: string } | null>(null);
-  const [voidBusy, setVoidBusy] = useState(false);
-  const [voidError, setVoidError] = useState('');
-  const [boardRefresh, setBoardRefresh] = useState(0);
-  // Accidental-Add Correction — the server-authoritative set of VOID-eligible pipeline ids
-  // (a card carries the projected pipeline.void action). Gates the "Remove from requisition"
-  // affordance in the List rows + the drawer footer — never FE-reconstructed from no_contact.
-  const [voidEligibleIds, setVoidEligibleIds] = useState<ReadonlySet<string>>(new Set());
-  // Lazy CLIENT/PRE-START population, keyed by talent_record_id.
-  const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
   const [findOpen, setFindOpen] = useState(false);
   const [knownTalentOpen, setKnownTalentOpen] = useState(false);
   const canSource = scopes.includes('talent:source');
 
-  // Least-visibility: the read rides its existing scope; without it the cell
-  // stays "—" and NO fetch is ever issued.
-  const canReadClient = scopes.includes(SUBMITTAL_READ);
-  const canReadPreStart = scopes.includes(PRE_START_READ);
-
-  // Fetch ONE talent's authoritative CLIENT + PRE-START values. No cross-row
-  // fan-out, no speculative values; failures + absences collapse to "—".
-  const fetchCells = useCallback(
-    (talentId: string) => {
-      setCells((m) => ({ ...m, [talentId]: { status: 'loading' } }));
-      const clientP: Promise<string | null> = canReadClient
-        ? findSubmittalForTalentJob(talentId, req.id)
-            .then((r) => (r.submittal !== null ? SUBMITTAL_STATE_LABELS[r.submittal.state] : null))
-            .catch(() => null)
-        : Promise.resolve(null);
-      const placement = canReadPlacements ? placementFor(placements, talentId) : null;
-      const preStartP: Promise<string | null> =
-        canReadPreStart && placement !== null
-          ? getPreStartRequirements(placement.id)
-              .then((r) => summarizePreStart(r))
-              .catch(() => null)
-          : Promise.resolve(null);
-      void Promise.all([clientP, preStartP]).then(([client, prestart]) => {
-        setCells((m) => ({ ...m, [talentId]: { status: 'loaded', client, prestart } }));
-      });
-    },
-    [canReadClient, canReadPreStart, canReadPlacements, placements, req.id],
-  );
-
-  // Open a talent row → open the panel + hydrate its cells (cache hit ⇒ no
-  // refetch). This is the ONLY entry point for the per-talent reads: nothing
-  // hydrates at first paint or in an effect.
-  const openRow = useCallback(
-    (p: PipelineView) => {
-      setSelected(p);
-      // Cache hit (loading or loaded) ⇒ no refetch on reopen.
-      if (cells[p.talent_record_id] === undefined) fetchCells(p.talent_record_id);
-    },
-    [cells, fetchCells],
-  );
-
-  // TB-2 — talent display names for the Board (keyed by talent_record_id). Reuses the
-  // requisition's already-loaded `talents` enrichment; the Board never re-fetches per card.
-  const boardTalentNames = useMemo(
-    () =>
-      Object.fromEntries(
-        Object.entries(talents).map(([id, t]) => [id, `${t.first_name} ${t.last_name}`.trim()]),
-      ),
-    [talents],
-  );
-
-  // Accidental-Add Correction — fetch the server-authoritative VOID eligibility (which cards
-  // carry the projected pipeline.void action) so the List + drawer reveal the action only when
-  // the backend allows it. Re-runs after a removal (boardRefresh). Best-effort: a fetch failure
-  // simply leaves the affordance hidden (never a false-positive).
-  useEffect(() => {
-    let live = true;
-    getRequisitionTalentBoard(req.id)
-      .then((board) => {
-        if (!live) return;
-        const ids = new Set<string>();
-        for (const col of board.columns) {
-          for (const c of col.cards) {
-            if (c.next_actions.some((a) => a.key === 'pipeline.void')) ids.add(c.pipeline_id);
-          }
-        }
-        setVoidEligibleIds(ids);
-      })
-      .catch(() => { if (live) setVoidEligibleIds(new Set()); });
-    return () => { live = false; };
-  }, [req.id, boardRefresh]);
-
-  // Accidental-Add Correction — open the "Remove from requisition" confirmation.
-  const requestVoid = useCallback((pipelineId: string, talentName: string) => {
-    setVoidError('');
-    setVoidTarget({ pipelineId, talentName });
-  }, []);
-
-  // Confirm the correction: read the CAS token from the already-loaded pipeline (no extra
-  // round-trip), call the governed endpoint, and on success remove the card locally + refresh.
-  // The server is authoritative — it re-checks no_contact + no engagement + no downstream and
-  // returns a typed refusal (surfaced verbatim) when ineligible.
-  const confirmVoid = useCallback(async () => {
-    if (voidTarget === null) return;
-    const episode = pipelines.find((p) => p.id === voidTarget.pipelineId);
-    if (episode === undefined) return;
-    setVoidBusy(true);
-    setVoidError('');
-    try {
-      await voidPipelineEpisode(episode.id, { reason: 'ADDED_BY_MISTAKE', expected_version: episode.version });
-      onPipelineRemoved(episode.id); // remove from the active List (parent-owned pipelines state)
-      if (selected?.id === episode.id) setSelected(null); // close the drawer if open on this Talent
-      setBoardRefresh((n) => n + 1); // refetch the Board (the card disappears)
-      setVoidTarget(null);
-    } catch (e) {
-      const code = e instanceof ApiError ? e.code : '';
-      setVoidError(
-        code === 'PIPELINE_VOID_HAS_ENGAGEMENT'
-          ? 'This Talent already has engagement on this requisition, so it can no longer be removed as an accidental add.'
-          : code === 'PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY'
-            ? 'This Talent has downstream activity on this requisition and can no longer be removed as an accidental add.'
-            : code === 'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE'
-              ? 'This Talent has progressed past the initial stage and can no longer be removed as an accidental add.'
-              : code === 'PIPELINE_TRANSITION_CONFLICT'
-                ? 'This Talent was updated in another session; refresh and try again.'
-                : e instanceof Error ? e.message : 'Could not remove the Talent from this requisition.',
-      );
-    } finally {
-      setVoidBusy(false);
-    }
-  }, [voidTarget, pipelines, selected, onPipelineRemoved]);
+  // The shared talent action context — drawer (TalentDetailPanel) + VOID flow +
+  // lazy CLIENT/PRE-START reads + board-refresh + VOID eligibility. ONE
+  // implementation, reused verbatim by the Workspace board embed; no duplicated
+  // handlers, no second board. Backend/action authority is unchanged.
+  const actions = useRequisitionTalentActions({
+    req,
+    pipelines,
+    talents,
+    placements,
+    scopes,
+    canEditHot,
+    canReadPlacements,
+    onToggleHot,
+    onPipelineUpdated,
+    onPipelineRemoved,
+  });
 
   return (
     <div className="rc-tj">
@@ -1390,7 +1304,7 @@ function TalentJourney({
           role="tab"
           aria-selected={talentView === 'list'}
           className={`rc-tboard__toggle${talentView === 'list' ? ' rc-tboard__toggle--on' : ''}`}
-          onClick={() => setTalentView('list')}
+          onClick={() => onTalentView('list')}
         >
           List
         </Button>
@@ -1400,7 +1314,7 @@ function TalentJourney({
           role="tab"
           aria-selected={talentView === 'board'}
           className={`rc-tboard__toggle${talentView === 'board' ? ' rc-tboard__toggle--on' : ''}`}
-          onClick={() => setTalentView('board')}
+          onClick={() => onTalentView('board')}
         >
           Board
         </Button>
@@ -1408,14 +1322,14 @@ function TalentJourney({
       {talentView === 'board' ? (
         <RequisitionTalentBoard
           requisitionId={req.id}
-          talentNames={boardTalentNames}
+          talentNames={actions.boardTalentNames}
           scopes={scopes}
           onSelectCard={(pid) => {
             const p = pipelines.find((x) => x.id === pid);
-            if (p !== undefined) openRow(p);
+            if (p !== undefined) actions.openRow(p);
           }}
-          onRequestVoid={requestVoid}
-          refreshToken={boardRefresh}
+          onRequestVoid={actions.requestVoid}
+          refreshToken={actions.boardRefresh}
         />
       ) : (
       <div className="rc-tj__inner" role="table" aria-label="Talent journey">
@@ -1488,7 +1402,7 @@ function TalentJourney({
               attachedTalentIds={pipelines.map((p) => p.talent_record_id)}
               canAddToRequisition={canSource}
               onClose={() => setKnownTalentOpen(false)}
-              onAdded={() => setBoardRefresh((n) => n + 1)}
+              onAdded={() => actions.bumpBoardRefresh()}
             />
           ) : null}
           {/* Full pipeline → the requisitions list (the prototype target). */}
@@ -1527,14 +1441,14 @@ function TalentJourney({
             const placement = canReadPlacements
               ? placementFor(placements, p.talent_record_id)
               : null;
-            const cell = cells[p.talent_record_id];
+            const cell = actions.cells[p.talent_record_id];
             return (
               <div key={p.id} className="rc-tj__row" role="row">
                 {/* TALENT → the talent side panel (owning surface). */}
                 <Button unstyled
                   type="button"
                   className="rc-tj__talent"
-                  onClick={() => openRow(p)}
+                  onClick={() => actions.openRow(p)}
                 >
                   <span className="rc-tj__avatar" aria-hidden="true">
                     {initialsOf(name)}
@@ -1564,7 +1478,7 @@ function TalentJourney({
                 <Button unstyled
                   type="button"
                   className="rc-tj__cell"
-                  onClick={() => openRow(p)}
+                  onClick={() => actions.openRow(p)}
                   aria-label={`Pipeline: ${PIPELINE_STATUS_LABELS[p.status]}`}
                 >
                   <StagePill status={p.status} />
@@ -1592,7 +1506,7 @@ function TalentJourney({
                   <Button unstyled
                     type="button"
                     className="rc-tj__cell"
-                    onClick={() => openRow(p)}
+                    onClick={() => actions.openRow(p)}
                   >
                     {RECRUITING_OFFER_STATE_LABELS[offer.state]}
                     {isOfferExpiringSoon(offer) ? (
@@ -1636,12 +1550,12 @@ function TalentJourney({
                   {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
                       backend deems this episode VOID-eligible (server-authoritative; never from
                       the No-contact status alone). Opens the shared correction confirmation. */}
-                  {voidEligibleIds.has(p.id) && (
+                  {actions.voidEligibleIds.has(p.id) && (
                     <Button
                       unstyled
                       type="button"
                       className="rc-tj__voidbtn"
-                      onClick={() => requestVoid(p.id, name)}
+                      onClick={() => actions.requestVoid(p.id, name)}
                     >
                       Remove from requisition
                     </Button>
@@ -1653,51 +1567,14 @@ function TalentJourney({
         )}
       </div>
       )}
-      {selected !== null ? (
-        <TalentDetailPanel
-          entry={selected}
-          talentName={talentLabel(talents, selected.talent_record_id)}
-          isNew={false}
-          reqTitle={req.title}
-          reqCode={`REQ-${req.requisition_number}`}
-          scopes={scopes}
-          isHot={talents[selected.talent_record_id]?.is_hot ?? false}
-          canEditHot={canEditHot}
-          onToggleHot={(next) => void onToggleHot(selected.talent_record_id, next)}
-          onClose={() => setSelected(null)}
-          onTransitioned={(u) => {
-            onPipelineUpdated(u);
-            setSelected(u);
-            // The owning workflow changed → invalidate this talent's cached
-            // CLIENT/PRE-START cells and refetch (the row is still open).
-            fetchCells(u.talent_record_id);
-          }}
-          canVoid={voidEligibleIds.has(selected.id)}
-          onRequestVoid={requestVoid}
-        />
-      ) : null}
-      {voidTarget !== null ? (
-        <RemoveFromRequisitionModal
-          talentName={voidTarget.talentName}
-          busy={voidBusy}
-          error={voidError}
-          onCancel={() => { if (!voidBusy) { setVoidTarget(null); setVoidError(''); } }}
-          onConfirm={() => void confirmVoid()}
-        />
-      ) : null}
+      {/* Shared drawer (TalentDetailPanel) + VOID modal — rendered by the hook. */}
+      {actions.portals}
     </div>
   );
 }
 
 // ── Offers tab (summary + drill-through; read rides offer:create) ──
 
-function talentLabel(
-  talents: Record<string, TalentRecordView>,
-  talentId: string,
-): string {
-  const t = talents[talentId];
-  return t ? `${t.first_name} ${t.last_name}`.trim() : 'Talent';
-}
 
 // Shared per-tab empty state — mirrors the prototype's dashed "nothing here yet"
 // card (title + explanatory body). Used by the tabs whose prototype view is an
