@@ -58,7 +58,6 @@ export interface WorkspaceEngagementSection {
   readonly governed: boolean;
   readonly policy_present: boolean;
   readonly satisfied: boolean;
-  readonly override_available: boolean;
   readonly unavailable: boolean;
 }
 

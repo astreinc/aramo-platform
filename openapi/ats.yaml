@@ -1409,6 +1409,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required:
                   - identity
                   - context
@@ -1421,12 +1422,77 @@ paths:
                   - client_selection
                   - actions
                 properties:
-                  identity: { type: object }
-                  context: { type: object }
-                  pipeline: { type: object }
-                  submittal: { type: object }
+                  identity:
+                    type: object
+                    additionalProperties: false
+                    required: [submittal_id, talent, requisition, company]
+                    properties:
+                      submittal_id: { type: string, format: uuid }
+                      talent:
+                        type: object
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      requisition:
+                        type: object
+                        additionalProperties: false
+                        required: [id, title]
+                        properties:
+                          id: { type: string, format: uuid }
+                          title: { type: [string, 'null'] }
+                      company:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                  context:
+                    type: object
+                    additionalProperties: false
+                    required: [recruiter, owner, talent_location, talent_title, work_authorization]
+                    properties:
+                      recruiter:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      owner:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, name]
+                        properties:
+                          id: { type: string, format: uuid }
+                          name: { type: [string, 'null'] }
+                      talent_location: { type: [string, 'null'] }
+                      talent_title: { type: [string, 'null'] }
+                      work_authorization: { type: [string, 'null'] }
+                  pipeline:
+                    type: object
+                    additionalProperties: false
+                    required: [linked_episode_id, current_stage, is_live]
+                    properties:
+                      linked_episode_id: { type: [string, 'null'], format: uuid }
+                      current_stage: { type: [string, 'null'] }
+                      is_live: { type: boolean }
+                  submittal:
+                    type: object
+                    additionalProperties: false
+                    required: [state, created_at, created_by, confirmed_at, revoked_at, resume_edition_id]
+                    properties:
+                      state: { type: string }
+                      created_at: { type: [string, 'null'], format: date-time }
+                      created_by: { type: [string, 'null'] }
+                      confirmed_at: { type: [string, 'null'], format: date-time }
+                      revoked_at: { type: [string, 'null'], format: date-time }
+                      resume_edition_id: { type: [string, 'null'], format: uuid }
                   readiness:
                     type: object
+                    additionalProperties: false
                     required: [status, requirements]
                     properties:
                       status:
@@ -1434,18 +1500,158 @@ paths:
                         enum: [READY, NEEDS_ACTION, BLOCKED]
                       requirements:
                         type: array
-                        items: { type: object }
-                  documents: { type: object }
-                  engagement: { type: object }
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required:
+                            - key
+                            - label
+                            - required
+                            - satisfied
+                            - severity
+                            - source
+                            - reason
+                            - remediation
+                            - deny_code
+                          properties:
+                            key:
+                              type: string
+                              enum:
+                                - submittal_state
+                                - pipeline_link
+                                - requisition_open
+                                - resume_selected
+                                - submittal_window
+                                - client_restriction
+                                - engagement
+                                - rtr
+                                - client_policy
+                            label: { type: string }
+                            required: { type: boolean }
+                            satisfied: { type: boolean }
+                            severity:
+                              type: string
+                              enum: [blocking, overridable, info]
+                            source:
+                              type: string
+                              enum:
+                                - submittal
+                                - pipeline
+                                - requisition
+                                - documents
+                                - submittal_policy
+                                - client_talent_restriction
+                                - engagement
+                                - client_submittal_policy
+                            reason: { type: [string, 'null'] }
+                            remediation: { type: [string, 'null'] }
+                            deny_code: { type: [string, 'null'] }
+                  documents:
+                    type: object
+                    additionalProperties: false
+                    required: [rtr_satisfied, rtr_deny, resume_selected]
+                    properties:
+                      rtr_satisfied: { type: boolean }
+                      rtr_deny: { type: [string, 'null'] }
+                      resume_selected: { type: boolean }
+                  engagement:
+                    type: object
+                    additionalProperties: false
+                    required: [governed, policy_present, satisfied, unavailable]
+                    properties:
+                      governed: { type: boolean }
+                      policy_present: { type: boolean }
+                      satisfied: { type: boolean }
+                      unavailable: { type: boolean }
                   commercial:
                     description: Present only with compensation visibility; null otherwise.
-                    type:
-                      - object
-                      - 'null'
-                  delivery: { type: object }
-                  client_selection: { type: object }
+                    type: [object, 'null']
+                    additionalProperties: false
+                    required:
+                      - live_bill_rate_amount
+                      - live_bill_rate_currency
+                      - live_bill_rate_period
+                      - submitted_bill_rate
+                      - submitted_rate_currency
+                      - submitted_rate_period
+                    properties:
+                      live_bill_rate_amount: { type: [string, 'null'] }
+                      live_bill_rate_currency: { type: [string, 'null'] }
+                      live_bill_rate_period: { type: [string, 'null'] }
+                      submitted_bill_rate: { type: [string, 'null'] }
+                      submitted_rate_currency: { type: [string, 'null'] }
+                      submitted_rate_period: { type: [string, 'null'] }
+                  delivery:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - delivery_channel
+                      - external_reference
+                      - external_submitted_at
+                      - submitted_at
+                      - submitted_by_actor_id
+                    properties:
+                      delivery_channel: { type: [string, 'null'] }
+                      external_reference: { type: [string, 'null'] }
+                      external_submitted_at: { type: [string, 'null'], format: date-time }
+                      submitted_at: { type: [string, 'null'], format: date-time }
+                      submitted_by_actor_id: { type: [string, 'null'] }
+                  client_selection:
+                    type: object
+                    additionalProperties: false
+                    required:
+                      - present
+                      - process_id
+                      - version
+                      - opened_at
+                      - state
+                      - latest_interview
+                      - feedback
+                      - available_actions
+                    properties:
+                      present: { type: boolean }
+                      process_id: { type: [string, 'null'], format: uuid }
+                      version: { type: [integer, 'null'] }
+                      opened_at: { type: [string, 'null'], format: date-time }
+                      state: { type: [string, 'null'] }
+                      latest_interview:
+                        type: [object, 'null']
+                        additionalProperties: false
+                        required: [id, round, state, scheduled_at]
+                        properties:
+                          id: { type: string, format: uuid }
+                          round: { type: integer }
+                          state: { type: string }
+                          scheduled_at: { type: [string, 'null'], format: date-time }
+                      feedback:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [at, to_state, reason_code, note]
+                          properties:
+                            at: { type: string, format: date-time }
+                            to_state: { type: [string, 'null'] }
+                            reason_code: { type: [string, 'null'] }
+                            note: { type: [string, 'null'] }
+                      available_actions:
+                        type: object
+                        additionalProperties: false
+                        required:
+                          - can_move_to_interview
+                          - can_mark_selected
+                          - can_decline
+                          - can_withdraw
+                          - can_schedule_interview
+                        properties:
+                          can_move_to_interview: { type: boolean }
+                          can_mark_selected: { type: boolean }
+                          can_decline: { type: boolean }
+                          can_withdraw: { type: boolean }
+                          can_schedule_interview: { type: boolean }
                   actions:
                     type: object
+                    additionalProperties: false
                     description: >
                       Action availability — each flag projects an authority that
                       already exists (no generic action framework).

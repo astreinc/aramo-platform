@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { ToastProvider } from '@aramo/fe-foundation';
+import { ApiError, ToastProvider } from '@aramo/fe-foundation';
 
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 
@@ -42,7 +42,7 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
       ],
     },
     documents: { rtr_satisfied: true, rtr_deny: null, resume_selected: true },
-    engagement: { governed: false, policy_present: false, satisfied: true, override_available: false, unavailable: false },
+    engagement: { governed: false, policy_present: false, satisfied: true, unavailable: false },
     commercial: { live_bill_rate_amount: '92.00', live_bill_rate_currency: 'USD', live_bill_rate_period: 'HOURLY', submitted_bill_rate: null, submitted_rate_currency: null, submitted_rate_period: null },
     delivery: { delivery_channel: null, external_reference: null, external_submitted_at: null, submitted_at: null, submitted_by_actor_id: null },
     client_selection: { present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
@@ -173,7 +173,6 @@ describe('SubmittalWorkspaceView', () => {
   });
 
   it('404 → conceals (no raw status, neutral message), never reveals a hidden submittal', async () => {
-    const { ApiError } = await import('@aramo/fe-foundation');
     findMock.mockResolvedValue({ submittal: { id: 'sub1', state: 'ready_for_review' } } as never);
     viewMock.mockRejectedValue(new ApiError(404, 'not found', 'NOT_FOUND'));
     renderWorkspace();

@@ -18,7 +18,7 @@ function makeView(csOver: Partial<SubmittalWorkspaceView['client_selection']> = 
     submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: null },
     readiness: { status: 'READY', requirements: [] },
     documents: { rtr_satisfied: true, rtr_deny: null, resume_selected: true },
-    engagement: { governed: false, policy_present: false, satisfied: true, override_available: false, unavailable: false },
+    engagement: { governed: false, policy_present: false, satisfied: true, unavailable: false },
     commercial: null,
     delivery: { delivery_channel: 'manual_vms', external_reference: null, external_submitted_at: null, submitted_at: '2026-10-02T00:00:00.000Z', submitted_by_actor_id: null },
     client_selection: {

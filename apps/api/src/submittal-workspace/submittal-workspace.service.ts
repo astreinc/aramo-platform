@@ -370,7 +370,6 @@ export class SubmittalWorkspaceService {
         governed: engagementReadiness.governed,
         policy_present: engagementReadiness.policy_present,
         satisfied: engagementReadiness.satisfied,
-        override_available: engagementReadiness.override_available,
         unavailable: engagementReadiness.unavailable,
       },
       commercial,
