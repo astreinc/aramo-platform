@@ -109,26 +109,27 @@ cmd_up() {
     npx nx run-many -t build -p api auth-service
   fi
 
-  # Policy-lifecycle + entitlements seed — AFTER the build (mirrors
-  # deploy/seed-prod.sh Stage C/D; BUILD precedes policy SEED). The policy seed
-  # MUST run from the COMPILED dist, never host-jiti: its import graph pulls the
-  # NestJS + class-validator surface, which jiti cannot transform (the repo uses
-  # legacy experimentalDecorators), so `npm run prisma:seed-policy-lifecycle`
-  # fails on a fresh env. Skipping it leaves policy_store EMPTY and the engine
-  # fails closed (NO_POLICY_PUBLISHED) — every governed requisition transition
-  # (Submit for approval, Close, …) and client-policy publish then 403s.
+  log "5/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
+  bash tools/local-run-link.sh
+
+  # Policy-lifecycle + entitlements seed — AFTER the build AND the link. Mirrors
+  # deploy/seed-prod.sh Stage C/D (BUILD precedes policy SEED), and must run from
+  # the COMPILED dist, never host-jiti: its import graph pulls the NestJS +
+  # class-validator surface, which jiti cannot transform (the repo uses legacy
+  # experimentalDecorators). The compiled seed's dist require()s the mirrored
+  # @aramo + Prisma generated clients that local-run-link.sh wires up, so the
+  # LINK must precede it. Skipping it (SKIP_SEED) leaves policy_store EMPTY and
+  # the engine fails closed (NO_POLICY_PUBLISHED) — every governed requisition
+  # transition and client-policy publish then 403s.
   if [ "${SKIP_SEED:-0}" = "1" ]; then
-    log "5/7 policy+entitlements seed: skipped (SKIP_SEED=1)"
+    log "6/7 policy+entitlements seed: skipped (SKIP_SEED=1)"
   elif [ ! -f dist/apps/api/src/policy/seed-lifecycle.js ]; then
-    log "5/7 policy+entitlements seed: SKIPPED — compiled seed missing at dist/apps/api (build first; do NOT SKIP_BUILD on a fresh env)"
+    log "6/7 policy+entitlements seed: SKIPPED — compiled seed missing at dist/apps/api (build first; do NOT SKIP_BUILD on a fresh env)"
   else
-    log "5/7 seed (compiled): policy-lifecycle + tenant entitlements"
+    log "6/7 seed (compiled): policy-lifecycle + tenant entitlements"
     node dist/apps/api/src/policy/seed-lifecycle.js
     ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
   fi
-
-  log "6/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
-  bash tools/local-run-link.sh
 
   log "7/7 start: auth-service :3001, api :3000, ats-web :4201"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
