@@ -550,7 +550,12 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
 const SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260920130000_talent_intel_1d_d_submittal_resume_edition/migration.sql',
-  // SW-2 — submitted_to_client rename + immutable submittal provenance columns + enum.
+);
+// SW-2 — submitted_to_client rename + immutable submittal provenance columns + enum.
+// SEPARATE const (never a 2nd path arg to resolve — that concatenates into the prior
+// file path and ENOTDIRs; added as its own migration-list entry below).
+const SUBMITTAL_SW2_PROVENANCE_MIGRATION = resolve(
+  ROOT,
   'libs/submittal/prisma/migrations/20261002120000_sw2_submitted_to_client_provenance/migration.sql',
 );
 const EVIDENCE_RECONCILE_REKEY_MIGRATION = resolve(
@@ -3596,6 +3601,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // TI-1D-D — resume_edition_id snapshot column + trigger rewrite. AFTER
         // the L8B1 link migration (the last submittal-record trigger migration).
         SUBMITTAL_TI1DD_RESUME_EDITION_MIGRATION,
+        // SW-2 — submitted_to_client rename + provenance columns + delivery-channel
+        // enum. AFTER the resume-edition migration (the last submittal trigger rewrite).
+        SUBMITTAL_SW2_PROVENANCE_MIGRATION,
         EVIDENCE_RECONCILE_REKEY_MIGRATION,
         // M5 PR-6 §4.14 — ai-draft schema for outreach-send state
         // handlers. AiDraftService writes audit-event rows even when
@@ -6708,6 +6716,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               tier: 'ENTRUSTABLE',
               computedAt: '2026-05-22T09:00:00.000Z',
             });
+            // SW-1 — POST /v1/submittals now derives the pipeline link server-side and
+            // REFUSES (SUBMITTAL_NO_LIVE_PIPELINE_EPISODE, 409) without a LIVE episode
+            // for (tenant, talent, requisition). Seed one so the create precondition is
+            // satisfied and the interaction returns 201 (mirrors the ready_for_review
+            // live-pipeline seed below).
+            await c.query(
+              `INSERT INTO pipeline."Pipeline"
+                 (id, tenant_id, talent_record_id, requisition_id, status)
+               VALUES ($1,$2,$3,$4,'qualifying'::pipeline."PipelineStatus")`,
+              ['00000000-0000-7000-8000-5b0000000001', TENANT_ID, PACT_TALENT_ID, ATSW_SUB_JOB_ID],
+            );
           });
         },
 

@@ -470,5 +470,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body.error?.code).toBe('INSUFFICIENT_PERMISSIONS');
       expect(body.error?.details?.missing_scopes).toEqual(['submittal:create']);
     });
+
+    // SW-1 HTTP regression (full-stack) — POST /v1/submittals derives the Pipeline
+    // link server-side and REFUSES without a live episode. findLiveEpisode runs before
+    // the examination/create step, so a (talent, requisition) with no live Pipeline
+    // refuses 409 regardless of the rest of the body.
+    it('SW-1 — POST /v1/submittals refuses 409 SUBMITTAL_NO_LIVE_PIPELINE_EPISODE without a live Pipeline episode', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterJwt}`, 'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...VALID_BODY, job_id: '00000000-0000-7000-8000-00000000dead' }),
+      });
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error?: { code?: string } };
+      expect(body.error?.code).toBe('SUBMITTAL_NO_LIVE_PIPELINE_EPISODE');
+    });
+
+    it('SW-1 — POST /v1/submittals with a live Pipeline episode → 201 and a server-derived pipeline_id', async () => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/submittals`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${recruiterJwt}`, 'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(VALID_BODY),
+      });
+      // Create SUCCEEDS only because a live Pipeline episode exists for this
+      // (talent, requisition) — the same request 409s without one (test above). The
+      // link is derived server-side (SubmittalRepository.submittal_created logs the
+      // derived pipeline); the create envelope returns { submittal }.
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { submittal?: { id?: string } };
+      expect(body.submittal?.id).toBeTruthy();
+    });
   },
 );
