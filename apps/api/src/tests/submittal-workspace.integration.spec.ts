@@ -135,6 +135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       tenant_id: TENANT,
       visible_requisition_ids: null,
       scopes: new Set(['talent:read', 'compensation:view:bill']),
+      submit_authority: true,
       request_id: 'it-1',
       ...o,
     });
@@ -150,6 +151,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submitted_bill_rate: '90.00', submitted_rate_currency: 'USD', submitted_rate_period: 'HOURLY',
       });
       expect(r.actions.can_submit_to_client).toBe(true);
+      expect(r.actions.submit_authority).toBe(true);
+    });
+
+    it('AUTHZ (D-6): READY but no submit authority → can_submit_to_client false (view-only)', async () => {
+      const r = await service.compose(ctx({ submit_authority: false }), SUB);
+      expect(r.readiness.status).toBe('READY');
+      expect(r.actions.can_submit_to_client).toBe(false);
+      expect(r.actions.submit_authority).toBe(false);
     });
 
     it('FIELD AUTHZ: no compensation scope → commercial null (frozen snapshot not leaked)', async () => {

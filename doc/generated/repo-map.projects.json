@@ -1425,9 +1425,12 @@
       "deriveSubmittalReadiness",
       "deriveWindowStatus",
       "evaluateEligibility",
+      "evaluateSubmittalReadiness",
+      "isRequisitionSubmittable",
       "isSubmittalAuthority",
       "isSubmittalPolicyReason",
-      "isSubmittalWindowStatus"
+      "isSubmittalWindowStatus",
+      "pipelineLinkVerdict"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -1866,6 +1869,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2879,6 +2888,18 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/client-talent-restriction": [
@@ -3146,6 +3167,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3626,6 +3653,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4424,6 +4463,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/pipeline-l2d-entry-provenance.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-sw1-find-live-episode.integration.spec.ts",
         "project": "pipeline",
         "status": "excluded"
       },
@@ -5243,6 +5288,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6127,6 +6178,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/submittal-workspace/RecordSubmittalDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/submittal-workspace/SubmittalWorkspaceView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/submittals/AdvanceStep.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -6853,6 +6916,12 @@
         "status": "unscoped"
       },
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
@@ -7673,6 +7742,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2h-talent-journey.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7702,6 +7777,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submittal-workspace.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

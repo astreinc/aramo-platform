@@ -74,6 +74,30 @@ export async function markReady(
   );
 }
 
+// SW-5/D-3 — the CANONICAL client-submittal command. `submitted_to_client` is the
+// authoritative business fact; delivery_channel / external_reference /
+// external_submitted_at are frozen PROVENANCE of that fact (not transport state).
+// The Submittal Workspace records a handoff that happened outside Aramo — Aramo
+// transmits nothing. The server validates the delivery channel + slot availability
+// authoritatively (a concurrent slot race surfaces as a typed refusal).
+export async function submitToClient(
+  submittalId: string,
+  provenance: {
+    readonly delivery_channel: string;
+    readonly external_reference?: string;
+    readonly external_submitted_at?: string;
+  },
+  idempotencyKey: string,
+): Promise<SubmittalResponse> {
+  return apiClient.post<SubmittalResponse>(
+    `/v1/submittals/${encodeURIComponent(submittalId)}/submit-to-client`,
+    provenance,
+    { headers: { 'Idempotency-Key': idempotencyKey } },
+  );
+}
+
+// @deprecated SW-5/D-3 — the legacy /submit-to-ats alias. Retained for the wizard's
+// existing path only; new call sites (the Submittal Workspace) use submitToClient.
 export async function submitToAts(
   submittalId: string,
   idempotencyKey: string,

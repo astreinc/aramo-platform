@@ -85,6 +85,7 @@ function ctx(overrides: Partial<SubmittalWorkspaceContext> = {}): SubmittalWorks
     tenant_id: TENANT,
     visible_requisition_ids: null,
     scopes: new Set<string>(['talent:read', 'compensation:view:bill']),
+    submit_authority: true,
     request_id: 'req-1',
     ...overrides,
   };
@@ -113,7 +114,17 @@ describe('SubmittalWorkspaceService.compose', () => {
     expect(r.documents).toMatchObject({ rtr_satisfied: true, resume_selected: true });
     expect(r.engagement.satisfied).toBe(true);
     expect(r.actions.can_submit_to_client).toBe(true);
+    expect(r.actions.submit_authority).toBe(true);
     expect(r.actions.can_revoke).toBe(true); // ready_for_review is revocable
+  });
+
+  it('AUTHZ (D-6): READY but no submit authority → can_submit_to_client false (view-only), submit_authority false', async () => {
+    // A view-only caller (e.g. a sourcer without submittal:approve): readiness is still
+    // READY, but the server-owned CTA authority is false so the FE renders no Submit CTA.
+    const r = await svc(makeDb(READY_ROWS)).compose(ctx({ submit_authority: false }), SUB);
+    expect(r.readiness.status).toBe('READY');
+    expect(r.actions.can_submit_to_client).toBe(false);
+    expect(r.actions.submit_authority).toBe(false);
   });
 
   it('FIELD AUTHZ: commercial present with compensation:view:bill (live + frozen snapshot)', async () => {

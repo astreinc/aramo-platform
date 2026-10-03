@@ -1,6 +1,6 @@
 import { Button, Card, InlineAlert } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Navigate, useParams } from 'react-router-dom';
 
 import { getRequisition } from '../requisitions/requisitions-api';
 import { getTalent } from '../talent/talent-api';
@@ -86,12 +86,14 @@ export function SubmittalWizard() {
   // One idempotency key PER action. We keep a small registry so a retry
   // of the SAME logical action reuses its key (silent-replay), while a
   // distinct action (e.g. mark-ready vs revoke) gets its own key.
+  // SW-5/D-1 — the Submittal Workspace now owns the MarkReady → Submit journey, so
+  // the wizard no longer mints markReady/submitToAts keys: a handoff_draft /
+  // ready_for_review submittal is redirected into the Workspace below. The wizard
+  // retains Create (+ the create-time attestations) and confirm/placement.
   const keys = useMemo(
     () => ({
       create: uuidv4(),
       confirm: uuidv4(),
-      markReady: uuidv4(),
-      submitToAts: uuidv4(),
       confirmAts: uuidv4(),
       revoke: uuidv4(),
     }),
@@ -178,6 +180,21 @@ export function SubmittalWizard() {
     );
   }
 
+  // SW-5/D-1 — de-duplicate the submit journey. Once a submittal is in preparation
+  // (handoff_draft) or ready_for_review, the canonical surface is the Submittal
+  // Workspace (preparation / readiness / record submittal). The wizard no longer
+  // presents a competing MarkReady/Submit path; it redirects into the Workspace.
+  // Create (+ attestations), confirm/placement (submitted_to_client → confirmed),
+  // and the revoked terminal view remain here.
+  if (
+    submittal !== null &&
+    (submittal.state === 'handoff_draft' || submittal.state === 'ready_for_review')
+  ) {
+    return (
+      <Navigate to={`/talent/${talentId}/submittal/${requisitionId}/workspace`} replace />
+    );
+  }
+
   // ready-create OR ready-resume
   const currentState =
     submittal !== null ? submittal.state : 'created';
@@ -223,24 +240,16 @@ export function SubmittalWizard() {
         />
       )}
 
-      {/* Steps 3, 4, 5 — mainline advance (handoff_draft, ready_for_review,
-          submitted_to_client). Confirmed is the terminal. */}
-      {submittal !== null
-        && (submittal.state === 'handoff_draft'
-          || submittal.state === 'ready_for_review'
-          || submittal.state === 'submitted_to_client') && (
-          <AdvanceStep
-            submittal={submittal}
-            idempotencyKey={
-              submittal.state === 'handoff_draft'
-                ? keys.markReady
-                : submittal.state === 'ready_for_review'
-                  ? keys.submitToAts
-                  : keys.confirmAts
-            }
-            onAdvanced={(s) => setSubmittal(s)}
-          />
-        )}
+      {/* Confirm / placement — submitted_to_client → confirmed. The earlier
+          mainline advances (handoff_draft → ready_for_review → submitted_to_client)
+          are owned by the Submittal Workspace (SW-5/D-1) and redirected above. */}
+      {submittal !== null && submittal.state === 'submitted_to_client' && (
+        <AdvanceStep
+          submittal={submittal}
+          idempotencyKey={keys.confirmAts}
+          onAdvanced={(s) => setSubmittal(s)}
+        />
+      )}
 
       {/* Terminal Confirmed view (evidence package). */}
       {submittal !== null && submittal.state === 'confirmed' && (

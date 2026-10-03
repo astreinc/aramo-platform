@@ -44,11 +44,19 @@ export class SubmittalWorkspaceController {
     @Req() req: Request,
   ): Promise<SubmittalWorkspaceView> {
     const visible_requisition_ids = await req.resolveVisibleRequisitionIds!();
+    // SW-5/D-6 — submit authority is EXACTLY what the submit command enforces
+    // (`submittal:approve` scope + recruiter consumer). Resolved here from the
+    // principal and passed into the projection so `actions.can_submit_to_client` is
+    // the single server-owned CTA authority; the FE never reconstructs it.
+    const scopes = authContext.scopes ?? [];
+    const submit_authority =
+      scopes.includes('submittal:approve') && authContext.consumer_type === 'recruiter';
     return this.service.compose(
       {
         tenant_id: authContext.tenant_id,
         visible_requisition_ids,
-        scopes: new Set(authContext.scopes ?? []),
+        scopes: new Set(scopes),
+        submit_authority,
         request_id: requestId,
       },
       submittalId,

@@ -1571,10 +1571,22 @@ function TalentJourney({
                 </Button>
                 {/* CLIENT — authoritative submittal-state summary for this talent,
                     populated LAZILY when the row is opened (the pipeline→submittal
-                    linkage read; never derived from the pipeline stage). */}
-                <span className="rc-tj__cell rc-tj__empty">
-                  {journeyCellText(cell, 'client')}
-                </span>
+                    linkage read; never derived from the pipeline stage). SW-5: when a
+                    submittal exists the cell opens its Submittal Workspace (the
+                    workspace resolves the submittal from this talent + requisition). */}
+                {cell?.status === 'loaded' && cell.client !== null ? (
+                  <Link
+                    className="rc-tj__cell rc-tj__client-link"
+                    to={`/talent/${p.talent_record_id}/submittal/${req.id}/workspace`}
+                    title="Open the Submittal Workspace"
+                  >
+                    {cell.client}
+                  </Link>
+                ) : (
+                  <span className="rc-tj__cell rc-tj__empty">
+                    {journeyCellText(cell, 'client')}
+                  </span>
+                )}
                 {/* OFFER → the offer surface in the side panel. */}
                 {offer !== null ? (
                   <Button unstyled

@@ -39,6 +39,13 @@ export interface SubmittalWorkspaceContext {
   readonly tenant_id: string;
   readonly visible_requisition_ids: ReadonlySet<string> | null;
   readonly scopes: ReadonlySet<string>;
+  /**
+   * SW-5/D-6 — whether the caller holds the authority the submit command enforces
+   * (`submittal:approve` + recruiter consumer). Resolved in the controller from the
+   * principal; the service folds it into `actions.can_submit_to_client` so that flag
+   * is the single server-owned CTA authority (readiness AND authority).
+   */
+  readonly submit_authority: boolean;
   readonly request_id: string;
 }
 
@@ -355,7 +362,11 @@ export class SubmittalWorkspaceService {
         feedback,
       },
       actions: {
-        can_submit_to_client: readiness.status === 'READY',
+        // SW-5/D-6 — the final, server-owned CTA authority: readiness READY AND the
+        // caller holds submit authority. The FE consumes this single flag for the
+        // primary CTA and never recombines readiness with authority itself.
+        can_submit_to_client: readiness.status === 'READY' && ctx.submit_authority,
+        submit_authority: ctx.submit_authority,
         can_revoke: canTransitionSubmittal(submittal.state as never, 'revoked'),
         client_selection_next_states: csNextStates,
       },

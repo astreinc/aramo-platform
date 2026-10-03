@@ -1,13 +1,10 @@
-import type { SubmittalReadiness } from '@aramo/submittal-eligibility';
+// SW-5 — the Submittal Workspace view, hand-mirrored from the backend projection
+// apps/api/src/submittal-workspace/submittal-workspace.view.ts (SW-4) + the SW-3
+// readiness shape. Per the FE-foundation discipline we hand-mirror the DTO rather
+// than import an @aramo/* domain type. This file carries NO business rule: every
+// field is a fact the server already decided; the FE only renders it. Drift is
+// guarded by submittal-workspace.contract.spec.ts.
 
-// SW-4 — the backend Submittal Workspace READ projection. A UI-ready but
-// domain-honest composition of EXISTING authoritative sources; it owns no business
-// truth, persists nothing, and copies no rule. Every section carries only facts that
-// are authoritative AND permitted for the caller; absent/optional domains are
-// explicit null (never a manufactured default). Financial facts live in `commercial`,
-// which is populated only when the caller holds the compensation-visibility scope.
-
-/** id + display-name pair (name null when not resolvable / not permitted). */
 export interface WorkspaceNamedRef {
   readonly id: string;
   readonly name: string | null;
@@ -21,17 +18,14 @@ export interface WorkspaceIdentitySection {
 }
 
 export interface WorkspaceContextSection {
-  /** The recruiter/owner ownership context (ids + best-effort names; no account_manager column exists). */
   readonly recruiter: WorkspaceNamedRef | null;
   readonly owner: WorkspaceNamedRef | null;
   readonly talent_location: string | null;
   readonly talent_title: string | null;
-  /** The policy-relevant work-authorization fact (presence/value as stored; never inferred). */
   readonly work_authorization: string | null;
 }
 
 export interface WorkspacePipelineSection {
-  /** The frozen submittal→episode link (null when the submittal carries none). */
   readonly linked_episode_id: string | null;
   readonly current_stage: string | null;
   readonly is_live: boolean;
@@ -46,11 +40,29 @@ export interface WorkspaceSubmittalSection {
   readonly resume_edition_id: string | null;
 }
 
+// SW-3 requirement shape (the unified readiness authority). Rendered generically:
+// the FE never branches on `key` for business truth — only for icon/known-route
+// presentation mapping.
+export interface SubmittalRequirement {
+  readonly key: string;
+  readonly label: string;
+  readonly required: boolean;
+  readonly satisfied: boolean;
+  readonly severity: 'blocking' | 'overridable' | 'info';
+  readonly source: string;
+  readonly reason: string | null;
+  readonly remediation: string | null;
+  readonly deny_code: string | null;
+}
+
+export interface SubmittalReadiness {
+  readonly status: 'READY' | 'NEEDS_ACTION' | 'BLOCKED';
+  readonly requirements: readonly SubmittalRequirement[];
+}
+
 export interface WorkspaceDocumentsSection {
-  /** RTR (Right to Represent) readiness verdict for this talent + requisition. */
   readonly rtr_satisfied: boolean;
   readonly rtr_deny: string | null;
-  /** The résumé edition selected for this requisition (working selection), if any. */
   readonly resume_selected: boolean;
 }
 
@@ -62,13 +74,12 @@ export interface WorkspaceEngagementSection {
   readonly unavailable: boolean;
 }
 
-/** Commercial facts — present ONLY when the caller holds compensation visibility. */
+// Present ONLY when the caller holds compensation visibility (field-level authz);
+// null otherwise. Note: SW-4 carries live + frozen BILL rate only (no pay/margin).
 export interface WorkspaceCommercialSection {
-  /** Live requisition commercial truth (the sole editable authority). */
   readonly live_bill_rate_amount: string | null;
   readonly live_bill_rate_currency: string | null;
   readonly live_bill_rate_period: string | null;
-  /** Frozen client-facing commercial snapshot taken at the send (historical truth). */
   readonly submitted_bill_rate: string | null;
   readonly submitted_rate_currency: string | null;
   readonly submitted_rate_period: string | null;
@@ -97,33 +108,17 @@ export interface WorkspaceClientSelectionSection {
     readonly state: string;
     readonly scheduled_at: string | null;
   } | null;
-  /** Response history composed from ClientSelectionEvent (reason_code + note). Newest first. */
   readonly feedback: readonly WorkspaceClientFeedbackEntry[];
 }
 
-/**
- * Action availability — ONLY actions with existing backend/domain-owned eligibility.
- * No generic framework: each flag is a projection of an authority that already exists
- * (readiness band; the client-selection transition state machine).
- */
 export interface WorkspaceActionsSection {
-  /**
-   * The server-owned FINAL submit-to-client CTA authority (SW-5/D-6): readiness is
-   * READY *and* the caller holds the submit authority the command enforces
-   * (`submittal:approve` + recruiter consumer). The FE renders the primary CTA iff
-   * this is true — it never recombines readiness with authority itself. The slot
-   * race remains the one mutation-time exception.
-   */
+  // Server-owned FINAL CTA authority (SW-5/D-6): readiness READY AND the caller
+  // holds submit authority. The FE renders the primary CTA iff this is true.
   readonly can_submit_to_client: boolean;
-  /**
-   * Diagnostic: the caller holds submit authority, independent of readiness. Lets the
-   * FE distinguish "ready but not authorized" (view-only note) from "not ready"
-   * without reconstructing the authorization decision.
-   */
+  // Diagnostic: holds submit authority independent of readiness (distinguishes
+  // "ready but view-only" from "not ready" without recomputing authorization).
   readonly submit_authority: boolean;
-  /** The submittal is in a state that may be revoked (submittal state machine). */
   readonly can_revoke: boolean;
-  /** Legal next ClientSelection states from the current state (empty when no process / terminal). */
   readonly client_selection_next_states: readonly string[];
 }
 
@@ -135,9 +130,27 @@ export interface SubmittalWorkspaceView {
   readonly readiness: SubmittalReadiness;
   readonly documents: WorkspaceDocumentsSection;
   readonly engagement: WorkspaceEngagementSection;
-  /** Null when the caller lacks compensation visibility (field-level authorization). */
   readonly commercial: WorkspaceCommercialSection | null;
   readonly delivery: WorkspaceDeliverySection;
   readonly client_selection: WorkspaceClientSelectionSection;
   readonly actions: WorkspaceActionsSection;
+}
+
+// The delivery channels offered in V1 (manual only). Values map EXACTLY to the SW-2
+// submittal.SubmittalDeliveryChannel enum (ALL_DELIVERY_CHANNELS in
+// apps/api/src/submit-talent/submit-talent.service.ts). `aramo_connector` is
+// intentionally NOT offered (no outbound connector exists; the server refuses it).
+// The server validates the chosen channel authoritatively at submit.
+export const V1_MANUAL_DELIVERY_CHANNELS = [
+  'manual_vms',
+  'manual_client_portal',
+  'manual_email',
+  'manual_other',
+] as const;
+export type V1ManualDeliveryChannel = (typeof V1_MANUAL_DELIVERY_CHANNELS)[number];
+
+export interface RecordSubmittalRequest {
+  readonly delivery_channel: string;
+  readonly external_reference?: string;
+  readonly external_submitted_at?: string;
 }

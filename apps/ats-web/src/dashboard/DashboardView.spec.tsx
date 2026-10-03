@@ -104,16 +104,18 @@ describe('DashboardView (My Desk)', () => {
     expect(screen.getByText('Due today · 1')).toBeInTheDocument();
     expect(screen.getByText('Coming up · 1')).toBeInTheDocument();
     expect(screen.getByText('Qualified 4 days ago · RTR not sent.')).toBeInTheDocument();
-    // the row's primary action is a navigable link to the owning entity
+    // SW-5 (§9.4) — an RTR work item's action opens the Submittal Workspace,
+    // deep-linked to its RTR requirement via a presentation-only focus hint.
     const action = screen.getAllByRole('link', { name: 'Open task' })[0];
-    expect(action).toHaveAttribute('href', '/talent/t1');
+    expect(action).toHaveAttribute('href', '/talent/t1/submittal/r1/workspace?focus=rtr');
   });
 
   it('renders a domain-derived submittal-ready item with the Submit-to-client CTA routing into the submittal flow', async () => {
     getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
     const submit = await screen.findByRole('link', { name: 'Submit to client' });
-    expect(submit).toHaveAttribute('href', '/talent/t2/submittal/r1');
+    // SW-5 (§9.4) — the Submit-to-client work item opens the Submittal Workspace.
+    expect(submit).toHaveAttribute('href', '/talent/t2/submittal/r1/workspace');
     // it renders under the person + the ready reason (FACTS, not a verdict).
     expect(screen.getByText('Hannah Kim')).toBeInTheDocument();
     expect(
