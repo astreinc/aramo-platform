@@ -84,9 +84,8 @@ export interface RequisitionContactDraftInput {
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly pipeline_id?: string;
-  // D-EMAIL-TPL-1 (ET-5/ET-7) — optional template selector; absent → the code
-  // default (behaviour unchanged). The ONLY new client input; never a template_id.
-  readonly template_key?: string;
+  // COMM-EMAIL-TEMPLATE-GOVERNANCE-1 — no client template choice; the server
+  // resolves the governed template (tenant override else code default).
 }
 
 export interface RequisitionContactDraft {
