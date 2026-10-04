@@ -9128,14 +9128,13 @@ components:
       additionalProperties: false
       # COMM-C4 — ids only; the backend reloads all business facts and resolves
       # the recipient itself. No recipient/subject/body is accepted here.
-      # ET-5 — optional template_key is the ONLY new client input (a logical key,
-      # not business truth); absent → the code default. An invalid key fails closed.
+      # COMM-EMAIL-TEMPLATE-GOVERNANCE-1 — no client template choice: the server
+      # always resolves the tenant override (if active) else the code default.
       required: [talent_record_id, requisition_id]
       properties:
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
         pipeline_id: { type: string, format: uuid }
-        template_key: { type: string, maxLength: 120 }
     RequisitionContactEmailDraft:
       type: object
       additionalProperties: false

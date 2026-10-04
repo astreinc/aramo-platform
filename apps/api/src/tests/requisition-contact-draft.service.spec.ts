@@ -87,6 +87,9 @@ function make(over: {
     pipelines as never,
     new FakeIdentity() as never,
     new SystemRequisitionContactTemplateService(),
+    // COMM-EMAIL-TEMPLATE-GOVERNANCE-1 — resolution ALWAYS consults the source
+    // decision; no tenant override here → the code-owned default.
+    { resolveSource: async () => ({ source: 'system_default', template_key: 'requisition-contact' }) } as never,
   );
   return { svc, recipients, requisitions, pipelines };
 }

@@ -19,19 +19,11 @@ import {
 import { EmailTemplateResolverService } from './email-template-resolver.service.js';
 import { buildRequisitionContactTemplateValues } from './system-requisition-contact-template.service.js';
 
-// D-EMAIL-TPL-1 (ET-5) — the ONLY valid template_key for this draft is the
-// requisition-contact logical key. Any other key fails closed.
+// The logical template key for the requisition-contact draft. Resolution is
+// server-authoritative — tenant override (if ACTIVE) else the code-owned default.
+// COMM-EMAIL-TEMPLATE-GOVERNANCE-1: there is NO client template choice; the
+// recruiter cannot bypass an active tenant override at compose time.
 const REQUISITION_CONTACT_KEY = 'requisition-contact';
-
-// ET-5 — thrown when the client supplies a template_key that is not valid for the
-// requisition-contact draft. The controller maps it to 404 EMAIL_TEMPLATE_NOT_FOUND
-// (requestId is added there — the same pattern as RequisitionContactContextError).
-export class EmailTemplateKeyNotFoundError extends Error {
-  constructor() {
-    super('no such email template for requisition contact');
-    this.name = 'EmailTemplateKeyNotFoundError';
-  }
-}
 
 // COMM-C4 (RCE-1) — prepares a requisition-contact email draft. AUTHORITATIVE:
 // the browser supplies only ids; every business fact is reloaded server-side.
@@ -45,9 +37,6 @@ export interface PrepareRequisitionContactDraftArgs {
   readonly talent_record_id: string;
   readonly requisition_id: string;
   readonly pipeline_id?: string;
-  // ET-5 — optional; the ONLY new client input. Absent → code default (behaviour
-  // unchanged). The recipient/context are never client-supplied.
-  readonly template_key?: string;
 }
 
 export interface RequisitionContactDraftView {
@@ -127,9 +116,9 @@ export class RequisitionContactDraftService {
       recruiter_display_name: user?.display_name ?? null,
       tenant_recruiting_company_name: tenant === null ? null : tenant.display_name ?? tenant.name,
     };
-    // 6b. Resolve + render the effective template (D-1). template_key is the ONLY
-    //     new client input; the context + recipient above are server-authoritative.
-    const rendered = await this.resolveRenderedDraft(args.tenant_id, args.template_key, ctx);
+    // 6b. Resolve + render the governed template: tenant override else code
+    //     default — server-authoritative, no client template choice.
+    const rendered = await this.resolveRenderedDraft(args.tenant_id, ctx);
 
     // 7. Draft view — recipient is server-owned and display-only (INV-3).
     return {
@@ -147,18 +136,13 @@ export class RequisitionContactDraftService {
     };
   }
 
-  // ET-5 — effective-template resolution + render, preserving D-1 semantics:
-  //   absent                 → code default (behaviour unchanged);
-  //   requisition-contact key → tenant override (rendered via the ET-3 closed
-  //                            renderer against authoritative context) if one
-  //                            exists, else the code default;
-  //   any other key          → fail closed (404).
-  // A tenant override's content was validated at save (ET-4) and the renderer
-  // fails closed on any stray token, so no `{{…}}` can reach the draft. Cross-tenant
-  // keys are invisible — resolveSource scopes strictly by tenant_id (ET-2).
+  // Governed resolution (COMM-EMAIL-TEMPLATE-GOVERNANCE-1): ALWAYS tenant
+  // override (if ACTIVE) else the code-owned default — server-authoritative, with
+  // NO client template choice. The override's content was validated at save
+  // (ET-4) and the renderer fails closed on any stray token, so no `{{…}}` can
+  // reach the draft; resolveSource scopes strictly by tenant_id (ET-2).
   private async resolveRenderedDraft(
     tenant_id: string,
-    template_key: string | undefined,
     ctx: RequisitionContactContext,
   ): Promise<{
     subject: string;
@@ -167,14 +151,7 @@ export class RequisitionContactDraftService {
     template_version: string;
     warnings: readonly string[];
   }> {
-    if (template_key === undefined) {
-      const d = this.template.resolveDefault(ctx);
-      return { subject: d.subject, body: d.body, template_id: d.template_id, template_version: d.template_version, warnings: d.warnings };
-    }
-    if (template_key !== REQUISITION_CONTACT_KEY) {
-      throw new EmailTemplateKeyNotFoundError();
-    }
-    const src = await this.templateResolver.resolveSource(tenant_id, template_key);
+    const src = await this.templateResolver.resolveSource(tenant_id, REQUISITION_CONTACT_KEY);
     if (src.source === 'tenant_override') {
       const values = buildRequisitionContactTemplateValues(ctx);
       const subj = renderTemplate(src.subject_template, values);
