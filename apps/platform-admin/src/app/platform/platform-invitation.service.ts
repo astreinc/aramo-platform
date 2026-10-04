@@ -15,6 +15,7 @@ import {
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
+import { TenantDocumentTemplateProvisioningService } from './tenant-document-template-provisioning.service.js';
 
 // PlatformInvitationService — orchestrates the cross-schema saga (Lead
 // ruling 7):
@@ -81,6 +82,7 @@ export class PlatformInvitationService {
     private readonly identitySvc: IdentityService,
     private readonly entitlementRepo: EntitlementRepository,
     private readonly policyProvisioning: TenantPolicyProvisioningService,
+    private readonly docTemplateProvisioning: TenantDocumentTemplateProvisioningService,
   ) {}
 
   async provisionTenantAndInviteOwner(args: {
@@ -268,6 +270,38 @@ export class PlatformInvitationService {
         {
           requestId: 'platform.provision',
           details: { tenant_id, reason: 'policy_package_publish_failed' },
+        },
+      );
+    }
+
+    // 5. Documents (RTR-TEMPLATE-1 §7) — publish the tenant's default RTR
+    // template as a byte-identical copy of the platform template. Same
+    // fail-closed compensation class as policy (Lead ruling 7): a tenant that
+    // cannot resolve an RTR template cannot produce an RTR, which gates
+    // submittal, so it must be inert rather than silently broken. The
+    // existing-tenant backfill migration + this seam together guarantee every
+    // tenant resolves exactly one ACTIVE tenant-wide RTR template (INV-12, no
+    // inline fallback). On failure -> SOFT-DISABLE.
+    try {
+      await this.docTemplateProvisioning.publishDefaultRtrTemplate(tenant_id);
+    } catch (err) {
+      this.logger.warn(
+        `RTR template publish failed; soft-disabling tenant ${tenant_id}: ${
+          (err as Error).message
+        }`,
+      );
+      await this.tenantSvc.deactivateTenant({
+        tenant_id,
+        actor_user_id: args.actor_user_id,
+        reason: 'rtr_template_publish_failed',
+      });
+      throw new AramoError(
+        'INTERNAL_ERROR',
+        'RTR template publish failed; tenant soft-disabled',
+        500,
+        {
+          requestId: 'platform.provision',
+          details: { tenant_id, reason: 'rtr_template_publish_failed' },
         },
       );
     }

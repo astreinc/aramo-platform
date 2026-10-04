@@ -84,6 +84,18 @@ export class TemplatesRepository {
     return t;
   }
 
+  // RTR-TEMPLATE-1 (§6) — the tenant-wide ACTIVE template for a DocumentType
+  // (client_id IS NULL; client-scoped precedence is out of scope this slice).
+  // Generic + workflow-neutral: returns the row or null. Resolution/validation of
+  // current_version_id -> ACTIVE version is the caller's concern (apps/api). There
+  // is NO single-ACTIVE DB constraint, so callers must use current_version_id as
+  // the authority, never "first ACTIVE row wins."
+  async findActiveTenantTemplateForType(tenant_id: string, document_type_id: string) {
+    return this.prisma.documentTemplate.findFirst({
+      where: { tenant_id, document_type_id, client_id: null, status: 'ACTIVE' },
+    });
+  }
+
   // ── Versions ─────────────────────────────────────────────────────────────
   async createVersion(input: CreateVersionInput) {
     await this.getTemplate(input.tenant_id, input.template_id);
@@ -122,6 +134,13 @@ export class TemplatesRepository {
     const v = await this.prisma.templateVersion.findFirst({ where: { tenant_id, id } });
     if (v === null) throw new TemplateVersionNotFoundError(id);
     return v;
+  }
+
+  // RTR-TEMPLATE-1 (§27) — nullable version read for resolution validation. Unlike
+  // getVersion this does NOT throw; the resolver maps absence/invalid state to its
+  // own typed configuration refusal rather than leaking a lib-local error.
+  async findVersionById(tenant_id: string, id: string) {
+    return this.prisma.templateVersion.findFirst({ where: { tenant_id, id } });
   }
 
   // DRAFT -> ACTIVE. Idempotent if already ACTIVE. Sets the template's

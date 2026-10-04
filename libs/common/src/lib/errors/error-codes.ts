@@ -861,6 +861,15 @@ export const ERROR_CODES = [
   'EMAIL_TEMPLATE_NOT_FOUND',
   'EMAIL_TEMPLATE_ALREADY_EXISTS',
   'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
+  // RTR-TEMPLATE-1 (§6, §31) — RTR template-resolution refusals. NOT_CONFIGURED
+  // (409): no active tenant-wide RIGHT_TO_REPRESENT template exists for the tenant
+  // (an admin must configure one; recruiter action cannot proceed). CONFIGURATION_
+  // INVALID (422): a template is ACTIVE but its current version is unusable —
+  // current_version_id null, version not ACTIVE / belongs to another template, or
+  // an unrecognised render_schema_version. Fail closed; never select an arbitrary
+  // version or fall back to inline content (INV-12).
+  'RTR_TEMPLATE_NOT_CONFIGURED',
+  'RTR_TEMPLATE_CONFIGURATION_INVALID',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
