@@ -870,6 +870,10 @@ export const ERROR_CODES = [
   // version or fall back to inline content (INV-12).
   'RTR_TEMPLATE_NOT_CONFIGURED',
   'RTR_TEMPLATE_CONFIGURATION_INVALID',
+  // RTR-TEMPLATE-1 (§9, §31) — a REQUIRED closed-catalog binding could not be
+  // resolved to an authoritative value at RTR request time (422). Fail closed
+  // BEFORE rendering: a raw {{token}} or empty value must never reach the PDF.
+  'RTR_TEMPLATE_BINDING_MISSING',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

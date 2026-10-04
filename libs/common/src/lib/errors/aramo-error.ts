@@ -262,6 +262,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // RTR-TEMPLATE-1 — RTR template-resolution refusals (fail-closed, INV-12).
   RTR_TEMPLATE_NOT_CONFIGURED: 409,
   RTR_TEMPLATE_CONFIGURATION_INVALID: 422,
+  RTR_TEMPLATE_BINDING_MISSING: 422,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

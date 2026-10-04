@@ -2,6 +2,8 @@ import { Inject, Injectable } from '@nestjs/common';
 import { DocumentsRepository } from '@aramo/documents';
 import { type DocumentEligibilityInput } from '@aramo/submittal-eligibility';
 
+import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
+
 // DOC-5 (R-5-7, PL-1) — the document-readiness gate. Resolves the PRE-RESOLVED
 // DocumentEligibilityInput for the submit path, mirroring EngagementGateService.
 // Readiness is satisfied ONLY by ONE EXECUTED RIGHT_TO_REPRESENT Document jointly
@@ -9,9 +11,9 @@ import { type DocumentEligibilityInput } from '@aramo/submittal-eligibility';
 // — the same-document predicate. Opaque refs; the gate holds no ATS truth and
 // never mutates Submittal. Lives in apps/api (the only layer that composes the
 // scope:boundary Documents finder into the scope:ats submit path).
-export const RIGHT_TO_REPRESENT_KEY = 'RIGHT_TO_REPRESENT';
-// The seeded SYSTEM RIGHT_TO_REPRESENT DocumentType id (R-5-2, fixed UUID).
-export const RIGHT_TO_REPRESENT_TYPE_ID = 'd0c50005-0000-7000-8000-000000000001';
+// Re-exported for existing importers (e.g. the TB-1 board spec); the single
+// source is rtr-constants.ts (imported above).
+export { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID };
 
 export const DOCUMENT_READINESS_DOCS_REPO = 'DOCUMENT_READINESS_DOCS_REPO';
 

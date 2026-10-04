@@ -182,6 +182,17 @@ export class DocumentsRepository {
     return this.prisma.document.findMany({ where: { tenant_id }, orderBy: { created_at: 'desc' } });
   }
 
+  // RTR-TEMPLATE-1 (§12, INV-3) — the document's current (latest) revision.
+  // Generic + workflow-neutral. Lets the RTR send path consume the EXACT frozen
+  // revision produced at request time (same bytes/hash/template_version_id)
+  // instead of re-rendering. Returns null when no revision exists yet.
+  async getCurrentRevision(tenant_id: string, document_id: string) {
+    return this.prisma.documentRevision.findFirst({
+      where: { tenant_id, document_id },
+      orderBy: { revision_number: 'desc' },
+    });
+  }
+
   async addAssociation(input: {
     tenant_id: string;
     document_id: string;

@@ -289,6 +289,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
       'RTR_TEMPLATE_NOT_CONFIGURED',
       'RTR_TEMPLATE_CONFIGURATION_INVALID',
+      'RTR_TEMPLATE_BINDING_MISSING',
     ]);
   });
 });
