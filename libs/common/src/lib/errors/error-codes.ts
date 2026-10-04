@@ -874,6 +874,10 @@ export const ERROR_CODES = [
   // resolved to an authoritative value at RTR request time (422). Fail closed
   // BEFORE rendering: a raw {{token}} or empty value must never reach the PDF.
   'RTR_TEMPLATE_BINDING_MISSING',
+  // RTR-TEMPLATE-1 (§16, §31) — the recruiter asked to preview an RTR that has no
+  // frozen RENDERED_UNSIGNED artifact to show (409). The document exists but is
+  // not in a previewable state (no revision rendered yet).
+  'RTR_PREVIEW_NOT_AVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

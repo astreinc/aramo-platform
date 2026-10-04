@@ -7009,6 +7009,88 @@ paths:
       security:
         - BearerAuth: []
 
+  # RTR-TEMPLATE-1 — reconciliation + preview. `current` lets the recruiter panel
+  # restore state on reload; `preview` returns presigned access to the exact frozen
+  # unsigned artifact. Provenance is from the PINNED template version, never today's
+  # active template; storage keys are never exposed.
+  /v1/rtr/current:
+    get:
+      operationId: getCurrentRtr
+      summary: The current RTR for an exact tenant + talent + requisition.
+      description: "Authoritative current-RTR lookup so the recruiter panel restores state on reload without re-deriving in the browser. Template provenance (name + version) comes from the EXACT pinned TemplateVersion the document used, never DocumentTemplate.current_version_id. Returns current=null when none exists (normal). Recruiter-only; requires document:read."
+      parameters:
+        - name: talent_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requisition_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: "The current RTR view, or current=null when none exists."
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [current]
+                properties:
+                  current:
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        additionalProperties: false
+                        required: [document_id, status, document_status, template, preview_available, executed_available, certificate_available]
+                        properties:
+                          document_id: { type: string, format: uuid }
+                          status: { type: string }
+                          document_status: { type: string }
+                          template:
+                            oneOf:
+                              - type: 'null'
+                              - type: object
+                                additionalProperties: false
+                                required: [name, version_number]
+                                properties:
+                                  name: { type: string }
+                                  version_number: { type: integer }
+                          preview_available: { type: boolean }
+                          executed_available: { type: boolean }
+                          certificate_available: { type: boolean }
+      security:
+        - BearerAuth: []
+  /v1/rtr/{documentId}/preview:
+    get:
+      operationId: getRtrPreview
+      summary: Presigned read access to the exact frozen unsigned RTR artifact.
+      description: Returns short-lived presigned access to the RENDERED_UNSIGNED artifact of the document's frozen revision — the exact bytes later sent for signature. Never exposes the storage key. Recruiter-only; requires document:read.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Presigned access to the frozen unsigned PDF.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [url, expires_at, content_sha256]
+                properties:
+                  url: { type: string }
+                  expires_at: { type: string }
+                  content_sha256: { type: string }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+
   # DOC-6 — Offer Letter recruiter orchestration. Evidence-only: signing produces an
   # EXECUTED OFFER_LETTER document; the Offer state machine remains the sole authority
   # for ACCEPT (Document=EXECUTED while Offer=SENT is an intended, valid dual state).

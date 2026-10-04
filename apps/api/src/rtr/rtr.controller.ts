@@ -1,9 +1,9 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 
-import { RtrOrchestratorService } from './rtr-orchestrator.service.js';
+import { RtrOrchestratorService, type RtrCurrentView, type RtrPreviewView } from './rtr-orchestrator.service.js';
 
 // DOC-5 (R-5-5) — recruiter-facing RTR endpoints. Thin HTTP surface over the
 // RtrOrchestratorService; recruiter-only (consumer_type gate). tenant_id +
@@ -61,6 +61,47 @@ export class RtrController {
       created_by: authContext.sub,
       requestId,
     });
+  }
+
+  // RTR-TEMPLATE-1 (§14) — the authoritative current RTR for an exact
+  // tenant + talent + requisition (reconciliation, so the panel restores on
+  // reload). Returns { current: null } when none exists (normal). Provenance is
+  // from the pinned version, never today's active template. Requires document:read.
+  @Get('current')
+  @RequireScopes('document:read')
+  @HttpCode(HttpStatus.OK)
+  async current(
+    @Query('talent_id') talentId: string,
+    @Query('requisition_id') requisitionId: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ current: RtrCurrentView | null }> {
+    this.assertRecruiter(authContext, requestId);
+    if (typeof talentId !== 'string' || typeof requisitionId !== 'string') {
+      throw new AramoError('VALIDATION_ERROR', 'talent_id and requisition_id query params are required', 400, { requestId });
+    }
+    const current = await this.orchestrator.current({
+      tenant_id: authContext.tenant_id,
+      talent_id: talentId,
+      requisition_id: requisitionId,
+      requestId,
+    });
+    return { current };
+  }
+
+  // RTR-TEMPLATE-1 (§16) — presigned read access to the EXACT frozen unsigned
+  // artifact the send path will transmit. Never exposes the storage key.
+  // Requires document:read; tenant resolved from the auth context.
+  @Get(':documentId/preview')
+  @RequireScopes('document:read')
+  @HttpCode(HttpStatus.OK)
+  async preview(
+    @Param('documentId') documentId: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RtrPreviewView> {
+    this.assertRecruiter(authContext, requestId);
+    return this.orchestrator.preview(authContext.tenant_id, documentId, requestId);
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status read-model (no second stored authority).

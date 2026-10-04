@@ -90,8 +90,10 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
         talent: TalentRecordRepository,
         resolver: RtrTemplateResolverService,
         binding: RtrTemplateBindingService,
+        templates: TemplatesRepository,
+        storage: DocumentStoragePort,
       ): RtrOrchestratorService =>
-        new RtrOrchestratorService(documents, render, signature, talent, resolver, binding),
+        new RtrOrchestratorService(documents, render, signature, talent, resolver, binding, templates, storage),
       inject: [
         RTR_DOCS_REPO,
         RTR_RENDER_SERVICE,
@@ -99,6 +101,8 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
         TalentRecordRepository,
         RtrTemplateResolverService,
         RtrTemplateBindingService,
+        RTR_TEMPLATES_REPO,
+        RTR_DOCS_STORAGE,
       ],
     },
   ],

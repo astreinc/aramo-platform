@@ -1,10 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { DocumentsRepository, RenderService } from '@aramo/documents';
+import {
+  DocumentsRepository,
+  RenderService,
+  TemplatesRepository,
+  DocumentNotFoundError,
+  type DocumentStoragePort,
+} from '@aramo/documents';
 import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
-import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
+import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
 
@@ -36,6 +42,29 @@ export interface RtrSendResult {
   status: string;
 }
 
+// Recruiter-safe provenance — from the EXACT pinned TemplateVersion (§13), never
+// DocumentTemplate.current_version_id. No internal ids are exposed.
+export interface RtrProvenanceView {
+  name: string;
+  version_number: number;
+}
+
+export interface RtrCurrentView {
+  document_id: string;
+  status: string;
+  document_status: string;
+  template: RtrProvenanceView | null;
+  preview_available: boolean;
+  executed_available: boolean;
+  certificate_available: boolean;
+}
+
+export interface RtrPreviewView {
+  url: string;
+  expires_at: string;
+  content_sha256: string;
+}
+
 @Injectable()
 export class RtrOrchestratorService {
   constructor(
@@ -45,6 +74,9 @@ export class RtrOrchestratorService {
     private readonly talent: TalentRecordRepository,
     private readonly resolver: RtrTemplateResolverService,
     private readonly binding: RtrTemplateBindingService,
+    private readonly templates: TemplatesRepository,
+    // Supplied positionally by the RtrModule factory (RTR_DOCS_STORAGE token).
+    private readonly storage: DocumentStoragePort,
   ) {}
 
   // request → the PREPARE boundary (RTR-TEMPLATE-1 §11). Resolve the governed
@@ -179,14 +211,111 @@ export class RtrOrchestratorService {
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).
   async status(tenant_id: string, document_id: string): Promise<{ document_id: string; status: string; document_status: string }> {
     const doc = await this.documents.getDocument(tenant_id, document_id);
-    const derived =
-      doc.status === 'EXECUTED'
-        ? 'EXECUTED'
-        : doc.status === 'PREPARED' || doc.status === 'EXECUTION_PENDING'
-          ? 'AWAITING_SIGNATURE'
-          : doc.status === 'DRAFT'
-            ? 'REQUESTED'
-            : doc.status;
-    return { document_id, status: derived, document_status: doc.status };
+    return { document_id, status: this.deriveStatus(doc.status), document_status: doc.status };
+  }
+
+  // RTR-TEMPLATE-1 (§14, §15) — the authoritative current RTR for an exact
+  // tenant + talent + requisition, so the recruiter panel restores state on
+  // reload without re-deriving in the browser. Returns null when none exists
+  // (normal — the recruiter has not requested yet). Provenance comes from the
+  // EXACT pinned version (§13), never today's active template.
+  async current(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+    requestId: string;
+  }): Promise<RtrCurrentView | null> {
+    const docs = await this.documents.findDocumentsByTypeKeyAndAssociations({
+      tenant_id: input.tenant_id,
+      document_type_key: RIGHT_TO_REPRESENT_KEY,
+      associations: [
+        { resource_type: 'TALENT', resource_id: input.talent_id, relationship: 'SUBJECT' },
+        { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' },
+      ],
+    });
+    if (docs.length === 0) return null;
+    const selected = this.selectCurrent(docs);
+
+    const [unsigned, executed, certificate] = await Promise.all([
+      this.documents.listArtifacts(input.tenant_id, selected.id, 'RENDERED_UNSIGNED'),
+      this.documents.listArtifacts(input.tenant_id, selected.id, 'EXECUTED'),
+      this.documents.listArtifacts(input.tenant_id, selected.id, 'EXECUTION_CERTIFICATE'),
+    ]);
+
+    return {
+      document_id: selected.id,
+      status: this.deriveStatus(selected.status),
+      document_status: selected.status,
+      template: await this.resolveProvenance(input.tenant_id, selected.id),
+      preview_available: unsigned.length > 0,
+      executed_available: executed.length > 0,
+      certificate_available: certificate.length > 0,
+    };
+  }
+
+  // RTR-TEMPLATE-1 (§16) — presigned read access to the EXACT frozen unsigned
+  // artifact (the bytes send will transmit). Tenant-validated; never exposes the
+  // storage key. Fails closed if the document is not RTR or has no frozen preview.
+  async preview(tenant_id: string, document_id: string, requestId: string): Promise<RtrPreviewView> {
+    let doc;
+    try {
+      doc = await this.documents.getDocument(tenant_id, document_id);
+    } catch (e) {
+      if (e instanceof DocumentNotFoundError) {
+        throw new AramoError('DOCUMENT_NOT_FOUND', `RTR document ${document_id} not found`, 404, { requestId });
+      }
+      throw e;
+    }
+    if (doc.document_type_id !== RIGHT_TO_REPRESENT_TYPE_ID) {
+      throw new AramoError('DOCUMENT_NOT_FOUND', `document ${document_id} is not an RTR`, 404, { requestId });
+    }
+    const revision = await this.documents.getCurrentRevision(tenant_id, document_id);
+    if (revision === null) {
+      throw new AramoError('RTR_PREVIEW_NOT_AVAILABLE', 'RTR has no frozen revision to preview', 409, { requestId, details: { document_id } });
+    }
+    const artifacts = await this.documents.listArtifacts(tenant_id, document_id, 'RENDERED_UNSIGNED');
+    const artifact = artifacts.find((a) => a.revision_id === revision.id) ?? null;
+    if (artifact === null || artifact.sha256 === null) {
+      throw new AramoError('RTR_PREVIEW_NOT_AVAILABLE', 'RTR has no rendered unsigned artifact to preview', 409, { requestId, details: { document_id } });
+    }
+    const access = await this.storage.createReadAccess({
+      storage_key: artifact.storage_locator,
+      requestId,
+      expires_in_seconds: 300,
+    });
+    return { url: access.url, expires_at: access.expires_at, content_sha256: artifact.sha256 };
+  }
+
+  // §15 current-selection precedence: a live (non-terminal) RTR wins; else the
+  // most recent EXECUTED; else the most recent. `docs` is created_at desc.
+  private selectCurrent<T extends { status: string }>(docs: readonly T[]): T {
+    const live = docs.find((d) => d.status !== 'EXECUTED' && d.status !== 'VOIDED');
+    if (live !== undefined) return live;
+    const executed = docs.find((d) => d.status === 'EXECUTED');
+    if (executed !== undefined) return executed;
+    return docs[0] as T;
+  }
+
+  // Provenance from the PINNED version on the document's current revision — NOT
+  // DocumentTemplate.current_version_id (§13). Null when the document carries no
+  // pinned version (legacy/pre-template RTRs) or the rows are unresolvable.
+  private async resolveProvenance(tenant_id: string, document_id: string): Promise<RtrProvenanceView | null> {
+    const revision = await this.documents.getCurrentRevision(tenant_id, document_id);
+    if (revision === null || revision.template_version_id === null) return null;
+    const version = await this.templates.findVersionById(tenant_id, revision.template_version_id);
+    if (version === null) return null;
+    const template = await this.templates.findTemplateById(tenant_id, version.template_id);
+    if (template === null) return null;
+    return { name: template.name, version_number: version.version_number };
+  }
+
+  private deriveStatus(docStatus: string): string {
+    return docStatus === 'EXECUTED'
+      ? 'EXECUTED'
+      : docStatus === 'PREPARED' || docStatus === 'EXECUTION_PENDING'
+        ? 'AWAITING_SIGNATURE'
+        : docStatus === 'DRAFT'
+          ? 'REQUESTED'
+          : docStatus;
   }
 }

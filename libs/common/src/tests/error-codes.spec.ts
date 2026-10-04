@@ -290,6 +290,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'RTR_TEMPLATE_NOT_CONFIGURED',
       'RTR_TEMPLATE_CONFIGURATION_INVALID',
       'RTR_TEMPLATE_BINDING_MISSING',
+      'RTR_PREVIEW_NOT_AVAILABLE',
     ]);
   });
 });

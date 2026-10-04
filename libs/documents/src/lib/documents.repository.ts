@@ -256,6 +256,27 @@ export class DocumentsRepository {
     });
   }
 
+  // RTR-TEMPLATE-1 (§14, §15) — the same-document predicate WITHOUT a status
+  // filter: every Document of this type jointly satisfying all associations, most
+  // recent first. Generic/workflow-neutral; the caller (apps/api) applies the RTR
+  // current-selection precedence (non-terminal → most-recent-executed → most-recent).
+  async findDocumentsByTypeKeyAndAssociations(input: {
+    tenant_id: string;
+    document_type_key: string;
+    associations: readonly { resource_type: string; resource_id: string; relationship: string }[];
+  }) {
+    return this.prisma.document.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        document_type: { key: input.document_type_key },
+        AND: input.associations.map((a) => ({
+          associations: { some: { resource_type: a.resource_type, resource_id: a.resource_id, relationship: a.relationship } },
+        })),
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
   // Requisition Talent Board (TB-4) — BATCHED: the SET of talent ids that have an EXECUTED
   // document of this type jointly associated to the EXACT requisition (REGARDING) AND to
   // themselves as SUBJECT — the same-document predicate, evaluated for a whole talent set in

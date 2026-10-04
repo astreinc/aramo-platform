@@ -96,6 +96,12 @@ export class TemplatesRepository {
     });
   }
 
+  // RTR-TEMPLATE-1 (§13) — nullable template read for provenance resolution from
+  // a PINNED version's template_id (does not throw; never consults current_version_id).
+  async findTemplateById(tenant_id: string, id: string) {
+    return this.prisma.documentTemplate.findFirst({ where: { tenant_id, id } });
+  }
+
   // ── Versions ─────────────────────────────────────────────────────────────
   async createVersion(input: CreateVersionInput) {
     await this.getTemplate(input.tenant_id, input.template_id);
