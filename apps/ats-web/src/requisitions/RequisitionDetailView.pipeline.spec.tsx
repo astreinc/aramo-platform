@@ -1,7 +1,7 @@
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
 
@@ -122,6 +122,15 @@ function mountDetail() {
 
 describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
   afterEach(() => vi.restoreAllMocks());
+  // The talent surface now defaults to Board (shared preference). These specs
+  // assert the LIST (journey grid), so pin the preference to list before each.
+  beforeEach(() => {
+    try {
+      localStorage.setItem('aramo.req.talentView.v2', 'list');
+    } catch {
+      /* jsdom always provides localStorage; guard for safety */
+    }
+  });
 
   it('renders the header: title, Priority + Open pills, company name link, REQ code', async () => {
     mockApi();

@@ -13,7 +13,11 @@
 #
 # Options (env):
 #   SKIP_BUILD=1   reuse the existing dist/ (skip the nx build — faster restarts)
-#   SKIP_SEED=1    skip the identity catalog seed
+#   SKIP_SEED=1    skip ALL seeds (identity catalog + tenant provisioning +
+#                  policy-lifecycle + entitlements)
+#   COMPOSE_PROJECT_NAME=<name>   override the fixed `aramo-platform` project (the DB
+#                  volume is aramo-platform_aramo-pgdata, SAME from any directory —
+#                  so the data is NOT lost when launched from another worktree)
 #
 # The apps run as plain background processes (the established build+link pattern,
 # NOT containers); pids + logs live under .local-stack/ (gitignored).
@@ -22,6 +26,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 RUN_DIR=".local-stack"
 mkdir -p "$RUN_DIR"
+
+# Pin the Compose project name so the stack — and critically the Postgres DATA
+# VOLUME — is INDEPENDENT of the directory it is launched from. Compose otherwise
+# derives the project from the working directory, so running this from a
+# different worktree/clone (e.g. a .claude/worktrees/* copy) silently selects a
+# DIFFERENT, empty `<dir>_aramo-pgdata` volume — your data then LOOKS lost though
+# nothing was deleted (it is still in the other project's volume). A fixed name
+# means every up/down/status, from anywhere, uses the SAME aramo-platform_aramo-pgdata
+# volume. Overridable via COMPOSE_PROJECT_NAME for an intentionally isolated stack.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-aramo-platform}"
 
 log()  { printf '\033[36m[local-stack]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[local-stack] %s\033[0m\n' "$*" >&2; exit 1; }
@@ -65,32 +79,59 @@ stop_app() { # name
 cmd_up() {
   command -v docker >/dev/null || die "docker not found (needed for Postgres + Redis)"
   load_env
+  # The canonical local tenant (mirrors deploy/seed-prod.sh:82). Overridable.
+  ASTRE_TENANT_ID="${ARAMO_ASTRE_TENANT_ID:-019000a0-0000-7000-8000-000000000001}"
 
-  log "1/6 infra: docker compose up -d (postgres + redis)"
+  log "1/7 infra: docker compose up -d (postgres + redis)"
   compose up -d
   wait_for_pg
 
-  log "2/6 db: apply migrations (tools/db-sync-local.sh)"
+  log "2/7 db: apply migrations (tools/db-sync-local.sh)"
   bash tools/db-sync-local.sh
 
+  # Host-jiti seeds (identity + tenant provisioning). These graphs transform
+  # cleanly under jiti; the POLICY seed does NOT (see step 5/7) — it must run
+  # from the compiled dist, so it is deferred until AFTER the build.
   if [ "${SKIP_SEED:-0}" = "1" ]; then
-    log "3/6 seed: skipped (SKIP_SEED=1)"
+    log "3/7 seed: skipped (SKIP_SEED=1)"
   else
-    log "3/6 seed: identity catalog"
+    log "3/7 seed (host): identity catalog + Astre tenant + platform owner + auth storage"
     node --import jiti/register libs/identity/prisma/seed.ts
+    npm run prisma:seed-astre
+    npm run prisma:seed-platform-owner
+    npm run prisma:seed-auth-storage
   fi
 
   if [ "${SKIP_BUILD:-0}" = "1" ]; then
-    log "4/6 build: skipped (SKIP_BUILD=1) — reusing dist/"
+    log "4/7 build: skipped (SKIP_BUILD=1) — reusing dist/"
   else
-    log "4/6 build: nx build api auth-service"
+    log "4/7 build: nx build api auth-service"
     npx nx run-many -t build -p api auth-service
   fi
 
-  log "5/6 link: runtime deps for node dist/ (tools/local-run-link.sh)"
+  log "5/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
   bash tools/local-run-link.sh
 
-  log "6/6 start: auth-service :3001, api :3000, ats-web :4201"
+  # Policy-lifecycle + entitlements seed — AFTER the build AND the link. Mirrors
+  # deploy/seed-prod.sh Stage C/D (BUILD precedes policy SEED), and must run from
+  # the COMPILED dist, never host-jiti: its import graph pulls the NestJS +
+  # class-validator surface, which jiti cannot transform (the repo uses legacy
+  # experimentalDecorators). The compiled seed's dist require()s the mirrored
+  # @aramo + Prisma generated clients that local-run-link.sh wires up, so the
+  # LINK must precede it. Skipping it (SKIP_SEED) leaves policy_store EMPTY and
+  # the engine fails closed (NO_POLICY_PUBLISHED) — every governed requisition
+  # transition and client-policy publish then 403s.
+  if [ "${SKIP_SEED:-0}" = "1" ]; then
+    log "6/7 policy+entitlements seed: skipped (SKIP_SEED=1)"
+  elif [ ! -f dist/apps/api/src/policy/seed-lifecycle.js ]; then
+    log "6/7 policy+entitlements seed: SKIPPED — compiled seed missing at dist/apps/api (build first; do NOT SKIP_BUILD on a fresh env)"
+  else
+    log "6/7 seed (compiled): policy-lifecycle + tenant entitlements"
+    node dist/apps/api/src/policy/seed-lifecycle.js
+    ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
+  fi
+
+  log "7/7 start: auth-service :3001, api :3000, ats-web :4201"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web

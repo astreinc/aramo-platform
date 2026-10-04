@@ -20624,6 +20624,7 @@
       "status": "unscoped",
       "to": "doc/runbooks/local-db-sync.md"
     },
+    { "from": "tools/local-stack.sh", "status": "unscoped", "to": "deploy/seed-prod.sh" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "libs/identity/prisma/seed.ts" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
@@ -21345,17 +21346,29 @@
     { "name": "prisma:generate-identity", "references": [] },
     {
       "name": "prisma:seed-astre",
-      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
+      "references": [
+        { "kind": "npm-run", "path": "deploy/seed-prod.sh" },
+        { "kind": "npm-run", "path": "tools/local-stack.sh" }
+      ]
     },
-    { "name": "prisma:seed-auth-storage", "references": [] },
+    {
+      "name": "prisma:seed-auth-storage",
+      "references": [{ "kind": "npm-run", "path": "tools/local-stack.sh" }]
+    },
     {
       "name": "prisma:seed-entitlements",
-      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
+      "references": [
+        { "kind": "npm-run", "path": "deploy/seed-prod.sh" },
+        { "kind": "npm-run", "path": "tools/local-stack.sh" }
+      ]
     },
     { "name": "prisma:seed-identity", "references": [] },
     {
       "name": "prisma:seed-platform-owner",
-      "references": [{ "kind": "npm-run", "path": "deploy/seed-prod.sh" }]
+      "references": [
+        { "kind": "npm-run", "path": "deploy/seed-prod.sh" },
+        { "kind": "npm-run", "path": "tools/local-stack.sh" }
+      ]
     },
     { "name": "prisma:seed-policy-lifecycle", "references": [] },
     {
@@ -21494,7 +21507,6 @@
     "prepush",
     "prisma:generate-auth-storage",
     "prisma:generate-identity",
-    "prisma:seed-auth-storage",
     "prisma:seed-identity",
     "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
