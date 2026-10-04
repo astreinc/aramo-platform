@@ -5503,7 +5503,35 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   padding: 5px 11px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .rc-tj__rtrbtn:hover { background: #e8edfb; }
+.rc-tj__rtrbtn:disabled { color: #93a0a8; border-color: #cdd4dd; background: #fff; cursor: default; }
 .rc-tj__rtrbtn svg { width: 12px; height: 12px; }
+
+/* RTR-TEMPLATE-1 (§20) — the recruiter RTR cell: a compact vertical stack that
+   fits the ~150-170px "Right to represent" column without inflating row density.
+   Reuses the brand outlined button (rc-tj__rtrbtn) as the primary action and a
+   quiet text action (rc-tj__rtrlink) for secondary verbs + evidence links. */
+.rc-tj__rtr-panel { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rc-tj__rtr-panel h3 { margin: 0 0 2px; font-size: 11px; font-weight: 700; color: #1b2730; }
+.rc-tj__rtr-stack { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rc-tj__rtr-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; font-weight: 600; color: #1b2730;
+}
+.rc-tj__rtr-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #93a0a8; flex: none; }
+.rc-tj__rtr-status--requested::before { background: #9a6a00; }
+.rc-tj__rtr-status--awaiting_signature::before { background: #022ac0; }
+.rc-tj__rtr-status--executed { color: #1f7a4d; }
+.rc-tj__rtr-status--executed::before { background: #1f7a4d; }
+.rc-tj__rtr-prov { font-size: 10.5px; color: #93a0a8; line-height: 1.3; word-break: break-word; }
+.rc-tj__rtr-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin-top: 2px; }
+.rc-tj__rtrlink {
+  background: none; border: 0; padding: 0; cursor: pointer; text-align: left;
+  font-size: 11px; font-weight: 600; color: #022ac0; text-decoration: none; white-space: nowrap;
+}
+.rc-tj__rtrlink:hover { text-decoration: underline; }
+.rc-tj__rtrlink:disabled { color: #93a0a8; cursor: default; text-decoration: none; }
+.rc-tj__rtr-muted { font-size: 11.5px; color: #93a0a8; }
+.rc-tj__rtr-error { display: flex; flex-direction: column; gap: 2px; margin-top: 2px; font-size: 10.5px; color: #b42318; }
 
 /* Per-tab empty state — the prototype's dashed "nothing here yet" card. */
 .rc-tabempty {

@@ -49,6 +49,10 @@ interface Mocks {
   policyProvisioning: {
     publishDefaultLifecyclePackage: ReturnType<typeof vi.fn>;
   };
+  // RTR-TEMPLATE-1 — step 5 (the default RTR DocumentTemplate copy).
+  docTemplateProvisioning: {
+    publishDefaultRtrTemplate: ReturnType<typeof vi.fn>;
+  };
 }
 
 function makeMocks(): Mocks {
@@ -80,6 +84,9 @@ function makeMocks(): Mocks {
     policyProvisioning: {
       publishDefaultLifecyclePackage: vi.fn(),
     },
+    docTemplateProvisioning: {
+      publishDefaultRtrTemplate: vi.fn(),
+    },
   };
 }
 
@@ -90,6 +97,7 @@ function buildService(mocks: Mocks): PlatformInvitationService {
     mocks.identitySvc as never,
     mocks.entitlementRepo as never,
     mocks.policyProvisioning as never,
+    mocks.docTemplateProvisioning as never,
   );
 }
 
@@ -224,6 +232,51 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       }),
     );
     // The owner-invite emission never runs after a step-4 failure.
+    expect(mocks.tenantSvc.recordOwnerInviteSent).not.toHaveBeenCalled();
+  });
+
+  it('step 5 (RTR-TEMPLATE-1): an RTR-template publish failure soft-disables the tenant and throws INTERNAL_ERROR', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-tenant-owner']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-10' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({
+      id: 'tenant-z',
+      name: 'RtrlessCo',
+      is_active: true,
+      created_at: '',
+      updated_at: '',
+    });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'u', email: 'o@b.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'm',
+    });
+    mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+    // Step 4 (policy) succeeds; step 5 (RTR template) fails — e.g. the platform
+    // sentinel has no active RTR template to copy.
+    mocks.policyProvisioning.publishDefaultLifecyclePackage.mockResolvedValue(undefined);
+    mocks.docTemplateProvisioning.publishDefaultRtrTemplate.mockRejectedValue(
+      new Error('rtr_template_missing'),
+    );
+
+    const svc = buildService(mocks);
+    await expect(
+      svc.provisionTenantAndInviteOwner({
+        name: 'RtrlessCo',
+        owner_email: 'o@b.io',
+        actor_user_id: 'sa',
+        request_id: TEST_REQUEST_ID,
+        invite_owner: true,
+      }),
+    ).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+
+    // Same compensation class as step 4: created-then-SOFT-DISABLED, not deleted.
+    expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-z',
+        reason: 'rtr_template_publish_failed',
+      }),
+    );
     expect(mocks.tenantSvc.recordOwnerInviteSent).not.toHaveBeenCalled();
   });
 

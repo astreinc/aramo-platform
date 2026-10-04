@@ -2371,6 +2371,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3550,6 +3556,30 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-resolver.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4638,6 +4668,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -5457,6 +5493,30 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-resolver.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5467,12 +5527,37 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/documents-contracts": [
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5492,6 +5577,24 @@
       { "project": "esign-service", "status": "production" }
     ],
     "@aramo/documents-rendering": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -7984,6 +8087,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

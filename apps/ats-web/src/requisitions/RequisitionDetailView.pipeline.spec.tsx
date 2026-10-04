@@ -20,6 +20,16 @@ vi.mock('../pipeline/talent-journey-api', () => ({
   })),
 }));
 
+// RTR-TEMPLATE-1 — the wired RtrPanel reconciles the current RTR on mount. Mock
+// its client so each per-row panel resolves to "no current RTR" (→ Request RTR)
+// without a network read.
+vi.mock('../rtr/rtr-api', () => ({
+  getCurrentRtr: vi.fn(async () => null),
+  requestRtr: vi.fn(),
+  sendRtr: vi.fn(),
+  getRtrPreview: vi.fn(),
+}));
+
 // 2D — the re-skinned header / meta strip / Pipeline tab (funnel ribbon +
 // talent table) + breadcrumb publication. The cockpit (Details tab) is
 // proven in RequisitionDetailView.cockpit.spec.tsx.
@@ -30,7 +40,9 @@ const SESSION: Session = {
   tenant_id: 't',
   // pipeline:read → the Talent tab is available and is the scope-driven default,
   // so the funnel/talent-table content renders on first paint (as before).
-  scopes: ['requisition:read', 'pipeline:read'],
+  // document:read/create — a recruiter session can request RTR (the RtrPanel
+  // gates Request on document:create per least-visibility, §21).
+  scopes: ['requisition:read', 'pipeline:read', 'document:read', 'document:create'],
   iat: 0,
   exp: 0,
 };
@@ -258,9 +270,10 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     const mail = await screen.findByRole('link', { name: 'marcus@example.com' });
     expect(mail).toHaveAttribute('href', 'mailto:marcus@example.com');
     expect(screen.getByText('+1 202-555-0104')).toBeInTheDocument();
-    // OC-5 — the inert placeholder is replaced by the wired RtrPanel; its initial
-    // "Request RTR" affordance renders once per talent row (no API call on mount).
-    expect(screen.getAllByRole('button', { name: /Request RTR/ })).toHaveLength(2);
+    // OC-5 / RTR-TEMPLATE-1 — the wired RtrPanel reconciles the current RTR on
+    // mount (mocked → none), then shows its "Request RTR" affordance once per
+    // talent row (document:create granted; async after the mount lookup settles).
+    expect(await screen.findAllByRole('button', { name: /Request RTR/ })).toHaveLength(2);
     // Find Talent ▾ is gated on talent:source — absent for this session.
     expect(screen.queryByRole('button', { name: /Find Talent/ })).toBeNull();
   });

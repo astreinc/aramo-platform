@@ -861,6 +861,23 @@ export const ERROR_CODES = [
   'EMAIL_TEMPLATE_NOT_FOUND',
   'EMAIL_TEMPLATE_ALREADY_EXISTS',
   'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
+  // RTR-TEMPLATE-1 (§6, §31) — RTR template-resolution refusals. NOT_CONFIGURED
+  // (409): no active tenant-wide RIGHT_TO_REPRESENT template exists for the tenant
+  // (an admin must configure one; recruiter action cannot proceed). CONFIGURATION_
+  // INVALID (422): a template is ACTIVE but its current version is unusable —
+  // current_version_id null, version not ACTIVE / belongs to another template, or
+  // an unrecognised render_schema_version. Fail closed; never select an arbitrary
+  // version or fall back to inline content (INV-12).
+  'RTR_TEMPLATE_NOT_CONFIGURED',
+  'RTR_TEMPLATE_CONFIGURATION_INVALID',
+  // RTR-TEMPLATE-1 (§9, §31) — a REQUIRED closed-catalog binding could not be
+  // resolved to an authoritative value at RTR request time (422). Fail closed
+  // BEFORE rendering: a raw {{token}} or empty value must never reach the PDF.
+  'RTR_TEMPLATE_BINDING_MISSING',
+  // RTR-TEMPLATE-1 (§16, §31) — the recruiter asked to preview an RTR that has no
+  // frozen RENDERED_UNSIGNED artifact to show (409). The document exists but is
+  // not in a previewable state (no revision rendered yet).
+  'RTR_PREVIEW_NOT_AVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

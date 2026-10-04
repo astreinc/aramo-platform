@@ -182,6 +182,17 @@ export class DocumentsRepository {
     return this.prisma.document.findMany({ where: { tenant_id }, orderBy: { created_at: 'desc' } });
   }
 
+  // RTR-TEMPLATE-1 (§12, INV-3) — the document's current (latest) revision.
+  // Generic + workflow-neutral. Lets the RTR send path consume the EXACT frozen
+  // revision produced at request time (same bytes/hash/template_version_id)
+  // instead of re-rendering. Returns null when no revision exists yet.
+  async getCurrentRevision(tenant_id: string, document_id: string) {
+    return this.prisma.documentRevision.findFirst({
+      where: { tenant_id, document_id },
+      orderBy: { revision_number: 'desc' },
+    });
+  }
+
   async addAssociation(input: {
     tenant_id: string;
     document_id: string;
@@ -242,6 +253,27 @@ export class DocumentsRepository {
           associations: { some: { resource_type: a.resource_type, resource_id: a.resource_id, relationship: a.relationship } },
         })),
       },
+    });
+  }
+
+  // RTR-TEMPLATE-1 (§14, §15) — the same-document predicate WITHOUT a status
+  // filter: every Document of this type jointly satisfying all associations, most
+  // recent first. Generic/workflow-neutral; the caller (apps/api) applies the RTR
+  // current-selection precedence (non-terminal → most-recent-executed → most-recent).
+  async findDocumentsByTypeKeyAndAssociations(input: {
+    tenant_id: string;
+    document_type_key: string;
+    associations: readonly { resource_type: string; resource_id: string; relationship: string }[];
+  }) {
+    return this.prisma.document.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        document_type: { key: input.document_type_key },
+        AND: input.associations.map((a) => ({
+          associations: { some: { resource_type: a.resource_type, resource_id: a.resource_id, relationship: a.relationship } },
+        })),
+      },
+      orderBy: { created_at: 'desc' },
     });
   }
 

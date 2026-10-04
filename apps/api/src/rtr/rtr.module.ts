@@ -3,6 +3,7 @@ import {
   DocumentIdempotencyService,
   DocumentsRepository,
   RenderService,
+  TemplatesRepository,
   PrismaService as DocumentsPrismaService,
   type DocumentStoragePort,
 } from '@aramo/documents';
@@ -19,6 +20,8 @@ import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.j
 
 import { RtrController } from './rtr.controller.js';
 import { RtrOrchestratorService } from './rtr-orchestrator.service.js';
+import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
+import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
 
 // DOC-5 (R-5-5) — the RTR composition module. SELF-CONTAINED (own documents
 // Prisma + storage + rendering via factories, mirroring DocumentsEsignModule) so
@@ -31,6 +34,7 @@ const RTR_DOCS_STORAGE = 'RTR_DOCS_STORAGE';
 const RTR_DOCS_RENDERING = 'RTR_DOCS_RENDERING';
 const RTR_DOCS_REPO = 'RTR_DOCS_REPO';
 const RTR_RENDER_SERVICE = 'RTR_RENDER_SERVICE';
+const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 
 @Module({
   imports: [ObjectStorageModule, TalentRecordModule],
@@ -56,6 +60,27 @@ const RTR_RENDER_SERVICE = 'RTR_RENDER_SERVICE';
         new RenderService(prisma, rendering, storage),
       inject: [RTR_DOCS_PRISMA, RTR_DOCS_RENDERING, RTR_DOCS_STORAGE],
     },
+    // RTR-TEMPLATE-1 — template resolution + binding. Templates repo is wired via
+    // the same STRING-token factory pattern (avoids the bare-class-token
+    // non-strict-lookup collision). The resolver reads templates; the binding
+    // service resolves the closed catalog from TalentRecord (scope:ats, legal here).
+    {
+      provide: RTR_TEMPLATES_REPO,
+      useFactory: (prisma: DocumentsPrismaService): TemplatesRepository => new TemplatesRepository(prisma),
+      inject: [RTR_DOCS_PRISMA],
+    },
+    {
+      provide: RtrTemplateResolverService,
+      useFactory: (templates: TemplatesRepository): RtrTemplateResolverService =>
+        new RtrTemplateResolverService(templates),
+      inject: [RTR_TEMPLATES_REPO],
+    },
+    {
+      provide: RtrTemplateBindingService,
+      useFactory: (talent: TalentRecordRepository): RtrTemplateBindingService =>
+        new RtrTemplateBindingService(talent),
+      inject: [TalentRecordRepository],
+    },
     {
       provide: RtrOrchestratorService,
       useFactory: (
@@ -63,8 +88,22 @@ const RTR_RENDER_SERVICE = 'RTR_RENDER_SERVICE';
         render: RenderService,
         signature: SignatureProviderPort,
         talent: TalentRecordRepository,
-      ): RtrOrchestratorService => new RtrOrchestratorService(documents, render, signature, talent),
-      inject: [RTR_DOCS_REPO, RTR_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT, TalentRecordRepository],
+        resolver: RtrTemplateResolverService,
+        binding: RtrTemplateBindingService,
+        templates: TemplatesRepository,
+        storage: DocumentStoragePort,
+      ): RtrOrchestratorService =>
+        new RtrOrchestratorService(documents, render, signature, talent, resolver, binding, templates, storage),
+      inject: [
+        RTR_DOCS_REPO,
+        RTR_RENDER_SERVICE,
+        SIGNATURE_PROVIDER_PORT,
+        TalentRecordRepository,
+        RtrTemplateResolverService,
+        RtrTemplateBindingService,
+        RTR_TEMPLATES_REPO,
+        RTR_DOCS_STORAGE,
+      ],
     },
   ],
 })

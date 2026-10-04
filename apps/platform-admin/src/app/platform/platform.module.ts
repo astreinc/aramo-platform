@@ -9,11 +9,16 @@ import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
 } from '@aramo/policy-store';
+import {
+  PrismaService as DocumentsPrismaService,
+  TemplatesRepository,
+} from '@aramo/documents';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
+import { TenantDocumentTemplateProvisioningService } from './tenant-document-template-provisioning.service.js';
 
 // PlatformModule — wires the platform-admin app's HTTP surface +
 // orchestration. Imports:
@@ -61,6 +66,14 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     PolicyStorePrismaService,
     PolicyStore,
     TenantPolicyProvisioningService,
+    // RTR-TEMPLATE-1 (§7) — documents-store access for the provisioning-time RTR
+    // template copy (scope:platform → scope:boundary is wall-legal, same as
+    // PolicyStore). DocumentsPrismaService is the documents generated client
+    // (distinct class token from PolicyStorePrismaService); TemplatesRepository
+    // takes it. No collision: each PrismaService is a distinct class reference.
+    DocumentsPrismaService,
+    TemplatesRepository,
+    TenantDocumentTemplateProvisioningService,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })
