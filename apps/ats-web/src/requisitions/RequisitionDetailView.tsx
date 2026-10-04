@@ -1632,6 +1632,9 @@ function TalentJourney({
                     requisitionId={req.id}
                     companyId={req.company_id}
                     hideHeading
+                    canRead={scopes.includes('document:read')}
+                    canRequest={scopes.includes('document:create')}
+                    canSend={scopes.includes('document:execute')}
                   />
                   {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
                       backend deems this episode VOID-eligible (server-authoritative; never from

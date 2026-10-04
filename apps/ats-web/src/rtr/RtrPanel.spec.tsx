@@ -5,45 +5,154 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./rtr-api', () => ({
   requestRtr: vi.fn(),
   sendRtr: vi.fn(),
-  getRtrStatus: vi.fn(),
+  getCurrentRtr: vi.fn(),
+  getRtrPreview: vi.fn(),
 }));
 
 import { RtrPanel } from './RtrPanel';
-import { requestRtr, sendRtr, getRtrStatus } from './rtr-api';
+import { requestRtr, sendRtr, getCurrentRtr, getRtrPreview, type RtrCurrentResponse } from './rtr-api';
 
-// DOC-5 (R-5-12) — the recruiter RTR panel: request → send → derived status.
+// RTR-TEMPLATE-1 (§36) — the recruiter RTR panel: mount reconciliation, the locked
+// states, pinned-template provenance, preview, executed evidence, scope-gated
+// visibility, and the explicit absence of template-admin / copy-link / resend / void.
+
+function current(partial: Partial<RtrCurrentResponse>): RtrCurrentResponse {
+  return {
+    document_id: 'doc-1',
+    status: 'REQUESTED',
+    document_status: 'DRAFT',
+    template: { name: 'Standard Right to Represent', version_number: 1 },
+    preview_available: true,
+    executed_available: false,
+    certificate_available: false,
+    ...partial,
+  };
+}
+
+function renderPanel(over?: { canRead?: boolean; canRequest?: boolean; canSend?: boolean }) {
+  return render(
+    <RtrPanel
+      talentId="t-1"
+      requisitionId="r-1"
+      companyId="c-1"
+      canRead={over?.canRead ?? true}
+      canRequest={over?.canRequest ?? true}
+      canSend={over?.canSend ?? true}
+    />,
+  );
+}
 
 describe('RtrPanel', () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('requests, sends, and reflects the derived status from the backend', async () => {
-    vi.mocked(requestRtr).mockResolvedValue({ document_id: 'doc-1' });
-    vi.mocked(sendRtr).mockResolvedValue({ document_id: 'doc-1', envelope_id: 'env-1', status: 'SENT' });
-    vi.mocked(getRtrStatus).mockResolvedValue({ document_id: 'doc-1', status: 'EXECUTED', document_status: 'EXECUTED' });
-
-    render(<RtrPanel talentId="t-1" requisitionId="r-1" companyId="c-1" />);
-
-    fireEvent.click(screen.getByText('Request RTR'));
-    await waitFor(() => screen.getByText('Send for signature'));
-    expect(requestRtr).toHaveBeenCalledWith({ talent_id: 't-1', requisition_id: 'r-1', company_id: 'c-1' });
-    expect(screen.getByText('Requested — preparing')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByText('Send for signature'));
-    await waitFor(() => screen.getByText('Awaiting signature'));
-    expect(sendRtr).toHaveBeenCalledWith('doc-1', 't-1');
-
-    fireEvent.click(screen.getByText('Refresh status'));
-    await waitFor(() => screen.getByText('Executed'));
-    expect(getRtrStatus).toHaveBeenCalledWith('doc-1');
+  it('A — mount with no current RTR shows Request RTR', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(null);
+    renderPanel();
+    expect(await screen.findByText('Request RTR')).toBeInTheDocument();
+    expect(getCurrentRtr).toHaveBeenCalledWith('t-1', 'r-1');
   });
 
-  it('surfaces a backend error', async () => {
+  it('B — mount with an existing REQUESTED RTR shows no Request, plus provenance + Preview + Send', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    renderPanel();
+    expect(await screen.findByText('Requested')).toBeInTheDocument();
+    expect(screen.queryByText('Request RTR')).not.toBeInTheDocument();
+    expect(screen.getByText('Standard Right to Represent · v1')).toBeInTheDocument();
+    expect(screen.getByText('Preview RTR')).toBeInTheDocument();
+    expect(screen.getByText('Send for signature')).toBeInTheDocument();
+  });
+
+  it('C — request calls the API with talent/requisition/company and reconciles to Requested', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(null).mockResolvedValue(current({ status: 'REQUESTED' }));
+    vi.mocked(requestRtr).mockResolvedValue({ document_id: 'doc-1' });
+    renderPanel();
+    fireEvent.click(await screen.findByText('Request RTR'));
+    await waitFor(() => screen.getByText('Requested'));
+    expect(requestRtr).toHaveBeenCalledWith({ talent_id: 't-1', requisition_id: 'r-1', company_id: 'c-1' });
+  });
+
+  it('D — Preview RTR fetches the protected preview and opens it', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    vi.mocked(getRtrPreview).mockResolvedValue({ url: 'https://presigned.example/x', expires_at: 'e', content_sha256: 's' });
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    renderPanel();
+    fireEvent.click(await screen.findByText('Preview RTR'));
+    await waitFor(() => expect(getRtrPreview).toHaveBeenCalledWith('doc-1'));
+    expect(openSpy).toHaveBeenCalledWith('https://presigned.example/x', '_blank', 'noopener');
+    openSpy.mockRestore();
+  });
+
+  it('E — Send transitions to Awaiting signature', async () => {
+    vi.mocked(getCurrentRtr)
+      .mockResolvedValueOnce(current({ status: 'REQUESTED' }))
+      .mockResolvedValue(current({ status: 'AWAITING_SIGNATURE' }));
+    vi.mocked(sendRtr).mockResolvedValue({ document_id: 'doc-1', envelope_id: 'env-1', status: 'SENT' });
+    renderPanel();
+    fireEvent.click(await screen.findByText('Send for signature'));
+    await waitFor(() => screen.getByText('Awaiting signature'));
+    expect(sendRtr).toHaveBeenCalledWith('doc-1', 't-1');
+  });
+
+  it('F — reload restores an existing AWAITING_SIGNATURE RTR (no Request RTR)', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'AWAITING_SIGNATURE' }));
+    renderPanel();
+    expect(await screen.findByText('Awaiting signature')).toBeInTheDocument();
+    expect(screen.queryByText('Request RTR')).not.toBeInTheDocument();
+    expect(screen.getByText('Refresh status')).toBeInTheDocument();
+  });
+
+  it('G — EXECUTED exposes View RTR + Certificate evidence links and no Send', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(
+      current({ status: 'EXECUTED', document_status: 'EXECUTED', executed_available: true, certificate_available: true }),
+    );
+    renderPanel();
+    const viewRtr = await screen.findByText('View RTR');
+    expect(viewRtr.getAttribute('href')).toBe('/v1/documents/doc-1/artifacts?role=EXECUTED');
+    expect(screen.getByText('Certificate').getAttribute('href')).toBe('/v1/documents/doc-1/artifacts?role=EXECUTION_CERTIFICATE');
+    expect(screen.queryByText('Send for signature')).not.toBeInTheDocument();
+  });
+
+  it('H — a backend error is surfaced with a safe retry', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(null);
     vi.mocked(requestRtr).mockRejectedValue(new Error('talent has no email for RTR signing'));
-    render(<RtrPanel talentId="t-1" requisitionId="r-1" companyId="c-1" />);
-    fireEvent.click(screen.getByText('Request RTR'));
+    renderPanel();
+    fireEvent.click(await screen.findByText('Request RTR'));
     await waitFor(() => screen.getByRole('alert'));
     expect(screen.getByRole('alert').textContent).toContain('talent has no email');
+    expect(screen.getByText('Try again')).toBeInTheDocument();
+  });
+
+  it('I — permission visibility: no document:create hides Request; no document:execute hides Send', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(null);
+    const { unmount } = renderPanel({ canRequest: false });
+    await waitFor(() => expect(getCurrentRtr).toHaveBeenCalled());
+    expect(screen.queryByText('Request RTR')).not.toBeInTheDocument();
+    unmount();
+
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    renderPanel({ canSend: false });
+    expect(await screen.findByText('Requested')).toBeInTheDocument();
+    expect(screen.queryByText('Send for signature')).not.toBeInTheDocument();
+    expect(screen.getByText('Preview RTR')).toBeInTheDocument();
+  });
+
+  it('J/K — no template chooser/editor/settings and no Copy-link / Resend / Void controls', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    renderPanel();
+    await screen.findByText('Requested');
+    expect(screen.queryByText(/choose template|edit template|template settings|configure template/i)).toBeNull();
+    expect(screen.queryByText(/copy link|copy signing|resend|void/i)).toBeNull();
+    // Provenance is read-only text, never an interactive control.
+    expect(screen.getByText('Standard Right to Represent · v1').tagName).toBe('SPAN');
+  });
+
+  it('L — provenance reflects the exact pinned version returned by the backend', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(
+      current({ status: 'AWAITING_SIGNATURE', template: { name: 'Standard Right to Represent', version_number: 3 } }),
+    );
+    renderPanel();
+    expect(await screen.findByText('Standard Right to Represent · v3')).toBeInTheDocument();
   });
 });
