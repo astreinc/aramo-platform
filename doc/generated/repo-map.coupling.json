@@ -141,6 +141,11 @@
       "to": "apps/ats-web/src/ui/ui.css"
     },
     {
+      "from": "apps/api/src/rtr/rtr-template-content.ts",
+      "status": "production",
+      "to": "apps/api/src/rtr/rtr-orchestrator.service.ts"
+    },
+    {
       "from": "apps/api/src/search/enterprise-search.port.ts",
       "status": "production",
       "to": "libs/requisition/src/lib/requisition.module.ts"
@@ -6829,6 +6834,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/rtr-template-content-parity.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261004120000_rtr_template_1_default_rtr_template_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -12032,6 +12043,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/rtr-template-type-id-drift.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
       "status": "excluded",
       "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
@@ -16850,6 +16867,11 @@
       "from": "libs/documents-rendering/project.json",
       "status": "unscoped",
       "to": "libs/documents-rendering/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/documents/prisma/migrations/20261004120000_rtr_template_1_default_rtr_template_backfill/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
     },
     {
       "from": "libs/documents/prisma/schema.prisma",
