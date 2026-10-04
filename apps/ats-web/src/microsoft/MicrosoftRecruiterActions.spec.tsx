@@ -58,7 +58,6 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
         draftFn={draftFn}
         sendEmailFn={sendEmailFn}
-        listTemplatesFn={vi.fn().mockResolvedValue([])}
       />,
     );
     fireEvent.click(await screen.findByTestId('microsoft-send-email'));
@@ -85,7 +84,6 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
         draftFn={draftFn}
         sendEmailFn={sendEmailFn}
-        listTemplatesFn={vi.fn().mockResolvedValue([])}
       />,
     );
     fireEvent.click(await screen.findByTestId('microsoft-send-email'));

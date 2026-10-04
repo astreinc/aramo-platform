@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
-import type { EmailTemplateView } from '../communications/email-templates-api';
 
 import { RequisitionContactEmailComposer } from './RequisitionContactEmailComposer';
 import {
@@ -41,8 +40,6 @@ export interface MicrosoftRecruiterActionsProps {
   readonly draftFn?: (input: RequisitionContactDraftInput) => Promise<RequisitionContactDraft>;
   readonly sendEmailFn?: (input: SendEmailInput) => Promise<MicrosoftEmailSendResult>;
   readonly createMeetingFn?: (input: CreateMeetingInput) => Promise<MicrosoftMeetingResult>;
-  // ET-7 — passthrough for the composer's template picker (injectable in tests).
-  readonly listTemplatesFn?: () => Promise<readonly EmailTemplateView[]>;
 }
 
 function newKey(prefix: string): string {
@@ -161,7 +158,6 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
           pipelineId={props.pipelineId}
           draftFn={props.draftFn}
           sendFn={sendEmail}
-          listTemplatesFn={props.listTemplatesFn}
           onSent={setEmailResult}
         />
       )}

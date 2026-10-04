@@ -1,16 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EmailTemplateView } from '../communications/email-templates-api';
-
 import { RequisitionContactEmailComposer } from './RequisitionContactEmailComposer';
 import type { RequisitionContactDraft } from './microsoft-api';
 
 // COMM-C4 PR-2 — the recruiter compose/review/send surface. The human loop is
 // ALWAYS generate → review/edit → explicit send. The recipient is server-owned
 // (display-only, editable:false) and NEVER submitted by the client (DEC-2/INV-3).
-// D-EMAIL-TPL-1 (ET-7) — an optional template picker selects which template the
-// SERVER renders; the FE never resolves merge fields.
+// COMM-EMAIL-TEMPLATE-GOVERNANCE-1 — no template selector; the server resolves
+// the governed template (tenant override else code default). The FE never
+// resolves merge fields.
 
 function draft(over: Partial<RequisitionContactDraft> = {}): RequisitionContactDraft {
   return {
@@ -25,22 +24,6 @@ function draft(over: Partial<RequisitionContactDraft> = {}): RequisitionContactD
       template_key: 'requisition-contact',
     },
     ...over,
-  };
-}
-
-// ET-7 — the wired requisition_initial_contact flow. The system default is always
-// present; an active tenant override is the sole alternative.
-function overrideTemplate(): EmailTemplateView {
-  return {
-    id: 'row-1',
-    template_key: 'requisition-contact',
-    category: 'requisition_initial_contact',
-    name: 'Acme custom template',
-    subject_template: 'Hello {{talent.first_name}}',
-    body_template: 'Re {{requisition.title}}',
-    is_system_default: false,
-    is_active: true,
-    updated_at: '2026-09-29T00:00:00.000Z',
   };
 }
 
@@ -59,8 +42,6 @@ function renderComposer(
 ) {
   const draftFn = vi.fn().mockResolvedValue(draft());
   const sendFn = vi.fn().mockResolvedValue(sendResult());
-  // Default: only the system default is available (no override → no picker).
-  const listTemplatesFn = vi.fn().mockResolvedValue([]);
   const onOpenChange = vi.fn();
   const onSent = vi.fn();
   render(
@@ -72,12 +53,11 @@ function renderComposer(
       pipelineId="p1"
       draftFn={draftFn}
       sendFn={sendFn}
-      listTemplatesFn={listTemplatesFn}
       onSent={onSent}
       {...over}
     />,
   );
-  return { draftFn, sendFn, listTemplatesFn, onOpenChange, onSent };
+  return { draftFn, sendFn, onOpenChange, onSent };
 }
 
 describe('RequisitionContactEmailComposer', () => {
@@ -209,70 +189,14 @@ describe('RequisitionContactEmailComposer', () => {
   });
 });
 
-describe('RequisitionContactEmailComposer — template picker (ET-7)', () => {
-  it('no tenant override → no picker; default draft loads with NO template_key', async () => {
-    const { draftFn, listTemplatesFn } = renderComposer(); // listTemplatesFn → []
+describe('RequisitionContactEmailComposer — governed template (no selector)', () => {
+  it('shows NO template selector and requests the draft with NO client template_key', async () => {
+    const { draftFn } = renderComposer();
     await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(1));
+    // Governance: the server resolves the template; the client never chooses one.
     expect(draftFn.mock.calls[0]![0]).not.toHaveProperty('template_key');
     await screen.findByTestId('email-composer-body');
-    await waitFor(() => expect(listTemplatesFn).toHaveBeenCalled());
     expect(screen.queryByTestId('email-composer-template')).toBeNull();
-  });
-
-  it('active tenant override → picker offers the Aramo default + the override', async () => {
-    const listTemplatesFn = vi.fn().mockResolvedValue([overrideTemplate()]);
-    renderComposer({ listTemplatesFn });
-    const picker = await screen.findByTestId('email-composer-template');
-    expect(picker).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Aramo default' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Acme custom template' })).toBeInTheDocument();
-  });
-
-  it('selecting the override re-renders on the SERVER (requisition-contact key); recipient stays locked', async () => {
-    const draftFn = vi.fn().mockImplementation((input: { template_key?: string }) =>
-      Promise.resolve(
-        input.template_key
-          ? draft({ subject: 'OVERRIDE SUBJECT', body: 'Rendered override body' })
-          : draft(),
-      ),
-    );
-    const listTemplatesFn = vi.fn().mockResolvedValue([overrideTemplate()]);
-    renderComposer({ draftFn, listTemplatesFn });
-
-    const picker = await screen.findByTestId('email-composer-template');
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(1));
-    fireEvent.change(picker, { target: { value: 'override' } });
-
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(2));
-    expect(draftFn.mock.calls[1]![0]).toMatchObject({ template_key: 'requisition-contact' });
-    await waitFor(() =>
-      expect(screen.getByTestId('email-composer-subject')).toHaveValue('OVERRIDE SUBJECT'),
-    );
-    // subject/body remain editable after the server render
-    const body = screen.getByTestId('email-composer-body');
-    expect(body).toHaveValue('Rendered override body');
-    fireEvent.change(body, { target: { value: 'edited after render' } });
-    expect(body).toHaveValue('edited after render');
-    // recipient is server-authoritative + display-only throughout
-    const recipient = screen.getByTestId('email-composer-recipient');
-    expect(recipient.tagName).not.toBe('INPUT');
-    expect(recipient.tagName).not.toBe('TEXTAREA');
-  });
-
-  it('switching back to the Aramo default re-renders with NO template_key', async () => {
-    const draftFn = vi.fn().mockImplementation((input: { template_key?: string }) =>
-      Promise.resolve(input.template_key ? draft({ subject: 'OVERRIDE' }) : draft()),
-    );
-    const listTemplatesFn = vi.fn().mockResolvedValue([overrideTemplate()]);
-    renderComposer({ draftFn, listTemplatesFn });
-    const picker = await screen.findByTestId('email-composer-template');
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(1));
-    fireEvent.change(picker, { target: { value: 'override' } });
-    // wait for the override render to settle (drafting resolved) before switching back
-    await waitFor(() => expect(screen.getByTestId('email-composer-subject')).toHaveValue('OVERRIDE'));
-    fireEvent.change(picker, { target: { value: 'default' } });
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(3));
-    expect(draftFn.mock.calls[2]![0]).not.toHaveProperty('template_key');
   });
 
   it('the FE never interpolates merge fields — the server body is shown verbatim', async () => {
@@ -282,35 +206,5 @@ describe('RequisitionContactEmailComposer — template picker (ET-7)', () => {
     renderComposer({ draftFn });
     const body = await screen.findByTestId('email-composer-body');
     expect(body).toHaveValue('Literal {{talent.first_name}} shown exactly as sent');
-  });
-
-  it('a selected template that becomes unavailable fails cleanly — draft cleared, Send disabled', async () => {
-    const gone = Object.assign(new Error('gone'), { code: 'EMAIL_TEMPLATE_NOT_FOUND', status: 404 });
-    const draftFn = vi.fn().mockImplementation((input: { template_key?: string }) =>
-      input.template_key ? Promise.reject(gone) : Promise.resolve(draft()),
-    );
-    const listTemplatesFn = vi.fn().mockResolvedValue([overrideTemplate()]);
-    renderComposer({ draftFn, listTemplatesFn });
-    const picker = await screen.findByTestId('email-composer-template');
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(1));
-    fireEvent.change(picker, { target: { value: 'override' } });
-    // clean failure + no stale rendered content left sendable
-    expect(await screen.findByTestId('email-composer-draft-error')).toBeInTheDocument();
-    expect(screen.getByTestId('email-composer-send')).toBeDisabled();
-  });
-
-  it('busy guard: the picker is disabled while a re-render is in flight', async () => {
-    let resolve2: (v: unknown) => void = () => undefined;
-    const draftFn = vi
-      .fn()
-      .mockResolvedValueOnce(draft())
-      .mockReturnValueOnce(new Promise((r) => (resolve2 = r)));
-    const listTemplatesFn = vi.fn().mockResolvedValue([overrideTemplate()]);
-    renderComposer({ draftFn, listTemplatesFn });
-    const picker = await screen.findByTestId('email-composer-template');
-    await waitFor(() => expect(draftFn).toHaveBeenCalledTimes(1));
-    fireEvent.change(picker, { target: { value: 'override' } });
-    await waitFor(() => expect(picker).toBeDisabled());
-    resolve2(draft({ subject: 'X' }));
   });
 });
