@@ -140,7 +140,7 @@ describe('ats-web → PUT /v1/talent-records/:id/resume-editions/default', () =>
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as { editions: Array<{ is_default: boolean }> };
-        expect(body.editions[0].is_default).toBe(true);
+        expect(body.editions[0]?.is_default).toBe(true);
       });
   });
 });
