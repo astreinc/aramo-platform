@@ -13,7 +13,6 @@ import { getInterviewCalendar, type InterviewCalendarRow } from '../interviews/i
 import { listTasksForOwner } from '../task/task-api';
 import type { TaskView } from '../task/types';
 import { resolveUserNames } from '../users/users-api';
-import { OfferLetterPanel } from '../offer-document/OfferLetterPanel';
 import { RtrPanel } from '../rtr/RtrPanel';
 import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
@@ -53,9 +52,12 @@ import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { TalentViewToggle } from './TalentViewToggle';
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
 import {
+  BOARD_COLUMN_LABELS,
   getRequisitionTalentBoard,
+  type BoardCardView,
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
+import { selectOfferStartCards } from './offer-start-rows';
 import { AddTalentDialog } from './AddTalentDialog';
 import { WorkspacePanel } from './WorkspacePanel';
 import { useTalentViewPreference } from './useTalentViewPreference';
@@ -613,8 +615,8 @@ export function RequisitionDetailView({
     available.add('offers');
     tabs.push({
       id: 'offers',
-      label: `Offers (${offers.length})`,
-      content: <OffersTab offers={offers} talents={talents} />,
+      label: `Offers & starts (${selectOfferStartCards(board).length})`,
+      content: <OffersTab board={board} talents={talents} />,
     });
   }
 
@@ -1595,74 +1597,50 @@ function TabEmpty({
   );
 }
 
+// §11 (ruling B) — the Requisition Offers tab IS the authoritative "Offers & Starts" list, NOT a
+// second offer-management workspace. It reads the pipeline-keyed board (offer+ stages), holds no
+// offer/pre-start state, surfaces no copied offer-lifecycle labels, and every row's Continue
+// deep-links into the single person × requisition journey (/offer-start/:pipelineId) using the
+// authoritative board pipeline_id (no FE pairing). Offer preparation / send / accept all live in
+// the Offer & Start journey, never here.
 function OffersTab({
-  offers,
+  board,
   talents,
 }: {
-  readonly offers: readonly OfferView[];
+  readonly board: RequisitionTalentBoardView | null;
   readonly talents: Record<string, TalentRecordView>;
 }) {
-  if (offers.length === 0) {
+  const rows = selectOfferStartCards(board);
+  if (rows.length === 0) {
     return (
-      <TabEmpty title="No offers on this requisition">
-        Create offer becomes available when a Talent reaches Client — Selected.
-        Offers carry Talent-facing terms only; employer financials live in
-        Commercial.
+      <TabEmpty title="No offers or starts on this requisition">
+        A row appears here once a Talent is Client — Selected. Continue opens the single Offer &amp;
+        Start journey, where Talent-facing terms and the offer lifecycle live.
       </TabEmpty>
     );
   }
-  const columns: ReadonlyArray<TableColumn<OfferView>> = [
+  const columns: ReadonlyArray<TableColumn<BoardCardView>> = [
     {
       key: 'talent',
       header: 'Talent',
-      render: (o) => (
-        <Link to={`/talent/${o.talent_record_id}`} className="rc-link-strong">
-          {talentLabel(talents, o.talent_record_id)}
+      render: (c) => (
+        <Link to={`/talent/${c.talent_record_id}`} className="rc-link-strong">
+          {talentLabel(talents, c.talent_record_id)}
         </Link>
       ),
     },
     {
-      key: 'state',
-      header: 'State',
-      render: (o) => (
-        <span className="rc-pill rc-pill--neutral">
-          {RECRUITING_OFFER_STATE_LABELS[o.state]}
-        </span>
-      ),
+      key: 'stage',
+      header: 'Stage',
+      render: (c) => <span className="rc-pill rc-pill--neutral">{BOARD_COLUMN_LABELS[c.column]}</span>,
     },
     {
-      key: 'expires',
-      header: 'Expires',
-      render: (o) =>
-        o.offer_expires_at !== null ? (
-          <span className={isOfferExpiringSoon(o) ? 'num rc-metric__hint' : 'num'}>
-            {formatDate(o.offer_expires_at)}
-            {isOfferExpiringSoon(o) ? ' · soon' : ''}
-          </span>
-        ) : (
-          <span className="rc-muted-line">—</span>
-        ),
-    },
-    {
-      key: 'ref',
-      header: 'Client ref',
-      render: (o) =>
-        o.client_offer_reference !== null ? (
-          <span className="mono">{o.client_offer_reference}</span>
-        ) : (
-          <span className="rc-muted-line">—</span>
-        ),
-    },
-    {
-      // OC-7 — the evidence-only Offer Letter surface for this offer. Request →
-      // send for signature → DERIVED letter status + executed-artifact access.
-      // Signing NEVER transitions the Offer aggregate (the State column stays
-      // authoritative); the panel makes the dual state legible (Offer SENT while
-      // Letter EXECUTED). Signer identity is server-resolved from the Offer.
-      key: 'offer-letter',
-      header: 'Offer letter',
-      render: (o) => (
-        <OfferLetterPanel offerId={o.id} offerState={RECRUITING_OFFER_STATE_LABELS[o.state]} hideHeading />
+      key: 'continue',
+      header: '',
+      render: (c) => (
+        <Link to={`/offer-start/${c.pipeline_id}`} className="rc-link-strong" data-testid="offers-continue">
+          Continue →
+        </Link>
       ),
     },
   ];
@@ -1670,17 +1648,17 @@ function OffersTab({
     <div className="rc-mt-16">
       <Card flush>
         <div className="rc-card__head">
-          <h2>Offers</h2>
+          <h2>Offers &amp; starts</h2>
         </div>
         <p className="rc-muted-line rc-mt-8">
-          Offer transitions execute in the talent&apos;s offer surface — open a
-          talent to make or advance an offer.
+          Everyone from client selection to start on this requisition. Open a row to continue their
+          Offer &amp; Start journey.
         </p>
-        <DataTable<OfferView>
+        <DataTable<BoardCardView>
           columns={columns}
-          rows={[...offers]}
-          rowKey={(o) => o.id}
-          emptyMessage="No offers on this requisition yet."
+          rows={[...rows]}
+          rowKey={(c) => c.pipeline_id}
+          emptyMessage="No offers or starts on this requisition yet."
         />
       </Card>
     </div>
