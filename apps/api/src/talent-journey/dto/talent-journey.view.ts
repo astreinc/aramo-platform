@@ -79,6 +79,20 @@ export interface JourneyAction {
   readonly command_route: string;
 }
 
+// Offer & Start §6.7 — the offer-letter DOCUMENT signal, DB-derived from the governed
+// Document.status (write-back authoritative via the e-sign execution path), composed ONLY
+// when the caller opts in (keeps the shared Talent 360 hot read DB-only; see D-ARCH-1).
+// Kept DISTINCT from the Offer business state: `sub_states.offer_state === 'ACCEPTED'` is
+// the acceptance fact (Offer authority); THIS is document/e-sign progress (§2.5 — signed is
+// not accepted). Fine-grained per-signer sent/viewed timestamps are a typed GAP: the
+// SignatureProviderPort exposes signer status + completion/certificate, not those instants —
+// surfaced as a residual, never fabricated in FE.
+export interface JourneyOfferDocument {
+  readonly owner: 'documents';
+  readonly document_id: string;
+  readonly status: 'REQUESTED' | 'AWAITING_SIGNATURE' | 'EXECUTED';
+}
+
 // The composed journey for one (tenant, requisition, talent) episode.
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
@@ -87,4 +101,6 @@ export interface TalentRequisitionJourney {
   readonly stages: readonly JourneyStageElement[];
   readonly sub_states: JourneySubStates;
   readonly actions: readonly JourneyAction[];
+  // null when the caller did not opt in OR no offer-letter document exists yet.
+  readonly offer_document: JourneyOfferDocument | null;
 }

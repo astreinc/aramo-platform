@@ -35,6 +35,9 @@ export class TalentJourneyController {
       tenant_id: authContext.tenant_id,
       pipeline_id: id,
       visible_requisition_ids: visibleReqIds,
+      // §6.7 — the journey ENDPOINT (Offer & Start + pipeline surfaces) opts into the
+      // offer-letter document signal; Talent 360's direct service call does not (D-ARCH-1).
+      include_offer_document: true,
       requestId,
     });
   }

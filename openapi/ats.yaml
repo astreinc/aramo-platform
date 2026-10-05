@@ -8426,6 +8426,7 @@ components:
         - stages
         - sub_states
         - actions
+        - offer_document
       properties:
         requisition_id: { type: string }
         talent_record_id: { type: string }
@@ -8437,6 +8438,24 @@ components:
         actions:
           type: array
           items: { $ref: '#/components/schemas/JourneyActionView' }
+        # Offer & Start §6.7 — the opt-in offer-letter document signal; null on the Talent 360
+        # embed (opt-out, D-ARCH-1) and until an offer-letter exists. Distinct from acceptance.
+        offer_document:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyOfferDocumentView'
+            - type: 'null'
+    JourneyOfferDocumentView:
+      type: object
+      additionalProperties: false
+      description: DB-derived offer-letter document signal (Offer & Start §6.7); owner=documents. Distinct from the Offer ACCEPTED business fact (§2.5).
+      required:
+        - owner
+        - document_id
+        - status
+      properties:
+        owner: { type: string, enum: [documents] }
+        document_id: { type: string, format: uuid }
+        status: { type: string, enum: [REQUESTED, AWAITING_SIGNATURE, EXECUTED] }
     ActiveOpportunityView:
       type: object
       additionalProperties: false

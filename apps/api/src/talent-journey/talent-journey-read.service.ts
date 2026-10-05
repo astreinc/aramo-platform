@@ -27,12 +27,14 @@ import {
   isUnresolvedStatus,
   type InstanceView as PreStartInstanceView,
 } from '@aramo/pre-start-requirement';
+import { DocumentsRepository } from '@aramo/documents';
 
 import type {
   JourneyStageElement,
   JourneyStageName,
   JourneySubStates,
   JourneyAction,
+  JourneyOfferDocument,
   TalentRequisitionJourney,
 } from './dto/talent-journey.view.js';
 
@@ -132,6 +134,7 @@ export class TalentJourneyReadService {
     private readonly offer: OfferRepository,
     private readonly placement: PlacementRepository,
     private readonly preStart: RequirementInstanceRepository,
+    private readonly documents: DocumentsRepository,
     @Inject('TalentJourneyLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -141,6 +144,9 @@ export class TalentJourneyReadService {
     tenant_id: string;
     pipeline_id: string;
     visible_requisition_ids: ReadonlySet<string> | null;
+    // §6.7 opt-in — compose the offer-letter document signal. Default false keeps the
+    // shared Talent 360 hot read DB-lean and free of this auxiliary lookup (D-ARCH-1).
+    include_offer_document?: boolean;
     requestId: string;
   }): Promise<TalentRequisitionJourney> {
     // Gate 1 (AUTHZ existence) — the episode itself; null ⇒ absent OR not-visible ⇒ same 404.
@@ -260,6 +266,31 @@ export class TalentJourneyReadService {
     // ---- actions — owner-specific, routing to each owner's EXISTING command (no journey write). --
     const actions = deriveActions({ episode, submittal, selection, currentOffer, currentPlacement, preStartInstances });
 
+    // ---- offer_document — §6.7 opt-in, DB-only (Document.status write-back), fail-soft. ----
+    // A read projection must never hard-fail on this auxiliary lookup; on any error the
+    // signal is simply absent. Most-recent OFFER_LETTER document REGARDING the current offer.
+    let offerDocument: JourneyOfferDocument | null = null;
+    if (args.include_offer_document === true && currentOffer !== null) {
+      try {
+        const docs = await this.documents.findDocumentsByTypeKeyAndAssociations({
+          tenant_id: args.tenant_id,
+          document_type_key: OFFER_LETTER_DOCUMENT_TYPE_KEY,
+          associations: [{ resource_type: 'OFFER', resource_id: currentOffer.id, relationship: 'REGARDING' }],
+        });
+        const doc = docs[0] ?? null;
+        if (doc !== null) {
+          const status = deriveOfferDocumentStatus(doc.status);
+          if (status !== null) offerDocument = { owner: 'documents', document_id: doc.id, status };
+        }
+      } catch (e) {
+        this.logger.warn({
+          event: 'talent_journey_offer_document_lookup_failed',
+          pipeline_id: episode.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
     this.logger.log({ event: 'talent_journey_composed', pipeline_id: episode.id, current_journey_stage, stage_count: stages.length });
 
     return {
@@ -269,8 +300,24 @@ export class TalentJourneyReadService {
       stages,
       sub_states,
       actions,
+      offer_document: offerDocument,
     };
   }
+}
+
+// §6.7 — the SYSTEM offer-letter document type key (seeded DOC-6); the journey resolves the
+// most-recent OFFER_LETTER REGARDING the current offer and derives its signal from the
+// write-back-authoritative Document.status (no live e-sign call — see D-ARCH-1).
+const OFFER_LETTER_DOCUMENT_TYPE_KEY = 'OFFER_LETTER';
+
+// Document.status → the offer-letter journey signal. Mirrors the DOC-6 orchestrator's derived
+// status. Terminal-non-executed document states (VOIDED/EXPIRED/ARCHIVED) yield null — no
+// active offer-letter signal — so a stale/retired document never masquerades as progress.
+function deriveOfferDocumentStatus(documentStatus: string): JourneyOfferDocument['status'] | null {
+  if (documentStatus === 'EXECUTED') return 'EXECUTED';
+  if (documentStatus === 'PREPARED' || documentStatus === 'EXECUTION_PENDING') return 'AWAITING_SIGNATURE';
+  if (documentStatus === 'DRAFT') return 'REQUESTED';
+  return null;
 }
 
 // ≤1 NON-terminal offer per (tenant, submittal) — the one-live trigger; prefer it, else the

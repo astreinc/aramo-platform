@@ -8,7 +8,7 @@
 -- All three are talent-signed (SINGLE_SIGNATURE). The "required by <client>" vs
 -- "tenant standard" distinction the UX shows lives in the pre-start requirement
 -- layer, NOT the document-type scope — these are reusable platform-provided types
--- exactly like OFFER_LETTER. No new document-domain concept is introduced; the
+-- exactly like OFFER_LETTER. No new document-domain concept is introduced — the
 -- background-check RESULT remains separate manual evidence (Aramo performs no
 -- automated check), and no work-authorization determination is inferred here.
 INSERT INTO "documents"."DocumentType"

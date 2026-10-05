@@ -17,6 +17,7 @@ import {
 } from '@aramo/client-selection';
 import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { RequirementInstanceRepository, PrismaService as PreStartPrismaService } from '@aramo/pre-start-requirement';
+import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
 
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
 
@@ -41,18 +42,32 @@ const MIGRATIONS = [
   ...migrationsFor('client-selection'),
   ...migrationsFor('placement'),
   ...migrationsFor('pre-start-requirement'),
+  ...migrationsFor('documents'),
 ];
 
-// Dollar-quote- AND line-comment-aware DDL splitter.
+// Dollar-quote-, line-comment- AND single-quote-string-aware DDL splitter. A `;` inside a
+// '...' string literal (e.g. the DOC-6 OFFER_LETTER seed's prose) must NOT split the
+// statement; '' is the SQL escape for a literal quote. Single quotes inside a $$ body stay
+// protected by inDollar (never treated as a string delimiter).
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inDollar = false;
   let inLineComment = false;
+  let inString = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (inLineComment) { cur += ch; if (ch === '\n') inLineComment = false; continue; }
+    if (inString) {
+      cur += ch;
+      if (ch === "'") {
+        if (sql[i + 1] === "'") { cur += "'"; i += 1; } // escaped '' — remain in string
+        else inString = false;
+      }
+      continue;
+    }
     if (!inDollar && ch === '-' && sql[i + 1] === '-') { inLineComment = true; cur += ch; continue; }
+    if (!inDollar && ch === "'") { inString = true; cur += ch; continue; }
     if (sql.startsWith('$$', i)) { inDollar = !inDollar; cur += '$$'; i += 1; continue; }
     if (ch === ';' && !inDollar) { out.push(cur); cur = ''; } else { cur += ch; }
   }
@@ -86,7 +101,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const csPrisma = new ClientSelectionPrismaService(url);
       const placementPrisma = new PlacementPrismaService(url);
       const preStartPrisma = new PreStartPrismaService(url);
-      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, preStartPrisma]) {
+      const documentsPrisma = new DocumentsPrismaService(url);
+      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, preStartPrisma, documentsPrisma]) {
         await (p as unknown as { $connect: () => Promise<void> }).$connect();
         prismas.push(p as never);
       }
@@ -99,6 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new OfferRepository(placementPrisma, {} as never),
         new PlacementRepository(placementPrisma),
         new RequirementInstanceRepository(preStartPrisma),
+        new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
         NOOP_LOGGER,
       );
     }, 240_000);
@@ -169,8 +186,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return id;
     }
 
+    async function seedOfferLetterDocument(tenant: string, offerId: string, status: string): Promise<string> {
+      const docId = randomUUID();
+      await db.query(
+        `INSERT INTO documents."Document" (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by)
+         VALUES ($1,$2,'d0c50006-0000-7000-8000-000000000001','Offer Letter',$3,'SINGLE_SIGNATURE','TEMPLATE_GENERATED',$4)`,
+        [docId, tenant, status, randomUUID()],
+      );
+      await db.query(
+        `INSERT INTO documents."DocumentAssociation" (id, tenant_id, document_id, resource_type, resource_id, relationship, created_by)
+         VALUES ($1,$2,$3,'OFFER',$4,'REGARDING',$5)`,
+        [randomUUID(), tenant, docId, offerId, randomUUID()],
+      );
+      return docId;
+    }
+
     const call = (tenant: string, pipelineId: string, vis: ReadonlySet<string> | null = null) =>
       service.getJourney({ tenant_id: tenant, pipeline_id: pipelineId, visible_requisition_ids: vis, requestId: 'r' });
+    const callWithDoc = (tenant: string, pipelineId: string) =>
+      service.getJourney({ tenant_id: tenant, pipeline_id: pipelineId, visible_requisition_ids: null, include_offer_document: true, requestId: 'r' });
 
     // ---------------------------------------------------------------------------------------
     // AC-2a — an ACCEPTED offer with NO established placement reads OFFER, not ACCEPTED_PLACED.
@@ -188,6 +222,38 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(j.sub_states.placement_state).toBeNull(); // BEFORE: no placement established
       // Negative control: it did NOT derive ACCEPTED_PLACED from an accepted offer.
       expect(j.stages.some((s) => s.stage === 'ACCEPTED_PLACED')).toBe(false);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // Offer & Start §6.7 — the OPT-IN offer-letter DOCUMENT signal, DB-derived from
+    // Document.status, kept DISTINCT from the Offer ACCEPTED business fact (§2.5). Opt-out
+    // (the shared Talent 360 hot read) omits it entirely (D-ARCH-1).
+    // ---------------------------------------------------------------------------------------
+    it('§6.7: include_offer_document composes the offer-letter signal (PREPARED→AWAITING_SIGNATURE) with documents provenance; opt-out omits it', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const offerId = await seedOffer(tenant, sub, req, talent, 'SENT', 'summary');
+      const docId = await seedOfferLetterDocument(tenant, offerId, 'PREPARED');
+
+      const withDoc = await callWithDoc(tenant, pipe);
+      expect(withDoc.offer_document).toEqual({ owner: 'documents', document_id: docId, status: 'AWAITING_SIGNATURE' });
+      expect(withDoc.sub_states.offer_state).toBe('SENT'); // §2.5 — document progress ≠ acceptance
+
+      const withoutDoc = await call(tenant, pipe); // default (no opt-in) → absent
+      expect(withoutDoc.offer_document).toBeNull();
+    });
+
+    it('§6.7/§2.5: an EXECUTED offer-letter reads EXECUTED (document signed) while the offer is still SENT (not accepted)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const offerId = await seedOffer(tenant, sub, req, talent, 'SENT', null);
+      await seedOfferLetterDocument(tenant, offerId, 'EXECUTED');
+
+      const j = await callWithDoc(tenant, pipe);
+      expect(j.offer_document?.status).toBe('EXECUTED'); // signed = durable e-sign evidence
+      expect(j.sub_states.offer_state).toBe('SENT');      // acceptance is the separate Offer fact
     });
 
     // ---------------------------------------------------------------------------------------
