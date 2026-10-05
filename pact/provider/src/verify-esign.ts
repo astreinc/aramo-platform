@@ -47,6 +47,13 @@ const CREATED_BY = '44444444-4444-7444-8444-444444444444';
 const DOC_REF = '55555555-5555-7555-8555-555555555555';
 const REV_REF = '66666666-6666-7666-8666-666666666666';
 const SHA256 = 'a'.repeat(64);
+// COMM-RECRUITER-W1 (W1-C) — DEDICATED ids for the reverse-lookup/reminder
+// fixtures so they never collide with DOC_REF/REV_REF/ENVELOPE_ID used by the
+// other states (shared refs would make the reverse lookup ambiguous → 409).
+const RTR_ENVELOPE_ID = '77777777-7777-7777-8777-777777777777';
+const RTR_DOC_REF = '88888888-8888-7888-8888-888888888888';
+const RTR_REV_REF = '99999999-9999-7999-8999-999999999999';
+const RTR_SIGNER_ID = '77777777-7777-7777-8777-7777777777aa';
 // DOC-4C (R1 seam B) — a DISTINCT COMPLETED envelope for the executed-pull state
 // (the DRAFT 'a signature envelope exists' fixture cannot be re-seeded — events
 // are append-only). MUST match pact/consumers/esign-consumer/src/esign.consumer.test.ts.
@@ -124,31 +131,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    // COMM-RECRUITER-W1 (W1-C) — a SENT envelope with a PENDING (incomplete) signer
-    // over the SAME (DOC_REF, REV_REF), for the reverse-lookup + reminder states.
-    async function seedSentEnvelope(): Promise<void> {
-      await db.query(`DELETE FROM "esign"."SignatureEvent" WHERE envelope_id = $1`, [ENVELOPE_ID]);
-      await db.query(`DELETE FROM "esign"."SigningSession" WHERE envelope_id = $1`, [ENVELOPE_ID]);
-      await db.query(`DELETE FROM "esign"."SignatureEnvelope" WHERE id = $1`, [ENVELOPE_ID]);
+    // COMM-RECRUITER-W1 (W1-C) — a dedicated SENT envelope (RTR_ENVELOPE_ID) with a
+    // PENDING (incomplete) signer over its OWN unique (RTR_DOC_REF, RTR_REV_REF),
+    // for both the reverse-lookup and the reminder states. Unique refs guarantee
+    // the reverse lookup resolves EXACTLY ONE non-terminal envelope (no ambiguity).
+    async function seedRtrEnvelope(): Promise<void> {
+      await db.query(`DELETE FROM "esign"."SignatureEvent" WHERE envelope_id = $1`, [RTR_ENVELOPE_ID]);
+      await db.query(`DELETE FROM "esign"."SigningSession" WHERE envelope_id = $1`, [RTR_ENVELOPE_ID]);
+      await db.query(`DELETE FROM "esign"."SignatureEnvelope" WHERE id = $1`, [RTR_ENVELOPE_ID]);
       await db.query(
         `INSERT INTO "esign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by)
          VALUES ($1,$2,'Right to Represent','SENT','SINGLE_SIGNATURE',$3)`,
-        [ENVELOPE_ID, TENANT_ID, CREATED_BY],
+        [RTR_ENVELOPE_ID, TENANT_ID, CREATED_BY],
       );
       await db.query(
         `INSERT INTO "esign"."EnvelopeDocument" (id, tenant_id, envelope_id, document_ref, document_revision_ref, title, source_sha256, ordinal)
          VALUES (gen_random_uuid(),$1,$2,$3,$4,'rtr.pdf',$5,1)`,
-        [TENANT_ID, ENVELOPE_ID, DOC_REF, REV_REF, SHA256],
+        [TENANT_ID, RTR_ENVELOPE_ID, RTR_DOC_REF, RTR_REV_REF, SHA256],
       );
       await db.query(
         `INSERT INTO "esign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status)
          VALUES ($1,$2,$3,'jane@example.com','Jane Doe',1,'PENDING')`,
-        [SIGNER_ID, TENANT_ID, ENVELOPE_ID],
+        [RTR_SIGNER_ID, TENANT_ID, RTR_ENVELOPE_ID],
       );
       await db.query(
         `INSERT INTO "esign"."SignatureEvent" (id, tenant_id, envelope_id, event_type, actor_type, previous_event_hash, event_hash)
-         VALUES (gen_random_uuid(),$1,$2,'ENVELOPE_SENT','SERVICE',NULL,'seed-event-chain-hash')`,
-        [TENANT_ID, ENVELOPE_ID],
+         VALUES (gen_random_uuid(),$1,$2,'ENVELOPE_SENT','SERVICE',NULL,'seed-rtr-event-chain-hash')`,
+        [TENANT_ID, RTR_ENVELOPE_ID],
       );
     }
 
@@ -303,10 +312,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           // COMM-RECRUITER-W1 (W1-C) — reverse lookup + same-envelope reminder.
           'a non-terminal signature envelope exists for the document revision': async () => {
-            await seedSentEnvelope();
+            await seedRtrEnvelope();
           },
           'a sent signature envelope with an incomplete signer exists': async () => {
-            await seedSentEnvelope();
+            await seedRtrEnvelope();
           },
         },
       });
