@@ -34,6 +34,11 @@ export interface RequisitionTalentActions {
   readonly voidEligibleIds: ReadonlySet<string>;
   // Board display names keyed by talent_record_id (reuses `talents`).
   readonly boardTalentNames: Record<string, string>;
+  // Board role · company subtitle keyed by talent_record_id (reuses `talents`).
+  readonly boardTalentSubtitles: Record<string, string>;
+  // User directory display names keyed by user_id — resolves the card's assigned
+  // recruiter to initials (best-effort; absent id ⇒ no recruiter chip).
+  readonly boardRecruiterNames: Record<string, string>;
   // Board re-fetch token + bump (a card appears/disappears).
   readonly boardRefresh: number;
   readonly bumpBoardRefresh: () => void;
@@ -57,6 +62,7 @@ export function useRequisitionTalentActions({
   scopes,
   canEditHot,
   canReadPlacements,
+  userNames,
   onToggleHot,
   onPipelineUpdated,
   onPipelineRemoved,
@@ -68,6 +74,8 @@ export function useRequisitionTalentActions({
   readonly scopes: readonly string[];
   readonly canEditHot: boolean;
   readonly canReadPlacements: boolean;
+  /** User directory display names keyed by user_id (best-effort; for recruiter initials). */
+  readonly userNames?: Record<string, string>;
   readonly onToggleHot: (talentId: string, next: boolean) => Promise<void>;
   readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
@@ -126,6 +134,24 @@ export function useRequisitionTalentActions({
       ),
     [talents],
   );
+
+  // Role · company subtitle for the Board card, composed from the already-loaded
+  // talents map (title = most-recent professional title; current_employer).
+  // Authoritative talent fields — never fabricated; absent parts are dropped.
+  const boardTalentSubtitles = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(talents).map(([id, t]) => [
+          id,
+          [t.title, t.current_employer].filter((s): s is string => typeof s === 'string' && s.trim().length > 0).join(' · '),
+        ]),
+      ),
+    [talents],
+  );
+
+  // The user directory for resolving a card's assigned recruiter id to initials.
+  // Pass-through of the page-resolved directory (best-effort).
+  const boardRecruiterNames = useMemo(() => userNames ?? {}, [userNames]);
 
   // Fetch the server-authoritative VOID eligibility (which cards carry the
   // projected pipeline.void action). Re-runs after a removal. Best-effort.
@@ -237,6 +263,8 @@ export function useRequisitionTalentActions({
     requestVoid,
     voidEligibleIds,
     boardTalentNames,
+    boardTalentSubtitles,
+    boardRecruiterNames,
     boardRefresh,
     bumpBoardRefresh,
     cells,

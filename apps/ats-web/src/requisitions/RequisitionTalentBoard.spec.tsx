@@ -72,7 +72,8 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(screen.getByLabelText('Contacted')).toBeInTheDocument();
     expect(screen.getByLabelText('Started')).toBeInTheDocument();
     expect(within(screen.getByLabelText('Contacted')).getByText('Ada Lovelace')).toBeInTheDocument();
-    expect(within(screen.getByLabelText('Submitted')).getByText('Grace Hopper')).toBeInTheDocument();
+    // Canonical label — never the bare "Submitted".
+    expect(within(screen.getByLabelText('Submitted to client')).getByText('Grace Hopper')).toBeInTheDocument();
   });
 
   it('splits the Qualified column into Ready-to-submit / Needs-action bands with blockers', async () => {
@@ -95,11 +96,11 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
 
     const col = await screen.findByLabelText('Qualified');
-    // Each band label appears (group heading + card pill share the text → at least one each).
-    expect(within(col).getAllByText('Ready to submit').length).toBeGreaterThanOrEqual(1);
-    expect(within(col).getAllByText('Needs action').length).toBeGreaterThanOrEqual(1);
-    // The needs-action card surfaces its specific blocker (recruiting fact, not policy engine).
-    expect(within(col).getByText('Résumé not selected')).toBeInTheDocument();
+    // The two band group headings carry their live count (prototype: READY TO SUBMIT · N).
+    expect(within(col).getByText('Ready to submit · 1')).toBeInTheDocument();
+    expect(within(col).getByText('Needs action · 1')).toBeInTheDocument();
+    // The needs-action card surfaces its specific blocker as a Missing pill (not red prose).
+    expect(within(col).getByText('Missing: Résumé not selected')).toBeInTheDocument();
   });
 
   it('shows the résumé-locked indicator on a submitted (frozen) card', async () => {
@@ -117,7 +118,8 @@ describe('RequisitionTalentBoard (TB-2)', () => {
       }),
     );
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
-    expect(await screen.findByText('Résumé locked')).toBeInTheDocument();
+    // The submitted (frozen) résumé selection renders in the card's résumé row.
+    expect(await screen.findByText('Résumé · submitted')).toBeInTheDocument();
   });
 
   it('renders the collapsed Closed panel with canonical reason labels', async () => {
@@ -195,8 +197,9 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     });
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestVoid={onRequestVoid} />);
-    const btn = await screen.findByRole('button', { name: 'Remove from requisition' });
-    fireEvent.click(btn);
+    // Remove lives in the ⋯ menu (prototype) — open it, then invoke the correction.
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Ada Lovelace' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove from requisition' }));
     expect(onRequestVoid).toHaveBeenCalledWith('pipe-void', 'Ada Lovelace');
   });
 
@@ -218,7 +221,8 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'started', owner: 'placement', count: 1, cards: [c] }] }));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     const col = await screen.findByLabelText('Started');
-    expect(within(col).getByText('Tracked · Placement')).toBeInTheDocument();
+    // A downstream handoff card is tracked read-only — its footer shows the tracking owner.
+    expect(within(col).getByText('Tracking · Placement')).toBeInTheDocument();
     // Not draggable (the Board tracks, never owns, downstream).
     const cardEl = within(col).getByText('Ada Lovelace').closest('.rc-tboard__card') as HTMLElement;
     expect(cardEl.getAttribute('draggable')).toBe('false');
@@ -294,8 +298,10 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [c] }] }));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     const col = await screen.findByLabelText('Qualified');
-    expect(within(col).getByText('RTR needed')).toBeInTheDocument();
-    expect(within(col).getByText('Right to represent not executed')).toBeInTheDocument();
+    // RTR is a fact pill (binary — only the NOT_EXECUTED "Not sent" state is on the substrate).
+    expect(within(col).getByText('RTR · Not sent')).toBeInTheDocument();
+    // The blocker surfaces in the Missing pill.
+    expect(within(col).getByText('Missing: Right to represent not executed')).toBeInTheDocument();
   });
 
   it('routes a next action to the governed drawer surface (onSelectCard by pipeline_id)', async () => {

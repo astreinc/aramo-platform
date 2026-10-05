@@ -50,6 +50,7 @@ import { KnownTalentDrawer } from './KnownTalentDrawer';
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
 import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
+import { TalentViewToggle } from './TalentViewToggle';
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
 import {
   getRequisitionTalentBoard,
@@ -370,6 +371,15 @@ export function RequisitionDetailView({
         for (const a of merged) {
           if (a.created_by_id !== null) actorIds.add(a.created_by_id);
         }
+        // Board cards carry the requisition-grain assigned_recruiter_user_id — resolve it
+        // through the same directory so the board footer can render recruiter initials.
+        if (boardRes.status === 'fulfilled' && Array.isArray(boardRes.value.columns)) {
+          for (const col of boardRes.value.columns) {
+            for (const c of col.cards) {
+              if (c.assigned_recruiter_user_id !== null) actorIds.add(c.assigned_recruiter_user_id);
+            }
+          }
+        }
         if (actorIds.size > 0) {
           try {
             const names = await resolveUserNames([...actorIds]);
@@ -593,6 +603,7 @@ export function RequisitionDetailView({
           onNavigate={setTab}
           talentView={talentView}
           onTalentView={setTalentView}
+          userNames={userNames}
         />
       ),
     });
@@ -1254,6 +1265,7 @@ function TalentJourney({
   onNavigate,
   talentView,
   onTalentView,
+  userNames,
 }: {
   readonly req: RequisitionView;
   readonly pipelines: readonly PipelineView[];
@@ -1268,6 +1280,8 @@ function TalentJourney({
   readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
   readonly onNavigate: (tab: TabId) => void;
+  /** User directory display names keyed by user_id (for the board's recruiter initials). */
+  readonly userNames: Record<string, string>;
   // Shared List|Board preference (lifted to RequisitionDetailView so the Talent
   // tab and the Workspace agree). Approved default is Board.
   readonly talentView: 'list' | 'board';
@@ -1290,6 +1304,7 @@ function TalentJourney({
     scopes,
     canEditHot,
     canReadPlacements,
+    userNames,
     onToggleHot,
     onPipelineUpdated,
     onPipelineRemoved,
@@ -1297,32 +1312,13 @@ function TalentJourney({
 
   return (
     <div className="rc-tj">
-      <div className="rc-tboard__toolbar" role="tablist" aria-label="Talent view">
-        <Button
-          unstyled
-          type="button"
-          role="tab"
-          aria-selected={talentView === 'list'}
-          className={`rc-tboard__toggle${talentView === 'list' ? ' rc-tboard__toggle--on' : ''}`}
-          onClick={() => onTalentView('list')}
-        >
-          List
-        </Button>
-        <Button
-          unstyled
-          type="button"
-          role="tab"
-          aria-selected={talentView === 'board'}
-          className={`rc-tboard__toggle${talentView === 'board' ? ' rc-tboard__toggle--on' : ''}`}
-          onClick={() => onTalentView('board')}
-        >
-          Board
-        </Button>
-      </div>
+      <TalentViewToggle value={talentView} onChange={onTalentView} className="rc-tj__viewbar" />
       {talentView === 'board' ? (
         <RequisitionTalentBoard
           requisitionId={req.id}
           talentNames={actions.boardTalentNames}
+          talentSubtitles={actions.boardTalentSubtitles}
+          recruiterNames={actions.boardRecruiterNames}
           scopes={scopes}
           onSelectCard={(pid) => {
             const p = pipelines.find((x) => x.id === pid);
