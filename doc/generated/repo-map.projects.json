@@ -4205,6 +4205,12 @@
         "project": "documents",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/offer-start-prestart-doctype-seed.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
