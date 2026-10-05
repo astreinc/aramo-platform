@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  CATEGORY_TEMPLATE_TOKENS,
   EMAIL_TEMPLATE_TOKENS,
+  GENERAL_TALENT_CONTACT_TOKENS,
   TemplateValidationError,
   renderTemplate,
   validateTemplateTokens,
+  validateTemplateTokensForCategory,
 } from '../lib/email-template-renderer.js';
 
 // D-EMAIL-TPL-1 (ET-3) — closed merge-field renderer. At the pin (130bfb65) this
@@ -33,6 +36,49 @@ describe('validateTemplateTokens (ET-3) — save-time closed-allowlist gate', ()
   it('rejects arbitrary-looking template syntax (no code execution surface)', () => {
     expect(() => validateTemplateTokens('{{constructor.constructor}}')).toThrow(TemplateValidationError);
     expect(() => validateTemplateTokens('{{ requisition.title.toString }}')).toThrow(TemplateValidationError);
+  });
+});
+
+describe('validateTemplateTokensForCategory (COMM-RECRUITER-W1 §4B-cat) — category-specific binding fail-closed', () => {
+  it('talent_general_contact ACCEPTS only talent.first_name / recruiter.display_name / company.name', () => {
+    expect(GENERAL_TALENT_CONTACT_TOKENS).toEqual([
+      'talent.first_name',
+      'recruiter.display_name',
+      'company.name',
+    ]);
+    expect(() =>
+      validateTemplateTokensForCategory(
+        'talent_general_contact',
+        'Hi {{talent.first_name}}, — {{recruiter.display_name}} at {{company.name}}',
+      ),
+    ).not.toThrow();
+  });
+
+  it('talent_general_contact REJECTS a requisition-only token (fails closed, not empty render)', () => {
+    try {
+      validateTemplateTokensForCategory(
+        'talent_general_contact',
+        'Hi {{talent.first_name}} re {{requisition.title}}',
+      );
+      throw new Error('expected rejection');
+    } catch (e) {
+      expect(e).toBeInstanceOf(TemplateValidationError);
+      expect((e as TemplateValidationError).unknownTokens).toContain('requisition.title');
+      expect((e as TemplateValidationError).unknownTokens).not.toContain('talent.first_name');
+    }
+  });
+
+  it('requisition_initial_contact still ACCEPTS the full requisition token set', () => {
+    const text = CATEGORY_TEMPLATE_TOKENS['requisition_initial_contact']
+      .map((t) => `{{${t}}}`)
+      .join(' ');
+    expect(() => validateTemplateTokensForCategory('requisition_initial_contact', text)).not.toThrow();
+  });
+
+  it('an unknown category fails closed (no tokens allowed)', () => {
+    expect(() => validateTemplateTokensForCategory('bogus_category', '{{talent.first_name}}')).toThrow(
+      TemplateValidationError,
+    );
   });
 });
 

@@ -10,7 +10,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // DEFINITION store only — the FINAL sent subject/body remain the system of record
 // on CommunicationInteraction.
 
-export const EMAIL_TEMPLATE_CATEGORIES = ['requisition_initial_contact'] as const;
+export const EMAIL_TEMPLATE_CATEGORIES = ['requisition_initial_contact', 'talent_general_contact'] as const;
 export type EmailTemplateCategory = (typeof EMAIL_TEMPLATE_CATEGORIES)[number];
 
 export interface EmailTemplateRow {

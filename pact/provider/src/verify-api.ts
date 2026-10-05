@@ -5387,6 +5387,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             );
           });
         },
+      // COMM-RECRUITER-W1 (W1-A2) — the General Talent Contact draft reads a live
+      // Talent WITH email1 + the recruiter identity. NO requisition/pipeline
+      // (Talent-only). Writes nothing; returns a hydrated, recipient-server-owned draft.
+      'a tenant entitled to ats with a caller holding communication:email:send and an admissible Talent (COMM-RECRUITER-W1 general-contact draft)':
+        async () => {
+          await withClient(async (c) => {
+            await c.query(
+              `INSERT INTO talent_record."TalentRecord"
+                 (id, tenant_id, first_name, last_name, email1, created_at, updated_at)
+               VALUES ($1,$2,'Omvignesh','Murugesan','pact-talent@example.test',NOW(),NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [PACT_TALENT_ID, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO identity."User" (id, email, display_name, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [RECRUITER_ID],
+            );
+          });
+        },
       // COMM-C2A — a voice interaction (connected) associated to BOTH the Talent
       // (subject) AND the Requisition (regarding), so the voice-evidence read
       // returns provider-verified two-way evidence for (talent, requisition).

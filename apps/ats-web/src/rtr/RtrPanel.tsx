@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   requestRtr,
   sendRtr,
+  remindRtr,
   getCurrentRtr,
   getRtrPreview,
   type RtrCurrentResponse,
@@ -12,8 +13,10 @@ import {
 // RTR-TEMPLATE-1 (§19, §20) — the recruiter-facing RTR cell in the Talent-journey
 // grid. RTR is template-driven and backend-authoritative: this panel only presents
 // the derived status + pinned-template provenance and offers the locked actions
-// (Request → Preview → Send → Refresh; executed evidence links). It NEVER chooses a
-// template, edits content, or exposes Copy-link / Resend / Void. On mount it
+// (Request → Preview → Send → Refresh; executed evidence links). COMM-RECRUITER-W1
+// (W1-C3) adds a same-envelope "Send Reminder" while AWAITING_SIGNATURE (document:
+// execute). It NEVER chooses a template, edits content, or exposes
+// Resend-RTR / Create-new-RTR / Copy signing link / Void. On mount it
 // reconciles the authoritative current RTR so a reload never reverts an existing
 // RTR back to "Request RTR".
 
@@ -52,8 +55,10 @@ export function RtrPanel({
 }: RtrPanelProps): JSX.Element {
   const [current, setCurrent] = useState<RtrCurrentResponse | null>(null);
   const [loading, setLoading] = useState(canRead);
-  const [busy, setBusy] = useState<'' | 'requesting' | 'sending' | 'refreshing' | 'previewing'>('');
+  const [busy, setBusy] = useState<'' | 'requesting' | 'sending' | 'refreshing' | 'previewing' | 'reminding'>('');
   const [error, setError] = useState<string>('');
+  // COMM-RECRUITER-W1 (W1-C3) — transient success note (e.g. "Reminder sent").
+  const [notice, setNotice] = useState<string>('');
 
   const reconcile = useCallback(async (): Promise<void> => {
     const cur = await getCurrentRtr(talentId, requisitionId);
@@ -87,6 +92,7 @@ export function RtrPanel({
   const run = async (phase: typeof busy, fn: () => Promise<void>): Promise<void> => {
     setBusy(phase);
     setError('');
+    setNotice('');
     try {
       await fn();
     } catch (e) {
@@ -107,6 +113,17 @@ export function RtrPanel({
       if (current === null) return;
       await sendRtr(current.document_id, talentId);
       await reconcile();
+    });
+
+  // COMM-RECRUITER-W1 (W1-C3) — same-envelope reminder. Busy-guarded against a
+  // double click; the backend reverse-resolves the envelope (no envelope_id on the
+  // FE) and RTR state stays AWAITING_SIGNATURE. Shows a transient "Reminder sent".
+  const onRemind = (): Promise<void> =>
+    run('reminding', async () => {
+      if (current === null) return;
+      await remindRtr(current.document_id);
+      await reconcile();
+      setNotice('Reminder sent');
     });
 
   const onRefresh = (): Promise<void> => run('refreshing', reconcile);
@@ -160,6 +177,11 @@ export function RtrPanel({
       <div className="rc-tj__rtr-stack">
         <span className={`rc-tj__rtr-status rc-tj__rtr-status--${current.status.toLowerCase()}`}>{label}</span>
         {provenance}
+        {notice.length > 0 ? (
+          <span className="rc-tj__rtr-notice" role="status" data-testid="rtr-reminder-notice">
+            {notice}
+          </span>
+        ) : null}
         <div className="rc-tj__rtr-actions">
           {requested && current.preview_available ? (
             <Button unstyled type="button" className="rc-tj__rtrlink" onClick={() => void onPreview()} disabled={busy !== ''}>
@@ -169,6 +191,18 @@ export function RtrPanel({
           {requested && canSend ? (
             <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => void onSend()} disabled={busy !== ''}>
               {busy === 'sending' ? 'Sending…' : 'Send for signature'}
+            </Button>
+          ) : null}
+          {awaiting && canSend ? (
+            <Button
+              unstyled
+              type="button"
+              className="rc-tj__rtrbtn"
+              data-testid="rtr-send-reminder"
+              onClick={() => void onRemind()}
+              disabled={busy !== ''}
+            >
+              {busy === 'reminding' ? 'Sending reminder…' : 'Send Reminder'}
             </Button>
           ) : null}
           {(requested || awaiting) ? (

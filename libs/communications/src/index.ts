@@ -23,8 +23,11 @@ export {
 } from './lib/email-template.repository.js';
 export {
   EMAIL_TEMPLATE_TOKENS,
+  GENERAL_TALENT_CONTACT_TOKENS,
+  CATEGORY_TEMPLATE_TOKENS,
   TemplateValidationError,
   validateTemplateTokens,
+  validateTemplateTokensForCategory,
   renderTemplate,
   type EmailTemplateToken,
   type RenderResult,

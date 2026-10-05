@@ -73,3 +73,30 @@ export class EsignIdempotencyConflictError extends Error {
     this.name = 'EsignIdempotencyConflictError';
   }
 }
+
+// COMM-RECRUITER-W1 (W1-C2) — a reminder was requested for an envelope that is
+// not in a remindable (SENT|IN_PROGRESS) lifecycle, or has no incomplete signer.
+// Mapped to ESIGN_REMINDER_NOT_ALLOWED (409) at the esign-service HTTP boundary.
+export class ReminderNotAllowedError extends Error {
+  constructor(public readonly reason: string) {
+    super(`reminder not allowed: ${reason}`);
+    this.name = 'ReminderNotAllowedError';
+  }
+}
+
+// COMM-RECRUITER-W1 (W1-C1) — more than one NON-TERMINAL envelope exists for the
+// same (tenant, document_ref, document_revision_ref). Fail-closed integrity
+// ambiguity: the caller must never silently pick one. Mapped to
+// ESIGN_ENVELOPE_AMBIGUOUS (409) at the esign-service HTTP boundary.
+export class EnvelopeAmbiguousError extends Error {
+  constructor(
+    public readonly documentRef: string,
+    public readonly documentRevisionRef: string,
+    public readonly count: number,
+  ) {
+    super(
+      `ambiguous active envelope linkage for document ${documentRef} revision ${documentRevisionRef} (${count} non-terminal envelopes)`,
+    );
+    this.name = 'EnvelopeAmbiguousError';
+  }
+}

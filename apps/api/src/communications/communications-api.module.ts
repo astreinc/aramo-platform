@@ -26,11 +26,15 @@ import { CommunicationCallService } from './communication-call.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
 import { RequisitionContactDraftController } from './requisition-contact-draft.controller.js';
 import { RequisitionContactDraftService } from './requisition-contact-draft.service.js';
+import { GeneralTalentContactDraftController } from './general-talent-contact-draft.controller.js';
+import { GeneralTalentContactDraftService } from './general-talent-contact-draft.service.js';
 import { EmailTemplateResolverService } from './email-template-resolver.service.js';
 import { EmailTemplateController } from './email-template.controller.js';
 import { EmailTemplateService } from './email-template.service.js';
 import { REQUISITION_CONTACT_TEMPLATE_RESOLVER } from './requisition-contact-template.port.js';
 import { SystemRequisitionContactTemplateService } from './system-requisition-contact-template.service.js';
+import { GENERAL_TALENT_CONTACT_TEMPLATE_RESOLVER } from './general-talent-contact-template.port.js';
+import { SystemGeneralTalentContactTemplateService } from './system-general-talent-contact-template.service.js';
 import { RequisitionExistenceAdapter } from './requisition-existence.adapter.js';
 import { ZoomWebhookController } from './zoom-webhook.controller.js';
 import { ZoomWebhookService } from './zoom-webhook.service.js';
@@ -82,6 +86,8 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     ZoomWebhookController,
     TalentCommunicationsController,
     RequisitionContactDraftController,
+    // COMM-RECRUITER-W1 (W1-A2) — Talent-only General Talent Contact draft.
+    GeneralTalentContactDraftController,
     // D-EMAIL-TPL-1 (ET-4) — reusable email-template management (Settings surface).
     EmailTemplateController,
   ],
@@ -92,10 +98,15 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     // recipient resolver (TalentEmailRecipientAdapter) so the recipient authority
     // model is identical to the send path; the governed template is code-owned.
     RequisitionContactDraftService,
+    // COMM-RECRUITER-W1 (W1-A2) — Talent-only draft (reuses the C recipient resolver).
+    GeneralTalentContactDraftService,
     TalentEmailRecipientAdapter,
     { provide: EMAIL_RECIPIENT_RESOLVER, useExisting: TalentEmailRecipientAdapter },
     SystemRequisitionContactTemplateService,
     { provide: REQUISITION_CONTACT_TEMPLATE_RESOLVER, useExisting: SystemRequisitionContactTemplateService },
+    // COMM-RECRUITER-W1 (W1-A1) — General Talent Contact code-owned default.
+    SystemGeneralTalentContactTemplateService,
+    { provide: GENERAL_TALENT_CONTACT_TEMPLATE_RESOLVER, useExisting: SystemGeneralTalentContactTemplateService },
     // D-EMAIL-TPL-1 (ET-2) — D-1 Option C source decision (tenant override else
     // code default). Injects EmailTemplateRepository from the domain CommunicationsModule.
     EmailTemplateResolverService,

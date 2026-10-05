@@ -459,3 +459,45 @@ describe('ats-web → POST /v1/communications/email-drafts/requisition-contact (
   // always resolves the tenant override (if active) else the code default. The
   // ids-only draft interaction above is the sole requisition-contact draft shape.
 });
+
+describe('ats-web → POST /v1/communications/email-drafts/general-contact (COMM-RECRUITER-W1)', () => {
+  it('returns 200 with a prepared Talent-only draft — NO requisition, recipient server-owned (editable:false)', async () => {
+    await provider
+      .addInteraction()
+      .given(
+        'a tenant entitled to ats with a caller holding communication:email:send and an admissible Talent (COMM-RECRUITER-W1 general-contact draft)',
+      )
+      .uponReceiving('an ats-web General Talent Contact email draft preparation (talent id only, no requisition)')
+      .withRequest('POST', '/v1/communications/email-drafts/general-contact', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        // talent id ONLY — no requisition, no recipient/subject/body.
+        b.jsonBody({ talent_record_id: uuid(TALENT_ID) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          to: {
+            email: regex('.+@.+', 'talent@example.test'),
+            display_name: like('Omvignesh Murugesan'),
+            editable: false,
+          },
+          subject: like('Astre Consulting | Opportunities in your field'),
+          body: like('Hi Omvignesh,'),
+          context: {
+            template_id: like('system.talent-general-contact.v1'),
+            template_version: like('1'),
+            template_key: like('talent-general-contact'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/email-drafts/general-contact`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ talent_record_id: TALENT_ID }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { to: { editable: boolean } };
+        expect(body.to.editable).toBe(false);
+      });
+  });
+});

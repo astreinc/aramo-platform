@@ -5388,6 +5388,54 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  /v1/communications/email-drafts/general-contact:
+    post:
+      operationId: prepareGeneralTalentContactEmailDraft
+      summary: Prepare a reviewable General Talent Contact email draft (COMM-RECRUITER-W1).
+      description: |
+        Prepare a REVIEWABLE General Talent Contact email draft — Talent-only, NO
+        requisition. Requires the `ats` capability and the
+        `communication:email:send` scope (drafting is a send-precursor). WRITES
+        NOTHING: no email is sent, no CommunicationInteraction is created, no
+        pipeline state changes.
+
+        The browser supplies ONLY the talent id; the backend reloads the recipient
+        and display context authoritatively (the recipient is display-only —
+        `to.editable` is always false). The subject/body are hydrated from the
+        governed template (tenant override if active, else the gender-neutral
+        code-owned default) using ONLY the requisition-free bindings
+        (talent.first_name, recruiter.display_name, company.name). `warnings` names
+        any optional context that was omitted.
+
+        Refusals:
+          - 400 VALIDATION_ERROR — body invariants.
+          - 422 TALENT_CONTACT_CONTEXT_INVALID — the Talent is absent/cross-tenant
+            (details.reason=talent_not_found).
+          - 422 COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE — the Talent has no
+            authoritative email on file.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneralTalentContactEmailDraftRequest'
+      responses:
+        '200':
+          description: A prepared (unsent) General Talent Contact email draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeneralTalentContactEmailDraft'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/communications/email-templates:
     get:
       operationId: listEmailTemplates
@@ -6979,6 +7027,43 @@ paths:
           $ref: 'common.yaml#/components/responses/BadRequest'
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/rtr/{documentId}/remind:
+    post:
+      operationId: remindRtr
+      summary: Send a reminder on the already-sent RTR (COMM-RECRUITER-W1).
+      description: >
+        Sends a signature reminder against the SAME RTR Document, SAME frozen
+        DocumentRevision, and SAME E-Sign envelope. Never generates another RTR,
+        re-renders, re-resolves a template, changes the pay rate, or creates a new
+        envelope. Recruiter-only; requires document:execute. Allowed only while the
+        RTR is AWAITING_SIGNATURE. Refusals: 409 ESIGN_REMINDER_NOT_ALLOWED (not
+        awaiting signature / envelope not remindable); 404
+        ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT (no active envelope); 409
+        ESIGN_ENVELOPE_AMBIGUOUS (>1 active envelope).
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Reminder dispatched; RTR state is unchanged (AWAITING_SIGNATURE).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, status, reminder_sent]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  reminder_sent: { type: boolean, enum: [true] }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
   /v1/rtr/{documentId}/status:
@@ -9181,7 +9266,10 @@ components:
       # COMM-C4 — no client-supplied recipient; the address is resolved
       # server-side from the Talent record. `to_email` is removed from the
       # send contract.
-      required: [talent_record_id, requisition_id, subject, body, idempotency_key]
+      # COMM-RECRUITER-W1 (W1-A2) — requisition_id is OPTIONAL: a General Talent
+      # Contact send carries no requisition. When present, COMM-C4 behavior is
+      # preserved exactly (requisition REGARDING + governed CONTACT orchestration).
+      required: [talent_record_id, subject, body, idempotency_key]
       properties:
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
@@ -9203,7 +9291,8 @@ components:
         interaction_id: { type: string, format: uuid }
         status: { type: string, enum: [accepted] }
         talent_record_id: { type: string, format: uuid }
-        requisition_id: { type: string, format: uuid }
+        # COMM-RECRUITER-W1 (W1-A2) — null for a requisition-free General Talent Contact send.
+        requisition_id: { type: [string, 'null'], format: uuid }
         idempotent_replay: { type: boolean }
     RequisitionContactEmailDraftRequest:
       type: object
@@ -9247,6 +9336,41 @@ components:
         warnings:
           type: array
           items: { type: string }
+    GeneralTalentContactEmailDraftRequest:
+      type: object
+      additionalProperties: false
+      # COMM-RECRUITER-W1 (W1-A2) — Talent-only: the browser supplies ONLY the
+      # talent id. No requisition, no recipient/subject/body, no template choice.
+      required: [talent_record_id]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+    GeneralTalentContactEmailDraft:
+      type: object
+      additionalProperties: false
+      required: [to, subject, body, context]
+      properties:
+        to:
+          type: object
+          additionalProperties: false
+          required: [email, display_name, editable]
+          properties:
+            email: { type: string, format: email }
+            display_name: { type: [string, 'null'] }
+            # Recipient is server-owned; the client never edits or supplies it.
+            editable: { type: boolean, enum: [false] }
+        subject: { type: string }
+        body: { type: string }
+        context:
+          type: object
+          additionalProperties: false
+          required: [template_id, template_version, template_key]
+          properties:
+            template_id: { type: string }
+            template_version: { type: string }
+            template_key: { type: string }
+        warnings:
+          type: array
+          items: { type: string }
     EmailTemplateView:
       type: object
       additionalProperties: false
@@ -9255,7 +9379,7 @@ components:
         # null id = the read-only code-owned system default (never a mutable row).
         id: { type: [string, 'null'], format: uuid }
         template_key: { type: string }
-        category: { type: string, enum: [requisition_initial_contact] }
+        category: { type: string, enum: [requisition_initial_contact, talent_general_contact] }
         name: { type: string }
         subject_template: { type: string }
         body_template: { type: string }
@@ -9267,7 +9391,7 @@ components:
       additionalProperties: false
       required: [category, name, subject_template, body_template]
       properties:
-        category: { type: string, enum: [requisition_initial_contact] }
+        category: { type: string, enum: [requisition_initial_contact, talent_general_contact] }
         name: { type: string, minLength: 1, maxLength: 200 }
         subject_template: { type: string, minLength: 1, maxLength: 998 }
         body_template: { type: string, minLength: 1, maxLength: 100000 }

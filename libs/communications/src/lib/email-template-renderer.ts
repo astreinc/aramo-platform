@@ -27,6 +27,25 @@ export const EMAIL_TEMPLATE_TOKENS = [
 
 export type EmailTemplateToken = (typeof EMAIL_TEMPLATE_TOKENS)[number];
 
+// COMM-RECRUITER-W1 §4B-cat — the General Talent Contact closed binding catalog:
+// a requisition-free SUBSET of the global allowlist. Only these three tokens may
+// appear in a `talent_general_contact` template (no requisition.* / role.* etc.).
+export const GENERAL_TALENT_CONTACT_TOKENS = [
+  'talent.first_name',
+  'recruiter.display_name',
+  'company.name',
+] as const;
+
+// COMM-RECRUITER-W1 §4B-cat — per-category binding allowlist. Each category's set
+// is a SUBSET of EMAIL_TEMPLATE_TOKENS; a category not present here allows NOTHING
+// (fail-closed). This is the authority for category-specific token validation at
+// template create/update — a global-but-wrong-category token is rejected, never
+// rendered empty.
+export const CATEGORY_TEMPLATE_TOKENS: Readonly<Record<string, readonly EmailTemplateToken[]>> = {
+  requisition_initial_contact: EMAIL_TEMPLATE_TOKENS,
+  talent_general_contact: GENERAL_TALENT_CONTACT_TOKENS,
+};
+
 const ALLOWED: ReadonlySet<string> = new Set(EMAIL_TEMPLATE_TOKENS);
 
 // Tokens are `{{ group.field }}` — lowercase dotted keys only. No spaces inside
@@ -48,6 +67,23 @@ export function validateTemplateTokens(text: string): void {
   for (const m of text.matchAll(TOKEN_RE)) {
     const tok = m[1];
     if (tok !== undefined && !ALLOWED.has(tok)) unknown.add(tok);
+  }
+  if (unknown.size > 0) throw new TemplateValidationError([...unknown]);
+}
+
+/** COMM-RECRUITER-W1 §4B-cat — category-specific closed-allowlist gate. Every
+ *  `{{token}}` in `text` must be in that CATEGORY's allowlist (a subset of the
+ *  global set); an unknown category allows nothing. Throws TemplateValidationError
+ *  listing the disallowed tokens. This is the fail-closed gate at template
+ *  create/update so a General Talent Contact template can never carry a
+ *  requisition-only token. */
+export function validateTemplateTokensForCategory(category: string, text: string): void {
+  const allowed = CATEGORY_TEMPLATE_TOKENS[category];
+  const allowedSet: ReadonlySet<string> = allowed === undefined ? new Set<string>() : new Set(allowed);
+  const unknown = new Set<string>();
+  for (const m of text.matchAll(TOKEN_RE)) {
+    const tok = m[1];
+    if (tok !== undefined && !allowedSet.has(tok)) unknown.add(tok);
   }
   if (unknown.size > 0) throw new TemplateValidationError([...unknown]);
 }

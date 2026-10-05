@@ -35,6 +35,12 @@ const CREATED_BY = '44444444-4444-7444-8444-444444444444';
 const DOC_REF = '55555555-5555-7555-8555-555555555555';
 const REV_REF = '66666666-6666-7666-8666-666666666666';
 const SHA256 = 'a'.repeat(64);
+// COMM-RECRUITER-W1 (W1-C) — DEDICATED ids so the reverse-lookup/reminder fixtures
+// never collide with the shared DOC_REF/REV_REF/ENVELOPE_ID used by other states
+// (which would make the lookup ambiguous).
+const RTR_ENVELOPE_ID = '77777777-7777-7777-8777-777777777777';
+const RTR_DOC_REF = '88888888-8888-7888-8888-888888888888';
+const RTR_REV_REF = '99999999-9999-7999-8999-999999999999';
 
 describe('aramo-core → POST /v1/esign/envelopes', () => {
   it('returns 201 EnvelopeSummary for a fresh envelope', async () => {
@@ -187,6 +193,65 @@ describe('aramo-core → GET /v1/esign/envelopes/{id}/executed', () => {
         expect(body.envelope_id).toBe(EXEC_ENVELOPE_ID);
         expect(Array.isArray(body.documents)).toBe(true);
         expect(body.certificate).not.toBeNull();
+      });
+  });
+});
+
+// COMM-RECRUITER-W1 (W1-C) — reverse envelope lookup + same-envelope reminder.
+describe('aramo-core → GET /v1/esign/envelopes/for-document', () => {
+  it('returns 200 { envelope } with the single non-terminal envelope for a document revision', async () => {
+    await provider
+      .addInteraction()
+      .given('a non-terminal signature envelope exists for the document revision')
+      .uponReceiving('a reverse envelope lookup for an exact document revision')
+      .withRequest('GET', '/v1/esign/envelopes/for-document', (b) => {
+        b.query({ tenant_id: TENANT_ID, document_ref: RTR_DOC_REF, document_revision_ref: RTR_REV_REF });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          envelope: {
+            envelope_id: uuid(RTR_ENVELOPE_ID),
+            status: like('SENT'),
+            signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/esign/envelopes/for-document?tenant_id=${TENANT_ID}&document_ref=${RTR_DOC_REF}&document_revision_ref=${RTR_REV_REF}`,
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { envelope: { envelope_id: string } | null };
+        expect(body.envelope?.envelope_id).toBe(RTR_ENVELOPE_ID);
+      });
+  });
+});
+
+describe('aramo-core → POST /v1/esign/envelopes/{id}/remind', () => {
+  it('returns 200 EnvelopeSummary (status unchanged) for a same-envelope reminder', async () => {
+    await provider
+      .addInteraction()
+      .given('a sent signature envelope with an incomplete signer exists')
+      .uponReceiving('a same-envelope reminder request')
+      .withRequest('POST', `/v1/esign/envelopes/${RTR_ENVELOPE_ID}/remind`, (b) => {
+        b.jsonBody({ tenant_id: uuid(TENANT_ID) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          envelope_id: uuid(RTR_ENVELOPE_ID),
+          status: like('SENT'),
+          signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/esign/envelopes/${RTR_ENVELOPE_ID}/remind`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tenant_id: TENANT_ID }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { envelope_id: string };
+        expect(body.envelope_id).toBe(RTR_ENVELOPE_ID);
       });
   });
 });

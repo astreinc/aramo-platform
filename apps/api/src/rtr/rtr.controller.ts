@@ -3,7 +3,12 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 
-import { RtrOrchestratorService, type RtrCurrentView, type RtrPreviewView } from './rtr-orchestrator.service.js';
+import {
+  RtrOrchestratorService,
+  type RtrCurrentView,
+  type RtrPreviewView,
+  type RtrRemindResult,
+} from './rtr-orchestrator.service.js';
 
 // DOC-5 (R-5-5) — recruiter-facing RTR endpoints. Thin HTTP surface over the
 // RtrOrchestratorService; recruiter-only (consumer_type gate). tenant_id +
@@ -59,6 +64,26 @@ export class RtrController {
       document_id: documentId,
       talent_id: body.talent_id,
       created_by: authContext.sub,
+      requestId,
+    });
+  }
+
+  // COMM-RECRUITER-W1 (W1-C3) — send a reminder against the SAME RTR Document,
+  // SAME frozen revision, and SAME E-Sign envelope. Recruiter-only; document:execute
+  // (same authority as send). Allowed only while AWAITING_SIGNATURE. Never
+  // re-renders, re-resolves a template, or creates a new envelope.
+  @Post(':documentId/remind')
+  @RequireScopes('document:execute')
+  @HttpCode(HttpStatus.OK)
+  async remind(
+    @Param('documentId') documentId: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RtrRemindResult> {
+    this.assertRecruiter(authContext, requestId);
+    return this.orchestrator.remind({
+      tenant_id: authContext.tenant_id,
+      document_id: documentId,
       requestId,
     });
   }

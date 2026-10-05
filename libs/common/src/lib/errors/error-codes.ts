@@ -400,6 +400,14 @@ export const ERROR_CODES = [
   'SIGNING_SESSION_EXPIRED',
   'DISCLOSURE_NOT_ACCEPTED',
   'SIGNATURE_FIELD_INCOMPLETE',
+  // COMM-RECRUITER-W1 (W1-C) — RTR same-envelope reminder lookup/guard.
+  // NOT_FOUND_FOR_DOCUMENT (404): no non-terminal envelope for the exact
+  // (tenant, document_ref, document_revision_ref). AMBIGUOUS (409): >1 such
+  // envelope (integrity ambiguity — fail closed, never pick latest).
+  // REMINDER_NOT_ALLOWED (409): envelope not SENT/IN_PROGRESS or no incomplete signer.
+  'ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT',
+  'ESIGN_ENVELOPE_AMBIGUOUS',
+  'ESIGN_REMINDER_NOT_ALLOWED',
   // DOC-4 (R-4-7) — executed-artifact write-back integrity failure: the executed
   // or certificate bytes do not match the asserted sha256 (never stored).
   'DOCUMENT_EXECUTED_HASH_MISMATCH',
@@ -853,6 +861,10 @@ export const ERROR_CODES = [
   // which has no such pipeline). Fail-closed at the draft boundary; the send path
   // re-validates independently.
   'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
+  // COMM-RECRUITER-W1 (W1-A2) — General Talent Contact DRAFT context refusal
+  // (422). details.reason=`talent_not_found` (absent or cross-tenant Talent).
+  // Talent-only (no requisition); fail-closed at the draft boundary.
+  'TALENT_CONTACT_CONTEXT_INVALID',
   // D-EMAIL-TPL-1 (ET-4) — reusable email-template management. NOT_FOUND (404):
   // tenant-safe absence (unknown id OR another tenant's row — no enumeration).
   // ALREADY_EXISTS (409): a tenant override for the (tenant, template_key) already

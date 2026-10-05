@@ -97,6 +97,22 @@ vi.mock('../offers/offers-api', () => ({
 vi.mock('../submittals/submittals-api', () => ({
   findSubmittalForTalentJob: vi.fn(async () => ({ submittal: null })),
 }));
+// COMM-RECRUITER-W1 (W1-B) — the microsoft-engagement section mounts
+// MicrosoftRecruiterActions, which fetches binding status on mount. Resolve it
+// bound so the scope-gated send affordance can be asserted; draft/send/meeting
+// fns are stubbed (unused until interaction, which these reachability tests do
+// not trigger). No feature change — regression coverage only.
+vi.mock('../microsoft/microsoft-api', () => ({
+  getMicrosoftBindingStatus: vi.fn(async () => ({
+    connection_id: 'c1',
+    bound: true,
+    status: 'active',
+    needs_reauthorization: false,
+  })),
+  sendMicrosoftEmail: vi.fn(),
+  createMicrosoftMeeting: vi.fn(),
+  generateRequisitionContactDraft: vi.fn(),
+}));
 
 const ENTRY: PipelineView = {
   id: 'p1',
@@ -401,5 +417,21 @@ describe('TalentDetailPanel — inline edit (talent:edit)', () => {
     fireEvent.keyDown(input, { key: 'Escape' });
     await waitFor(() => expect(screen.getByText('sarah@x.test')).toBeInTheDocument());
     expect(screen.queryByText('bad@x.test')).toBeNull();
+  });
+
+  // COMM-RECRUITER-W1 (W1-B) — reachability regression: the requisition-contact
+  // email affordance is mounted in the microsoft-engagement section and its
+  // visibility is derived from communication:email:send. No feature change.
+  it('W1-B — mounts MicrosoftRecruiterActions with the send affordance when the session holds communication:email:send', async () => {
+    renderPanel({ scopes: ['communication:email:send'] });
+    const section = await screen.findByTestId('microsoft-engagement');
+    expect(await within(section).findByTestId('microsoft-send-email')).toBeInTheDocument();
+  });
+
+  it('W1-B — hides the send affordance when the session lacks communication:email:send', async () => {
+    renderPanel({ scopes: [] });
+    const section = await screen.findByTestId('microsoft-engagement');
+    await within(section).findByTestId('microsoft-actions');
+    expect(within(section).queryByTestId('microsoft-send-email')).toBeNull();
   });
 });

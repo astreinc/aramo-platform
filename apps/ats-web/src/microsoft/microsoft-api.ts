@@ -16,7 +16,8 @@ export interface MicrosoftEmailSendResult {
   readonly interaction_id: string;
   readonly status: 'accepted';
   readonly talent_record_id: string;
-  readonly requisition_id: string;
+  // COMM-RECRUITER-W1 (W1-A2) — null for a requisition-free General Talent Contact send.
+  readonly requisition_id: string | null;
   readonly idempotent_replay: boolean;
 }
 
@@ -53,7 +54,9 @@ export interface ConfigureMicrosoftInput {
 // authoritative Talent email server-side; the client never supplies an address.
 export interface SendEmailInput {
   readonly talent_record_id: string;
-  readonly requisition_id: string;
+  // COMM-RECRUITER-W1 (W1-A2) — OPTIONAL: a General Talent Contact send has no
+  // requisition. Omitted → the backend writes the Talent SUBJECT association only.
+  readonly requisition_id?: string;
   readonly pipeline_id?: string;
   readonly subject: string;
   readonly body: string;
@@ -128,6 +131,39 @@ export async function generateRequisitionContactDraft(
 ): Promise<RequisitionContactDraft> {
   return apiClient.post<RequisitionContactDraft>(
     '/v1/communications/email-drafts/requisition-contact',
+    input,
+  );
+}
+
+// COMM-RECRUITER-W1 (W1-A2) — General Talent Contact draft (Talent-only, no
+// requisition). The backend resolves the governed template (tenant override else
+// the gender-neutral code default) and the authoritative recipient. Read/generate
+// only; recipient server-owned (editable:false).
+export interface GeneralTalentContactDraftInput {
+  readonly talent_record_id: string;
+}
+
+export interface GeneralTalentContactDraft {
+  readonly to: {
+    readonly email: string;
+    readonly display_name: string | null;
+    readonly editable: false;
+  };
+  readonly subject: string;
+  readonly body: string;
+  readonly context: {
+    readonly template_id: string;
+    readonly template_version: string;
+    readonly template_key: string;
+  };
+  readonly warnings?: readonly string[];
+}
+
+export async function generateGeneralTalentContactDraft(
+  input: GeneralTalentContactDraftInput,
+): Promise<GeneralTalentContactDraft> {
+  return apiClient.post<GeneralTalentContactDraft>(
+    '/v1/communications/email-drafts/general-contact',
     input,
   );
 }

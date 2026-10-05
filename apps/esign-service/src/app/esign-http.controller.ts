@@ -4,8 +4,10 @@ import { AramoError, RequestId } from '@aramo/common';
 import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
+  EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
   EnvelopeNotFoundError,
+  ReminderNotAllowedError,
   SignatureFieldIncompleteError,
   SignerNotFoundError,
   SigningSessionExpiredError,
@@ -29,6 +31,8 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof SigningSessionInvalidError) return new AramoError('SIGNING_SESSION_INVALID', e.message, 401, { requestId });
   if (e instanceof DisclosureNotAcceptedError) return new AramoError('DISCLOSURE_NOT_ACCEPTED', e.message, 409, { requestId });
   if (e instanceof SignatureFieldIncompleteError) return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId });
+  if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
+  if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
 
@@ -54,12 +58,46 @@ export class EsignProviderController {
     }
   }
 
+  // COMM-RECRUITER-W1 (W1-C1) — reverse envelope lookup. Declared BEFORE `:id` so
+  // the literal path is not shadowed by the param route. Returns { envelope } with
+  // the single non-terminal envelope or null; ESIGN_ENVELOPE_AMBIGUOUS when >1.
+  @Get('for-document')
+  @HttpCode(HttpStatus.OK)
+  async forDocument(
+    @Query('tenant_id') tenantId: string,
+    @Query('document_ref') documentRef: string,
+    @Query('document_revision_ref') revisionRef: string,
+    @RequestId() requestId: string,
+  ) {
+    validate(typeof tenantId === 'string', 'tenant_id is required', requestId);
+    validate(typeof documentRef === 'string', 'document_ref is required', requestId);
+    validate(typeof revisionRef === 'string', 'document_revision_ref is required', requestId);
+    try {
+      const envelope = await this.provider.findEnvelopeForDocument(tenantId, documentRef, revisionRef);
+      return { envelope };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
   @Post(':id/send')
   @HttpCode(HttpStatus.OK)
   async send(@Param('id') id: string, @Body() body: { tenant_id: string }, @RequestId() requestId: string) {
     validate(typeof body?.tenant_id === 'string', 'tenant_id is required', requestId);
     try {
       return await this.provider.sendEnvelope(body.tenant_id, id);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // COMM-RECRUITER-W1 (W1-C2) — same-envelope reminder (NOT a resend/new envelope).
+  @Post(':id/remind')
+  @HttpCode(HttpStatus.OK)
+  async remind(@Param('id') id: string, @Body() body: { tenant_id: string }, @RequestId() requestId: string) {
+    validate(typeof body?.tenant_id === 'string', 'tenant_id is required', requestId);
+    try {
+      return await this.provider.remindEnvelopeSigner(body.tenant_id, id);
     } catch (e) {
       throw toHttp(e, requestId);
     }

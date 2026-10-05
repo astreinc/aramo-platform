@@ -78,4 +78,16 @@ export interface SignatureProviderPort {
   getEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary>;
   voidEnvelope(tenant_id: string, envelope_id: string, reason: string): Promise<EnvelopeSummary>;
   getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary>;
+  // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the single NON-TERMINAL envelope
+  // for a document revision (E-Sign owns envelope identity; Documents never store
+  // envelope_id). null = none; throws ESIGN_ENVELOPE_AMBIGUOUS when >1 exist.
+  findEnvelopeForDocument(
+    tenant_id: string,
+    document_ref: string,
+    document_revision_ref: string,
+  ): Promise<EnvelopeSummary | null>;
+  // COMM-RECRUITER-W1 (W1-C2) — same-envelope reminder for an already-sent
+  // envelope. Revokes prior non-terminal signer session(s), mints a new one,
+  // records a reminder event + notification. NOT sendEnvelope (no DRAFT→SENT).
+  remindEnvelopeSigner(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary>;
 }

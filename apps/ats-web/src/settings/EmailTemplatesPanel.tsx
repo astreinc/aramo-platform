@@ -26,7 +26,9 @@ const READ_SCOPE = 'communication:template:read';
 const MANAGE_SCOPE = 'communication:template:manage';
 
 const CATEGORY_LABELS: Readonly<Record<string, string>> = {
-  requisition_initial_contact: 'Recruiter initial contact',
+  requisition_initial_contact: 'Requisition Talent Contact',
+  // COMM-RECRUITER-W1 (W1-A1) — Talent-only, no requisition.
+  talent_general_contact: 'General Talent Contact',
 };
 
 function categoryLabel(category: string): string {

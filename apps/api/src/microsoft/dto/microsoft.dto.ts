@@ -25,8 +25,14 @@ export class SendMicrosoftEmailRequestDto {
   @IsUUID()
   talent_record_id!: string;
 
+  // COMM-RECRUITER-W1 (W1-A2) — OPTIONAL. A General Talent Contact send carries NO
+  // requisition. When PRESENT, COMM-C4 behavior is preserved exactly (requisition
+  // REGARDING association + governed no_contact→contacted orchestration). This is
+  // an additive relaxation of the application contract; Communications already
+  // defines requisition context as optional at the data layer.
+  @IsOptional()
   @IsUUID()
-  requisition_id!: string;
+  requisition_id?: string;
 
   @IsOptional()
   @IsUUID()

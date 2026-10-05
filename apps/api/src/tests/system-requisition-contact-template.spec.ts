@@ -29,8 +29,8 @@ function fullContext(over: Partial<RequisitionContactContext> = {}): Requisition
 describe('SystemRequisitionContactTemplateService (COMM-C4 governed template)', () => {
   it('hydrates subject + body from resolved context; no raw placeholder survives', () => {
     const d = svc.resolveDefault(fullContext());
-    // subject carries title + location + engagement label
-    expect(d.subject).toBe('Business Analyst - Multi-Family — McLean, VA (Contract)');
+    // COMM-RECRUITER-W1 §4A — null-safe PIPE subject (Title | Location | Engagement).
+    expect(d.subject).toBe('Business Analyst - Multi-Family | McLean, VA | Contract');
     // body carries salutation, title, reference, location/engagement, role summary
     expect(d.body).toContain('Hi Omvignesh,');
     expect(d.body).toContain('Business Analyst - Multi-Family opportunity (REQ-1000)');
@@ -39,6 +39,11 @@ describe('SystemRequisitionContactTemplateService (COMM-C4 governed template)', 
     expect(d.body).toContain('About the opportunity:');
     expect(d.body).toContain('Purush Pichaimuthu');
     expect(d.body).toContain('Astre Consulting Services Inc');
+    // COMM-RECRUITER-W1 §4A — amended staffing copy + reply-prompt CTA.
+    expect(d.body).toContain('Based on your background, I believe this opportunity may be relevant to your experience.');
+    expect(d.body).toContain(
+      'If interested, please reply with your availability, work authorization, and confirmation on the location/work arrangement. I can share more details immediately.',
+    );
     // NO raw placeholder tokens anywhere in the hydrated output.
     expect(d.subject).not.toMatch(/[{}]/);
     expect(d.body).not.toMatch(/[{}]/);
