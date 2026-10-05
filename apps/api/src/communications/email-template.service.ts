@@ -6,6 +6,7 @@ import {
   renderTemplate,
   TemplateValidationError,
   validateTemplateTokens,
+  validateTemplateTokensForCategory,
 } from '@aramo/communications';
 
 import {
@@ -13,6 +14,11 @@ import {
   type RequisitionContactContext,
   type RequisitionContactTemplateResolver,
 } from './requisition-contact-template.port.js';
+import {
+  GENERAL_TALENT_CONTACT_TEMPLATE_RESOLVER,
+  type GeneralTalentContactContext,
+  type GeneralTalentContactTemplateResolver,
+} from './general-talent-contact-template.port.js';
 
 // D-EMAIL-TPL-1 (ET-4) — tenant email-template management (Settings surface).
 // D-1 Option C is preserved structurally: the code-owned system default is NEVER
@@ -24,7 +30,13 @@ import {
 
 const V1_CATEGORY = 'requisition_initial_contact';
 const V1_KEY = 'requisition-contact';
-const CATEGORY_TO_KEY: Record<string, string> = { requisition_initial_contact: V1_KEY };
+// COMM-RECRUITER-W1 (W1-A1) — the second governed category: General Talent Contact.
+const GENERAL_CATEGORY = 'talent_general_contact';
+const GENERAL_KEY = 'talent-general-contact';
+const CATEGORY_TO_KEY: Record<string, string> = {
+  requisition_initial_contact: V1_KEY,
+  talent_general_contact: GENERAL_KEY,
+};
 
 // Server-owned SAMPLE values for preview + the system-default view. These are
 // EXAMPLE values, never browser-supplied business truth — preview renders the
@@ -50,6 +62,14 @@ const SAMPLE_REQ_CONTEXT: RequisitionContactContext = {
   work_arrangement: 'hybrid',
   engagement_type: 'contract',
   role_summary_source: 'A day-shift critical-care assignment at a partner health system.',
+  recruiter_display_name: 'Alex Recruiter',
+  tenant_recruiting_company_name: 'Astre Consulting Services',
+};
+
+// COMM-RECRUITER-W1 (W1-A1) — sample context for the General Talent Contact
+// system-default view (requisition-free; the three allowed bindings only).
+const SAMPLE_GENERAL_CONTEXT: GeneralTalentContactContext = {
+  talent_first_name: 'Jordan',
   recruiter_display_name: 'Alex Recruiter',
   tenant_recruiting_company_name: 'Astre Consulting Services',
 };
@@ -96,6 +116,9 @@ export class EmailTemplateService {
     private readonly repo: EmailTemplateRepository,
     @Inject(REQUISITION_CONTACT_TEMPLATE_RESOLVER)
     private readonly systemDefault: RequisitionContactTemplateResolver,
+    // COMM-RECRUITER-W1 (W1-A1) — the second governed system default.
+    @Inject(GENERAL_TALENT_CONTACT_TEMPLATE_RESOLVER)
+    private readonly generalDefault: GeneralTalentContactTemplateResolver,
   ) {}
 
   private notFound(requestId: string): AramoError {
@@ -103,25 +126,55 @@ export class EmailTemplateService {
     return new AramoError('EMAIL_TEMPLATE_NOT_FOUND', 'email template not found', 404, { requestId });
   }
 
+  private invalidMergeToken(requestId: string, unknownTokens: readonly string[]): AramoError {
+    return new AramoError(
+      'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
+      'template contains merge token(s) outside the allowed set',
+      422,
+      { requestId, details: { unknown_tokens: unknownTokens } },
+    );
+  }
+
+  /** Preview-time (category-agnostic) global-allowlist gate. */
   private validateContent(subject: string, body: string, requestId: string): void {
     try {
       validateTemplateTokens(subject);
       validateTemplateTokens(body);
     } catch (e) {
-      if (e instanceof TemplateValidationError) {
-        throw new AramoError(
-          'EMAIL_TEMPLATE_INVALID_MERGE_TOKEN',
-          'template contains merge token(s) outside the allowed set',
-          422,
-          { requestId, details: { unknown_tokens: e.unknownTokens } },
-        );
-      }
+      if (e instanceof TemplateValidationError) throw this.invalidMergeToken(requestId, e.unknownTokens);
       throw e;
     }
   }
 
-  /** The read-only, code-owned system default rendered against the sample context. */
-  private systemDefaultView(): EmailTemplateView {
+  // COMM-RECRUITER-W1 §4B-cat — create/update fail-closed gate: tokens must be in
+  // the TEMPLATE'S CATEGORY allowlist (General Talent Contact rejects requisition.*).
+  private validateContentForCategory(
+    category: string,
+    subject: string,
+    body: string,
+    requestId: string,
+  ): void {
+    try {
+      validateTemplateTokensForCategory(category, subject);
+      validateTemplateTokensForCategory(category, body);
+    } catch (e) {
+      if (e instanceof TemplateValidationError) throw this.invalidMergeToken(requestId, e.unknownTokens);
+      throw e;
+    }
+  }
+
+  // COMM-RECRUITER-W1 (W1-A1) — the governed categories and how each renders its
+  // read-only code-owned system default. list() surfaces one effective row per
+  // category (tenant override if ACTIVE, else this default).
+  private categoryDefs(): ReadonlyArray<{ key: string; systemDefaultView: () => EmailTemplateView }> {
+    return [
+      { key: V1_KEY, systemDefaultView: () => this.requisitionSystemDefaultView() },
+      { key: GENERAL_KEY, systemDefaultView: () => this.generalSystemDefaultView() },
+    ];
+  }
+
+  /** The read-only, code-owned requisition-contact default (sample-rendered). */
+  private requisitionSystemDefaultView(): EmailTemplateView {
     const hydrated = this.systemDefault.resolveDefault(SAMPLE_REQ_CONTEXT);
     return {
       id: null,
@@ -136,17 +189,38 @@ export class EmailTemplateService {
     };
   }
 
-  /** Effective templates: the tenant override for a key when present, else the
-   *  read-only system default. */
+  /** The read-only, code-owned General Talent Contact default (sample-rendered). */
+  private generalSystemDefaultView(): EmailTemplateView {
+    const hydrated = this.generalDefault.resolveDefault(SAMPLE_GENERAL_CONTEXT);
+    return {
+      id: null,
+      template_key: GENERAL_KEY,
+      category: GENERAL_CATEGORY,
+      name: 'System default — general talent contact',
+      subject_template: hydrated.subject,
+      body_template: hydrated.body,
+      is_system_default: true,
+      is_active: true,
+      updated_at: null,
+    };
+  }
+
+  /** Effective templates: for EACH governed category, the tenant override when
+   *  active, else the read-only system default; plus any remaining override rows
+   *  (deactivated, or active rows for unknown keys). */
   async list(tenant_id: string): Promise<EmailTemplateView[]> {
     const overrides = await this.repo.listByTenant(tenant_id);
     const activeByKey = new Map(overrides.filter((o) => o.is_active).map((o) => [o.template_key, o]));
     const views: EmailTemplateView[] = [];
-    const v1Override = activeByKey.get(V1_KEY);
-    views.push(v1Override ? toView(v1Override) : this.systemDefaultView());
-    // Any additional override rows (deactivated, or other keys) surface too.
+    const effectiveActiveKeys = new Set<string>();
+    for (const def of this.categoryDefs()) {
+      const override = activeByKey.get(def.key);
+      views.push(override ? toView(override) : def.systemDefaultView());
+      effectiveActiveKeys.add(def.key);
+    }
+    // Any remaining rows: deactivated overrides, or active rows for an unknown key.
     for (const o of overrides) {
-      if (o.template_key === V1_KEY && o.is_active) continue; // already the effective row
+      if (o.is_active && effectiveActiveKeys.has(o.template_key)) continue; // already surfaced
       views.push(toView(o));
     }
     return views;
@@ -164,7 +238,7 @@ export class EmailTemplateService {
     dto: { category: string; name: string; subject_template: string; body_template: string },
     requestId: string,
   ): Promise<EmailTemplateView> {
-    this.validateContent(dto.subject_template, dto.body_template, requestId);
+    this.validateContentForCategory(dto.category, dto.subject_template, dto.body_template, requestId);
     const template_key = CATEGORY_TO_KEY[dto.category] ?? dto.category;
     try {
       const row = await this.repo.create({
@@ -199,8 +273,10 @@ export class EmailTemplateService {
   ): Promise<EmailTemplateView> {
     const current = await this.repo.findByIdForTenant(tenant_id, id);
     if (current === null) throw this.notFound(requestId);
-    // Validate the RESULTING content (unchanged fields keep the stored value).
-    this.validateContent(
+    // Validate the RESULTING content against the ROW's category (unchanged fields
+    // keep the stored value) — General Talent Contact rejects requisition.* tokens.
+    this.validateContentForCategory(
+      current.category,
       dto.subject_template ?? current.subject_template,
       dto.body_template ?? current.body_template,
       requestId,

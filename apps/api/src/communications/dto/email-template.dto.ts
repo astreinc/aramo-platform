@@ -5,7 +5,7 @@ import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validato
 // is a closed enum; template_key is DERIVED server-side (the browser never picks a
 // key). Merge-token validation is enforced in the service (closed allowlist).
 
-const EMAIL_TEMPLATE_CATEGORIES = ['requisition_initial_contact'] as const;
+const EMAIL_TEMPLATE_CATEGORIES = ['requisition_initial_contact', 'talent_general_contact'] as const;
 
 export class CreateEmailTemplateRequestDto {
   @IsIn(EMAIL_TEMPLATE_CATEGORIES)

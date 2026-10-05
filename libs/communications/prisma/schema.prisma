@@ -333,6 +333,8 @@ model CommunicationProviderIdentity {
 // No versioning in V1 (D-4). No LLM.
 enum EmailTemplateCategory {
   requisition_initial_contact
+  // COMM-RECRUITER-W1 — General Talent Contact (Talent-only, no requisition).
+  talent_general_contact
 
   @@schema("communications")
 }

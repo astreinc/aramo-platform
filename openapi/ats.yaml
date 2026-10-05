@@ -9255,7 +9255,7 @@ components:
         # null id = the read-only code-owned system default (never a mutable row).
         id: { type: [string, 'null'], format: uuid }
         template_key: { type: string }
-        category: { type: string, enum: [requisition_initial_contact] }
+        category: { type: string, enum: [requisition_initial_contact, talent_general_contact] }
         name: { type: string }
         subject_template: { type: string }
         body_template: { type: string }
@@ -9267,7 +9267,7 @@ components:
       additionalProperties: false
       required: [category, name, subject_template, body_template]
       properties:
-        category: { type: string, enum: [requisition_initial_contact] }
+        category: { type: string, enum: [requisition_initial_contact, talent_general_contact] }
         name: { type: string, minLength: 1, maxLength: 200 }
         subject_template: { type: string, minLength: 1, maxLength: 998 }
         body_template: { type: string, minLength: 1, maxLength: 100000 }
