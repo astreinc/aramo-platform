@@ -2,7 +2,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
   ACCESS_COOKIE,
-  ISO_TIMESTAMP,
   like,
   makeAtsWebProvider,
   uuid,
@@ -116,7 +115,7 @@ describe('ats-web → GET /v1/talent-records/:id/dossier/evidence (timeline)', (
               event: like({
                 id: uuid(),
                 event_type: like('CREATED'),
-                occurred_at: like('2026-01-01T00:00:00.000Z', ISO_TIMESTAMP),
+                occurred_at: like('2026-01-01T00:00:00.000Z'),
               }),
               evidence: like({
                 id: uuid(),

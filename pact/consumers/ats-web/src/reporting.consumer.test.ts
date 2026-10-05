@@ -463,7 +463,7 @@ describe('ats-web → reporting', () => {
         const res = await fetch(`${mock.url}/v1/reports/hiring-funnel`, { headers: { Cookie: ACCESS_COOKIE } });
         expect(res.status).toBe(200);
         const body = (await res.json()) as { stages: Array<{ owner: string }> };
-        expect(body.stages[0].owner).toBe('SUBMITTAL');
+        expect(body.stages[0]?.owner).toBe('SUBMITTAL');
       });
   });
 
