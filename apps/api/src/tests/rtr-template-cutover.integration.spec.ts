@@ -127,6 +127,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           return { envelope_id: 'env-1' };
         },
         sendEnvelope: async () => ({ status: 'SENT' }),
+        // COMM-RECRUITER-W1 (W1-C1) — dup-send guard: no pre-existing envelope.
+        findEnvelopeForDocument: async () => null,
       } as unknown as SignatureProviderPort;
 
       orchestrator = new RtrOrchestratorService(docsRepo, render, fakeSignature, fakeTalent, resolver, binding);
