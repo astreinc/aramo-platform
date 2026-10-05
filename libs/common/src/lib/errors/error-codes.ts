@@ -400,6 +400,14 @@ export const ERROR_CODES = [
   'SIGNING_SESSION_EXPIRED',
   'DISCLOSURE_NOT_ACCEPTED',
   'SIGNATURE_FIELD_INCOMPLETE',
+  // COMM-RECRUITER-W1 (W1-C) — RTR same-envelope reminder lookup/guard.
+  // NOT_FOUND_FOR_DOCUMENT (404): no non-terminal envelope for the exact
+  // (tenant, document_ref, document_revision_ref). AMBIGUOUS (409): >1 such
+  // envelope (integrity ambiguity — fail closed, never pick latest).
+  // REMINDER_NOT_ALLOWED (409): envelope not SENT/IN_PROGRESS or no incomplete signer.
+  'ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT',
+  'ESIGN_ENVELOPE_AMBIGUOUS',
+  'ESIGN_REMINDER_NOT_ALLOWED',
   // DOC-4 (R-4-7) — executed-artifact write-back integrity failure: the executed
   // or certificate bytes do not match the asserted sha256 (never stored).
   'DOCUMENT_EXECUTED_HASH_MISMATCH',

@@ -128,6 +128,82 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return this.summarize(tenant_id, envelope_id);
   }
 
+  // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the single NON-TERMINAL envelope
+  // for a document revision (null = none; EnvelopeAmbiguousError when >1).
+  async findEnvelopeForDocument(
+    tenant_id: string,
+    document_ref: string,
+    document_revision_ref: string,
+  ): Promise<EnvelopeSummary | null> {
+    const found = await this.service.findEnvelopeForDocument(tenant_id, document_ref, document_revision_ref);
+    if (found === null) return null;
+    return this.summarize(tenant_id, found.envelope_id);
+  }
+
+  // COMM-RECRUITER-W1 (W1-C2) — same-envelope reminder: revoke prior session(s) +
+  // mint new one(s) + append the ledger event (domain), then dispatch the
+  // SIGNATURE_REMINDER link per newly-issued session and record each delivery
+  // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
+  // in-memory here to build the signer URL; never persisted/logged/returned).
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
+    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
+    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, env.created_by);
+    await this.dispatchReminders(tenant_id, envelope_id, sessions);
+    return this.summarize(tenant_id, envelope_id);
+  }
+
+  private async dispatchReminders(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
+    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
+    const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    const signersById = new Map(full.signers.map((s) => [s.id, s]));
+    const origin = base === undefined ? '' : base.replace(/\/+$/, '');
+    for (const session of sessions) {
+      const signer = signersById.get(session.signer_id);
+      if (signer === undefined) continue;
+      if (this.notifier === undefined || origin === '') {
+        // SIGNATURE_REMINDER evidence is still recorded as a PENDING delivery so
+        // the reminder is auditable even when no delivery origin is configured.
+        this.logger.warn(`SIGNATURE_REMINDER not dispatched for envelope ${envelope_id}: notifier/origin unavailable`);
+        await this.repo.recordNotificationDelivery({
+          tenant_id,
+          envelope_id,
+          signer_id: signer.id,
+          notification_kind: 'SIGNATURE_REMINDER',
+          status: 'PENDING',
+        });
+        continue;
+      }
+      const signing_url = `${origin}/s/${session.raw_token}`;
+      try {
+        const result = await this.notifier.notify({
+          kind: 'SIGNATURE_REMINDER',
+          to_email: signer.email,
+          to_name: signer.name,
+          envelope_subject: full.subject,
+          signing_url,
+        });
+        await this.repo.recordNotificationDelivery({
+          tenant_id,
+          envelope_id,
+          signer_id: signer.id,
+          notification_kind: 'SIGNATURE_REMINDER',
+          status: result.delivered ? 'SENT' : 'FAILED',
+          last_error: result.delivered ? null : 'provider reported not delivered',
+        });
+      } catch (err) {
+        this.logger.warn(`SIGNATURE_REMINDER delivery failed — envelope ${envelope_id} signer ${signer.id}: ${(err as Error).message}`);
+        await this.repo.recordNotificationDelivery({
+          tenant_id,
+          envelope_id,
+          signer_id: signer.id,
+          notification_kind: 'SIGNATURE_REMINDER',
+          status: 'FAILED',
+          last_error: (err as Error).message,
+        });
+      }
+    }
+  }
+
   async getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const signed = await this.service.evidenceManifest(tenant_id, envelope_id);

@@ -191,5 +191,64 @@ describe('aramo-core → GET /v1/esign/envelopes/{id}/executed', () => {
   });
 });
 
+// COMM-RECRUITER-W1 (W1-C) — reverse envelope lookup + same-envelope reminder.
+describe('aramo-core → GET /v1/esign/envelopes/for-document', () => {
+  it('returns 200 { envelope } with the single non-terminal envelope for a document revision', async () => {
+    await provider
+      .addInteraction()
+      .given('a non-terminal signature envelope exists for the document revision')
+      .uponReceiving('a reverse envelope lookup for an exact document revision')
+      .withRequest('GET', '/v1/esign/envelopes/for-document', (b) => {
+        b.query({ tenant_id: TENANT_ID, document_ref: DOC_REF, document_revision_ref: REV_REF });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          envelope: {
+            envelope_id: uuid(ENVELOPE_ID),
+            status: like('SENT'),
+            signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/esign/envelopes/for-document?tenant_id=${TENANT_ID}&document_ref=${DOC_REF}&document_revision_ref=${REV_REF}`,
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { envelope: { envelope_id: string } | null };
+        expect(body.envelope?.envelope_id).toBe(ENVELOPE_ID);
+      });
+  });
+});
+
+describe('aramo-core → POST /v1/esign/envelopes/{id}/remind', () => {
+  it('returns 200 EnvelopeSummary (status unchanged) for a same-envelope reminder', async () => {
+    await provider
+      .addInteraction()
+      .given('a sent signature envelope with an incomplete signer exists')
+      .uponReceiving('a same-envelope reminder request')
+      .withRequest('POST', `/v1/esign/envelopes/${ENVELOPE_ID}/remind`, (b) => {
+        b.jsonBody({ tenant_id: uuid(TENANT_ID) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          envelope_id: uuid(ENVELOPE_ID),
+          status: like('SENT'),
+          signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/esign/envelopes/${ENVELOPE_ID}/remind`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ tenant_id: TENANT_ID }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { envelope_id: string };
+        expect(body.envelope_id).toBe(ENVELOPE_ID);
+      });
+  });
+});
+
 beforeAll(() => undefined);
 afterAll(() => undefined);

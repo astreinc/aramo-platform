@@ -91,4 +91,6 @@ export {
   DisclosureNotAcceptedError,
   SignatureFieldIncompleteError,
   EsignIdempotencyConflictError,
+  EnvelopeAmbiguousError,
+  ReminderNotAllowedError,
 } from './lib/domain/errors.js';

@@ -7029,6 +7029,43 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/rtr/{documentId}/remind:
+    post:
+      operationId: remindRtr
+      summary: Send a reminder on the already-sent RTR (COMM-RECRUITER-W1).
+      description: >
+        Sends a signature reminder against the SAME RTR Document, SAME frozen
+        DocumentRevision, and SAME E-Sign envelope. Never generates another RTR,
+        re-renders, re-resolves a template, changes the pay rate, or creates a new
+        envelope. Recruiter-only; requires document:execute. Allowed only while the
+        RTR is AWAITING_SIGNATURE. Refusals: 409 ESIGN_REMINDER_NOT_ALLOWED (not
+        awaiting signature / envelope not remindable); 404
+        ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT (no active envelope); 409
+        ESIGN_ENVELOPE_AMBIGUOUS (>1 active envelope).
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Reminder dispatched; RTR state is unchanged (AWAITING_SIGNATURE).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, status, reminder_sent]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  reminder_sent: { type: boolean, enum: [true] }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/rtr/{documentId}/status:
     get:
       operationId: getRtrStatus

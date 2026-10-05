@@ -269,4 +269,54 @@ export class EsignRepository {
   async getExecutionCertificate(tenant_id: string, envelope_id: string) {
     return this.prisma.executionCertificate.findFirst({ where: { tenant_id, envelope_id } });
   }
+
+  // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the NON-TERMINAL envelope(s) for a
+  // document revision. E-Sign owns envelope identity; this is the sole seam
+  // Documents/RTR use to find an envelope from (tenant, document_ref,
+  // document_revision_ref). Tenant-scoped; exact refs; terminal envelopes
+  // (COMPLETED/DECLINED/VOIDED/EXPIRED) are excluded so historical envelopes may
+  // coexist without ambiguity. Deterministic order (created_at, id) — the SERVICE
+  // enforces the 0/1/>1 rule (it never picks "latest").
+  async findNonTerminalEnvelopesByDocument(
+    tenant_id: string,
+    document_ref: string,
+    document_revision_ref: string,
+  ): Promise<{ id: string; status: string }[]> {
+    const rows = await this.prisma.signatureEnvelope.findMany({
+      where: {
+        tenant_id,
+        status: { in: ['DRAFT', 'SENT', 'IN_PROGRESS'] },
+        documents: { some: { tenant_id, document_ref, document_revision_ref } },
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      select: { id: true, status: true },
+    });
+    return rows.map((r) => ({ id: r.id, status: r.status }));
+  }
+
+  // COMM-RECRUITER-W1 (W1-C2) — record a notification delivery attempt (the first
+  // code path to write NotificationDelivery). status=SENT|FAILED|PENDING;
+  // last_error is set on FAILED. One row per dispatch attempt.
+  async recordNotificationDelivery(input: {
+    tenant_id: string;
+    envelope_id: string;
+    signer_id?: string | null;
+    notification_kind: string;
+    status: string;
+    last_error?: string | null;
+  }): Promise<void> {
+    await this.prisma.notificationDelivery.create({
+      data: {
+        id: randomUUID(),
+        tenant_id: input.tenant_id,
+        envelope_id: input.envelope_id,
+        signer_id: input.signer_id ?? null,
+        notification_kind: input.notification_kind,
+        status: input.status,
+        attempts: 1,
+        last_error: input.last_error ?? null,
+        sent_at: input.status === 'SENT' ? new Date() : null,
+      },
+    });
+  }
 }

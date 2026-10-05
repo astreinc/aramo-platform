@@ -62,4 +62,25 @@ export class EsignServiceHttpProvider implements SignatureProviderPort {
   async getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary> {
     return this.call<EvidenceSummary>('GET', `/v1/esign/envelopes/${envelope_id}/evidence?tenant_id=${encodeURIComponent(tenant_id)}`);
   }
+
+  async findEnvelopeForDocument(
+    tenant_id: string,
+    document_ref: string,
+    document_revision_ref: string,
+  ): Promise<EnvelopeSummary | null> {
+    const qs = new URLSearchParams({
+      tenant_id,
+      document_ref,
+      document_revision_ref,
+    }).toString();
+    const res = await this.call<{ envelope: EnvelopeSummary | null }>(
+      'GET',
+      `/v1/esign/envelopes/for-document?${qs}`,
+    );
+    return res.envelope;
+  }
+
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
+    return this.call<EnvelopeSummary>('POST', `/v1/esign/envelopes/${envelope_id}/remind`, { tenant_id });
+  }
 }

@@ -114,6 +114,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   SIGNING_SESSION_EXPIRED: 401,
   DISCLOSURE_NOT_ACCEPTED: 409,
   SIGNATURE_FIELD_INCOMPLETE: 409,
+  ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT: 404,
+  ESIGN_ENVELOPE_AMBIGUOUS: 409,
+  ESIGN_REMINDER_NOT_ALLOWED: 409,
   // DOC-4 (R-4-7) — executed-artifact hash mismatch (integrity failure, 422).
   DOCUMENT_EXECUTED_HASH_MISMATCH: 422,
   // Track 1 T1-b (R2) — optimistic-concurrency stale-write on requisition (409).

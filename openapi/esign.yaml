@@ -58,6 +58,76 @@ paths:
                 $ref: '#/components/schemas/EnvelopeSummary'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/esign/envelopes/for-document:
+    get:
+      operationId: findEnvelopeForDocument
+      summary: Reverse-resolve the single NON-TERMINAL envelope for a document revision (COMM-RECRUITER-W1).
+      description: >
+        E-Sign owns envelope identity; Documents never store envelope_id. Returns the
+        single non-terminal (DRAFT|SENT|IN_PROGRESS) envelope for the exact
+        (tenant_id, document_ref, document_revision_ref), or null when none. Fails
+        closed with ESIGN_ENVELOPE_AMBIGUOUS (409) when more than one exists.
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: document_ref
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: document_revision_ref
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The single non-terminal envelope, or null.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope]
+                properties:
+                  envelope:
+                    oneOf:
+                      - $ref: '#/components/schemas/EnvelopeSummary'
+                      - type: 'null'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/envelopes/{id}/remind:
+    post:
+      operationId: remindSignatureEnvelope
+      summary: Send a reminder on an already-sent envelope (COMM-RECRUITER-W1); NOT a resend.
+      description: >
+        Same-envelope reminder for a SENT|IN_PROGRESS envelope. Revokes each
+        incomplete signer's prior non-terminal session, issues exactly one new
+        session + capability token, records a SIGNATURE_REMINDER_SENT event and a
+        NotificationDelivery, and dispatches the reminder link. Never a DRAFT->SENT
+        transition and never a new envelope. ESIGN_REMINDER_NOT_ALLOWED (409) when
+        the envelope is not remindable.
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The (unchanged-status) envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/esign/envelopes/{id}:
     get:
       operationId: getSignatureEnvelope

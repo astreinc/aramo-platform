@@ -42,6 +42,15 @@ export interface RtrSendResult {
   status: string;
 }
 
+// COMM-RECRUITER-W1 (W1-C3) — RTR reminder result. RTR business state is
+// UNCHANGED (reminder is action/evidence, not a lifecycle transition); status
+// remains AWAITING_SIGNATURE.
+export interface RtrRemindResult {
+  document_id: string;
+  status: string;
+  reminder_sent: true;
+}
+
 // Recruiter-safe provenance — from the EXACT pinned TemplateVersion (§13), never
 // DocumentTemplate.current_version_id. No internal ids are exposed.
 export interface RtrProvenanceView {
@@ -179,6 +188,20 @@ export class RtrOrchestratorService {
       );
     }
 
+    // COMM-RECRUITER-W1 (W1-C1/§19) — DUPLICATE-ENVELOPE GUARD. If a NON-TERMINAL
+    // envelope already exists for this exact (tenant, document_ref=document_id,
+    // document_revision_ref=revision.id), a repeated send MUST NOT mint a second
+    // active envelope. Return the existing lifecycle instead (throws
+    // ESIGN_ENVELOPE_AMBIGUOUS if >1 exist — integrity failure, never silent).
+    const existing = await this.signature.findEnvelopeForDocument(
+      input.tenant_id,
+      input.document_id,
+      revision.id,
+    );
+    if (existing !== null) {
+      return { document_id: input.document_id, envelope_id: existing.envelope_id, status: existing.status };
+    }
+
     // Transition DRAFT → PREPARED (idempotent). Drives the DERIVED status (PL-3):
     // DRAFT=REQUESTED, PREPARED=AWAITING_SIGNATURE, EXECUTED=EXECUTED.
     await this.documents.prepareDocument({
@@ -206,6 +229,66 @@ export class RtrOrchestratorService {
     });
     const sent = await this.signature.sendEnvelope(input.tenant_id, envelope.envelope_id);
     return { document_id: input.document_id, envelope_id: envelope.envelope_id, status: sent.status };
+  }
+
+  // remind → COMM-RECRUITER-W1 (W1-C3). Send a reminder against the SAME existing
+  // RTR Document + SAME frozen DocumentRevision + SAME E-Sign envelope. It NEVER
+  // generates another RTR, re-renders, re-resolves a template, changes the pay
+  // rate, or creates a new envelope. Allowed ONLY while the RTR is
+  // AWAITING_SIGNATURE (envelope SENT/IN_PROGRESS, enforced in E-Sign). The
+  // envelope is reverse-resolved server-side from the exact frozen revision —
+  // envelope_id is never exposed to the FE.
+  async remind(input: {
+    tenant_id: string;
+    document_id: string;
+    requestId: string;
+  }): Promise<RtrRemindResult> {
+    let doc;
+    try {
+      doc = await this.documents.getDocument(input.tenant_id, input.document_id);
+    } catch (e) {
+      if (e instanceof DocumentNotFoundError) {
+        throw new AramoError('DOCUMENT_NOT_FOUND', `RTR document ${input.document_id} not found`, 404, { requestId: input.requestId });
+      }
+      throw e;
+    }
+    if (doc.document_type_id !== RIGHT_TO_REPRESENT_TYPE_ID) {
+      throw new AramoError('DOCUMENT_NOT_FOUND', `document ${input.document_id} is not an RTR`, 404, { requestId: input.requestId });
+    }
+    const derived = this.deriveStatus(doc.status);
+    if (derived !== 'AWAITING_SIGNATURE') {
+      throw new AramoError(
+        'ESIGN_REMINDER_NOT_ALLOWED',
+        `RTR is ${derived}, not awaiting signature`,
+        409,
+        { requestId: input.requestId, details: { document_id: input.document_id } },
+      );
+    }
+    // The EXACT frozen revision created at request time (never re-rendered, INV-3).
+    const revision = await this.documents.getCurrentRevision(input.tenant_id, input.document_id);
+    if (revision === null) {
+      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'RTR has no frozen revision to remind', 409, {
+        requestId: input.requestId,
+        details: { document_id: input.document_id },
+      });
+    }
+    // Reverse-resolve the envelope from the exact doc + revision (E-Sign owns it).
+    const envelope = await this.signature.findEnvelopeForDocument(
+      input.tenant_id,
+      input.document_id,
+      revision.id,
+    );
+    if (envelope === null) {
+      throw new AramoError(
+        'ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT',
+        'no active signature envelope for this RTR',
+        404,
+        { requestId: input.requestId, details: { document_id: input.document_id } },
+      );
+    }
+    // Same-envelope reminder: revoke prior session + mint new + notify (E-Sign).
+    await this.signature.remindEnvelopeSigner(input.tenant_id, envelope.envelope_id);
+    return { document_id: input.document_id, status: derived, reminder_sent: true };
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).

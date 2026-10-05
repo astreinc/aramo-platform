@@ -142,6 +142,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SIGNING_SESSION_EXPIRED',
       'DISCLOSURE_NOT_ACCEPTED',
       'SIGNATURE_FIELD_INCOMPLETE',
+      'ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT',
+      'ESIGN_ENVELOPE_AMBIGUOUS',
+      'ESIGN_REMINDER_NOT_ALLOWED',
       // DOC-4 (R-4-7) — 1 executed-artifact write-back integrity failure (422).
       'DOCUMENT_EXECUTED_HASH_MISMATCH',
       // Track 1 T1-b — 1 optimistic-concurrency stale-write refusal on

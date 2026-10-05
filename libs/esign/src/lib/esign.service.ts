@@ -8,7 +8,9 @@ import { EXECUTION_PRODUCER_PORT, type ExecutionProducerPort } from './ports/exe
 import { generateSigningToken, hashSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import {
   DisclosureNotAcceptedError,
+  EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
+  ReminderNotAllowedError,
   SignatureFieldIncompleteError,
   SignerNotFoundError,
   SigningSessionExpiredError,
@@ -383,5 +385,88 @@ export class EsignService {
       service_version: SERVICE_VERSION,
     };
     return this.evidenceSigner.sign(manifest, new Date().toISOString());
+  }
+
+  // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the single NON-TERMINAL envelope
+  // for a document revision. 0 matches → null (not found / reminder unavailable);
+  // exactly 1 → that envelope; >1 → fail closed (EnvelopeAmbiguousError). NEVER
+  // picks "latest". Used by the RTR duplicate-send guard and the reminder flow.
+  async findEnvelopeForDocument(
+    tenant_id: string,
+    document_ref: string,
+    document_revision_ref: string,
+  ): Promise<{ envelope_id: string; status: string } | null> {
+    const matches = await this.repo.findNonTerminalEnvelopesByDocument(
+      tenant_id,
+      document_ref,
+      document_revision_ref,
+    );
+    if (matches.length === 0) return null;
+    if (matches.length > 1) {
+      throw new EnvelopeAmbiguousError(document_ref, document_revision_ref, matches.length);
+    }
+    return { envelope_id: matches[0]!.id, status: matches[0]!.status };
+  }
+
+  // COMM-RECRUITER-W1 (W1-C2) — same-envelope reminder. Valid ONLY for a SENT or
+  // IN_PROGRESS envelope. For each INCOMPLETE signer (PENDING|VIEWED): atomically
+  // REVOKE its prior non-terminal session(s) and mint exactly ONE replacement
+  // SigningSession (new raw token — the original is unrecoverable), then append a
+  // single SIGNATURE_REMINDER_SENT ledger event. NEVER touches the envelope
+  // status, documents, revision, or template. Returns the issued sessions (raw
+  // tokens ONCE) so the composition root can dispatch the reminder links.
+  async remindSigner(
+    tenant_id: string,
+    envelope_id: string,
+    actor_ref: string,
+  ): Promise<{ sessions: IssuedSession[] }> {
+    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
+    if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') {
+      throw new ReminderNotAllowedError(`envelope status ${env.status} is not remindable`);
+    }
+    const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    const incomplete = full.signers.filter((s) => s.status === 'PENDING' || s.status === 'VIEWED');
+    if (incomplete.length === 0) {
+      throw new ReminderNotAllowedError('no incomplete signer to remind');
+    }
+    const now = new Date();
+    const sessions = await this.prisma.$transaction(async (tx) => {
+      const minted: IssuedSession[] = [];
+      for (const signer of incomplete) {
+        // Revoke prior live sessions FIRST → one live capability per signer.
+        await tx.signingSession.updateMany({
+          where: {
+            tenant_id,
+            envelope_id,
+            signer_id: signer.id,
+            status: { in: ['ISSUED', 'EXCHANGED', 'ACTIVE'] },
+          },
+          data: { status: 'REVOKED', revoked_at: now },
+        });
+        const tok = generateSigningToken();
+        const sessionId = randomUUID();
+        await tx.signingSession.create({
+          data: {
+            id: sessionId,
+            tenant_id,
+            envelope_id,
+            signer_id: signer.id,
+            token_hash: tok.hash,
+            status: 'ISSUED',
+            expires_at: signingSessionExpiresAt(now),
+          },
+        });
+        minted.push({ session_id: sessionId, signer_id: signer.id, raw_token: tok.raw });
+      }
+      await this.repo.appendEvent(tx, {
+        tenant_id,
+        envelope_id,
+        event_type: 'SIGNATURE_REMINDER_SENT',
+        actor_type: 'SERVICE',
+        actor_ref,
+      });
+      return minted;
+    });
+    return { sessions };
   }
 }
