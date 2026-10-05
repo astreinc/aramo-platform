@@ -130,6 +130,16 @@ export interface JourneyPreStart {
   readonly ready_to_start_action: JourneyAction | null;
 }
 
+// Offer & Start §8 — the minimal placement identity the Start & Placement increment needs:
+// the owning placement id (authoritative key for the owner deep-link — never reconstructed FE-side)
+// and the engagement branch (`kind`). Persisted placement_kind is nullable; a legacy/kind-agnostic
+// placement starts CONTRACT (domain rule), so NULL normalizes to CONTRACT here. This carries NO
+// commercial/compensation field (R3) — the start transition's commercial terms stay with the owner.
+export interface JourneyPlacement {
+  readonly id: string;
+  readonly kind: 'CONTRACT' | 'PERMANENT';
+}
+
 // The composed journey for one (tenant, requisition, talent) episode.
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
@@ -142,4 +152,6 @@ export interface TalentRequisitionJourney {
   readonly offer_document: JourneyOfferDocument | null;
   // §7 — null when the caller did not opt in OR there is no placement yet.
   readonly pre_start: JourneyPreStart | null;
+  // §8 — null until a placement exists; always composed thereafter (zero extra read).
+  readonly placement: JourneyPlacement | null;
 }

@@ -65,6 +65,13 @@ export interface JourneyPreStart {
   readonly ready_to_start_action: JourneyAction | null;
 }
 
+// Offer & Start §8 — the owning placement identity + engagement branch. The FE uses `id` for the
+// owner deep-link (authoritative, never reconstructed) and `kind` to diverge the labels/banner.
+export interface JourneyPlacement {
+  readonly id: string;
+  readonly kind: 'CONTRACT' | 'PERMANENT';
+}
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -74,6 +81,7 @@ export interface TalentRequisitionJourney {
   readonly actions: readonly JourneyAction[];
   readonly offer_document: JourneyOfferDocument | null;
   readonly pre_start: JourneyPreStart | null;
+  readonly placement: JourneyPlacement | null;
 }
 
 // GET /v1/pipelines/:id/journey — the composed journey for one pipeline episode. A non-visible

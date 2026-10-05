@@ -175,13 +175,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return id;
     }
-    async function seedPlacement(tenant: string, submittal: string, req: string, talent: string, state: string): Promise<string> {
+    async function seedPlacement(tenant: string, submittal: string, req: string, talent: string, state: string, kind: string | null = null): Promise<string> {
       const id = randomUUID();
       await db.query(
         `INSERT INTO placement."PlacementProcess"
-           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6::"placement"."PlacementState",now(),now())`,
-        [id, tenant, submittal, req, talent, state],
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6::"placement"."PlacementState",$7,now(),now())`,
+        [id, tenant, submittal, req, talent, state, kind],
       );
       return id;
     }
@@ -386,6 +386,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const j = await call(tenant, pipe); // default: no include_pre_start
       expect(j.pre_start).toBeNull();
+    });
+
+    it('§8: placement is composed once a placement exists; a legacy NULL placement_kind normalizes to CONTRACT', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'READY_TO_START'); // kind NULL
+      const j = await call(tenant, pipe);
+      expect(j.placement).toEqual({ id: placement, kind: 'CONTRACT' });
+    });
+
+    it('§8.3: an explicit PERMANENT placement composes kind=PERMANENT (direct-hire branch)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'STARTED', 'PERMANENT');
+      const j = await call(tenant, pipe);
+      expect(j.placement).toEqual({ id: placement, kind: 'PERMANENT' });
+    });
+
+    it('§8: no placement → placement is null', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const j = await call(tenant, pipe);
+      expect(j.placement).toBeNull();
     });
 
     // ---------------------------------------------------------------------------------------

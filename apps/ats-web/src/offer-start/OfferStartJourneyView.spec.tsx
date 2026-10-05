@@ -24,6 +24,7 @@ function journey(
   sub: Record<string, string | null>,
   doc: TalentRequisitionJourney['offer_document'] = null,
   preStart: JourneyPreStart | null = null,
+  placement: TalentRequisitionJourney['placement'] = null,
 ): TalentRequisitionJourney {
   return {
     requisition_id: 'r1',
@@ -34,6 +35,7 @@ function journey(
     actions: [],
     offer_document: doc,
     pre_start: preStart,
+    placement,
   };
 }
 
@@ -188,5 +190,45 @@ describe('OfferStartJourneyView', () => {
     expect(within(screen.getByTestId('os-attn-req-req-9')).getByText('Background check failed')).toBeTruthy();
     // the coarse placement-BLOCKED exception is suppressed in favour of the specific row.
     expect(screen.queryByTestId('os-attn-pre_start_blocked')).toBeNull();
+  });
+
+  // ---- §8 Start & Placement ----
+
+  it('READY_TO_START (contract) → the governed start is owned by the placement surface; the journey deep-links, never reimplements it (§8.2/§8.5)', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'ACCEPTED', placement_state: 'READY_TO_START' }, null, null, { id: 'pl-7', kind: 'CONTRACT' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    const link = await screen.findByTestId('os-start-link');
+    expect(link.textContent).toBe('Start assignment →');
+    expect(link.getAttribute('href')).toBe('/placements/pl-7'); // owner surface (commercial terms captured there)
+    expect(screen.queryByTestId('os-completion-banner')).toBeNull(); // not started yet
+  });
+
+  it('STARTED (contract) → completion banner derived from placement state (presentation only, §8.4)', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'ACCEPTED', placement_state: 'STARTED' }, null, null, { id: 'pl-7', kind: 'CONTRACT' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-completion-banner').textContent).toContain('Started · active assignment'));
+  });
+
+  it('STARTED (direct hire / PERMANENT) → engagement diverges the completion banner to "Placement recorded" (§8.3/§8.4)', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'ACCEPTED', placement_state: 'STARTED' }, null, null, { id: 'pl-9', kind: 'PERMANENT' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-completion-banner').textContent).toContain('Placement recorded'));
+    // direct-hire start affordance label diverges too (when still ready) — here it is already started.
+  });
+
+  it('READY_TO_START (direct hire) → start affordance label diverges to "Confirm placement"', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'ACCEPTED', placement_state: 'READY_TO_START' }, null, null, { id: 'pl-9', kind: 'PERMANENT' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    const link = await screen.findByTestId('os-start-link');
+    expect(link.textContent).toBe('Confirm placement →');
+    expect(link.getAttribute('href')).toBe('/placements/pl-9');
   });
 });

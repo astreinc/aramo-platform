@@ -110,9 +110,22 @@ export function OfferStartJourneyView(): JSX.Element {
     return <section className="os-root"><div className="os-empty">{error ?? 'Not found.'}</div></section>;
   }
 
-  const steps = deriveSteps(journey);
+  // §8 — the engagement branch is the authoritative placement kind (DIRECT_HIRE ⇔ PERMANENT);
+  // it diverges the Start & Placement labels + the completion banner. Absent placement ⇒ CONTRACT default.
+  const engagement = journey.placement?.kind === 'PERMANENT' ? 'DIRECT_HIRE' : 'CONTRACT';
+  const steps = deriveSteps(journey, engagement);
   const exceptions = deriveExceptions(journey);
   const doneCount = steps.filter((s) => s.status === 'done').length;
+
+  // §8.4 — the completion banner is PRESENTATION only, derived from the authoritative placement
+  // state (never a stored journey-completion flag). §8.2/§8.5: the commercial-bearing STARTED
+  // transition stays with the owning placement surface — the journey deep-links, never reimplements
+  // it (no governed inline start affordance exists today — a typed GAP, not faked here).
+  const placementState = journey.sub_states['placement_state'] ?? null;
+  const completionBanner =
+    placementState === 'STARTED'
+      ? (engagement === 'DIRECT_HIRE' ? 'Placement recorded' : 'Started · active assignment')
+      : null;
 
   const grouped: { group: string; steps: JourneyStep[] }[] = [];
   for (const s of steps) {
@@ -206,6 +219,27 @@ export function OfferStartJourneyView(): JSX.Element {
 
       <div className="os-body">
         <div className="os-main">
+          {completionBanner !== null ? (
+            <div className="os-banner" data-testid="os-completion-banner">
+              <span className="os-banner-mark" aria-hidden="true">✓</span>
+              <span className="os-banner-text">{completionBanner}</span>
+            </div>
+          ) : null}
+          {/* §8.2/§8.5 — Ready to start: the governed start (with its commercial terms) is owned
+              by the placement surface; the journey deep-links there, it does not reimplement start. */}
+          {placementState === 'READY_TO_START' && journey.placement !== null ? (
+            <div className="os-card os-step-actions" data-testid="os-start">
+              <div className="os-card-head">Ready to start</div>
+              <div className="os-muted">
+                {engagement === 'DIRECT_HIRE'
+                  ? 'Requirements are met. Confirm the placement in the placement record (where the start terms are captured).'
+                  : 'Requirements are met. Start the assignment in the placement record (where the commercial terms are captured).'}
+              </div>
+              <Link className="os-link" to={`/placements/${journey.placement.id}`} data-testid="os-start-link">
+                {engagement === 'DIRECT_HIRE' ? 'Confirm placement →' : 'Start assignment →'}
+              </Link>
+            </div>
+          ) : null}
           {(stepAction !== null || declined) && (
             <div className="os-card os-step-actions" data-testid="os-actions">
               <div className="os-card-head">This step</div>

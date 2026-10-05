@@ -37,6 +37,7 @@ import type {
   JourneyOfferDocument,
   JourneyPreStart,
   JourneyPreStartRequirement,
+  JourneyPlacement,
   TalentRequisitionJourney,
 } from './dto/talent-journey.view.js';
 
@@ -311,6 +312,13 @@ export class TalentJourneyReadService {
 
     this.logger.log({ event: 'talent_journey_composed', pipeline_id: episode.id, current_journey_stage, stage_count: stages.length });
 
+    // ---- placement — §8, always composed once a placement exists (pure projection of the row
+    // already fetched; NULL placement_kind → CONTRACT per the domain's legacy-start rule). ----
+    const placement: JourneyPlacement | null =
+      currentPlacement === null
+        ? null
+        : { id: currentPlacement.id, kind: currentPlacement.placement_kind === 'PERMANENT' ? 'PERMANENT' : 'CONTRACT' };
+
     return {
       requisition_id,
       talent_record_id,
@@ -320,6 +328,7 @@ export class TalentJourneyReadService {
       actions,
       offer_document: offerDocument,
       pre_start: preStart,
+      placement,
     };
   }
 }

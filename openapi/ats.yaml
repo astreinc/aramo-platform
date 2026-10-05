@@ -8457,6 +8457,7 @@ components:
         - actions
         - offer_document
         - pre_start
+        - placement
       properties:
         requisition_id: { type: string }
         talent_record_id: { type: string }
@@ -8479,6 +8480,12 @@ components:
         pre_start:
           oneOf:
             - $ref: '#/components/schemas/JourneyPreStartView'
+            - type: 'null'
+        # Offer & Start §8 — the owning placement identity + engagement branch; null until a
+        # placement exists. Carries NO commercial field (the start transition's terms stay with the owner).
+        placement:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyPlacementView'
             - type: 'null'
     JourneyPreStartRequirementView:
       type: object
@@ -8544,6 +8551,16 @@ components:
           oneOf:
             - $ref: '#/components/schemas/JourneyActionView'
             - type: 'null'
+    JourneyPlacementView:
+      type: object
+      additionalProperties: false
+      description: The owning placement identity + engagement branch (Offer & Start §8). Authoritative key for the owner deep-link; carries no commercial field. kind normalizes a legacy NULL placement_kind to CONTRACT.
+      required:
+        - id
+        - kind
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [CONTRACT, PERMANENT] }
     JourneyOfferDocumentView:
       type: object
       additionalProperties: false
