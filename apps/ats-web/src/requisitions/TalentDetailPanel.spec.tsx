@@ -251,6 +251,21 @@ describe('TalentDetailPanel', () => {
     expect(screen.queryByText('Accept')).toBeNull();
   });
 
+  // §11 — the Talent Board drawer deep-links into the SINGLE person × requisition Offer & Start
+  // journey, keyed on this pipeline episode id (authoritative — never reconstructed FE-side).
+  it('deep-links to /offer-start/:pipelineId at Selected+', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValueOnce(SELECTED_JOURNEY);
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
+    const link = await screen.findByTestId('open-offer-start');
+    expect(link.getAttribute('href')).toBe('/offer-start/p1');
+  });
+
+  it('does NOT offer the Offer & Start deep-link early (Qualified)', async () => {
+    renderPanel(); // default journey = QUALIFIED (no selection/offer/placement)
+    await screen.findByRole('list', { name: 'Talent journey' });
+    expect(screen.queryByTestId('open-offer-start')).toBeNull();
+  });
+
   // TI-1E-B1 — the read-only governed fields consume server hydration: a
   // governed-cleared work_authorization shows the "Cleared" affordance (distinct
   // from a never-set em-dash), driven by the server value_state, not the FE.
