@@ -61,6 +61,22 @@ export function ClientResponseSection({ view, onChanged }: { view: SubmittalWork
         ) : null}
       </div>
 
+      {/* Offer & Start §2.2 — once the client has SELECTED, the recruiter's next move is the
+          offer journey. Deep-link to the single journey using the server-owned pipeline
+          episode id (never reconstructed FE-side); rendered only when it is present. */}
+      {cs.state === 'SELECTED' && view.pipeline.linked_episode_id !== null ? (
+        <div className="sw-client__continue">
+          <span className="sw-client__continue-note">Client selected this talent.</span>
+          <Link
+            className="sw-link"
+            data-testid="sw-continue-offer-start"
+            to={`/offer-start/${view.pipeline.linked_episode_id}`}
+          >
+            Continue in Offer &amp; Start →
+          </Link>
+        </div>
+      ) : null}
+
       {/* Interview summary — reuse the existing Interview detail for management. */}
       {cs.latest_interview !== null ? (
         <div className="sw-client__interview">
