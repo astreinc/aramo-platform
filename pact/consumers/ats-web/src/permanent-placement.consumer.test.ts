@@ -439,7 +439,7 @@ describe('ats-web → guarantee-terms history + effective reads', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { items: Array<{ effective_to: string | null }> };
         expect(body.items).toHaveLength(2);
-        expect(body.items[0].effective_to).toBeNull(); // open current first
+        expect(body.items[0]?.effective_to).toBeNull(); // open current first
       });
   });
 

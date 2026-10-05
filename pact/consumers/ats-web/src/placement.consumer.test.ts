@@ -611,7 +611,7 @@ describe('ats-web → GET /v1/placements/:id/assignment/commercials/revisions', 
         expect(res.status).toBe(200);
         const body = (await res.json()) as { items: Array<{ effective_to: string | null }> };
         expect(body.items).toHaveLength(2);
-        expect(body.items[0].effective_to).toBeNull(); // current first (DESC)
+        expect(body.items[0]?.effective_to).toBeNull(); // current first (DESC)
       });
   });
 
@@ -696,7 +696,7 @@ describe('ats-web → POST /v1/placements/:id/assignment/commercials/revisions/:
         );
         expect(res.status).toBe(200);
         const body = (await res.json()) as { items: Array<{ effective_to: string | null }> };
-        expect(body.items[0].effective_to).toBeNull();
+        expect(body.items[0]?.effective_to).toBeNull();
       });
   });
 
