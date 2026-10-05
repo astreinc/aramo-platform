@@ -3,6 +3,7 @@ import { Button } from '@aramo/fe-foundation';
 import { Link, useParams } from 'react-router-dom';
 
 import { remindOfferDocument, requestOfferDocument, sendOfferDocument } from '../offer-document/offer-document-api';
+import { markPlacementReady } from '../pre-start/pre-start-api';
 import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/talent-journey-api';
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
@@ -162,6 +163,28 @@ export function OfferStartJourneyView(): JSX.Element {
     });
   };
 
+  // §7.5 — the governed Ready-to-start transition. Fail-closed at the server (it re-checks the
+  // authoritative readiness assessment); the FE never derives readiness nor transitions optimistically
+  // — it calls markReadyToStart and reloads the composed journey. Rendered ONLY when the server's
+  // `ready_to_start_action` is present (i.e. the authority already says ready).
+  const preStart = journey.pre_start ?? null;
+  const attnReqs = preStart?.needs_attention ?? [];
+  // When the authoritative pre-start section is present, its specific FAILED-requirement rows
+  // supersede the coarse placement-BLOCKED exception (no redundant signal; §7.6).
+  const shownExceptions = preStart !== null ? exceptions.filter((e) => e.key !== 'pre_start_blocked') : exceptions;
+  const onMarkReady = (): void => {
+    if (preStart === null) return;
+    void runAction(async () => {
+      await markPlacementReady(preStart.placement_process_id);
+      await load();
+      flash('Marked ready to start');
+    });
+  };
+  const PRE_START_STATUS_LABEL: Record<string, string> = {
+    PENDING: 'Pending', IN_PROGRESS: 'In progress', SATISFIED: 'Satisfied',
+    VERIFIED: 'Verified', WAIVED: 'Waived', FAILED: 'Failed', CANCELED: 'Canceled',
+  };
+
   return (
     <section className="os-root" data-testid="offer-start-journey">
       <nav className="os-breadcrumb">
@@ -212,20 +235,71 @@ export function OfferStartJourneyView(): JSX.Element {
             </div>
           ))}
           </div>
+
+          {/* §7 Pre-start Readiness — generic over authoritative requirement rows (§7.2); N-of-M
+              is display-only (§7.4); the Ready-to-start button appears ONLY when the server says
+              ready (§7.5, fail-closed). Remediation deep-links to the governed onboarding workspace —
+              the journey never reimplements the satisfy/verify/waive/evidence flow (§7.8). */}
+          {preStart !== null ? (
+            <div className="os-card os-prestart" data-testid="os-prestart">
+              <div className="os-card-head">
+                Pre-start readiness
+                <span className="os-progress" data-testid="os-prestart-count">
+                  {preStart.summary.complete} of {preStart.summary.total} complete
+                </span>
+              </div>
+              {preStart.requirements.length === 0 ? (
+                <div className="os-muted">
+                  {preStart.readiness.materialized ? 'No pre-start requirements for this placement.' : 'Pre-start requirements are being prepared.'}
+                </div>
+              ) : (
+                preStart.requirements.map((r) => (
+                  <div key={r.id} className="os-req" data-testid={`os-req-${r.id}`}>
+                    <span className="os-req-label">{r.label}{r.blocking ? <span className="os-req-blocking" title="Blocking">•</span> : null}</span>
+                    <span className="os-req-status" data-testid={`os-req-status-${r.id}`}>{PRE_START_STATUS_LABEL[r.status] ?? r.status}</span>
+                    {r.owner_role !== null ? <span className="os-muted os-req-owner">{r.owner_role}</span> : null}
+                  </div>
+                ))
+              )}
+              <div className="os-prestart-foot">
+                {preStart.ready_to_start_action !== null ? (
+                  <Button type="button" onClick={onMarkReady} disabled={busy} data-testid="os-action-mark-ready">
+                    {preStart.ready_to_start_action.action}
+                  </Button>
+                ) : null}
+                <Link className="os-link" to={`/onboarding/${preStart.placement_process_id}`} data-testid="os-prestart-workspace">
+                  Open onboarding workspace →
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <aside className="os-rail">
           <div className="os-card" data-testid="os-needs-attention">
-            <div className="os-card-head">Needs attention{exceptions.length > 0 ? <span className="os-badge">{exceptions.length}</span> : null}</div>
-            {exceptions.length === 0 ? (
+            <div className="os-card-head">Needs attention{shownExceptions.length + attnReqs.length > 0 ? <span className="os-badge">{shownExceptions.length + attnReqs.length}</span> : null}</div>
+            {shownExceptions.length + attnReqs.length === 0 ? (
               <div className="os-muted">Everything on track. Aramo moves the ordinary steps; exceptions show here.</div>
             ) : (
-              exceptions.map((e) => (
-                <div key={e.key} className="os-attn" data-testid={`os-attn-${e.key}`}>
-                  <span className="os-attn-what">{e.label}</span>
-                  <span className="os-muted">{e.detail}</span>
-                </div>
-              ))
+              <>
+                {shownExceptions.map((e) => (
+                  <div key={e.key} className="os-attn" data-testid={`os-attn-${e.key}`}>
+                    <span className="os-attn-what">{e.label}</span>
+                    <span className="os-muted">{e.detail}</span>
+                  </div>
+                ))}
+                {/* §7.6 — authoritative FAILED-blocking requirements (server fact), each
+                    deep-linking to the governed onboarding workspace to resolve. */}
+                {attnReqs.map((r) => (
+                  <div key={`req-${r.id}`} className="os-attn" data-testid={`os-attn-req-${r.id}`}>
+                    <span className="os-attn-what">{r.label} failed</span>
+                    <span className="os-muted">A required pre-start requirement failed — resolve it to continue.</span>
+                    {preStart !== null ? (
+                      <Link className="os-link" to={`/onboarding/${preStart.placement_process_id}`}>Resolve →</Link>
+                    ) : null}
+                  </div>
+                ))}
+              </>
             )}
           </div>
 

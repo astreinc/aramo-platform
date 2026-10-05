@@ -38,6 +38,33 @@ export interface JourneyOfferDocument {
   readonly status: 'REQUESTED' | 'AWAITING_SIGNATURE' | 'EXECUTED';
 }
 
+// Offer & Start §7.2 — one authoritative pre-start requirement row (generic over the owning
+// domain). The FE renders label/status/detail/source/owner but NEVER decides completion (§7.2);
+// `remediation` names the owner's existing governed route when actionable.
+export interface JourneyPreStartRequirement {
+  readonly id: string;
+  readonly requirement_type: string;
+  readonly label: string;
+  readonly status: string;
+  readonly blocking: boolean;
+  readonly owner_role: string | null;
+  readonly completed_at: string | null;
+  readonly evidence_reference: string | null;
+  readonly remediation: JourneyAction | null;
+}
+
+// Offer & Start §7 — the Pre-start Readiness section. `readiness` is the AUTHORITATIVE server
+// assessment; the FE never derives a second readiness algorithm (§7.5). `summary` is display-only
+// N-of-M. `ready_to_start_action` is present only when the server says ready (fail-closed).
+export interface JourneyPreStart {
+  readonly placement_process_id: string;
+  readonly requirements: readonly JourneyPreStartRequirement[];
+  readonly summary: { readonly complete: number; readonly total: number };
+  readonly readiness: { readonly materialized: boolean; readonly ready: boolean };
+  readonly needs_attention: readonly JourneyPreStartRequirement[];
+  readonly ready_to_start_action: JourneyAction | null;
+}
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -46,6 +73,7 @@ export interface TalentRequisitionJourney {
   readonly sub_states: Readonly<Record<string, string | null>>;
   readonly actions: readonly JourneyAction[];
   readonly offer_document: JourneyOfferDocument | null;
+  readonly pre_start: JourneyPreStart | null;
 }
 
 // GET /v1/pipelines/:id/journey — the composed journey for one pipeline episode. A non-visible

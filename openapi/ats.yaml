@@ -8456,6 +8456,7 @@ components:
         - sub_states
         - actions
         - offer_document
+        - pre_start
       properties:
         requisition_id: { type: string }
         talent_record_id: { type: string }
@@ -8472,6 +8473,76 @@ components:
         offer_document:
           oneOf:
             - $ref: '#/components/schemas/JourneyOfferDocumentView'
+            - type: 'null'
+        # Offer & Start §7 — the opt-in Pre-start Readiness section; null on the Talent 360
+        # embed and until a placement exists. Readiness is authoritative (never FE-derived).
+        pre_start:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyPreStartView'
+            - type: 'null'
+    JourneyPreStartRequirementView:
+      type: object
+      additionalProperties: false
+      description: One authoritative pre-start requirement row (Offer & Start §7.2), projected generically from PreStartRequirementInstance. Completion state is never hardcoded by the reader.
+      required:
+        - id
+        - requirement_type
+        - label
+        - status
+        - blocking
+        - owner_role
+        - completed_at
+        - evidence_reference
+        - remediation
+      properties:
+        id: { type: string, format: uuid }
+        requirement_type: { type: string }
+        label: { type: string }
+        status: { type: string }
+        blocking: { type: boolean }
+        owner_role: { type: [string, 'null'] }
+        completed_at: { type: [string, 'null'], format: date-time }
+        evidence_reference: { type: [string, 'null'] }
+        remediation:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyActionView'
+            - type: 'null'
+    JourneyPreStartView:
+      type: object
+      additionalProperties: false
+      description: The composed Pre-start Readiness section (Offer & Start §7). readiness is the authoritative assessment; summary is display-only N-of-M; needs_attention carries only authoritative FAILED-blocking rows; ready_to_start_action names the governed markReadyToStart route and is present only when the authority says ready.
+      required:
+        - placement_process_id
+        - requirements
+        - summary
+        - readiness
+        - needs_attention
+        - ready_to_start_action
+      properties:
+        placement_process_id: { type: string, format: uuid }
+        requirements:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyPreStartRequirementView' }
+        summary:
+          type: object
+          additionalProperties: false
+          required: [complete, total]
+          properties:
+            complete: { type: integer }
+            total: { type: integer }
+        readiness:
+          type: object
+          additionalProperties: false
+          required: [materialized, ready]
+          properties:
+            materialized: { type: boolean }
+            ready: { type: boolean }
+        needs_attention:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyPreStartRequirementView' }
+        ready_to_start_action:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyActionView'
             - type: 'null'
     JourneyOfferDocumentView:
       type: object

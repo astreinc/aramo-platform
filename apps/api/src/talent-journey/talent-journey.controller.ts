@@ -38,6 +38,9 @@ export class TalentJourneyController {
       // §6.7 — the journey ENDPOINT (Offer & Start + pipeline surfaces) opts into the
       // offer-letter document signal; Talent 360's direct service call does not (D-ARCH-1).
       include_offer_document: true,
+      // §7 — likewise opts into the Pre-start Readiness section; composed only once a
+      // placement exists, so early-journey reads pay nothing.
+      include_pre_start: true,
       requestId,
     });
   }

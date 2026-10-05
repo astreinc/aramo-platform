@@ -93,6 +93,43 @@ export interface JourneyOfferDocument {
   readonly status: 'REQUESTED' | 'AWAITING_SIGNATURE' | 'EXECUTED';
 }
 
+// Offer & Start §7.2 — one authoritative pre-start requirement row, projected generically
+// from PreStartRequirementInstance (the owning authority). Every field is imported from the
+// owner's InstanceView (Rule D) — the journey NEVER hardcodes completion state (§7.2) nor a
+// requirement taxonomy. `requirement_type` is the source/type; `owner_role` the owning domain;
+// `completed_at`/`evidence_reference` are detail the FE renders (presentation, not business
+// truth). `remediation` names the owner's EXISTING governed status-move route when the row is
+// actionable — never a generic control.
+export interface JourneyPreStartRequirement {
+  readonly id: string;
+  readonly requirement_type: PreStartInstanceView['requirement_type'];
+  readonly label: string;
+  readonly status: PreStartInstanceView['status'];
+  readonly blocking: boolean;
+  readonly owner_role: string | null;
+  readonly completed_at: string | null;
+  readonly evidence_reference: string | null;
+  readonly remediation: JourneyAction | null;
+}
+
+// Offer & Start §7 — the composed Pre-start Readiness section, present ONLY when the caller
+// opts in AND a placement exists (there is no pre-start before a placement). `readiness` is the
+// AUTHORITATIVE assessment (RequirementInstanceRepository.assessBlocking — never an FE/journey
+// re-derivation, §7.5). `summary` is display-only N-of-M composed from the rows (§7.4 — never
+// persisted). `needs_attention` carries ONLY authoritative blocker facts (deriveBlockers —
+// FAILED blocking requirements, §7.6). `ready_to_start_action` names the governed markReadyToStart
+// route and is present ONLY when the authority says ready (fail-closed; the journey issues no write).
+export interface JourneyPreStart {
+  // The owning placement episode id — the authoritative key for the onboarding workspace
+  // deep-link + the governed ready route (so the FE never reconstructs it).
+  readonly placement_process_id: string;
+  readonly requirements: readonly JourneyPreStartRequirement[];
+  readonly summary: { readonly complete: number; readonly total: number };
+  readonly readiness: { readonly materialized: boolean; readonly ready: boolean };
+  readonly needs_attention: readonly JourneyPreStartRequirement[];
+  readonly ready_to_start_action: JourneyAction | null;
+}
+
 // The composed journey for one (tenant, requisition, talent) episode.
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
@@ -103,4 +140,6 @@ export interface TalentRequisitionJourney {
   readonly actions: readonly JourneyAction[];
   // null when the caller did not opt in OR no offer-letter document exists yet.
   readonly offer_document: JourneyOfferDocument | null;
+  // §7 — null when the caller did not opt in OR there is no placement yet.
+  readonly pre_start: JourneyPreStart | null;
 }

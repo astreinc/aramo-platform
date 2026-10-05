@@ -35,6 +35,8 @@ import type {
   JourneySubStates,
   JourneyAction,
   JourneyOfferDocument,
+  JourneyPreStart,
+  JourneyPreStartRequirement,
   TalentRequisitionJourney,
 } from './dto/talent-journey.view.js';
 
@@ -147,6 +149,10 @@ export class TalentJourneyReadService {
     // §6.7 opt-in — compose the offer-letter document signal. Default false keeps the
     // shared Talent 360 hot read DB-lean and free of this auxiliary lookup (D-ARCH-1).
     include_offer_document?: boolean;
+    // §7 opt-in — compose the Pre-start Readiness section (generic requirement rows +
+    // authoritative readiness assessment + governed ready-to-start). Default false; same
+    // hot-read discipline as offer_document (only the journey page opts in).
+    include_pre_start?: boolean;
     requestId: string;
   }): Promise<TalentRequisitionJourney> {
     // Gate 1 (AUTHZ existence) — the episode itself; null ⇒ absent OR not-visible ⇒ same 404.
@@ -291,6 +297,18 @@ export class TalentJourneyReadService {
       }
     }
 
+    // ---- pre_start — §7 opt-in, composed ONLY with a placement. Readiness is the AUTHORITATIVE
+    // assessment (assessBlocking) and the blocker set the AUTHORITATIVE projection (deriveBlockers);
+    // the journey re-derives neither (§7.5). Both are cheap reads over the same placement. ----
+    let preStart: JourneyPreStart | null = null;
+    if (args.include_pre_start === true && currentPlacement !== null) {
+      const [assessment, blockers] = await Promise.all([
+        this.preStart.assessBlocking(args.tenant_id, currentPlacement.id),
+        this.preStart.deriveBlockers(args.tenant_id, currentPlacement.id),
+      ]);
+      preStart = composePreStart(preStartInstances, assessment, blockers, currentPlacement.id);
+    }
+
     this.logger.log({ event: 'talent_journey_composed', pipeline_id: episode.id, current_journey_stage, stage_count: stages.length });
 
     return {
@@ -301,8 +319,60 @@ export class TalentJourneyReadService {
       sub_states,
       actions,
       offer_document: offerDocument,
+      pre_start: preStart,
     };
   }
+}
+
+// §7.2 — the governed pre-start command routes (base path `v1/pre-start-requirement`, matching
+// PreStartRequirementController). The journey NAMES these; it never issues the write.
+const PRE_START_STATUS_ROUTE = (instanceId: string): string =>
+  `POST /v1/pre-start-requirement/requirements/${instanceId}/status`;
+const PRE_START_READY_ROUTE = (placementId: string): string =>
+  `POST /v1/pre-start-requirement/placements/${placementId}/ready`;
+
+// §7.2 — project one authoritative InstanceView to the generic journey row. Remediation is the
+// owner's EXISTING governed status-move, surfaced ONLY while the requirement is unresolved
+// (a resolved/satisfied row is not actionable here). No completion state is invented.
+function toPreStartRequirement(i: PreStartInstanceView): JourneyPreStartRequirement {
+  const unresolved = isUnresolvedStatus(i.status as never);
+  return {
+    id: i.id,
+    requirement_type: i.requirement_type,
+    label: i.label,
+    status: i.status,
+    blocking: i.blocking,
+    owner_role: i.owner_role,
+    completed_at: i.completed_at === null ? null : i.completed_at.toISOString(),
+    evidence_reference: i.evidence_reference,
+    remediation: unresolved
+      ? { action: 'Complete Requirement', owner: 'pre-start', command_route: PRE_START_STATUS_ROUTE(i.id) }
+      : null,
+  };
+}
+
+// §7.4/§7.5/§7.6 — compose the Pre-start section. `summary` is display-only N-of-M from the rows
+// (complete = NOT isUnresolvedStatus, reusing the owner's partition — never a persisted count).
+// `readiness` is the authoritative assessment verbatim. `ready_to_start_action` appears ONLY when
+// the authority says ready (fail-closed). `needs_attention` is ONLY the authoritative FAILED-blocking set.
+function composePreStart(
+  instances: readonly PreStartInstanceView[],
+  assessment: { readonly materialized: boolean; readonly ready: boolean },
+  blockers: { readonly failed_blocking: readonly PreStartInstanceView[] },
+  placementId: string,
+): JourneyPreStart {
+  const requirements = instances.map(toPreStartRequirement);
+  const complete = instances.reduce((n, i) => (isUnresolvedStatus(i.status as never) ? n : n + 1), 0);
+  return {
+    placement_process_id: placementId,
+    requirements,
+    summary: { complete, total: instances.length },
+    readiness: { materialized: assessment.materialized, ready: assessment.ready },
+    needs_attention: blockers.failed_blocking.map(toPreStartRequirement),
+    ready_to_start_action: assessment.ready
+      ? { action: 'Mark ready to start', owner: 'pre-start', command_route: PRE_START_READY_ROUTE(placementId) }
+      : null,
+  };
 }
 
 // §6.7 — the SYSTEM offer-letter document type key (seeded DOC-6); the journey resolves the
@@ -370,8 +440,11 @@ function deriveActions(ctx: {
     actions.push({ action: 'Create offer', owner: 'offer', command_route: `POST /v1/offers` });
   }
   // Pre-Start Complete Requirement — available while a blocking requirement is unresolved.
+  // Names the owner's actual governed status-move route (base `v1/pre-start-requirement`,
+  // verb `status`); the prior string pointed at a non-existent `/v1/placements/.../transition`
+  // route (D-ROUTE-1 fix). The concrete per-requirement remediation lives in `pre_start`.
   if (ctx.currentPlacement !== null && ctx.preStartInstances.some((i) => isUnresolvedStatus(i.status as never))) {
-    actions.push({ action: 'Complete Requirement', owner: 'pre-start', command_route: `POST /v1/placements/${ctx.currentPlacement.id}/requirements/:requirementId/transition` });
+    actions.push({ action: 'Complete Requirement', owner: 'pre-start', command_route: `POST /v1/pre-start-requirement/requirements/:instanceId/status` });
   }
   return actions;
 }

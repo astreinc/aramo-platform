@@ -3,7 +3,8 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { remindOfferDocument, requestOfferDocument, sendOfferDocument } from '../offer-document/offer-document-api';
-import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/talent-journey-api';
+import { markPlacementReady } from '../pre-start/pre-start-api';
+import { getTalentJourney, type TalentRequisitionJourney, type JourneyPreStart } from '../pipeline/talent-journey-api';
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
 
@@ -17,8 +18,13 @@ vi.mock('../offer-document/offer-document-api', () => ({
   sendOfferDocument: vi.fn(),
   remindOfferDocument: vi.fn(),
 }));
+vi.mock('../pre-start/pre-start-api', () => ({ markPlacementReady: vi.fn() }));
 
-function journey(sub: Record<string, string | null>, doc: TalentRequisitionJourney['offer_document'] = null): TalentRequisitionJourney {
+function journey(
+  sub: Record<string, string | null>,
+  doc: TalentRequisitionJourney['offer_document'] = null,
+  preStart: JourneyPreStart | null = null,
+): TalentRequisitionJourney {
   return {
     requisition_id: 'r1',
     talent_record_id: 't1',
@@ -27,6 +33,23 @@ function journey(sub: Record<string, string | null>, doc: TalentRequisitionJourn
     sub_states: { pipeline_stage: null, submittal_state: null, selection_state: 'SELECTED', interview_state: null, offer_state: null, placement_state: null, pre_start_state: null, assignment_state: null, ...sub },
     actions: [],
     offer_document: doc,
+    pre_start: preStart,
+  };
+}
+
+const READY_ACTION = { action: 'Mark ready to start', owner: 'pre-start' as const, command_route: 'POST /v1/pre-start-requirement/placements/pp1/ready' };
+function preStartSection(over: Partial<JourneyPreStart> = {}): JourneyPreStart {
+  return {
+    placement_process_id: 'pp1',
+    requirements: [
+      { id: 'req-1', requirement_type: 'SIGNED_OFFER', label: 'Signed offer', status: 'SATISFIED', blocking: true, owner_role: 'recruiter', completed_at: '2026-10-02T00:00:00.000Z', evidence_reference: null, remediation: null },
+      { id: 'req-2', requirement_type: 'I9', label: 'Work authorization / I-9', status: 'PENDING', blocking: true, owner_role: 'compliance', completed_at: null, evidence_reference: null, remediation: { action: 'Complete Requirement', owner: 'pre-start', command_route: 'POST /v1/pre-start-requirement/requirements/req-2/status' } },
+    ],
+    summary: { complete: 1, total: 2 },
+    readiness: { materialized: true, ready: false },
+    needs_attention: [],
+    ready_to_start_action: null,
+    ...over,
   };
 }
 
@@ -118,5 +141,52 @@ describe('OfferStartJourneyView', () => {
     expect(screen.queryByTestId('os-action-prepare')).toBeNull();
     expect(screen.queryByTestId('os-action-send')).toBeNull();
     expect(screen.queryByTestId('os-action-remind')).toBeNull();
+  });
+
+  // ---- §7 Pre-start Readiness ----
+
+  it('pre-start section renders authoritative requirement rows + display-only N-of-M + onboarding deep-link', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'ACCEPTED', placement_state: 'PRE_START' }, null, preStartSection()));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-prestart')).toBeTruthy());
+    expect(screen.getByTestId('os-prestart-count').textContent).toBe('1 of 2 complete');
+    expect(within(screen.getByTestId('os-req-req-1')).getByText('Signed offer')).toBeTruthy();
+    expect(screen.getByTestId('os-req-status-req-1').textContent).toBe('Satisfied');
+    expect(screen.getByTestId('os-req-status-req-2').textContent).toBe('Pending');
+    // Remediation is governed in the onboarding workspace — deep-link uses the server-owned placement id.
+    expect(screen.getByTestId('os-prestart-workspace').getAttribute('href')).toBe('/onboarding/pp1');
+  });
+
+  it('Mark-ready button appears ONLY when the server exposes ready_to_start_action (fail-closed, §7.5)', async () => {
+    // not ready → no button
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ placement_state: 'PRE_START' }, null, preStartSection({ readiness: { materialized: true, ready: false }, ready_to_start_action: null })));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+    await waitFor(() => expect(screen.getByTestId('os-prestart')).toBeTruthy());
+    expect(screen.queryByTestId('os-action-mark-ready')).toBeNull();
+  });
+
+  it('server says ready → Mark-ready invokes the governed markReadyToStart on the server-owned placement id', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ placement_state: 'PRE_START' }, null, preStartSection({ summary: { complete: 2, total: 2 }, readiness: { materialized: true, ready: true }, ready_to_start_action: READY_ACTION })));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    vi.mocked(markPlacementReady).mockResolvedValue({ id: 'pp1', state: 'READY_TO_START' });
+    renderAt();
+
+    fireEvent.click(await screen.findByTestId('os-action-mark-ready'));
+    await waitFor(() => expect(markPlacementReady).toHaveBeenCalledWith('pp1'));
+  });
+
+  it('a FAILED blocking requirement surfaces in Needs attention (authoritative), superseding the coarse placement-BLOCKED signal (§7.6)', async () => {
+    const failed = { id: 'req-9', requirement_type: 'BACKGROUND', label: 'Background check', status: 'FAILED', blocking: true, owner_role: 'compliance', completed_at: null, evidence_reference: null, remediation: { action: 'Complete Requirement', owner: 'pre-start' as const, command_route: 'POST /v1/pre-start-requirement/requirements/req-9/status' } };
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ placement_state: 'BLOCKED' }, null, preStartSection({ needs_attention: [failed] })));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-attn-req-req-9')).toBeTruthy());
+    expect(within(screen.getByTestId('os-attn-req-req-9')).getByText('Background check failed')).toBeTruthy();
+    // the coarse placement-BLOCKED exception is suppressed in favour of the specific row.
+    expect(screen.queryByTestId('os-attn-pre_start_blocked')).toBeNull();
   });
 });
