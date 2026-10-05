@@ -19,6 +19,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
+import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
@@ -133,7 +134,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         findEnvelopeForDocument: async () => null,
       } as unknown as SignatureProviderPort;
 
-      orchestrator = new RtrOrchestratorService(docsRepo, render, fakeSignature, fakeTalent, resolver, binding, templates, storageStub);
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, templates, storageStub);
     }, 180_000);
 
     afterAll(async () => {

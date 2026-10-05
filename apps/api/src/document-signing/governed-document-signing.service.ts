@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { DocumentsRepository, RenderService } from '@aramo/documents';
 import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
+import { type RenderModel } from '@aramo/documents-rendering';
 
 // GOVERNED DOCUMENT SIGNING — the single reusable application-level capability that owns the
 // common mechanics of preparing, sending, reminding, and reading the state of a governed,
@@ -18,14 +19,6 @@ import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/docu
 export interface GovernedSigner {
   readonly email: string;
   readonly name: string;
-}
-
-// The domain-RESOLVED render model (template selection/binding is the domain's job); this layer
-// only freezes it into an immutable revision.
-export interface GovernedRenderModel {
-  readonly render_schema_version: string;
-  readonly title: string;
-  readonly blocks: readonly unknown[];
 }
 
 export interface GovernedDocumentAssociation {
@@ -72,7 +65,10 @@ export class GovernedDocumentSigningService {
     created_by: string;
     requestId: string;
     associations: readonly GovernedDocumentAssociation[];
-    render: GovernedRenderModel;
+    render: RenderModel;
+    // Durable provenance (INV-2) — the pinned template version, when the domain rendered from a
+    // governed template (RTR). Omitted for inline-model documents (offer letter).
+    template_version_id?: string;
   }): Promise<{ document_id: string; revision_id: string }> {
     const doc = await this.documents.createDocument({
       tenant_id: input.tenant_id,
@@ -89,7 +85,8 @@ export class GovernedDocumentSigningService {
       document_id: doc.id,
       actor_id: input.created_by,
       requestId: input.requestId,
-      model: { render_schema_version: input.render.render_schema_version, title: input.render.title, blocks: input.render.blocks as never },
+      template_version_id: input.template_version_id,
+      model: input.render,
     });
     return { document_id: doc.id, revision_id: rendered.revision_id };
   }

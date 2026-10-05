@@ -76,10 +76,10 @@ export class OfferDocumentOrchestratorService {
         render_schema_version: 'v1',
         title: 'Offer Letter',
         blocks: [
-          { type: 'HEADING', text: 'Offer Letter' },
-          { type: 'TEXT', text: `This offer letter is presented to ${name} for signature.` },
+          { type: 'HEADING' as const, text: 'Offer Letter' },
+          { type: 'TEXT' as const, text: `This offer letter is presented to ${name} for signature.` },
           ...(offer.offer_terms_summary !== null && offer.offer_terms_summary.length > 0
-            ? [{ type: 'TEXT', text: offer.offer_terms_summary }]
+            ? [{ type: 'TEXT' as const, text: offer.offer_terms_summary }]
             : []),
         ],
       },
