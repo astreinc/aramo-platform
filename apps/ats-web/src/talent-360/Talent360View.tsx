@@ -21,6 +21,7 @@ import {
 // new workflow authority): Email = requisition-contextual composer (COMM-C4);
 // Log activity = the existing POST /v1/activities mutation (activity:create).
 import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
+import { GeneralTalentContactEmailComposer } from '../microsoft/GeneralTalentContactEmailComposer';
 import { createNote } from '../activity/activity-api';
 import { createTask, updateTask } from '../task/task-api';
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
@@ -199,6 +200,8 @@ export function Talent360View() {
   const [addOpen, setAddOpen] = useState(false);
   const [emailCtx, setEmailCtx] = useState<{ requisitionId: string; pipelineId: string } | null>(null);
   const [emailChooser, setEmailChooser] = useState(false);
+  // COMM-RECRUITER-W1 (W1-A3) — General Talent Contact composer (Talent-only, no requisition).
+  const [generalEmailOpen, setGeneralEmailOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
 
@@ -254,15 +257,19 @@ export function Talent360View() {
     label: o.client_name !== null ? `${o.requisition_code} · ${o.client_name}` : o.requisition_code,
   }));
 
-  // Email is requisition-contextual ONLY (no talent-direct path): 1 active
-  // opportunity opens the composer directly; multiple opens a lightweight
-  // chooser; 0 makes the action unavailable (context required).
+  // COMM-RECRUITER-W1 (W1-A3) — Email now has BOTH paths. With a requisition
+  // context (active opportunities) it stays Requisition Talent Contact: 1 opens
+  // the composer directly; multiple open the chooser. With NO active opportunity
+  // it opens the General Talent Contact composer (Talent-only). A requisition-
+  // contextual action is NEVER silently converted to general contact.
   const activeOpps = model.opportunities?.active ?? [];
   const onEmail = () => {
     const only = activeOpps[0];
-    if (activeOpps.length === 1 && only !== undefined) {
+    if (activeOpps.length === 0) {
+      setGeneralEmailOpen(true);
+    } else if (activeOpps.length === 1 && only !== undefined) {
       setEmailCtx({ requisitionId: only.requisition_id, pipelineId: only.pipeline_id });
-    } else if (activeOpps.length > 1) {
+    } else {
       setEmailChooser(true);
     }
   };
@@ -282,7 +289,7 @@ export function Talent360View() {
         session={session}
         onAddToRequisition={() => setAddOpen(true)}
         onEmail={onEmail}
-        canEmail={h.actions.can_email && activeOpps.length > 0}
+        canEmail={h.actions.can_email && h.contactability.recruiting_permitted}
         onLogActivity={() => setLogOpen(true)}
         onFollowUp={() => setFollowUpOpen(true)}
         canFollowUp={canTaskWrite && h.contactability.recruiting_permitted}
@@ -297,6 +304,15 @@ export function Talent360View() {
           talentId={talentId}
           requisitionId={emailCtx.requisitionId}
           pipelineId={emailCtx.pipelineId}
+        />
+      )}
+      {generalEmailOpen && (
+        <GeneralTalentContactEmailComposer
+          open
+          onOpenChange={(o) => {
+            if (!o) setGeneralEmailOpen(false);
+          }}
+          talentId={talentId}
         />
       )}
       {emailChooser && (
@@ -516,7 +532,7 @@ function Header({
                 className="t360-btn t360-btn--secondary"
                 onClick={onEmail}
                 disabled={!canEmail}
-                title={canEmail ? undefined : 'Email needs an active opportunity'}
+                title={canEmail ? undefined : 'Emailing this talent is not permitted'}
               >
                 <Icon name="mail" width={2} />
                 Email

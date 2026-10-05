@@ -41,6 +41,10 @@ vi.mock('../microsoft/RequisitionContactEmailComposer', () => ({
   RequisitionContactEmailComposer: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="email-composer">{requisitionId}</div> : null,
 }));
+vi.mock('../microsoft/GeneralTalentContactEmailComposer', () => ({
+  GeneralTalentContactEmailComposer: ({ open, talentId }: { open: boolean; talentId: string }) =>
+    open ? <div data-testid="general-email-composer">{talentId}</div> : null,
+}));
 vi.mock('../activity/activity-api', () => ({ createNote: vi.fn().mockResolvedValue({}) }));
 
 // CRM-5 — mutable scopes (per-test authority) + spies for the new task / lists
@@ -240,6 +244,22 @@ describe('Talent360View — renders the composed contract, owns only presentatio
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: 'Email' }));
     expect(await screen.findByTestId('email-composer')).toHaveTextContent('r1');
+  });
+
+  it('opens the General Talent Contact composer when there is NO active opportunity (W1-A3, Talent-only)', async () => {
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        opportunities: { active: [], closed: [] },
+        relationship_strip: { active_opportunities: 0, submittals: 0, interviews_today: 0, offers: 0, assignments: 0, last_contact: null },
+        attention: [],
+      }),
+    );
+    renderView();
+    // Email is ENABLED without an active opportunity (can_email + recruiting_permitted).
+    fireEvent.click(await screen.findByRole('button', { name: 'Email' }));
+    expect(await screen.findByTestId('general-email-composer')).toBeInTheDocument();
+    // It is NOT the requisition-contact composer.
+    expect(screen.queryByTestId('email-composer')).not.toBeInTheDocument();
   });
 
   it('hides a section (renders nothing) when its scope is not authorized (documents null)', async () => {
