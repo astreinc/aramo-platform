@@ -1,7 +1,8 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { remindOfferDocument, requestOfferDocument, sendOfferDocument } from '../offer-document/offer-document-api';
 import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/talent-journey-api';
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
@@ -11,6 +12,11 @@ import { OfferStartJourneyView } from './OfferStartJourneyView';
 // vitest hoists vi.mock above the imports above, so the named imports are the mocked fns.
 vi.mock('../pipeline/talent-journey-api', () => ({ getTalentJourney: vi.fn() }));
 vi.mock('../offers/offers-api', () => ({ listOffers: vi.fn() }));
+vi.mock('../offer-document/offer-document-api', () => ({
+  requestOfferDocument: vi.fn(),
+  sendOfferDocument: vi.fn(),
+  remindOfferDocument: vi.fn(),
+}));
 
 function journey(sub: Record<string, string | null>, doc: TalentRequisitionJourney['offer_document'] = null): TalentRequisitionJourney {
   return {
@@ -68,5 +74,49 @@ describe('OfferStartJourneyView', () => {
 
     await waitFor(() => expect(screen.getByTestId('os-pill').textContent).toBe('Offer declined'));
     expect(screen.getByTestId('os-attn-offer_declined')).toBeTruthy();
+  });
+
+  it('REQUESTED offer letter → Review & send opens a confirm modal; confirm invokes the governed send (recipient server-resolved)', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'SENT' }, { owner: 'documents', document_id: 'd1', status: 'REQUESTED' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [OFFER] });
+    vi.mocked(sendOfferDocument).mockResolvedValue({ document_id: 'd1', envelope_id: 'e1', status: 'SENT' });
+    renderAt();
+
+    fireEvent.click(await screen.findByTestId('os-action-send'));
+    // review-before-send: nothing sends until confirm.
+    expect(sendOfferDocument).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByTestId('os-confirm-send'));
+    await waitFor(() => expect(sendOfferDocument).toHaveBeenCalledWith('d1', 'o1'));
+  });
+
+  it('AWAITING_SIGNATURE → Send reminder invokes the governed same-envelope reminder', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'SENT' }, { owner: 'documents', document_id: 'd1', status: 'AWAITING_SIGNATURE' }));
+    vi.mocked(listOffers).mockResolvedValue({ items: [OFFER] });
+    vi.mocked(remindOfferDocument).mockResolvedValue({ document_id: 'd1', status: 'AWAITING_SIGNATURE', reminder_sent: true });
+    renderAt();
+
+    fireEvent.click(await screen.findByTestId('os-action-remind'));
+    await waitFor(() => expect(remindOfferDocument).toHaveBeenCalledWith('d1'));
+  });
+
+  it('offer exists but no letter → Prepare offer letter invokes the governed request', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'SENT' }, null));
+    vi.mocked(listOffers).mockResolvedValue({ items: [OFFER] });
+    vi.mocked(requestOfferDocument).mockResolvedValue({ document_id: 'd1', offer_id: 'o1' });
+    renderAt();
+
+    fireEvent.click(await screen.findByTestId('os-action-prepare'));
+    await waitFor(() => expect(requestOfferDocument).toHaveBeenCalledWith({ offer_id: 'o1' }));
+  });
+
+  it('declined → read-only: no governed action buttons are offered (§6.8)', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValue(journey({ offer_state: 'DECLINED' }, null));
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-actions')).toBeTruthy());
+    expect(screen.queryByTestId('os-action-prepare')).toBeNull();
+    expect(screen.queryByTestId('os-action-send')).toBeNull();
+    expect(screen.queryByTestId('os-action-remind')).toBeNull();
   });
 });

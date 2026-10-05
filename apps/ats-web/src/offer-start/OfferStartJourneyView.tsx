@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '@aramo/fe-foundation';
 import { Link, useParams } from 'react-router-dom';
 
+import { remindOfferDocument, requestOfferDocument, sendOfferDocument } from '../offer-document/offer-document-api';
 import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/talent-journey-api';
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
@@ -51,6 +53,10 @@ export function OfferStartJourneyView(): JSX.Element {
   const [offer, setOffer] = useState<OfferView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     if (pipelineId === undefined) return;
@@ -77,6 +83,25 @@ export function OfferStartJourneyView(): JSX.Element {
     void load();
   }, [load]);
 
+  const flash = useCallback((msg: string): void => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 2800);
+  }, []);
+
+  // Every current-step action routes to an owning-domain GOVERNED command (never an FE state
+  // write). The recipient + signing link stay server-resolved (§15.4 / PL-2 / PL-5).
+  const runAction = useCallback(async (fn: () => Promise<void>): Promise<void> => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      await fn();
+    } catch {
+      setActionError('That action could not be completed. Refresh and try again.');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   if (loading) {
     return <section className="os-root"><div className="os-empty">Loading…</div></section>;
   }
@@ -94,6 +119,48 @@ export function OfferStartJourneyView(): JSX.Element {
     if (g) g.steps.push(s);
     else grouped.push({ group: s.group, steps: [s] });
   }
+
+  // Current-step action — derived from server state; each routes to a governed owning-domain
+  // command (offer-letter prepare/send/remind). Declined ⇒ read-only (no action; §6.8).
+  const doc = journey.offer_document;
+  const declined = journey.sub_states['offer_state'] === 'DECLINED';
+  type StepAction = { readonly key: string; readonly label: string; readonly run: () => void };
+  let stepAction: StepAction | null = null;
+  if (!declined) {
+    if (offer !== null && doc === null) {
+      stepAction = {
+        key: 'prepare',
+        label: 'Prepare offer letter',
+        run: () =>
+          void runAction(async () => {
+            await requestOfferDocument({ offer_id: offer.id });
+            await load();
+            flash('Offer letter prepared');
+          }),
+      };
+    } else if (doc?.status === 'REQUESTED') {
+      stepAction = { key: 'send', label: 'Review & send', run: () => setSendModalOpen(true) };
+    } else if (doc?.status === 'AWAITING_SIGNATURE') {
+      stepAction = {
+        key: 'remind',
+        label: 'Send reminder',
+        run: () =>
+          void runAction(async () => {
+            await remindOfferDocument(doc.document_id);
+            flash('Reminder sent');
+          }),
+      };
+    }
+  }
+  const onConfirmSend = (): void => {
+    if (offer === null || doc === null) return;
+    void runAction(async () => {
+      await sendOfferDocument(doc.document_id, offer.id);
+      setSendModalOpen(false);
+      await load();
+      flash('Offer sent for signature');
+    });
+  };
 
   return (
     <section className="os-root" data-testid="offer-start-journey">
@@ -115,7 +182,21 @@ export function OfferStartJourneyView(): JSX.Element {
       </header>
 
       <div className="os-body">
-        <div className="os-stepper" data-testid="os-stepper">
+        <div className="os-main">
+          {(stepAction !== null || declined) && (
+            <div className="os-card os-step-actions" data-testid="os-actions">
+              <div className="os-card-head">This step</div>
+              {declined ? (
+                <div className="os-muted">The offer was declined — this journey is read-only here. The requisition and client selection keep their own state.</div>
+              ) : stepAction !== null ? (
+                <Button type="button" onClick={stepAction.run} disabled={busy} data-testid={`os-action-${stepAction.key}`}>
+                  {stepAction.label}
+                </Button>
+              ) : null}
+              {actionError !== null ? <div className="os-action-error" role="alert">{actionError}</div> : null}
+            </div>
+          )}
+          <div className="os-stepper" data-testid="os-stepper">
           {grouped.map((g) => (
             <div key={g.group} className="os-group">
               <div className="os-group-head">{g.group}</div>
@@ -130,6 +211,7 @@ export function OfferStartJourneyView(): JSX.Element {
               ))}
             </div>
           ))}
+          </div>
         </div>
 
         <aside className="os-rail">
@@ -190,6 +272,24 @@ export function OfferStartJourneyView(): JSX.Element {
           </div>
         </aside>
       </div>
+
+      {sendModalOpen ? (
+        <div className="os-modal-backdrop" data-testid="os-send-modal">
+          <div className="os-modal" role="dialog" aria-modal="true" aria-label="Send offer letter for signature">
+            <div className="os-modal-head">Send offer letter for signature</div>
+            <div className="os-modal-body">
+              The Offer Letter will be sent to the talent (resolved from the offer, server-side) for
+              e-signature through Aramo. Nothing sends until you confirm.
+            </div>
+            <div className="os-modal-actions">
+              <Button type="button" unstyled onClick={() => setSendModalOpen(false)} disabled={busy}>Cancel</Button>
+              <Button type="button" onClick={onConfirmSend} disabled={busy} data-testid="os-confirm-send">Send for signature</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toast !== null ? <div className="os-toast" data-testid="os-toast">{toast}</div> : null}
     </section>
   );
 }

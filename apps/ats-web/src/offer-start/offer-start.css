@@ -42,3 +42,15 @@
 .os-commercial-note { margin-top: 10px; padding-top: 9px; border-top: 1px solid #f2f4f6; font-size: 11.5px; color: #5c6770; }
 .os-hist { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid #f2f4f6; font-size: 12px; }
 .os-hist-what { font-weight: 600; }
+
+/* Current-step actions + review-before-send modal + toast. */
+.os-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.os-main .os-stepper { flex: initial; }
+.os-step-actions { display: flex; flex-direction: column; gap: 10px; }
+.os-action-error { font-size: 11.5px; color: #b3402a; }
+.os-modal-backdrop { position: fixed; inset: 0; background: rgba(11, 16, 34, 0.42); z-index: 80; display: grid; place-items: center; padding: 20px; }
+.os-modal { width: min(560px, 100%); background: #fff; border-radius: 14px; box-shadow: 0 30px 70px -20px rgba(11, 16, 34, 0.5); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.os-modal-head { font-size: 16px; font-weight: 700; }
+.os-modal-body { font-size: 13px; color: #3a454e; line-height: 1.5; }
+.os-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.os-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #1b2730; color: #fff; border-radius: 9px; padding: 9px 14px; font-size: 12.5px; z-index: 95; box-shadow: 0 12px 30px -10px rgba(11, 16, 34, 0.5); }
