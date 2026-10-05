@@ -23,6 +23,7 @@ import {
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 import { type TalentRecordRepository } from '@aramo/talent-record';
 
+import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import { OfferDocumentOrchestratorService, OFFER_LETTER_TYPE_ID } from '../offer-document/offer-document-orchestrator.service.js';
 
 // DOC-6 B4 (R-6-10, PL-1/PL-2) — the load-bearing offer-letter proof on real Postgres
@@ -79,9 +80,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 offer-docum
 
   const createEnvelope = vi.fn(async () => ({ envelope_id: 'env-doc6-1', status: 'DRAFT', signers: [] }));
   const sendEnvelope = vi.fn(async () => ({ envelope_id: 'env-doc6-1', status: 'SENT', signers: [] }));
-  const signature = { createEnvelope, sendEnvelope } as unknown as SignatureProviderPort;
+  // Duplicate-envelope guard reverse-lookup — no prior live envelope in this flow → null.
+  const findEnvelopeForDocument = vi.fn(async () => null);
+  const signature = { createEnvelope, sendEnvelope, findEnvelopeForDocument } as unknown as SignatureProviderPort;
   const render = {
-    generateRevision: vi.fn(async () => ({ revision_id: uuid(), sha256: 'a'.repeat(64) })),
+    // Persist a REAL immutable DocumentRevision (matching the production RenderService freeze
+    // contract) so the shared send path resolves the frozen revision via getCurrentRevision —
+    // proving the shared signing abstraction matches the actual production contract, not a stub.
+    generateRevision: vi.fn(async (args: { tenant_id: string; document_id: string; actor_id: string }) => {
+      const revisionId = uuid();
+      const sha = 'a'.repeat(64);
+      await admin.query(
+        `INSERT INTO "documents"."DocumentRevision" (id, tenant_id, document_id, revision_number, status, content_sha256, created_by, frozen_at)
+         VALUES ($1,$2,$3,1,'FROZEN',$4,$5,now())`,
+        [revisionId, args.tenant_id, args.document_id, sha, args.actor_id],
+      );
+      return { revision_id: revisionId, sha256: sha };
+    }),
   } as unknown as RenderService;
   const talent = {
     findById: vi.fn(async () => ({ email1: 'jane.doe@example.com', first_name: 'Jane', last_name: 'Doe' })),
@@ -105,13 +120,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 offer-docum
     await storePrisma.$connect();
 
     offers = new OfferRepository(placementPrisma, new OfferTransitionPolicyService(new PolicyStore(storePrisma)));
-    orchestrator = new OfferDocumentOrchestratorService(
-      new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
-      render,
-      signature,
-      talent,
-      offers,
-    );
+    const documentsRepo = new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma));
+    const signing = new GovernedDocumentSigningService(documentsRepo, render, signature);
+    orchestrator = new OfferDocumentOrchestratorService(signing, talent, offers);
 
     // Publish a permissive offer package so the Offer can reach SENT.
     await new PolicyStore(storePrisma).publish({ tenant_id: TENANT, definition: permissivePackage(), published_by: SYSTEM });

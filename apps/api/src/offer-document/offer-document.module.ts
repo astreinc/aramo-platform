@@ -16,6 +16,7 @@ import { OfferRepository } from '@aramo/placement';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
+import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
 import { OfferModule } from '../offer/offer.module.js';
 
@@ -35,6 +36,10 @@ const OFFER_DOCS_STORAGE = 'OFFER_DOCS_STORAGE';
 const OFFER_DOCS_RENDERING = 'OFFER_DOCS_RENDERING';
 const OFFER_DOCS_REPO = 'OFFER_DOCS_REPO';
 const OFFER_DOCS_RENDER_SERVICE = 'OFFER_DOCS_RENDER_SERVICE';
+// The shared governed-document signing capability, wired module-locally from the SAME documents
+// repo + render + signature instances (explicit STRING token — avoids the bare-class-token
+// non-strict-lookup collision, consistent with the other module-local providers).
+const OFFER_DOCS_SIGNING = 'OFFER_DOCS_SIGNING';
 
 @Module({
   imports: [ObjectStorageModule, TalentRecordModule, OfferModule],
@@ -61,15 +66,22 @@ const OFFER_DOCS_RENDER_SERVICE = 'OFFER_DOCS_RENDER_SERVICE';
       inject: [OFFER_DOCS_PRISMA, OFFER_DOCS_RENDERING, OFFER_DOCS_STORAGE],
     },
     {
-      provide: OfferDocumentOrchestratorService,
+      provide: OFFER_DOCS_SIGNING,
       useFactory: (
         documents: DocumentsRepository,
         render: RenderService,
         signature: SignatureProviderPort,
+      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, signature),
+      inject: [OFFER_DOCS_REPO, OFFER_DOCS_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT],
+    },
+    {
+      provide: OfferDocumentOrchestratorService,
+      useFactory: (
+        signing: GovernedDocumentSigningService,
         talent: TalentRecordRepository,
         offers: OfferRepository,
-      ): OfferDocumentOrchestratorService => new OfferDocumentOrchestratorService(documents, render, signature, talent, offers),
-      inject: [OFFER_DOCS_REPO, OFFER_DOCS_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT, TalentRecordRepository, OfferRepository],
+      ): OfferDocumentOrchestratorService => new OfferDocumentOrchestratorService(signing, talent, offers),
+      inject: [OFFER_DOCS_SIGNING, TalentRecordRepository, OfferRepository],
     },
   ],
 })

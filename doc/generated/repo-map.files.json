@@ -110,6 +110,7 @@
     "apps/api/src/create-submittal/create-submittal.controller.ts",
     "apps/api/src/create-submittal/create-submittal.module.ts",
     "apps/api/src/create-submittal/create-submittal.service.ts",
+    "apps/api/src/document-signing/governed-document-signing.service.ts",
     "apps/api/src/documents/aramo-s3-document-storage.adapter.ts",
     "apps/api/src/documents/documents-esign.controller.ts",
     "apps/api/src/documents/documents-esign.module.ts",
