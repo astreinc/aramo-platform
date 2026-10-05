@@ -10,6 +10,7 @@ import {
 import { PipelineRepository } from '@aramo/pipeline';
 
 import { SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID } from '../communications/system-requisition-contact-template.service.js';
+import { SYSTEM_GENERAL_TALENT_CONTACT_TEMPLATE_ID } from '../communications/system-general-talent-contact-template.service.js';
 
 import { EMAIL_CONSENT_GATE, type EmailConsentGate } from './email-consent-gate.port.js';
 import {
@@ -39,7 +40,9 @@ export interface SendRecruiterEmailArgs {
   readonly recruiter_id: string;
   readonly connection_id?: string;
   readonly talent_record_id: string;
-  readonly requisition_id: string;
+  // COMM-RECRUITER-W1 (W1-A2) — OPTIONAL: a General Talent Contact send has no
+  // requisition. Present → full COMM-C4 behavior; absent → Talent SUBJECT only.
+  readonly requisition_id?: string;
   readonly pipeline_id?: string;
   // COMM-C4 — the caller's visible requisition set (global VisibilityInterceptor,
   // threaded from the controller) so the CONTACT side effect honours the SAME
@@ -66,7 +69,8 @@ export interface EmailSendResultView {
   readonly interaction_id: string;
   readonly status: 'accepted';
   readonly talent_record_id: string;
-  readonly requisition_id: string;
+  // COMM-RECRUITER-W1 (W1-A2) — null for a requisition-free General Talent Contact send.
+  readonly requisition_id: string | null;
   readonly idempotent_replay: boolean;
 }
 
@@ -160,7 +164,9 @@ export class MicrosoftEmailService {
         // its row id. Never re-resolved against the tenant's CURRENT template.
         template_key: args.template_key ?? null,
         template_id:
-          args.template_id == null || args.template_id === SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID
+          args.template_id == null ||
+          args.template_id === SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID ||
+          args.template_id === SYSTEM_GENERAL_TALENT_CONTACT_TEMPLATE_ID
             ? null
             : args.template_id,
       });
@@ -184,13 +190,18 @@ export class MicrosoftEmailService {
       subject_id: args.talent_record_id,
       relation_type: 'subject',
     });
-    await this.repo.addAssociation({
-      tenant_id: args.tenant_id,
-      interaction_id: interactionId,
-      subject_type: 'requisition',
-      subject_id: args.requisition_id,
-      relation_type: 'regarding',
-    });
+    // COMM-RECRUITER-W1 (W1-A2) — the Requisition REGARDING association is written
+    // ONLY when a requisition is bound. A General Talent Contact send (no
+    // requisition) writes the Talent SUBJECT only — no fabricated requisition.
+    if (args.requisition_id !== undefined && args.requisition_id.length > 0) {
+      await this.repo.addAssociation({
+        tenant_id: args.tenant_id,
+        interaction_id: interactionId,
+        subject_type: 'requisition',
+        subject_id: args.requisition_id,
+        relation_type: 'regarding',
+      });
+    }
     if (args.pipeline_id !== undefined && args.pipeline_id.length > 0) {
       await this.repo.addAssociation({
         tenant_id: args.tenant_id,
@@ -206,6 +217,8 @@ export class MicrosoftEmailService {
     // caller holds pipeline:change-status (a recruiter who may email but not
     // change status never triggers a silent transition).
     if (
+      args.requisition_id !== undefined &&
+      args.requisition_id.length > 0 &&
       args.pipeline_id !== undefined &&
       args.pipeline_id.length > 0 &&
       args.authContext.scopes.includes(PIPELINE_CHANGE_STATUS_SCOPE)
@@ -267,7 +280,7 @@ export class MicrosoftEmailService {
       interaction_id: interactionId,
       status: 'accepted',
       talent_record_id: args.talent_record_id,
-      requisition_id: args.requisition_id,
+      requisition_id: args.requisition_id ?? null,
       idempotent_replay: replay,
     };
   }

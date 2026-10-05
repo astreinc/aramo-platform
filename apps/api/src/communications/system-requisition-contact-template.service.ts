@@ -102,10 +102,11 @@ export class SystemRequisitionContactTemplateService implements RequisitionConta
     const recruiter = present(context.recruiter_display_name);
     const company = present(context.tenant_recruiting_company_name);
 
-    // Subject: title, plus location + engagement when available.
+    // COMM-RECRUITER-W1 §4A — null-safe pipe subject: Title | Location | Engagement,
+    // each segment appended only when available (never a dangling `|`).
     let subject = context.requisition_title;
-    if (locationShort !== null) subject += ` — ${locationShort}`;
-    if (engagementLabel !== null) subject += ` (${engagementLabel})`;
+    if (locationShort !== null) subject += ` | ${locationShort}`;
+    if (engagementLabel !== null) subject += ` | ${engagementLabel}`;
 
     const lines: string[] = [];
     if (firstName !== null) {
@@ -130,9 +131,8 @@ export class SystemRequisitionContactTemplateService implements RequisitionConta
     if (engagementLabel !== null) lines.push(`Engagement: ${engagementLabel}`);
 
     lines.push('');
-    lines.push(
-      "Based on your background, I'd like to connect with you to discuss the role and learn more about your experience and interest.",
-    );
+    // COMM-RECRUITER-W1 §4A — staffing-appropriate copy (replaces the prior call-this-week wording).
+    lines.push('Based on your background, I believe this opportunity may be relevant to your experience.');
 
     const summary = roleSummaryExcerpt(context.role_summary_source);
     if (summary !== null) {
@@ -144,7 +144,11 @@ export class SystemRequisitionContactTemplateService implements RequisitionConta
     }
 
     lines.push('');
-    lines.push('Would you be open to a short call this week?');
+    // COMM-RECRUITER-W1 §4A — urgency CTA with a reply prompt. Work authorization
+    // is a REPLY PROMPT ONLY; it never writes TalentRecord.work_authorization.
+    lines.push(
+      'If interested, please reply with your availability, work authorization, and confirmation on the location/work arrangement. I can share more details immediately.',
+    );
     lines.push('');
     lines.push('Best regards,');
     if (recruiter !== null) {

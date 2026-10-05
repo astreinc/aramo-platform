@@ -853,6 +853,10 @@ export const ERROR_CODES = [
   // which has no such pipeline). Fail-closed at the draft boundary; the send path
   // re-validates independently.
   'COMMUNICATION_REQUISITION_CONTACT_CONTEXT_INVALID',
+  // COMM-RECRUITER-W1 (W1-A2) — General Talent Contact DRAFT context refusal
+  // (422). details.reason=`talent_not_found` (absent or cross-tenant Talent).
+  // Talent-only (no requisition); fail-closed at the draft boundary.
+  'TALENT_CONTACT_CONTEXT_INVALID',
   // D-EMAIL-TPL-1 (ET-4) — reusable email-template management. NOT_FOUND (404):
   // tenant-safe absence (unknown id OR another tenant's row — no enumeration).
   // ALREADY_EXISTS (409): a tenant override for the (tenant, template_key) already

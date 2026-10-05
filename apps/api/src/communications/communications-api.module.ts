@@ -26,6 +26,8 @@ import { CommunicationCallService } from './communication-call.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
 import { RequisitionContactDraftController } from './requisition-contact-draft.controller.js';
 import { RequisitionContactDraftService } from './requisition-contact-draft.service.js';
+import { GeneralTalentContactDraftController } from './general-talent-contact-draft.controller.js';
+import { GeneralTalentContactDraftService } from './general-talent-contact-draft.service.js';
 import { EmailTemplateResolverService } from './email-template-resolver.service.js';
 import { EmailTemplateController } from './email-template.controller.js';
 import { EmailTemplateService } from './email-template.service.js';
@@ -84,6 +86,8 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     ZoomWebhookController,
     TalentCommunicationsController,
     RequisitionContactDraftController,
+    // COMM-RECRUITER-W1 (W1-A2) — Talent-only General Talent Contact draft.
+    GeneralTalentContactDraftController,
     // D-EMAIL-TPL-1 (ET-4) — reusable email-template management (Settings surface).
     EmailTemplateController,
   ],
@@ -94,6 +98,8 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     // recipient resolver (TalentEmailRecipientAdapter) so the recipient authority
     // model is identical to the send path; the governed template is code-owned.
     RequisitionContactDraftService,
+    // COMM-RECRUITER-W1 (W1-A2) — Talent-only draft (reuses the C recipient resolver).
+    GeneralTalentContactDraftService,
     TalentEmailRecipientAdapter,
     { provide: EMAIL_RECIPIENT_RESOLVER, useExisting: TalentEmailRecipientAdapter },
     SystemRequisitionContactTemplateService,

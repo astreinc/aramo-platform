@@ -107,7 +107,7 @@ describe('RequisitionContactDraftService (COMM-C4 draft orchestration)', () => {
     expect(view.to.editable).toBe(false);
     expect(view.to.display_name).toBe('Omvignesh Murugesan');
     // subject/body carry resolved requisition + talent context; no placeholders.
-    expect(view.subject).toBe('Business Analyst - Multi-Family — McLean, VA (Contract)');
+    expect(view.subject).toBe('Business Analyst - Multi-Family | McLean, VA | Contract');
     expect(view.body).toContain('Hi Omvignesh,');
     expect(view.body).toContain('opportunity (REQ-1000)');
     expect(view.body).not.toMatch(/[{}]/);
