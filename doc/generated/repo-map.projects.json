@@ -6052,6 +6052,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/offer-start/OfferStartWorklistView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/org/AddEdgeDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -6101,12 +6107,6 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/placement/PermanentPlacementGuaranteePanel.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/placement/PlacementBoardView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
