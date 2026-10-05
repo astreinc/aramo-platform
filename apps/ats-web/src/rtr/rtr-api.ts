@@ -54,6 +54,17 @@ export async function sendRtr(documentId: string, talent_id: string): Promise<Rt
   return apiClient.post<RtrSendResponse>(`/v1/rtr/${documentId}/send`, { talent_id });
 }
 
+// COMM-RECRUITER-W1 (W1-C3) — same-envelope reminder. RTR business state is
+// unchanged (stays AWAITING_SIGNATURE); the backend reverse-resolves the envelope.
+export interface RtrRemindResponse {
+  document_id: string;
+  status: string;
+  reminder_sent: boolean;
+}
+export async function remindRtr(documentId: string): Promise<RtrRemindResponse> {
+  return apiClient.post<RtrRemindResponse>(`/v1/rtr/${documentId}/remind`, {});
+}
+
 export async function getRtrStatus(documentId: string): Promise<RtrStatusResponse> {
   return apiClient.get<RtrStatusResponse>(`/v1/rtr/${documentId}/status`);
 }

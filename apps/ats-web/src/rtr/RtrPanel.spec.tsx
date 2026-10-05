@@ -5,12 +5,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('./rtr-api', () => ({
   requestRtr: vi.fn(),
   sendRtr: vi.fn(),
+  remindRtr: vi.fn(),
   getCurrentRtr: vi.fn(),
   getRtrPreview: vi.fn(),
 }));
 
 import { RtrPanel } from './RtrPanel';
-import { requestRtr, sendRtr, getCurrentRtr, getRtrPreview, type RtrCurrentResponse } from './rtr-api';
+import { requestRtr, sendRtr, remindRtr, getCurrentRtr, getRtrPreview, type RtrCurrentResponse } from './rtr-api';
 
 // RTR-TEMPLATE-1 (§36) — the recruiter RTR panel: mount reconciliation, the locked
 // states, pinned-template provenance, preview, executed evidence, scope-gated
@@ -93,6 +94,30 @@ describe('RtrPanel', () => {
     fireEvent.click(await screen.findByText('Send for signature'));
     await waitFor(() => screen.getByText('Awaiting signature'));
     expect(sendRtr).toHaveBeenCalledWith('doc-1', 't-1');
+  });
+
+  it('W1-C3 — AWAITING_SIGNATURE shows Send Reminder (document:execute); click reminds the SAME document + shows "Reminder sent"', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'AWAITING_SIGNATURE' }));
+    vi.mocked(remindRtr).mockResolvedValue({ document_id: 'doc-1', status: 'AWAITING_SIGNATURE', reminder_sent: true });
+    renderPanel();
+    fireEvent.click(await screen.findByTestId('rtr-send-reminder'));
+    await waitFor(() => expect(remindRtr).toHaveBeenCalledWith('doc-1'));
+    expect(await screen.findByTestId('rtr-reminder-notice')).toHaveTextContent('Reminder sent');
+    // Still awaiting — reminder is not a lifecycle transition.
+    expect(screen.getByText('Awaiting signature')).toBeInTheDocument();
+  });
+
+  it('W1-C3 — Send Reminder is hidden without document:execute, and never shown while REQUESTED', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'AWAITING_SIGNATURE' }));
+    const { unmount } = renderPanel({ canSend: false });
+    await screen.findByText('Awaiting signature');
+    expect(screen.queryByTestId('rtr-send-reminder')).toBeNull();
+    unmount();
+
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    renderPanel();
+    await screen.findByText('Requested');
+    expect(screen.queryByTestId('rtr-send-reminder')).toBeNull(); // no reminder before send
   });
 
   it('F — reload restores an existing AWAITING_SIGNATURE RTR (no Request RTR)', async () => {
