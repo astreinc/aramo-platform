@@ -430,6 +430,27 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
     }));
   }
 
+  // Offer & Start §11 — the authoritative live pipeline-episode id per (talent, requisition),
+  // via the Pipeline repo (ATS→Pipeline read, by UUID). Bounded to the pairs passed (the
+  // Offer & Start exceptions); a pair with no live episode is omitted from the map.
+  async resolveLiveEpisodeIds(
+    ctx: DeskActorContext,
+    pairs: readonly { talent_record_id: string; requisition_id: string }[],
+  ): Promise<ReadonlyMap<string, string>> {
+    const out = new Map<string, string>();
+    await Promise.all(
+      pairs.map(async (p) => {
+        const episode = await this.pipelines.findLiveEpisode({
+          tenant_id: ctx.tenant_id,
+          talent_record_id: p.talent_record_id,
+          requisition_id: p.requisition_id,
+        });
+        if (episode !== null) out.set(`${p.talent_record_id}|${p.requisition_id}`, episode.id);
+      }),
+    );
+    return out;
+  }
+
   async resolveTalentNames(
     ctx: DeskActorContext,
     talent_ids: readonly string[],

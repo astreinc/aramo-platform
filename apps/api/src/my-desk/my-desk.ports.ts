@@ -179,6 +179,14 @@ export interface MyDeskReadPort {
     ctx: DeskActorContext,
   ): Promise<readonly DeskBlockedPlacementRow[]>;
   listExpiringOffers(ctx: DeskActorContext): Promise<readonly DeskOfferRow[]>;
+  // Offer & Start §11 — resolve the authoritative LIVE pipeline-episode id for each
+  // (talent, requisition) pair (the person × requisition journey key), for the Offer &
+  // Start deep-link. Bounded to the pairs the desk already surfaces as exceptions; keyed
+  // `${talent_record_id}|${requisition_id}`; a pair with no live episode is simply absent.
+  resolveLiveEpisodeIds(
+    ctx: DeskActorContext,
+    pairs: readonly { talent_record_id: string; requisition_id: string }[],
+  ): Promise<ReadonlyMap<string, string>>;
   // Batch id → "First Last" resolution (bounded by the ids the desk already
   // holds). Missing ids simply do not appear in the map.
   resolveTalentNames(

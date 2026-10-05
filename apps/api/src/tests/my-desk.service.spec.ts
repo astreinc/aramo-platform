@@ -42,6 +42,7 @@ function fakePort(overrides: Partial<MyDeskReadPort> = {}): MyDeskReadPort {
     listAwaitingClient: async () => [],
     listBlockedPlacements: async () => [],
     listExpiringOffers: async () => [],
+    resolveLiveEpisodeIds: async () => new Map(),
     resolveTalentNames: async () => new Map(),
     resolveTalentContactability: async () => new Map(),
     resolveCompanyNames: async () => new Map(),
@@ -356,6 +357,40 @@ describe('MyDeskService.compose — exceptions', () => {
       severity: 'medium',
       kind: 'offer_expiring',
     });
+  });
+
+  it('§11 — an expiring-offer exception gets a Continue CTA deep-linking into /offer-start/:pipelineId when the backend resolves a live episode', async () => {
+    const offers: DeskOfferRow[] = [
+      { id: 'of-1', talent_record_id: 'tal-y', requisition_id: 'req-1', state: 'SENT', offer_expires_at: '2026-10-02T12:00:00Z' },
+    ];
+    const svc = new MyDeskService(
+      fakePort({
+        listExpiringOffers: async () => offers,
+        resolveTalentNames: async () => new Map([['tal-y', 'Liam OConnor']]),
+        resolveLiveEpisodeIds: async () => new Map([['tal-y|req-1', 'pipe-77']]),
+      }),
+    );
+    const view = await svc.compose(CTX, NOW, TZ);
+    const exc = view.exceptions.find((x) => x.kind === 'offer_expiring');
+    expect(exc?.primary_action).toEqual({
+      kind: 'continue_offer_start',
+      label: 'Continue in Offer & Start',
+      href: '/offer-start/pipe-77',
+    });
+  });
+
+  it('§11 — no CTA when no live episode resolves (authoritative-only; unchanged prior behavior)', async () => {
+    const offers: DeskOfferRow[] = [
+      { id: 'of-1', talent_record_id: 'tal-y', requisition_id: 'req-1', state: 'SENT', offer_expires_at: '2026-10-02T12:00:00Z' },
+    ];
+    const svc = new MyDeskService(
+      fakePort({
+        listExpiringOffers: async () => offers,
+        resolveTalentNames: async () => new Map([['tal-y', 'Liam OConnor']]),
+      }),
+    );
+    const view = await svc.compose(CTX, NOW, TZ);
+    expect(view.exceptions.find((x) => x.kind === 'offer_expiring')?.primary_action).toBeNull();
   });
 });
 

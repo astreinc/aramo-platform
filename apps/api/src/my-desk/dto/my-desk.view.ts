@@ -47,7 +47,12 @@ export type DeskActionKind =
   // contextual email (requisition present, email permitted). The FE resolves
   // each affordance from `kind`; a Task never grants the communication action.
   | 'call'
-  | 'email';
+  | 'email'
+  // Offer & Start §11 — deep-link an Offer & Start exception into the single
+  // person × requisition journey. Narrow: the FE renders it as a plain link to
+  // the action's `href` (/offer-start/:pipelineId); emitted ONLY where the
+  // backend resolved an authoritative pipeline episode. NOT a generic router.
+  | 'continue_offer_start';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;
