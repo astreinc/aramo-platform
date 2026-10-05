@@ -890,6 +890,14 @@ export const ERROR_CODES = [
   // frozen RENDERED_UNSIGNED artifact to show (409). The document exists but is
   // not in a previewable state (no revision rendered yet).
   'RTR_PREVIEW_NOT_AVAILABLE',
+  // Offer & Start Journey (prereq hygiene §5.2) — Offer Lifecycle optimistic
+  // concurrency: a governed PATCH transition lost the state-guarded CAS race
+  // (updateMany WHERE state=<from> matched 0 rows) because a concurrent writer
+  // already advanced the Offer. 409 — refresh and retry. Mirrors
+  // CLIENT_SELECTION_TRANSITION_CONFLICT / PIPELINE_TRANSITION_CONFLICT. Appended
+  // LAST / never renumber (ordered-parity with openapi/common.yaml + the
+  // ERROR_CODE_TO_HTTP_STATUS map).
+  'OFFER_TRANSITION_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

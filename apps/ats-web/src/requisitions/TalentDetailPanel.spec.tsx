@@ -182,8 +182,9 @@ describe('TalentDetailPanel', () => {
 
   it('Qualified NEVER exposes Create Offer — no offer action in the journey', async () => {
     // Even holding offer:create, the drawer must not surface the offer decision
-    // surface at Qualified: the journey returns no offer-owner action.
-    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    // surface at Qualified: the journey returns no offer-owner action. Even
+    // holding full offer authority (read+create+transition), Qualified shows nothing.
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
     await screen.findByRole('list', { name: 'Talent journey' });
     expect(screen.queryByText('Offer decision')).toBeNull();
     expect(listOffers).not.toHaveBeenCalled();
@@ -230,7 +231,7 @@ describe('TalentDetailPanel', () => {
         },
       ],
     });
-    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
     // The list read is keyed on (requisition_id, talent_record_id).
     await waitFor(() =>
       expect(listOffers).toHaveBeenCalledWith({

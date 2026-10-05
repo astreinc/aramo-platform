@@ -125,7 +125,7 @@ const OFFER_EXPIRY_HORIZON_MS = 7 * 86_400_000;
 // independently-governed downstream lifecycles the workspace composes.
 const PIPELINE_READ = 'pipeline:read';
 const PIPELINE_CHANGE_STATUS = 'pipeline:change-status';
-const OFFER_READ = 'offer:create'; // read rides create-authority (D7)
+const OFFER_READ = 'offer:read'; // §5.2 hygiene: FE read gate = the real BE read authority (GET /v1/offers requires offer:read); was an 'offer:create' surrogate that let the tab render then predictably 403 on the list.
 const PRE_START_READ = 'pre_start_requirement:read';
 const PRE_START_ACT = 'pre_start_requirement:act';
 const PLACEMENT_READ = 'placement:read';
