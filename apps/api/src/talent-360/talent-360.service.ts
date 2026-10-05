@@ -319,7 +319,9 @@ export class Talent360Service {
       owner_label: ownerId !== null ? (userNames.get(ownerId) ?? null) : null,
       next_action: nextOpportunityAction(b.journey),
       journey: b.journey,
-      open_journey_href: `/requisitions/${b.episode.requisition_id}`,
+      // §11 — the active opportunity deep-links to the person × requisition Offer & Start journey
+      // (pipeline-episode-keyed), NOT the bare requisition; the person axis is preserved.
+      open_journey_href: `/offer-start/${b.episode.id}`,
     };
   }
 
