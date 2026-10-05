@@ -6834,6 +6834,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/rtr-reminder.spec.ts",
+      "status": "excluded",
+      "to": "libs/esign/src/tests/esign-reminder.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/rtr-template-content-parity.spec.ts",
       "status": "excluded",
       "to": "libs/documents/prisma/migrations/20261004120000_rtr_template_1_default_rtr_template_backfill/migration.sql"

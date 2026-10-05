@@ -365,6 +365,7 @@
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",
+      "CATEGORY_TEMPLATE_TOKENS",
       "COMMUNICATION_CHANNELS",
       "COMMUNICATION_DIRECTIONS",
       "COMMUNICATION_DISPOSITION_OUTCOMES",
@@ -386,6 +387,7 @@
       "EmailTemplateRepository",
       "FAKE_VOICE_PROVIDER_KEY",
       "FakeVoiceProvider",
+      "GENERAL_TALENT_CONTACT_TOKENS",
       "REQUISITION_EXISTENCE_PORT",
       "TERMINAL_CALL_STATES",
       "TemplateValidationError",
@@ -408,6 +410,7 @@
       "parseZoomWebhookEnvelope",
       "renderTemplate",
       "validateTemplateTokens",
+      "validateTemplateTokensForCategory",
       "verifyZoomWebhookSignature"
     ],
     "@aramo/company": [
@@ -647,6 +650,7 @@
       "EVIDENCE_MANIFEST_SIGNER_PORT",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
+      "EnvelopeAmbiguousError",
       "EnvelopeIllegalTransitionError",
       "EnvelopeNotFoundError",
       "EsignIdempotencyConflictError",
@@ -658,6 +662,7 @@
       "OutboxDeliveryService",
       "OutboxService",
       "PrismaService",
+      "ReminderNotAllowedError",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_TOKEN_BYTES",
       "SignatureFieldIncompleteError",
@@ -3256,6 +3261,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/general-talent-contact-template.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3557,6 +3568,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reminder.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4199,6 +4216,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-reminder.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
       },
@@ -5250,6 +5273,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/general-talent-contact-template.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5546,6 +5575,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-reminder.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6486,6 +6521,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/general-talent-contact-draft.service.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8081,6 +8122,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search.e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/general-talent-contact-draft.service.spec.ts",
         "project": "api",
         "status": "excluded"
       },

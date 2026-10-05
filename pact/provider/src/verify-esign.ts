@@ -124,6 +124,34 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // COMM-RECRUITER-W1 (W1-C) — a SENT envelope with a PENDING (incomplete) signer
+    // over the SAME (DOC_REF, REV_REF), for the reverse-lookup + reminder states.
+    async function seedSentEnvelope(): Promise<void> {
+      await db.query(`DELETE FROM "esign"."SignatureEvent" WHERE envelope_id = $1`, [ENVELOPE_ID]);
+      await db.query(`DELETE FROM "esign"."SigningSession" WHERE envelope_id = $1`, [ENVELOPE_ID]);
+      await db.query(`DELETE FROM "esign"."SignatureEnvelope" WHERE id = $1`, [ENVELOPE_ID]);
+      await db.query(
+        `INSERT INTO "esign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by)
+         VALUES ($1,$2,'Right to Represent','SENT','SINGLE_SIGNATURE',$3)`,
+        [ENVELOPE_ID, TENANT_ID, CREATED_BY],
+      );
+      await db.query(
+        `INSERT INTO "esign"."EnvelopeDocument" (id, tenant_id, envelope_id, document_ref, document_revision_ref, title, source_sha256, ordinal)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,'rtr.pdf',$5,1)`,
+        [TENANT_ID, ENVELOPE_ID, DOC_REF, REV_REF, SHA256],
+      );
+      await db.query(
+        `INSERT INTO "esign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status)
+         VALUES ($1,$2,$3,'jane@example.com','Jane Doe',1,'PENDING')`,
+        [SIGNER_ID, TENANT_ID, ENVELOPE_ID],
+      );
+      await db.query(
+        `INSERT INTO "esign"."SignatureEvent" (id, tenant_id, envelope_id, event_type, actor_type, previous_event_hash, event_hash)
+         VALUES (gen_random_uuid(),$1,$2,'ENVELOPE_SENT','SERVICE',NULL,'seed-event-chain-hash')`,
+        [TENANT_ID, ENVELOPE_ID],
+      );
+    }
+
     // DOC-4C (R1 seam A) — seed ONE independent signer-session fixture (envelope +
     // document + signer + head event + ISSUED session). NO deletes: SignatureEvent
     // is append-only; each op uses a distinct envelope/token so nothing is re-seeded.
@@ -272,6 +300,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a signer session is ready to complete with another pending signer': async () => {
             await seedSignerFixture({ envelopeId: C_ENVELOPE_ID, envDocId: C_ENV_DOC_ID, signerId: C_SIGNER_ID, sessionId: C_SESSION_ID, token: TOKEN_COMPLETE, disclosure: true, secondSignerId: C_SIGNER2_ID });
+          },
+          // COMM-RECRUITER-W1 (W1-C) — reverse lookup + same-envelope reminder.
+          'a non-terminal signature envelope exists for the document revision': async () => {
+            await seedSentEnvelope();
+          },
+          'a sent signature envelope with an incomplete signer exists': async () => {
+            await seedSentEnvelope();
           },
         },
       });

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { AramoError } from '@aramo/common';
 import type { SignatureProviderPort, EnvelopeSummary } from '@aramo/documents-contracts';
 
 import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
@@ -130,7 +131,6 @@ describe('W1-C3 — RTR reminder orchestration', () => {
     const { orch } = makeOrchestrator({
       docStatus: 'PREPARED',
       findEnvelope: async () => {
-        const { AramoError } = await import('@aramo/common');
         throw new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', 'ambiguous', 409, { requestId: 'r' });
       },
     });
