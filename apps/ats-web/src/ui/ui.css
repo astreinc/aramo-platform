@@ -5335,9 +5335,14 @@ button.rc-snapcard:hover {
 .rc-tip__val--mute { color: #93A0A8; }
 .rc-tip__cta { flex: none; margin-left: auto; }
 /* List|Board segmented control (shared preference) + embedded compact board. */
-.rc-ws__seg { display: inline-flex; margin-left: auto; flex: none; background: #EEF1F4; border-radius: 8px; padding: 2px; gap: 2px; }
-.rc-ws__seg-opt { border: none; background: transparent; color: #5C6770; font: 500 12px 'Hanken Grotesk', sans-serif; border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
-.rc-ws__seg-opt--on { background: #fff; color: #011F8D; font-weight: 700; box-shadow: 0 1px 2px rgba(15,25,40,.14); }
+/* Shared List|Board view toggle (TalentViewToggle) — the ONE implementation used by both the
+   Talent tab and the Workspace → Talent in play, pixel-matched to the prototype. */
+.rc-vtog { display: inline-flex; flex: none; background: #EEF1F4; border-radius: 8px; padding: 2px; gap: 2px; }
+.rc-vtog__opt { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: #5C6770; font: 500 12px 'Hanken Grotesk', sans-serif; border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
+.rc-vtog__opt--on { background: #fff; color: #011F8D; font-weight: 700; box-shadow: 0 1px 2px rgba(15,25,40,.14); }
+.rc-vtog__ic { flex: none; }
+.rc-tip__head .rc-vtog { margin-left: auto; }
+.rc-tj__viewbar { margin-bottom: 12px; }
 .rc-tip__board { border-top: 1px solid #F2F4F6; padding: 12px 14px 14px; overflow-x: auto; }
 
 /* 2.4 Requisition context. */
@@ -6329,64 +6334,88 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
    family (NOT the funnel `rc-tcard__stage--` / `rc-distseg--` families that the
    L3-G drift guard pins), so it never trips that exclusivity guard.
    ============================================================================ */
+/* Requisition Talent Board — pixel-matched to platform/TalentBoard.dc.html. A horizontal,
+   scroll-right column rail (268px columns, a trailing narrow Closed column); cards carry a
+   28px avatar + identity + days, a résumé row, authoritative fact pills, and a footer with the
+   governed action / waiting text, the assigned recruiter's initials and a ⋯ menu. */
 .rc-tboard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .rc-tboard__cols {
-  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; align-items: flex-start;
+  display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; align-items: flex-start; min-height: 420px;
 }
 .rc-tboard__col {
-  flex: 0 0 208px; min-width: 208px; background: var(--surface-2, #f6f8fc);
-  border: 1px solid var(--line, #e2e8f0); border-radius: var(--r-md, 10px); display: flex; flex-direction: column;
+  flex: 0 0 268px; box-sizing: border-box; background: #F7F8FA; border: 1px solid #E5E9ED;
+  border-radius: 12px; padding: 10px; min-height: 420px; display: flex; flex-direction: column; gap: 8px;
 }
-.rc-tboard__col-head {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  padding: 9px 11px; border-bottom: 1px solid var(--line, #e2e8f0);
-}
-.rc-tboard__col-title { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; color: var(--ink, #142330); text-transform: uppercase; }
+.rc-tboard__col-head { display: flex; align-items: center; gap: 7px; padding: 0 2px; }
+.rc-tboard__col-dot { width: 7px; height: 7px; border-radius: 50%; background: #C6CDD4; flex: none; }
+.rc-tboard__col-title { font-size: 12.5px; font-weight: 700; color: #1B2730; }
 .rc-tboard__col-count {
-  font-size: 0.68rem; font-weight: 600; color: var(--muted, #64748b);
-  background: var(--surface, #fff); border: 1px solid var(--line, #e2e8f0); border-radius: 999px; padding: 0 7px; min-width: 20px; text-align: center;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: #5C6770;
+  background: #fff; border: 1px solid #E5E9ED; border-radius: 10px; padding: 0 6px;
 }
-.rc-tboard__col-body { display: flex; flex-direction: column; gap: 8px; padding: 9px; min-height: 40px; }
-.rc-tboard__empty { color: var(--faint, #94a3b8); font-size: 0.8rem; text-align: center; margin: 6px 0; }
-.rc-tboard__band-group { display: flex; flex-direction: column; gap: 6px; }
-.rc-tboard__band-label { font-size: 0.62rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted, #64748b); margin: 2px 0 0; }
+.rc-tboard__col-body { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.rc-tboard__empty { font-size: 11.5px; color: #A9B3BC; text-align: center; padding: 18px 6px; margin: 0; }
+.rc-tboard__band-group { display: flex; flex-direction: column; gap: 8px; }
+.rc-tboard__band-label { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 2px 0; margin: 0; }
+.rc-tboard__band-label::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: none; }
+.rc-tboard__band-label--ready { color: #1F7A4D; }
+.rc-tboard__band-label--needs { color: #B3402A; }
+
 .rc-tboard__card {
-  display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer;
-  background: var(--surface, #fff); border: 1px solid var(--line, #e2e8f0); border-radius: var(--r-md, 10px); padding: 9px 10px; color: inherit;
+  position: relative; background: #fff; border: 1px solid #E5E9ED; border-radius: 10px;
+  padding: 10px 11px; display: flex; flex-direction: column; gap: 7px; box-shadow: 0 1px 2px rgba(15, 25, 40, 0.04);
 }
-.rc-tboard__card:hover { border-color: var(--brand-line, #c9d4f2); box-shadow: 0 2px 10px rgba(20, 35, 48, 0.06); }
-.rc-tboard__card:focus-visible { outline: 2px solid var(--brand-strong, #022AC0); outline-offset: 1px; }
-.rc-tboard__card-name { font-size: 0.82rem; font-weight: 600; color: var(--ink, #142330); }
-.rc-tboard__card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.66rem; }
-.rc-tboard__band { font-weight: 600; border-radius: 999px; padding: 1px 7px; }
-.rc-tboard__band--ready_to_submit { background: var(--ok-tint, #e6f6ec); color: var(--ok, #157347); }
-.rc-tboard__band--needs_action { background: var(--warn-tint, #fdf1e0); color: var(--warn, #b45309); }
-.rc-tboard__resume-lock { color: var(--muted, #64748b); }
-.rc-tboard__days { color: var(--faint, #94a3b8); }
-.rc-tboard__blockers { font-size: 0.64rem; color: var(--warn, #b45309); }
-.rc-tboard__closed { border: 1px solid var(--line, #e2e8f0); border-radius: var(--r-md, 10px); background: var(--surface, #fff); }
-.rc-tboard__closed-summary { cursor: pointer; padding: 9px 12px; font-size: 0.74rem; font-weight: 600; color: var(--muted, #64748b); display: flex; align-items: center; gap: 8px; }
-.rc-tboard__closed-list { list-style: none; margin: 0; padding: 0 12px 10px; display: flex; flex-direction: column; gap: 5px; }
-.rc-tboard__closed-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.76rem; color: var(--ink, #142330); }
+.rc-tboard__card:hover { border-color: #9DB0F5; box-shadow: 0 3px 12px rgba(15, 25, 40, 0.08); }
+.rc-tboard__card--tracked { background: #FAFBFC; }
+.rc-tboard__card[draggable="true"] { cursor: grab; }
+.rc-tboard__card-open {
+  display: flex; flex-direction: column; gap: 7px; width: 100%; text-align: left;
+  background: transparent; border: none; padding: 0; color: inherit; cursor: pointer;
+}
+.rc-tboard__card-open:focus-visible { outline: 2px solid #022AC0; outline-offset: 2px; border-radius: 6px; }
+.rc-tboard__card-id { display: flex; align-items: center; gap: 9px; }
+.rc-tboard__avatar { width: 28px; height: 28px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; flex: none; }
+.rc-tboard__card-idtext { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.rc-tboard__card-name { font-size: 13px; font-weight: 700; color: #1B2730; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-tboard__card-sub { font-size: 11px; color: #93A0A8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-tboard__days { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 500; color: #93A0A8; flex: none; }
+.rc-tboard__days--warn { color: #946011; }
+.rc-tboard__days--hot { color: #B3402A; }
+.rc-tboard__resume { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #3A454E; background: #F5F7FA; border-radius: 6px; padding: 4px 7px; min-width: 0; }
+.rc-tboard__resume-ic { color: #5C6770; flex: none; }
+.rc-tboard__resume-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-tboard__facts { display: flex; gap: 4px; flex-wrap: wrap; }
+.rc-tboard__pill { border-radius: 10px; padding: 1.5px 7px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.rc-tboard__pill--mute { background: #EEF1F4; color: #5C6770; }
+.rc-tboard__pill--bad { background: #FBE9E4; color: #B3402A; white-space: normal; }
+.rc-tboard__foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid #F2F4F6; padding-top: 7px; }
+.rc-tboard__act-btn { border: 1px solid #D5DBE1; background: #fff; color: #022AC0; border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.rc-tboard__act-btn:hover { background: #E8EDFB; border-color: #9DB0F5; }
+.rc-tboard__wait { font-size: 11px; color: #93A0A8; }
+.rc-tboard__foot-end { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.rc-tboard__rec { width: 20px; height: 20px; border-radius: 50%; background: #EEF1F4; color: #3A454E; display: grid; place-items: center; font-size: 8.5px; font-weight: 700; flex: none; }
+.rc-tboard__menu { position: relative; display: flex; }
+.rc-tboard__menu-btn { border: none; background: transparent; color: #5C6770; width: 24px; height: 22px; border-radius: 6px; cursor: pointer; display: grid; place-items: center; flex: none; }
+.rc-tboard__menu-btn:hover { background: #EEF1F4; }
+.rc-tboard__menu-scrim { position: fixed; inset: 0; z-index: 60; background: transparent; border: none; cursor: default; width: 100%; height: 100%; padding: 0; }
+.rc-tboard__menu-pop { position: absolute; right: 0; bottom: 30px; z-index: 61; width: 210px; background: #fff; border: 1px solid #E5E9ED; border-radius: 10px; box-shadow: 0 16px 40px -16px rgba(11, 16, 34, 0.3); padding: 5px; display: flex; flex-direction: column; }
+.rc-tboard__menu-item { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 7px; padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: #1B2730; cursor: pointer; }
+.rc-tboard__menu-item:hover { background: #E8EDFB; }
+.rc-tboard__menu-item--danger { color: #B3402A; }
+.rc-tboard__menu-item--danger:hover { background: #FBE9E4; }
+.rc-tboard__menu-div { height: 1px; background: #EDF0F3; margin: 4px 2px; }
+
+.rc-tboard__col--drop { outline: 2px dashed #022AC0; outline-offset: -2px; background: #EEF2FD; }
+
+.rc-tboard__closed { flex: 0 0 150px; box-sizing: border-box; border: 1.5px dashed #D5DBE1; border-radius: 12px; padding: 12px; background: #FAFBFC; min-height: 420px; display: flex; flex-direction: column; }
+.rc-tboard__closed-title { font-size: 12.5px; font-weight: 700; color: #5C6770; margin: 0; }
+.rc-tboard__closed-list { list-style: none; margin: 6px 0 0; padding: 0; font-size: 11.5px; color: #93A0A8; line-height: 1.6; }
+.rc-tboard__closed-row { display: flex; font-size: 11.5px; color: #93A0A8; }
+.rc-tboard__closed-count { color: #93A0A8; white-space: pre; }
+.rc-tboard__closed-empty { font-size: 11.5px; color: #A9B3BC; margin: 6px 0 0; }
+
 .rc-tboard__status { font-size: 0.82rem; color: var(--muted, #64748b); margin: 14px 0; }
 .rc-tboard__status--error { color: var(--danger, #b42318); }
-.rc-tboard__toolbar { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2, #f6f8fc); border: 1px solid var(--line, #e2e8f0); border-radius: 999px; margin-bottom: 12px; }
-.rc-tboard__toggle { font-size: 0.74rem; font-weight: 600; color: var(--muted, #64748b); background: transparent; border: none; border-radius: 999px; padding: 4px 14px; cursor: pointer; }
-.rc-tboard__toggle--on { background: var(--surface, #fff); color: var(--brand-strong, #022AC0); box-shadow: 0 1px 3px rgba(20, 35, 48, 0.08); }
-.rc-tboard__card-main { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; cursor: pointer; background: transparent; border: none; padding: 0; color: inherit; }
-.rc-tboard__actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; padding-top: 7px; border-top: 1px dashed var(--line, #e2e8f0); }
-.rc-tboard__action { font-size: 0.66rem; font-weight: 600; color: var(--brand-strong, #022AC0); background: var(--brand-tint, #eef2fe); border: 1px solid var(--brand-line, #c9d4f2); border-radius: 999px; padding: 2px 9px; cursor: pointer; }
-.rc-tboard__action:hover { background: var(--surface, #fff); }
-.rc-tboard__rtr { color: var(--warn, #b45309); font-weight: 600; }
-.rc-tboard__col--drop { outline: 2px dashed var(--brand-strong, #022AC0); outline-offset: -2px; background: var(--brand-tint, #eef2fe); }
-.rc-tboard__card[draggable="true"] { cursor: grab; }
-.rc-tboard__card--tracked { background: var(--surface-2, #f6f8fc); border-style: dashed; }
-.rc-tboard__tracked { font-weight: 600; color: var(--muted, #64748b); background: var(--surface, #fff); border: 1px solid var(--line, #e2e8f0); border-radius: 999px; padding: 1px 7px; }
-
-/* Accidental-Add Correction — the destructive Board action + the "Remove from requisition"
-   correction confirmation modal (§15). Destructive tone (danger) WITHOUT "Delete" language. */
-.rc-tboard__action--danger { color: var(--danger, #a8412f); background: var(--danger-tint, #f7e9e6); border-color: var(--danger, #a8412f); }
-.rc-tboard__action--danger:hover { background: var(--surface, #fff); }
 .rc-voidmodal__scrim { position: fixed; inset: 0; background: rgba(20, 35, 48, 0.42); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .rc-voidmodal { background: var(--surface, #fff); border-radius: var(--r-lg, 13px); border: 1px solid var(--line, #e5e9ed); box-shadow: 0 12px 40px rgba(20, 35, 48, 0.2); width: min(440px, 92vw); padding: 22px 24px; }
 .rc-voidmodal__title { font-size: 1.02rem; font-weight: 700; color: var(--ink, #1b2730); margin: 0 0 10px; }

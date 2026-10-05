@@ -986,6 +986,7 @@
     "apps/ats-web/src/requisitions/TalentDetailPanel.tsx",
     "apps/ats-web/src/requisitions/TalentJourneySection.spec.tsx",
     "apps/ats-web/src/requisitions/TalentJourneySection.tsx",
+    "apps/ats-web/src/requisitions/TalentViewToggle.tsx",
     "apps/ats-web/src/requisitions/WorkspacePanel.tsx",
     "apps/ats-web/src/requisitions/approval-affordance.spec.ts",
     "apps/ats-web/src/requisitions/approval-affordance.ts",
