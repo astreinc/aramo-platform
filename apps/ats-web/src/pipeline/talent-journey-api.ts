@@ -28,6 +28,16 @@ export interface JourneyAction {
   readonly command_route: string;
 }
 
+// Offer & Start §6.7 — the opt-in offer-letter DOCUMENT signal (DB-derived, write-back
+// authoritative), DISTINCT from the Offer ACCEPTED business fact (§2.5). null on the Talent
+// 360 embed (opt-out) and until an offer-letter exists. Fine-grained per-signer sent/viewed
+// timestamps are a server-side typed GAP (not exposed by the signature port) — never faked here.
+export interface JourneyOfferDocument {
+  readonly owner: 'documents';
+  readonly document_id: string;
+  readonly status: 'REQUESTED' | 'AWAITING_SIGNATURE' | 'EXECUTED';
+}
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -35,6 +45,7 @@ export interface TalentRequisitionJourney {
   readonly stages: readonly JourneyStageElement[];
   readonly sub_states: Readonly<Record<string, string | null>>;
   readonly actions: readonly JourneyAction[];
+  readonly offer_document: JourneyOfferDocument | null;
 }
 
 // GET /v1/pipelines/:id/journey — the composed journey for one pipeline episode. A non-visible

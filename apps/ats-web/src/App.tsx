@@ -22,6 +22,7 @@ import { InvitationAcceptPage } from './routes/InvitationAcceptPage';
 import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
 import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
+import { OfferStartJourneyView } from './offer-start/OfferStartJourneyView';
 import { PlacementBoardView } from './placement/PlacementBoardView';
 import { PlacementDetailView } from './placement/PlacementDetailView';
 import { PreStartWorkspaceView } from './pre-start/PreStartWorkspaceView';
@@ -307,6 +308,21 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <PreStartWorkspaceView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* Offer & Start journey (§6.3) — ONE person × requisition surface keyed on
+                        the pipeline episode. Projection/orchestration only; reads pipeline:read.
+                        Reached from Requisition Offers / Talent 360 / Talent Board / My Desk /
+                        Placements — all deep-link here, none owns Offer/Pre-start/Placement state. */}
+                    <Route
+                      path="offer-start/:pipelineId"
+                      element={
+                        <RouteGuard
+                          requireScope="pipeline:read"
+                          sessionStateOverride={state}
+                        >
+                          <OfferStartJourneyView />
                         </RouteGuard>
                       }
                     />
