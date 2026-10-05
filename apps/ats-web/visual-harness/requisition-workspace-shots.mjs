@@ -72,7 +72,7 @@ const talentRecord = (id) => {
     phone_home: null, phone_cell: '(703) 555-0100', phone_work: null,
     address: null, address2: null, city: 'Vienna', state: 'VA', zip: '22180',
     country: 'US', source: 'referral', key_skills: 'Scrum, SAFe',
-    current_employer: null, current_pay: null, desired_pay: null,
+    current_employer: 'Capgemini', current_pay: null, desired_pay: null,
     availability_status: 'available_now', engagement_type: 'c2c',
     work_authorization: 'permanent_resident', date_available: null,
     can_relocate: false, is_hot: false, notes: null, web_site: null,
@@ -159,6 +159,7 @@ const BOARD_POPULATED = {
         card({
           talent_record_id: 't-5', pipeline_id: 'pl-5', column: 'pipeline',
           owner_state: 'no_contact', days_in_stage: 4, stage_entered_at: '2026-09-26T00:00:00Z',
+          rtr_state: 'NOT_EXECUTED',
           next_actions: [nextAction('pipeline.contact', 'Reach out', 'pipeline:change-status', `/requisitions/${REQ_ID}`)],
         }),
       ],

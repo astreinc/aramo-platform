@@ -12,6 +12,7 @@ import { TASK_ACTIVE_STATUS_VALUES } from '../task/types';
 
 import { AddTalentDialog } from './AddTalentDialog';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
+import { TalentViewToggle } from './TalentViewToggle';
 import {
   BOARD_COLUMN_LABELS,
   blockerLabel,
@@ -150,6 +151,7 @@ export function WorkspacePanel({
     scopes,
     canEditHot,
     canReadPlacements,
+    userNames,
     onToggleHot,
     onPipelineUpdated,
     onPipelineRemoved,
@@ -415,34 +417,15 @@ export function WorkspacePanel({
             <span className="rc-tip__hint">
               Where each person is and what the next step needs
             </span>
-            <span className="rc-ws__seg" role="tablist" aria-label="Talent view">
-              <Button
-                unstyled
-                type="button"
-                role="tab"
-                aria-selected={talentView === 'list'}
-                className={`rc-ws__seg-opt${talentView === 'list' ? ' rc-ws__seg-opt--on' : ''}`}
-                onClick={() => onTalentView('list')}
-              >
-                List
-              </Button>
-              <Button
-                unstyled
-                type="button"
-                role="tab"
-                aria-selected={talentView === 'board'}
-                className={`rc-ws__seg-opt${talentView === 'board' ? ' rc-ws__seg-opt--on' : ''}`}
-                onClick={() => onTalentView('board')}
-              >
-                Board
-              </Button>
-            </span>
+            <TalentViewToggle value={talentView} onChange={onTalentView} />
           </div>
           {talentView === 'board' ? (
             <div className="rc-tip__board">
               <RequisitionTalentBoard
                 requisitionId={req.id}
                 talentNames={talentActions.boardTalentNames}
+                talentSubtitles={talentActions.boardTalentSubtitles}
+                recruiterNames={talentActions.boardRecruiterNames}
                 scopes={scopes}
                 onSelectCard={(pid) => {
                   const p = pipelines.find((x) => x.id === pid);

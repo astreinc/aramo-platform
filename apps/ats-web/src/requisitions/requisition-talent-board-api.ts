@@ -98,7 +98,9 @@ export const BOARD_COLUMN_LABELS: Record<BoardColumnKey, string> = {
   pipeline: 'Pipeline',
   contacted: 'Contacted',
   qualified: 'Qualified',
-  submitted: 'Submitted',
+  // Canonical label — never the bare "Submitted" (TB visual-parity: the column is
+  // the client-submittal stage; the Workflow-Atlas state is CLIENT_REVIEW).
+  submitted: 'Submitted to client',
   interview: 'Interviewing',
   selected: 'Client Selected',
   offer: 'Offer',
