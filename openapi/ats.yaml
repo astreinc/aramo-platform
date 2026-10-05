@@ -188,6 +188,37 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── Offer & Start worklist (cross-requisition read projection, §9) ──
+  # GET /v1/offer-start-worklist — the cross-requisition Offer & Start operating list (UI:
+  # Placements / Offers & Starts). A READ-ONLY projection over existing authorities
+  # (ClientSelection/Offer/Placement/Talent/Requisition); it owns no lifecycle and persists no
+  # status. Includes people with an Offer but no PlacementProcess yet. Requires `pipeline:read`
+  # (every row IS a journey episode) + the `ats` capability; visibility is actor/tenant scoped
+  # server-side. Each row deep-links to the same person × requisition journey.
+  /v1/offer-start-worklist:
+    get:
+      operationId: getOfferStartWorklist
+      summary: The cross-requisition Offer & Start worklist projection.
+      description: |
+        Returns the cross-requisition list of people anywhere in the Offer → Start journey —
+        including those with an Offer but no PlacementProcess row yet — composed read-only over
+        the authoritative owners (deepest owner wins: Placement over Offer). Exception-first.
+        Each row carries the authoritative journey phase + a deep-link key (pipeline episode).
+        Requires the `pipeline:read` scope and the `ats` capability; visibility is actor/tenant
+        scoped server-side (never fetch-all-then-filter).
+      responses:
+        '200':
+          description: The composed Offer & Start worklist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferStartWorklistView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   # ── My Desk Command Center (read projection) ──
   # GET /v1/my-desk — the recruiter landing composition. A READ PROJECTION over
   # authoritative domain state: never a source of workflow truth, never mutating.
@@ -8551,6 +8582,50 @@ components:
           oneOf:
             - $ref: '#/components/schemas/JourneyActionView'
             - type: 'null'
+    OfferStartWorklistRowView:
+      type: object
+      additionalProperties: false
+      description: One cross-requisition Offer & Start worklist row (§9). Projected read-only from the deepest authoritative owner (Placement over Offer); phase is a read-time label, never a stored status. pipeline_id deep-links to the journey (null only when the episode is unresolvable).
+      required:
+        - pipeline_id
+        - requisition_id
+        - requisition_number
+        - requisition_title
+        - client_name
+        - talent_record_id
+        - talent_name
+        - phase
+        - phase_label
+        - engagement
+        - has_exception
+        - exception_summary
+        - updated_at
+      properties:
+        pipeline_id: { type: [string, 'null'], format: uuid }
+        requisition_id: { type: string, format: uuid }
+        requisition_number: { type: [integer, 'null'] }
+        requisition_title: { type: [string, 'null'] }
+        client_name: { type: [string, 'null'] }
+        talent_record_id: { type: string, format: uuid }
+        talent_name: { type: [string, 'null'] }
+        phase: { type: string, enum: [OFFER, ACCEPTED, PRE_START, READY, STARTED, BLOCKED, OFFER_DECLINED, OFFER_EXPIRED] }
+        phase_label: { type: string }
+        engagement: { type: [string, 'null'], enum: [CONTRACT, PERMANENT, null] }
+        has_exception: { type: boolean }
+        exception_summary: { type: [string, 'null'] }
+        updated_at: { type: [string, 'null'], format: date-time }
+    OfferStartWorklistView:
+      type: object
+      additionalProperties: false
+      description: The cross-requisition Offer & Start worklist (§9) — a read-only projection; total is a display count of the returned rows, never a persisted figure.
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OfferStartWorklistRowView' }
+        total: { type: integer }
     JourneyPlacementView:
       type: object
       additionalProperties: false

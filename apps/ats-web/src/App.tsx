@@ -23,7 +23,7 @@ import { VerifyEmailConfirmPage } from './routes/VerifyEmailConfirmPage';
 import { LoginPage } from './routes/LoginPage';
 import { OrgHierarchyView } from './org/OrgHierarchyView';
 import { OfferStartJourneyView } from './offer-start/OfferStartJourneyView';
-import { PlacementBoardView } from './placement/PlacementBoardView';
+import { OfferStartWorklistView } from './offer-start/OfferStartWorklistView';
 import { PlacementDetailView } from './placement/PlacementDetailView';
 import { PreStartWorkspaceView } from './pre-start/PreStartWorkspaceView';
 import { RequisitionCreateView } from './requisitions/RequisitionCreateView';
@@ -275,14 +275,18 @@ export function App() {
                         </RouteGuard>
                       }
                     />
+                    {/* Offer & Start §9 — the Placements left-nav IS the cross-requisition Offer &
+                        Start worklist (a read-only journey-episode projection), NOT the old
+                        placement-only table. Gated by pipeline:read (every row is a journey
+                        episode; a row may have no placement yet). */}
                     <Route
                       path="placements"
                       element={
                         <RouteGuard
-                          requireScope="placement:read"
+                          requireScope="pipeline:read"
                           sessionStateOverride={state}
                         >
-                          <PlacementBoardView />
+                          <OfferStartWorklistView />
                         </RouteGuard>
                       }
                     />

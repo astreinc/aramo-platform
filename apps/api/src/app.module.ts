@@ -93,6 +93,7 @@ import { PreStartRequirementModule } from './pre-start-requirement/pre-start-req
 import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
 import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
+import { OfferStartWorklistModule } from './offer-start-worklist/offer-start-worklist.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
 import { EnterpriseSearchModule } from './search/enterprise-search.module.js';
 import { PipelineVoidModule } from './pipeline-void/pipeline-void.module.js';
@@ -490,6 +491,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // L2-H — the Unified Talent Journey read-composer (GET /v1/pipelines/:id/journey);
     // composes the 8 owner aggregates, 404-conceals a non-visible episode, reads only.
     TalentJourneyModule,
+    OfferStartWorklistModule,
     // TB-1 — the Requisition Talent Board read-composer (GET
     // /v1/requisitions/:requisition_id/talent-board); a per-requisition BATCHED
     // projection over the scope:ats owners, 404-conceals a non-visible requisition,
