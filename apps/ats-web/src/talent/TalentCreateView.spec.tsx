@@ -169,6 +169,10 @@ describe('TalentCreateView — resume create + attach flow', () => {
     await waitFor(() =>
       expect(screen.getByText(/added to your talent/i)).toBeInTheDocument(),
     );
+    // PO RULING "Consent Capture" — the post-create step OFFERS consent capture
+    // (a SEPARATE, non-blocking step); creation itself never calls consent
+    // (noConsentGrant below), preserving "Talent existence ⊥ consent".
+    expect(screen.getByRole('button', { name: /record consent/i })).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/v1/attachments' && c.method === 'POST')).toBeDefined();
     noConsentGrant(calls);
     fireEvent.click(screen.getByRole('button', { name: /open profile/i }));

@@ -45,6 +45,13 @@ vi.mock('../microsoft/GeneralTalentContactEmailComposer', () => ({
   GeneralTalentContactEmailComposer: ({ open, talentId }: { open: boolean; talentId: string }) =>
     open ? <div data-testid="general-email-composer">{talentId}</div> : null,
 }));
+// PO RULING "Consent Capture" — the Contactability "Record consent" action opens
+// the reusable capture dialog; stub it so this spec exercises Talent360View's
+// action-first/status-first behavior, not the dialog internals.
+vi.mock('../consent/RecordConsentDialog', () => ({
+  RecordConsentDialog: ({ open, talentRecordId }: { open: boolean; talentRecordId: string }) =>
+    open ? <div data-testid="record-consent-dialog">{talentRecordId}</div> : null,
+}));
 vi.mock('../activity/activity-api', () => ({ createNote: vi.fn().mockResolvedValue({}) }));
 
 // CRM-5 — mutable scopes (per-test authority) + spies for the new task / lists
@@ -207,6 +214,35 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe('Talent360View — renders the composed contract, owns only presentation state', () => {
+  it('Contactability action-first: "Record consent" shows when not permitted and opens the capture dialog', async () => {
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        header: {
+          ...makeModel().header,
+          contactability: {
+            summary: 'do_not_contact',
+            recruiting_permitted: false,
+            email_permitted: false,
+            phone_permitted: false,
+            sms_permitted: false,
+          },
+        },
+      }),
+    );
+    renderView();
+    const btn = await screen.findByRole('button', { name: 'Record consent' });
+    expect(screen.getByText('No recruiting-contact consent recorded.')).toBeTruthy();
+    fireEvent.click(btn);
+    expect(await screen.findByTestId('record-consent-dialog')).toBeTruthy();
+  });
+
+  it('Contactability status-first: shows "Consent recorded" and no action when permitted', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel()); // contactable by default
+    renderView();
+    expect(await screen.findByText('Consent recorded')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Record consent' })).toBeNull();
+  });
+
   it('renders the header, badges, KPI strip and opportunities from the payload', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();

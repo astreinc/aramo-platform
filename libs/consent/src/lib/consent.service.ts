@@ -4,11 +4,14 @@ import { Injectable } from '@nestjs/common';
 import { AramoError, hashCanonicalizedBody } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 
-import { ConsentRepository } from './consent.repository.js';
+import { ConsentRepository, SCOPE_DEPENDENCY_CHAIN } from './consent.repository.js';
 import {
   CONSENT_TEXT_CURRENT_VERSION,
+  CONSENT_TEXT_RECRUITER_CAPTURE_VERSION,
   hashPortalConsentText,
+  hashRecruiterCaptureConsentText,
   renderPortalConsentText,
+  renderRecruiterCaptureConsentText,
 } from './consent-texts.js';
 import { NOTICE_TEXT_CURRENT_VERSION } from './notice-texts.js';
 import type { ConsentCheckRequestDto } from './dto/consent-check-request.dto.js';
@@ -24,6 +27,16 @@ import type { ConsentDecisionLogResponseDto } from './dto/consent-decision-log-r
 import type { ConsentScopeValue } from './dto/consent-grant-request.dto.js';
 import { CONSENT_SCOPES, PROFILE_CONSENT_SCOPES } from './dto/consent-grant-request.dto.js';
 import type { PortalConsentTextResponseDto } from './dto/portal-consent-text.dto.js';
+import {
+  CONSENT_CAPTURE_SCOPES,
+  type ConsentCaptureMethodValue,
+  type ConsentCaptureScopeValue,
+} from './dto/consent-capture-request.dto.js';
+import type {
+  ConsentCaptureResponseDto,
+  ConsentCaptureScopeResult,
+} from './dto/consent-capture-response.dto.js';
+import type { ConsentCaptureTextsResponseDto } from './dto/consent-capture-texts-response.dto.js';
 import {
   CursorDecodeError,
   decodeCursor,
@@ -64,6 +77,170 @@ export class ConsentService {
       requestHash: hashCanonicalizedBody(request),
       requestId,
     });
+  }
+
+  // ===========================================================================
+  // PO RULING "Consent Capture" — the recruiter-driven profile-consent CAPTURE
+  // seam (ats-web Add-Talent post-create step + Talent-360 Contactability
+  // "Record consent" action). Distinct from the single-scope /consent/grant
+  // (which trusts a caller-supplied version/text): this renders + hashes the
+  // versioned consent text SERVER-SIDE (no FE-owned legal text) and records ONLY
+  // the affirmatively-selected scopes through the ONE authoritative writer
+  // (recordConsentEvent), in dependency order, idempotently. No second writer,
+  // no direct ledger write, no auto-grant, no backfill.
+  // ===========================================================================
+
+  async captureProfileConsent(input: {
+    talent_record_id: string;
+    captured_method: ConsentCaptureMethodValue;
+    scopes: ConsentCaptureScopeValue[];
+    authContext: AuthContextType;
+    idempotencyKey: string;
+    requestId: string;
+    now?: Date;
+  }): Promise<ConsentCaptureResponseDto> {
+    const now = input.now ?? new Date();
+    const selected = new Set<ConsentCaptureScopeValue>(input.scopes);
+
+    // Dependency-closure: every selected scope's prerequisites must be selected
+    // in the SAME request. We record only what the recruiter affirmatively
+    // attested (never auto-add a prerequisite), so an incomplete set is rejected
+    // — the UI presents the dependent set together so this never trips in normal
+    // use; the server check is defense-in-depth.
+    for (const scope of selected) {
+      for (const dep of SCOPE_DEPENDENCY_CHAIN[scope]) {
+        if (!selected.has(dep as ConsentCaptureScopeValue)) {
+          throw new AramoError(
+            'INVALID_SCOPE_COMBINATION',
+            `scope '${scope}' requires '${dep}' to be attested in the same capture`,
+            422,
+            {
+              requestId: input.requestId,
+              details: { scope, missing_dependency: dep },
+            },
+          );
+        }
+      }
+    }
+
+    const version =
+      input.captured_method === 'recruiter_capture'
+        ? CONSENT_TEXT_RECRUITER_CAPTURE_VERSION
+        : CONSENT_TEXT_CURRENT_VERSION;
+    const channel =
+      input.captured_method === 'recruiter_capture' ? 'recruiter_capture' : 'ats_self';
+    // Read-derived term: expires_at = now + CONSENT_DEFAULT_TERM_MONTHS — the SAME
+    // engine constant the portal path applies to these same profile scopes (and
+    // the contacting staleness window). Scope-authoritative, not symmetry-driven.
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + CONSENT_DEFAULT_TERM_MONTHS);
+    const actorId = this.deriveActorId(input.authContext);
+
+    // Write in the canonical dependency order (prerequisites first).
+    const orderedScopes = CONSENT_CAPTURE_SCOPES.filter((s) => selected.has(s));
+    const results: ConsentCaptureScopeResult[] = [];
+    for (const scope of orderedScopes) {
+      const rendered = this.renderCaptureText(
+        input.captured_method,
+        scope,
+        input.authContext.tenant_id,
+      );
+      const event = await this.consentRepo.recordConsentEvent({
+        action: 'granted',
+        tenant_id: input.authContext.tenant_id,
+        talent_record_id: input.talent_record_id,
+        scope,
+        captured_method: input.captured_method,
+        captured_by_actor_id: actorId,
+        consent_version: version,
+        consent_text_snapshot: rendered.text,
+        occurred_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        // Per-scope derived key: the one request Idempotency-Key fans out so each
+        // scope's event is independently idempotent; a resubmit under the same
+        // header is a replay, not a 409.
+        idempotencyKey: `${input.idempotencyKey}:${scope}`,
+        requestHash: hashCanonicalizedBody({
+          consent_capture: {
+            talent_record_id: input.talent_record_id,
+            scope,
+            captured_method: input.captured_method,
+            consent_version: version,
+          },
+        }),
+        requestId: input.requestId,
+        consent_evidence: {
+          consent_text_hash: rendered.hash,
+          consent_text_version: version,
+          notice_version: NOTICE_TEXT_CURRENT_VERSION,
+          channel,
+        },
+      });
+      results.push({
+        scope,
+        event_id: event.event_id,
+        consent_version: event.consent_version,
+        consent_text_hash: rendered.hash,
+        occurred_at: event.occurred_at,
+        expires_at: event.expires_at,
+        recorded_at: event.recorded_at,
+      });
+    }
+
+    return {
+      talent_record_id: input.talent_record_id,
+      captured_method: input.captured_method,
+      consent_version: version,
+      results,
+    };
+  }
+
+  /**
+   * Render the EXACT versioned consent text the recruiter must see before
+   * recording, per scope — the same render the capture write-path hashes, so the
+   * displayed bytes ARE the D7 hash preimage (mirrors getPortalConsentTexts).
+   */
+  getCaptureTexts(
+    capturedMethod: ConsentCaptureMethodValue,
+    recipientTenantId: string,
+  ): ConsentCaptureTextsResponseDto {
+    const version =
+      capturedMethod === 'recruiter_capture'
+        ? CONSENT_TEXT_RECRUITER_CAPTURE_VERSION
+        : CONSENT_TEXT_CURRENT_VERSION;
+    return {
+      version,
+      captured_method: capturedMethod,
+      texts: CONSENT_CAPTURE_SCOPES.map((scope) => ({
+        scope,
+        text: this.renderCaptureText(capturedMethod, scope, recipientTenantId).text,
+      })),
+    };
+  }
+
+  // Single source for both the write-path hash and the display render, so the
+  // shown text and the hashed preimage are guaranteed identical.
+  private renderCaptureText(
+    capturedMethod: ConsentCaptureMethodValue,
+    scope: ConsentCaptureScopeValue,
+    recipientTenantId: string,
+  ): { text: string; hash: string } {
+    if (capturedMethod === 'recruiter_capture') {
+      return {
+        text: renderRecruiterCaptureConsentText(
+          CONSENT_TEXT_RECRUITER_CAPTURE_VERSION,
+          { scope },
+        ),
+        hash: hashRecruiterCaptureConsentText(CONSENT_TEXT_RECRUITER_CAPTURE_VERSION, {
+          scope,
+        }).hash,
+      };
+    }
+    const ctx = { recipient_tenant_id: recipientTenantId, scope };
+    return {
+      text: renderPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, ctx),
+      hash: hashPortalConsentText(CONSENT_TEXT_CURRENT_VERSION, ctx).hash,
+    };
   }
 
   async revoke(
