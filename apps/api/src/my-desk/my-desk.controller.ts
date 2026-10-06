@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { resolveAppTimeZone } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -22,7 +23,7 @@ import { MyDeskService } from './my-desk.service.js';
 // The app timezone all urgency/aging is computed against (directive §38). A
 // single configured zone for v1 (Astre / tenant-50 is US-East); per-tenant/site
 // timezone is a future enhancement, called out honestly rather than guessed.
-const APP_TIME_ZONE = process.env['ARAMO_APP_TIME_ZONE'] ?? 'America/New_York';
+const APP_TIME_ZONE = resolveAppTimeZone();
 
 // GET /v1/my-desk — the recruiter command-center READ composition.
 //

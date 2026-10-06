@@ -45,7 +45,7 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
     engagement: { governed: false, policy_present: false, satisfied: true, unavailable: false },
     commercial: { live_bill_rate_amount: '92.00', live_bill_rate_currency: 'USD', live_bill_rate_period: 'HOURLY', submitted_bill_rate: null, submitted_rate_currency: null, submitted_rate_period: null },
     delivery: { delivery_channel: null, external_reference: null, external_submitted_at: null, submitted_at: null, submitted_by_actor_id: null },
-    client_selection: { present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
+    client_selection: { present: false, process_id: null, version: null, opened_at: null, waiting_days: null, state: null, latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
     actions: { can_submit_to_client: true, submit_authority: true, can_revoke: true },
     ...overrides,
   };
@@ -137,7 +137,7 @@ describe('SubmittalWorkspaceView', () => {
       submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
       commercial: { live_bill_rate_amount: '95.00', live_bill_rate_currency: 'USD', live_bill_rate_period: 'HOURLY', submitted_bill_rate: '92.00', submitted_rate_currency: 'USD', submitted_rate_period: 'HOURLY' },
       delivery: { delivery_channel: 'manual_vms', external_reference: 'FG-938273', external_submitted_at: null, submitted_at: '2026-10-02T14:42:00.000Z', submitted_by_actor_id: 'u1' },
-      client_selection: { present: true, process_id: 'csp1', version: 0, opened_at: '2026-10-02T14:42:00.000Z', state: 'CLIENT_REVIEW', latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
+      client_selection: { present: true, process_id: 'csp1', version: 0, opened_at: '2026-10-02T14:42:00.000Z', waiting_days: 3, state: 'CLIENT_REVIEW', latest_interview: null, feedback: [], available_actions: NO_CS_ACTIONS },
       actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true },
     }));
     renderWorkspace();
@@ -155,7 +155,7 @@ describe('SubmittalWorkspaceView', () => {
     viewMock.mockResolvedValue(makeView({
       submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
       client_selection: {
-        present: true, process_id: 'csp1', version: 1, opened_at: '2026-10-02T00:00:00.000Z', state: 'INTERVIEW',
+        present: true, process_id: 'csp1', version: 1, opened_at: '2026-10-02T00:00:00.000Z', waiting_days: null, state: 'INTERVIEW',
         latest_interview: { id: 'iv1', round: 1, state: 'SCHEDULED', scheduled_at: '2026-10-07T15:00:00.000Z' },
         feedback: [{ at: '2026-10-04T00:00:00.000Z', to_state: 'INTERVIEW', reason_code: null, note: 'Would like to schedule a first interview.' }],
         available_actions: NO_CS_ACTIONS,

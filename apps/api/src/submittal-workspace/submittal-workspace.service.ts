@@ -10,6 +10,7 @@ import {
   type SubmittalPolicyInputs,
 } from '@aramo/submittal-eligibility';
 import {
+  deriveClientWaitingDays,
   legalNextClientSelectionStates,
   type ClientSelectionState,
 } from '@aramo/client-selection';
@@ -47,6 +48,8 @@ export interface SubmittalWorkspaceContext {
    */
   readonly submit_authority: boolean;
   readonly request_id: string;
+  /** The app timezone — the civil-day basis for the canonical client-waiting age. */
+  readonly time_zone: string;
 }
 
 interface SubmittalRow {
@@ -386,6 +389,15 @@ export class SubmittalWorkspaceService {
         version: cs?.version ?? null,
         opened_at: iso(cs?.created_at ?? null),
         state: cs?.state ?? null,
+        // Canonical "waiting on client" age (whole civil days, app timezone). Null
+        // unless the selection is in CLIENT_REVIEW — the FE renders this, it does
+        // NOT recompute the age from opened_at.
+        waiting_days: deriveClientWaitingDays({
+          selection_state: cs?.state ?? null,
+          since_ms: cs?.created_at == null ? null : cs.created_at.getTime(),
+          now_ms: Date.now(),
+          time_zone: ctx.time_zone,
+        }),
         latest_interview: latestInterview,
         feedback,
         available_actions: clientSelectionActions,

@@ -2,6 +2,17 @@ export { CommonModule } from './lib/common.module.js';
 export { RequestIdMiddleware } from './lib/middleware/request-id.middleware.js';
 export { RequestId } from './lib/decorators/request-id.decorator.js';
 export { hashCanonicalizedBody } from './lib/util/canonicalize.js';
+// Canonical civil-day (app-timezone) date math — the ONE home for timezone-aware
+// calendar-day comparison and whole-day aging. Business semantics (My Desk
+// urgency/aging, client waiting age, interview-today) derive from these; they
+// never re-implement the math (and never absolute-ms division — the §38 trap).
+export {
+  civilDayUtcMs,
+  isoDateInTimeZone,
+  agingDaysInTimeZone,
+  DEFAULT_APP_TIME_ZONE,
+  resolveAppTimeZone,
+} from './lib/util/civil-day.js';
 // Step 4a (ADR-0016) — tenant-side email fingerprint primitive for the
 // cross-tenant identity privacy wall (I14). The raw email stays tenant-side;
 // only the opaque fingerprint crosses into the PII-free identity_index.

@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { RequestId } from '@aramo/common';
+import { RequestId, resolveAppTimeZone } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -25,7 +25,7 @@ import { Talent360Service } from './talent-360.service.js';
 // The app timezone all "today"/aging is computed against (My Desk §38
 // precedent). A single configured zone for v1 (Astre / tenant-50 is US-East);
 // per-tenant/site timezone is a future enhancement, called out honestly.
-const APP_TIME_ZONE = process.env['ARAMO_APP_TIME_ZONE'] ?? 'America/New_York';
+const APP_TIME_ZONE = resolveAppTimeZone();
 
 // GET /v1/talent-360/:talentId — the person-centric recruiter workspace READ
 // composition. One route, one visibility-scoped payload (the FE renders what the

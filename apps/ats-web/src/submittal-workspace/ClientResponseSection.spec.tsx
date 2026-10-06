@@ -25,7 +25,7 @@ function makeView(
     commercial: null,
     delivery: { delivery_channel: 'manual_vms', external_reference: null, external_submitted_at: null, submitted_at: '2026-10-02T00:00:00.000Z', submitted_by_actor_id: null },
     client_selection: {
-      present: true, process_id: 'csp1', version: 2, opened_at: '2026-10-02T00:00:00.000Z', state: 'CLIENT_REVIEW',
+      present: true, process_id: 'csp1', version: 2, opened_at: '2026-10-02T00:00:00.000Z', waiting_days: 3, state: 'CLIENT_REVIEW',
       latest_interview: null, feedback: [], available_actions: NO_ACTIONS, ...csOver,
     },
     actions: { can_submit_to_client: false, submit_authority: true, can_revoke: true },

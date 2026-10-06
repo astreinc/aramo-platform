@@ -192,7 +192,7 @@ export function SubmittalWorkspaceView() {
   if (raceConflict) headLine = 'The available submittal slot was filled by another submittal.';
   else if (revoked) headLine = `Revoked${delivery.external_submitted_at ? '' : ''} · no longer presented to the client`;
   else if (submittedFamily) {
-    const csWaiting = waitingLabel(client_selection.opened_at);
+    const csWaiting = waitingLabel(client_selection.waiting_days);
     headLine = `Submitted to ${client ?? 'the client'}${delivery.submitted_at ? ` ${formatDate(delivery.submitted_at)}` : ''}${delivery.delivery_channel ? ` · ${deliveryLabel(delivery.delivery_channel)}` : ''}${cPill ? ` · ${cPill.label}` : ''}${cPill && csWaiting ? ` ${csWaiting}` : ''}`;
   } else if (!ready) {
     headLine = `Not ready to submit · ${missing.length} required item${missing.length === 1 ? ' needs' : 's need'} attention`;

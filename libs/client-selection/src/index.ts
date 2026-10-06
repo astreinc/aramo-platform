@@ -30,6 +30,20 @@ export {
   type DispositionOutcomeState,
 } from './lib/disposition-classification.js';
 
+// Canonical "waiting on client" semantic (My Desk / Talent 360 / Submittal
+// Workspace consume this — none re-derives waiting state or age).
+export {
+  CLIENT_WAITING_STATE,
+  isClientWaitingState,
+  deriveClientWaitingDays,
+} from './lib/client-waiting.js';
+// Canonical "interview today" semantic (My Desk / Talent 360 consume this).
+export {
+  LIVE_INTERVIEW_STATES,
+  isLiveInterviewState,
+  isInterviewToday,
+} from './lib/interview-today.js';
+
 export type { ClientSelectionProcessView } from './lib/dto/client-selection-process.view.js';
 export type {
   TransitionClientSelectionRequestDto,

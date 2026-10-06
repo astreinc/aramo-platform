@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { RequestId } from '@aramo/common';
+import { RequestId, resolveAppTimeZone } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RequireSiteMatch, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
@@ -58,6 +58,7 @@ export class SubmittalWorkspaceController {
         scopes: new Set(scopes),
         submit_authority,
         request_id: requestId,
+        time_zone: resolveAppTimeZone(),
       },
       submittalId,
     );
