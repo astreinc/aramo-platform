@@ -115,6 +115,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(accepted.state).toBe('ACCEPTED');
     });
 
+    it('§5.2 CAS — a concurrent writer that captured a now-stale state loses the state-guarded write → OFFER_TRANSITION_CONFLICT (409); deterministic read-barrier, no double-commit', async () => {
+      // DETERMINISTIC read-barrier (not a scheduling race). A held transaction
+      // advances DRAFT→SENT and keeps the row lock. The repo writer's ADVISORY
+      // pre-read (READ COMMITTED) still sees the pre-commit DRAFT and passes the
+      // legal-edge + policy checks, then its state-guarded updateMany(WHERE
+      // state=DRAFT) PARKS on the row lock. We then commit the barrier (row →
+      // SENT); the writer unblocks, now matches 0 rows → OFFER_TRANSITION_CONFLICT
+      // (tx rolled back, NO event). This is what forces the writer past the
+      // advisory pre-read and ONTO the guarded write — the only path that
+      // exercises the CAS. Pre-§5.2 the unguarded update({where:{id}}) matched by
+      // id regardless of state and would commit a SECOND event: the non-vacuous
+      // RED the state-guard closes. (permissivePackage already published above.)
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const o = await mkOffer(); // DRAFT
+      const eventsBefore = await prisma.offerEvent.count({ where: { tenant_id: TENANT, offer_id: o.id } });
+      let release!: () => void;
+      const held = new Promise<void>((r) => { release = r; });
+      const barrier = prisma.$transaction(async (tx) => {
+        // Locks the row + stages the advance; stays open (lock held) until released.
+        await tx.offer.updateMany({ where: { id: o.id, tenant_id: TENANT, state: 'DRAFT' }, data: { state: 'SENT' } });
+        await held;
+      });
+      await sleep(50); // barrier now holds an uncommitted SENT + the row lock
+      let err: AramoError | undefined;
+      const writer = repo
+        .transition({ tenant_id: TENANT, id: o.id, to_state: 'SENT', scopes: SCOPES, actor_id: ACTOR, correlation_id: uuid() })
+        .catch((e) => { err = e as AramoError; });
+      await sleep(50); // writer cleared its DRAFT pre-read and is parked on the lock
+      release(); // barrier commits → the row is now SENT
+      await barrier;
+      await writer;
+      expect(err?.code).toBe('OFFER_TRANSITION_CONFLICT');
+      expect(err?.statusCode).toBe(409);
+      // No double-commit: the barrier advances the row via RAW SQL (emits no
+      // OfferEvent), so the conflicted writer is the ONLY possible event source —
+      // and its tx rolled back. The event count is therefore unchanged across the
+      // race. Pre-§5.2 the unguarded writer would commit + append one event here.
+      expect((await repo.findById(TENANT, o.id))?.state).toBe('SENT');
+      const eventsAfter = await prisma.offerEvent.count({ where: { tenant_id: TENANT, offer_id: o.id } });
+      expect(eventsAfter).toBe(eventsBefore);
+    });
+
     it('P2 — create records revision #1; a NEGOTIATION comp revision appends #2 (monotonic; prior preserved)', async () => {
       // offer-lifecycle@1.0.0 is already published (immutable) by the legal-edges
       // test above and persists in the shared DB — reuse it for the transitions.

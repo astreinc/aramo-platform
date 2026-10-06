@@ -268,6 +268,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   RTR_TEMPLATE_CONFIGURATION_INVALID: 422,
   RTR_TEMPLATE_BINDING_MISSING: 422,
   RTR_PREVIEW_NOT_AVAILABLE: 409,
+  OFFER_TRANSITION_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

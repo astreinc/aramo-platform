@@ -1,0 +1,66 @@
+/* Offer & Start journey — functional layout (pixel parity to the prototype is handled in the
+   visual-parity pass). App-owned classes, os- prefixed for token exclusivity. */
+.os-root { padding: 18px 30px 70px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.os-empty { padding: 40px 0; color: #5c6770; font-size: 14px; }
+
+.os-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #93a0a8; flex-wrap: wrap; }
+.os-breadcrumb-current { color: #5c6770; }
+
+.os-header { display: flex; align-items: flex-start; gap: 14px; flex-wrap: wrap; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 16px 20px; }
+.os-header-main { flex: 1 1 320px; min-width: 0; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.os-title { font-size: 20px; font-weight: 700; margin: 0; }
+.os-pill { border-radius: 14px; padding: 3px 10px; font-size: 11.5px; font-weight: 700; background: #e8edfb; color: #011f8d; }
+.os-progress { font-size: 12px; color: #5c6770; }
+.os-link { font-size: 12.5px; font-weight: 600; }
+
+.os-body { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.os-stepper { flex: 999 1 560px; min-width: 0; background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 15px 20px; display: flex; flex-direction: column; gap: 8px; }
+.os-group-head { font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; color: #93a0a8; text-transform: uppercase; margin: 10px 0 4px; }
+.os-step { display: flex; align-items: center; gap: 10px; padding: 7px 0; }
+.os-step-mark { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex: none; border: 1.5px solid #d5dbe1; color: #93a0a8; box-sizing: border-box; }
+.os-step--done .os-step-mark { background: #1f7a4d; border-color: #1f7a4d; color: #fff; }
+.os-step--current .os-step-mark { background: #e8edfb; border-color: #022ac0; color: #022ac0; }
+.os-step--declined .os-step-mark { background: #fbe9e4; border-color: #b3402a; color: #b3402a; }
+.os-step-label { flex: 1; min-width: 0; font-size: 13.5px; }
+.os-step--future .os-step-label { color: #93a0a8; }
+.os-step-status { font-size: 10.5px; color: #93a0a8; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.os-rail { flex: 1 1 300px; max-width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.os-card { background: #fff; border: 1px solid #e5e9ed; border-radius: 13px; padding: 14px 16px; }
+.os-card-head { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.os-badge { border-radius: 10px; padding: 0 7px; font-size: 10.5px; font-weight: 700; background: #faefd8; color: #946011; }
+.os-muted { font-size: 11.5px; color: #5c6770; }
+.os-attn { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; border-top: 1px solid #f2f4f6; }
+.os-attn-what { font-size: 12.5px; font-weight: 700; }
+.os-doc { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid #f2f4f6; }
+.os-doc-name { font-size: 12.5px; font-weight: 600; }
+.os-doc-status { border-radius: 12px; padding: 1.5px 8px; font-size: 10.5px; font-weight: 700; background: #eef1f4; color: #3a454e; white-space: nowrap; }
+.os-terms { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.os-terms > div { display: flex; justify-content: space-between; gap: 12px; }
+.os-terms dt { font-size: 12px; color: #5c6770; margin: 0; }
+.os-terms dd { font-size: 12.5px; font-weight: 600; margin: 0; text-align: right; }
+.os-commercial-note { margin-top: 10px; padding-top: 9px; border-top: 1px solid #f2f4f6; font-size: 11.5px; color: #5c6770; }
+.os-prestart { margin-top: 14px; }
+.os-req { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #f2f4f6; }
+.os-req-label { font-size: 12.5px; font-weight: 600; flex: 1; }
+.os-req-blocking { color: #b4690e; margin-left: 5px; font-weight: 700; }
+.os-req-status { border-radius: 12px; padding: 1.5px 8px; font-size: 10.5px; font-weight: 700; background: #eef1f4; color: #3a454e; white-space: nowrap; }
+.os-req-owner { white-space: nowrap; }
+.os-prestart-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 11px; padding-top: 10px; border-top: 1px solid #f2f4f6; }
+.os-banner { display: flex; align-items: center; gap: 10px; background: #edf6ee; border: 1px solid #bcdcc0; border-radius: 13px; padding: 12px 16px; margin-bottom: 12px; }
+.os-banner-mark { color: #2f7a3a; font-weight: 700; }
+.os-banner-text { font-size: 13.5px; font-weight: 700; color: #1f4d28; }
+.os-hist { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 7px 0; border-top: 1px solid #f2f4f6; font-size: 12px; }
+.os-hist-what { font-weight: 600; }
+
+/* Current-step actions + review-before-send modal + toast. */
+.os-main { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.os-main .os-stepper { flex: initial; }
+.os-step-actions { display: flex; flex-direction: column; gap: 10px; }
+.os-action-error { font-size: 11.5px; color: #b3402a; }
+.os-modal-backdrop { position: fixed; inset: 0; background: rgba(11, 16, 34, 0.42); z-index: 80; display: grid; place-items: center; padding: 20px; }
+.os-modal { width: min(560px, 100%); background: #fff; border-radius: 14px; box-shadow: 0 30px 70px -20px rgba(11, 16, 34, 0.5); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.os-modal-head { font-size: 16px; font-weight: 700; }
+.os-modal-body { font-size: 13px; color: #3a454e; line-height: 1.5; }
+.os-modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.os-toast { position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%); background: #1b2730; color: #fff; border-radius: 9px; padding: 9px 14px; font-size: 12.5px; z-index: 95; box-shadow: 0 12px 30px -10px rgba(11, 16, 34, 0.5); }

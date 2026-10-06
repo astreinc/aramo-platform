@@ -37,7 +37,8 @@ const CLOSED_UNSUCCESSFUL_STATES: ReadonlySet<OfferState> = new Set([
   'RESCINDED',
 ]);
 
-const OFFER_CREATE = 'offer:create'; // read rides create-authority this slice
+const OFFER_READ = 'offer:read'; // §5.2 hygiene: read gate = the real BE read authority (GET /v1/offers requires offer:read), no longer an offer:create surrogate.
+const OFFER_CREATE = 'offer:create';
 
 export interface OfferPanelContainerProps {
   readonly requisitionId: string;
@@ -55,7 +56,7 @@ export function OfferPanelContainer({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const canRead = scopes.includes(OFFER_CREATE);
+  const canRead = scopes.includes(OFFER_READ);
   const canCreate = scopes.includes(OFFER_CREATE);
 
   const load = useCallback(async (): Promise<void> => {

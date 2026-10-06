@@ -63,6 +63,25 @@ export class OfferDocumentController {
     });
   }
 
+  // Same-envelope signer reminder (Offer & Start §6.7) — delegated to the shared governed
+  // signing capability. Allowed only while AWAITING_SIGNATURE; never re-renders, re-templates,
+  // or mints a new envelope. envelope_id is reverse-resolved server-side, never exposed.
+  @Post(':documentId/remind')
+  @RequireScopes('document:execute')
+  @HttpCode(HttpStatus.OK)
+  async remind(
+    @Param('documentId') documentId: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ document_id: string; status: string; reminder_sent: true }> {
+    this.assertRecruiter(authContext, requestId);
+    return this.orchestrator.remind({
+      tenant_id: authContext.tenant_id,
+      document_id: documentId,
+      requestId,
+    });
+  }
+
   // DOC-6 (R-6-4, PL-3) — DERIVED status read-model (no second stored authority).
   // Executed-document bytes/artifacts are viewed via GET /v1/documents/:id/artifacts.
   @Get(':documentId/status')

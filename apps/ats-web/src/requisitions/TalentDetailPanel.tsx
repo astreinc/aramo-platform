@@ -327,15 +327,25 @@ export function TalentDetailPanel({
 
         <div className="rc-cdp__body">
           {journey !== null ? (
-            <TalentJourneySection
-              journey={journey}
-              talentRecordId={entry.talent_record_id}
-              requisitionId={entry.requisition_id}
-              canAdvancePipeline={canAdvancePipeline}
-              onRecruitingAdvance={handleRecruitingAdvance}
-              pipelineBusy={pipelineBusy}
-              error={pipelineErr}
-            />
+            <>
+              <TalentJourneySection
+                journey={journey}
+                talentRecordId={entry.talent_record_id}
+                requisitionId={entry.requisition_id}
+                canAdvancePipeline={canAdvancePipeline}
+                onRecruitingAdvance={handleRecruitingAdvance}
+                pipelineBusy={pipelineBusy}
+                error={pipelineErr}
+              />
+              {/* §11 — Talent Board selected/offer/pre-start/start cards deep-link into the single
+                  person × requisition Offer & Start journey, keyed on this pipeline episode id
+                  (authoritative; never reconstructed FE-side). */}
+              {offerRelevant || (journey.sub_states['placement_state'] ?? null) !== null ? (
+                <Link to={`/offer-start/${entry.id}`} data-testid="open-offer-start">
+                  Open Offer &amp; Start →
+                </Link>
+              ) : null}
+            </>
           ) : (
             <section className="rc-cdp__sec">
               <div className="rc-cdp__seclabel">Talent journey</div>

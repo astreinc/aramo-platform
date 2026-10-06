@@ -17,6 +17,7 @@ import {
 } from '@aramo/client-selection';
 import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { RequirementInstanceRepository, PrismaService as PreStartPrismaService } from '@aramo/pre-start-requirement';
+import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
 
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
 
@@ -41,18 +42,32 @@ const MIGRATIONS = [
   ...migrationsFor('client-selection'),
   ...migrationsFor('placement'),
   ...migrationsFor('pre-start-requirement'),
+  ...migrationsFor('documents'),
 ];
 
-// Dollar-quote- AND line-comment-aware DDL splitter.
+// Dollar-quote-, line-comment- AND single-quote-string-aware DDL splitter. A `;` inside a
+// '...' string literal (e.g. the DOC-6 OFFER_LETTER seed's prose) must NOT split the
+// statement; '' is the SQL escape for a literal quote. Single quotes inside a $$ body stay
+// protected by inDollar (never treated as a string delimiter).
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inDollar = false;
   let inLineComment = false;
+  let inString = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (inLineComment) { cur += ch; if (ch === '\n') inLineComment = false; continue; }
+    if (inString) {
+      cur += ch;
+      if (ch === "'") {
+        if (sql[i + 1] === "'") { cur += "'"; i += 1; } // escaped '' — remain in string
+        else inString = false;
+      }
+      continue;
+    }
     if (!inDollar && ch === '-' && sql[i + 1] === '-') { inLineComment = true; cur += ch; continue; }
+    if (!inDollar && ch === "'") { inString = true; cur += ch; continue; }
     if (sql.startsWith('$$', i)) { inDollar = !inDollar; cur += '$$'; i += 1; continue; }
     if (ch === ';' && !inDollar) { out.push(cur); cur = ''; } else { cur += ch; }
   }
@@ -86,7 +101,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const csPrisma = new ClientSelectionPrismaService(url);
       const placementPrisma = new PlacementPrismaService(url);
       const preStartPrisma = new PreStartPrismaService(url);
-      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, preStartPrisma]) {
+      const documentsPrisma = new DocumentsPrismaService(url);
+      for (const p of [pipelinePrisma, submittalPrisma, csPrisma, placementPrisma, preStartPrisma, documentsPrisma]) {
         await (p as unknown as { $connect: () => Promise<void> }).$connect();
         prismas.push(p as never);
       }
@@ -99,6 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new OfferRepository(placementPrisma, {} as never),
         new PlacementRepository(placementPrisma),
         new RequirementInstanceRepository(preStartPrisma),
+        new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
         NOOP_LOGGER,
       );
     }, 240_000);
@@ -158,19 +175,59 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return id;
     }
-    async function seedPlacement(tenant: string, submittal: string, req: string, talent: string, state: string): Promise<string> {
+    async function seedPlacement(tenant: string, submittal: string, req: string, talent: string, state: string, kind: string | null = null): Promise<string> {
       const id = randomUUID();
       await db.query(
         `INSERT INTO placement."PlacementProcess"
-           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, offered_at, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6::"placement"."PlacementState",now(),now())`,
-        [id, tenant, submittal, req, talent, state],
+           (id, tenant_id, submittal_id, requisition_id, talent_record_id, state, placement_kind, offered_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6::"placement"."PlacementState",$7,now(),now())`,
+        [id, tenant, submittal, req, talent, state, kind],
+      );
+      return id;
+    }
+
+    async function seedOfferLetterDocument(tenant: string, offerId: string, status: string): Promise<string> {
+      const docId = randomUUID();
+      await db.query(
+        `INSERT INTO documents."Document" (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by)
+         VALUES ($1,$2,'d0c50006-0000-7000-8000-000000000001','Offer Letter',$3,'SINGLE_SIGNATURE','TEMPLATE_GENERATED',$4)`,
+        [docId, tenant, status, randomUUID()],
+      );
+      await db.query(
+        `INSERT INTO documents."DocumentAssociation" (id, tenant_id, document_id, resource_type, resource_id, relationship, created_by)
+         VALUES ($1,$2,$3,'OFFER',$4,'REGARDING',$5)`,
+        [randomUUID(), tenant, docId, offerId, randomUUID()],
+      );
+      return docId;
+    }
+
+    // §7 — a raw pre-start requirement instance for a placement (owner-authoritative row). All
+    // snapshot columns are TEXT; satisfaction_policy defaults SELF_ATTEST. No materialization-intent
+    // is needed: assessBlocking treats "≥1 instance" as materialized.
+    async function seedRequirement(
+      tenant: string,
+      placementId: string,
+      opts: { type: string; label: string; blocking: boolean; status: string; owner_role?: string | null },
+    ): Promise<string> {
+      const id = randomUUID();
+      // CHECK: SATISFIED/WAIVED/CANCELED require completed_at NOT NULL (resolved_completed_at_chk).
+      const resolvedAt = ['SATISFIED', 'WAIVED', 'CANCELED'].includes(opts.status) ? new Date('2026-10-02T00:00:00.000Z') : null;
+      await db.query(
+        `INSERT INTO pre_start_requirement."PreStartRequirementInstance"
+           (id, tenant_id, placement_process_id, definition_set_id, definition_set_version, definition_set_checksum,
+            requirement_definition_id, requirement_type, label, blocking, owner_role, waiver_mode, status, completed_at, completed_by, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,'1.0.0','chk',$5,$6,$7,$8,$9,'NOT_WAIVABLE',$10,$11,$12,now(),now())`,
+        [id, tenant, placementId, randomUUID(), randomUUID(), opts.type, opts.label, opts.blocking, opts.owner_role ?? null, opts.status, resolvedAt, resolvedAt === null ? null : randomUUID()],
       );
       return id;
     }
 
     const call = (tenant: string, pipelineId: string, vis: ReadonlySet<string> | null = null) =>
       service.getJourney({ tenant_id: tenant, pipeline_id: pipelineId, visible_requisition_ids: vis, requestId: 'r' });
+    const callWithDoc = (tenant: string, pipelineId: string) =>
+      service.getJourney({ tenant_id: tenant, pipeline_id: pipelineId, visible_requisition_ids: null, include_offer_document: true, requestId: 'r' });
+    const callWithPreStart = (tenant: string, pipelineId: string) =>
+      service.getJourney({ tenant_id: tenant, pipeline_id: pipelineId, visible_requisition_ids: null, include_pre_start: true, requestId: 'r' });
 
     // ---------------------------------------------------------------------------------------
     // AC-2a — an ACCEPTED offer with NO established placement reads OFFER, not ACCEPTED_PLACED.
@@ -188,6 +245,38 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(j.sub_states.placement_state).toBeNull(); // BEFORE: no placement established
       // Negative control: it did NOT derive ACCEPTED_PLACED from an accepted offer.
       expect(j.stages.some((s) => s.stage === 'ACCEPTED_PLACED')).toBe(false);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // Offer & Start §6.7 — the OPT-IN offer-letter DOCUMENT signal, DB-derived from
+    // Document.status, kept DISTINCT from the Offer ACCEPTED business fact (§2.5). Opt-out
+    // (the shared Talent 360 hot read) omits it entirely (D-ARCH-1).
+    // ---------------------------------------------------------------------------------------
+    it('§6.7: include_offer_document composes the offer-letter signal (PREPARED→AWAITING_SIGNATURE) with documents provenance; opt-out omits it', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const offerId = await seedOffer(tenant, sub, req, talent, 'SENT', 'summary');
+      const docId = await seedOfferLetterDocument(tenant, offerId, 'PREPARED');
+
+      const withDoc = await callWithDoc(tenant, pipe);
+      expect(withDoc.offer_document).toEqual({ owner: 'documents', document_id: docId, status: 'AWAITING_SIGNATURE' });
+      expect(withDoc.sub_states.offer_state).toBe('SENT'); // §2.5 — document progress ≠ acceptance
+
+      const withoutDoc = await call(tenant, pipe); // default (no opt-in) → absent
+      expect(withoutDoc.offer_document).toBeNull();
+    });
+
+    it('§6.7/§2.5: an EXECUTED offer-letter reads EXECUTED (document signed) while the offer is still SENT (not accepted)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const offerId = await seedOffer(tenant, sub, req, talent, 'SENT', null);
+      await seedOfferLetterDocument(tenant, offerId, 'EXECUTED');
+
+      const j = await callWithDoc(tenant, pipe);
+      expect(j.offer_document?.status).toBe('EXECUTED'); // signed = durable e-sign evidence
+      expect(j.sub_states.offer_state).toBe('SENT');      // acceptance is the separate Offer fact
     });
 
     // ---------------------------------------------------------------------------------------
@@ -229,6 +318,99 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const j = await call(tenant, pipe);
       expect(j.current_journey_stage).toBe('PRE_START'); // downstream placement owner drives it, over pipeline `qualified`
       expect(j.sub_states.placement_state).toBe('PRE_START');
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // §7 Pre-start Readiness — the opt-in composed section: generic rows, authoritative
+    // readiness (assessBlocking), display-only N-of-M, governed ready action, needs-attention.
+    // ---------------------------------------------------------------------------------------
+    it('§7: include_pre_start composes generic requirement rows + display-only N-of-M + authoritative NOT-ready (one unresolved blocking) → no ready action', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'PRE_START');
+      await seedRequirement(tenant, placement, { type: 'SIGNED_OFFER', label: 'Signed offer', blocking: true, status: 'SATISFIED', owner_role: 'recruiter' });
+      await seedRequirement(tenant, placement, { type: 'I9', label: 'Work authorization / I-9', blocking: true, status: 'PENDING', owner_role: 'compliance' });
+
+      const j = await callWithPreStart(tenant, pipe);
+      expect(j.pre_start).not.toBeNull();
+      const ps = j.pre_start!;
+      expect(ps.placement_process_id).toBe(placement);
+      expect(ps.summary).toEqual({ complete: 1, total: 2 });
+      expect(ps.readiness).toEqual({ materialized: true, ready: false });
+      expect(ps.ready_to_start_action).toBeNull(); // fail-closed: an unresolved blocking requirement
+      expect(ps.needs_attention).toHaveLength(0); // PENDING is normal onboarding, not a blocker (§7.6)
+      // generic rows carry authoritative label/status/owner; remediation ONLY while unresolved.
+      const i9 = ps.requirements.find((r) => r.id !== null && r.label.startsWith('Work'))!;
+      expect(i9.status).toBe('PENDING');
+      expect(i9.owner_role).toBe('compliance');
+      expect(i9.remediation?.command_route).toBe(`POST /v1/pre-start-requirement/requirements/${i9.id}/status`);
+      const signed = ps.requirements.find((r) => r.label === 'Signed offer')!;
+      expect(signed.status).toBe('SATISFIED');
+      expect(signed.remediation).toBeNull(); // resolved → not actionable here
+    });
+
+    it('§7.5: all blocking requirements resolved → authoritative ready + governed markReadyToStart action (named, not issued)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'PRE_START');
+      await seedRequirement(tenant, placement, { type: 'SIGNED_OFFER', label: 'Signed offer', blocking: true, status: 'SATISFIED' });
+      await seedRequirement(tenant, placement, { type: 'NDA', label: 'Client NDA', blocking: true, status: 'WAIVED' });
+
+      const ps = (await callWithPreStart(tenant, pipe)).pre_start!;
+      expect(ps.readiness).toEqual({ materialized: true, ready: true });
+      expect(ps.summary).toEqual({ complete: 2, total: 2 });
+      expect(ps.ready_to_start_action).toEqual({ action: 'Mark ready to start', owner: 'pre-start', command_route: `POST /v1/pre-start-requirement/placements/${placement}/ready` });
+    });
+
+    it('§7.6: a FAILED blocking requirement appears in needs_attention (authoritative blocker projection)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'BLOCKED');
+      await seedRequirement(tenant, placement, { type: 'BACKGROUND', label: 'Background check', blocking: true, status: 'FAILED' });
+
+      const ps = (await callWithPreStart(tenant, pipe)).pre_start!;
+      expect(ps.readiness.ready).toBe(false);
+      expect(ps.needs_attention.map((r) => r.label)).toEqual(['Background check']);
+      expect(ps.ready_to_start_action).toBeNull();
+    });
+
+    it('§7: opt-out (no include_pre_start) omits the section even with a placement + requirements (hot-read discipline)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'PRE_START');
+      await seedRequirement(tenant, placement, { type: 'SIGNED_OFFER', label: 'Signed offer', blocking: true, status: 'PENDING' });
+
+      const j = await call(tenant, pipe); // default: no include_pre_start
+      expect(j.pre_start).toBeNull();
+    });
+
+    it('§8: placement is composed once a placement exists; a legacy NULL placement_kind normalizes to CONTRACT', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'READY_TO_START'); // kind NULL
+      const j = await call(tenant, pipe);
+      expect(j.placement).toEqual({ id: placement, kind: 'CONTRACT' });
+    });
+
+    it('§8.3: an explicit PERMANENT placement composes kind=PERMANENT (direct-hire branch)', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const sub = await seedSubmittal(tenant, talent, req, 'submitted_to_client');
+      const placement = await seedPlacement(tenant, sub, req, talent, 'STARTED', 'PERMANENT');
+      const j = await call(tenant, pipe);
+      expect(j.placement).toEqual({ id: placement, kind: 'PERMANENT' });
+    });
+
+    it('§8: no placement → placement is null', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      const pipe = await seedPipeline(tenant, req, talent, 'qualified');
+      const j = await call(tenant, pipe);
+      expect(j.placement).toBeNull();
     });
 
     // ---------------------------------------------------------------------------------------

@@ -31,6 +31,7 @@
     "apps/api/src/skill-governance/skill-governance.controller.ts": "AP",
     "apps/api/src/pipeline-integration/pipeline-provider-mapping-admin.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
+    "apps/api/src/offer-start-worklist/offer-start-worklist.controller.ts": "AP",
     "apps/api/src/requisition-talent-board/requisition-talent-board.controller.ts": "AP",
     "apps/api/src/search/enterprise-search.controller.ts": "AP",
     "apps/api/src/pipeline-void/pipeline-void.controller.ts": "AP",

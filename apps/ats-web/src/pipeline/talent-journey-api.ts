@@ -28,6 +28,50 @@ export interface JourneyAction {
   readonly command_route: string;
 }
 
+// Offer & Start §6.7 — the opt-in offer-letter DOCUMENT signal (DB-derived, write-back
+// authoritative), DISTINCT from the Offer ACCEPTED business fact (§2.5). null on the Talent
+// 360 embed (opt-out) and until an offer-letter exists. Fine-grained per-signer sent/viewed
+// timestamps are a server-side typed GAP (not exposed by the signature port) — never faked here.
+export interface JourneyOfferDocument {
+  readonly owner: 'documents';
+  readonly document_id: string;
+  readonly status: 'REQUESTED' | 'AWAITING_SIGNATURE' | 'EXECUTED';
+}
+
+// Offer & Start §7.2 — one authoritative pre-start requirement row (generic over the owning
+// domain). The FE renders label/status/detail/source/owner but NEVER decides completion (§7.2);
+// `remediation` names the owner's existing governed route when actionable.
+export interface JourneyPreStartRequirement {
+  readonly id: string;
+  readonly requirement_type: string;
+  readonly label: string;
+  readonly status: string;
+  readonly blocking: boolean;
+  readonly owner_role: string | null;
+  readonly completed_at: string | null;
+  readonly evidence_reference: string | null;
+  readonly remediation: JourneyAction | null;
+}
+
+// Offer & Start §7 — the Pre-start Readiness section. `readiness` is the AUTHORITATIVE server
+// assessment; the FE never derives a second readiness algorithm (§7.5). `summary` is display-only
+// N-of-M. `ready_to_start_action` is present only when the server says ready (fail-closed).
+export interface JourneyPreStart {
+  readonly placement_process_id: string;
+  readonly requirements: readonly JourneyPreStartRequirement[];
+  readonly summary: { readonly complete: number; readonly total: number };
+  readonly readiness: { readonly materialized: boolean; readonly ready: boolean };
+  readonly needs_attention: readonly JourneyPreStartRequirement[];
+  readonly ready_to_start_action: JourneyAction | null;
+}
+
+// Offer & Start §8 — the owning placement identity + engagement branch. The FE uses `id` for the
+// owner deep-link (authoritative, never reconstructed) and `kind` to diverge the labels/banner.
+export interface JourneyPlacement {
+  readonly id: string;
+  readonly kind: 'CONTRACT' | 'PERMANENT';
+}
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -35,6 +79,9 @@ export interface TalentRequisitionJourney {
   readonly stages: readonly JourneyStageElement[];
   readonly sub_states: Readonly<Record<string, string | null>>;
   readonly actions: readonly JourneyAction[];
+  readonly offer_document: JourneyOfferDocument | null;
+  readonly pre_start: JourneyPreStart | null;
+  readonly placement: JourneyPlacement | null;
 }
 
 // GET /v1/pipelines/:id/journey — the composed journey for one pipeline episode. A non-visible

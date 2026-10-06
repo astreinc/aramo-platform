@@ -348,7 +348,37 @@ export class OfferRepository {
       compRevised;
 
     const row = await this.prisma.$transaction(async (tx) => {
-      const updated = (await tx.offer.update({ where: { id: input.id }, data })) as OfferRow;
+      // ATOMIC CAS (Offer & Start prereq hygiene §5.2) — the concurrency floor is
+      // this state-guarded WRITE, NOT the advisory pre-read above. Concurrent
+      // writers that all passed the stale legal-edge check funnel here; the row
+      // lock serializes them and ONLY the writer still matching `state: from`
+      // advances the Offer. Everyone else matches 0 rows → OFFER_TRANSITION_CONFLICT
+      // with NO event/outbox/revision written (the throw rolls the tx back). The
+      // prior non-guarded `update({ where: { id } })` was a read-then-write TOCTOU
+      // that let two concurrent legal same-state transitions both commit. Offer
+      // carries no `version` column, so the guard keys on the captured `from`
+      // state (mirrors expireOverdueOffers + the offer.enforce lifecycle trigger).
+      const guard = await tx.offer.updateMany({
+        where: { id: input.id, tenant_id: input.tenant_id, state: from },
+        data,
+      });
+      if (guard.count === 0) {
+        const latest = (await tx.offer.findFirst({
+          where: { tenant_id: input.tenant_id, id: input.id },
+        })) as OfferRow | null;
+        throw new AramoError(
+          'OFFER_TRANSITION_CONFLICT',
+          'Offer was modified concurrently; refresh and retry',
+          409,
+          {
+            requestId: input.correlation_id,
+            details: { id: input.id, expected_from: from, current_state: latest?.state ?? null },
+          },
+        );
+      }
+      const updated = (await tx.offer.findFirstOrThrow({
+        where: { id: input.id },
+      })) as OfferRow;
       await tx.offerEvent.create({
         data: {
           id: uuidv7(), tenant_id: input.tenant_id, offer_id: input.id,

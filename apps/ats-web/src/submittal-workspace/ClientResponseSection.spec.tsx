@@ -10,11 +10,14 @@ const NO_ACTIONS: WorkspaceClientSelectionActions = {
   can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
 };
 
-function makeView(csOver: Partial<SubmittalWorkspaceView['client_selection']> = {}): SubmittalWorkspaceView {
+function makeView(
+  csOver: Partial<SubmittalWorkspaceView['client_selection']> = {},
+  pipelineOver: Partial<SubmittalWorkspaceView['pipeline']> = {},
+): SubmittalWorkspaceView {
   return {
     identity: { submittal_id: 's', talent: { id: 't', name: 'Divya' }, requisition: { id: 'r', title: 'SM' }, company: { id: 'c', name: 'Freddie Mac' } },
     context: { recruiter: null, owner: null, talent_location: null, talent_title: null, work_authorization: null },
-    pipeline: { linked_episode_id: null, current_stage: null, is_live: false },
+    pipeline: { linked_episode_id: null, current_stage: null, is_live: false, ...pipelineOver },
     submittal: { state: 'submitted_to_client', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: null },
     readiness: { status: 'READY', requirements: [] },
     documents: { rtr_satisfied: true, rtr_deny: null, resume_selected: true },
@@ -71,6 +74,22 @@ describe('ClientResponseSection', () => {
     expect(screen.queryByRole('button', { name: 'Record selected' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Decline' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw' })).not.toBeInTheDocument();
+  });
+
+  it('SELECTED + a server-owned pipeline episode → Continue-in-Offer-&-Start deep-link to that journey', () => {
+    renderSection(makeView({ state: 'SELECTED' }, { linked_episode_id: 'pl-9' }));
+    const link = screen.getByTestId('sw-continue-offer-start');
+    expect(link).toHaveAttribute('href', '/offer-start/pl-9');
+  });
+
+  it('SELECTED but no linked episode id → no Offer-&-Start deep-link (never reconstructed FE-side)', () => {
+    renderSection(makeView({ state: 'SELECTED' }, { linked_episode_id: null }));
+    expect(screen.queryByTestId('sw-continue-offer-start')).not.toBeInTheDocument();
+  });
+
+  it('CLIENT_REVIEW with a linked episode → no Offer-&-Start deep-link (only once SELECTED)', () => {
+    renderSection(makeView({ state: 'CLIENT_REVIEW' }, { linked_episode_id: 'pl-9' }));
+    expect(screen.queryByTestId('sw-continue-offer-start')).not.toBeInTheDocument();
   });
 
   it('DECLINED / WITHDRAWN render their terminal state from authority', () => {

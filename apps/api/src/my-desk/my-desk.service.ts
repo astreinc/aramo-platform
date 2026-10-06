@@ -177,6 +177,13 @@ export class MyDeskService {
       return agingDaysInTimeZone(nowMs, exp, timeZone) <= OFFER_EXPIRY_WINDOW_DAYS;
     });
 
+    // Offer & Start §11 — resolve the authoritative journey key (live pipeline episode) for each
+    // expiring-offer exception so its CTA deep-links into the single person × requisition journey.
+    const offerEpisodeIds = await this.port.resolveLiveEpisodeIds(
+      ctx,
+      expiringOffers.map((o) => ({ talent_record_id: o.talent_record_id, requisition_id: o.requisition_id })),
+    );
+
     // One batched name/label resolution across every section that shows people.
     const reqLabel = new Map(
       requisitions.map((r) => [r.id, `REQ-${r.requisition_number}`]),
@@ -251,18 +258,26 @@ export class MyDeskService {
         owner_label: null,
         primary_action: null,
       })),
-      ...expiringOffers.map((o) => ({
-        id: o.id,
-        kind: 'offer_expiring' as const,
-        severity: 'medium' as const,
-        title: `Offer expiring · ${talentNames.get(o.talent_record_id) ?? 'talent'}`,
-        body: `Offer expires ${isoDateInTimeZone(Date.parse(o.offer_expires_at as string), timeZone)} with no response yet.`,
-        talent_id: o.talent_record_id,
-        requisition_id: o.requisition_id,
-        owned_by_me: true,
-        owner_label: null,
-        primary_action: null,
-      })),
+      ...expiringOffers.map((o) => {
+        // Deep-link the CTA into the journey ONLY when an authoritative live episode resolved
+        // (narrow §11 — never a reconstructed key); otherwise no CTA (unchanged prior behavior).
+        const pid = offerEpisodeIds.get(`${o.talent_record_id}|${o.requisition_id}`) ?? null;
+        return {
+          id: o.id,
+          kind: 'offer_expiring' as const,
+          severity: 'medium' as const,
+          title: `Offer expiring · ${talentNames.get(o.talent_record_id) ?? 'talent'}`,
+          body: `Offer expires ${isoDateInTimeZone(Date.parse(o.offer_expires_at as string), timeZone)} with no response yet.`,
+          talent_id: o.talent_record_id,
+          requisition_id: o.requisition_id,
+          owned_by_me: true,
+          owner_label: null,
+          primary_action:
+            pid !== null
+              ? { kind: 'continue_offer_start' as const, label: 'Continue in Offer & Start', href: `/offer-start/${pid}` }
+              : null,
+        };
+      }),
     ];
 
     const requisitionRows = requisitions.map((r) =>

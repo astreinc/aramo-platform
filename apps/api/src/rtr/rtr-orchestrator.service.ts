@@ -1,14 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   DocumentsRepository,
-  RenderService,
   TemplatesRepository,
   DocumentNotFoundError,
   type DocumentStoragePort,
 } from '@aramo/documents';
-import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { TalentRecordRepository } from '@aramo/talent-record';
+
+import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
 import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
@@ -78,8 +78,9 @@ export interface RtrPreviewView {
 export class RtrOrchestratorService {
   constructor(
     private readonly documents: DocumentsRepository,
-    private readonly render: RenderService,
-    @Inject(SIGNATURE_PROVIDER_PORT) private readonly signature: SignatureProviderPort,
+    // Shared governed-document signing mechanics (prepare/send/remind/state) — the common
+    // e-sign execution layer. RTR keeps only RTR-specific template/provenance/preview logic.
+    private readonly signing: GovernedDocumentSigningService,
     private readonly talent: TalentRecordRepository,
     private readonly resolver: RtrTemplateResolverService,
     private readonly binding: RtrTemplateBindingService,
@@ -114,24 +115,30 @@ export class RtrOrchestratorService {
       requestId: input.requestId,
     });
 
-    // 3. Create the RTR Document + the three RTR associations (§365).
-    const doc = await this.documents.createDocument({
+    // 3. Create the RTR Document (+ the three RTR associations) and FREEZE the pinned-template
+    //    revision — delegated to the shared governed-signing capability. template_version_id is
+    //    carried through for durable provenance (INV-2): the exact frozen artifact preview shows
+    //    and send transmits. RTR owns WHAT (type + associations + resolved model); the shared
+    //    capability owns the create+freeze mechanics.
+    const { document_id } = await this.signing.prepare({
       tenant_id: input.tenant_id,
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
       title: 'Right to Represent',
       execution_mode: 'SINGLE_SIGNATURE',
       source_kind: 'TEMPLATE_GENERATED',
       created_by: input.created_by,
+      requestId: input.requestId,
       associations: [
         { resource_type: 'TALENT', resource_id: input.talent_id, relationship: 'SUBJECT' },
         { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' },
         { resource_type: 'COMPANY', resource_id: input.company_id, relationship: 'CLIENT' },
       ],
-      request_id: input.requestId,
+      render: model,
+      template_version_id: template.template_version_id,
     });
 
-    // 4. Declare the requisition's RTR requirement (idempotent) so the readiness
-    //    gate engages for this requisition's submits (R-5-11).
+    // 4. Declare the requisition's RTR requirement (idempotent) so the readiness gate engages
+    //    for this requisition's submits (R-5-11). RTR-specific; stays in the domain.
     await this.documents.ensureRequirement({
       tenant_id: input.tenant_id,
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
@@ -140,19 +147,7 @@ export class RtrOrchestratorService {
       created_by: input.created_by,
     });
 
-    // 5. Render the pinned template + resolved values into a FROZEN revision.
-    //    template_version_id is persisted on the revision = durable provenance
-    //    (INV-2). This exact artifact is what preview shows and send transmits.
-    await this.render.generateRevision({
-      tenant_id: input.tenant_id,
-      document_id: doc.id,
-      actor_id: input.created_by,
-      requestId: input.requestId,
-      template_version_id: template.template_version_id,
-      model,
-    });
-
-    return { document_id: doc.id };
+    return { document_id };
   }
 
   // send → resolve the Talent signer, then create + send the signature envelope
@@ -167,6 +162,9 @@ export class RtrOrchestratorService {
     created_by: string;
     requestId: string;
   }): Promise<RtrSendResult> {
+    // RTR owns the signer resolution (the Talent on this RTR). The common send mechanics —
+    // consume the frozen revision (no re-render, INV-3), duplicate-envelope guard, DRAFT→PREPARED,
+    // create + send — are delegated to the shared governed-signing capability.
     const talent = await this.talent.findById({ tenant_id: input.tenant_id, id: input.talent_id });
     if (talent === null) {
       throw new AramoError('DOCUMENT_NOT_FOUND', `talent ${input.talent_id} not found`, 404, { requestId: input.requestId });
@@ -176,59 +174,15 @@ export class RtrOrchestratorService {
       throw new AramoError('VALIDATION_ERROR', 'talent has no email for RTR signing', 400, { requestId: input.requestId });
     }
     const name = `${talent.first_name} ${talent.last_name}`.trim();
-
-    // Consume the frozen revision created at request time — no re-render (INV-3).
-    const revision = await this.documents.getCurrentRevision(input.tenant_id, input.document_id);
-    if (revision === null || revision.content_sha256 === null) {
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'RTR document has no prepared revision to send; request the RTR first',
-        422,
-        { requestId: input.requestId, details: { document_id: input.document_id } },
-      );
-    }
-
-    // COMM-RECRUITER-W1 (W1-C1/§19) — DUPLICATE-ENVELOPE GUARD. If a NON-TERMINAL
-    // envelope already exists for this exact (tenant, document_ref=document_id,
-    // document_revision_ref=revision.id), a repeated send MUST NOT mint a second
-    // active envelope. Return the existing lifecycle instead (throws
-    // ESIGN_ENVELOPE_AMBIGUOUS if >1 exist — integrity failure, never silent).
-    const existing = await this.signature.findEnvelopeForDocument(
-      input.tenant_id,
-      input.document_id,
-      revision.id,
-    );
-    if (existing !== null) {
-      return { document_id: input.document_id, envelope_id: existing.envelope_id, status: existing.status };
-    }
-
-    // Transition DRAFT → PREPARED (idempotent). Drives the DERIVED status (PL-3):
-    // DRAFT=REQUESTED, PREPARED=AWAITING_SIGNATURE, EXECUTED=EXECUTED.
-    await this.documents.prepareDocument({
+    return this.signing.send({
       tenant_id: input.tenant_id,
       document_id: input.document_id,
-      actor_id: input.created_by,
-      request_id: input.requestId,
-    });
-
-    const envelope = await this.signature.createEnvelope({
-      tenant_id: input.tenant_id,
       subject: 'Right to Represent',
       execution_mode: 'SINGLE_SIGNATURE',
+      recipient: { email, name },
       created_by: input.created_by,
-      documents: [
-        {
-          document_ref: input.document_id,
-          document_revision_ref: revision.id,
-          source_sha256: revision.content_sha256,
-          title: 'Right to Represent',
-          ordinal: 1,
-        },
-      ],
-      signers: [{ email, name, signing_order: 1 }],
+      requestId: input.requestId,
     });
-    const sent = await this.signature.sendEnvelope(input.tenant_id, envelope.envelope_id);
-    return { document_id: input.document_id, envelope_id: envelope.envelope_id, status: sent.status };
   }
 
   // remind → COMM-RECRUITER-W1 (W1-C3). Send a reminder against the SAME existing
@@ -243,6 +197,10 @@ export class RtrOrchestratorService {
     document_id: string;
     requestId: string;
   }): Promise<RtrRemindResult> {
+    // RTR-specific guard: the reminder endpoint addresses an RTR document only (concealment —
+    // a non-RTR / cross-tenant id is NOT FOUND). The common same-envelope reminder mechanics
+    // (AWAITING_SIGNATURE gate, frozen-revision reverse-resolve, remindEnvelopeSigner) are
+    // delegated to the shared capability.
     let doc;
     try {
       doc = await this.documents.getDocument(input.tenant_id, input.document_id);
@@ -255,46 +213,13 @@ export class RtrOrchestratorService {
     if (doc.document_type_id !== RIGHT_TO_REPRESENT_TYPE_ID) {
       throw new AramoError('DOCUMENT_NOT_FOUND', `document ${input.document_id} is not an RTR`, 404, { requestId: input.requestId });
     }
-    const derived = this.deriveStatus(doc.status);
-    if (derived !== 'AWAITING_SIGNATURE') {
-      throw new AramoError(
-        'ESIGN_REMINDER_NOT_ALLOWED',
-        `RTR is ${derived}, not awaiting signature`,
-        409,
-        { requestId: input.requestId, details: { document_id: input.document_id } },
-      );
-    }
-    // The EXACT frozen revision created at request time (never re-rendered, INV-3).
-    const revision = await this.documents.getCurrentRevision(input.tenant_id, input.document_id);
-    if (revision === null) {
-      throw new AramoError('ESIGN_REMINDER_NOT_ALLOWED', 'RTR has no frozen revision to remind', 409, {
-        requestId: input.requestId,
-        details: { document_id: input.document_id },
-      });
-    }
-    // Reverse-resolve the envelope from the exact doc + revision (E-Sign owns it).
-    const envelope = await this.signature.findEnvelopeForDocument(
-      input.tenant_id,
-      input.document_id,
-      revision.id,
-    );
-    if (envelope === null) {
-      throw new AramoError(
-        'ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT',
-        'no active signature envelope for this RTR',
-        404,
-        { requestId: input.requestId, details: { document_id: input.document_id } },
-      );
-    }
-    // Same-envelope reminder: revoke prior session + mint new + notify (E-Sign).
-    await this.signature.remindEnvelopeSigner(input.tenant_id, envelope.envelope_id);
-    return { document_id: input.document_id, status: derived, reminder_sent: true };
+    return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId });
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).
   async status(tenant_id: string, document_id: string): Promise<{ document_id: string; status: string; document_status: string }> {
     const doc = await this.documents.getDocument(tenant_id, document_id);
-    return { document_id, status: this.deriveStatus(doc.status), document_status: doc.status };
+    return { document_id, status: this.signing.deriveStatus(doc.status), document_status: doc.status };
   }
 
   // RTR-TEMPLATE-1 (§14, §15) — the authoritative current RTR for an exact
@@ -319,20 +244,21 @@ export class RtrOrchestratorService {
     if (docs.length === 0) return null;
     const selected = this.selectCurrent(docs);
 
-    const [unsigned, executed, certificate] = await Promise.all([
-      this.documents.listArtifacts(input.tenant_id, selected.id, 'RENDERED_UNSIGNED'),
-      this.documents.listArtifacts(input.tenant_id, selected.id, 'EXECUTED'),
-      this.documents.listArtifacts(input.tenant_id, selected.id, 'EXECUTION_CERTIFICATE'),
+    // Status + artifact availability via the shared signing-state read; RTR adds only its
+    // pinned-template provenance (§13). Collapses the duplicated artifact-availability derivation.
+    const [state, template] = await Promise.all([
+      this.signing.getSigningState(input.tenant_id, selected.id),
+      this.resolveProvenance(input.tenant_id, selected.id),
     ]);
 
     return {
       document_id: selected.id,
-      status: this.deriveStatus(selected.status),
-      document_status: selected.status,
-      template: await this.resolveProvenance(input.tenant_id, selected.id),
-      preview_available: unsigned.length > 0,
-      executed_available: executed.length > 0,
-      certificate_available: certificate.length > 0,
+      status: state.status,
+      document_status: state.document_status,
+      template,
+      preview_available: state.preview_available,
+      executed_available: state.executed_available,
+      certificate_available: state.certificate_available,
     };
   }
 
@@ -390,15 +316,5 @@ export class RtrOrchestratorService {
     const template = await this.templates.findTemplateById(tenant_id, version.template_id);
     if (template === null) return null;
     return { name: template.name, version_number: version.version_number };
-  }
-
-  private deriveStatus(docStatus: string): string {
-    return docStatus === 'EXECUTED'
-      ? 'EXECUTED'
-      : docStatus === 'PREPARED' || docStatus === 'EXECUTION_PENDING'
-        ? 'AWAITING_SIGNATURE'
-        : docStatus === 'DRAFT'
-          ? 'REQUESTED'
-          : docStatus;
   }
 }

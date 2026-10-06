@@ -188,6 +188,37 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── Offer & Start worklist (cross-requisition read projection, §9) ──
+  # GET /v1/offer-start-worklist — the cross-requisition Offer & Start operating list (UI:
+  # Placements / Offers & Starts). A READ-ONLY projection over existing authorities
+  # (ClientSelection/Offer/Placement/Talent/Requisition); it owns no lifecycle and persists no
+  # status. Includes people with an Offer but no PlacementProcess yet. Requires `pipeline:read`
+  # (every row IS a journey episode) + the `ats` capability; visibility is actor/tenant scoped
+  # server-side. Each row deep-links to the same person × requisition journey.
+  /v1/offer-start-worklist:
+    get:
+      operationId: getOfferStartWorklist
+      summary: The cross-requisition Offer & Start worklist projection.
+      description: |
+        Returns the cross-requisition list of people anywhere in the Offer → Start journey —
+        including those with an Offer but no PlacementProcess row yet — composed read-only over
+        the authoritative owners (deepest owner wins: Placement over Offer). Exception-first.
+        Each row carries the authoritative journey phase + a deep-link key (pipeline episode).
+        Requires the `pipeline:read` scope and the `ats` capability; visibility is actor/tenant
+        scoped server-side (never fetch-all-then-filter).
+      responses:
+        '200':
+          description: The composed Offer & Start worklist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferStartWorklistView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   # ── My Desk Command Center (read projection) ──
   # GET /v1/my-desk — the recruiter landing composition. A READ PROJECTION over
   # authoritative domain state: never a source of workflow truth, never mutating.
@@ -7249,6 +7280,35 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  /v1/offer-documents/{documentId}/remind:
+    post:
+      operationId: remindOfferDocument
+      summary: Send a same-envelope signature reminder for the offer letter.
+      description: Reminds the Talent signer on the existing envelope for the same frozen revision. Allowed only while awaiting signature; never re-renders, re-templates, or mints a new envelope. Recruiter-only; requires document:execute.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The reminder outcome.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [document_id, status, reminder_sent]
+                properties:
+                  document_id: { type: string, format: uuid }
+                  status: { type: string }
+                  reminder_sent: { type: boolean }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/offer-documents/{documentId}/status:
     get:
       operationId: getOfferDocumentStatus
@@ -8426,6 +8486,9 @@ components:
         - stages
         - sub_states
         - actions
+        - offer_document
+        - pre_start
+        - placement
       properties:
         requisition_id: { type: string }
         talent_record_id: { type: string }
@@ -8437,6 +8500,154 @@ components:
         actions:
           type: array
           items: { $ref: '#/components/schemas/JourneyActionView' }
+        # Offer & Start §6.7 — the opt-in offer-letter document signal; null on the Talent 360
+        # embed (opt-out, D-ARCH-1) and until an offer-letter exists. Distinct from acceptance.
+        offer_document:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyOfferDocumentView'
+            - type: 'null'
+        # Offer & Start §7 — the opt-in Pre-start Readiness section; null on the Talent 360
+        # embed and until a placement exists. Readiness is authoritative (never FE-derived).
+        pre_start:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyPreStartView'
+            - type: 'null'
+        # Offer & Start §8 — the owning placement identity + engagement branch; null until a
+        # placement exists. Carries NO commercial field (the start transition's terms stay with the owner).
+        placement:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyPlacementView'
+            - type: 'null'
+    JourneyPreStartRequirementView:
+      type: object
+      additionalProperties: false
+      description: One authoritative pre-start requirement row (Offer & Start §7.2), projected generically from PreStartRequirementInstance. Completion state is never hardcoded by the reader.
+      required:
+        - id
+        - requirement_type
+        - label
+        - status
+        - blocking
+        - owner_role
+        - completed_at
+        - evidence_reference
+        - remediation
+      properties:
+        id: { type: string, format: uuid }
+        requirement_type: { type: string }
+        label: { type: string }
+        status: { type: string }
+        blocking: { type: boolean }
+        owner_role: { type: [string, 'null'] }
+        completed_at: { type: [string, 'null'], format: date-time }
+        evidence_reference: { type: [string, 'null'] }
+        remediation:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyActionView'
+            - type: 'null'
+    JourneyPreStartView:
+      type: object
+      additionalProperties: false
+      description: The composed Pre-start Readiness section (Offer & Start §7). readiness is the authoritative assessment; summary is display-only N-of-M; needs_attention carries only authoritative FAILED-blocking rows; ready_to_start_action names the governed markReadyToStart route and is present only when the authority says ready.
+      required:
+        - placement_process_id
+        - requirements
+        - summary
+        - readiness
+        - needs_attention
+        - ready_to_start_action
+      properties:
+        placement_process_id: { type: string, format: uuid }
+        requirements:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyPreStartRequirementView' }
+        summary:
+          type: object
+          additionalProperties: false
+          required: [complete, total]
+          properties:
+            complete: { type: integer }
+            total: { type: integer }
+        readiness:
+          type: object
+          additionalProperties: false
+          required: [materialized, ready]
+          properties:
+            materialized: { type: boolean }
+            ready: { type: boolean }
+        needs_attention:
+          type: array
+          items: { $ref: '#/components/schemas/JourneyPreStartRequirementView' }
+        ready_to_start_action:
+          oneOf:
+            - $ref: '#/components/schemas/JourneyActionView'
+            - type: 'null'
+    OfferStartWorklistRowView:
+      type: object
+      additionalProperties: false
+      description: One cross-requisition Offer & Start worklist row (§9). Projected read-only from the deepest authoritative owner (Placement over Offer); phase is a read-time label, never a stored status. pipeline_id deep-links to the journey (null only when the episode is unresolvable).
+      required:
+        - pipeline_id
+        - requisition_id
+        - requisition_number
+        - requisition_title
+        - client_name
+        - talent_record_id
+        - talent_name
+        - phase
+        - phase_label
+        - engagement
+        - has_exception
+        - exception_summary
+        - updated_at
+      properties:
+        pipeline_id: { type: [string, 'null'], format: uuid }
+        requisition_id: { type: string, format: uuid }
+        requisition_number: { type: [integer, 'null'] }
+        requisition_title: { type: [string, 'null'] }
+        client_name: { type: [string, 'null'] }
+        talent_record_id: { type: string, format: uuid }
+        talent_name: { type: [string, 'null'] }
+        phase: { type: string, enum: [OFFER, ACCEPTED, PRE_START, READY, STARTED, BLOCKED, OFFER_DECLINED, OFFER_EXPIRED] }
+        phase_label: { type: string }
+        engagement: { type: [string, 'null'], enum: [CONTRACT, PERMANENT, null] }
+        has_exception: { type: boolean }
+        exception_summary: { type: [string, 'null'] }
+        updated_at: { type: [string, 'null'], format: date-time }
+    OfferStartWorklistView:
+      type: object
+      additionalProperties: false
+      description: The cross-requisition Offer & Start worklist (§9) — a read-only projection; total is a display count of the returned rows, never a persisted figure.
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/OfferStartWorklistRowView' }
+        total: { type: integer }
+    JourneyPlacementView:
+      type: object
+      additionalProperties: false
+      description: The owning placement identity + engagement branch (Offer & Start §8). Authoritative key for the owner deep-link; carries no commercial field. kind normalizes a legacy NULL placement_kind to CONTRACT.
+      required:
+        - id
+        - kind
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [CONTRACT, PERMANENT] }
+    JourneyOfferDocumentView:
+      type: object
+      additionalProperties: false
+      description: DB-derived offer-letter document signal (Offer & Start §6.7); owner=documents. Distinct from the Offer ACCEPTED business fact (§2.5).
+      required:
+        - owner
+        - document_id
+        - status
+      properties:
+        owner: { type: string, enum: [documents] }
+        document_id: { type: string, format: uuid }
+        status: { type: string, enum: [REQUESTED, AWAITING_SIGNATURE, EXECUTED] }
     ActiveOpportunityView:
       type: object
       additionalProperties: false
