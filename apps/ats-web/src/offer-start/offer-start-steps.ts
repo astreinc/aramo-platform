@@ -81,21 +81,7 @@ export function deriveSteps(
   });
 }
 
-// Needs-attention = EXCEPTIONS only (§2.3), derived from authoritative server state — never
-// routine current-step actions. Each is a server fact, not an FE-invented condition.
-export interface JourneyException {
-  readonly key: string;
-  readonly label: string;
-  readonly detail: string;
-}
-
-export function deriveExceptions(journey: TalentRequisitionJourney): readonly JourneyException[] {
-  const s = journey.sub_states;
-  const offer = s['offer_state'] ?? null;
-  const placement = s['placement_state'] ?? null;
-  const out: JourneyException[] = [];
-  if (offer === 'EXPIRED') out.push({ key: 'offer_expired', label: 'Offer expired unsigned', detail: 'The offer passed its expiry before it was signed.' });
-  if (offer === 'DECLINED') out.push({ key: 'offer_declined', label: 'Offer declined', detail: 'The talent declined the offer in the signing flow.' });
-  if (placement === 'BLOCKED') out.push({ key: 'pre_start_blocked', label: 'Pre-start blocked', detail: 'A required pre-start requirement failed — start is blocked until resolved.' });
-  return out;
-}
+// Needs-attention EXCEPTIONS are the canonical server-derived offer-start exceptions
+// (TalentRequisitionJourney.offer_start_exceptions, from libs/placement
+// deriveOfferStartExceptions) — the FE renders them and no longer re-derives the
+// offer/placement predicates here.

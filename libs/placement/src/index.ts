@@ -13,6 +13,14 @@ export {
   deriveOfferTiming,
   type OfferTiming,
 } from './lib/offer-timing.js';
+// Canonical offer-start EXCEPTION semantic (worklist + Talent Journey + Offer &
+// Start FE consume this; none re-derives the offer/placement exception predicates
+// or re-labels them).
+export {
+  deriveOfferStartExceptions,
+  type OfferStartException,
+  type OfferStartExceptionKind,
+} from './lib/offer-start-exceptions.js';
 export { OfferTransitionPolicyService, OFFER_POLICY_STORE } from './lib/policy/offer-transition-policy.service.js';
 export {
   OFFER_STATES,

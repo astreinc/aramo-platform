@@ -8,7 +8,7 @@ import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/tal
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
 
-import { deriveSteps, deriveExceptions, type JourneyStep } from './offer-start-steps';
+import { deriveSteps, type JourneyStep } from './offer-start-steps';
 import './offer-start.css';
 
 // Offer & Start journey page (directive §6.3) — ONE person × requisition surface keyed on the
@@ -114,7 +114,8 @@ export function OfferStartJourneyView(): JSX.Element {
   // it diverges the Start & Placement labels + the completion banner. Absent placement ⇒ CONTRACT default.
   const engagement = journey.placement?.kind === 'PERMANENT' ? 'DIRECT_HIRE' : 'CONTRACT';
   const steps = deriveSteps(journey, engagement);
-  const exceptions = deriveExceptions(journey);
+  // Canonical server-derived exceptions (offer expired/declined, pre-start blocked).
+  const exceptions = journey.offer_start_exceptions;
   const doneCount = steps.filter((s) => s.status === 'done').length;
 
   // §8.4 — the completion banner is PRESENTATION only, derived from the authoritative placement
@@ -184,7 +185,7 @@ export function OfferStartJourneyView(): JSX.Element {
   const attnReqs = preStart?.needs_attention ?? [];
   // When the authoritative pre-start section is present, its specific FAILED-requirement rows
   // supersede the coarse placement-BLOCKED exception (no redundant signal; §7.6).
-  const shownExceptions = preStart !== null ? exceptions.filter((e) => e.key !== 'pre_start_blocked') : exceptions;
+  const shownExceptions = preStart !== null ? exceptions.filter((e) => e.kind !== 'pre_start_blocked') : exceptions;
   const onMarkReady = (): void => {
     if (preStart === null) return;
     void runAction(async () => {
@@ -317,7 +318,7 @@ export function OfferStartJourneyView(): JSX.Element {
             ) : (
               <>
                 {shownExceptions.map((e) => (
-                  <div key={e.key} className="os-attn" data-testid={`os-attn-${e.key}`}>
+                  <div key={e.kind} className="os-attn" data-testid={`os-attn-${e.kind}`}>
                     <span className="os-attn-what">{e.label}</span>
                     <span className="os-muted">{e.detail}</span>
                   </div>
