@@ -5,6 +5,7 @@ import {
   deriveClientWaitingDays,
   isInterviewToday,
 } from '@aramo/client-selection';
+import { deriveOfferTiming } from '@aramo/placement';
 
 import {
   classifyDueUrgency,
@@ -37,7 +38,6 @@ import type {
 // FE derives every card and tab count from the returned arrays (directive §14).
 
 const DAY_MS = 86_400_000;
-const OFFER_EXPIRY_WINDOW_DAYS = 7;
 
 // task.type → recruiter queue kind. call/email/follow_up read as a follow-up;
 // everything else is a plain task. (The rtr/submittal/engagement/client kinds
@@ -60,9 +60,6 @@ const OWNER_ROUTE: Record<DeskTaskOwnerType, string | null> = {
   company: '/companies',
   contact: null,
 };
-
-// Offer states that can still be "expiring" (awaiting a talent response).
-const OPEN_OFFER_STATES = new Set(['SENT', 'NEGOTIATION']);
 
 function parseMs(iso: string | null): number | null {
   if (iso === null) return null;
@@ -174,13 +171,17 @@ export class MyDeskService {
       }),
     );
 
-    // Expiring offers: still open, expiry known, within the window, not past.
-    const expiringOffers = offers.filter((o) => {
-      const exp = parseMs(o.offer_expires_at);
-      if (exp === null || !OPEN_OFFER_STATES.has(o.state)) return false;
-      if (classifyDueUrgency(exp, nowMs, timeZone) === 'overdue') return false;
-      return agingDaysInTimeZone(nowMs, exp, timeZone) <= OFFER_EXPIRY_WINDOW_DAYS;
-    });
+    // Expiring offers: the canonical offer-timing semantic decides "expiring soon"
+    // (awaiting response, expiry known, not past, within the warning window).
+    const expiringOffers = offers.filter(
+      (o) =>
+        deriveOfferTiming({
+          state: o.state,
+          offer_expires_at: o.offer_expires_at,
+          now_ms: nowMs,
+          time_zone: timeZone,
+        }).expiring_soon,
+    );
 
     // Offer & Start §11 — resolve the authoritative journey key (live pipeline episode) for each
     // expiring-offer exception so its CTA deep-links into the single person × requisition journey.

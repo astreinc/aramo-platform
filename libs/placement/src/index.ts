@@ -5,6 +5,14 @@ export { PrismaService } from './lib/prisma/prisma.service.js';
 export { OfferRepository } from './lib/offer.repository.js';
 export type { OfferView, CreateOfferInput, TransitionOfferInput } from './lib/offer.repository.js';
 export { maskOfferCompensation, OFFER_READ_FINANCIAL_SCOPE } from './lib/offer-compensation.js';
+// Canonical offer-timing semantic (My Desk + Requisition Workspace offers read
+// consume this; neither re-derives expiring/expired or the expirable state set).
+export {
+  DEFAULT_OFFER_EXPIRY_WARNING_DAYS,
+  EXPIRABLE_OFFER_STATES,
+  deriveOfferTiming,
+  type OfferTiming,
+} from './lib/offer-timing.js';
 export { OfferTransitionPolicyService, OFFER_POLICY_STORE } from './lib/policy/offer-transition-policy.service.js';
 export {
   OFFER_STATES,

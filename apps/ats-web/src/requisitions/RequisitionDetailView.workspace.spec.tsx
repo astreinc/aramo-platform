@@ -318,6 +318,8 @@ describe('RequisitionDetailView workspace — snapshot + attention (grounded onl
             talent_record_id: 'tal-1', state: 'SENT', proposed_start_date: null,
             offer_expires_at: soon, client_offer_reference: null, offer_terms_summary: null,
             decline_reason: null, created_at: '2026-08-01T00:00:00Z',
+            // Server-computed canonical offer timing (expiring within the window).
+            offer_timing: { awaiting_response: true, expiring_soon: true, expired_by_time: false, days_until_expiry: 2 },
           },
         ],
       },

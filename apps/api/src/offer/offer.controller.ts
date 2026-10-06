@@ -1,13 +1,37 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, RequestId, resolveAppTimeZone } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { OfferRepository, maskOfferCompensation, OFFER_READ_FINANCIAL_SCOPE, type OfferView } from '@aramo/placement';
+import {
+  OfferRepository,
+  maskOfferCompensation,
+  deriveOfferTiming,
+  OFFER_READ_FINANCIAL_SCOPE,
+  type OfferTiming,
+  type OfferView,
+} from '@aramo/placement';
 import type { Request } from 'express';
 
 import { CreateOfferDto, TransitionOfferDto } from './dto/offer.dto.js';
 import { OfferClientSelectionGate } from './offer-client-selection-gate.service.js';
+
+// The read projection = the masked OfferView plus the canonical offer-timing
+// derivation (expiring/expired/days-left), computed server-side so the FE renders
+// it and never re-derives "expiring soon" from offer_expires_at itself.
+export type OfferReadView = OfferView & { readonly offer_timing: OfferTiming };
+
+function withOfferTiming(o: OfferView, nowMs: number, timeZone: string): OfferReadView {
+  return {
+    ...o,
+    offer_timing: deriveOfferTiming({
+      state: o.state,
+      offer_expires_at: o.offer_expires_at,
+      now_ms: nowMs,
+      time_zone: timeZone,
+    }),
+  };
+}
 
 // Offer Lifecycle (D5) — the minimal governed /v1/offers surface: create a DRAFT
 // offer, read one, and drive a governed transition. ONE generic transition route
@@ -77,7 +101,7 @@ export class OfferController {
     @Query('talent_record_id') talentRecordId: string | undefined,
     @AuthContext() auth: AuthContextType,
     @Req() req: Request,
-  ): Promise<{ items: OfferView[] }> {
+  ): Promise<{ items: OfferReadView[] }> {
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     const items = await this.offers.list({
       tenant_id: auth.tenant_id,
@@ -89,7 +113,11 @@ export class OfferController {
       visible_requisition_ids: visibleReqIds,
     });
     const canSeeFinancial = auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE);
-    return { items: items.map((o) => maskOfferCompensation(o, canSeeFinancial)) };
+    const timeZone = resolveAppTimeZone();
+    const now = Date.now();
+    return {
+      items: items.map((o) => withOfferTiming(maskOfferCompensation(o, canSeeFinancial), now, timeZone)),
+    };
   }
 
   @Get(':id')
@@ -98,13 +126,17 @@ export class OfferController {
     @Param('id', ParseUUIDPipe) id: string,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
-  ): Promise<OfferView> {
+  ): Promise<OfferReadView> {
     const view = await this.offers.findById(auth.tenant_id, id);
     if (view === null) {
       throw new AramoError('NOT_FOUND', 'Offer not found in tenant', 404, { requestId, details: { id } });
     }
     // L4/P5 — fail-closed field-level financial masking.
-    return maskOfferCompensation(view, auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE));
+    return withOfferTiming(
+      maskOfferCompensation(view, auth.scopes.includes(OFFER_READ_FINANCIAL_SCOPE)),
+      Date.now(),
+      resolveAppTimeZone(),
+    );
   }
 
   @Patch(':id')

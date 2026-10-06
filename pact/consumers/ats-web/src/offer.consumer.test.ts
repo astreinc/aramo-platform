@@ -38,6 +38,14 @@ function offerView(state: string) {
     offer_terms_summary: null,
     decline_reason: null,
     created_at: regex(ISO_TIMESTAMP, '2026-08-01T00:00:00Z'),
+    // Canonical server-computed offer timing (the OfferPanel/Workspace render this;
+    // the FE never recomputes "expiring soon"). A DRAFT with no expiry is not timed.
+    offer_timing: {
+      awaiting_response: false,
+      expiring_soon: false,
+      expired_by_time: false,
+      days_until_expiry: null,
+    },
   };
 }
 
