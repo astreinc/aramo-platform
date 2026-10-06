@@ -182,8 +182,9 @@ describe('TalentDetailPanel', () => {
 
   it('Qualified NEVER exposes Create Offer — no offer action in the journey', async () => {
     // Even holding offer:create, the drawer must not surface the offer decision
-    // surface at Qualified: the journey returns no offer-owner action.
-    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    // surface at Qualified: the journey returns no offer-owner action. Even
+    // holding full offer authority (read+create+transition), Qualified shows nothing.
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
     await screen.findByRole('list', { name: 'Talent journey' });
     expect(screen.queryByText('Offer decision')).toBeNull();
     expect(listOffers).not.toHaveBeenCalled();
@@ -230,7 +231,7 @@ describe('TalentDetailPanel', () => {
         },
       ],
     });
-    renderPanel({ scopes: ['offer:create', 'offer:transition'] });
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
     // The list read is keyed on (requisition_id, talent_record_id).
     await waitFor(() =>
       expect(listOffers).toHaveBeenCalledWith({
@@ -248,6 +249,21 @@ describe('TalentDetailPanel', () => {
     renderPanel(); // scopes: []
     expect(listOffers).not.toHaveBeenCalled();
     expect(screen.queryByText('Accept')).toBeNull();
+  });
+
+  // §11 — the Talent Board drawer deep-links into the SINGLE person × requisition Offer & Start
+  // journey, keyed on this pipeline episode id (authoritative — never reconstructed FE-side).
+  it('deep-links to /offer-start/:pipelineId at Selected+', async () => {
+    vi.mocked(getTalentJourney).mockResolvedValueOnce(SELECTED_JOURNEY);
+    renderPanel({ scopes: ['offer:read', 'offer:create', 'offer:transition'] });
+    const link = await screen.findByTestId('open-offer-start');
+    expect(link.getAttribute('href')).toBe('/offer-start/p1');
+  });
+
+  it('does NOT offer the Offer & Start deep-link early (Qualified)', async () => {
+    renderPanel(); // default journey = QUALIFIED (no selection/offer/placement)
+    await screen.findByRole('list', { name: 'Talent journey' });
+    expect(screen.queryByTestId('open-offer-start')).toBeNull();
   });
 
   // TI-1E-B1 — the read-only governed fields consume server hydration: a

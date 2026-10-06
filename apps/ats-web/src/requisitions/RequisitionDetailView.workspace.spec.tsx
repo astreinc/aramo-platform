@@ -212,6 +212,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
     mount([
       'requisition:read',
       'pipeline:read',
+      'offer:read',
       'offer:create',
       'pre_start_requirement:read',
       'placement:read',
@@ -219,6 +220,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
     ]);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     expect(screen.getByRole('tab', { name: /Talent/ })).toBeTruthy();
+    // §5.1 — the Offers (& starts) tab is gated on the real read authority offer:read.
     expect(screen.getByRole('tab', { name: /Offers/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /Pre-Start/ })).toBeTruthy();
     expect(screen.getByRole('tab', { name: /Assignments/ })).toBeTruthy();
@@ -303,7 +305,7 @@ describe('RequisitionDetailView workspace — snapshot + attention (grounded onl
   it('attention shows only grounded rows (over-capacity, client paused, offer expiring) — never interviews-today or a deadline countdown', async () => {
     const soon = new Date(Date.now() + 2 * 86_400_000).toISOString();
     mount(
-      ['requisition:read', 'pipeline:read', 'offer:create'],
+      ['requisition:read', 'pipeline:read', 'offer:read'],
       {
         req: reqView({
           capacity_balance: -1,
@@ -440,13 +442,43 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
   });
 
   it('selecting the Offers tab shows the Offers panel', async () => {
-    mount(['requisition:read', 'pipeline:read', 'offer:create']);
+    mount(['requisition:read', 'pipeline:read', 'offer:read']);
     await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
     // Navigate via the tab (unambiguous vs. the snapshot Offers card).
     fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
-    // Empty state matches the prototype's "No offers on this requisition" card.
-    expect(await screen.findByText(/No offers on this requisition/)).toBeInTheDocument();
+    // §11 (ruling B) — the tab IS the board-sourced Offers & Starts list; empty when no offer+ cards.
+    expect(await screen.findByText(/No offers or starts on this requisition/)).toBeInTheDocument();
+  });
+
+  it('§11 (ruling B) — Offers & Starts list renders board offer+ rows, each Continuing into /offer-start/:pipelineId', async () => {
+    const offerStartBoard = {
+      requisition_id: 'req-1',
+      total_active: 1,
+      closed: { total: 0, by_reason: [] },
+      columns: [
+        {
+          key: 'selected',
+          owner: 'client_selection',
+          count: 1,
+          cards: [
+            {
+              talent_record_id: 'tal-9', pipeline_id: 'pp-9', column: 'selected',
+              owner: 'client_selection', source_object_id: 'cs-9', owner_state: 'selected',
+              resume: { resume_edition_id: null, source: 'none', locked: false },
+              rtr_state: null, readiness: null, days_in_stage: null, stage_entered_at: null,
+              assigned_recruiter_user_id: null, next_actions: [], handoff: false,
+            },
+          ],
+        },
+      ],
+    };
+    mount(['requisition:read', 'pipeline:read', 'offer:read'], { board: offerStartBoard });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
+    const cont = await screen.findByTestId('offers-continue');
+    // Authoritative board pipeline_id — no FE pairing of offer↔pipeline.
+    expect(cont.getAttribute('href')).toBe('/offer-start/pp-9');
   });
 
   const PIPELINE_TAL1 = [

@@ -350,7 +350,13 @@ export function DashboardView() {
                     <span className="rc-desk-exc__title">{x.title}</span>
                   </span>
                   <span className="rc-desk-exc__body">{x.body}</span>
-                  {x.requisition_id !== null ? (
+                  {x.primary_action !== null && x.primary_action.href !== null ? (
+                    // §11 — a server-resolved deep-link (e.g. Continue → the Offer & Start journey)
+                    // wins over the generic requisition link; the href is authoritative (BE-resolved).
+                    <Link to={x.primary_action.href} className="rc-desk-exc__link" data-testid="desk-exc-continue">
+                      {x.primary_action.label}
+                    </Link>
+                  ) : x.requisition_id !== null ? (
                     <Link to={`/requisitions/${x.requisition_id}`} className="rc-desk-exc__link">
                       Open requisition
                     </Link>

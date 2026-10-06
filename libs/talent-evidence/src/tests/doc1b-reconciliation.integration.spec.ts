@@ -67,12 +67,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-1b TalentDocu
     await container?.stop();
   });
 
-  it('seeds the SYSTEM DocumentTypes (6 talent + DOC-5 RTR + DOC-6 offer letter)', async () => {
+  it('seeds the SYSTEM DocumentTypes (6 talent + DOC-5 RTR + DOC-6 offer letter + Offer&Start §5.3 pre-start trio)', async () => {
     const r = await db.query(`SELECT key FROM "documents"."DocumentType" WHERE scope = 'SYSTEM' AND tenant_id IS NULL ORDER BY key`);
-    // ORDER BY key (alphabetical): the DOC-1b talent types plus the DOC-5
-    // (RIGHT_TO_REPRESENT) + DOC-6 (OFFER_LETTER) SYSTEM types seeded by their
-    // respective migrations.
+    // ORDER BY key (alphabetical): the DOC-1b talent types + DOC-5 (RIGHT_TO_REPRESENT)
+    // + DOC-6 (OFFER_LETTER) + the Offer & Start §5.3 pre-start SYSTEM types
+    // (BACKGROUND_AUTHORIZATION, CLIENT_NDA, I9), each seeded by their respective migrations.
     expect(r.rows.map((x) => x.key)).toEqual([
+      'BACKGROUND_AUTHORIZATION',
+      'CLIENT_NDA',
+      'I9',
       'OFFER_LETTER',
       'RIGHT_TO_REPRESENT',
       'TALENT_CERTIFICATION',

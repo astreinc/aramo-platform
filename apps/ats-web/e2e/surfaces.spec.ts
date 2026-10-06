@@ -102,31 +102,30 @@ test.describe.serial('ats-web live surfaces', () => {
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const placementsLink = nav.getByRole('link', { name: 'Placements' });
 
-    // Data-driven: the seeded recruiter holds placement:read, so the nav entry
-    // shows and the board is reachable. If a reduced-scope user is used instead,
-    // the route must ForbiddenState (the guard still bites).
+    // §9 — the Placements left-nav IS the cross-requisition Offer & Start worklist
+    // (a read-only journey-episode projection), gated by pipeline:read (every row is
+    // a journey episode; a row may have no placement yet). The seeded recruiter holds
+    // pipeline:read, so the nav entry shows and the worklist is reachable. A
+    // reduced-scope user must ForbiddenState (the guard still bites).
     if ((await placementsLink.count()) > 0) {
       await placementsLink.click();
       await expect(page.getByRole('heading', { name: 'Placements' })).toBeVisible();
       const boardText = (await page.locator('main').first().innerText()) ?? '';
       expect(boardText).not.toMatch(FULL_UUID);
 
-      // Drill into a placement if the tenant has one under real data; otherwise
-      // assert the coherent terminal empty state (resilient to an empty tenant).
-      const firstRow = page.locator('a[data-testid^="placement-row-"]').first();
+      // Drill into a journey if the tenant has an Offer→Start person under real data;
+      // otherwise assert the coherent terminal empty state (resilient to an empty tenant).
+      // A worklist row deep-links to the SAME person × requisition journey (/offer-start/:id).
+      const firstRow = page.locator('a[data-testid^="worklist-row-"]').first();
       if ((await firstRow.count()) > 0) {
         await firstRow.click();
-        // Detail composition: placement state (PlacementCard) + history timeline.
-        await expect(page.getByTestId('placement-detail')).toBeVisible();
-        await expect(page.getByTestId('placement-state')).toBeVisible();
+        await expect(page.getByTestId('offer-start-journey')).toBeVisible();
         const detailText = (await page.locator('main').first().innerText()) ?? '';
         expect(detailText).not.toMatch(FULL_UUID);
-        // The assignment lifecycle panel (assignment:read — the recruiter holds
-        // it) reaches a terminal state, never an indefinite spinner. The END
-        // control is ABSENT for this least-privilege recruiter (no assignment:end).
-        await expect(page.getByTestId('assignment-end-action')).toHaveCount(0);
       } else {
-        await expect(page.getByText('No placements visible to you yet.')).toBeVisible();
+        await expect(
+          page.getByText('No one is in the Offer → Start journey yet.'),
+        ).toBeVisible();
       }
     } else {
       await page.goto('/placements');

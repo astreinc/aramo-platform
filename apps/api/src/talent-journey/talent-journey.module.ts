@@ -6,6 +6,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
 import { ClientSelectionModule } from '@aramo/client-selection';
 import { SubmittalModule } from '@aramo/submittal';
+import { DocumentsModule } from '@aramo/documents';
 
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
@@ -31,6 +32,9 @@ import { TalentJourneyReadService } from './talent-journey-read.service.js';
     OfferModule,
     PlacementModule,
     PreStartRequirementModule,
+    // §6.7 — exports DocumentsRepository; the composer reads the offer-letter Document.status
+    // (write-back authoritative) for the opt-in offer_document signal. Read-only; no write model.
+    DocumentsModule,
   ],
   controllers: [TalentJourneyController],
   providers: [

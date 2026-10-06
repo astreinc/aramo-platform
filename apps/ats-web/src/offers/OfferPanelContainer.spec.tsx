@@ -32,7 +32,7 @@ const offerIn = (state: OfferState): OfferView => ({
   created_at: '2026-08-01T00:00:00Z',
 });
 
-const ALL = ['offer:create', 'offer:transition'];
+const ALL = ['offer:read', 'offer:create', 'offer:transition'];
 
 function renderC(scopes: readonly string[] = ALL): void {
   render(
@@ -120,8 +120,11 @@ describe('OfferPanelContainer', () => {
     expect(screen.getByText('Make offer')).toBeTruthy();
   });
 
-  it('without offer:create the container is inert — no read, nothing rendered', async () => {
-    renderC([]);
+  it('without offer:read the container is inert — holding offer:create alone issues no read, nothing rendered (§5.2 read-gate parity)', async () => {
+    // §5.2 hygiene: the read gate is offer:read, NOT an offer:create surrogate.
+    // Holding create (+transition) but NOT read must issue no list read. Pre-fix
+    // (canRead rode offer:create) this fired listOffers → the non-vacuous RED.
+    renderC(['offer:create', 'offer:transition']);
     // give any (wrongly-issued) async read a tick to have fired
     await Promise.resolve();
     expect(listOffers).not.toHaveBeenCalled();

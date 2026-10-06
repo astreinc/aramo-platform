@@ -77,7 +77,7 @@ interface NavItem {
 const PRIMARY_NAV: readonly NavItem[] = [
   { to: '/', end: true, label: 'My desk', icon: <IconDesk />, scope: 'dashboard:read' },
   { to: '/requisitions', label: 'Requisitions', icon: <IconRequisitions />, scope: 'requisition:read' },
-  { to: '/placements', label: 'Placements', icon: <IconBriefcase />, scope: 'placement:read' },
+  { to: '/placements', label: 'Placements', icon: <IconBriefcase />, scope: 'pipeline:read' },
   { to: '/talent', label: 'Talent', icon: <IconTalent />, scope: 'talent:read' },
   // Promotion-Trigger slice B-ui — the sourcing pool (talent:source). Gated by
   // the same hasScope filter as its siblings; hidden from a non-sourcer.

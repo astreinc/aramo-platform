@@ -40,3 +40,16 @@ export async function sendOfferDocument(documentId: string, offer_id: string): P
 export async function getOfferDocumentStatus(documentId: string): Promise<OfferDocumentStatusResponse> {
   return apiClient.get<OfferDocumentStatusResponse>(`/v1/offer-documents/${documentId}/status`);
 }
+
+export interface OfferDocumentRemindResponse {
+  document_id: string;
+  status: string;
+  reminder_sent: boolean;
+}
+
+// Same-envelope signer reminder (Offer & Start §6.7). The recipient + signing link are owned by
+// the E-Sign notification (PL-5 — no client-side signing-URL reconstruction); this only triggers
+// the governed reminder on the existing envelope. Allowed only while awaiting signature.
+export async function remindOfferDocument(documentId: string): Promise<OfferDocumentRemindResponse> {
+  return apiClient.post<OfferDocumentRemindResponse>(`/v1/offer-documents/${documentId}/remind`, {});
+}

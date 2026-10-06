@@ -31,7 +31,10 @@ export type DeskActionKind =
   | 'update_email'
   // CRM-7 (§11) — follow-up communication-authority CTAs (resolved FE-side).
   | 'call'
-  | 'email';
+  | 'email'
+  // Offer & Start §11 — deep-link an exception into the single journey; rendered as a plain
+  // link to the action's href (/offer-start/:pipelineId). Narrow, not a generic router.
+  | 'continue_offer_start';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;

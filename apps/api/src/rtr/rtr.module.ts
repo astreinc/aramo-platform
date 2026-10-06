@@ -16,6 +16,7 @@ import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
+import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
 
 import { RtrController } from './rtr.controller.js';
@@ -35,6 +36,9 @@ const RTR_DOCS_RENDERING = 'RTR_DOCS_RENDERING';
 const RTR_DOCS_REPO = 'RTR_DOCS_REPO';
 const RTR_RENDER_SERVICE = 'RTR_RENDER_SERVICE';
 const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
+// Shared governed-document signing capability, wired module-locally from the SAME documents repo
+// + render + signature instances (explicit STRING token — avoids the bare-class-token collision).
+const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
   imports: [ObjectStorageModule, TalentRecordModule],
@@ -82,22 +86,29 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
       inject: [TalentRecordRepository],
     },
     {
-      provide: RtrOrchestratorService,
+      provide: RTR_SIGNING,
       useFactory: (
         documents: DocumentsRepository,
         render: RenderService,
         signature: SignatureProviderPort,
+      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, signature),
+      inject: [RTR_DOCS_REPO, RTR_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT],
+    },
+    {
+      provide: RtrOrchestratorService,
+      useFactory: (
+        documents: DocumentsRepository,
+        signing: GovernedDocumentSigningService,
         talent: TalentRecordRepository,
         resolver: RtrTemplateResolverService,
         binding: RtrTemplateBindingService,
         templates: TemplatesRepository,
         storage: DocumentStoragePort,
       ): RtrOrchestratorService =>
-        new RtrOrchestratorService(documents, render, signature, talent, resolver, binding, templates, storage),
+        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage),
       inject: [
         RTR_DOCS_REPO,
-        RTR_RENDER_SERVICE,
-        SIGNATURE_PROVIDER_PORT,
+        RTR_SIGNING,
         TalentRecordRepository,
         RtrTemplateResolverService,
         RtrTemplateBindingService,

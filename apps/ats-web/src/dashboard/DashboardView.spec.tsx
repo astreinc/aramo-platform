@@ -146,6 +146,25 @@ describe('DashboardView (My Desk)', () => {
     expect(screen.getByText('8d')).toBeInTheDocument();
   });
 
+  it('§11 — an offer_expiring exception renders a Continue link deep-linking into /offer-start/:pipelineId (over the generic requisition link)', async () => {
+    getMyDeskMock.mockResolvedValue(
+      makeDesk({
+        exceptions: [
+          {
+            id: 'x2', kind: 'offer_expiring', severity: 'medium',
+            title: 'Offer expiring · Liam OConnor', body: 'Offer expires soon.',
+            talent_id: 't9', requisition_id: 'r1', owned_by_me: true, owner_label: null,
+            primary_action: { kind: 'continue_offer_start', label: 'Continue in Offer & Start', href: '/offer-start/pipe-77' },
+          },
+        ],
+      }),
+    );
+    renderDesk();
+    const link = await screen.findByTestId('desk-exc-continue');
+    expect(link.getAttribute('href')).toBe('/offer-start/pipe-77');
+    expect(link.textContent).toBe('Continue in Offer & Start');
+  });
+
   it('renders the My Requisitions table with pipeline/qualified counts and zero downstream counts', async () => {
     getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();
