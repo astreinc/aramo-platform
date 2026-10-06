@@ -580,6 +580,20 @@ throw next once the redirect URI is added, so **both** must land together.
   main is `1c8e06be`) — do not conflate this env fix with a code rollforward.
 - **RB4 — No AWS / Entra / secret change.** All verified present and correct. No
   API/DTO/scope/migration/returned-shape change; no new nx edge.
+- **RB5 — Provisioning forward-fix (closes the silent re-drop gap).** RB2 set the
+  values directly in the live `/opt/aramo/.env`; a fresh box provision / `.env`
+  reauthoring would re-drop them because both vars are **lazily validated** (read on
+  the authorize/START route, not at boot — the api boots clean with them empty and
+  only 500s at click-time, so no crash-loop flags a miss). The source-controlled
+  provisioning path now **requires** both vars at provision:
+  `doc/runbooks/singlebox-ops.md` §0 (first-time provision — the required-at-provision
+  callout, with the state-key generation command + the `MSGRAPH_REDIRECT_URI`
+  byte-match-to-Entra note) and §E (the state key as secret-grade box env material).
+  The Entra Web redirect `https://astre.aramo.ai/v1/integrations/microsoft/callback`
+  is confirmed already registered on the `astre-aramo` app (§B1 above) — standing
+  human-gate attestation; re-verify on the Entra portal if the app's reply URLs are
+  ever edited. **Acceptance:** a fresh provision from source yields a `.env` carrying
+  both vars with the fill requirement called out, no manual hotfix.
 
 ### B1.5 Execution — PR-1
 
