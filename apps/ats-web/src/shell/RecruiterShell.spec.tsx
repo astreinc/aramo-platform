@@ -48,17 +48,18 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Tasks' })).not.toBeInTheDocument();
   });
 
-  // T4-E / E1-d — the Placements nav entry follows placement:read (least-
-  // visibility): visible to a placement-scoped principal, hidden otherwise.
-  it('shows the Placements nav entry only to a placement:read principal', () => {
-    renderShell(makeSession(['placement:read', 'requisition:read']));
+  // Offer & Start §9 — the Placements nav entry IS the cross-requisition Offer &
+  // Start worklist (a journey-episode projection), so it follows pipeline:read
+  // (least-visibility), NOT placement:read: a row may have no placement yet.
+  it('shows the Placements nav entry only to a pipeline:read principal', () => {
+    renderShell(makeSession(['pipeline:read', 'requisition:read']));
     expect(screen.getByRole('link', { name: 'Placements' })).toHaveAttribute(
       'href',
       '/placements',
     );
   });
 
-  it('hides the Placements nav entry from a principal without placement:read', () => {
+  it('hides the Placements nav entry from a principal without pipeline:read', () => {
     renderShell(makeSession(['requisition:read', 'talent:read']));
     expect(screen.queryByRole('link', { name: 'Placements' })).not.toBeInTheDocument();
   });
