@@ -1,5 +1,5 @@
 -- TALENT-INTEL-1 TI-1D-D (Layer A) — TalentRequisitionResume: the recruiter's
--- WORKING résumé-edition selection for a Talent worked against a requisition.
+-- WORKING resume-edition selection for a Talent worked against a requisition.
 -- APPEND-ONLY history keyed on (tenant, talent_record_id, requisition_id) -- the
 -- current selection is the MAX(selected_at) row for the triple. Deliberately NOT
 -- keyed on pipeline_id so it survives closing/reopening Pipeline episodes.

@@ -108,7 +108,7 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
-  // TALENT-INTEL-1 TI-1D-D — the working résumé-selection table (Layer A).
+  // TALENT-INTEL-1 TI-1D-D — the working resume-selection table (Layer A).
   'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
@@ -230,7 +230,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // (the spec runs against curated migrations, NOT the Nest app, so it cannot
     // use establishOpenRequisition). status defaults to 'open' — the only value
     // the gate admits — so the pre-L1-C fixtures pass the new gate unchanged.
-    // TALENT-INTEL-1 TI-1D-D — seed the explicit working résumé selection the
+    // TALENT-INTEL-1 TI-1D-D — seed the explicit working resume selection the
     // client-send now requires (append-only; the latest selected_at is current).
     async function seedRequisitionResume(t: string, talent: string, req: string, edition: string): Promise<void> {
       await sql.query(
@@ -403,8 +403,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('submittal_policy."SubmittalPolicyEvent"', 'requisition_id=$1', [req])).toBe('1');
     });
 
-    // ---- TI-1D-D: client-send requires an explicit résumé selection ------------
-    it('TI-1D-D: no requisition résumé selection → SUBMITTAL_RESUME_SELECTION_REQUIRED, no writes', async () => {
+    // ---- TI-1D-D: client-send requires an explicit resume selection ------------
+    it('TI-1D-D: no requisition resume selection → SUBMITTAL_RESUME_SELECTION_REQUIRED, no writes', async () => {
       const t = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID(), talent = randomUUID();
       await seedRequisition(t, req, 'open');

@@ -61,19 +61,19 @@ export interface CreateTalentRecordRequestDto {
   // Declared, recruiter-edited; not verified. Each entry may carry source_refs
   // (HF1 §16/R8) — durable block-level provenance persisted with the row.
   work_history?: ResumeDraftWorkHistory[];
-  // HF1 Gate-6 R2 — reviewed résumé skills as structured facts + source_refs.
+  // HF1 Gate-6 R2 — reviewed resume skills as structured facts + source_refs.
   // Persisted post-create as declared TalentSkillEvidence WITH provenance (the
   // free-text key_skills scalar is retained separately). Repository ignores it.
   skills?: ResumeDraftSkill[];
-  // HF2 R8/R18/R19 — reviewed résumé education + certifications (grounded,
+  // HF2 R8/R18/R19 — reviewed resume education + certifications (grounded,
   // recruiter-edited). Persisted post-create as declared TalentEducationEntry /
   // TalentCertificationEntry WITH provenance; the repository ignores them (the
   // controller writes them post-create, like work_history/skills).
   education?: ResumeDraftEducation[];
   certifications?: ResumeDraftCertification[];
-  // HF1 Gate-6 R1 — the résumé document + corpus provenance, carried from the
-  // draft. Present only on the résumé-first create path; when present the
-  // controller creates the résumé TalentDocument AFTER the record and stamps
+  // HF1 Gate-6 R1 — the resume document + corpus provenance, carried from the
+  // draft. Present only on the resume-first create path; when present the
+  // controller creates the resume TalentDocument AFTER the record and stamps
   // source_document_id + source_map_version + resume_text_hash onto the evidence.
   resume_document?: {
     storage_key: string;
@@ -84,7 +84,7 @@ export interface CreateTalentRecordRequestDto {
     resume_text_hash?: string;
   };
   // TALENT-INTEL-1 TI-1F-B — the originating CREATE_DRAFT_UPLOAD ResumeExtractionDraft
-  // (from the draft-from-résumé prefill in A). When present, the confirmed create
+  // (from the draft-from-resume prefill in A). When present, the confirmed create
   // LINKS + marks it ACCEPTED (the draft lifecycle close-out); the repository
   // ignores it (whitelisted mapping) — it is never a TalentRecord column.
   draft_id?: string;

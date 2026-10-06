@@ -48,7 +48,7 @@ function make(opts: {
   const evaluateAndPersist = vi.fn().mockResolvedValue({ id: 'exam-1', job_id: JOB, golden_profile_id: GP, tier: 'WORTH_CONSIDERING' });
   const talentRecordRepository = {
     findById: vi.fn().mockResolvedValue(opts.talent === undefined ? talentView() : opts.talent),
-    findResumeRedactedText: vi.fn().mockResolvedValue('Redacted résumé body. Skills: aws, postgresql.'),
+    findResumeRedactedText: vi.fn().mockResolvedValue('Redacted resume body. Skills: aws, postgresql.'),
   };
   const requisitionRepository = {
     findByIdAdmin: vi.fn().mockResolvedValue(opts.requisition === undefined ? { id: REQ, golden_profile_id: GP } : opts.requisition),

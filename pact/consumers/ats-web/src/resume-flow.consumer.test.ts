@@ -55,7 +55,7 @@ describe('ats-web → POST /v1/talent-records/draft-from-resume', () => {
   it('returns 200 with a parsed prefill', async () => {
     // TALENT-INTEL-1 TI-1B (ruling 15) — draft-from-resume now authorizes the
     // storage_key BEFORE any object access: it must be an Aramo-convention (A8-3a)
-    // résumé key inside the AUTHENTICATED tenant's namespace
+    // resume key inside the AUTHENTICATED tenant's namespace
     // ({tenant_uuid}/talent/{uuid}/resume/{uuid}-{name}). The provider verifies as
     // TENANT_ID (11111111-…), so the contract's key is tenant-bound to it — a raw
     // non-conventional key is now (correctly) refused with 403.

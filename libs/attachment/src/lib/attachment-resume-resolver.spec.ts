@@ -41,7 +41,7 @@ function makeResolver(findByIdResult: AttachmentView | null) {
 }
 
 describe('AttachmentResumeResolver', () => {
-  it('resolves storage_key for an in-tenant résumé attachment owned by the Talent', async () => {
+  it('resolves storage_key for an in-tenant resume attachment owned by the Talent', async () => {
     const { resolver, repo } = makeResolver(view({}));
     await expect(resolver.resolveOwnedResumeStorageKey(CTX)).resolves.toEqual({
       storage_key: `${TENANT}/talent/${TALENT}/resume/uuid-Resume.pdf`,
@@ -72,7 +72,7 @@ describe('AttachmentResumeResolver', () => {
     });
   });
 
-  it('REJECTS a non-résumé attachment', async () => {
+  it('REJECTS a non-resume attachment', async () => {
     const { resolver } = makeResolver(view({ is_resume: false }));
     await expect(resolver.resolveOwnedResumeStorageKey(CTX)).rejects.toMatchObject({
       code: 'RESUME_SOURCE_UNAUTHORIZED',

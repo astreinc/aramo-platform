@@ -72,12 +72,22 @@ export interface JourneyPlacement {
   readonly kind: 'CONTRACT' | 'PERMANENT';
 }
 
+// Offer & Start — one canonical live exception on the offer→start journey (offer
+// expired/declined, pre-start blocked), derived + labelled SERVER-side. The FE
+// renders these; it never re-decides the offer/placement exception predicates.
+export interface OfferStartException {
+  readonly kind: 'offer_expired' | 'offer_declined' | 'pre_start_blocked';
+  readonly label: string;
+  readonly detail: string;
+}
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
   readonly current_journey_stage: string;
   readonly stages: readonly JourneyStageElement[];
   readonly sub_states: Readonly<Record<string, string | null>>;
+  readonly offer_start_exceptions: readonly OfferStartException[];
   readonly actions: readonly JourneyAction[];
   readonly offer_document: JourneyOfferDocument | null;
   readonly pre_start: JourneyPreStart | null;

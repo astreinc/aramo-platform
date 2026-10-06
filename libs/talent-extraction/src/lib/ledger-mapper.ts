@@ -178,7 +178,7 @@ export function mapWorkAuthorizationToClaim(row: {
   };
 }
 
-// HF2 R1/R7 — map a résumé-derived experience ASSERTION (activity/accomplishment)
+// HF2 R1/R7 — map a resume-derived experience ASSERTION (activity/accomplishment)
 // to an EXPERIENCE_CLAIM ledger claim. Unlike the typed-row mappers above, an
 // assertion has NO backing talent_evidence row, so the idempotence key is a
 // DETERMINISTIC content id (uuidv5 over work_experience_id|type|statement). The

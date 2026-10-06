@@ -4,6 +4,7 @@ import {
   OfferRepository,
   PlacementRepository,
   OFFER_STATE_POSITION,
+  deriveOfferStartExceptions,
   type OfferView,
   type PlacementProcessView,
 } from '@aramo/placement';
@@ -175,14 +176,16 @@ function composePlacementRow(
   companyNames: ReadonlyMap<string, string>,
 ): OfferStartWorklistRow {
   const engagement = p.placement_kind === 'PERMANENT' ? 'PERMANENT' : 'CONTRACT';
-  const { phase, label, exception } = placementPhase(p.state, engagement);
+  const { phase, label } = placementPhase(p.state, engagement);
+  // Exception = the canonical offer-start exception semantic (not re-decided here).
+  const exception = deriveOfferStartExceptions({ offer_state: null, placement_state: p.state })[0] ?? null;
   return {
     ...resolveShared(k, p.requisition_id, p.talent_record_id, episodeByKey, talentNames, reqByIdSummary, companyNames),
     phase,
     phase_label: label,
     engagement,
     has_exception: exception !== null,
-    exception_summary: exception,
+    exception_summary: exception?.detail ?? null,
     updated_at: p.offered_at === undefined ? null : p.offered_at.toISOString(),
   };
 }
@@ -196,14 +199,15 @@ function composeOfferRow(
   companyNames: ReadonlyMap<string, string>,
 ): OfferStartWorklistRow {
   const engagement = o.compensation_type === 'PERMANENT' ? 'PERMANENT' : o.compensation_type === 'CONTRACT' ? 'CONTRACT' : null;
-  const { phase, label, exception } = offerPhase(o.state);
+  const { phase, label } = offerPhase(o.state);
+  const exception = deriveOfferStartExceptions({ offer_state: o.state, placement_state: null })[0] ?? null;
   return {
     ...resolveShared(k, o.requisition_id, o.talent_record_id, episodeByKey, talentNames, reqByIdSummary, companyNames),
     phase,
     phase_label: label,
     engagement,
     has_exception: exception !== null,
-    exception_summary: exception,
+    exception_summary: exception?.detail ?? null,
     updated_at: o.created_at,
   };
 }
@@ -214,34 +218,38 @@ function isActivePlacementPhase(state: PlacementProcessView['state']): boolean {
   return state === 'PRE_START' || state === 'READY_TO_START' || state === 'STARTED' || state === 'BLOCKED';
 }
 
+// The worklist PHASE is this list's own position/grouping vocabulary (used for the
+// exception-first + most-advanced sort). The live "needs attention" exception is a
+// SEPARATE concern sourced from the canonical deriveOfferStartExceptions — never
+// restated here.
 function placementPhase(
   state: PlacementProcessView['state'],
   engagement: 'CONTRACT' | 'PERMANENT',
-): { phase: WorklistPhase; label: string; exception: string | null } {
+): { phase: WorklistPhase; label: string } {
   switch (state) {
     case 'STARTED':
-      return { phase: 'STARTED', label: engagement === 'PERMANENT' ? 'Placement recorded' : 'Started · active assignment', exception: null };
+      return { phase: 'STARTED', label: engagement === 'PERMANENT' ? 'Placement recorded' : 'Started · active assignment' };
     case 'READY_TO_START':
-      return { phase: 'READY', label: 'Ready to start', exception: null };
+      return { phase: 'READY', label: 'Ready to start' };
     case 'BLOCKED':
-      return { phase: 'BLOCKED', label: 'Pre-start blocked', exception: 'A required pre-start requirement failed — start is blocked.' };
+      return { phase: 'BLOCKED', label: 'Pre-start blocked' };
     default: // PRE_START
-      return { phase: 'PRE_START', label: 'Pre-start', exception: null };
+      return { phase: 'PRE_START', label: 'Pre-start' };
   }
 }
 
-function offerPhase(state: OfferView['state']): { phase: WorklistPhase; label: string; exception: string | null } {
+function offerPhase(state: OfferView['state']): { phase: WorklistPhase; label: string } {
   switch (state) {
     case 'ACCEPTED':
-      return { phase: 'ACCEPTED', label: 'Offer accepted', exception: null };
+      return { phase: 'ACCEPTED', label: 'Offer accepted' };
     case 'DECLINED':
-      return { phase: 'OFFER_DECLINED', label: 'Offer declined', exception: 'The talent declined the offer.' };
+      return { phase: 'OFFER_DECLINED', label: 'Offer declined' };
     case 'EXPIRED':
-      return { phase: 'OFFER_EXPIRED', label: 'Offer expired', exception: 'The offer expired before it was signed.' };
+      return { phase: 'OFFER_EXPIRED', label: 'Offer expired' };
     case 'DRAFT':
-      return { phase: 'OFFER', label: 'Offer prepared', exception: null };
+      return { phase: 'OFFER', label: 'Offer prepared' };
     default: // SENT / NEGOTIATION
-      return { phase: 'OFFER', label: 'Offer sent', exception: null };
+      return { phase: 'OFFER', label: 'Offer sent' };
   }
 }
 

@@ -1039,7 +1039,7 @@ export class SubmittalRepository {
   // requisition in ONE query (no per-talent `findByTenantTalentJobForActor` loop,
   // directive §19). Projects the Board-relevant columns EXPLICITLY — including
   // `pipeline_id` and `resume_edition_id`, which the default `projectView` omits
-  // (they are the Board's join key + frozen résumé evidence, §13). Read-only.
+  // (they are the Board's join key + frozen resume evidence, §13). Read-only.
   async listByRequisitionForBoard(input: {
     tenant_id: string;
     requisition_id: string;

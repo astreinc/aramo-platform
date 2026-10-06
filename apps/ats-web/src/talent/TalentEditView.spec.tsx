@@ -123,7 +123,7 @@ afterEach(() => {
 });
 
 describe('TalentEditView', () => {
-  it('pre-fills the Step-2 form; email + phone are read-only anchors; shows the résumé-editions panel + Add résumé', async () => {
+  it('pre-fills the Step-2 form; email + phone are read-only anchors; shows the resume-editions panel + Add resume', async () => {
     installFetch(routeHandler);
     renderAt();
     await waitFor(() =>
@@ -139,10 +139,10 @@ describe('TalentEditView', () => {
     expect(email.readOnly).toBe(true);
     const phone = screen.getByLabelText('Mobile') as HTMLInputElement;
     expect(phone.readOnly).toBe(true);
-    // TI-1D-C — the résumé-editions panel (the resume-editions fetch 404s in this
-    // default mock → the panel shows its no-editions fallback + Add résumé).
-    await waitFor(() => expect(screen.getByText('Résumé editions')).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /Add résumé/ })).toBeInTheDocument();
+    // TI-1D-C — the resume-editions panel (the resume-editions fetch 404s in this
+    // default mock → the panel shows its no-editions fallback + Add resume).
+    await waitFor(() => expect(screen.getByText('Resume editions')).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /Add resume/ })).toBeInTheDocument();
   });
 
   it('TI-1D-C — lists editions with the EXPLICIT default (not latest-wins); selecting/defaulting never PATCHes the talent', async () => {

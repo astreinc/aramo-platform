@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { TalentRequisitionJourney } from '../pipeline/talent-journey-api';
 
-import { deriveSteps, deriveExceptions } from './offer-start-steps';
+import { deriveSteps } from './offer-start-steps';
 
 function journey(overrides: {
   sub?: Record<string, string | null>;
@@ -24,8 +24,11 @@ function journey(overrides: {
       assignment_state: null,
       ...(overrides.sub ?? {}),
     },
+    offer_start_exceptions: [],
     actions: [],
     offer_document: overrides.doc ?? null,
+    pre_start: null,
+    placement: null,
   };
 }
 
@@ -74,13 +77,8 @@ describe('deriveSteps — server-fact-driven, no FE business state', () => {
   });
 });
 
-describe('deriveExceptions — exceptions only (§2.3)', () => {
-  it('no exceptions in the happy path', () => {
-    expect(deriveExceptions(journey({ sub: { offer_state: 'SENT' } }))).toHaveLength(0);
-  });
-  it('expired offer, declined offer and blocked pre-start each surface', () => {
-    expect(deriveExceptions(journey({ sub: { offer_state: 'EXPIRED' } }))[0]?.key).toBe('offer_expired');
-    expect(deriveExceptions(journey({ sub: { offer_state: 'DECLINED' } }))[0]?.key).toBe('offer_declined');
-    expect(deriveExceptions(journey({ sub: { placement_state: 'BLOCKED' } }))[0]?.key).toBe('pre_start_blocked');
-  });
-});
+// Offer-start EXCEPTIONS are now the canonical server-derived semantic
+// (libs/placement deriveOfferStartExceptions, exposed as
+// TalentRequisitionJourney.offer_start_exceptions). Their derivation is proven in
+// libs/placement/src/tests/offer-start-exceptions.spec.ts; OfferStartJourneyView
+// renders them (OfferStartJourneyView.spec.tsx). No FE re-derivation remains here.

@@ -18,6 +18,7 @@ import {
   PlacementRepository,
   OFFER_STATE_POSITION,
   STATE_POSITION as PLACEMENT_STATE_POSITION,
+  deriveOfferStartExceptions,
   type OfferView,
   type PlacementProcessView,
   type ContractAssignmentView,
@@ -325,6 +326,11 @@ export class TalentJourneyReadService {
       current_journey_stage,
       stages,
       sub_states,
+      // Canonical offer-start exception semantic (not re-derived here or in the FE).
+      offer_start_exceptions: deriveOfferStartExceptions({
+        offer_state: sub_states.offer_state,
+        placement_state: sub_states.placement_state,
+      }),
       actions,
       offer_document: offerDocument,
       pre_start: preStart,

@@ -114,9 +114,12 @@ export interface WorkspaceClientSelectionSection {
   readonly present: boolean;
   readonly process_id: string | null;
   readonly version: number | null;
-  /** ClientSelectionProcess.created_at — sole basis for the presentation-only
-   *  "in client review / with client · N days" projection. Never a persisted counter. */
+  /** ClientSelectionProcess.created_at — retained for display only; the waiting age
+   *  is the server-computed `waiting_days` (canonical client-waiting semantic). */
   readonly opened_at: string | null;
+  /** Canonical "waiting on client" age (whole civil days, app timezone); null unless
+   *  the selection is in CLIENT_REVIEW. Rendered as-is — the FE never recomputes it. */
+  readonly waiting_days: number | null;
   readonly state: string | null;
   readonly latest_interview: {
     readonly id: string;

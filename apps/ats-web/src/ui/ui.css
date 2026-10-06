@@ -3328,7 +3328,7 @@ button.rc-cocard {
 
 select.rc-input { appearance: none; padding-right: 28px; }
 
-/* ── Step-2 section-card grid (résumé-first Add-Talent, prototype parity) ── */
+/* ── Step-2 section-card grid (resume-first Add-Talent, prototype parity) ── */
 
 /* Masonry via CSS multicol — cards stack tightly within each column instead
    of being locked to grid row-heights (which left a gap under the shorter of
@@ -3356,7 +3356,7 @@ select.rc-input { appearance: none; padding-right: 28px; }
    consistent, not doubled. */
 .rc-secgrid > .rc-seccard--full:first-child { margin-top: 0; }
 
-/* Work-History review card rows (editable, 'from résumé'). */
+/* Work-History review card rows (editable, 'from resume'). */
 .rc-wh__row {
   border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px;
   margin-bottom: 10px; background: var(--surface-2, #fafbfc);
@@ -3399,7 +3399,7 @@ select.rc-input { appearance: none; padding-right: 28px; }
 .rc-wh__projname { font-weight: 600; }
 .rc-wh__projctx { color: var(--muted); }
 
-/* HF2 §29 — résumé-derived Education + Certifications review (declared). */
+/* HF2 §29 — resume-derived Education + Certifications review (declared). */
 .rc-edu__list, .rc-cert__list { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .rc-edu__item, .rc-cert__item { font-size: 0.82rem; line-height: 1.45; }
 .rc-edu__degree, .rc-cert__name { font-weight: 600; }
@@ -3671,7 +3671,7 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 
 .rc-sidecard__h svg { width: 15px; height: 15px; color: var(--brand); }
 
-/* HF2 — résumé preview pane (right rail of the review screen). Tall + sticky so
+/* HF2 — resume preview pane (right rail of the review screen). Tall + sticky so
    the recruiter can read the source while validating the form side-by-side. */
 .rc-rpreview { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 .rc-rpreview__hdrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -4918,9 +4918,9 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
 .rc-cdp__note { font-size: 12px; color: var(--muted, #93A0A8); margin: 10px 0 0; }
 .rc-cdp__err { font-size: 12px; color: #B42318; margin: 8px 0 0; }
 
-/* ── TI-1D-D Résumé selection (this position) — the explicit working-selection
+/* ── TI-1D-D Resume selection (this position) — the explicit working-selection
    surface inside the requisition Talent drawer. Preview is inert; only "Use this
-   résumé" issues the governed PUT. ── */
+   resume" issues the governed PUT. ── */
 .rc-cdp__resumes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .rc-cdp__resume { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .rc-cdp__resumename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -6336,7 +6336,7 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
    ============================================================================ */
 /* Requisition Talent Board — pixel-matched to platform/TalentBoard.dc.html. A horizontal,
    scroll-right column rail (268px columns, a trailing narrow Closed column); cards carry a
-   28px avatar + identity + days, a résumé row, authoritative fact pills, and a footer with the
+   28px avatar + identity + days, a resume row, authoritative fact pills, and a footer with the
    governed action / waiting text, the assigned recruiter's initials and a ⋯ menu. */
 .rc-tboard { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
 .rc-tboard__cols {

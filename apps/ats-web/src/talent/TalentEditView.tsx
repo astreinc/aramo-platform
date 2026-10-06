@@ -48,8 +48,8 @@ import type {
 // declared work history (BE replaces the prior 'resume'-sourced rows). Sent only
 // when the recruiter touched the work-history section (else left untouched).
 //
-// Résumé: the full edit shows the stored résumé in a preview pane (Create-style
-// layout) and supports REPLACE (upload a new résumé → new attachment, is_resume;
+// Resume: the full edit shows the stored resume in a preview pane (Create-style
+// layout) and supports REPLACE (upload a new resume → new attachment, is_resume;
 // the prior version stays in Documents). Same upload pipeline as Add-Talent.
 
 const LOCKED_FIELDS = new Set<keyof IntakeState>(['email1', 'phone_cell']);
@@ -166,7 +166,7 @@ export function TalentEditView() {
 
       {submitError !== null ? <InlineAlert variant="error">{submitError}</InlineAlert> : null}
 
-      {/* Same two-column layout as Add-Talent: form on the left, résumé preview
+      {/* Same two-column layout as Add-Talent: form on the left, resume preview
           (+ replace) on the right so the recruiter validates against the source. */}
       <div className="rc-editgrid">
         <div className="rc-editgrid__main">
@@ -216,20 +216,20 @@ export function TalentEditView() {
   );
 }
 
-// Résumé preview + Replace for the full edit. Shows the stored résumé (presigned
+// Resume preview + Replace for the full edit. Shows the stored resume (presigned
 // GET) and — mirroring the quick-edit drawer — lets the recruiter REPLACE it:
 // upload a new file (same pipeline as Add-Talent) → a new is_resume attachment
 // (the prior version stays in Documents). Replace is applied immediately (not
 // gated on "Save changes"); the newly-uploaded file previews from memory.
-// TALENT-INTEL-1 TI-1D-C — the panel now consumes the RÉSUMÉ EDITION collection
+// TALENT-INTEL-1 TI-1D-C — the panel now consumes the RESUME EDITION collection
 // (no more resumes[length-1] latest-wins). A talent may hold multiple
 // simultaneously-valid editions; the recruiter EXPLICITLY selects which to view
 // and which is the default. Selecting/defaulting is PRESENTATION only — it never
 // changes the talent PATCH provenance and does not make an edition "talent truth".
-// Uploading a new résumé registers a NEW edition (attachment → edition); it does
+// Uploading a new resume registers a NEW edition (attachment → edition); it does
 // NOT replace prior editions.
 // TALENT-INTEL-1 TI-1F-C §4-L — the recruiter-facing label for the governed
-// résumé-extraction lifecycle projected onto the edition. Worker attempt-counts /
+// resume-extraction lifecycle projected onto the edition. Worker attempt-counts /
 // error internals never reach the recruiter (§4-K); only these coarse states do.
 function resumeReviewLabel(status: string | null): string | null {
   switch (status) {
@@ -344,7 +344,7 @@ function EditResumePanel({
           }),
         ),
       )
-      // Register the uploaded attachment as a NEW résumé edition (not a
+      // Register the uploaded attachment as a NEW resume edition (not a
       // destructive replace — prior editions remain valid).
       .then((att) => createTalentResumeEdition(talentId, { attachment_id: att.id }))
       .then((edition) => {
@@ -380,7 +380,7 @@ function EditResumePanel({
         disabled={disabled || status === 'uploading'}
         onClick={() => inputRef.current?.click()}
       >
-        {status === 'uploading' ? 'Uploading…' : 'Add résumé'}
+        {status === 'uploading' ? 'Uploading…' : 'Add resume'}
       </Button>
     </>
   );
@@ -388,7 +388,7 @@ function EditResumePanel({
   // The edition chooser — explicit selection + default, presentation-only.
   const chooser =
     editions.length === 0 ? null : (
-      <ul className="rc-redition-list" aria-label="Résumé editions">
+      <ul className="rc-redition-list" aria-label="Resume editions">
         {editions.map((e) => (
           <li key={e.edition_id} className="rc-redition">
             <Button unstyled
@@ -468,15 +468,15 @@ function EditResumePanel({
   }
   // No editions yet — still offer to attach one.
   return (
-    <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
+    <section className="rc-sidecard rc-rpreview" aria-label="Resume preview">
       <div className="rc-rpreview__hdrow">
         <h3 className="rc-sidecard__h">
           <Icons.IconFile />
-          Résumé editions
+          Resume editions
         </h3>
         <div className="rc-rpreview__hdactions">{action}</div>
       </div>
-      <p className="rc-secnote">No résumé editions yet — use Add résumé to attach one.</p>
+      <p className="rc-secnote">No resume editions yet — use Add resume to attach one.</p>
     </section>
   );
 }

@@ -33,7 +33,7 @@ export interface ConsentTextContext {
 // only. These clauses document scope meaning and remain available if ever surfaced.
 const SCOPE_PHRASES: Record<ConsentScopeValue, string> = {
   profile_storage: 'store my profile',
-  resume_processing: 'process my résumé',
+  resume_processing: 'process my resume',
   matching: 'match me to opportunities',
   contacting: 'contact me about opportunities',
   cross_tenant_visibility: 'share my profile beyond this organization',

@@ -3,7 +3,7 @@
 // persists any semantic vector for a Talent, and MUST invalidate an existing vector when the
 // decision turns to a definite `denied` (revocation). Consent is the INDEPENDENT `ai_processing`
 // operation checked against the sole Consent authority (libs/consent) — never inferred from any
-// other operation, résumé existence, or record state. Fail-closed: allowed ONLY on an explicit
+// other operation, resume existence, or record state. Fail-closed: allowed ONLY on an explicit
 // `allowed` decision.
 //
 // STRING token (not a bare class) per the non-strict-lookup collision rule — a module-local

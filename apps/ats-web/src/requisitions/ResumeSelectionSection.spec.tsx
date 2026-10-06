@@ -66,7 +66,7 @@ describe('ResumeSelectionSection', () => {
     vi.mocked(setPipelineResumeEdition).mockResolvedValue(WITH_SELECTION);
   });
 
-  it('reads the résumé state from GET /v1/pipelines/:id/resume-edition on mount', async () => {
+  it('reads the resume state from GET /v1/pipelines/:id/resume-edition on mount', async () => {
     render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
     await waitFor(() => expect(getPipelineResumeEdition).toHaveBeenCalledWith(PIPE_ID));
     // Both editions are listed as their own rows (the default filename also
@@ -86,7 +86,7 @@ describe('ResumeSelectionSection', () => {
     expect(screen.queryByTestId('resume-current-selection')).not.toBeInTheDocument();
   });
 
-  it('an explicit "Use this résumé" click PUTs the selection and refetches', async () => {
+  it('an explicit "Use this resume" click PUTs the selection and refetches', async () => {
     render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
     const useBtn = await screen.findByTestId(`resume-use-${ED_B}`);
     fireEvent.click(useBtn);
@@ -106,7 +106,7 @@ describe('ResumeSelectionSection', () => {
     expect(setPipelineResumeEdition).not.toHaveBeenCalled();
   });
 
-  it('without pipeline:resume:set there is NO "Use this résumé" affordance', async () => {
+  it('without pipeline:resume:set there is NO "Use this resume" affordance', async () => {
     render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection={false} />);
     await screen.findByTestId(`resume-row-${ED_A}`);
     expect(screen.queryByTestId(`resume-use-${ED_A}`)).not.toBeInTheDocument();

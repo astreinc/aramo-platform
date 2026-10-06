@@ -11,9 +11,9 @@ import {
   RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
 } from './resume-extraction-draft.queue.constants.js';
 
-// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft tick worker. Drains
+// TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft tick worker. Drains
 // PROCESSING ResumeExtractionDraft rows (the polling-outbox signal written at
-// the existing-Talent add-résumé-edition seam) via ONE governed
+// the existing-Talent add-resume-edition seam) via ONE governed
 // ResumeExtractionOrchestrator ATTACHMENT extraction per draft, then
 // READY_FOR_REVIEW (or FAILED). It writes NO typed Talent evidence — the draft
 // is pre-confirmation review state (TI-1F-B owns confirm/promotion).
@@ -79,7 +79,7 @@ export class ResumeExtractionDraftProcessor
   }
 
   // Exposed for the integration proof — exercises the drain seam end-to-end
-  // without a live BullMQ worker (the résumé-reindex precedent). Per-draft
+  // without a live BullMQ worker (the resume-reindex precedent). Per-draft
   // isolation: one bad draft is marked FAILED and never aborts the batch.
   async drainProcessingBatch(args: { limit: number }): Promise<DraftDrainResult> {
     const drafts = await this.talentExtraction.findProcessingResumeExtractionDrafts({

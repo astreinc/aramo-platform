@@ -9,8 +9,8 @@ import {
 } from './requisition-talent-board-api';
 
 // TB-2 — the read-only Board surface. The backend is authoritative for column placement,
-// owner attribution, Closed derivation, résumé linkage and Qualified band; these tests pin the
-// PRESENTATION: column counts, card labels, the Qualified two-band split, the résumé-locked
+// owner attribution, Closed derivation, resume linkage and Qualified band; these tests pin the
+// PRESENTATION: column counts, card labels, the Qualified two-band split, the resume-locked
 // indicator, the collapsed Closed panel, drawer hand-off by pipeline_id, and load/error states.
 vi.mock('./requisition-talent-board-api', async (importActual) => {
   const actual = await importActual<typeof import('./requisition-talent-board-api')>();
@@ -100,10 +100,10 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(within(col).getByText('Ready to submit · 1')).toBeInTheDocument();
     expect(within(col).getByText('Needs action · 1')).toBeInTheDocument();
     // The needs-action card surfaces its specific blocker as a Missing pill (not red prose).
-    expect(within(col).getByText('Missing: Résumé not selected')).toBeInTheDocument();
+    expect(within(col).getByText('Missing: Resume not selected')).toBeInTheDocument();
   });
 
-  it('shows the résumé-locked indicator on a submitted (frozen) card', async () => {
+  it('shows the resume-locked indicator on a submitted (frozen) card', async () => {
     mockGet.mockResolvedValue(
       board({
         total_active: 1,
@@ -118,8 +118,8 @@ describe('RequisitionTalentBoard (TB-2)', () => {
       }),
     );
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
-    // The submitted (frozen) résumé selection renders in the card's résumé row.
-    expect(await screen.findByText('Résumé · submitted')).toBeInTheDocument();
+    // The submitted (frozen) resume selection renders in the card's resume row.
+    expect(await screen.findByText('Resume · submitted')).toBeInTheDocument();
   });
 
   it('renders the collapsed Closed panel with canonical reason labels', async () => {

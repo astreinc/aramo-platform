@@ -111,17 +111,14 @@ import {
 // the Overview now renders the shared RequisitionForm, whose sections are the
 // New-requisition sections.
 
-// Offer states still in play (FE mirror of the BE OPEN offer position). An offer
-// in one of these can be expiring; the terminal states cannot.
+// Offer states counted as "active/open" in the snapshot tile (FE mirror of the BE
+// OPEN offer position). This is the open-position COUNT only; "expiring soon" is
+// the server-computed canonical offer_timing (never re-derived here).
 const OPEN_OFFER_STATES: ReadonlySet<OfferState> = new Set([
   'DRAFT',
   'SENT',
   'NEGOTIATION',
 ]);
-
-// Horizon for "expiring soon" — grounded on the offer's own offer_expires_at
-// (an existing field), NOT an invented submittal deadline.
-const OFFER_EXPIRY_HORIZON_MS = 7 * 86_400_000;
 
 // Scope constants — exact-string, no wildcard. Read/act gates for the
 // independently-governed downstream lifecycles the workspace composes.
@@ -979,7 +976,7 @@ function SnapshotStrip({
   const filled = req.openings - req.openings_available;
   const overCapacity = req.capacity_balance < 0;
   const activeOffers = offers.filter((o) => OPEN_OFFER_STATES.has(o.state)).length;
-  const expiringOffers = offers.filter((o) => isOfferExpiringSoon(o)).length;
+  const expiringOffers = offers.filter((o) => o.offer_timing?.expiring_soon === true).length;
   const startedPlacements = placements.filter((p) => p.state === 'STARTED').length;
   const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
   const clientReason =
@@ -1082,9 +1079,9 @@ function buildAttentionItems({
   const items: AttentionItem[] = [];
 
   if (canReadOffers) {
-    const expiring = offers.filter((o) => isOfferExpiringSoon(o));
+    const expiring = offers.filter((o) => o.offer_timing?.expiring_soon === true);
     if (expiring.length > 0) {
-      const soonest = Math.min(...expiring.map((o) => offerDaysLeft(o)));
+      const soonest = Math.min(...expiring.map((o) => o.offer_timing?.days_until_expiry ?? 0));
       items.push({
         key: 'offer-expiring',
         tone: 'amber',
@@ -1507,9 +1504,9 @@ function TalentJourney({
                     onClick={() => actions.openRow(p)}
                   >
                     {RECRUITING_OFFER_STATE_LABELS[offer.state]}
-                    {isOfferExpiringSoon(offer) ? (
+                    {offer.offer_timing?.expiring_soon === true ? (
                       <span className="rc-tj__exp">
-                        Expires {Math.max(0, offerDaysLeft(offer))}d
+                        Expires {Math.max(0, offer.offer_timing.days_until_expiry ?? 0)}d
                       </span>
                     ) : null}
                   </Button>
@@ -2215,26 +2212,6 @@ function DetailsPanel({
 }
 
 // ── helpers ──
-
-// Offer expiry is grounded on the offer's own offer_expires_at (an existing
-// field). "Soon" = a non-terminal offer whose expiry falls inside the horizon
-// (including already-past, which is the most urgent). NEVER a submittal
-// deadline — that field does not exist.
-function isOfferExpiringSoon(offer: OfferView): boolean {
-  if (offer.offer_expires_at === null) return false;
-  if (!OPEN_OFFER_STATES.has(offer.state)) return false;
-  const t = new Date(offer.offer_expires_at).getTime();
-  if (Number.isNaN(t)) return false;
-  return t - Date.now() <= OFFER_EXPIRY_HORIZON_MS;
-}
-
-// Whole days remaining on an offer's own expiry window (may be <= 0 when past).
-function offerDaysLeft(offer: OfferView): number {
-  if (offer.offer_expires_at === null) return 0;
-  const t = new Date(offer.offer_expires_at).getTime();
-  if (Number.isNaN(t)) return 0;
-  return Math.ceil((t - Date.now()) / 86_400_000);
-}
 
 function remoteLabel(
   workArrangement: string | null,

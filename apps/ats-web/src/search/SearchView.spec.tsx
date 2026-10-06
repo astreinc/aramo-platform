@@ -115,7 +115,7 @@ describe('SearchView — unified /v1/search', () => {
     expect(screen.getByRole('link', { name: 'Sam Smith' })).toHaveAttribute('href', '/companies/co-1');
   });
 
-  it('renders a résumé snippet safely (mark markers → text)', async () => {
+  it('renders a resume snippet safely (mark markers → text)', async () => {
     mockSearch(() => ok(RESULTS));
     render(
       <MemoryRouter>

@@ -5,7 +5,7 @@ import { ResumeExtractionDraftNotReviewableError } from '@aramo/talent-extractio
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 
 // TALENT-INTEL-1 TI-1F-B — the review CONFIRM / REJECT routes on an existing
-// Talent's résumé edition. CONFIRM promotes the reviewed draft's accepted facts
+// Talent's resume edition. CONFIRM promotes the reviewed draft's accepted facts
 // to typed evidence (delegated to the atomic service promotion); REJECT writes no
 // evidence. Both guard: talent+edition in tenant, a draft that is READY_FOR_REVIEW.
 

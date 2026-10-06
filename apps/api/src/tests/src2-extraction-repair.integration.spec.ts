@@ -41,9 +41,9 @@ import {
 import { computeIndeedSignature } from '../webhooks/indeed-signature.js';
 
 // SRC-2 / TI-1F P0.2 — cold-ingest STAGING-ONLY, end-to-end against real
-// Postgres 17. Cold-ingest is PARKED: heuristic résumé FACT extraction is
+// Postgres 17. Cold-ingest is PARKED: heuristic resume FACT extraction is
 // retired (governed LLM is the SOLE production fact extractor). A signed Indeed
-// application whose payload CARRIES a base64 résumé is canonicalized to a
+// application whose payload CARRIES a base64 resume is canonicalized to a
 // resolved arrival and then STAGED — the inert cold-ingest processor produces NO
 // Talent evidence, stamps NO extract-once marker, and leaves the arrival needing
 // extraction (available to a future governed extractor). ObjectStorage is a
@@ -56,8 +56,8 @@ const HOST = 'acme.aramo.ai';
 
 const SAMPLE_RESUME_TEXT = ['Jane Smith', 'jane.smith@example.com', '555-234-5678'].join('\n');
 
-// A DOCX résumé — deterministic and concurrency-safe. The arrival carries a real
-// résumé, but under PARKED cold-ingest it is NOT extracted (only staged).
+// A DOCX resume — deterministic and concurrency-safe. The arrival carries a real
+// resume, but under PARKED cold-ingest it is NOT extracted (only staged).
 async function makeResumeDocx(): Promise<Buffer> {
   const doc = new Document({
     sections: [
@@ -125,7 +125,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const savedEnv: Record<string, string | undefined> = {};
 
     // Byte-STORING fake: putIngestionObject persists bytes under the bare key so
-    // the webhook stores the résumé. createPresignedGet is never called under
+    // the webhook stores the resume. createPresignedGet is never called under
     // PARKED cold-ingest (no extraction reads bytes) — it throws if it ever is.
     const objects = new Map<string, Buffer>();
     const fakeStorage = {
@@ -145,7 +145,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       createPresignedGet: async ({ storage_key }: { storage_key: string; requestId: string }) => {
         throw new AramoError(
           'OBJECT_STORAGE_UPLOAD_FAILED',
-          `PARKED cold-ingest must not read résumé bytes (storage_key=${storage_key})`,
+          `PARKED cold-ingest must not read resume bytes (storage_key=${storage_key})`,
           502,
           { requestId: 'fake', details: { storage_key } },
         );
@@ -260,7 +260,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('a canonicalized résumé-carrying Indeed arrival is STAGED (resolved, not-yet-extracted)', async () => {
+    it('a canonicalized resume-carrying Indeed arrival is STAGED (resolved, not-yet-extracted)', async () => {
       const docx = await makeResumeDocx();
       const payloadId = await postWebhook('apply-src2-stage-1', {
         resume: { file: { data: docx.toString('base64'), fileName: 'jane.docx', contentType: RESUME_MIME } },

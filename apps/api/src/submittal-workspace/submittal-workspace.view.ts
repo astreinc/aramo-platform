@@ -50,7 +50,7 @@ export interface WorkspaceDocumentsSection {
   /** RTR (Right to Represent) readiness verdict for this talent + requisition. */
   readonly rtr_satisfied: boolean;
   readonly rtr_deny: string | null;
-  /** The résumé edition selected for this requisition (working selection), if any. */
+  /** The resume edition selected for this requisition (working selection), if any. */
   readonly resume_selected: boolean;
 }
 
@@ -111,11 +111,18 @@ export interface WorkspaceClientSelectionSection {
   /** Optimistic-concurrency version for CAS on /transition and /decision. */
   readonly version: number | null;
   /**
-   * The authoritative ClientSelectionProcess.created_at — the SOLE basis for the
-   * presentation-only "in client review / waiting with client · N days" projection
-   * (the same authority My Desk uses). Never persisted as a counter.
+   * The authoritative ClientSelectionProcess.created_at — retained for display
+   * (e.g. "opened on …"). It is NO LONGER the FE's basis for the waiting age:
+   * that is the server-computed `waiting_days` below (the canonical client-waiting
+   * semantic), so the civil-day/timezone math lives in one place.
    */
   readonly opened_at: string | null;
+  /**
+   * Canonical "waiting on client" age — whole civil days in the app timezone,
+   * or null unless the selection is in CLIENT_REVIEW. The FE renders this; it does
+   * not recompute it from opened_at (the same semantic My Desk / Talent 360 use).
+   */
+  readonly waiting_days: number | null;
   readonly state: string | null;
   readonly latest_interview: {
     /** InterviewSession id — enables the deep-link to the existing Interview detail. */

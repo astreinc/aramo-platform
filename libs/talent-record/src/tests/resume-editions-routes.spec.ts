@@ -4,7 +4,7 @@ import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 
-// TALENT-INTEL-1 TI-1D-C — the résumé-edition routes (GET list / POST ingest /
+// TALENT-INTEL-1 TI-1D-C — the resume-edition routes (GET list / POST ingest /
 // PUT default). Multiple editions coexist; the default is explicit (never
 // latest-wins); POST authors NO work-history/skill evidence.
 
@@ -71,7 +71,7 @@ function make(parts: {
     upsertResumeExtractionDraft,
   };
   const resumeParser = {
-    extractTextFromStorageKey: vi.fn().mockResolvedValue(parts.text === undefined ? 'Alan Turing résumé' : parts.text),
+    extractTextFromStorageKey: vi.fn().mockResolvedValue(parts.text === undefined ? 'Alan Turing resume' : parts.text),
   };
   const resolveOwnedResume = vi.fn().mockResolvedValue(
     parts.resolveMeta ?? { storage_key: 's3/r.pdf', filename: 'resume.pdf', mime_type: 'application/pdf', size_bytes: 42 },
@@ -126,11 +126,11 @@ describe('TI-1D-C — POST :id/resume-editions', () => {
 
     expect(resolveOwnedResume).toHaveBeenCalledWith(expect.objectContaining({ attachment_id: 'att-1', talent_id: TALENT, tenant_id: TENANT }));
     expect(createResumeDocument).toHaveBeenCalledWith(expect.objectContaining({ storage_key: 's3/r.pdf', filename: 'resume.pdf', mime_type: 'application/pdf', size_bytes: 42, talent_id: TALENT }));
-    const expectedHash = buildResumeSourceMap('Alan Turing résumé').text_hash;
+    const expectedHash = buildResumeSourceMap('Alan Turing resume').text_hash;
     expect(createEditionForDocument).toHaveBeenCalledWith(
       expect.objectContaining({ talent_document_id: 'doc-new', content_hash: expectedHash, attachment_id: 'att-1', purpose: 'CLIENT_SUBMITTAL', label: 'GenAI' }),
     );
-    // §D — the résumé-text cache is associated with the producing edition.
+    // §D — the resume-text cache is associated with the producing edition.
     expect(enqueueReindex).toHaveBeenCalledWith(expect.objectContaining({ talent_record_id: TALENT, resume_edition_id: 'ed-new' }));
   });
 
@@ -167,10 +167,10 @@ describe('TI-1D-C — POST :id/resume-editions', () => {
     expect(upsertResumeExtractionDraft).not.toHaveBeenCalled();
   });
 
-  it('422 when the résumé text cannot be extracted', async () => {
+  it('422 when the resume text cannot be extracted', async () => {
     const { ctl, createResumeDocument } = make({ text: null });
     await expect(ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-1' } as never, 'rq-1')).rejects.toMatchObject({ statusCode: 422 });
-    expect(createResumeDocument).not.toHaveBeenCalled(); // no document minted for an unreadable résumé
+    expect(createResumeDocument).not.toHaveBeenCalled(); // no document minted for an unreadable resume
   });
 });
 

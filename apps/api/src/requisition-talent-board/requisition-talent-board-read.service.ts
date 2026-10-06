@@ -52,7 +52,7 @@ import type {
 // `talent-journey-read.service.ts` (apps/api is the ONLY layer allowed to compose all
 // scope:ats owners) but per-REQUISITION and BATCHED over the whole talent set:
 //   Pipeline (listByRequisitionsAndStatus, ALL statuses)
-//     → { Submittal-by-requisition, working-résumé-by-set, latest-history-by-set,
+//     → { Submittal-by-requisition, working-resume-by-set, latest-history-by-set,
 //         Offer-by-requisition, Placement-by-requisition, requisition readiness,
 //         requisition assignment } read CONCURRENTLY (one query each; no per-card fan-out)
 //        → ClientSelection-by-submittal-set (one IN-list read)
@@ -229,7 +229,7 @@ export class RequisitionTalentBoardReadService {
     const talentIds = pipelineRows.map((r) => r.talent_record_id);
 
     // Stage 1 — the owner reads, BATCHED + CONCURRENT (never per-card). Offer + Placement are
-    // requisition-scoped in one call each; résumé + history are SET reads; the TB-4 readiness
+    // requisition-scoped in one call each; resume + history are SET reads; the TB-4 readiness
     // substrate (raw policy inputs + the batched RTR gate) is read here too.
     const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability, engagedTalentIds] =
       await Promise.all([
@@ -572,8 +572,8 @@ function decideCard(
   return { kind: 'active', column: 'started', owner: 'pipeline', source_object_id: row.id, owner_state: row.status };
 }
 
-// Résumé linkage (§13) — the frozen submitted edition once submitted, else the working
-// selection, else none. NEVER the Talent's latest résumé (no substitution).
+// Resume linkage (§13) — the frozen submitted edition once submitted, else the working
+// selection, else none. NEVER the Talent's latest resume (no substitution).
 function deriveResume(
   submittal: { resume_edition_id: string | null; state: string } | null,
   resumeRow: { resume_edition_id: string } | null,
@@ -605,7 +605,7 @@ function deriveDwell(
 // the NEUTRAL shared seam `deriveSubmittalReadiness` (@aramo/submittal-eligibility),
 // which the Requisition Talent Board and My Desk both compose (no policy is
 // duplicated in either projection — TE-9). This board wrapper adds ONLY its own
-// presentation concerns: the résumé-presence pre-check (mapped from the board's
+// presentation concerns: the resume-presence pre-check (mapped from the board's
 // BoardResume) and the board's UI blocker vocabulary (`denyToBlocker`), plus the
 // requisition_state/reason display fields. Behaviour is unchanged.
 export function deriveQualifiedReadiness(args: {

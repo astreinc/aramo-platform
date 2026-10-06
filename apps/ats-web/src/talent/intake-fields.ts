@@ -161,7 +161,7 @@ export function applyPrefill(
 ): PrefillApplication {
   const state: IntakeState = { ...base };
   const provenance: ProvenanceMap = {};
-  // Governed LLM is the SOLE résumé extractor (TI-1F P0.2); every prefilled
+  // Governed LLM is the SOLE resume extractor (TI-1F P0.2); every prefilled
   // field carries the governed-LLM provenance chip (§16).
   const source: Provenance = 'governed_llm';
   for (const key of PREFILL_TEXT_KEYS) {
@@ -285,8 +285,8 @@ export function buildPatchBody(
   return body as unknown as UpdateTalentRecordRequest;
 }
 
-// HF1 §16/R1 — the résumé document + corpus provenance carried from the draft
-// into the create request (only on the résumé-first path).
+// HF1 §16/R1 — the resume document + corpus provenance carried from the draft
+// into the create request (only on the resume-first path).
 export interface ResumeDocumentCarry {
   readonly storage_key: string;
   readonly file_name: string;
@@ -301,7 +301,7 @@ export interface ResumeDocumentCarry {
 export function buildCreateBody(
   state: IntakeState,
   workHistory: readonly WorkHistoryDraft[] = [],
-  // HF1 Gate-6 carry (R2/R8): structured skills + source_refs, and the résumé
+  // HF1 Gate-6 carry (R2/R8): structured skills + source_refs, and the resume
   // document/corpus provenance. The BE persists declared skill + work-history
   // evidence WITH provenance; the free-text key_skills scalar (above) is retained.
   extras: {
@@ -336,7 +336,7 @@ export function buildCreateBody(
     (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
   );
   if (wh.length > 0) body['work_history'] = wh;
-  // HF1 — structured skills + refs (durable provenance) and the résumé document.
+  // HF1 — structured skills + refs (durable provenance) and the resume document.
   if (extras.skills !== undefined && extras.skills.length > 0) body['skills'] = extras.skills;
   if (extras.resumeDocument !== undefined) body['resume_document'] = extras.resumeDocument;
   // HF2 — grounded education + certifications (persisted as declared evidence).

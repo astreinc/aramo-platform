@@ -3,7 +3,7 @@ import { apiClient } from '@aramo/fe-foundation';
 // Requisition Talent Board (TB-2) — the read-only Board client. Consumes the apps/api
 // composer (GET /v1/requisitions/:id/talent-board). NO Board business truth lives here: the
 // backend is authoritative for every column, owner attribution, Closed derivation, readiness
-// band and résumé linkage. These types HAND-MIRROR the backend projection DTO
+// band and resume linkage. These types HAND-MIRROR the backend projection DTO
 // (apps/api/.../dto/requisition-talent-board.view.ts) — STATE ENUMS ONLY (no compensation).
 
 export type BoardColumnKey =
@@ -127,10 +127,10 @@ export function closedReasonLabel(reason: string): string {
 }
 
 // The Qualified-band blocker labels. TB-4 grounds these on the real eligibility port: the
-// submittal-window + RTR deny codes are the port's; résumé-selected is the Board's orthogonal
+// submittal-window + RTR deny codes are the port's; resume-selected is the Board's orthogonal
 // pre-check. (requisition_paused/closed retained for the requisition-grain window display.)
 export const BOARD_BLOCKER_LABELS: Record<string, string> = {
-  resume_not_selected: 'Résumé not selected',
+  resume_not_selected: 'Resume not selected',
   rtr_not_executed: 'Right to represent not executed',
   client_restricted: 'Restricted at client',
   engagement_policy_missing: 'Engagement policy not set',

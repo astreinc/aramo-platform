@@ -25,7 +25,7 @@ export interface SubmittalReadinessResult {
   // Engagement is applicable but not batch-evaluable → readiness UNAVAILABLE
   // (never asserts Ready). A distinct honest condition, NOT a policy deny.
   readonly engagement_unavailable: boolean;
-  // Orthogonal pre-check: a submit needs a selected résumé (not a policy gate).
+  // Orthogonal pre-check: a submit needs a selected resume (not a policy gate).
   readonly resume_missing: boolean;
 }
 
@@ -95,7 +95,7 @@ export function deriveSubmittalReadiness(args: {
 // pure rules the submit command enforces, so the invariant holds BY CONSTRUCTION:
 //
 //   given unchanged authoritative state, status === 'READY'  =>  the submit command
-//   cannot fail for submittal-state / pipeline-link / requisition-state / résumé /
+//   cannot fail for submittal-state / pipeline-link / requisition-state / resume /
 //   eligibility / engagement / RTR / client-policy.
 //
 // The ONE legitimate mutation-time exception is serialized slot consumption (the
@@ -242,7 +242,7 @@ const ENGAGEMENT_DENY_CODES = new Set<EligibilityDenyCode>([
 /**
  * The unified authoritative readiness computation. Ordered to match the submit
  * command's gate order (submittal-state -> pipeline-link -> requisition-open ->
- * résumé -> eligibility[window -> restriction -> engagement -> RTR] -> client-policy)
+ * resume -> eligibility[window -> restriction -> engagement -> RTR] -> client-policy)
  * so the FIRST blocking requirement is the code the submit mutation would raise.
  */
 export function evaluateSubmittalReadiness(args: {
@@ -310,16 +310,16 @@ export function evaluateSubmittalReadiness(args: {
     deny_code: 'REQUISITION_NOT_OPEN',
   });
 
-  // 4 — résumé selected for this requisition.
+  // 4 — resume selected for this requisition.
   reqs.push({
     key: 'resume_selected',
-    label: 'Résumé selected for this requisition',
+    label: 'Resume selected for this requisition',
     required: true,
     satisfied: args.resume_selected,
     severity: 'blocking',
     source: 'documents',
-    reason: args.resume_selected ? null : 'No résumé edition selected for this requisition',
-    remediation: args.resume_selected ? null : 'Select the résumé edition to send to the client',
+    reason: args.resume_selected ? null : 'No resume edition selected for this requisition',
+    remediation: args.resume_selected ? null : 'Select the resume edition to send to the client',
     deny_code: 'SUBMITTAL_RESUME_SELECTION_REQUIRED',
   });
 

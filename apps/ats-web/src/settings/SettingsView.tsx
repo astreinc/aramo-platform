@@ -49,7 +49,7 @@ export function SettingsView({ fetchFn }: Props = {}) {
   return (
     <SettingsSection
       title="Recruiting settings"
-      description="Defaults that govern recruiting behaviour — how Add Talent reads résumés and how compensation is displayed."
+      description="Defaults that govern recruiting behaviour — how Add Talent reads resumes and how compensation is displayed."
     >
       {state.status === 'loading' && (
         <p className="rc-muted-line">Loading settings…</p>

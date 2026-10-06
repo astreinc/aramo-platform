@@ -168,7 +168,7 @@ export class TalentRecordController {
     private readonly resumeParser: ResumeParserService,
     private readonly talentExtraction: TalentExtractionService,
     // TALENT-INTEL-1 (TI-1B) — the shared governed-LLM extraction orchestrator.
-    // Governed LLM is the SOLE production résumé fact extractor (TI-1F P0.2,
+    // Governed LLM is the SOLE production resume fact extractor (TI-1F P0.2,
     // …-TI-1F-…-v1_0-LOCKED §4-D); the orchestrator owns the CREATE governed
     // path (authorize→extract) — it authorizes the draft key internally.
     private readonly resumeOrchestrator: ResumeExtractionOrchestrator,
@@ -183,7 +183,7 @@ export class TalentRecordController {
     // not exercise enqueue keep compiling; production wires CanonicalReconcileModule
     // (proven by the apps/api DI-boot), so the confirmed-create path always fires it.
     @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
-    // TALENT-INTEL-1 TI-1D-C — the shared résumé-edition ingestion composition.
+    // TALENT-INTEL-1 TI-1D-C — the shared resume-edition ingestion composition.
     // @Optional (mirrors canonicalReconcile): the many hand-wired unit-test
     // construction sites boot without it; apps/api wires TalentRecordModule (which
     // provides it), so the confirmed-create edition companion + the resume-editions
@@ -197,7 +197,7 @@ export class TalentRecordController {
     @Optional()
     @Inject(RESUME_ATTACHMENT_RESOLVER)
     private readonly resumeResolver?: ResumeAttachmentResolver,
-    // The résumé-text cache writer, to associate the producing edition (§D).
+    // The resume-text cache writer, to associate the producing edition (§D).
     @Optional() private readonly resumeText?: ResumeTextService,
     // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
     // the SEPARATE architecture from canonicalReconcile (skill canonical). Emitted
@@ -214,13 +214,13 @@ export class TalentRecordController {
   // present; the no-search LIST keeps its talent:read-only gate (backward-
   // compat by construction):
   //   - ?q=         PR-1 name quick-search (ILIKE-contains, pg_trgm) — UNCHANGED.
-  //   - ?resume_q=  PR-2 résumé content-search (websearch_to_tsquery over the
-  //                 persisted+redacted résumé text; ts_rank-ordered; D2 snippets).
+  //   - ?resume_q=  PR-2 resume content-search (websearch_to_tsquery over the
+  //                 persisted+redacted resume text; ts_rank-ordered; D2 snippets).
   //
   // Both NARROW within the existing tenant+site scope (talent is pool-open —
   // no per-record visibility resolver; the match never widens visibility).
   // Ruling R4 — when BOTH ?q= and ?resume_q= are present, the filters AND
-  // (name-match AND résumé-match), ts_rank-ordered.
+  // (name-match AND resume-match), ts_rank-ordered.
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:read')
@@ -276,7 +276,7 @@ export class TalentRecordController {
       );
     }
 
-    // PR-2 résumé content-search path. Ruling R4 — pass the name term so the
+    // PR-2 resume content-search path. Ruling R4 — pass the name term so the
     // repo ANDs the name filter when ?q= is also present.
     if (resumeTerm !== undefined) {
       const items = await this.repo.searchByResumeText({
@@ -488,7 +488,7 @@ export class TalentRecordController {
     };
   }
 
-  // TALENT-INTEL-1 TI-1D-C — the résumé-edition collection for a Talent, each row
+  // TALENT-INTEL-1 TI-1D-C — the resume-edition collection for a Talent, each row
   // projected with its TalentDocument metadata + the presentation default marker.
   // A Talent may hold MULTIPLE simultaneously-valid editions; the newest is NOT
   // the sole truth — is_default (explicit, user-set) is authoritative for display.
@@ -515,7 +515,7 @@ export class TalentRecordController {
     return { talent_id: id, editions: rows.map(toResumeEditionView) };
   }
 
-  // TALENT-INTEL-1 TI-1H §9 — per-edition résumé TEXT (preview). Resolves the
+  // TALENT-INTEL-1 TI-1H §9 — per-edition resume TEXT (preview). Resolves the
   // requested edition and returns THAT edition's own redacted text — a newer
   // edition's text can never leak here (the read is scoped to the edition's own
   // durable row). Guard chain mirrors listResumeEditions (talent:read +
@@ -546,7 +546,7 @@ export class TalentRecordController {
       talent_id: id,
     });
     if (!editions.some((e) => e.id === editionId)) {
-      throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+      throw new AramoError('NOT_FOUND', 'resume edition not found for this talent', 404, {
         requestId,
         details: { id, edition_id: editionId },
       });
@@ -567,7 +567,7 @@ export class TalentRecordController {
     };
   }
 
-  // TALENT-INTEL-1 TI-1D-C §A/§B/§F — ingest a NEW résumé edition for an EXISTING
+  // TALENT-INTEL-1 TI-1D-C §A/§B/§F — ingest a NEW resume edition for an EXISTING
   // Talent from an OWNED attachment. The server owns authorization, extraction,
   // hashing, TalentDocument creation, and edition creation — NO raw storage_key.
   // This does NOT author work-history/skill evidence (that stays the explicit
@@ -587,7 +587,7 @@ export class TalentRecordController {
     if (this.resumeResolver === undefined || this.editionIngestion === undefined) {
       throw new AramoError(
         'INTERNAL_ERROR',
-        'résumé edition ingestion is not available',
+        'resume edition ingestion is not available',
         500,
         { requestId },
       );
@@ -634,7 +634,7 @@ export class TalentRecordController {
     if (text === null || text.trim() === '') {
       throw new AramoError(
         'VALIDATION_ERROR',
-        'résumé text could not be extracted for this attachment',
+        'resume text could not be extracted for this attachment',
         422,
         { requestId, details: { attachment_id: body.attachment_id } },
       );
@@ -665,7 +665,7 @@ export class TalentRecordController {
       client_context_id: body.client_context_id,
       derived_from_edition_id: body.derived_from_edition_id,
     });
-    // 5. Associate the résumé-text cache with the producing edition (§D;
+    // 5. Associate the resume-text cache with the producing edition (§D;
     //    best-effort — a cache hiccup never fails the ingestion).
     try {
       await this.resumeText?.enqueueReindex({
@@ -722,7 +722,7 @@ export class TalentRecordController {
     };
   }
 
-  // TALENT-INTEL-1 TI-1D-C §F — EXPLICITLY set/move the Talent's default résumé
+  // TALENT-INTEL-1 TI-1D-C §F — EXPLICITLY set/move the Talent's default resume
   // edition. The default never changes automatically (no latest==default); this
   // is the only way it moves. Validates the edition belongs to this Talent+tenant.
   @Put(':id/resume-editions/default')
@@ -745,7 +745,7 @@ export class TalentRecordController {
     ) {
       throw new AramoError(
         'NOT_FOUND',
-        'résumé edition not found for this talent',
+        'resume edition not found for this talent',
         404,
         { requestId, details: { resume_edition_id: body.resume_edition_id } },
       );
@@ -765,7 +765,7 @@ export class TalentRecordController {
     return { talent_id: id, editions: rows.map(toResumeEditionView) };
   }
 
-  // TALENT-INTEL-1 TI-1F-B — CONFIRM: promote the reviewed résumé draft's accepted
+  // TALENT-INTEL-1 TI-1F-B — CONFIRM: promote the reviewed resume draft's accepted
   // facts to typed Talent evidence. Human-governed gate — nothing becomes Talent
   // truth without this (§3). The promotion is ATOMIC (§4-E: persist ALL accepted
   // facts + flip the draft READY_FOR_REVIEW → ACCEPTED, all-or-none), anchored on
@@ -787,7 +787,7 @@ export class TalentRecordController {
     if (draft.talent_id == null || draft.talent_document_id == null) {
       throw new AramoError(
         'VALIDATION_ERROR',
-        'this résumé extraction cannot be confirmed — its talent/document anchor is missing',
+        'this resume extraction cannot be confirmed — its talent/document anchor is missing',
         422,
         { requestId, details: { resume_edition_id: editionId } },
       );
@@ -803,7 +803,7 @@ export class TalentRecordController {
       if (err instanceof ResumeExtractionDraftNotReviewableError) {
         throw new AramoError(
           'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
-          'this résumé extraction has already been reviewed',
+          'this resume extraction has already been reviewed',
           409,
           { requestId, details: { resume_edition_id: editionId } },
         );
@@ -844,7 +844,7 @@ export class TalentRecordController {
     if (rejected === 0) {
       throw new AramoError(
         'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
-        'this résumé extraction has already been reviewed',
+        'this resume extraction has already been reviewed',
         409,
         { requestId, details: { resume_edition_id: editionId } },
       );
@@ -875,7 +875,7 @@ export class TalentRecordController {
       edition.tenant_id !== authContext.tenant_id ||
       edition.talent_id !== talentId
     ) {
-      throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+      throw new AramoError('NOT_FOUND', 'resume edition not found for this talent', 404, {
         requestId,
         details: { resume_edition_id: editionId },
       });
@@ -887,7 +887,7 @@ export class TalentRecordController {
     if (draft === null) {
       throw new AramoError(
         'NOT_FOUND',
-        'no résumé extraction is under review for this edition',
+        'no resume extraction is under review for this edition',
         404,
         { requestId, details: { resume_edition_id: editionId } },
       );
@@ -895,7 +895,7 @@ export class TalentRecordController {
     if (draft.status !== 'READY_FOR_REVIEW') {
       throw new AramoError(
         'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
-        'this résumé extraction is not ready for review',
+        'this resume extraction is not ready for review',
         409,
         { requestId, details: { resume_edition_id: editionId, status: draft.status } },
       );
@@ -916,7 +916,7 @@ export class TalentRecordController {
     });
     const view = rows.find((r) => r.id === editionId);
     if (view !== undefined) return toResumeEditionView(view);
-    throw new AramoError('NOT_FOUND', 'résumé edition not found for this talent', 404, {
+    throw new AramoError('NOT_FOUND', 'resume edition not found for this talent', 404, {
       requestId,
       details: { resume_edition_id: editionId },
     });
@@ -978,7 +978,7 @@ export class TalentRecordController {
     }
     // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the durable-draft-backed create.
     // When the recruiter confirms a create prefilled from a persisted
-    // CREATE_DRAFT_UPLOAD draft, promotion is ORDERED + IDEMPOTENT: accepted résumé
+    // CREATE_DRAFT_UPLOAD draft, promotion is ORDERED + IDEMPOTENT: accepted resume
     // evidence is established FIRST (one atomic talent_evidence tx), and TalentRecord
     // is the FINAL admission step — so a genuine ATS Talent can never exist without
     // its source-evidence lifecycle. Handles all recoverable retry states. A missing
@@ -1016,7 +1016,7 @@ export class TalentRecordController {
     });
 
     // HF1 Gate-6 confirmed-create provenance sequence (deterministic; NO AI call
-    // — Ruling 3). Order per the ruling flow: record → (résumé TalentDocument) →
+    // — Ruling 3). Order per the ruling flow: record → (resume TalentDocument) →
     // work-history evidence + skill evidence, each stamped with durable
     // provenance (source_document_id + source_refs + source_map_version +
     // resume_text_hash). BEST-EFFORT: the talent IS created; a provenance/evidence
@@ -1027,7 +1027,7 @@ export class TalentRecordController {
     let sourceDocumentId: string | undefined;
     let resumeEditionId: string | undefined;
     try {
-      // R1 — create/link the résumé TalentDocument ONLY here, after confirmed
+      // R1 — create/link the resume TalentDocument ONLY here, after confirmed
       // creation (never at draft/proposal time). Its id anchors the evidence.
       const rd = body.resume_document;
       if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
@@ -1042,7 +1042,7 @@ export class TalentRecordController {
         });
       }
       // TALENT-INTEL-1 TI-1D-C §A/§B — create the companion TalentResumeEdition
-      // for the just-minted résumé TalentDocument (no second extraction/model call;
+      // for the just-minted resume TalentDocument (no second extraction/model call;
       // content_hash reuses the draft's resume_text_hash — ruling C). First edition
       // for the Talent also establishes the default; the ingestion service owns
       // that policy. Best-effort like the rest of this block.
@@ -1061,7 +1061,7 @@ export class TalentRecordController {
           // GENERAL first edition. attachment_id stays null.
         });
         resumeEditionId = editionResult?.edition.id;
-        // TI-1H §7 — capture this first edition's résumé text in its OWN durable
+        // TI-1H §7 — capture this first edition's resume text in its OWN durable
         // row (edition-aware), keyed to the just-minted edition. Confirmed-create
         // is a raw draft upload (no owned Attachment), so attachment_id is
         // omitted; storage_key is the retained draft object the worker re-extracts
@@ -1095,7 +1095,7 @@ export class TalentRecordController {
           provenance,
         });
       }
-      // R2 — persist résumé skills as declared evidence WITH provenance (the
+      // R2 — persist resume skills as declared evidence WITH provenance (the
       // key_skills scalar is retained by repo.create above — this is additive).
       if (Array.isArray(body.skills) && body.skills.length > 0) {
         await this.talentExtraction.persistDeclaredSkills({
@@ -1139,7 +1139,7 @@ export class TalentRecordController {
     // TALENT-INTEL-1 TI-1G §1 — an EXPLICIT work-authorization value on create is a
     // governed RIGHT_TO_WORK assertion → append evidence (history). The scalar was
     // already written by repo.create (immediate current projection); this records
-    // the durable governed assertion. Résumé never reaches this (recruiter body only).
+    // the durable governed assertion. Resume never reaches this (recruiter body only).
     await this.recordWorkAuthEvidence(authContext, created.id, body);
 
     // TALENT-INTEL-1 TI-1F-B — CREATE_DRAFT_UPLOAD close-out. A confirmed create IS
@@ -1172,7 +1172,7 @@ export class TalentRecordController {
 
   // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the ordered, idempotent, recoverable
   // promotion of a CREATE_DRAFT_UPLOAD draft into a durable ATS Talent. Invariant:
-  // a genuine TalentRecord never exists unless its accepted résumé evidence
+  // a genuine TalentRecord never exists unless its accepted resume evidence
   // lifecycle is already durable. Sequence:
   //   read draft → reserve/reuse talent_id → PHASE 1 (atomic talent_evidence tx:
   //   document + default edition + accepted evidence + LINK draft, draft stays
@@ -1298,7 +1298,7 @@ export class TalentRecordController {
     await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
     await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
     // TI-1G §1 — an explicit work-auth value on the confirmed create is a governed
-    // assertion (résumé-backed create has NO special authority — same path).
+    // assertion (resume-backed create has NO special authority — same path).
     await this.recordWorkAuthEvidence(authContext, reservedId, body);
     return created;
   }
@@ -1326,7 +1326,7 @@ export class TalentRecordController {
       });
     } catch {
       // non-fatal — the scalar is the user-facing current state; evidence is durable
-      // history recorded best-effort (no résumé/backfill path re-creates it).
+      // history recorded best-effort (no resume/backfill path re-creates it).
     }
   }
 
@@ -1602,7 +1602,7 @@ export class TalentRecordController {
   }
 
   // -------------------------------------------------------------------------
-  // A8-3b — résumé upload + parse-to-prefill (E1 + E2).
+  // A8-3b — resume upload + parse-to-prefill (E1 + E2).
   //
   // Option A ordering (the Lead-ruled flow): parse-first, attach-on-create.
   // The recruiter:
@@ -1617,7 +1617,7 @@ export class TalentRecordController {
   //       prefill + parse_status. The recruiter reviews + edits.
   //   E3) POSTs /v1/talent-records (the existing create) with the final
   //       fields; client follows with POST /v1/attachments to bind the
-  //       résumé. The Attachment.create path calls
+  //       resume. The Attachment.create path calls
   //       ObjectStorageService.markResumeCommitted to clear the orphan tag.
   //
   // Scope reuse (Gate 5 decision §2.3e): E1 uses attachment:create
@@ -1685,11 +1685,11 @@ export class TalentRecordController {
       );
     }
 
-    // Governed LLM is the SOLE production résumé fact extractor (TI-1F P0.2;
-    // …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic résumé FACT extraction is
+    // Governed LLM is the SOLE production resume fact extractor (TI-1F P0.2;
+    // …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic resume FACT extraction is
     // RETIRED — there is no mode toggle and no silent fallback to the heuristic
     // parser. The orchestrator authorizes the draft key internally (tenant +
-    // résumé namespace); a raw client storage_key is never the auth anchor.
+    // resume namespace); a raw client storage_key is never the auth anchor.
     const ctx = { tenant_id: authContext.tenant_id, requestId };
     const result = await this.resumeOrchestrator.extractResume(
       { kind: 'CREATE_DRAFT_UPLOAD', storage_key: body.storage_key },

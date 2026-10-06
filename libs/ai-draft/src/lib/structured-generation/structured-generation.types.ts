@@ -41,7 +41,7 @@ export interface StructuredGenerationTransport {
 //     constrained decoding, directive §8). The DEFAULT for all consumers.
 //   FORCED_TOOL — schema-guided function-calling (one forced tool whose
 //     input_schema IS the JSON Schema). Used ONLY where the schema is too large
-//     for strict grammar compilation (HF2 v3 résumé draft). Schema-GUIDED, not
+//     for strict grammar compilation (HF2 v3 resume draft). Schema-GUIDED, not
 //     grammar-CONSTRAINED → the consumer's shape validation/grounding is the
 //     trust boundary. There is NO implicit fallback between the two: a consumer
 //     explicitly opts into FORCED_TOOL; a strict failure never silently retries

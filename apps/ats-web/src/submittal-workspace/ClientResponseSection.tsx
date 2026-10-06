@@ -33,7 +33,7 @@ export function ClientResponseSection({ view, onChanged }: { view: SubmittalWork
   const [dialog, setDialog] = useState<OpenDialog>(null);
 
   const cPill = clientSelectionPill(cs.state);
-  const waiting = waitingLabel(cs.opened_at);
+  const waiting = waitingLabel(cs.waiting_days);
   const a = cs.available_actions;
   const latestFeedback = cs.feedback[0] ?? null;
   const history = buildHistory(view);

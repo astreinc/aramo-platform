@@ -87,7 +87,7 @@ const FIXTURE = {
       { id: 'e2', occurred_at: '2026-09-30T12:40:00Z', category: 'interviews', title: 'Interview confirmed by talent', body: 'Freddie Mac client panel · today 4:00 PM', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'Via calendar response', channel: null },
       { id: 'e3', occurred_at: '2026-09-29T19:42:00Z', category: 'communications', title: 'Voice call · two-way · 11 min', body: 'Interested in Capital One. Would consider about $72/hr W2.', requisition_id: 'r3', requisition_label: 'REQ-1048', actor_label: 'Purush P. · Zoom', channel: 'voice' },
       { id: 'e4', occurred_at: '2026-09-28T15:30:00Z', category: 'client', title: 'Client scheduled interview', body: 'Michael Tran booked a panel for Sep 30', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'Freddie Mac', channel: null },
-      { id: 'e5', occurred_at: '2026-09-27T16:02:00Z', category: 'requisitions', title: 'Submitted to Fannie Mae', body: 'Agile Delivery Lead · tailored résumé attached', requisition_id: 'r2', requisition_label: 'REQ-1032', actor_label: 'Sanjay Kumar', channel: null },
+      { id: 'e5', occurred_at: '2026-09-27T16:02:00Z', category: 'requisitions', title: 'Submitted to Fannie Mae', body: 'Agile Delivery Lead · tailored resume attached', requisition_id: 'r2', requisition_label: 'REQ-1032', actor_label: 'Sanjay Kumar', channel: null },
       { id: 'e6', occurred_at: '2026-09-26T09:48:00Z', category: 'documents', title: 'RTR signed', body: 'Right to Represent for Freddie Mac', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'Signed by Divya', channel: null },
       { id: 'e7', occurred_at: '2026-09-25T10:05:00Z', category: 'tasks', title: 'Task created', body: 'Debrief call with Divya after Freddie Mac interview', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'Purush P.', channel: null },
     ],
@@ -96,8 +96,8 @@ const FIXTURE = {
   },
   documents: {
     key_documents: [
-      { id: 'd1', kind: 'Résumé', requisition_id: null, requisition_label: null, meta: 'Divya_Vasudevan_2026.docx · current · uploaded Sep 14', signed: false, signed_at: null },
-      { id: 'd2', kind: 'Résumé · tailored', requisition_id: 'r1', requisition_label: 'REQ-1001', meta: 'Divya_Vasudevan_FreddieMac.docx · submitted Sep 26', signed: false, signed_at: null },
+      { id: 'd1', kind: 'Resume', requisition_id: null, requisition_label: null, meta: 'Divya_Vasudevan_2026.docx · current · uploaded Sep 14', signed: false, signed_at: null },
+      { id: 'd2', kind: 'Resume · tailored', requisition_id: 'r1', requisition_label: 'REQ-1001', meta: 'Divya_Vasudevan_FreddieMac.docx · submitted Sep 26', signed: false, signed_at: null },
       { id: 'd3', kind: 'RTR · Freddie Mac', requisition_id: 'r1', requisition_label: 'REQ-1001', meta: 'Signed', signed: true, signed_at: '2026-09-26T00:00:00Z' },
       { id: 'd4', kind: 'RTR · Fannie Mae', requisition_id: 'r2', requisition_label: 'REQ-1032', meta: 'Signed', signed: true, signed_at: '2026-09-25T00:00:00Z' },
     ],
@@ -120,9 +120,9 @@ const FIXTURE = {
       { label: 'Kanban', verified: false }, { label: 'Confluence', verified: false }, { label: 'Mortgage / multifamily', verified: false },
     ],
     work_history: [
-      { role: 'Senior Scrum Master', organization: 'Navy Federal Credit Union', span: '2022 – Sep 2026', source: 'Résumé + second source' },
-      { role: 'Scrum Master / Product Owner', organization: 'Booz Allen Hamilton', span: '2018 – 2022', source: 'Résumé + second source' },
-      { role: 'Business Analyst', organization: 'CGI Federal', span: '2015 – 2018', source: 'Résumé only' },
+      { role: 'Senior Scrum Master', organization: 'Navy Federal Credit Union', span: '2022 – Sep 2026', source: 'Resume + second source' },
+      { role: 'Scrum Master / Product Owner', organization: 'Booz Allen Hamilton', span: '2018 – 2022', source: 'Resume + second source' },
+      { role: 'Business Analyst', organization: 'CGI Federal', span: '2015 – 2018', source: 'Resume only' },
     ],
   },
   relationship: {

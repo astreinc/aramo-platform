@@ -14,11 +14,11 @@ Fargate **task definition** (env-driven, no baked secrets), and the ECS
   CloudWatch logs (AWS managed `AmazonECSTaskExecutionRolePolicy`) +
   `GetSecretValue` on exactly the secrets this task injects.
 - **Task role** — what the *app code* may do against AWS at runtime: an
-  optional inline policy (e.g. the résumé-bucket least-privilege JSON) +
+  optional inline policy (e.g. the resume-bucket least-privilege JSON) +
   `GetSecretValue` on any SDK-read secrets (e.g. the Anthropic key).
 
 This task role is the compute-native principal the `iam-app-principal`
-module README anticipated — the api task role carries the résumé-bucket
+module README anticipated — the api task role carries the resume-bucket
 policy directly, so prod needs **no IAM user** (closing the recon's
 staging/prod gap with the *better* principal).
 
@@ -56,7 +56,7 @@ the `alb` module.
 | `log_group_name`               | `string`       | n/a         | Existing `/aramo/<svc>/<env>`.                       |
 | `environment_variables`        | `map(string)`  | `{}`        | Plaintext env.                                       |
 | `secrets`                      | `map(string)`  | `{}`        | ENV → secret ARN.                                    |
-| `task_role_inline_policy_json` | `string`       | `null`      | App runtime policy (e.g. résumé bucket).             |
+| `task_role_inline_policy_json` | `string`       | `null`      | App runtime policy (e.g. resume bucket).             |
 | `task_role_secret_arns`        | `list(string)` | `[]`        | SDK-read secret ARNs.                                |
 
 ## Ordering note

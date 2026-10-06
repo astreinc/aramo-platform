@@ -449,7 +449,7 @@ export class TalentRecordRepository {
     tenant_status?: string;
     // TALENT-INTEL-1 TI-1F-C (strengthened-D) — a RESERVED talent_id: for the
     // draft-backed create the id is reserved up-front (draft.talent_id) so the
-    // accepted résumé evidence lifecycle is established FIRST and TalentRecord is
+    // accepted resume evidence lifecycle is established FIRST and TalentRecord is
     // the final admission step. Omitted on the normal path → Prisma default uuid.
     id?: string;
   }): Promise<TalentRecordView> {
@@ -928,7 +928,7 @@ export class TalentRecordRepository {
     };
   }
 
-  // Search PR-2 — résumé full-text content-search (GET /v1/talent-records
+  // Search PR-2 — resume full-text content-search (GET /v1/talent-records
   // ?resume_q=). DISTINCT from PR-1's ?q= name-search (which is untouched).
   //
   // Lead rulings: R3 — websearch_to_tsquery('english', :q) matched against the
@@ -938,7 +938,7 @@ export class TalentRecordRepository {
   //
   // VISIBILITY-AND: talent is pool-open (no per-record resolver), so the
   // "visibility" is tenant + optional site. Both are bound in the WHERE — a
-  // résumé match in another tenant (or another site, when site-scoped) is
+  // resume match in another tenant (or another site, when site-scoped) is
   // structurally absent. The match NARROWS within tenant+site; it never widens.
   //
   // Hand-authored raw SQL (Prisma cannot express @@ / ts_rank / ts_headline).
@@ -954,12 +954,12 @@ export class TalentRecordRepository {
   }): Promise<TalentRecordView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
 
-    // $1 = the résumé query text (used in ts_headline, the @@ match, ts_rank).
+    // $1 = the resume query text (used in ts_headline, the @@ match, ts_rank).
     // $2 = tenant_id.
     const params: unknown[] = [args.resume_q, args.tenant_id];
     const conds: string[] = [
       'tr.tenant_id = $2',
-      // TR-2a-B3a (DDR-3 §3) — résumé content-search is live-only, matching
+      // TR-2a-B3a (DDR-3 §3) — resume content-search is live-only, matching
       // list()/searchPaged. A superseded record never surfaces in a ?resume_q=.
       "tr.record_status = 'live'",
       "rt.search_tsv @@ websearch_to_tsquery('english', $1)",
@@ -976,8 +976,8 @@ export class TalentRecordRepository {
     params.push(limit);
     const limitPlaceholder = `$${params.length}`;
 
-    // TI-1H §8 — résumé text is now per-edition (many rows per talent). Preserve
-    // the pre-TI-1H product behavior "a talent matches if any of its résumé text
+    // TI-1H §8 — resume text is now per-edition (many rows per talent). Preserve
+    // the pre-TI-1H product behavior "a talent matches if any of its resume text
     // matches, returned ONCE": DISTINCT ON (tr.id) collapses the per-edition rows
     // back to one row per talent, keeping the BEST-RANKED edition's snippet. Any
     // present text row is eligible (there is no edition hard-delete path; deleted
@@ -1191,13 +1191,13 @@ export class TalentRecordRepository {
     });
   }
 
-  // Gate-1 G1-B — tenant-scoped getter for a talent's REDACTED résumé body
+  // Gate-1 G1-B — tenant-scoped getter for a talent's REDACTED resume body
   // (TalentResumeText.redacted_text; already PII-redacted at persist per D4).
   // The examine endpoint feeds this (+ key_skills) to TalentExtractionService.
-  // Returns null when the talent has no résumé text row / no extracted body.
+  // Returns null when the talent has no resume text row / no extracted body.
   //
   // TI-1H — the table is now per-edition (many rows per talent). This talent-
-  // level read preserves the pre-TI-1H "the talent's résumé text" behavior by
+  // level read preserves the pre-TI-1H "the talent's resume text" behavior by
   // returning the MOST-RECENTLY-EXTRACTED body DETERMINISTICALLY (was an
   // orderBy-less findFirst — nondeterministic once multiple editions exist).
   // Per-edition preview is findResumeEditionText().
@@ -1222,7 +1222,7 @@ export class TalentRecordRepository {
   }
 
   // TI-1H §9 — per-edition preview. Returns the redacted text + status for ONE
-  // résumé edition's own row (tenant-scoped). null when the talent/tenant has no
+  // resume edition's own row (tenant-scoped). null when the talent/tenant has no
   // text row for that edition (edition never extracted, or not this tenant's).
   // Reading edition R returns R's text — never another edition's (§9).
   async findResumeEditionText(args: {

@@ -34,10 +34,10 @@ import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/p
 import { ObjectStorageService } from '@aramo/object-storage';
 import { ResumeParserService } from '@aramo/resume-parse';
 // TI-1F P0.2 — the draft-from-resume orchestrator calls the governed
-// TalentExtractionService.extractResumeDraft (the sole production résumé fact
+// TalentExtractionService.extractResumeDraft (the sole production resume fact
 // extractor). Only that ONE method is spied in verify (see the app.init block)
 // so the contract's parsed prefill holds without a live model; the service's
-// other methods (the résumé-edition routes) stay REAL — a wholesale override
+// other methods (the resume-edition routes) stay REAL — a wholesale override
 // would 500 those routes.
 import { TalentExtractionService } from '@aramo/talent-extraction';
 // PC-7c — Symbol()-keyed ports the tenant-user lifecycle injects. Overriding a
@@ -258,7 +258,7 @@ const TALENT_RECORD_MIGRATIONS = [
   // columns; the field-state read model projects them (500s without this migration).
   'libs/talent-record/prisma/migrations/20260918120000_talent_intel_1d_b_field_resolution/migration.sql',
   // Search PR-2 — the talent_resume_text table (+ generated tsvector + GIN).
-  // TALENT-INTEL-1 TI-1H adds the per-edition résumé-text READ pact
+  // TALENT-INTEL-1 TI-1H adds the per-edition resume-text READ pact
   // (GET :id/resume-editions/:editionId/text), whose provider state seeds a
   // talent_resume_text row — so the table (and its later column/uniqueness
   // migrations) must exist in the provider schema. Applied after TalentRecord
@@ -413,7 +413,7 @@ const TALENT_EVIDENCE_1G_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
 );
-// TALENT-INTEL-1 TI-1A résumé-edition substrate (TalentResumeEdition /
+// TALENT-INTEL-1 TI-1A resume-edition substrate (TalentResumeEdition /
 // TalentResumeDefault). Required so the TI-1D-C resume-editions pact interactions
 // (GET/POST/PUT) can read/write editions against the provider DB.
 const TALENT_EVIDENCE_TI1A_MIGRATION = resolve(
@@ -541,7 +541,7 @@ const SUBMITTAL_T2P1_L8B1_LINK_MIGRATION = resolve(
   ROOT,
   'libs/submittal/prisma/migrations/20260822130000_l8b1_submittal_pipeline_link/migration.sql',
 );
-// TI-1D-D — the frozen send-time résumé snapshot column (resume_edition_id) +
+// TI-1D-D — the frozen send-time resume snapshot column (resume_edition_id) +
 // the reject_submittal_record_update trigger rewrite (enumerates resume_edition_id
 // as one-time-pinnable at send, and closes the prior pipeline_id immutability gap).
 // The regenerated submittal Prisma client SELECTs resume_edition_id on every
@@ -1465,12 +1465,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds it (nothing reads it).
       // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
-      // TALENT-INTEL-1 TI-1D-C — the résumé-edition substrate (talent_evidence,
+      // TALENT-INTEL-1 TI-1D-C — the resume-edition substrate (talent_evidence,
       // UUID-only refs → not cascaded by TalentRecord). Truncate so fixed-id
       // edition/document fixtures don't collide across interactions.
       await c.query('TRUNCATE TABLE talent_evidence."TalentResumeDefault" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentResumeEdition" CASCADE');
-      // TI-1F — the résumé-extraction review draft (fixed-id fixtures across the
+      // TI-1F — the resume-extraction review draft (fixed-id fixtures across the
       // confirm/reject interactions collide on the (tenant, source_kind, source_ref)
       // unique key unless reset between interactions).
       await c.query('TRUNCATE TABLE talent_evidence."ResumeExtractionDraft" CASCADE');
@@ -1481,7 +1481,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // Revision/Artifact/Association/Event; the SYSTEM DocumentTypes seeded by
       // the DOC-1b migration are NOT truncated — the seeds reference them by id).
       await c.query('TRUNCATE TABLE documents."Document" CASCADE');
-      // TI-1H — per-edition résumé-text rows (the edition-text read state seeds a
+      // TI-1H — per-edition resume-text rows (the edition-text read state seeds a
       // fixed-id row; truncate so it does not collide across interactions).
       await c.query('TRUNCATE TABLE talent_record."talent_resume_text" CASCADE');
       // M4 PR-3 — submittal-create state handlers seed an examination
@@ -1498,7 +1498,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // submittal_policy consumption/provenance; truncate so a prior interaction's
       // pipeline episode or consumption fact never leaks into the next.
       await c.query('TRUNCATE TABLE pipeline."PipelineStatusHistory" CASCADE');
-      // TI-1D-D — the append-only Requisition-context résumé-selection history.
+      // TI-1D-D — the append-only Requisition-context resume-selection history.
       // Must reset like every other pipeline table so a state seeding a fixed-id
       // selection row can run more than once (duplicate-PK otherwise).
       await c.query('TRUNCATE TABLE pipeline."TalentRequisitionResume" CASCADE');
@@ -2300,7 +2300,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
-    // TI-1D-D — résumé-edition selection fixtures for the pipeline talent
+    // TI-1D-D — resume-edition selection fixtures for the pipeline talent
     // (ATSW_PIPE_TALENT_ID owns the edition so the RESUME_EDITION_READER adapter
     // resolves it for GET/PUT /v1/pipelines/{id}/resume-edition).
     const ATSW_PIPE_RE_DOC = '00000000-0000-7000-8000-71be000000d1';
@@ -2480,7 +2480,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TALENT-INTEL-1 TI-1D-B — field-state read model fixture ids.
     const ATSW_FIELD_STATE_ID = '00000000-0000-7000-8000-7a0000000015';
     const ATSW_FIELD_STATE_EV_ID = '00000000-0000-7000-8000-7a0000000016';
-    // TALENT-INTEL-1 TI-1D-C — résumé-edition fixture ids.
+    // TALENT-INTEL-1 TI-1D-C — resume-edition fixture ids.
     const ATSW_RE_TALENT_ID = '00000000-0000-7000-8000-7a0000000017';
     const ATSW_RE_DOC_A = '00000000-0000-7000-8000-7d0000000001';
     const ATSW_RE_DOC_B = '00000000-0000-7000-8000-7d0000000002';
@@ -2493,7 +2493,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TI-1G — work-authorization state read fixtures.
     const ATSW_WA_TALENT_ID = '00000000-0000-7000-8000-7a0000000018';
     const ATSW_WA_ID = '00000000-0000-7000-8000-7c0000000002';
-    // TI-1H — per-edition résumé-text read fixtures.
+    // TI-1H — per-edition resume-text read fixtures.
     const ATSW_RT_TALENT_ID = '00000000-0000-7000-8000-7a0000000019';
     const ATSW_RT_DOC = '00000000-0000-7000-8000-7d0000000003';
     const ATSW_RT_ED = '00000000-0000-7000-8000-7e0000000003';
@@ -4020,7 +4020,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'pipeline:read',
           'pipeline:add',
           'pipeline:change-status',
-          // TI-1D-D — the dedicated Requisition-context résumé-selection mutation
+          // TI-1D-D — the dedicated Requisition-context resume-selection mutation
           // scope gates PUT /v1/pipelines/{id}/resume-edition (@RequireScopes).
           'pipeline:resume:set',
           'activity:read',
@@ -4306,10 +4306,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       };
       // PC-6 / TI-1F P0.2 — deterministic file→TEXT extraction is still valid and
       // used by the resume-editions POST (content_hash) + the governed draft
-      // orchestrator. Résumé FACT extraction is governed-LLM-only now, so the
+      // orchestrator. Resume FACT extraction is governed-LLM-only now, so the
       // retired heuristic parseFromStorageKey is no longer wired/stubbed.
       const mockResumeParser = {
-        extractTextFromStorageKey: async () => 'Grace Hopper résumé — pact-seed text.',
+        extractTextFromStorageKey: async () => 'Grace Hopper resume — pact-seed text.',
       };
       const mockDeliveryProvider = {
         deliver: async (): Promise<{
@@ -4408,9 +4408,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       await app.init();
 
-      // TI-1F P0.2 — the governed résumé extractor's model call cannot run in the
+      // TI-1F P0.2 — the governed resume extractor's model call cannot run in the
       // verify env. Spy ONLY extractResumeDraft on the REAL TalentExtractionService
-      // instance (all its other methods — the résumé-edition routes — stay real) so
+      // instance (all its other methods — the resume-edition routes — stay real) so
       // the draft-from-resume contract's parsed prefill holds: identity from the
       // proposal, email from result.contact (R17), parse_status 'parsed'.
       vi.spyOn(
@@ -6801,7 +6801,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             [readyPipelineId, TENANT_ID, PACT_TALENT_ID, ATSW_SUB_JOB_ID],
           );
           // TI-1D-D — the send-to-ats transition now REQUIRES an explicit
-          // Requisition-context résumé selection (SUBMITTAL_RESUME_SELECTION_REQUIRED
+          // Requisition-context resume selection (SUBMITTAL_RESUME_SELECTION_REQUIRED
           // 422 otherwise, no default fallback). Seed the working selection for the
           // same (tenant, talent, requisition) so the send freezes it onto the
           // submittal + event and the happy path returns 200.
@@ -7334,7 +7334,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient((c) => resetAllRows(c));
       },
 
-      // TI-1D-D — a pipeline whose talent owns ONE active résumé edition (the
+      // TI-1D-D — a pipeline whose talent owns ONE active resume edition (the
       // default) AND has an explicit Requisition-context selection pointing at it.
       // Exercises GET /v1/pipelines/:id/resume-edition (selection + default +
       // available_editions all populated through the real RESUME_EDITION_READER).
@@ -7394,7 +7394,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // TI-1D-D — a pipeline whose talent owns ONE active, selectable résumé
+      // TI-1D-D — a pipeline whose talent owns ONE active, selectable resume
       // edition but has NO existing selection yet. Exercises PUT
       // /v1/pipelines/:id/resume-edition (the append-only first selection).
       'an ats-web recruiter and a pipeline with a selectable resume edition exist':
@@ -7607,7 +7607,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TALENT-INTEL-1 TI-1D-C — a talent with TWO coexisting résumé editions,
+      // TALENT-INTEL-1 TI-1D-C — a talent with TWO coexisting resume editions,
       // each anchored to a real TalentDocument (filename/mime/uploaded_at are
       // projected from it); the default is the OLDER edition A (explicit, not
       // latest-wins). Exercises GET :id/resume-editions.
@@ -7645,12 +7645,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TALENT-INTEL-1 TI-1H — a talent with ONE résumé edition that has its own
+      // TALENT-INTEL-1 TI-1H — a talent with ONE resume edition that has its own
       // extracted, redacted text row (GET :id/resume-editions/:editionId/text). The
       // endpoint: findById (TalentRecord) → listResumeEditionsWithDocument (the
       // edition must belong to the talent) → findResumeEditionText (the edition's
       // own talent_resume_text row). Seed all three.
-      'an ats-web recruiter and a talent with a résumé edition text row exist': async () => {
+      'an ats-web recruiter and a talent with a resume edition text row exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebTalentRecord(c, { id: ATSW_RT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
@@ -7680,7 +7680,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TALENT-INTEL-1 TI-1D-C — a talent owning a résumé Attachment (is_resume),
+      // TALENT-INTEL-1 TI-1D-C — a talent owning a resume Attachment (is_resume),
       // for the POST ingestion (the server resolves + extracts + mints doc+edition).
       'an ats-web recruiter and a talent with an owned resume attachment exist': async () => {
         await withClient(async (c) => {
@@ -7697,7 +7697,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TALENT-INTEL-1 TI-1D-C — a talent with a single résumé edition (no default
+      // TALENT-INTEL-1 TI-1D-C — a talent with a single resume edition (no default
       // yet), for the PUT default mutation to promote it.
       'an ats-web recruiter and a talent with a resume edition exist': async () => {
         await withClient(async (c) => {
@@ -7718,12 +7718,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TALENT-INTEL-1 TI-1F-B/C — a résumé edition whose governed extraction is
+      // TALENT-INTEL-1 TI-1F-B/C — a resume edition whose governed extraction is
       // READY_FOR_REVIEW: the ATTACHMENT ResumeExtractionDraft is bound to the
       // edition (talent + document anchor set) so the CONFIRM/REJECT routes resolve
       // it. structured_payload is a minimal grounded set (promotion is exercised;
       // an empty set would still mark ACCEPTED). Exercises POST .../confirm + /reject.
-      'an ats-web recruiter and a talent with a résumé edition ready for review exist':
+      'an ats-web recruiter and a talent with a resume edition ready for review exist':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);

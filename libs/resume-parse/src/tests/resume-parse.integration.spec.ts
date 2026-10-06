@@ -23,7 +23,7 @@ import {
 
 import { ResumeParserService } from '../lib/resume-parser.service.js';
 
-// A8-3b — integration proofs for the résumé-parse flow against LocalStack.
+// A8-3b — integration proofs for the resume-parse flow against LocalStack.
 //
 // Proves (the directive §6 list, mapped):
 //   #1 presigned-upload flow (E1): PUT URL works + tag baked
@@ -92,7 +92,7 @@ async function makeSampleDocx(): Promise<Buffer> {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'A8-3b — résumé parse integration (LocalStack)',
+  'A8-3b — resume parse integration (LocalStack)',
   () => {
     let localstack: StartedLocalStackContainer;
     let endpoint: string;
@@ -191,9 +191,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    // TI-1F P0.2 — résumé FACT extraction is governed-LLM-only; this lib extracts
+    // TI-1F P0.2 — resume FACT extraction is governed-LLM-only; this lib extracts
     // deterministic file→TEXT only (the text is handed to the governed extractor).
-    it('proof #2 — PDF résumé extracts to plain text (fed to the governed extractor)', async () => {
+    it('proof #2 — PDF resume extracts to plain text (fed to the governed extractor)', async () => {
       const storageKey = `${TENANT_ID}/talent/${DRAFT_PARTITION_ID}/resume/parse-pdf.pdf`;
       await adminClient.send(
         new PutObjectCommand({
@@ -213,7 +213,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(text).toContain('Jane');
     });
 
-    it('proof #2 — DOCX résumé extracts to plain text', async () => {
+    it('proof #2 — DOCX resume extracts to plain text', async () => {
       const storageKey = `${TENANT_ID}/talent/${DRAFT_PARTITION_ID}/resume/parse-docx.docx`;
       await adminClient.send(
         new PutObjectCommand({
@@ -240,7 +240,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new PutObjectCommand({
           Bucket: BUCKET,
           Key: storageKey,
-          Body: Buffer.from('not a real résumé, just text', 'utf8'),
+          Body: Buffer.from('not a real resume, just text', 'utf8'),
         }),
       );
 

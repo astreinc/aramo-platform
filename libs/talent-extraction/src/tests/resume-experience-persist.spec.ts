@@ -72,7 +72,7 @@ describe('persistDeclaredWorkHistory — nested Experience Intelligence (P6, det
           experience_summary: 'Led the platform migration.',
           source_refs: ['B004'],
           skill_usage: [
-            // EXPLICIT: the résumé stated the skill's own dates → carried.
+            // EXPLICIT: the resume stated the skill's own dates → carried.
             {
               surface_form: 'Kubernetes',
               version: '1.27',

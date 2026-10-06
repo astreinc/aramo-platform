@@ -43,7 +43,7 @@ describe('ClientSubmittalPolicyEditor', () => {
     render(<ClientSubmittalPolicyEditor companyId="co-1" onBack={vi.fn()} />);
     await waitFor(() => expect(screen.getByRole('group', { name: 'Bill rate setting' })).toBeInTheDocument());
     expect(screen.getByRole('group', { name: 'Right to Represent setting' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Résumé selected setting' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Resume selected setting' })).toBeInTheDocument();
   });
 
   it('a tenant-floored requirement is locked (no toggle) and shows the Tenant floor badge', async () => {

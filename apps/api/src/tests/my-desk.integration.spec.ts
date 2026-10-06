@@ -484,7 +484,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(TENANT_A, reqA1, tal['samuel'], 'voided'); // terminal — excluded from count
 
       // --- Submittal-ready (derived kind): Hannah is qualified on reqA2 with a
-      // selected résumé, no RTR requirement, no restriction, no policy → every
+      // selected resume, no RTR requirement, no restriction, no policy → every
       // applicable gate satisfied → 'ready_to_submit'. On reqA2 so the reqA1
       // count assertions are undisturbed.
       await seedPipeline(TENANT_A, reqA2, tal['hannah'], 'qualified');

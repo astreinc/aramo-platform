@@ -12,7 +12,7 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 // Two formats: PDF (via pdf-parse) + DOCX (via mammoth). Both are pure-JS,
 // no native deps, and produce plain text handed to the governed extractor
 // (@aramo/talent-extraction). TI-1F P0.2 retired the heuristic field-extractor;
-// governed LLM is the sole résumé fact extractor.
+// governed LLM is the sole resume fact extractor.
 //
 // Format detection: magic-byte sniff on the buffer head. PDFs start with
 // `%PDF-`; DOCX files are ZIPs and start with `PK\x03\x04`. Anything else
@@ -47,7 +47,7 @@ export function detectResumeFormat(buffer: Buffer): ResumeFormat {
 }
 
 /**
- * Extract plain text from a résumé buffer. Returns null on any failure
+ * Extract plain text from a resume buffer. Returns null on any failure
  * (corrupt file, encrypted PDF, unsupported format, library throw).
  * The caller maps null → parse_status='failed'.
  */
@@ -69,7 +69,7 @@ export async function extractResumeText(buffer: Buffer): Promise<string | null> 
       const result = await mammoth.extractRawText({ buffer });
       const body = result.value;
       // mammoth reads word/document.xml ONLY — it drops HEADER/FOOTER parts.
-      // Many résumés put the contact block (name, email, phone, City/ST ZIP) in
+      // Many resumes put the contact block (name, email, phone, City/ST ZIP) in
       // the Word header, so it would never reach extraction. Pull header/footer
       // text and PREPEND the header (so the contact block lands at the top for
       // the name heuristic + source-map block 0 + local email/phone extraction).

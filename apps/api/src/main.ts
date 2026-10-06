@@ -42,7 +42,7 @@ async function bootstrap(): Promise<void> {
   // absent. No signed cookies (directive §3 Topic 3).
   app.use(cookieParser());
   // Route-scoped RAW body for the Indeed apply webhook ONLY: raw Buffer, its own
-  // larger size cap (base64 résumé payloads), mounted at the exact path and
+  // larger size cap (base64 resume payloads), mounted at the exact path and
   // BEFORE json — body-parser marks req._body once it reads, so json/urlencoded
   // skip the already-consumed webhook body while parsing every other route.
   app.use(

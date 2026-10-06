@@ -7,10 +7,10 @@ import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from './cold-ingest-extraction.queu
 
 // Cold-Ingest Extraction — PARKED (TI-1F P0.2).
 //
-// Heuristic résumé FACT extraction is RETIRED (governed LLM is the SOLE
-// production résumé fact extractor; …-TI-1F-…-v1_0-LOCKED §4-D). Cold-ingest is
+// Heuristic resume FACT extraction is RETIRED (governed LLM is the SOLE
+// production resume fact extractor; …-TI-1F-…-v1_0-LOCKED §4-D). Cold-ingest is
 // PARKED pending a separate architecture review and is NOT wired into the TI-1F
-// recruiter résumé flow.
+// recruiter resume flow.
 //
 // This worker is therefore INERT: a tick performs NO extraction — it reads no
 // arrivals, produces no Talent facts/evidence, stamps no extract-once marker,

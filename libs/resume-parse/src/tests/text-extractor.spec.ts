@@ -31,7 +31,7 @@ describe('A8-3b — detectResumeFormat', () => {
   });
 
   it('returns unknown for arbitrary binary that is not PDF/DOCX', () => {
-    // JPEG magic (FF D8) — not a résumé format we accept.
+    // JPEG magic (FF D8) — not a resume format we accept.
     const buf = Buffer.from([0xff, 0xd8, 0xff, 0xe0]);
     expect(detectResumeFormat(buf)).toBe('unknown');
   });
@@ -39,7 +39,7 @@ describe('A8-3b — detectResumeFormat', () => {
 
 describe('A8-3b — extractResumeText failure modes', () => {
   it('returns null for unknown format (plain text input)', async () => {
-    const buf = Buffer.from('Just a text file, not a résumé', 'utf8');
+    const buf = Buffer.from('Just a text file, not a resume', 'utf8');
     const text = await extractResumeText(buf);
     expect(text).toBeNull();
   });

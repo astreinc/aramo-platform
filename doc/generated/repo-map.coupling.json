@@ -11563,6 +11563,12 @@
     },
     {
       "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/offer-start/offer-start-steps.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/offer-start-exceptions.spec.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/offers/offer-state-drift.spec.ts",
       "status": "excluded",
       "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
@@ -13708,6 +13714,11 @@
     {
       "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
       "status": "unscoped",
+      "to": "doc/runbooks/singlebox-ops.md"
+    },
+    {
+      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
+      "status": "unscoped",
       "to": "libs/activity/src/lib/dto/note-category.ts"
     },
     {
@@ -15377,6 +15388,11 @@
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-config.resolver.ts"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
       "to": "deploy/backup/pg-backup.sh"
     },
     {
@@ -15419,6 +15435,11 @@
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
       "to": "doc/runbooks/core-talent-ledger-reconciliation.md"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/domain/oauth-state.ts"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",

@@ -3,7 +3,7 @@
 -- TalentWorkHistoryEntry precedent. institution_name/degree_name and
 -- certification_name are NOT NULL so the pure canonical mappers always carry their
 -- required fields (the write-gate conformance property). Dates are DATE (calendar
--- granularity). Source enums cover résumé/manual/import arrivals only.
+-- granularity). Source enums cover resume/manual/import arrivals only.
 
 -- CreateEnum
 CREATE TYPE "talent_evidence"."TalentEducationSource" AS ENUM ('resume', 'manual', 'import');

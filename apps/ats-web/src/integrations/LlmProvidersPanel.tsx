@@ -182,7 +182,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
             )}
           </span>
         }
-        sub="Your tenant's own model provider and API key power governed résumé extraction and other AI features. Bring your own key from any supported provider — the key is stored securely, never displayed after saving, and Aramo never falls back to a shared platform key."
+        sub="Your tenant's own model provider and API key power governed resume extraction and other AI features. Bring your own key from any supported provider — the key is stored securely, never displayed after saving, and Aramo never falls back to a shared platform key."
       />
       {state.status === 'loading' && <LoadingState label="Loading status…" />}
       {state.status === 'error' && <ErrorState message={state.message} onRetry={refresh} />}
@@ -297,7 +297,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
                 <span>
                   Keys are tenant-scoped and stored in the platform vault under your tenant. Switching
                   providers keeps the previous key in custody until you clear it; the switch is versioned
-                  and logged. Résumé data is sent only to the provider you select here.
+                  and logged. Resume data is sent only to the provider you select here.
                 </span>
               </div>
             </div>

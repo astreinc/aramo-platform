@@ -8,7 +8,7 @@ environment = "prod"
 api_log_retention_days  = 90
 auth_log_retention_days = 90
 
-# A8-3a — résumé bucket. Set to the prod app origin(s); NEVER "*".
+# A8-3a — resume bucket. Set to the prod app origin(s); NEVER "*".
 resume_bucket_cors_allowed_origins    = ["https://aramo.app"]
 resume_bucket_retention_days_default  = 365
 resume_bucket_retention_days_extended = 2555

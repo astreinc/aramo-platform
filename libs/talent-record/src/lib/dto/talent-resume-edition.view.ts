@@ -1,6 +1,6 @@
 import type { TalentResumeEditionWithDocumentRow } from '@aramo/talent-extraction';
 
-// TALENT-INTEL-1 TI-1D-C — the résumé-edition read model. filename / mime_type /
+// TALENT-INTEL-1 TI-1D-C — the resume-edition read model. filename / mime_type /
 // uploaded_at are PROJECTED from the mandatory TalentDocument join (file_type ←
 // mime_type, ingestion_at ← uploaded_at — ruling E: derive, never store on the
 // edition). is_default is the presentation default (NOT "newest = truth").
@@ -28,10 +28,10 @@ export interface TalentResumeEditionsResponse {
   editions: TalentResumeEditionView[];
 }
 
-// TALENT-INTEL-1 TI-1H §9 — per-edition résumé text (preview). Reading edition R
+// TALENT-INTEL-1 TI-1H §9 — per-edition resume text (preview). Reading edition R
 // returns R's OWN redacted text — never another edition's. redacted_text is null
 // while the async re-extract is pending/failed (status carries which). Only
-// redacted text is ever exposed (D4 — raw résumé text is never returned).
+// redacted text is ever exposed (D4 — raw resume text is never returned).
 export interface TalentResumeEditionTextView {
   talent_id: string;
   edition_id: string;

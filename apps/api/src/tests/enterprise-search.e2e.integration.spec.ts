@@ -38,7 +38,7 @@ const EMPTY_SEMANTIC = {
 // Drives the real orchestrator wired to the four real adapters over the four real repositories.
 // Proves global search, unauthorized-entity omission, explicit-unauthorized module behaviour,
 // tenant isolation, per-domain visibility isolation, exact lookup (talent email + requisition
-// number), résumé FTS, dedupe, bounded per-type limit, lean projection, and the blank query.
+// number), resume FTS, dedupe, bounded per-type limit, lean projection, and the blank query.
 
 const ROOT = resolve(__dirname, '../../../..');
 function migrationsIn(lib: string): string[] {
@@ -248,7 +248,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(hits[0]!.match.signal).toBe('exact');
     });
 
-    it('résumé full-text retrieval surfaces the talent with a snippet', async () => {
+    it('resume full-text retrieval surfaces the talent with a snippet', async () => {
       const { authority } = authority_(ALL);
       const r = await svc.search({ query: 'Snowflake', entity_types: ['TALENT'], authority, requestId: 'r' });
       const hits = group(r, 'TALENT')!.hits as { entity_id: string; snippet: string | null }[];

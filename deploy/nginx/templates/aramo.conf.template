@@ -49,7 +49,7 @@ server {
   # ahead of /v1/ for readability). Route literal inlined from
   # apps/api/src/webhooks/indeed-apply.constants.ts INDEED_APPLY_WEBHOOK_ROUTE;
   # verify-frontdoor-conf.ts enforces constant/conf parity thereafter. The larger
-  # body cap carries the base64 résumé payload (nginx default is 1m).
+  # body cap carries the base64 resume payload (nginx default is 1m).
   location = /v1/webhooks/indeed/apply {
     client_max_body_size 3m;
     proxy_pass http://api:3000;

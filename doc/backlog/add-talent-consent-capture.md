@@ -1,7 +1,7 @@
 # Backlog — Add Talent: consent capture (revisit)
 
 **Status:** DEFERRED (PO ruling, 2026-09-11). Removed from the Add-Talent
-create flow to match the updated résumé-first prototype
+create flow to match the updated resume-first prototype
 (`design/aramo-prototype/platform/Talent.dc.html`), whose footer states:
 "Contact permissions are governed separately from profile creation ·
 provenance is recorded automatically."
@@ -26,7 +26,7 @@ separately), not a technical blocker. [[project_talent_admission_invariant]]
   post-create step, the Talent Detail consent surface, or re-introduced into
   Add Talent) and when `POST /v1/consent/grant` (keyed on `talent_record_id`)
   fires.
-- Reconcile with the governed-LLM résumé-extraction path, which is gated on
+- Reconcile with the governed-LLM resume-extraction path, which is gated on
   `ai_processing` consent (fail-closed) — that consent path needs a home.
 - The R7 attestation ("consent to represent obtained") — where it lives once
   in-form capture is gone.

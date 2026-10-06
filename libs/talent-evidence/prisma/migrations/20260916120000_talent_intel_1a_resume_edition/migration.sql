@@ -1,4 +1,4 @@
--- TALENT-INTEL-1 (TI-1A) Résumé Edition substrate (Gate-5 rulings 1, 2, 18).
+-- TALENT-INTEL-1 (TI-1A) Resume Edition substrate (Gate-5 rulings 1, 2, 18).
 -- ADDITIVE ONLY: a new TalentResumeEdition companion to TalentDocument plus a
 -- separate TalentResumeDefault selection table. NO change to any HF2 evidence
 -- row (evidence still anchors on source_document_id, no source_edition_id

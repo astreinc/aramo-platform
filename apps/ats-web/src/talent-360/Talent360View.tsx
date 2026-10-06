@@ -838,7 +838,7 @@ function Opportunity({
           </div>
           {/* Fact grid — prototype's six slots and labels, preserved exactly.
               RECRUITER + IN STAGE are authoritative in the Talent 360 contract;
-              ACCOUNT MANAGER / RTR / RÉSUMÉ SUBMITTED are not composed into this
+              ACCOUNT MANAGER / RTR / RESUME SUBMITTED are not composed into this
               read, and BILL RATE is deliberately excluded (ruling R3). Those four
               render an honest em-dash — the slot geometry is kept, the value is
               never fabricated. (Journey sub-states are shown by the 7-step strip
@@ -847,7 +847,7 @@ function Opportunity({
             <Fact label="RECRUITER" value={o.owner_label} />
             <Fact label="ACCOUNT MANAGER" value={null} />
             <Fact label="RTR" value={null} />
-            <Fact label="RÉSUMÉ SUBMITTED" value={null} />
+            <Fact label="RESUME SUBMITTED" value={null} />
             <Fact label="BILL RATE" value={null} />
             <Fact label="IN STAGE" value={o.age_label} />
           </div>
@@ -1055,7 +1055,7 @@ function ProfileSection({
                   <span
                     key={s.label}
                     className={`t360-skill${s.verified ? ' t360-skill--verified' : ''}`}
-                    title={s.verified ? 'Backed by résumé and a second source' : 'Self-reported'}
+                    title={s.verified ? 'Backed by resume and a second source' : 'Self-reported'}
                   >
                     {s.label}
                     {s.verified ? ' ✓' : ''}
@@ -1727,12 +1727,12 @@ function OtherTabContent({
           )}
           {/* WORK HISTORY — rendered from the composed read (profile.work_history,
               role/organization/span/source), matching the prototype rows; not a
-              parallel authority. Honest empty when the résumé hasn't populated it. */}
+              parallel authority. Honest empty when the resume hasn't populated it. */}
           <div className="t360-skills-eyebrow" style={{ marginTop: 16 }}>
             WORK HISTORY
           </div>
           {p.work_history.length === 0 ? (
-            <div className="t360-empty">No work history yet — it’s captured from the résumé at creation.</div>
+            <div className="t360-empty">No work history yet — it’s captured from the resume at creation.</div>
           ) : (
             p.work_history.map((w, i) => (
               <div key={`${w.role}-${i}`} className="t360-wh-row">
@@ -1746,7 +1746,7 @@ function OtherTabContent({
           )}
           {p.skills.length > 0 && (
             <div className="t360-profile-note">
-              ✓ Backed by résumé and a second source. Other skills are self-reported.
+              ✓ Backed by resume and a second source. Other skills are self-reported.
             </div>
           )}
         </div>

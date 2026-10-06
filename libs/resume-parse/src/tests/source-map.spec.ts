@@ -5,7 +5,7 @@ import {
   buildResumeSourceMap,
 } from '../lib/source-map.js';
 
-// HF1 §3 / R1 — the canonical résumé source-map. resume-parse owns
+// HF1 §3 / R1 — the canonical resume source-map. resume-parse owns
 // document-bytes → extracted-text, so it also owns the deterministic
 // text → ordered-source-blocks transform. The map is the Aramo-owned corpus
 // that grounding (in talent-extraction) resolves model source_refs against;

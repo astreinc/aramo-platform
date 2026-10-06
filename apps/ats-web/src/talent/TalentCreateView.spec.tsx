@@ -4,10 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TalentCreateView } from './TalentCreateView';
 
-// Add-Talent — the résumé-FIRST flow (LOCKED: Governed-LLM Resume Extraction +
-// Deterministic Fallback). A résumé upload is REQUIRED (no manual-entry path);
+// Add-Talent — the resume-FIRST flow (LOCKED: Governed-LLM Resume Extraction +
+// Deterministic Fallback). A resume upload is REQUIRED (no manual-entry path);
 // consent capture is governed separately (NOT here); the tenant's
-// Governed LLM is the sole résumé extractor SERVER-side (TI-1F P0.2) and the FE
+// Governed LLM is the sole resume extractor SERVER-side (TI-1F P0.2) and the FE
 // consumes { prefill, warning }. Provenance is honest about the extractor.
 
 interface MockedRequest {
@@ -64,7 +64,7 @@ function makeFile(name = 'resume.pdf', type = 'application/pdf'): File {
   return new File(['%PDF-1.4 stub'], name, { type });
 }
 
-// The résumé-first handler: presign → S3 PUT → draft-from-resume ({prefill,
+// The resume-first handler: presign → S3 PUT → draft-from-resume ({prefill,
 // parse_status,warning?}) → create → attach. Governed LLM is the sole extractor
 // (TI-1F P0.2 — no mode). Also answers the proactive duplicate-check (default:
 // no match) so the effect never 404s.
@@ -140,8 +140,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('TalentCreateView — résumé-first intake (no manual path)', () => {
-  it('opens on the résumé-required Step 1 — no "enter details manually"', () => {
+describe('TalentCreateView — resume-first intake (no manual path)', () => {
+  it('opens on the resume-required Step 1 — no "enter details manually"', () => {
     installFetch(() => ({ status: 200, body: {} }));
     renderAt();
     expect(screen.getByText('Add talent')).toBeInTheDocument();
@@ -150,8 +150,8 @@ describe('TalentCreateView — résumé-first intake (no manual path)', () => {
   });
 });
 
-describe('TalentCreateView — résumé create + attach flow', () => {
-  it('parse → prefill (résumé·AI chip) → fill required → create + attach; NO consent', async () => {
+describe('TalentCreateView — resume create + attach flow', () => {
+  it('parse → prefill (resume·AI chip) → fill required → create + attach; NO consent', async () => {
     const calls = installFetch(
       resumePlan({
         prefill: { first_name: 'Ada', last_name: 'Lovelace', city: 'Austin', state: 'TX' },
@@ -162,7 +162,7 @@ describe('TalentCreateView — résumé create + attach flow', () => {
     await waitFor(() =>
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
-    // Governed-LLM résumé provenance chip.
+    // Governed-LLM resume provenance chip.
     expect(screen.getAllByText('resume · AI').length).toBeGreaterThan(0);
     fillRequired(false);
     fireEvent.click(screen.getByRole('button', { name: /create talent/i }));
@@ -177,7 +177,7 @@ describe('TalentCreateView — résumé create + attach flow', () => {
 });
 
 describe('TalentCreateView — governed-LLM extraction', () => {
-  it('clean skills flow into free-text key_skills with an AI-résumé chip; email/phone recruiter-entered', async () => {
+  it('clean skills flow into free-text key_skills with an AI-resume chip; email/phone recruiter-entered', async () => {
     installFetch(
       resumePlan({
         prefill: {
@@ -195,7 +195,7 @@ describe('TalentCreateView — governed-LLM extraction', () => {
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Ada'),
     );
     expect((screen.getByLabelText('Key skills') as HTMLTextAreaElement).value).toBe('C#, Azure SQL');
-    // Governed-LLM résumé provenance chip (§16).
+    // Governed-LLM resume provenance chip (§16).
     expect(screen.getAllByText('resume · AI').length).toBeGreaterThan(0);
     // Email/phone were NOT LLM-proposed (redacted) — the recruiter fills them.
     expect((screen.getByLabelText('Primary email') as HTMLInputElement).value).toBe('');
@@ -206,7 +206,7 @@ describe('TalentCreateView — governed-LLM extraction', () => {
       resumePlan({
         parse_status: 'partial',
         prefill: {},
-        warning: 'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+        warning: 'Resume extraction is temporarily unavailable. Please retry, or enter the details manually.',
       }),
     );
     renderAt();

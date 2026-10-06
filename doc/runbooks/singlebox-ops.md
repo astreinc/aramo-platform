@@ -55,6 +55,31 @@ deploy/seed-prod.sh           # regen client + seed (catalog + Astre + purush@as
 > fallback (its origin is used if `AUTH_PUBLIC_BASE_URL` is unset) but should be
 > retired once the new var is in place.
 
+> **Required at provision — Microsoft 365 "Connect" (D-INT-1).** The personal
+> delegated-OAuth START path reads **two** vars from the api container; set BOTH in
+> `/opt/aramo/.env` as part of first-provision (and re-confirm on any reprovision /
+> fresh `.env` authoring). They are **lazily validated** — the api boots clean with
+> them empty and only 500s when a recruiter clicks *Connect account*
+> (`MSGRAPH_REDIRECT_URI is not configured`), so no boot crash-loop flags a miss.
+> That is exactly how the original hotfix got silently dropped; this requirement
+> closes the re-drop gap. Full surface + rationale: `.env.prod.example` (the
+> committed enumeration) and backlog `D-INT-1` (§B1).
+>
+> - `MSGRAPH_REDIRECT_URI=https://astre.aramo.ai/v1/integrations/microsoft/callback`
+>   — must **byte-match** a Web redirect registered on the Entra app for the
+>   tenant's `client_id`. The `astre-aramo` app registration already carries this
+>   exact Web redirect (backlog D-INT-1 §B1); the callback bounces
+>   `redirect_uri_mismatch` if it is ever removed. START itself works without it.
+> - `MSGRAPH_OAUTH_STATE_KEY` — 32 random bytes, base64url. Generate fresh per box
+>   (secret-grade — see §E; never a committed default):
+>   `openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`. It signs only the
+>   in-flight OAuth `state` (no stored data); rotating it is safe.
+>
+> Code refs: `apps/api/src/microsoft/microsoft-config.resolver.ts` (`redirectUri()`
+> throws when empty) · `libs/microsoft-graph/src/lib/domain/oauth-state.ts`
+> (`MSGRAPH_OAUTH_STATE_KEY` must decode to exactly 32 bytes). Compose passthrough
+> (bare-name, api-only) is already committed in `docker-compose.prod.yml`.
+
 **Seed once, cleanly.** The dev-fixtures scrub (§F) must be merged before step 2
 so Astre's first prod DB is clean from creation — never seeded-then-scrubbed.
 
@@ -243,6 +268,14 @@ Locally there is no public cert — mount an mkcert pair at `NGINX_CERT_DIR` (sa
   (§B) — `s3:PutObject` on the backup prefix, nothing broader.
 - The **Anthropic key is env-fed** (PR #297) — no Secrets-Manager AWS credential
   needed for it.
+- **`MSGRAPH_OAUTH_STATE_KEY` is secret-grade box env material** (D-INT-1): it keys
+  the AES-256-GCM envelope over the in-flight Microsoft OAuth `state`. Generate it
+  **fresh per box** (`openssl rand -base64 32 | tr '+/' '-_' | tr -d '='`) — never a
+  committed/plaintext default (`.env.prod.example` ships it empty by design). It
+  lives only in the `chmod 600` `/opt/aramo/.env` above; it is NOT an AWS
+  Secrets-Manager secret (the per-recruiter delegated *tokens* are — those sit under
+  `aramo/<env>/msgraph-delegated/*`, a different artifact). Rotating the state key is
+  safe (no data is stored under it). `MSGRAPH_REDIRECT_URI` is non-secret config.
 ```bash
 sudo chmod 600 /opt/aramo/.env /etc/aramo/backup.conf
 sudo chown deploy:deploy /opt/aramo/.env

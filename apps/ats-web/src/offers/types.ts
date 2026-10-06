@@ -13,8 +13,20 @@ export const OFFER_STATES = [
 ] as const;
 export type OfferState = (typeof OFFER_STATES)[number];
 
+// Hand-mirror of the canonical offer-timing semantic (libs/placement
+// offer-timing.ts OfferTiming). The SERVER derives this from (state,
+// offer_expires_at, now) — the FE renders it and NEVER recomputes "expiring soon"
+// or days-left from offer_expires_at itself.
+export interface OfferTiming {
+  readonly awaiting_response: boolean;
+  readonly expiring_soon: boolean;
+  readonly expired_by_time: boolean;
+  readonly days_until_expiry: number | null;
+}
+
 // Hand-mirror of the BE OfferView (libs/placement/src/lib/offer.repository.ts
-// OfferView). Wire read-shape for the /v1/offers surface; keep 1:1 with the BE.
+// OfferView) + the read-layer offer_timing (apps/api OfferReadView). Wire
+// read-shape for the /v1/offers surface; keep 1:1 with the BE.
 export interface OfferView {
   readonly id: string;
   readonly tenant_id: string;
@@ -28,6 +40,9 @@ export interface OfferView {
   readonly offer_terms_summary: string | null;
   readonly decline_reason: string | null;
   readonly created_at: string;
+  // Server-computed canonical offer timing. Optional on the mirror only so unrelated
+  // fixtures need not restate it; GET /v1/offers always populates it.
+  readonly offer_timing?: OfferTiming | null;
 }
 
 export interface OfferListResponse {

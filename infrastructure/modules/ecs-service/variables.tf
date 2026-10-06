@@ -102,7 +102,7 @@ variable "secrets" {
 }
 
 variable "task_role_inline_policy_json" {
-  description = "Optional IAM policy JSON attached to the TASK role (the app's runtime AWS perms, e.g. the résumé-bucket least-privilege doc). Null for services with no AWS perms."
+  description = "Optional IAM policy JSON attached to the TASK role (the app's runtime AWS perms, e.g. the resume-bucket least-privilege doc). Null for services with no AWS perms."
   type        = string
   default     = null
 }

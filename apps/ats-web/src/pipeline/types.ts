@@ -91,7 +91,7 @@ export interface PipelineListResponse {
 }
 
 // TI-1D-D — hand-mirrored from libs/pipeline/src/lib/dto/pipeline-resume-edition.view.ts
-// + set-pipeline-resume-edition-request.dto.ts. The Requisition-context résumé
+// + set-pipeline-resume-edition-request.dto.ts. The Requisition-context resume
 // selection resolved through the Pipeline aggregate. The newest edition is NOT the
 // sole truth and the Talent-global default is a SUGGESTION only — never
 // authoritative for a requisition.

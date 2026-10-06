@@ -84,7 +84,7 @@ import {
 
 // Gate-1 G1-A — TalentExtractionService.
 //
-// Reads the talent's DECLARED source text (résumé body + recruiter key_skills,
+// Reads the talent's DECLARED source text (resume body + recruiter key_skills,
 // supplied by the caller), asks the LLM (via the governed @aramo/ai-draft
 // consumer surface — ADR-0015 v1.3, 3rd declared consumer) to STRUCTURE what is
 // explicitly present, then persists the result as `declared` evidence rows
@@ -95,29 +95,29 @@ import {
 // Scoring stays deterministic + LLM-free (matching/examination); this lib only
 // PRODUCES declared evidence. The parse/validate/persist path below is fully
 // deterministic and unit-tested against a mocked generateDraft completion.
-// A résumé's full structured extraction (identity + location + professional +
+// A resume's full structured extraction (identity + location + professional +
 // every skill + every work-history entry, each carrying a VERBATIM
 // source_excerpt) routinely exceeds 2048 output tokens for a real 1–2 page
-// résumé. At 2048 the completion truncated mid-JSON (stop_reason=max_tokens) →
+// resume. At 2048 the completion truncated mid-JSON (stop_reason=max_tokens) →
 // JSON.parse failed → an empty extraction surfaced as "no details could be
 // read". 8192 gives ~4x headroom for the excerpt-heavy output.
 const EXTRACTION_MAX_TOKENS = 8192;
 
 const SYSTEM_MESSAGE =
-  'You are a résumé-structuring assistant. Extract ONLY skills, work-history ' +
+  'You are a resume-structuring assistant. Extract ONLY skills, work-history ' +
   'entries, education, and certifications that are EXPLICITLY present in the ' +
   'provided text. Do NOT infer, enrich, normalize, or add anything not literally ' +
   'stated. For every item, include a "source_excerpt" copied VERBATIM from the ' +
   'provided text that contains the claim. Respond with STRICT JSON only, no prose, ' +
   'no code fences.';
 
-// ── Résumé-draft (pre-create) extraction — HF1 durable fact extraction ───────
+// ── Resume-draft (pre-create) extraction — HF1 durable fact extraction ───────
 // HF1 (Durable-Fact-Extraction-Directive v1.0). SINGLE-READ, FACT-ONLY,
-// SOURCE-REFERENCED: the model reads a block-annotated résumé ONCE and returns
+// SOURCE-REFERENCED: the model reads a block-annotated resume ONCE and returns
 // the structured Add-Talent facts PLUS compact `source_refs` (block ids) — never
 // copied prose, never a `source_excerpt`, never work-history `description` (R3/R4).
 // Output is STRUCTURALLY BOUNDED (§11): it grows with the number of facts, not
-// the length of the résumé.
+// the length of the resume.
 //
 // Prompt/schema VERSION identifier. v2 = the HF1 compact source-ref contract
 // (v1 = the retired verbatim-excerpt contract). Bump on any change to
@@ -130,15 +130,15 @@ const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v3';
 // HF2 P4 ruling (b) — the v3 draft path's SINGLE-CALL output ceiling. Raised
 // 8192→16384 for THIS path ONLY (not a global bump): v3's richer Talent-
 // Intelligence output legitimately reaches ~9K tokens on heavy enterprise
-// résumés (measured), so 8192 would knowingly fail valid senior résumés. This
+// resumes (measured), so 8192 would knowingly fail valid senior resumes. This
 // is not the HF1 excerpt-bloat regime — output stays facts+refs. Truly extreme
-// résumés still return provider_truncated (explicit, observable). One call only —
+// resumes still return provider_truncated (explicit, observable). One call only —
 // no retry cascade, no second extraction (§26/R11). The examine path keeps
 // EXTRACTION_MAX_TOKENS (8192) — unrelated ceilings are NOT raised.
 const RESUME_DRAFT_V3_MAX_TOKENS = 16384;
 
 // HF2 R12 — cardinality CEILINGS (safety, not product limits). Set high vs
-// normal résumé density. Enforced in the CONSUMER (deterministic re-clamp via
+// normal resume density. Enforced in the CONSUMER (deterministic re-clamp via
 // cap() + overflow flag) — NOT in the provider json_schema: Anthropic's native
 // structured output rejects `maxItems` on arrays ("property 'maxItems' is not
 // supported"), which 400s the whole call, so the ceilings live only in code.
@@ -164,32 +164,32 @@ const ACTIVITY_VOCAB = [
 ] as const;
 
 const DRAFT_SYSTEM_MESSAGE =
-  'You structure a résumé into governed evidence for a talent-intake form. The ' +
-  'résumé is given as numbered source blocks, each line prefixed with a block id ' +
-  'like "[B004]". Return ONLY facts EXPLICITLY present about the person the résumé ' +
+  'You structure a resume into governed evidence for a talent-intake form. The ' +
+  'resume is given as numbered source blocks, each line prefixed with a block id ' +
+  'like "[B004]". Return ONLY facts EXPLICITLY present about the person the resume ' +
   'is about. For EVERY fact and nested item set "source_refs" to the block ids ' +
   'whose text states it (e.g. ["B004"]). Do NOT copy or quote block text — ' +
   'reference by id only. Do NOT infer, enrich, normalize, expand one skill into ' +
   'related technologies, assign proficiency, or derive years/versions from dates, ' +
   'titles, or employers. Every schema property must be PRESENT, but for anything ' +
-  'the résumé does not clearly state return an empty string "" (or an empty list ' +
-  '[] for a list) — NEVER a guess. Empty means "not stated". Distinguish the résumé ' +
+  'the resume does not clearly state return an empty string "" (or an empty list ' +
+  '[] for a list) — NEVER a guess. Empty means "not stated". Distinguish the resume ' +
   'owner from other people named, and their location from employer/school ' +
   'locations. Do NOT output email or phone. Per work_history entry: (1) an ' +
   'optional "experience_summary" — ONE short factual sentence, at most 600 ' +
   'characters, of what the role was, drawn only from that entry’s blocks, never ' +
   'a copied responsibility list; (2) "skill_usage": each skill used IN THAT ROLE ' +
   'with its surface_form exactly as written, an optional "version" ONLY if the ' +
-  'résumé states it, a compact "activity" from the allowed set, and ' +
-  '"usage_period_basis" = EXPLICIT when the résumé states the skill’s own dates, ' +
+  'resume states it, a compact "activity" from the allowed set, and ' +
+  '"usage_period_basis" = EXPLICIT when the resume states the skill’s own dates, ' +
   'WORK_EXPERIENCE_CONTEXT when only the role dates cover it, or UNKNOWN; (3) ' +
-  '"projects": distinct initiatives — "project_name" only if the résumé names one ' +
+  '"projects": distinct initiatives — "project_name" only if the resume names one ' +
   '(else omit it, never invent), plus optional context/domain; (4) "assertions": ' +
   'atomic activities/accomplishments, each a short "statement" with a "type" from ' +
   'the allowed set and a "metric" ONLY if a measurable outcome is explicitly ' +
   'stated (never invent a number). Also return top-level "education" and ' +
   '"certifications" that are explicitly stated. Structured facts + refs only — no ' +
-  'copied résumé prose.';
+  'copied resume prose.';
 
 // Transport enums include '' so a REQUIRED property can still say "not stated"
 // without the model inventing a value — '' normalizes to absent (stripTransport-
@@ -349,7 +349,7 @@ export class TalentExtractionService {
     // TR-4 B2 — the NEW edge: the producer owns its ledger write (DDR §3).
     private readonly trust: TalentTrustService,
     // HF1 §12/R2 — the native JSON-schema structured-generation port (the B6P
-    // surface on @aramo/ai-draft). The Add-Talent résumé draft path uses THIS
+    // surface on @aramo/ai-draft). The Add-Talent resume draft path uses THIS
     // (not the free-text generateDraft); the examine path keeps generateDraft.
     @Inject(STRUCTURED_GENERATION_PROVIDER)
     private readonly structuredGen: StructuredGenerationProvider,
@@ -430,7 +430,7 @@ export class TalentExtractionService {
         employer_name: employer,
         role_title: role,
         // TalentWorkHistorySource has no 'declared' member; work history is
-        // extracted from the résumé body, so 'resume' is the honest source
+        // extracted from the resume body, so 'resume' is the honest source
         // value (skills use 'declared'; the work-history source enum is a
         // distinct closed vocabulary that includes 'resume').
         source: 'resume',
@@ -465,7 +465,7 @@ export class TalentExtractionService {
         tenant_id: input.tenant_id,
         institution_name: institution,
         degree_name: degree,
-        // Education is extracted from the résumé body → 'resume' is the honest source.
+        // Education is extracted from the resume body → 'resume' is the honest source.
         source: 'resume',
         evidence_text: edu.source_excerpt.trim(),
         ...(typeof edu.field_of_study === 'string' && edu.field_of_study.trim() !== ''
@@ -702,7 +702,7 @@ export class TalentExtractionService {
   // declared RIGHT_TO_WORK claim (THIRD_PARTY_UNVERIFIED — cannot elevate the
   // ELIGIBILITY band; declaration ≠ verification). NO inference: the decomposed
   // richer fields (authorized_to_work_in / visa_type / requires_sponsorship) are
-  // NOT derived from the status, location, or any résumé signal — they stay at
+  // NOT derived from the status, location, or any resume signal — they stay at
   // their empty/false defaults until a surface explicitly collects them (TI-1G
   // §2/§3). The caller (controller) enqueues Talent reconcile after this.
   async recordDeclaredWorkAuthorization(input: {
@@ -1232,7 +1232,7 @@ export class TalentExtractionService {
     talent_id: string;
     tenant_id: string;
     entries: readonly ResumeDraftWorkHistory[];
-    // HF1 durable provenance (Gate-6 R8) — the résumé TalentDocument + the corpus
+    // HF1 durable provenance (Gate-6 R8) — the resume TalentDocument + the corpus
     // the entry's source_refs resolve against. All optional; when absent the rows
     // persist with NULL/empty provenance (unchanged pre-HF1 behavior).
     provenance?: ResumeProvenance;
@@ -1278,7 +1278,7 @@ export class TalentExtractionService {
 
       // HF2 R3/R16 — the role's time-aware SkillUsage evidence (each row keyed to
       // this WorkExperience). Declared, NOT scored (source='declared'; no
-      // confidence). usage_start/end persist ONLY when the résumé stated the
+      // confidence). usage_start/end persist ONLY when the resume stated the
       // skill's OWN dates (EXPLICIT); WORK_EXPERIENCE_CONTEXT leaves them NULL
       // (never manufactured — P4 ruling), the derivation resolves the interval
       // from this role instead.
@@ -1432,7 +1432,7 @@ export class TalentExtractionService {
     });
   }
 
-  // HF1 Gate-6 R1 — create the résumé's TalentDocument AFTER confirmed Talent
+  // HF1 Gate-6 R1 — create the resume's TalentDocument AFTER confirmed Talent
   // creation (never at draft/proposal time — the review-before-create contract).
   // Deterministic; the returned id becomes source_document_id on the evidence
   // rows. Reuses this service's TalentEvidenceRepository (no new cross-lib edge).
@@ -1466,7 +1466,7 @@ export class TalentExtractionService {
     return id;
   }
 
-  // TALENT-INTEL-1 TI-1D-C — thin résumé-edition passthroughs (reuse this
+  // TALENT-INTEL-1 TI-1D-C — thin resume-edition passthroughs (reuse this
   // service's TalentEvidenceRepository; no new cross-lib edge). The composition /
   // ingestion policy (idempotency, default-if-none) lives in the talent-record
   // ResumeEditionIngestionService; these only forward to the ledger repo.
@@ -1852,10 +1852,10 @@ export class TalentExtractionService {
   }
 
   // TALENT-INTEL-1 TI-1F-C (strengthened-D, PHASE 1) — establish the accepted
-  // résumé evidence lifecycle for a first-time create against a RESERVED talent_id,
+  // resume evidence lifecycle for a first-time create against a RESERVED talent_id,
   // in ONE atomic talent_evidence transaction, WITHOUT finalizing the draft. Shapes
   // the recruiter-reviewed create-body facts into typed-evidence rows anchored on a
-  // freshly-minted résumé TalentDocument (§4-F), then hands document + companion
+  // freshly-minted resume TalentDocument (§4-F), then hands document + companion
   // default edition + all evidence + the draft-LINK (talent_id/doc/edition, draft
   // stays READY_FOR_REVIEW) to the repository's atomic writer. No model call — the
   // governed extraction already ran in A; these are the reviewed facts. The derived
@@ -2108,7 +2108,7 @@ export class TalentExtractionService {
     return result;
   }
 
-  // HF1 Gate-6 R2 — persist recruiter-reviewed résumé SKILLS as declared
+  // HF1 Gate-6 R2 — persist recruiter-reviewed resume SKILLS as declared
   // TalentSkillEvidence at create time, WITH durable source provenance. Closes
   // the recon discrepancy (skills previously collapsed to the key_skills scalar
   // only — that scalar is RETAINED separately by the caller). DECLARED, NOT
@@ -2145,7 +2145,7 @@ export class TalentExtractionService {
     return ids;
   }
 
-  // HF2 R8/R18 — persist recruiter-reviewed résumé EDUCATION as declared
+  // HF2 R8/R18 — persist recruiter-reviewed resume EDUCATION as declared
   // TalentEducationEntry WITH durable provenance. institution+degree required
   // (a row missing either is dropped, not guessed). Dates strict-parsed (R27) —
   // ambiguous → NULL, never fabricated. DECLARED, not verified. Returns ids.
@@ -2182,7 +2182,7 @@ export class TalentExtractionService {
     return ids;
   }
 
-  // HF2 R8/R19 — persist recruiter-reviewed résumé CERTIFICATIONS as declared
+  // HF2 R8/R19 — persist recruiter-reviewed resume CERTIFICATIONS as declared
   // TalentCertificationEntry WITH provenance. name required; issued/expiry
   // strict-parsed (R27). DECLARED, not verified. Returns ids.
   async persistDeclaredCertifications(input: {
@@ -2221,7 +2221,7 @@ export class TalentExtractionService {
     return ids;
   }
 
-  // HF2 R1/R7 — route a WorkExperience's résumé-derived ASSERTIONS (activities /
+  // HF2 R1/R7 — route a WorkExperience's resume-derived ASSERTIONS (activities /
   // accomplishments) into the talent-trust EvidenceRecord ledger as EXPERIENCE_
   // CLAIM rows. Reuses the SAME governed write surface as the declared-claim
   // reconcile (recordDeclaredClaimIfAbsent: THIRD_PARTY_UNVERIFIED / DOCUMENT /
@@ -2304,7 +2304,7 @@ export class TalentExtractionService {
 
   // Talent-detail read: the persisted work-history for a talent (LOCKED scope
   // expansion — "display what we created"). Declared rows; `verified:false`
-  // (these are 'from résumé', not independently verified — ADR-0015 v1.3 §4.3).
+  // (these are 'from resume', not independently verified — ADR-0015 v1.3 §4.3).
   async listDeclaredWorkHistory(input: {
     talent_id: string;
     tenant_id: string;
@@ -2354,7 +2354,7 @@ function provenanceFields(
   };
 }
 
-// A free-text résumé date ('2022', 'Dec 2021', 'present') → a calendar Date for
+// A free-text resume date ('2022', 'Dec 2021', 'present') → a calendar Date for
 // @db.Date STORAGE, or null when it is not confidence-safe. R27: NO loose
 // `new Date(freeform)` — the strict parser recognizes a closed shape set and
 // REFUSES everything else (→ null), so a stored value is never fabricated from
@@ -2393,9 +2393,9 @@ function dateToResumeDate(d: Date): ResumeDate {
   };
 }
 
-// HF2 R14 — the PURE derivation (no DB, unit-tested): résumé work-history →
+// HF2 R14 — the PURE derivation (no DB, unit-tested): resume work-history →
 // union-based skill-years. For each SkillUsage the interval is EXPLICIT (the
-// résumé stated the skill's own dates) or inherited from the enclosing role
+// resume stated the skill's own dates) or inherited from the enclosing role
 // (WORK_EXPERIENCE_CONTEXT / unknown basis); ongoing is an explicit 'present'
 // token on either the usage end or the role end. Per skill_id the intervals are
 // UNIONED (concurrent roles counted once — never summed), carrying the coarsest
@@ -2599,7 +2599,7 @@ function isSourced(surfaceForm: string, excerpt: string, corpus: string): boolea
   return isExcerptInSource(excerpt, corpus);
 }
 
-// ── résumé-draft helpers (HF1 durable fact extraction) ───────────────────────
+// ── resume-draft helpers (HF1 durable fact extraction) ───────────────────────
 
 // Map the provider-neutral outcome category → the explicit §13/R9 failure state.
 function mapOutcomeToFailure(
@@ -2802,7 +2802,7 @@ function isCertificationFactShape(v: unknown): v is ResumeDraftCertification {
 
 // HF1 §5/R5 — GROUND a value against the source-map. A fact is supported ONLY
 // when: it cites at least one ref; EVERY cited ref resolves to a real block in
-// THIS map (a nonexistent ref, or a ref minted against a different résumé, fails
+// THIS map (a nonexistent ref, or a ref minted against a different resume, fails
 // here); AND the value text occurs within the union of those blocks' RAW text.
 // The model's reference alone is never proof.
 function groundValue(
@@ -2816,7 +2816,7 @@ function groundValue(
   const texts: string[] = [];
   for (const id of refs) {
     const blockText = blockIndex.get(id);
-    if (blockText === undefined) return false; // nonexistent / cross-résumé ref
+    if (blockText === undefined) return false; // nonexistent / cross-resume ref
     texts.push(normalizeForMatch(blockText));
   }
   return texts.join(' ').includes(normalizeForMatch(v));
@@ -2825,7 +2825,7 @@ function groundValue(
 // HF2 R5 — REF-VALIDITY only (for paraphrase facts like project context /
 // assertion statements that cannot be verbatim-substring-grounded): at least one
 // ref, and EVERY ref resolves to a real block in THIS map (rejects nonexistent /
-// cross-résumé refs). The identifying value (skill surface_form, project name,
+// cross-resume refs). The identifying value (skill surface_form, project name,
 // employer/role, institution/degree, cert name) is additionally substring-ground
 // via groundValue; a paraphrase rides its already-ref-valid parent.
 function refsResolve(refs: unknown, blockIndex: Map<string, string>): boolean {

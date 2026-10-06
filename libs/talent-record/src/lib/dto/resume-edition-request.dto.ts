@@ -1,4 +1,4 @@
-// TALENT-INTEL-1 TI-1D-C — the résumé-edition mutation request bodies.
+// TALENT-INTEL-1 TI-1D-C — the resume-edition mutation request bodies.
 
 export type ResumeEditionPurposeInput =
   | 'GENERAL'
@@ -8,7 +8,7 @@ export type ResumeEditionPurposeInput =
   | 'USER_DEFINED';
 
 // POST /v1/talent-records/{id}/resume-editions — ingest a NEW edition from an
-// OWNED résumé attachment. The server owns authorization, extraction, hashing,
+// OWNED resume attachment. The server owns authorization, extraction, hashing,
 // TalentDocument creation, and edition creation. NO raw storage_key is accepted.
 export interface CreateResumeEditionRequestDto {
   attachment_id: string;

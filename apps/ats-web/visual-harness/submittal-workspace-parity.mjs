@@ -104,7 +104,7 @@ if (CAPTURE_ACTUAL) {
     submittal: { state: 'ready_for_review', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
     readiness: { status: 'READY', requirements: [
       { key: 'rtr', label: 'Right to Represent executed', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
-      { key: 'resume_selected', label: 'Résumé selected for this requisition', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
+      { key: 'resume_selected', label: 'Resume selected for this requisition', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
     ] },
     documents: { rtr_satisfied: true, rtr_deny: null, resume_selected: true },
     engagement: { governed: false, policy_present: false, satisfied: true, override_available: false, unavailable: false },

@@ -9,7 +9,7 @@ variable "environment" {
 }
 
 variable "cors_allowed_origins" {
-  description = "Origins permitted to PUT/GET résumé objects directly via presigned URLs (the direct-browser pattern). NEVER \"*\" — the PII floor rejects open CORS."
+  description = "Origins permitted to PUT/GET resume objects directly via presigned URLs (the direct-browser pattern). NEVER \"*\" — the PII floor rejects open CORS."
   type        = list(string)
 
   validation {
@@ -74,7 +74,7 @@ variable "noncurrent_version_retention_days" {
 }
 
 variable "orphan_retention_days" {
-  description = "Days after which `lifecycle = orphan-pending` objects are expired. A8-3b Option A correctness depends on this sweep: a recruiter who initiates a résumé upload (E1 presigned PUT) but never completes the create+attach flow (E3) leaves an orphan PII-dense object in the bucket. The presigned PUT bakes the tag into the URL; AttachmentService clears the tag on successful is_resume=true attach. Default 1 (24h)."
+  description = "Days after which `lifecycle = orphan-pending` objects are expired. A8-3b Option A correctness depends on this sweep: a recruiter who initiates a resume upload (E1 presigned PUT) but never completes the create+attach flow (E3) leaves an orphan PII-dense object in the bucket. The presigned PUT bakes the tag into the URL; AttachmentService clears the tag on successful is_resume=true attach. Default 1 (24h)."
   type        = number
   default     = 1
 

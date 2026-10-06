@@ -120,23 +120,15 @@ export function formatDateTime(iso: string | null): string {
   return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-// §15 — the presentation-only "waiting" age, derived DETERMINISTICALLY from the
-// authoritative ClientSelectionProcess.created_at (`opened_at`). Never persisted. The
-// `now` arg is injected so the projection is testable/deterministic.
-export function waitingDays(openedAtIso: string | null, now: Date = new Date()): number | null {
-  if (openedAtIso === null) return null;
-  const opened = new Date(openedAtIso);
-  if (Number.isNaN(opened.getTime())) return null;
-  const ms = now.getTime() - opened.getTime();
-  if (ms < 0) return null;
-  return Math.floor(ms / 86_400_000);
-}
-
-export function waitingLabel(openedAtIso: string | null, now: Date = new Date()): string | null {
-  const d = waitingDays(openedAtIso, now);
-  if (d === null) return null;
-  if (d === 0) return 'today';
-  return `${d} day${d === 1 ? '' : 's'}`;
+// §15 — PRESENTATION-only label for the server-computed "waiting on client" age.
+// The age itself (whole civil days, app timezone, CLIENT_REVIEW-gated) is the
+// canonical client-waiting semantic computed server-side and delivered as
+// `client_selection.waiting_days`; this maps that number to display text only and
+// NEVER recomputes it from a date (that duplication/divergence is removed).
+export function waitingLabel(waitingDays: number | null): string | null {
+  if (waitingDays === null) return null;
+  if (waitingDays <= 0) return 'today';
+  return `${waitingDays} day${waitingDays === 1 ? '' : 's'}`;
 }
 
 const WITHDRAW_REASON_LABELS: Record<string, string> = {

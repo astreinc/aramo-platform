@@ -205,8 +205,8 @@ export class TalentErasureService {
     );
     const subject_ids = subjRows.rows.map((r) => r.id);
 
-    // S3 keys: the attachment/document/résumé blobs across the husk records.
-    // Every s3-bearing INVENTORY step plus the résumé-text cascade child.
+    // S3 keys: the attachment/document/resume blobs across the husk records.
+    // Every s3-bearing INVENTORY step plus the resume-text cascade child.
     const s3Sources: Array<{ label: string; col: string; where: string }> = [
       ...INVENTORY.filter((s) => s.s3RefColumn !== undefined).map((s) => ({
         label: s.label,

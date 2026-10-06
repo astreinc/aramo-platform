@@ -23,24 +23,24 @@ variable "auth_log_retention_days" {
   type        = number
 }
 
-# A8-3a — résumé-bucket vars (the first live object-storage backing for
+# A8-3a — resume-bucket vars (the first live object-storage backing for
 # the A4 Attachment.storage_key + M2 RawPayloadReference.storage_ref
 # patterns). The bucket is provisioned by infrastructure/modules/s3-resume-
 # bucket; the lib that consumes it is libs/object-storage.
 
 variable "resume_bucket_cors_allowed_origins" {
-  description = "Origins permitted to PUT/GET résumé objects directly via presigned URLs. NEVER \"*\" (PII floor)."
+  description = "Origins permitted to PUT/GET resume objects directly via presigned URLs. NEVER \"*\" (PII floor)."
   type        = list(string)
 }
 
 variable "resume_bucket_retention_days_default" {
-  description = "Days after which `retention_policy = default` résumé objects expire (TalentDocumentRetentionPolicy.default)."
+  description = "Days after which `retention_policy = default` resume objects expire (TalentDocumentRetentionPolicy.default)."
   type        = number
   default     = 365
 }
 
 variable "resume_bucket_retention_days_extended" {
-  description = "Days after which `retention_policy = extended` résumé objects expire (TalentDocumentRetentionPolicy.extended)."
+  description = "Days after which `retention_policy = extended` resume objects expire (TalentDocumentRetentionPolicy.extended)."
   type        = number
   default     = 2555
 }

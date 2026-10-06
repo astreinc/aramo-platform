@@ -10,15 +10,15 @@ import type {
   PipelineResumeEditionView,
 } from '../pipeline/types';
 
-// TI-1D-D — the Requisition-context résumé selection surface, inside the
+// TI-1D-D — the Requisition-context resume selection surface, inside the
 // requisition's Talent detail drawer. It distinguishes THREE things the recruiter
 // must never conflate:
 //   1. the EXPLICIT working selection for THIS requisition (Layer A truth);
 //   2. the Talent-global default — a SUGGESTION only, shown when nothing is
 //      selected yet, and NEVER auto-bound;
 //   3. the editions available to newly select.
-// PREVIEW never binds: opening a résumé to read it is inert — only the explicit
-// "Use this résumé" button issues the governed PUT (pipeline:resume:set). The
+// PREVIEW never binds: opening a resume to read it is inert — only the explicit
+// "Use this resume" button issues the governed PUT (pipeline:resume:set). The
 // send-time freeze is a separate step owned by the submittal surface.
 export interface ResumeSelectionSectionProps {
   readonly pipelineId: string;
@@ -41,7 +41,7 @@ export function ResumeSelectionSection({
         if (!cancelled) setView(v);
       })
       .catch(() => {
-        if (!cancelled) setErr('Résumé selection is unavailable for this talent.');
+        if (!cancelled) setErr('Resume selection is unavailable for this talent.');
       });
     return () => {
       cancelled = true;
@@ -56,15 +56,15 @@ export function ResumeSelectionSection({
     void setPipelineResumeEdition(pipelineId, { resume_edition_id: editionId })
       .then(() => getPipelineResumeEdition(pipelineId))
       .then((v) => setView(v))
-      .catch(() => setErr('Could not set the résumé — the backend rejected this.'))
+      .catch(() => setErr('Could not set the resume — the backend rejected this.'))
       .finally(() => setBusyId(null));
   };
 
   if (view === null) {
     return (
       <section className="rc-cdp__sec" data-testid="resume-selection">
-        <div className="rc-cdp__seclabel">Résumé — this position</div>
-        <p className="rc-cdp__note">{err ?? 'Loading résumé selection…'}</p>
+        <div className="rc-cdp__seclabel">Resume — this position</div>
+        <p className="rc-cdp__note">{err ?? 'Loading resume selection…'}</p>
       </section>
     );
   }
@@ -89,7 +89,7 @@ export function ResumeSelectionSection({
 
   return (
     <section className="rc-cdp__sec" data-testid="resume-selection">
-      <div className="rc-cdp__seclabel">Résumé — this position</div>
+      <div className="rc-cdp__seclabel">Resume — this position</div>
 
       {selected !== null ? (
         <p className="rc-cdp__note" data-testid="resume-current-selection">
@@ -98,12 +98,12 @@ export function ResumeSelectionSection({
       ) : defaultEdition !== null ? (
         // The default is a SUGGESTION only — explicitly labelled, never bound.
         <p className="rc-cdp__note" data-testid="resume-default-suggestion">
-          No résumé selected yet. Suggested default:{' '}
+          No resume selected yet. Suggested default:{' '}
           <strong>{defaultEdition.filename}</strong> — select one below to use it for
           this requisition.
         </p>
       ) : (
-        <p className="rc-cdp__note">No résumé selected yet.</p>
+        <p className="rc-cdp__note">No resume selected yet.</p>
       )}
 
       {err !== null ? <p className="rc-cdp__err">{err}</p> : null}
@@ -152,7 +152,7 @@ function ResumeRow({
         className="rc-cdp__resumeprev"
         data-testid={`resume-preview-${edition.edition_id}`}
         disabled
-        title="Résumé preview is coming soon"
+        title="Resume preview is coming soon"
       >
         Preview
       </Button>
@@ -164,7 +164,7 @@ function ResumeRow({
           disabled={busy}
           onClick={onUse}
         >
-          {busy ? 'Setting…' : 'Use this résumé'}
+          {busy ? 'Setting…' : 'Use this resume'}
         </Button>
       ) : null}
     </li>

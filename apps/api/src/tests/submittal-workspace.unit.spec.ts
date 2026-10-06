@@ -87,6 +87,7 @@ function ctx(overrides: Partial<SubmittalWorkspaceContext> = {}): SubmittalWorks
     scopes: new Set<string>(['talent:read', 'compensation:view:bill']),
     submit_authority: true,
     request_id: 'req-1',
+    time_zone: 'America/New_York',
     ...overrides,
   };
 }
@@ -193,6 +194,10 @@ describe('SubmittalWorkspaceService.compose', () => {
     expect(r.client_selection).toMatchObject({ process_id: CS, version: 3, state: 'CLIENT_REVIEW', opened_at: opened.toISOString() });
     expect(r.client_selection.latest_interview).toMatchObject({ id: IV, round: 2, state: 'SCHEDULED' });
     expect(r.client_selection.feedback[0]).toMatchObject({ reason_code: 'UNDER_REVIEW', note: 'awaiting panel' });
+    // Consumes the canonical client-waiting semantic: CLIENT_REVIEW with a past
+    // opened_at yields a non-negative whole-day age (not recomputed locally).
+    expect(typeof r.client_selection.waiting_days).toBe('number');
+    expect(r.client_selection.waiting_days ?? -1).toBeGreaterThanOrEqual(0);
   });
 
   it('CLIENT SELECTION actions: server-owned (legal transition AND caller scope); CLIENT_REVIEW + scopes → move/select/decline/withdraw/schedule available', async () => {
@@ -216,11 +221,14 @@ describe('SubmittalWorkspaceService.compose', () => {
     expect(r.client_selection.available_actions).toEqual({
       can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
     });
+    // Canonical waiting semantic: a non-CLIENT_REVIEW (SELECTED) selection is not
+    // "waiting on client" → waiting_days is null.
+    expect(r.client_selection.waiting_days).toBeNull();
   });
 
   it('absent optional domains are explicit (no client selection → present:false, empty feedback, all actions false)', async () => {
     const r = await svc(makeDb(READY_ROWS)).compose(ctx(), SUB);
-    expect(r.client_selection).toMatchObject({ present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [] });
+    expect(r.client_selection).toMatchObject({ present: false, process_id: null, version: null, opened_at: null, state: null, latest_interview: null, feedback: [], waiting_days: null });
     expect(r.client_selection.available_actions).toEqual({
       can_move_to_interview: false, can_mark_selected: false, can_decline: false, can_withdraw: false, can_schedule_interview: false,
     });

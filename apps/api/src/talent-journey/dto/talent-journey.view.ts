@@ -8,6 +8,7 @@ import type {
   OfferView,
   PlacementProcessView,
   ContractAssignmentView,
+  OfferStartException,
 } from '@aramo/placement';
 import type { InstanceView as PreStartInstanceView } from '@aramo/pre-start-requirement';
 
@@ -147,6 +148,10 @@ export interface TalentRequisitionJourney {
   readonly current_journey_stage: JourneyStageName;
   readonly stages: readonly JourneyStageElement[];
   readonly sub_states: JourneySubStates;
+  // The canonical live offer-start EXCEPTIONS (offer expired/declined, pre-start
+  // blocked) derived from the owner states — the SAME semantic the Offer & Start
+  // worklist uses. Consumers render these; they never re-derive the predicates.
+  readonly offer_start_exceptions: readonly OfferStartException[];
   readonly actions: readonly JourneyAction[];
   // null when the caller did not opt in OR no offer-letter document exists yet.
   readonly offer_document: JourneyOfferDocument | null;

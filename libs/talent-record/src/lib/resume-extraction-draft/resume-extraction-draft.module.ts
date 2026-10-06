@@ -12,7 +12,7 @@ import { TalentRecordModule } from '../talent-record.module.js';
 import { ResumeExtractionDraftProcessor } from './resume-extraction-draft.processor.js';
 import { RESUME_EXTRACTION_DRAFT_QUEUE_NAME } from './resume-extraction-draft.queue.constants.js';
 
-// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker module.
+// TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft worker module.
 //
 // Deliberately SEPARATE from TalentRecordModule (which is imported widely): only
 // apps/api imports this module, so only apps/api stands up the draft worker. It

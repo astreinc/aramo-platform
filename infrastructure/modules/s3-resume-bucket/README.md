@@ -1,6 +1,6 @@
 # s3-resume-bucket
 
-Aramo Terraform module — provisions the **résumé-class S3 bucket** with the
+Aramo Terraform module — provisions the **resume-class S3 bucket** with the
 PII floor mandated by the A8-3a directive §2.
 
 Fourth module populated under `infrastructure/modules/` (after
@@ -18,7 +18,7 @@ client + presigned-URL helpers live in `libs/object-storage` (the
 
 ## The PII floor (the §2 directive items)
 
-Résumés are dense PII and do not ride the enum-column F16 deferral the
+Resumes are dense PII and do not ride the enum-column F16 deferral the
 `talent-evidence` repository accepts. This module enforces:
 
 - **Private bucket** — `aws_s3_bucket_public_access_block` with all
@@ -72,8 +72,8 @@ object-storage caps `expires_in_seconds` at 300 via
 
 | Name                  | Sensitive | Description |
 | --------------------- | --------- | ----------- |
-| `bucket_name`         | no        | The résumé-bucket name. Wire to `S3_RESUME_BUCKET` env-var. |
-| `bucket_arn`          | no        | The résumé-bucket ARN. |
+| `bucket_name`         | no        | The resume-bucket name. Wire to `S3_RESUME_BUCKET` env-var. |
+| `bucket_arn`          | no        | The resume-bucket ARN. |
 | `logs_bucket_name`    | no        | The server-access-logs destination bucket. |
 | `kms_key_arn`         | **yes**   | The dedicated CMK ARN (kept out of plan/apply logs). |
 | `kms_key_alias`       | no        | The friendly alias for the dedicated CMK. |

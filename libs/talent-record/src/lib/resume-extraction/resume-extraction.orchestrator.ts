@@ -15,7 +15,7 @@ import type {
   ResumeExtractionSource,
 } from './resume-source.types.js';
 
-// TALENT-INTEL-1 (TI-1B) — the SHARED governed-LLM résumé-extraction
+// TALENT-INTEL-1 (TI-1B) — the SHARED governed-LLM resume-extraction
 // orchestrator. Extracted verbatim (behaviour-preserving) from the controller-
 // private draftGovernedLlm so BOTH the CREATE draft path and the (future) EDIT
 // re-extraction path run one identical pipeline:
@@ -39,7 +39,7 @@ export class ResumeExtractionOrchestrator {
     ctx: AuthorizedExtractionContext,
   ): Promise<DraftFromResumeResponse> {
     const RETRY_WARNING =
-      'We couldn’t read this résumé. Please retry, or enter the details manually.';
+      'We couldn’t read this resume. Please retry, or enter the details manually.';
 
     // ── Authorization BEFORE any object access (ruling 15). A foreign/malformed
     //    /unauthorized reference throws here and never reaches storage.
@@ -72,7 +72,7 @@ export class ResumeExtractionOrchestrator {
         parse_status: 'partial',
         extraction_status: 'provider_failure',
         warning:
-          'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+          'Resume extraction is temporarily unavailable. Please retry, or enter the details manually.',
       };
     }
 
@@ -86,7 +86,7 @@ export class ResumeExtractionOrchestrator {
         parse_status: 'failed',
         extraction_status: status,
         warning:
-          'This résumé was too long to read in a single pass. Please retry, or enter the details manually.',
+          'This resume was too long to read in a single pass. Please retry, or enter the details manually.',
       };
     }
     if (status === 'invalid_structured_output') {
@@ -103,7 +103,7 @@ export class ResumeExtractionOrchestrator {
         parse_status: 'partial',
         extraction_status: status,
         warning:
-          'Résumé extraction is temporarily unavailable. Please retry, or enter the details manually.',
+          'Resume extraction is temporarily unavailable. Please retry, or enter the details manually.',
       };
     }
 
@@ -144,14 +144,14 @@ export class ResumeExtractionOrchestrator {
       prefill,
       parse_status,
       extraction_status: status,
-      // Reviewable work-history (declared 'from résumé', recruiter-editable),
+      // Reviewable work-history (declared 'from resume', recruiter-editable),
       // each carrying its source_refs (§16/R8).
       ...(proposal.work_history.length > 0 ? { work_history: proposal.work_history } : {}),
       // R7 — structured skills + source_refs carried through the API (the FE form
       // uses the free-text key_skills; these preserve durable skill provenance).
       ...(proposal.skills.length > 0 ? { skills: proposal.skills } : {}),
       // HF2 R8/R18/R19 — grounded education + certifications carried to the review
-      // card (declared 'from résumé'; persisted with provenance on create).
+      // card (declared 'from resume'; persisted with provenance on create).
       ...(proposal.education.length > 0 ? { education: proposal.education } : {}),
       ...(proposal.certifications.length > 0 ? { certifications: proposal.certifications } : {}),
       // §16 — provenance anchors the FE carries back into the create request.
@@ -159,7 +159,7 @@ export class ResumeExtractionOrchestrator {
       resume_text_hash: proposal.resume_text_hash,
       ...(hasAny
         ? {}
-        : { warning: 'No details could be read from this résumé. Please enter them manually.' }),
+        : { warning: 'No details could be read from this resume. Please enter them manually.' }),
     };
   }
 }

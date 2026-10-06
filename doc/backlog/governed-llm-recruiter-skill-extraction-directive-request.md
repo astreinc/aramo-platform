@@ -1,7 +1,7 @@
 # Directive Request — Governed-LLM Skill & Work-History Extraction in the Recruiter Surface
 
 **Type:** Request for a LOCKED directive (PO → Architect relay).
-**Requested by:** PO (Purush), 2026-09-11, during the résumé-first Add-Talent rebuild.
+**Requested by:** PO (Purush), 2026-09-11, during the resume-first Add-Talent rebuild.
 **Status:** BLOCKED pending a filed LOCKED directive. Executor HALTed per CLAUDE.md
 ("spec wins — HALT on code-vs-LOCKED-spec contradiction"); this note is the relay artifact.
 
@@ -9,10 +9,10 @@
 
 ## What is wanted (product intent)
 
-When a recruiter adds a talent from a résumé, the **Skills** (and ideally **Work History**)
-should be **clean, structured, and reviewable** in the Add-Talent flow — not the raw résumé
+When a recruiter adds a talent from a resume, the **Skills** (and ideally **Work History**)
+should be **clean, structured, and reviewable** in the Add-Talent flow — not the raw resume
 blob. Target quality = a constrained "extract the skills only" LLM pass, e.g. (real output
-from Claude.ai on the Omvignesh Murugesan résumé):
+from Claude.ai on the Omvignesh Murugesan resume):
 
 ```
 Programming Languages: C#, JavaScript, SQL
@@ -39,7 +39,7 @@ is the sole gate).
    **post-create, PII-redacted `TalentResumeText.redacted_text`**, produce **persisted,
    TalentRecord-keyed evidence rows** (`source='declared'`), feeding the **deterministic
    scoring engine** (matching/examination). It is a **Core/scoring-layer** surface, not a
-   recruiter draft-time form feature. §4 keeps résumé **parse deterministic**.
+   recruiter draft-time form feature. §4 keeps resume **parse deterministic**.
 3. **`Aramo-Talent-Detail-Backend-Enablement-Directive-v1_0-LOCKED`** (the current
    Talent-Detail backend directive, #778) does not surface skill/work-history evidence to
    the recruiter detail.
@@ -73,19 +73,19 @@ new/amended LOCKED directive.
 - nx boundary `talent-record (scope:ats) → talent-extraction (scope:cip)` is PERMITTED
   (same class as the existing `talent-record → resume-parse` edge); does NOT violate the
   I15/ATS⊥Pipeline wall. The `no-llm-boundary` gate stays on resume-parse/matching/examination.
-- Résumé raw text IS computed synchronously in `resume-parse` `parseBytes` but currently
+- Resume raw text IS computed synchronously in `resume-parse` `parseBytes` but currently
   discarded (only `text_length` logged) — exposing it would enable draft-time extraction.
 
 ## Interim shipped (LOCKED-compliant, no directive needed)
 
 `key_skills` reverted to R5 §2's **free-text field**; the deterministic parser's skills
-prefill is **disabled** (its `extractSection` over-captures the whole résumé body on real
-résumés — worse than empty). Recruiter enters key skills as free text; garbage chips gone.
+prefill is **disabled** (its `extractSection` over-captures the whole resume body on real
+resumes — worse than empty). Recruiter enters key skills as free text; garbage chips gone.
 
 ## Acceptance (when authorized)
 
 - Tenant `governed_llm` → Add-Talent skills populated clean + grouped (target above),
-  reviewable/editable; provenance = résumé; constrained-to-source (every claim in the text).
+  reviewable/editable; provenance = resume; constrained-to-source (every claim in the text).
 - Work-history surfaced (form review and/or Talent detail) per the directive's scope.
 - Tenant `deterministic` → unchanged (free-text `key_skills`).
 - `no-llm-boundary` gates unchanged on resume-parse/matching/examination; new edge carries

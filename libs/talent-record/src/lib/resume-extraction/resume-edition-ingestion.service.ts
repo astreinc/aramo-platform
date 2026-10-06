@@ -5,8 +5,8 @@ import {
   type TalentResumeEditionRow,
 } from '@aramo/talent-extraction';
 
-// TALENT-INTEL-1 TI-1D-C §A/§B — the shared résumé-edition ingestion composition.
-// Both callers (confirmed-CREATE-from-résumé and existing-Talent new-résumé
+// TALENT-INTEL-1 TI-1D-C §A/§B — the shared resume-edition ingestion composition.
+// Both callers (confirmed-CREATE-from-resume and existing-Talent new-resume
 // upload) mint a TalentDocument and then run THIS to create exactly one companion
 // TalentResumeEdition. It owns the edition-creation POLICY:
 //   - idempotent on talent_document_id (a retry never creates a second edition),

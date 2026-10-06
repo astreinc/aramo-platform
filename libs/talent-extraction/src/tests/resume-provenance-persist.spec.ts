@@ -5,7 +5,7 @@ import { TalentExtractionService } from '../lib/talent-extraction.service.js';
 // HF1 Gate-6 durable-provenance PERSISTENCE (rulings R1/R2/R3/R8). These prove
 // the DETERMINISTIC persistence path — no AI call is ever made (R3) — stamps
 // source_document_id + source_refs + source_map_version + resume_text_hash onto
-// résumé-derived work-history AND skill evidence, and that the null-provenance
+// resume-derived work-history AND skill evidence, and that the null-provenance
 // path (pre-HF1 callers) still writes clean rows.
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
@@ -45,7 +45,7 @@ const PROVENANCE = {
   resume_text_hash: 'abc123',
 };
 
-describe('createResumeDocument — résumé TalentDocument at confirmed create (R1)', () => {
+describe('createResumeDocument — resume TalentDocument at confirmed create (R1)', () => {
   it('creates a resume document and returns its id; no AI call', async () => {
     const { svc, createTalentDocument, generateDraft, generateStructured } = makeService();
     const id = await svc.createResumeDocument({

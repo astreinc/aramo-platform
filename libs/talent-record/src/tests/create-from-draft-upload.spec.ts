@@ -6,7 +6,7 @@ import { TalentRecordController } from '../lib/talent-record.controller.js';
 
 // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the ordered, idempotent, recoverable
 // CREATE_DRAFT_UPLOAD promotion. Invariant: a genuine TalentRecord never exists
-// unless its accepted résumé evidence lifecycle is already durable. These prove the
+// unless its accepted resume evidence lifecycle is already durable. These prove the
 // Gate matrix: evidence-first / Talent-last ordering; ACCEPTED only after Talent;
 // every failure recoverable with no duplicate Talent / evidence / second model call.
 

@@ -43,7 +43,7 @@ vi.mock('../pipeline/talent-journey-api', () => ({
 }));
 
 // TI-1D-D — the panel now mounts ResumeSelectionSection, which reads the
-// résumé selection on open. Default to an empty, no-selection view so the
+// resume selection on open. Default to an empty, no-selection view so the
 // existing journey/offer/edit assertions are unaffected; transitionPipeline is
 // preserved for the recruiting-advance path.
 vi.mock('../pipeline/pipeline-api', () => ({

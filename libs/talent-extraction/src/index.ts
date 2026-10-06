@@ -1,7 +1,7 @@
 // Public surface of @aramo/talent-extraction (Gate-1 G1-A).
 //
 // The declared-evidence production surface: read a talent's declared text
-// (résumé body + key_skills, caller-supplied) → structure via the governed
+// (resume body + key_skills, caller-supplied) → structure via the governed
 // @aramo/ai-draft consumer surface → persist `declared` TalentSkillEvidence +
 // TalentWorkHistoryEntry rows (constrained-to-source; no inference). The
 // deterministic matching engine later consumes these evidence rows (G1-B); the
@@ -9,7 +9,7 @@
 
 export { TalentExtractionModule } from './lib/talent-extraction.module.js';
 export { TalentExtractionService } from './lib/talent-extraction.service.js';
-// TALENT-INTEL-1 TI-1D-C — re-export the résumé-edition ledger types so the ATS
+// TALENT-INTEL-1 TI-1D-C — re-export the resume-edition ledger types so the ATS
 // side (talent-record) names them through THIS sanctioned seam (which already
 // depends on talent-evidence) instead of importing @aramo/talent-evidence directly
 // (a scope:ats → scope:cip module-boundary edge). Type-only re-export.

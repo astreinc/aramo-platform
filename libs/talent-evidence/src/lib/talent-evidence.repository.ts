@@ -37,7 +37,7 @@ type JsonInput = unknown;
 export type TalentSkillEvidenceSourceValue = 'declared' | 'ingested' | 'derived';
 
 export type TalentWorkHistorySourceValue = 'resume' | 'linkedin' | 'manual' | 'import';
-// TR-7 B1 — the education/certification source vocabularies (résumé/manual/import).
+// TR-7 B1 — the education/certification source vocabularies (resume/manual/import).
 export type TalentEducationSourceValue = 'resume' | 'manual' | 'import';
 export type TalentCertificationSourceValue = 'resume' | 'manual' | 'import';
 
@@ -107,7 +107,7 @@ export interface CreateTalentSkillEvidenceInput {
   years_claimed?: number;
   confidence_score?: number;
   // HF1 provenance (Gate-6 R1/R2) — additive nullable; populated only on the
-  // confirmed-create résumé path. source_refs defaults to [] when unknown.
+  // confirmed-create resume path. source_refs defaults to [] when unknown.
   source_document_id?: string;
   source_refs?: string[];
   source_map_version?: string;
@@ -735,7 +735,7 @@ export class TalentEvidenceRepository {
   // fields the compact recruiting-facts projection admits: role_title, employer_name, the DISTILLED
   // experience_summary (sanitized downstream), the free-text location (coarse-normalized downstream),
   // + start_date/id for deterministic ordering. It deliberately does NOT select description_text —
-  // raw résumé-derived free text is excluded from the semantic source with no fallback (P3 ruling).
+  // raw resume-derived free text is excluded from the semantic source with no fallback (P3 ruling).
   async findAuthoritativeWorkHistoryForEmbedding(args: {
     tenant_id: string;
     talent_id: string;
@@ -1473,7 +1473,7 @@ export class TalentEvidenceRepository {
     return rows as TalentResumeEditionRow[];
   }
 
-  // Set (or move) the Talent's default/presentation résumé — SEPARATE from
+  // Set (or move) the Talent's default/presentation resume — SEPARATE from
   // evidence validity (rulings 2/10). Idempotent per (tenant_id, talent_id):
   // the upsert enforces exactly one default per Talent and never touches any
   // edition's lifecycle or the evidence it grounded.
@@ -1865,8 +1865,8 @@ export class TalentEvidenceRepository {
 
   // TALENT-INTEL-1 TI-1F-C — PHASE 1 of the ordered, idempotent CREATE_DRAFT_UPLOAD
   // promotion (strengthened-D). In ONE talent_evidence transaction (single schema,
-  // genuinely atomic) it establishes the accepted résumé evidence lifecycle against
-  // a RESERVED talent_id, WITHOUT finalizing the draft: create the résumé
+  // genuinely atomic) it establishes the accepted resume evidence lifecycle against
+  // a RESERVED talent_id, WITHOUT finalizing the draft: create the resume
   // TalentDocument + its companion default TalentResumeEdition, persist ALL accepted
   // typed evidence (anchored on the document, §4-F), and LINK the draft to the
   // reserved talent_id/document/edition — the draft STAYS READY_FOR_REVIEW (NOT

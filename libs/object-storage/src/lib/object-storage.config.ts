@@ -13,10 +13,10 @@ import { AramoError } from '@aramo/common';
 //                       module infrastructure/modules/s3-resume-bucket).
 //                       Format: aramo-<env>-resumes.
 //                       SRC-1 PR-2 (R13.2): this ONE platform document bucket now
-//                       holds tenant talent-document PII broadly — résumés (the
+//                       holds tenant talent-document PII broadly — resumes (the
 //                       '/talent/…' key prefix) AND server-originated ingestion
 //                       payloads (the '/ingestion/{channel}/…' prefix, e.g. Indeed
-//                       Apply). The env var's résumé-specific NAME is retained
+//                       Apply). The env var's resume-specific NAME is retained
 //                       (ADD-not-rename: renaming a live env var is deploy-path
 //                       risk for zero benefit). A dedicated ingestion bucket is a
 //                       forcing-function decision (counsel-mandated divergent

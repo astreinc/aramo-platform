@@ -64,7 +64,7 @@ any response.
 3. Paste the tenant's Anthropic API key and save. The panel writes the key via
    `PUT …/anthropic/key` and re-reads status; on success it shows the tenant as
    configured.
-4. Governed LLM features (résumé extraction, etc.) light up for that tenant on
+4. Governed LLM features (resume extraction, etc.) light up for that tenant on
    the next call — the per-tenant cache was invalidated by the write.
 
 ### First tenant — Astre (tenant #50)

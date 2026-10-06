@@ -62,7 +62,7 @@ enum TalentWorkHistorySource {
   @@schema("talent_evidence")
 }
 
-// TR-7 B1 — TalentEducationEntry.source. Résumé-derived credential capture; the
+// TR-7 B1 — TalentEducationEntry.source. Resume-derived credential capture; the
 // extraction writes 'resume', manual entry / import are the other honest arrivals.
 enum TalentEducationSource {
   resume
@@ -204,8 +204,8 @@ model TalentSkillEvidence {
 
   // HF1 durable-fact-extraction provenance (Gate-6 ruling R1/R2). All ADDITIVE
   // + NULLABLE — pre-HF1 rows keep working; NO backfill. Populated ONLY on the
-  // confirmed-create résumé path (deterministic; no AI). source_document_id →
-  // the résumé TalentDocument; source_refs = source-map block ids; the version +
+  // confirmed-create resume path (deterministic; no AI). source_document_id →
+  // the resume TalentDocument; source_refs = source-map block ids; the version +
   // text hash anchor which corpus the refs resolve against.
   source_document_id String?                  @db.Uuid
   source_refs        String[]
@@ -215,9 +215,9 @@ model TalentSkillEvidence {
   // HF2 R3/R16 — time-aware, per-experience skill USAGE (ADD-not-rename; this
   // row becomes the canonical SkillUsage evidence). All ADDITIVE + NULLABLE.
   //   work_experience_id → the TalentWorkHistoryEntry this usage belongs to.
-  //   version → ONLY when the résumé explicitly states it (e.g. "17"); never inferred.
+  //   version → ONLY when the resume explicitly states it (e.g. "17"); never inferred.
   //   usage_start/usage_end → the interval; NULL when unknown (never invented).
-  //   usage_period_basis → 'EXPLICIT' (résumé stated the skill dates) vs
+  //   usage_period_basis → 'EXPLICIT' (resume stated the skill dates) vs
   //     'WORK_EXPERIENCE_CONTEXT' (dates inherited from the enclosing role) vs
   //     'UNKNOWN'. This distinction stays queryable (R3) and feeds the derived
   //     years intelligence (R14) which must not conflate the two.
@@ -292,7 +292,7 @@ model TalentWorkHistoryEntry {
   // the DEFERRED cross-domain seam (R4): a nullable UUID ref to the ats-side
   // Company, populated only by a future governed org-resolution increment; the
   // WALL forbids talent-evidence(cip)→company(ats) imports, so this stays a bare
-  // UUID. employer_name (above) always preserves the raw résumé evidence.
+  // UUID. employer_name (above) always preserves the raw resume evidence.
   company_id          String?                 @db.Uuid
   // HF2 R10 — bounded (≤600 chars, app-enforced) recruiter-facing summary of the
   // role's stated responsibility/context blocks. A PROJECTION for readability —
@@ -308,7 +308,7 @@ model TalentWorkHistoryEntry {
 }
 
 // TR-7 B1 — TalentEducationEntry. A declared academic credential extracted from
-// the résumé (the TalentWorkHistoryEntry precedent). institution_name + degree_name
+// the resume (the TalentWorkHistoryEntry precedent). institution_name + degree_name
 // are NOT-NULL (so the pure DEGREE mapper's required fields are always present —
 // the write-gate conformance property). Dates are @db.Date (calendar granularity).
 model TalentEducationEntry {
@@ -373,7 +373,7 @@ model TalentCertificationEntry {
 // multiple materially different initiatives; flattening them into one
 // WorkExperience loses matching context. Child of TalentWorkHistoryEntry
 // (work_experience_id, UUID-only per §7.3). project_name is NULLABLE — many
-// résumés describe initiatives without naming them; NEVER invent a name.
+// resumes describe initiatives without naming them; NEVER invent a name.
 // Provenance mirrors HF1 (source_refs spanning the initiative's blocks).
 model TalentProjectExperience {
   id                 String    @id @db.Uuid
@@ -530,10 +530,10 @@ model TalentDerivedSnapshot {
 }
 
 // ── TALENT-INTEL-1 §5 / Gate-5 rulings 1, 2, 18 ──────────────────────────────
-// A résumé-specific EVIDENCE-CONTEXT companion to TalentDocument (the canonical
+// A resume-specific EVIDENCE-CONTEXT companion to TalentDocument (the canonical
 // evidence-document identity). Layering (ruling 1): Attachment = file/access
 // artifact; TalentDocument = evidence-document identity; TalentResumeEdition =
-// résumé edition semantics (purpose/context/content-hash/lineage). ADDITIVE:
+// resume edition semantics (purpose/context/content-hash/lineage). ADDITIVE:
 // NO change to the HF2 evidence rows — evidence still anchors on
 // source_document_id → TalentDocument → (this) edition; no source_edition_id
 // duplication (ruling 1 correction). No extraction, no backfill in this slice.
@@ -552,7 +552,7 @@ enum TalentResumeEditionPurpose {
 // TalentResumeDefault) and NOT the validity of the evidence it grounded
 // (rulings 2/5: a later edition never invalidates earlier evidence).
 // `retracted` is set ONLY by an explicit retraction (§35), never by omission
-// from a newer résumé.
+// from a newer resume.
 enum TalentResumeEditionLifecycle {
   active
   retracted
@@ -575,10 +575,10 @@ model TalentResumeEdition {
   attachment_id            String?                      @db.Uuid
 
   // Content identity for idempotent re-extraction (§25 / ruling 12): the hash of
-  // the résumé text/bytes. A NEW content_hash is the re-extraction trigger key.
+  // the resume text/bytes. A NEW content_hash is the re-extraction trigger key.
   content_hash             String
 
-  // Résumé-specific context (ruling 18). Requisition/client refs are UUID-only,
+  // Resume-specific context (ruling 18). Requisition/client refs are UUID-only,
   // no FK (cross-domain seams).
   purpose                  TalentResumeEditionPurpose   @default(GENERAL)
   label                    String?
@@ -600,7 +600,7 @@ model TalentResumeEdition {
   @@schema("talent_evidence")
 }
 
-// Default/presentation résumé selection — modeled SEPARATELY from evidence
+// Default/presentation resume selection — modeled SEPARATELY from evidence
 // validity (rulings 2/10): "default" = show/use by default, NOT "other editions
 // obsolete". UNIQUE(tenant_id, talent_id) enforces exactly one default per
 // Talent. resume_edition_id is UUID-only, no FK.
@@ -617,10 +617,10 @@ model TalentResumeDefault {
   @@schema("talent_evidence")
 }
 
-// TALENT-INTEL-1 (TI-1F-A) — the durable governed-résumé-extraction REVIEW
+// TALENT-INTEL-1 (TI-1F-A) — the durable governed-resume-extraction REVIEW
 // artifact. It holds the grounded governed-LLM output while it awaits recruiter
 // review; it is NOT Talent truth and NOT accepted evidence (that is TI-1F-B's
-// confirm/promotion). ONE architecture: all résumé extraction (create + existing)
+// confirm/promotion). ONE architecture: all resume extraction (create + existing)
 // lands here → review → confirm → durable truth.
 //
 // Two source contexts (talent_id NULLABLE):
@@ -692,7 +692,7 @@ model ResumeExtractionDraft {
   // Idempotency (Ruling B): at most one live ingestion identity per durable
   // source within a tenant. ATTACHMENT: source_ref = attachment_id (1:1 with the
   // owning Talent) → realizes the (tenant, talent, attachment) retry key — the
-  // add-résumé POST resolves the same attachment to the same document/edition/
+  // add-resume POST resolves the same attachment to the same document/edition/
   // draft (no duplicate mint). CREATE_DRAFT_UPLOAD: source_ref = the upload key.
   // Content hash is NEVER the identity (a different attachment with identical
   // bytes is a new edition).

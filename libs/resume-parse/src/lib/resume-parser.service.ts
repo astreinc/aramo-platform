@@ -9,8 +9,8 @@ import type { ParseResumeInput } from './types/parse-resume.types.js';
 // Decision 10).
 //
 // Fetches the object bytes and magic-byte-extracts plain text (pdf-parse /
-// mammoth). It does NOT extract résumé FACTS: governed LLM is the SOLE
-// production résumé fact extractor (…-TI-1F-…-v1_0-LOCKED §4-D). TI-1F P0.2
+// mammoth). It does NOT extract resume FACTS: governed LLM is the SOLE
+// production resume fact extractor (…-TI-1F-…-v1_0-LOCKED §4-D). TI-1F P0.2
 // retired the heuristic field-extraction path (parseFromStorageKey / parseBytes
 // / field-extractor); the extracted TEXT is handed to @aramo/talent-extraction
 // (a permitted LLM consumer) which redacts PII before the model.
@@ -70,7 +70,7 @@ export class ResumeParserService {
       const message = err instanceof Error ? err.message : String(err);
       throw new AramoError(
         'OBJECT_STORAGE_UPLOAD_FAILED',
-        `résumé fetch failed: ${message}`,
+        `resume fetch failed: ${message}`,
         502,
         {
           requestId: input.requestId,

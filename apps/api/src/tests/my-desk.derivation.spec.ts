@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  agingDaysInTimeZone,
   classifyDueUrgency,
   comparePriorityItems,
   dueBadgeLabel,
-  isoDateInTimeZone,
 } from '../my-desk/my-desk.derivation.js';
 import type { DeskPriorityItemView, DeskUrgency } from '../my-desk/dto/my-desk.view.js';
 
@@ -50,26 +48,6 @@ describe('classifyDueUrgency (app-timezone day boundary, §38)', () => {
   });
 });
 
-describe('agingDaysInTimeZone', () => {
-  it('a same civil-day submittal is 0 days', () => {
-    expect(agingDaysInTimeZone(Date.parse('2026-09-29T13:00:00Z'), NOW, TZ)).toBe(
-      0,
-    );
-  });
-
-  it('counts whole civil days across a month boundary (Sep 21 → Sep 29 = 8)', () => {
-    expect(agingDaysInTimeZone(Date.parse('2026-09-21T15:00:00Z'), NOW, TZ)).toBe(
-      8,
-    );
-  });
-
-  it('never returns negative for a future instant', () => {
-    expect(agingDaysInTimeZone(Date.parse('2026-10-05T12:00:00Z'), NOW, TZ)).toBe(
-      0,
-    );
-  });
-});
-
 describe('dueBadgeLabel (prototype parity)', () => {
   it('renders "Nd overdue" for a past civil day', () => {
     expect(dueBadgeLabel(Date.parse('2026-09-27T15:00:00Z'), NOW, TZ)).toBe(
@@ -89,16 +67,6 @@ describe('dueBadgeLabel (prototype parity)', () => {
   it('renders a short month/day for a further civil day', () => {
     expect(dueBadgeLabel(Date.parse('2026-10-01T14:00:00Z'), NOW, TZ)).toBe(
       'Oct 1',
-    );
-  });
-});
-
-describe('isoDateInTimeZone', () => {
-  it('formats the app-timezone civil date as YYYY-MM-DD', () => {
-    expect(isoDateInTimeZone(NOW, TZ)).toBe('2026-09-29');
-    // An instant that is Sep 30 in UTC but Sep 29 locally.
-    expect(isoDateInTimeZone(Date.parse('2026-09-30T02:00:00Z'), TZ)).toBe(
-      '2026-09-29',
     );
   });
 });

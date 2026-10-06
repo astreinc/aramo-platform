@@ -40,7 +40,7 @@ datasource db {
 
 // ImportTargetEntity — the 4 ATS targets the engine can import into.
 // Vocabulary-locked per R12 (only the canonical Aramo terms appear).
-// NO other targets at A8-1: résumé/file ingestion is A8-3 (file
+// NO other targets at A8-1: resume/file ingestion is A8-3 (file
 // ingestion lives in libs/ingestion already); the ATS-side reference
 // data is the A8-1 surface.
 enum ImportTargetEntity {
@@ -107,7 +107,7 @@ model ImportBatch {
 
   // Origin metadata. source_filename is the recruiter-supplied filename
   // (a UX artifact; the engine does not store the file bytes — that's
-  // A8-3 résumé/S3). Free text.
+  // A8-3 resume/S3). Free text.
   source_filename String
 
   // Audit counters. row_count is the input cardinality; success_count

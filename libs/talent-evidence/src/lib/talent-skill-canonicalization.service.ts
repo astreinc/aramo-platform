@@ -10,7 +10,7 @@ import { aggregateCanonicalYears, type CanonicalUsageRow } from './canonical-ski
 // nx edge).
 //
 // Operates ONLY on existing stored evidence (surface_form + explicit version) —
-// NO résumé re-parse, NO second AI call, NO new SkillUsage rows. It attaches the
+// NO resume re-parse, NO second AI call, NO new SkillUsage rows. It attaches the
 // engine outcome (canonical_skill_id/version + status + method) to each row via a
 // guarded UPDATE, then computes the canonical supported-years projection by
 // INTERVAL UNION keyed by canonical_skill_id (§19) and writes it to the ADDITIVE

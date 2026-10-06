@@ -1,10 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { agingDaysInTimeZone, isoDateInTimeZone } from '@aramo/common';
+import {
+  CLIENT_WAITING_STATE,
+  deriveClientWaitingDays,
+  isInterviewToday,
+} from '@aramo/client-selection';
+import { deriveOfferTiming } from '@aramo/placement';
 
 import {
-  agingDaysInTimeZone,
   classifyDueUrgency,
   comparePriorityItems,
-  isoDateInTimeZone,
 } from './my-desk.derivation.js';
 import {
   MY_DESK_READ_PORT,
@@ -33,7 +38,6 @@ import type {
 // FE derives every card and tab count from the returned arrays (directive §14).
 
 const DAY_MS = 86_400_000;
-const OFFER_EXPIRY_WINDOW_DAYS = 7;
 
 // task.type → recruiter queue kind. call/email/follow_up read as a follow-up;
 // everything else is a plain task. (The rtr/submittal/engagement/client kinds
@@ -56,12 +60,6 @@ const OWNER_ROUTE: Record<DeskTaskOwnerType, string | null> = {
   company: '/companies',
   contact: null,
 };
-
-// Offer states that can still be "expiring" (awaiting a talent response).
-const OPEN_OFFER_STATES = new Set(['SENT', 'NEGOTIATION']);
-
-// Interview states that count as scheduled-for-today.
-const LIVE_INTERVIEW_STATES = new Set(['SCHEDULED', 'RESCHEDULED']);
 
 function parseMs(iso: string | null): number | null {
   if (iso === null) return null;
@@ -162,20 +160,28 @@ export class MyDeskService {
     }
 
     // Interview day filter is re-applied server-side against the civil day (the
-    // window is a coarse prefilter that may over-fetch at the UTC edges).
-    const interviewsToday = interviews.filter(
-      (iv) =>
-        LIVE_INTERVIEW_STATES.has(iv.state) &&
-        isoDateInTimeZone(Date.parse(iv.scheduled_at), timeZone) === todayIso,
+    // window is a coarse prefilter that may over-fetch at the UTC edges). The
+    // today-ness decision is the canonical client-selection semantic.
+    const interviewsToday = interviews.filter((iv) =>
+      isInterviewToday({
+        state: iv.state,
+        scheduled_at_ms: Date.parse(iv.scheduled_at),
+        now_ms: nowMs,
+        time_zone: timeZone,
+      }),
     );
 
-    // Expiring offers: still open, expiry known, within the window, not past.
-    const expiringOffers = offers.filter((o) => {
-      const exp = parseMs(o.offer_expires_at);
-      if (exp === null || !OPEN_OFFER_STATES.has(o.state)) return false;
-      if (classifyDueUrgency(exp, nowMs, timeZone) === 'overdue') return false;
-      return agingDaysInTimeZone(nowMs, exp, timeZone) <= OFFER_EXPIRY_WINDOW_DAYS;
-    });
+    // Expiring offers: the canonical offer-timing semantic decides "expiring soon"
+    // (awaiting response, expiry known, not past, within the warning window).
+    const expiringOffers = offers.filter(
+      (o) =>
+        deriveOfferTiming({
+          state: o.state,
+          offer_expires_at: o.offer_expires_at,
+          now_ms: nowMs,
+          time_zone: timeZone,
+        }).expiring_soon,
+    );
 
     // Offer & Start §11 — resolve the authoritative journey key (live pipeline episode) for each
     // expiring-offer exception so its CTA deep-links into the single person × requisition journey.
@@ -229,7 +235,15 @@ export class MyDeskService {
         requisition_id: w.requisition_id,
         requisition_label: reqLabel.get(w.requisition_id) ?? null,
         reason: 'Awaiting client decision',
-        waiting_days: agingDaysInTimeZone(Date.parse(w.created_at), nowMs, timeZone),
+        // Canonical "waiting on client" age (the port returns only CLIENT_REVIEW
+        // rows, so the state gate always passes; ?? 0 guards an unparseable date).
+        waiting_days:
+          deriveClientWaitingDays({
+            selection_state: CLIENT_WAITING_STATE,
+            since_ms: Date.parse(w.created_at),
+            now_ms: nowMs,
+            time_zone: timeZone,
+          }) ?? 0,
         since: w.created_at,
       }))
       .sort((a, b) =>

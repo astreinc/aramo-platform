@@ -646,7 +646,7 @@ export function App() {
                               />
                               {/* Recruiting settings — the linked home for the
                                   recruiting-behaviour defaults (Compensation
-                                  display + Résumé extraction). Renders the
+                                  display + Resume extraction). Renders the
                                   existing SettingsView; the bare /admin/settings
                                   route above stays for back-compat. */}
                               <Route

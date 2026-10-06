@@ -201,7 +201,7 @@ describe('mapCertificationToClaim — output always conforms (property)', () => 
   });
 });
 
-// TR-7 D1 (§5d) — the negative ruling, STRUCTURAL: the producer reads résumé-
+// TR-7 D1 (§5d) — the negative ruling, STRUCTURAL: the producer reads resume-
 // extraction rows only; NO import path or call from examination results to the
 // trust ledger, in this arc or by drift. Comments are stripped before matching
 // (prose may name 'examination' when describing the boundary).
@@ -247,7 +247,7 @@ describe('D1 — the producer never reads examination results (structural)', () 
       const code = strip(readFileSync(resolve(__dirname, rel), 'utf8'));
       // The examination-substrate tokens: an import edge or a named read of the
       // snapshot. Their absence IS the D1 negative ruling (the producer reads
-      // résumé-extraction rows only, never an examination result).
+      // resume-extraction rows only, never an examination result).
       for (const token of [
         '@aramo/examination',
         'TalentJobExamination',

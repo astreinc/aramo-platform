@@ -10,7 +10,7 @@ import {
 } from './resume-source.types.js';
 
 // TALENT-INTEL-1 (TI-1B, ruling 15 FIX_NOW) — the SINGLE authorization seam for
-// résumé bytes. Every path that reads a résumé object (governed-LLM AND the
+// resume bytes. Every path that reads a resume object (governed-LLM AND the
 // deterministic parser; CREATE AND EDIT) resolves its storage_key through here
 // FIRST. The extraction core never decides authorization from an arbitrary key.
 @Injectable()
@@ -45,17 +45,17 @@ export class ResumeSourceAuthorizer {
   /**
    * CREATE fresh-upload authorization (Option A — deterministic, not mere
    * string-prefix trust). Establishes that the key:
-   *   - matches the A8-3a résumé convention (5-segment parse succeeds), and
-   *   - is inside the approved résumé-upload namespace (document_type=resume),
+   *   - matches the A8-3a resume convention (5-segment parse succeeds), and
+   *   - is inside the approved resume-upload namespace (document_type=resume),
    *     with a structurally valid draft partition UUID, and
    *   - sits under the AUTHENTICATED tenant's prefix (closes cross-tenant read).
    *
    * Honest boundary (per the PO): what this proves is EXACTLY "an Aramo-
-   * convention-compliant résumé key inside the authenticated tenant's
+   * convention-compliant resume key inside the authenticated tenant's
    * namespace" — NOT that this precise upload was issued to this caller. With no
    * persisted draft_partition_id↔caller link in today's substrate, NO per-caller
    * cryptographic binding is asserted.
-   * SITE: résumé objects are tenant-scoped by design (A8-3a — no site segment in
+   * SITE: resume objects are tenant-scoped by design (A8-3a — no site segment in
    * the key); the route's @RequireSiteMatch() is inert (no site_id param/query),
    * matching the established stored-attachment download path. Site isolation of
    * the object itself is not part of the current model.
@@ -66,12 +66,12 @@ export class ResumeSourceAuthorizer {
   ): { storage_key: string } {
     const parsed = parseResumeObjectKey(storage_key);
     if (parsed === null) {
-      // Not an Aramo-issued A8-3a résumé key (malformed / non-Aramo / wrong
+      // Not an Aramo-issued A8-3a resume key (malformed / non-Aramo / wrong
       // shape). Refuse before any object access.
       throw this.unauthorized(ctx.requestId, 'not_aramo_resume_key');
     }
     if (parsed.document_type !== RESUME_KEY_DOCUMENT_TYPE) {
-      // Aramo key, but OUTSIDE the résumé-upload namespace.
+      // Aramo key, but OUTSIDE the resume-upload namespace.
       throw this.unauthorized(ctx.requestId, 'not_resume_namespace');
     }
     if (parsed.tenant_id !== ctx.tenant_id) {
@@ -97,7 +97,7 @@ export class ResumeSourceAuthorizer {
       // fall back to trusting a raw key).
       throw new AramoError(
         'INTERNAL_ERROR',
-        'résumé attachment resolution is not available in this context',
+        'resume attachment resolution is not available in this context',
         500,
         { requestId: ctx.requestId, details: { reason: 'resume_attachment_resolver_unwired' } },
       );
@@ -113,7 +113,7 @@ export class ResumeSourceAuthorizer {
   private unauthorized(requestId: string, reason: string): AramoError {
     return new AramoError(
       'RESUME_SOURCE_UNAUTHORIZED',
-      'résumé source is not authorized for this request',
+      'resume source is not authorized for this request',
       403,
       { requestId, details: { reason } },
     );

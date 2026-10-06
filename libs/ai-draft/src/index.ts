@@ -2,13 +2,13 @@ export { AiDraftModule } from './lib/ai-draft.module.js';
 export { AiDraftService } from './lib/ai-draft.service.js';
 
 // HF1 §17 / R10 — the SAME local PII redaction used by AiDraftService, exported
-// so the structured-generation résumé path (which calls the provider port
+// so the structured-generation resume path (which calls the provider port
 // directly, not generateDraft) preserves the EXACT email/phone/SSN/CC/routing
 // redaction boundary before any text reaches the model.
 export { redactPii } from './lib/redaction.js';
 
 // TENANT-LLM-1 — the terminal, fail-closed "tenant has no Anthropic key" signal.
-// Exported so LLM consumers (résumé extraction, requisition/selection drafts, CI)
+// Exported so LLM consumers (resume extraction, requisition/selection drafts, CI)
 // can discriminate not-configured (governed "set a key" degradation) from a
 // transient provider failure, WITHOUT ever falling back to a platform key.
 export {

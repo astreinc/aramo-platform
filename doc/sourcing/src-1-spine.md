@@ -14,7 +14,7 @@ note records the shape of that spine so the next increments do not re-derive it.
 The audited name overload is resolved by keeping two surfaces distinct.
 
 - **Document-arrival surface — `ingestion.RawPayloadReference`.** Every arrival that
-  carries a payload (an application, a résumé document, a direct entry) enters
+  carries a payload (an application, a resume document, a direct entry) enters
   through the existing sanctioned front door and remains the promotion source. A
   `SOURCED_TALENT` resolution ref targets a `RawPayloadReference.id`.
 - **Channel dedup memory — `sourced_talent` (`libs/sourced-talent`).** One immutable

@@ -11,12 +11,12 @@ import { TalentRecordModule } from '../talent-record.module.js';
 import { ResumeReindexProcessor } from './resume-reindex.processor.js';
 import { RESUME_REINDEX_QUEUE_NAME } from './resume-reindex.queue.constants.js';
 
-// Search PR-2 — the résumé re-extract worker module.
+// Search PR-2 — the resume re-extract worker module.
 //
 // Deliberately SEPARATE from TalentRecordModule (which is imported widely —
 // by AttachmentModule + apps/api). Isolating the BullMQ wiring here keeps the
 // worker out of every TalentRecordModule importer: only apps/api imports this
-// module, so only apps/api stands up the résumé-reindex worker. AttachmentModule
+// module, so only apps/api stands up the resume-reindex worker. AttachmentModule
 // imports TalentRecordModule (for ResumeTextService.enqueueReindex) WITHOUT
 // pulling in the worker.
 //

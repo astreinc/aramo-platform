@@ -1,13 +1,13 @@
 # Module: iam-app-principal
 
-The app-principal binding for the résumé bucket — the IAM piece the readiness
+The app-principal binding for the resume bucket — the IAM piece the readiness
 track owed. The `s3-resume-bucket` module emits a least-privilege policy
 document (`app_iam_policy_json`); this module attaches it to the principal the
 API authenticates as.
 
 ## What it creates
 - `aws_iam_user` (path `/aramo/app/`) — the app principal.
-- `aws_iam_user_policy` — the résumé-bucket least-privilege policy, **inline**
+- `aws_iam_user_policy` — the resume-bucket least-privilege policy, **inline**
   (lifecycle-bound to the user). Grants exactly:
   - `s3:PutObject` / `s3:GetObject` / `s3:PutObjectTagging` on the bucket only
   - `kms:GenerateDataKey` / `kms:Decrypt` on the bucket's CMK only

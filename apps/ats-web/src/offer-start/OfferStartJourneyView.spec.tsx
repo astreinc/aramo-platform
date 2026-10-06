@@ -26,12 +26,20 @@ function journey(
   preStart: JourneyPreStart | null = null,
   placement: TalentRequisitionJourney['placement'] = null,
 ): TalentRequisitionJourney {
+  const sub_states = { pipeline_stage: null, submittal_state: null, selection_state: 'SELECTED', interview_state: null, offer_state: null, placement_state: null, pre_start_state: null, assignment_state: null, ...sub };
+  // Mirror the SERVER's canonical offer_start_exceptions (libs/placement
+  // deriveOfferStartExceptions) — the FE renders these; it no longer derives them.
+  const offer_start_exceptions: TalentRequisitionJourney['offer_start_exceptions'] = [];
+  if (sub_states.offer_state === 'EXPIRED') offer_start_exceptions.push({ kind: 'offer_expired', label: 'Offer expired', detail: 'The offer expired before it was signed.' });
+  if (sub_states.offer_state === 'DECLINED') offer_start_exceptions.push({ kind: 'offer_declined', label: 'Offer declined', detail: 'The talent declined the offer.' });
+  if (sub_states.placement_state === 'BLOCKED') offer_start_exceptions.push({ kind: 'pre_start_blocked', label: 'Pre-start blocked', detail: 'A required pre-start requirement failed — start is blocked until resolved.' });
   return {
     requisition_id: 'r1',
     talent_record_id: 't1',
     current_journey_stage: 'OFFER',
     stages: [],
-    sub_states: { pipeline_stage: null, submittal_state: null, selection_state: 'SELECTED', interview_state: null, offer_state: null, placement_state: null, pre_start_state: null, assignment_state: null, ...sub },
+    sub_states,
+    offer_start_exceptions,
     actions: [],
     offer_document: doc,
     pre_start: preStart,

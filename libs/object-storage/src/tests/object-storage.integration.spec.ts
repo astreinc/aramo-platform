@@ -217,12 +217,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toThrow(/exceeds the PII-floor cap/);
     });
 
-    it('§4.4 — résumé objects are private: access is signature-gated and never public-read', async () => {
+    it('§4.4 — resume objects are private: access is signature-gated and never public-read', async () => {
       // Denying an unsigned anonymous request is an S3/infra backend guarantee
       // (bucket BlockPublicAccess, provisioned by Terraform); LocalStack community
       // does not emulate it (an anonymous GET returns 200 even with
       // PutPublicAccessBlock set — verified). We assert the two PRODUCT-observable
-      // responsibilities that keep résumés private:
+      // responsibilities that keep resumes private:
       //   (a) the service only ever vends signature-gated URLs (never a bare
       //       public object URL), and
       //   (b) the upload sets no public-read ACL (no AllUsers grant on the object).

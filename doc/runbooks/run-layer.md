@@ -108,7 +108,7 @@ front of both backends (the FE has zero env knobs).
 
 **Decision: `ats-web` deploys to S3 + CloudFront, NOT a container.** It consumes
 the existing S3 data-plane module (`infrastructure/modules/s3-resume-bucket` is
-the résumé bucket; the **static-site** bucket + CloudFront distribution is the
+the resume bucket; the **static-site** bucket + CloudFront distribution is the
 compute-IaC directive's work). Here we only **confirm the model** and **produce
 the build artifact**:
 

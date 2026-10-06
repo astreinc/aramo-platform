@@ -2,7 +2,7 @@
 // normalized, confidence-safe dates. NO loose `new Date(freeform)` ever feeds a
 // supported-years calculation: `new Date("2021")` silently fabricates
 // 2021-01-01 and `new Date("Summer 2021")` is runtime-dependent garbage. This
-// parser instead recognizes a CLOSED set of résumé date shapes and REFUSES
+// parser instead recognizes a CLOSED set of resume date shapes and REFUSES
 // everything else (→ null = UNKNOWN/UNPARSEABLE), carrying the PRECISION so a
 // year-only "2021" is never silently promoted to an exact day.
 
@@ -38,7 +38,7 @@ function valid(year: number, month: number | null, day: number | null): boolean 
 }
 
 /**
- * Strict résumé-date parse. Recognizes ONLY: YYYY-MM-DD (EXACT), YYYY-MM /
+ * Strict resume-date parse. Recognizes ONLY: YYYY-MM-DD (EXACT), YYYY-MM /
  * MM/YYYY / "Mon YYYY" (MONTH), YYYY (YEAR). Returns null for anything
  * ambiguous or unparseable ("Summer 2021", "early 2020", free text) — NEVER a
  * guessed date. Ongoing tokens ("present") are NOT dates — use isOngoingDateToken.

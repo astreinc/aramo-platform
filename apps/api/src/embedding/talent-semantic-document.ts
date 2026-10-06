@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 // Enterprise Search GS-2 P3 — the deterministic, PII-minimized Talent SEMANTIC-SOURCE projection.
-// It is a compact recruiting-facts document (NOT a persisted résumé representation): the same
+// It is a compact recruiting-facts document (NOT a persisted resume representation): the same
 // authoritative Talent state always produces the same document + source_hash, so the version-aware
 // embedding pipeline regenerates only on a real change. This is a PURE function — the caller
 // (the P5 worker) fetches the authoritative facts and feeds them in; nothing here reads a repo,

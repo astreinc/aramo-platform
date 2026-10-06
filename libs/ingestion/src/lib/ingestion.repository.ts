@@ -54,7 +54,7 @@ export interface RawPayloadRow {
 }
 
 // Cold-Ingest Extraction — the poll's projection: a resolved arrival whose
-// résumé still needs declared-evidence extraction, plus the subject it resolved
+// resume still needs declared-evidence extraction, plus the subject it resolved
 // to (resolved_subject_id, the write target).
 export interface ArrivalNeedingExtraction {
   id: string;
@@ -62,8 +62,8 @@ export interface ArrivalNeedingExtraction {
   storage_ref: string;
   resolved_subject_id: string;
   // SRC-2 PR-1 — the content-type discriminator: 'application/json' arrivals
-  // (the SRC-1 apply webhook) carry a JSON envelope with the résumé base64 INSIDE
-  // it; every other content_type is a bare résumé object (the existing path).
+  // (the SRC-1 apply webhook) carry a JSON envelope with the resume base64 INSIDE
+  // it; every other content_type is a bare resume object (the existing path).
   content_type: string;
 }
 
@@ -104,7 +104,7 @@ export class IngestionRepository {
 
   // ---- Cold-Ingest Extraction poll (the extract-once gate) -----------------
 
-  // A resolved cold-ingest arrival whose résumé still needs extraction. The
+  // A resolved cold-ingest arrival whose resume still needs extraction. The
   // subject is carried on the arrival (resolved_subject_id, set by canonicalize).
   async findArrivalsNeedingExtraction(args: {
     limit: number;
@@ -140,7 +140,7 @@ export class IngestionRepository {
   }
 
   // Stamp the extract-once gate — success OR a permanent parse-outcome (parsed,
-  // no name). The arrival drops out of the poll; a name-less résumé never loops.
+  // no name). The arrival drops out of the poll; a name-less resume never loops.
   async markExtractionDone(id: string): Promise<void> {
     await this.prisma.rawPayloadReference.update({
       where: { id },

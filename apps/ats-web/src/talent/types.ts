@@ -347,12 +347,12 @@ export interface SkillDraft {
 }
 
 // One reviewable work-history entry (governed_llm draft). Declared 'from
-// résumé', recruiter-editable; NOT verified. Hand-mirrors the BE
+// resume', recruiter-editable; NOT verified. Hand-mirrors the BE
 // ResumeDraftWorkHistory / persists as TalentWorkHistoryEntry (source='resume').
 //   - `source_refs` (HF1 §16/R8): durable block-level provenance carried through
 //     the FE review state (read-only carry; survives to the create request).
 //   - `description` is RETAINED for the recruiter-driven EDIT path; HF1
-//     extraction never populates it (R4 — no résumé prose).
+//     extraction never populates it (R4 — no resume prose).
 // HF2 — nested Experience Intelligence carried (read-only) through the FE review
 // state so it survives to the create request and the BE persistence seam. The
 // recruiter reviews (and may expand) but does not edit atomic claims at create
@@ -415,7 +415,7 @@ export interface WorkHistoryDraft {
   readonly assertions?: readonly AssertionDraft[];
 }
 
-// Add-Talent governed-LLM résumé extraction. Hand-mirrors libs/talent-record
+// Add-Talent governed-LLM resume extraction. Hand-mirrors libs/talent-record
 // DraftFromResumeResponse. Governed LLM is the SOLE extractor (TI-1F P0.2);
 // `warning` is set when the LLM could not run/produce — the form opens with an
 // empty/partial prefill + a retry affordance (the heuristic parser never runs).
@@ -492,7 +492,7 @@ export interface CreateAttachmentRequest {
   readonly is_resume?: boolean;
 }
 
-// TALENT-INTEL-1 TI-1D-C — résumé editions. A talent may hold MULTIPLE
+// TALENT-INTEL-1 TI-1D-C — resume editions. A talent may hold MULTIPLE
 // simultaneously-valid editions; is_default is the explicit presentation default
 // (never latest-wins). filename/mime_type/uploaded_at are projected from the
 // backing TalentDocument.
@@ -526,7 +526,7 @@ export interface CreateTalentResumeEditionRequest {
   readonly label?: string;
 }
 
-// TALENT-INTEL-1 TI-1H §9 — the redacted text for ONE résumé edition (preview).
+// TALENT-INTEL-1 TI-1H §9 — the redacted text for ONE resume edition (preview).
 // Mirrors BE TalentResumeEditionTextView. redacted_text is null while the async
 // re-extract is pending; only redacted text is ever returned (D4).
 export interface TalentResumeEditionTextView {

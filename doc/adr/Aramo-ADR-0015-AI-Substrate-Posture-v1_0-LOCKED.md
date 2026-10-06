@@ -169,7 +169,7 @@ PR-5 tests inject mock implementations of `DraftProvider` and `SecretCacheServic
 
 ### Decision 10 — Scope of AI consumption (added v1.1 at A8-3b, 2026-06-04)
 
-**AI/LLM provider consumption is confined to `libs/ai-draft` and its declared consumers (per Decision 1).** New substrate surfaces — A8-2 import column-mapping, A8-3b résumé parse, and all future parse/inference surfaces — MUST use deterministic heuristics, NOT LLM calls. An LLM in any of these surfaces would be a NEW AI-consumption surface requiring an explicit ADR amendment (revision to Decision 10 with the new consumer's scope + audit posture).
+**AI/LLM provider consumption is confined to `libs/ai-draft` and its declared consumers (per Decision 1).** New substrate surfaces — A8-2 import column-mapping, A8-3b resume parse, and all future parse/inference surfaces — MUST use deterministic heuristics, NOT LLM calls. An LLM in any of these surfaces would be a NEW AI-consumption surface requiring an explicit ADR amendment (revision to Decision 10 with the new consumer's scope + audit posture).
 
 **The structural enforcement is a per-lib `no-llm-boundary` spec** in each consumer-restricted lib's `src/tests/` directory. The spec walks all `.ts` files under the lib root and asserts none imports or names `@aramo/ai-draft`, `@anthropic-ai/sdk`, `DraftProvider`, or any standalone `llm`/`LLM`/`anthropic` identifier (comments are stripped before matching, so prose mentions of ADR-0015 do not trigger violations).
 
@@ -177,9 +177,9 @@ PR-5 tests inject mock implementations of `DraftProvider` and `SecretCacheServic
 
 **Currently in scope (no-LLM-required surfaces):**
 - `libs/import` (A8-2) — column-mapping inference: deterministic header-synonym + data-shape sampling
-- `libs/resume-parse` (A8-3b) — résumé text-extraction (pdf-parse / mammoth) + heuristic field-extraction (regex + structural section-matching)
+- `libs/resume-parse` (A8-3b) — resume text-extraction (pdf-parse / mammoth) + heuristic field-extraction (regex + structural section-matching)
 
-**Rationale:** the AI substrate's value (drafted outreach text, candidate-fit synthesis) comes from open-ended generation. Parse/inference surfaces (column-mapping, résumé fields) have deterministic right answers; an LLM there trades verifiable correctness for opaque inference + new provider-cost surfaces + new PII exposure paths. The deterministic-heuristic posture is cheaper, faster, auditable, and explicitly bounded.
+**Rationale:** the AI substrate's value (drafted outreach text, candidate-fit synthesis) comes from open-ended generation. Parse/inference surfaces (column-mapping, resume fields) have deterministic right answers; an LLM there trades verifiable correctness for opaque inference + new provider-cost surfaces + new PII exposure paths. The deterministic-heuristic posture is cheaper, faster, auditable, and explicitly bounded.
 
 **Promotion path:** if a future PR genuinely needs LLM-assisted inference in one of these surfaces (e.g., column-mapping for free-text columns that defy synonym matching), the PR amends Decision 10 (revising the in-scope list + documenting the audit posture for the new consumer) BEFORE adding the wiring. The PR must NOT silently bypass the structural spec.
 

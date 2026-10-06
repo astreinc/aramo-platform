@@ -343,11 +343,11 @@ describe('Talent360View — renders the composed contract, owns only presentatio
     await waitFor(() => expect(screen.getByText('RECRUITER')).toBeInTheDocument());
     expect(screen.getByText('IN STAGE')).toBeInTheDocument();
     // The prototype's six slots are all present as labels — including the ones
-    // the contract does not supply (ACCOUNT MANAGER / RTR / RÉSUMÉ SUBMITTED) and
+    // the contract does not supply (ACCOUNT MANAGER / RTR / RESUME SUBMITTED) and
     // the R3-excluded BILL RATE — each rendered as an honest em-dash, value never
     // fabricated. Slot geometry preserved.
     expect(screen.getByText('ACCOUNT MANAGER')).toBeInTheDocument();
-    expect(screen.getByText('RÉSUMÉ SUBMITTED')).toBeInTheDocument();
+    expect(screen.getByText('RESUME SUBMITTED')).toBeInTheDocument();
     expect(screen.getByText('BILL RATE')).toBeInTheDocument();
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });

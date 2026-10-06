@@ -1,5 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, isoDateInTimeZone } from '@aramo/common';
+import {
+  deriveClientWaitingDays,
+  isInterviewToday,
+} from '@aramo/client-selection';
 import { ACTIVE_FLOW_STAGES } from '@aramo/pipeline';
 
 import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
@@ -43,9 +47,6 @@ const ACTIVE_STAGES = new Set<string>(ACTIVE_FLOW_STAGES);
 const SUBMITTED_STATES = new Set(['submitted_to_client', 'confirmed']);
 // Offer states that count as a live offer (matches OfferRepository.countLive).
 const LIVE_OFFER_STATES = new Set(['SENT', 'NEGOTIATION', 'ACCEPTED']);
-// Live interview states (eligible for the scheduled-for-today check).
-const LIVE_INTERVIEW_STATES = new Set(['SCHEDULED', 'RESCHEDULED']);
-const DAY_MS = 86_400_000;
 
 // Recruiter-facing scope keys gating each composed section (directive §17.8).
 const SCOPE = {
@@ -98,7 +99,7 @@ export class Talent360Service {
     };
 
     const generated_at = new Date(nowMs).toISOString();
-    const server_date = isoDate(nowMs, timeZone);
+    const server_date = isoDateInTimeZone(nowMs, timeZone);
 
     // A superseded record is never rehydrated as a live workspace (directive
     // §17.10 / §23). Return the header (carrying the survivor pointer so the FE
@@ -362,7 +363,6 @@ export class Talent360Service {
         last_contact: lastContact,
       };
     }
-    const todayIso = isoDate(nowMs, timeZone);
     let submittals = 0;
     let interviewsToday = 0;
     let offers = 0;
@@ -375,8 +375,12 @@ export class Talent360Service {
       const iv = interviews.get(b.episode.id);
       if (
         iv !== undefined &&
-        LIVE_INTERVIEW_STATES.has(iv.state) &&
-        isoDate(Date.parse(iv.scheduled_at), timeZone) === todayIso
+        isInterviewToday({
+          state: iv.state,
+          scheduled_at_ms: Date.parse(iv.scheduled_at),
+          now_ms: nowMs,
+          time_zone: timeZone,
+        })
       ) {
         interviewsToday += 1;
       }
@@ -399,15 +403,18 @@ export class Talent360Service {
     timeZone: string,
   ): readonly AttentionItemView[] {
     const items: AttentionItemView[] = [];
-    const todayIso = isoDate(nowMs, timeZone);
     for (const b of bundles) {
       const req = b.requisition;
       const label = req !== null ? `REQ-${req.requisition_number}` : null;
       const iv = interviews.get(b.episode.id);
       if (
         iv !== undefined &&
-        LIVE_INTERVIEW_STATES.has(iv.state) &&
-        isoDate(Date.parse(iv.scheduled_at), timeZone) === todayIso
+        isInterviewToday({
+          state: iv.state,
+          scheduled_at_ms: Date.parse(iv.scheduled_at),
+          now_ms: nowMs,
+          time_zone: timeZone,
+        })
       ) {
         items.push({
           id: `interview:${b.episode.id}`,
@@ -726,17 +733,22 @@ function interviewProcessId(journey: TalentRequisitionJourney): string | null {
   return stage?.source_object_id ?? null;
 }
 
-// The CLIENT_REVIEW stage's occurred_at (= ClientSelectionProcess.created_at) —
-// the authoritative "waiting on client" clock; null unless currently in review.
+// Journey-shape adapter onto the canonical "waiting on client" semantic: it
+// extracts the authoritative inputs (selection_state + the CLIENT_REVIEW stage's
+// occurred_at = ClientSelectionProcess.created_at) and delegates — it does NOT
+// re-decide the waiting state or recompute the age.
 function clientWaitDays(
   journey: TalentRequisitionJourney,
   nowMs: number,
   timeZone: string,
 ): number | null {
-  if (journey.sub_states.selection_state !== 'CLIENT_REVIEW') return null;
   const stage = journey.stages.find((s) => s.stage === 'CLIENT_REVIEW');
-  if (stage?.occurred_at === undefined) return null;
-  return agingDays(Date.parse(stage.occurred_at), nowMs, timeZone);
+  return deriveClientWaitingDays({
+    selection_state: journey.sub_states.selection_state,
+    since_ms: stage?.occurred_at === undefined ? null : Date.parse(stage.occurred_at),
+    now_ms: nowMs,
+    time_zone: timeZone,
+  });
 }
 
 function contextualState(
@@ -745,11 +757,16 @@ function contextualState(
   nowMs: number,
   timeZone: string,
 ): string | null {
-  if (iv !== null && LIVE_INTERVIEW_STATES.has(iv.state)) {
-    const todayIso = isoDate(nowMs, timeZone);
-    if (isoDate(Date.parse(iv.scheduled_at), timeZone) === todayIso) {
-      return 'Client interview today';
-    }
+  if (
+    iv !== null &&
+    isInterviewToday({
+      state: iv.state,
+      scheduled_at_ms: Date.parse(iv.scheduled_at),
+      now_ms: nowMs,
+      time_zone: timeZone,
+    })
+  ) {
+    return 'Client interview today';
   }
   const waiting = clientWaitDays(journey, nowMs, timeZone);
   if (waiting !== null) {
@@ -873,21 +890,3 @@ function activityTitle(type: string): string {
   }
 }
 
-// Whole calendar days between two instants, computed against the app timezone.
-function agingDays(fromMs: number, toMs: number, timeZone: string): number {
-  const from = isoDate(fromMs, timeZone);
-  const to = isoDate(toMs, timeZone);
-  const fromUtc = Date.parse(`${from}T00:00:00Z`);
-  const toUtc = Date.parse(`${to}T00:00:00Z`);
-  return Math.max(0, Math.round((toUtc - fromUtc) / DAY_MS));
-}
-
-// The app-timezone civil date (YYYY-MM-DD) for an instant.
-function isoDate(ms: number, timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(ms));
-}

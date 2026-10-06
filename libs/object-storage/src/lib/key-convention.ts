@@ -91,7 +91,7 @@ export function buildResumeObjectKey(input: {
 // Shape:
 //   {tenant_id}/ingestion/{channel}/{external_source_id}/{receipt_uuid}.json
 //
-// Distinct from the résumé key ('/talent/...') by the `/ingestion/` segment;
+// Distinct from the resume key ('/talent/...') by the `/ingestion/` segment;
 // the bucket is shared (R13.2 — one platform document bucket, env name retained
 // ADD-not-rename). `channel` is lowercased; `receipt_uuid` is a v7 UUID minted
 // PER DELIVERY, so webhook redeliveries of the same external_source_id land as

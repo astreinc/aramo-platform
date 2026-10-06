@@ -58,7 +58,7 @@ function makeExtraction(result: ResumeDraftResult) {
 
 describe('ResumeExtractionOrchestrator', () => {
   it('CREATE own-tenant: runs the pipeline, one governed call, contact → prefill', async () => {
-    const parser = makeParser('résumé text');
+    const parser = makeParser('resume text');
     const extraction = makeExtraction({
       status: 'success',
       proposal: proposalWith(),
@@ -91,7 +91,7 @@ describe('ResumeExtractionOrchestrator', () => {
   });
 
   it('CREATE cross-tenant: rejects BEFORE any object fetch (authorize-first)', async () => {
-    const parser = makeParser('résumé text');
+    const parser = makeParser('resume text');
     const extraction = makeExtraction({ status: 'success', proposal: proposalWith() });
     const orchestrator = new ResumeExtractionOrchestrator(
       new ResumeSourceAuthorizer(),
@@ -124,7 +124,7 @@ describe('ResumeExtractionOrchestrator', () => {
         size_bytes: 1,
       }),
     };
-    const parser = makeParser('résumé text');
+    const parser = makeParser('resume text');
     const extraction = makeExtraction({ status: 'success', proposal: proposalWith() });
     const orchestrator = new ResumeExtractionOrchestrator(
       new ResumeSourceAuthorizer(resolver),
@@ -146,7 +146,7 @@ describe('ResumeExtractionOrchestrator', () => {
   });
 
   it('propagates an explicit provider failure as an honest status (no masked draft)', async () => {
-    const parser = makeParser('résumé text');
+    const parser = makeParser('resume text');
     const extraction = makeExtraction({
       status: 'provider_truncated',
       proposal: proposalWith(),

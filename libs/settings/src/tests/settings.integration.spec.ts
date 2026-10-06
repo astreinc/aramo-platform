@@ -234,7 +234,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const view = await svc.getAll(TENANT_A);
       // S4 added audit.financials_enabled. getAll materializes every known
-      // view-key with its row-value-or-default. (Résumé fact extraction is
+      // view-key with its row-value-or-default. (Resume fact extraction is
       // governed-LLM-only — TI-1F P0.2 — so there is no mode setting.)
       expect(view).toEqual({
         'compensation.display_default': 'markup',
