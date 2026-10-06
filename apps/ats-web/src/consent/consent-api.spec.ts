@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  captureConsent,
+  getConsentCaptureTexts,
   getTalentConsentDecisionLog,
   getTalentConsentHistory,
   getTalentConsentState,
@@ -112,6 +114,50 @@ describe('consent-api', () => {
     );
     expect(String(spy.mock.calls[0]?.[0])).toBe(
       `/v1/consent/decision-log/${TALENT_ID}`,
+    );
+  });
+
+  it('POSTs /v1/consent/capture with the body and a UUID Idempotency-Key', async () => {
+    const response = {
+      talent_record_id: TALENT_ID,
+      captured_method: 'recruiter_capture' as const,
+      consent_version: 'recruiter-capture-v1-draft',
+      results: [],
+    };
+    const spy = mockFetchJson(response);
+    await expect(
+      captureConsent({
+        talent_record_id: TALENT_ID,
+        captured_method: 'recruiter_capture',
+        scopes: ['profile_storage', 'matching', 'contacting'],
+      }),
+    ).resolves.toEqual(response);
+    const call = spy.mock.calls[0];
+    expect(String(call?.[0])).toBe('/v1/consent/capture');
+    const init = call?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      talent_record_id: TALENT_ID,
+      captured_method: 'recruiter_capture',
+      scopes: ['profile_storage', 'matching', 'contacting'],
+    });
+    const headers = init.headers as Record<string, string>;
+    // A fresh UUID per submit (crypto.randomUUID()).
+    expect(headers['Idempotency-Key']).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('GETs /v1/consent/capture-texts with the captured_method query', async () => {
+    const response = {
+      version: 'recruiter-capture-v1-draft',
+      captured_method: 'recruiter_capture' as const,
+      texts: [{ scope: 'contacting' as const, text: 'x' }],
+    };
+    const spy = mockFetchJson(response);
+    await expect(getConsentCaptureTexts('recruiter_capture')).resolves.toEqual(
+      response,
+    );
+    expect(String(spy.mock.calls[0]?.[0])).toBe(
+      '/v1/consent/capture-texts?captured_method=recruiter_capture',
     );
   });
 });

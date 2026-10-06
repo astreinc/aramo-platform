@@ -4,6 +4,7 @@ import { ApiError, Button } from '@aramo/fe-foundation';
 
 import { useMe } from '../shell/me-api';
 import { Icons, InlineAlert, PageHeader } from '../ui';
+import { RecordConsentDialog } from '../consent/RecordConsentDialog';
 
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
@@ -70,6 +71,10 @@ interface ResumeState {
 export function TalentCreateView() {
   const navigate = useNavigate();
   const me = useMe();
+  // PO RULING "Consent Capture" — the post-create consent step is SEPARATE from
+  // talent creation (creation never blocks on consent); this just opens the
+  // reusable capture dialog once the talent exists.
+  const [consentOpen, setConsentOpen] = useState(false);
   // Header provenance preview — "source is recorded automatically" is literal:
   // this previews the manual-add provenance that will be stamped (the current
   // recruiter + today), mirroring the prototype's example parenthetical.
@@ -390,13 +395,23 @@ export function TalentCreateView() {
   // ── Render ────────────────────────────────────────────────────────────
   if (phase === 'success' && created !== null) {
     return (
-      <SuccessScreen
-        name={`${created.first_name} ${created.last_name}`}
-        elapsedMs={elapsedMs}
-        attachWarning={attachWarning}
-        onOpen={() => navigate(`/talent/${created.id}`)}
-        onAnother={resetAll}
-      />
+      <>
+        <SuccessScreen
+          name={`${created.first_name} ${created.last_name}`}
+          elapsedMs={elapsedMs}
+          attachWarning={attachWarning}
+          onOpen={() => navigate(`/talent/${created.id}`)}
+          onAnother={resetAll}
+          onRecordConsent={() => setConsentOpen(true)}
+        />
+        {consentOpen && (
+          <RecordConsentDialog
+            talentRecordId={created.id}
+            open={consentOpen}
+            onOpenChange={setConsentOpen}
+          />
+        )}
+      </>
     );
   }
 
@@ -716,12 +731,14 @@ function SuccessScreen({
   attachWarning,
   onOpen,
   onAnother,
+  onRecordConsent,
 }: {
   readonly name: string;
   readonly elapsedMs: number;
   readonly attachWarning: string | null;
   readonly onOpen: () => void;
   readonly onAnother: () => void;
+  readonly onRecordConsent: () => void;
 }) {
   return (
     <section className="rc-success">
@@ -736,8 +753,15 @@ function SuccessScreen({
       {attachWarning !== null ? (
         <InlineAlert variant="error">{attachWarning}</InlineAlert>
       ) : null}
+      <p>
+        Contact permissions are separate from the profile. Record the Talent&apos;s
+        consent to enable recruiter email, phone and matching.
+      </p>
       <div className="rc-success__btns">
-        <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onOpen}>
+        <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onRecordConsent}>
+          Record consent
+        </Button>
+        <Button unstyled type="button" className="rc-btn" onClick={onOpen}>
           Open profile
         </Button>
         <Button unstyled type="button" className="rc-btn" onClick={onAnother}>

@@ -132,7 +132,11 @@ export interface ResolveDecisionLogInput {
 // The chain for a given scope is the ordered list of *prerequisite* scopes
 // (the requested scope itself is checked separately by Decision D after
 // dependency validation).
-const SCOPE_DEPENDENCY_CHAIN: Record<ConsentScopeValue, readonly ConsentScopeValue[]> = {
+// Exported as the SINGLE source of the scope dependency graph: the runtime
+// `resolveConsentState` check (below) and the capture seam's same-request
+// dependency-closure validation (ConsentService.captureProfileConsent) must
+// agree — duplicating the graph would be a divergence risk.
+export const SCOPE_DEPENDENCY_CHAIN: Record<ConsentScopeValue, readonly ConsentScopeValue[]> = {
   profile_storage: [],
   resume_processing: [],
   matching: ['profile_storage'],

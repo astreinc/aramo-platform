@@ -15,6 +15,10 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
+  ConsentCaptureMethod,
+  ConsentCaptureRequest,
+  ConsentCaptureResponse,
+  ConsentCaptureTextsResponse,
   ConsentDecisionLogResponse,
   ConsentHistoryResponse,
   TalentConsentStateResponse,
@@ -23,6 +27,8 @@ import type {
 const STATE_BASE = '/v1/consent/state/';
 const HISTORY_BASE = '/v1/consent/history/';
 const DECISION_LOG_BASE = '/v1/consent/decision-log/';
+const CAPTURE_PATH = '/v1/consent/capture';
+const CAPTURE_TEXTS_PATH = '/v1/consent/capture-texts';
 
 export function getTalentConsentState(
   talentId: string,
@@ -52,6 +58,29 @@ export function getTalentConsentDecisionLog(
     cursor,
   );
   return apiClient.get<ConsentDecisionLogResponse>(path);
+}
+
+// PO RULING "Consent Capture" — the EXACT versioned consent text per scope the
+// recruiter must see before recording (the D7 hash preimage; rendered server-side,
+// never composed client-side).
+export function getConsentCaptureTexts(
+  capturedMethod: ConsentCaptureMethod,
+): Promise<ConsentCaptureTextsResponse> {
+  return apiClient.get<ConsentCaptureTextsResponse>(
+    `${CAPTURE_TEXTS_PATH}?captured_method=${encodeURIComponent(capturedMethod)}`,
+  );
+}
+
+// PO RULING "Consent Capture" — record the recruiter-captured profile consent
+// through the server-authoritative capture seam (multi-scope, dependency-ordered,
+// idempotent). A fresh Idempotency-Key per submit; a retry of the same selection
+// is a replay, not a duplicate. Mirrors the mint pattern in pipeline-api.ts.
+export function captureConsent(
+  request: ConsentCaptureRequest,
+): Promise<ConsentCaptureResponse> {
+  return apiClient.post<ConsentCaptureResponse>(CAPTURE_PATH, request, {
+    headers: { 'Idempotency-Key': crypto.randomUUID() },
+  });
 }
 
 function withCursor(path: string, cursor: string | null | undefined): string {

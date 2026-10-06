@@ -72,3 +72,84 @@ export function hashPortalConsentText(
   const hash = createHash('sha256').update(text, 'utf8').digest('hex');
   return { version, hash };
 }
+
+// ============================================================================
+// Recruiter-capture attestation registry — PO RULING "Consent Capture" (provisional).
+//
+// Parallel to the portal (Talent-direct) registry above, but for the capture
+// method where a RECRUITER records that the Talent authorized profile/recruiting
+// consent on the Talent's behalf (captured_method='recruiter_capture'). The
+// portal template is first-person Talent wording ("I authorize ...") and is NOT
+// valid here, so this is a DISTINCT frozen version.
+//
+// PROVISIONAL / pending legal ratification: the version id carries the `-draft`
+// suffix deliberately. It MUST NOT be silently renamed to a "final"/approved id.
+// Later ratification either ratifies this version UNCHANGED or introduces a new
+// recruiter-capture version PROSPECTIVELY (ADD-not-rename). Historical consent
+// records are NEVER rewritten if the wording later changes — each event froze its
+// {version, hash} at grant time.
+//
+// Per-scope decomposition is authorized by the ruling ("show the corresponding
+// scope-specific clauses and record only the scopes affirmatively attested"): the
+// renderer composes the shared attestation frame around ONE scope-specific clause,
+// so each granted scope's event carries its own reproducible {version, hash}
+// preimage. Only the three scopes named in the approved wording are covered; any
+// other scope has no approved recruiter-capture text and renders a throw
+// (fail-closed) rather than inventing wording.
+export const CONSENT_TEXT_RECRUITER_CAPTURE_VERSION = 'recruiter-capture-v1-draft';
+
+export type RecruiterCaptureScope = 'profile_storage' | 'matching' | 'contacting';
+export const RECRUITER_CAPTURE_SCOPES: readonly RecruiterCaptureScope[] = [
+  'profile_storage',
+  'matching',
+  'contacting',
+] as const;
+
+// The three scope-specific clauses, lifted verbatim from the ruling's wording.
+const RECRUITER_CAPTURE_SCOPE_CLAUSES: Record<RecruiterCaptureScope, string> = {
+  profile_storage:
+    "store and maintain the Talent's profile and related recruiting information",
+  matching:
+    "use the Talent's profile to evaluate and match the Talent with employment opportunities",
+  contacting: 'contact the Talent about recruiting opportunities',
+};
+
+export interface RecruiterCaptureTextContext {
+  scope: RecruiterCaptureScope;
+}
+
+// version id → deterministic renderer. Existing entries are FROZEN.
+const RECRUITER_CAPTURE_TEMPLATES: Record<
+  string,
+  (ctx: RecruiterCaptureTextContext) => string
+> = {
+  'recruiter-capture-v1-draft': (ctx) =>
+    `I confirm that I obtained the Talent's authorization to ` +
+    `${RECRUITER_CAPTURE_SCOPE_CLAUSES[ctx.scope]}. I confirm that this ` +
+    `authorization was provided by the Talent and that I am recording it ` +
+    `accurately on the Talent's behalf. I understand that the Talent may ` +
+    `withdraw or change this authorization at any time, and that Aramo will ` +
+    `apply the Talent's current consent status to future processing and ` +
+    `communications.`,
+};
+
+export function renderRecruiterCaptureConsentText(
+  version: string,
+  ctx: RecruiterCaptureTextContext,
+): string {
+  const tpl = RECRUITER_CAPTURE_TEMPLATES[version];
+  if (tpl === undefined) {
+    throw new Error(`unknown recruiter-capture consent text version: ${version}`);
+  }
+  return tpl(ctx);
+}
+
+// The D7 evidence pair for recruiter-capture: {version, sha256hex(exact text)}.
+export function hashRecruiterCaptureConsentText(
+  version: string,
+  ctx: RecruiterCaptureTextContext,
+): { version: string; hash: string } {
+  const text = renderRecruiterCaptureConsentText(version, ctx);
+  const hash = createHash('sha256').update(text, 'utf8').digest('hex');
+  return { version, hash };
+}

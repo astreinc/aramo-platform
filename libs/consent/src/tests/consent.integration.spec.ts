@@ -4,11 +4,13 @@ import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import type { AuthContextType } from '@aramo/auth';
 
 import {
   ConsentRepository,
   type RecordConsentEventInput,
 } from '../lib/consent.repository.js';
+import { ConsentService } from '../lib/consent.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import type { ConsentGrantResponseDto } from '../lib/dto/consent-grant-response.dto.js';
 import type { ConsentRevokeResponseDto } from '../lib/dto/consent-revoke-response.dto.js';
@@ -83,6 +85,148 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     afterAll(async () => {
       await prisma?.$disconnect();
       await container?.stop();
+    });
+
+    // ===================================================================
+    // PO RULING "Consent Capture" — captureProfileConsent (real DB proofs).
+    // Each test uses its own talent id (independent). The capture seam runs
+    // through the ONE authoritative writer (recordConsentEvent).
+    // ===================================================================
+    describe('captureProfileConsent', () => {
+      // Dedicated tenant so capture rows never pollute the shared TENANT_A/B
+      // counts the other integration cases assert on.
+      const TENANT_CAP = '33333333-3333-7333-8333-333333333333';
+      const authCap = {
+        tenant_id: TENANT_CAP,
+        sub: RECRUITER_ID,
+        consumer_type: 'recruiter',
+      } as unknown as AuthContextType;
+      const ALL3: Array<'profile_storage' | 'matching' | 'contacting'> = [
+        'profile_storage',
+        'matching',
+        'contacting',
+      ];
+
+      it('persists one granted ledger row per attested scope, with the draft version', async () => {
+        const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccca01';
+        const res = await new ConsentService(repo).captureProfileConsent({
+          talent_record_id: talent,
+          captured_method: 'recruiter_capture',
+          scopes: ALL3,
+          authContext: authCap,
+          idempotencyKey: 'ffffffff-0000-7000-8000-0000000000a1',
+          requestId: 'cap-a1',
+        });
+        expect(res.results.map((r) => r.scope)).toEqual(ALL3);
+        const rows = await prisma.talentConsentEvent.findMany({
+          where: { tenant_id: TENANT_CAP, talent_record_id: talent },
+        });
+        expect(rows).toHaveLength(3);
+        expect(rows.every((r) => r.action === 'granted')).toBe(true);
+        expect(
+          rows.every((r) => r.consent_version === 'recruiter-capture-v1-draft'),
+        ).toBe(true);
+      });
+
+      it('is idempotent on replay under the same Idempotency-Key (no duplicate rows)', async () => {
+        const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccca02';
+        const args = {
+          talent_record_id: talent,
+          captured_method: 'recruiter_capture' as const,
+          scopes: ALL3,
+          authContext: authCap,
+          idempotencyKey: 'ffffffff-0000-7000-8000-0000000000a2',
+          requestId: 'cap-a2',
+        };
+        await new ConsentService(repo).captureProfileConsent(args);
+        await new ConsentService(repo).captureProfileConsent({
+          ...args,
+          requestId: 'cap-a2-replay',
+        });
+        const count = await prisma.talentConsentEvent.count({
+          where: { tenant_id: TENANT_CAP, talent_record_id: talent },
+        });
+        expect(count).toBe(3);
+      });
+
+      it('flips contactability to allowed ONLY after capture (email gate + contactable summary)', async () => {
+        const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccca03';
+        // Before: the email consent gate is fail-closed.
+        const before = await repo.resolveConsentState({
+          tenant_id: TENANT_CAP,
+          talent_record_id: talent,
+          operation: 'communication',
+          channel: 'email',
+          requestHash: 'cap-a3-before',
+          requestId: 'cap-a3-before',
+        });
+        expect(before.result).not.toBe('allowed');
+
+        await new ConsentService(repo).captureProfileConsent({
+          talent_record_id: talent,
+          captured_method: 'recruiter_capture',
+          scopes: ALL3,
+          authContext: authCap,
+          idempotencyKey: 'ffffffff-0000-7000-8000-0000000000a3',
+          requestId: 'cap-a3',
+        });
+
+        // After: the SAME email gate the Microsoft send consults now passes,
+        // and the Talent-360 contactability summary flips to contactable.
+        const after = await repo.resolveConsentState({
+          tenant_id: TENANT_CAP,
+          talent_record_id: talent,
+          operation: 'communication',
+          channel: 'email',
+          requestHash: 'cap-a3-after',
+          requestId: 'cap-a3-after',
+        });
+        expect(after.result).toBe('allowed');
+        const summary = await repo.findContactingConsentSummaryForTalentIds({
+          tenant_id: TENANT_CAP,
+          talent_record_ids: [talent],
+        });
+        expect(summary.get(talent)).toBe('contactable');
+      });
+
+      it('rejects a dependency-incomplete capture and writes NOTHING (fail-closed)', async () => {
+        const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccca04';
+        await expect(
+          new ConsentService(repo).captureProfileConsent({
+            talent_record_id: talent,
+            captured_method: 'recruiter_capture',
+            scopes: ['contacting'],
+            authContext: authCap,
+            idempotencyKey: 'ffffffff-0000-7000-8000-0000000000a4',
+            requestId: 'cap-a4',
+          }),
+        ).rejects.toMatchObject({ code: 'INVALID_SCOPE_COMBINATION' });
+        const count = await prisma.talentConsentEvent.count({
+          where: { tenant_id: TENANT_CAP, talent_record_id: talent },
+        });
+        expect(count).toBe(0);
+      });
+
+      it('cross-tenant isolation: a capture in one tenant is invisible to another', async () => {
+        const talent = 'cccccccc-cccc-7ccc-8ccc-ccccccccca05';
+        await new ConsentService(repo).captureProfileConsent({
+          talent_record_id: talent,
+          captured_method: 'recruiter_capture',
+          scopes: ALL3,
+          authContext: authCap,
+          idempotencyKey: 'ffffffff-0000-7000-8000-0000000000a5',
+          requestId: 'cap-a5',
+        });
+        const decisionB = await repo.resolveConsentState({
+          tenant_id: TENANT_B,
+          talent_record_id: talent,
+          operation: 'communication',
+          channel: 'email',
+          requestHash: 'cap-a5-b',
+          requestId: 'cap-a5-b',
+        });
+        expect(decisionB.result).not.toBe('allowed');
+      });
     });
 
     // ===================================================================
