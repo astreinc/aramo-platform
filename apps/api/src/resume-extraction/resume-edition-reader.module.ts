@@ -12,7 +12,7 @@ import {
 // interface (no nx cycle, no cross-scope module edge). @Global so the
 // PipelineController (in its own module) can inject the STRING token. It reads the
 // TI-1D-C edition projection (which already computes is_default) and maps it to the
-// port's ResumeEditionSummary — NO résumé text, NO evidence payload.
+// port's ResumeEditionSummary — NO resume text, NO evidence payload.
 @Injectable()
 export class ResumeEditionReaderAdapter implements ResumeEditionReaderPort {
   constructor(private readonly evidence: TalentEvidenceRepository) {}

@@ -9,8 +9,8 @@ import type {
 
 // POST /v1/talent-records/draft-from-resume response.
 //
-// Governed LLM is the SOLE production résumé fact extractor (TI-1F P0.2;
-// …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic résumé FACT extraction is retired:
+// Governed LLM is the SOLE production resume fact extractor (TI-1F P0.2;
+// …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic resume FACT extraction is retired:
 // there is no mode field and no silent fallback to the heuristic parser.
 // `warning` is set only when governed extraction could not run/produce (provider
 // unavailable, malformed output, text-extraction failed) — the form opens with
@@ -30,7 +30,7 @@ export interface DraftFromResumeResponse {
   // / provider_failure) from an honest partial/empty result — a technical failure
   // never masquerades as a successful empty draft.
   extraction_status?: ResumeDraftStatus;
-  // Reviewable, grounded work-history entries (declared 'from résumé', NOT
+  // Reviewable, grounded work-history entries (declared 'from resume', NOT
   // verified), each carrying its source_refs (§16/R8). The recruiter edits these
   // in the review card; on create they persist as TalentWorkHistoryEntry
   // (source='resume').
@@ -40,7 +40,7 @@ export interface DraftFromResumeResponse {
   // through the API for durable persistence.
   skills?: ResumeDraftSkill[];
   // HF2 R8/R18/R19 — reviewable, grounded education + certifications (declared
-  // 'from résumé', NOT verified). The recruiter reviews these in the review card;
+  // 'from resume', NOT verified). The recruiter reviews these in the review card;
   // on create they persist as declared evidence with provenance.
   education?: ResumeDraftEducation[];
   certifications?: ResumeDraftCertification[];

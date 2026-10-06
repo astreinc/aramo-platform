@@ -1,4 +1,4 @@
--- TALENT-INTEL-1 TI-1D-C (§D) — associate the résumé-text CACHE with the
+-- TALENT-INTEL-1 TI-1D-C (§D) — associate the resume-text CACHE with the
 -- TalentResumeEdition that produced its currently-stored extracted text. UUID-only
 -- cross-schema ref to talent_evidence.TalentResumeEdition (NO FK, §7.3). NULLABLE:
 -- populated only on future edition-driven text writes/re-extracts -- NO historical

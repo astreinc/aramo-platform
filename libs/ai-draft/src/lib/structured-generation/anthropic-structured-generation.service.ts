@@ -69,7 +69,7 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
 
     // Transport selection (default STRICT). FORCED_TOOL is a schema-GUIDED
     // function call used ONLY where the schema is too large for strict grammar
-    // compilation (HF2 v3 résumé draft, directive §8 boundary). There is NO
+    // compilation (HF2 v3 resume draft, directive §8 boundary). There is NO
     // implicit fallback: the caller opts in explicitly.
     const useForcedTool = request.transport === 'FORCED_TOOL';
 

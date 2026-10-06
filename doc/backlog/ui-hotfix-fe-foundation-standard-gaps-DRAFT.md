@@ -252,8 +252,8 @@ per screen; acceptance = pixel match at 1440px, functional at 1024px (§G2.9).
    **Create Teams meeting** (secondary, calendar icon). Helper text: "Sent as you from your
    connected Microsoft 365 mailbox · logged to this Talent's activity automatically."
 6. **Submittal readiness**: policy text.
-7. **Résumé — this position**: dashed empty state, "No résumé selected yet." plus a
-   **Select résumé** button.
+7. **Resume — this position**: dashed empty state, "No resume selected yet." plus a
+   **Select resume** button.
 8. **Talent details** and **Rates** (desired rate from the Talent record; "—" when absent).
 
 ## G2.3 Review email draft modal (Send email / Contact Talent)

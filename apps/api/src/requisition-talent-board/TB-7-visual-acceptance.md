@@ -20,8 +20,8 @@ canonical prototype (`TalentBoard.dc.html`).
 |---|---|
 | List \| Board toggle | Board pill active (brand), List inactive — correct |
 | Populated actionable lanes | Pipeline / Contacted / Qualified / Submitted / Interviewing / Client Selected with counts + cards |
-| Qualified Ready-to-submit band | green "Ready to submit" pill + "Résumé locked" + "Submit to client" action |
-| Qualified Needs-action band | amber "Needs action" + "RTR needed" + blockers ("Right to represent not executed · Restricted at client"; "Résumé not selected") |
+| Qualified Ready-to-submit band | green "Ready to submit" pill + "Resume locked" + "Submit to client" action |
+| Qualified Needs-action band | amber "Needs action" + "RTR needed" + blockers ("Right to represent not executed · Restricted at client"; "Resume not selected") |
 | Governed action buttons | Mark contacted / Start qualification / Submit to client / Mark client selected / Create offer — rendered per card state |
 | Drag drop-target | Interviewing column shows the dashed brand outline (`rc-tboard__col--drop`) |
 | Downstream tracking / handoff | Offer + Started cards render dashed with a "Tracked · Offer" / "Tracked · Placement" chip |

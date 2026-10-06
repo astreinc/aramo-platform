@@ -280,7 +280,7 @@ export class SubmitTalentToClientService {
         );
       }
 
-      // TALENT-INTEL-1 TI-1D-D (Layer B) — the exact résumé edition sent to the
+      // TALENT-INTEL-1 TI-1D-D (Layer B) — the exact resume edition sent to the
       // client is the CURRENT explicit working selection (TalentRequisitionResume,
       // latest selected_at) for (tenant, talent, requisition). REQUIRE it — there
       // is NO automatic Talent-default fallback (the default is only a suggestion,
@@ -303,7 +303,7 @@ export class SubmitTalentToClientService {
       if (resume_edition_id === undefined) {
         throw err(
           'SUBMITTAL_RESUME_SELECTION_REQUIRED',
-          'A résumé edition must be explicitly selected for this requisition before submitting to the client',
+          'A resume edition must be explicitly selected for this requisition before submitting to the client',
           422,
           { submittal_id, requisition_id },
         );
@@ -481,7 +481,7 @@ export class SubmitTalentToClientService {
       }
 
       // 6 — authoritative submittal write: submitted_to_client + confirmed_at + the
-      // FROZEN résumé-edition snapshot (TI-1D-D) + SW-2 immutable submittal provenance
+      // FROZEN resume-edition snapshot (TI-1D-D) + SW-2 immutable submittal provenance
       // (who/when/how + frozen client-facing rate + external ref/time) + event + outbox
       // + usage. The provenance columns are pinned ONCE here and frozen by the trigger.
       await tx.$executeRawUnsafe(

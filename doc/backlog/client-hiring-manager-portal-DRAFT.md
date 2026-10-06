@@ -67,7 +67,7 @@ Potential client/hiring-manager capabilities may include:
 
 - view assigned requisitions
 - view submitted talent
-- review résumé/profile
+- review resume/profile
 - provide structured feedback
 - accept/reject submittal
 - request interview
@@ -262,7 +262,7 @@ Do not expose internal sourcing/pipeline mechanics unnecessarily.
 Potential review surface:
 
 - talent summary
-- résumé
+- resume
 - submitted role fit/context
 - authorized documents
 - interview history if applicable

@@ -1137,7 +1137,7 @@ paths:
         ready_for_review -> submitted_to_client and FREEZES the immutable V1 submittal
         provenance (submitted_by_actor_id, submitted_at, delivery_channel, the
         client-facing bill-rate snapshot when the requisition carries one, and the
-        optional external reference/timestamp) alongside the frozen résumé edition.
+        optional external reference/timestamp) alongside the frozen resume edition.
         `submitted_to_client` is the authoritative business fact; delivery_channel and
         the external reference are provenance OF that fact.
 
@@ -2877,7 +2877,7 @@ paths:
         eligible explicit assertions (future-dated and expired assertions are
         excluded; the most-recently-asserted eligible one wins) — NOT simply the
         latest DB row; it is null when no eligible assertion exists. Work
-        authorization is NEVER inferred from résumé content — only explicit
+        authorization is NEVER inferred from resume content — only explicit
         recruiter statements create assertions. The coarse
         TalentRecord.work_authorization scalar remains the operational projection;
         this surface exposes the richer governed evidence + retained history.
@@ -2907,10 +2907,10 @@ paths:
   /v1/pipelines/{id}/resume-edition:
     get:
       operationId: getPipelineResumeEdition
-      summary: The Requisition-context résumé selection for a pipeline (TI-1D-D).
+      summary: The Requisition-context resume selection for a pipeline (TI-1D-D).
       description: |
         Resolve, through the Pipeline aggregate (tenant + talent_record + requisition),
-        the EXPLICIT working résumé selection for this Talent×requisition. The newest
+        the EXPLICIT working resume selection for this Talent×requisition. The newest
         edition is NOT the sole truth and the Talent-global default is a SUGGESTION
         only — never authoritative for a requisition. Returns the current selection
         (null when the recruiter has never selected), the default marker, and the
@@ -2925,7 +2925,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The Requisition-context résumé-selection state.
+          description: The Requisition-context resume-selection state.
           content:
             application/json:
               schema:
@@ -2940,9 +2940,9 @@ paths:
         - BearerAuth: []
     put:
       operationId: setPipelineResumeEdition
-      summary: Set the Requisition-context résumé selection (TI-1D-D).
+      summary: Set the Requisition-context resume selection (TI-1D-D).
       description: |
-        Explicitly select the résumé edition to present for this Talent×requisition.
+        Explicitly select the resume edition to present for this Talent×requisition.
         Appends a new append-only working-selection row — NEVER mutates a prior
         selection (the full selection history is preserved). The chosen edition must
         belong to the pipeline's Talent (else 404) and be lifecycle=active (else 422);
@@ -2965,7 +2965,7 @@ paths:
               $ref: '#/components/schemas/SetPipelineResumeEditionRequest'
       responses:
         '200':
-          description: The updated Requisition-context résumé-selection state.
+          description: The updated Requisition-context resume-selection state.
           content:
             application/json:
               schema:
@@ -2985,9 +2985,9 @@ paths:
   /v1/talent-records/{id}/resume-editions:
     get:
       operationId: listTalentResumeEditions
-      summary: The résumé editions for a talent (TALENT-INTEL-1 TI-1D-C).
+      summary: The resume editions for a talent (TALENT-INTEL-1 TI-1D-C).
       description: |
-        A talent may hold MULTIPLE simultaneously-valid résumé editions; the newest
+        A talent may hold MULTIPLE simultaneously-valid resume editions; the newest
         is NOT the sole truth. Each row carries its control identity plus its
         TalentDocument metadata (filename / mime_type / uploaded_at are PROJECTED
         from the mandatory TalentDocument, never stored on the edition) and the
@@ -3002,7 +3002,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The résumé-edition collection.
+          description: The resume-edition collection.
           content:
             application/json:
               schema:
@@ -3017,9 +3017,9 @@ paths:
         - BearerAuth: []
     post:
       operationId: createTalentResumeEdition
-      summary: Ingest a new résumé edition from an owned attachment (TI-1D-C).
+      summary: Ingest a new resume edition from an owned attachment (TI-1D-C).
       description: |
-        Create a new résumé edition for an existing talent from an OWNED résumé
+        Create a new resume edition for an existing talent from an OWNED resume
         attachment. The server owns authorization, extraction, content hashing,
         TalentDocument creation, and edition creation — NO raw storage key is
         accepted. This does NOT author work-history/skill evidence (that stays the
@@ -3040,7 +3040,7 @@ paths:
               $ref: '#/components/schemas/CreateTalentResumeEditionRequest'
       responses:
         '201':
-          description: The created résumé edition.
+          description: The created resume edition.
           content:
             application/json:
               schema:
@@ -3058,9 +3058,9 @@ paths:
   /v1/talent-records/{id}/resume-editions/{editionId}/text:
     get:
       operationId: getTalentResumeEditionText
-      summary: The redacted résumé text for a specific edition (TI-1H §9).
+      summary: The redacted resume text for a specific edition (TI-1H §9).
       description: |
-        Return the REDACTED résumé text belonging to ONE résumé edition (preview).
+        Return the REDACTED resume text belonging to ONE resume edition (preview).
         Reading edition R returns R's own text — a newer edition never overwrites
         or shadows an older edition's text (TALENT-INTEL-1 TI-1H edition-aware
         history). Only redacted text is exposed (SSN-shaped patterns removed at
@@ -3081,7 +3081,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The edition's redacted résumé text.
+          description: The edition's redacted resume text.
           content:
             application/json:
               schema:
@@ -3097,9 +3097,9 @@ paths:
   /v1/talent-records/{id}/resume-editions/default:
     put:
       operationId: setTalentResumeEditionDefault
-      summary: Explicitly set the talent's default résumé edition (TI-1D-C).
+      summary: Explicitly set the talent's default resume edition (TI-1D-C).
       description: |
-        Move the talent's default/presentation résumé edition. The default never
+        Move the talent's default/presentation resume edition. The default never
         changes automatically (no latest==default); this is the only way it moves.
         Returns the full edition collection with the updated default marker. Gated:
         capability ats + scope talent:edit.
@@ -3118,7 +3118,7 @@ paths:
               $ref: '#/components/schemas/SetTalentResumeEditionDefaultRequest'
       responses:
         '200':
-          description: The résumé-edition collection with the updated default.
+          description: The resume-edition collection with the updated default.
           content:
             application/json:
               schema:
@@ -3134,9 +3134,9 @@ paths:
   /v1/talent-records/{id}/resume-editions/{editionId}/confirm:
     post:
       operationId: confirmTalentResumeEdition
-      summary: Confirm a reviewed résumé edition — promote accepted facts (TI-1F-B).
+      summary: Confirm a reviewed resume edition — promote accepted facts (TI-1F-B).
       description: |
-        Human-governed CONFIRM of the résumé extraction under review for this
+        Human-governed CONFIRM of the resume extraction under review for this
         edition. Atomically promotes the accepted draft facts to typed Talent
         evidence (work history, skills, education, certifications) anchored on the
         source document, marks the extraction draft ACCEPTED, and PRESERVES all
@@ -3158,7 +3158,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The reviewed résumé edition (processing_status now ACCEPTED).
+          description: The reviewed resume edition (processing_status now ACCEPTED).
           content:
             application/json:
               schema:
@@ -3178,9 +3178,9 @@ paths:
   /v1/talent-records/{id}/resume-editions/{editionId}/reject:
     post:
       operationId: rejectTalentResumeEdition
-      summary: Reject a reviewed résumé edition — no evidence promoted (TI-1F-B).
+      summary: Reject a reviewed resume edition — no evidence promoted (TI-1F-B).
       description: |
-        Human-governed REJECT of the résumé extraction under review for this
+        Human-governed REJECT of the resume extraction under review for this
         edition. No typed evidence is created and no reconciliation is triggered;
         the extraction draft is retained as review/audit history (status REJECTED).
         409 when the extraction is not (or no longer) ready for review. Gated:
@@ -3200,7 +3200,7 @@ paths:
             format: uuid
       responses:
         '200':
-          description: The reviewed résumé edition (processing_status now REJECTED).
+          description: The reviewed resume edition (processing_status now REJECTED).
           content:
             application/json:
               schema:
@@ -6824,7 +6824,7 @@ paths:
       summary: Mint a short-lived presigned URL to view/download an attachment.
       description: >-
         Returns a short-lived, expiry-capped presigned GET URL for the stored
-        file behind an attachment (e.g. a résumé), so an authorized recruiter can
+        file behind an attachment (e.g. a resume), so an authorized recruiter can
         view or download it. Tenant-scoped: a 404 is returned when the attachment
         is not in the caller's tenant. Requires the `ats` capability and the
         `attachment:read` scope. The URL is signed server-side; the object-storage
@@ -7471,7 +7471,7 @@ components:
           enum: [exact, lexical, semantic]
         field: { type: string }
         relevance: { type: number }
-    # ── TALENT-INTEL-1 TI-1D-C — résumé editions ──
+    # ── TALENT-INTEL-1 TI-1D-C — resume editions ──
     PipelineResumeEditionAvailable:
       type: object
       additionalProperties: false
@@ -7623,7 +7623,7 @@ components:
       type: object
       additionalProperties: false
       description: >-
-        TALENT-INTEL-1 TI-1H §9 — the REDACTED résumé text for ONE edition
+        TALENT-INTEL-1 TI-1H §9 — the REDACTED resume text for ONE edition
         (preview). redacted_text is null while the async re-extract is pending
         (status carries the lifecycle). Only redacted text is ever returned.
       required: [talent_id, edition_id, status, redacted_text, extracted_at]
@@ -8179,7 +8179,7 @@ components:
     BoardResume:
       type: object
       additionalProperties: false
-      description: The requisition-specific résumé linkage — working selection pre-submit, frozen submitted edition post-submit; never the Talent's latest résumé.
+      description: The requisition-specific resume linkage — working selection pre-submit, frozen submitted edition post-submit; never the Talent's latest resume.
       required: [resume_edition_id, source, locked]
       properties:
         resume_edition_id: { type: [string, 'null'], format: uuid }

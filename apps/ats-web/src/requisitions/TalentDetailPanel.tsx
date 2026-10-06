@@ -397,10 +397,10 @@ export function TalentDetailPanel({
             />
           </section>
 
-          {/* TI-1D-D — Résumé selection for THIS requisition. Distinguishes the
+          {/* TI-1D-D — Resume selection for THIS requisition. Distinguishes the
               explicit working selection from the Talent-global default (a
               suggestion only) and the editions available to select. Preview is
-              inert (never binds); only "Use this résumé" issues the governed PUT
+              inert (never binds); only "Use this resume" issues the governed PUT
               (pipeline:resume:set). The send-time freeze stays owned by submittal. */}
           <ResumeSelectionSection
             pipelineId={entry.id}

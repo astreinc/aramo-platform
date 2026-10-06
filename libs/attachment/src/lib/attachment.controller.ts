@@ -59,7 +59,7 @@ export class AttachmentController {
   constructor(
     private readonly repo: AttachmentRepository,
     private readonly objectStorage: ObjectStorageService,
-    // Search PR-2 — the résumé-text re-extract enqueue. attachment →
+    // Search PR-2 — the resume-text re-extract enqueue. attachment →
     // talent-record is the EXISTING directional edge (validateOwner); pushing
     // the reindex signal here (rather than talent-record polling attachment)
     // keeps that direction and avoids a cycle.
@@ -125,7 +125,7 @@ export class AttachmentController {
   }
 
   // B6 — a short-lived presigned GET so a recruiter can view/download the
-  // stored file (résumé). Reuses the existing object-storage presigned-GET
+  // stored file (resume). Reuses the existing object-storage presigned-GET
   // surface (signs locally; expiry-capped). Tenant-scoped lookup first → 404
   // if the attachment isn't in the caller's tenant; only then a URL is minted.
   @Get(':id/download-url')
@@ -174,7 +174,7 @@ export class AttachmentController {
     // A8-3b — Option A orphan-sweep coordination. On successful
     // is_resume=true attach, clear the `lifecycle=orphan-pending` tag
     // baked into the presigned PUT URL at upload time so the S3
-    // lifecycle Rule 5 does not sweep this committed résumé.
+    // lifecycle Rule 5 does not sweep this committed resume.
     //
     // Failure semantics: the tag-clear is NOT transactional with the
     // Attachment row. If it fails, the row is still valid (correctly
@@ -196,8 +196,8 @@ export class AttachmentController {
         );
       }
 
-      // Search PR-2 (Ruling R1) — enqueue the async résumé-text re-extract.
-      // THIS is the post-create seam: the résumé Attachment has just bound to
+      // Search PR-2 (Ruling R1) — enqueue the async resume-text re-extract.
+      // THIS is the post-create seam: the resume Attachment has just bound to
       // its TalentRecord (owner_type='talent', owner_id=talent_record_id), so
       // we key the reindex to the real talent_record_id. A single fast upsert
       // (no S3 fetch here — the worker does that asynchronously). Best-effort,

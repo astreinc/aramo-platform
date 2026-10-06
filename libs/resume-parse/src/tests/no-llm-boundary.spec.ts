@@ -13,7 +13,7 @@ import {
 // ADR-0015 Decision 10 (Scope of AI consumption): AI/LLM provider
 // consumption is confined to libs/ai-draft and its declared consumers.
 // New substrate surfaces -- libs/import column-mapping (A8-2),
-// libs/resume-parse résumé parse (A8-3b), and any future parse/inference
+// libs/resume-parse resume parse (A8-3b), and any future parse/inference
 // surfaces -- MUST use deterministic heuristics, NOT LLM calls.
 //
 // The assertion: no file in libs/resume-parse imports or names
@@ -23,7 +23,7 @@ import {
 // and the libs/import twin share one source of truth -- they cannot
 // drift.
 //
-// If a future PR genuinely needs LLM-assisted résumé parsing, it
+// If a future PR genuinely needs LLM-assisted resume parsing, it
 // amends ADR-0015 (revising Decision 10) and updates this spec
 // deliberately. Until then, this spec is the structural guard.
 

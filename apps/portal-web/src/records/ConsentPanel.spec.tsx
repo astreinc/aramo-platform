@@ -68,7 +68,7 @@ const TEXT: PortalConsentText = {
     { scope: 'matching', text: 'I authorize matching text.' },
     { scope: 'contacting', text: 'I authorize contacting text.' },
     { scope: 'profile_storage', text: 'I authorize profile storage text.' },
-    { scope: 'resume_processing', text: 'I authorize résumé processing text.' },
+    { scope: 'resume_processing', text: 'I authorize resume processing text.' },
     {
       scope: 'cross_tenant_visibility',
       text: 'I authorize cross-tenant visibility text.',

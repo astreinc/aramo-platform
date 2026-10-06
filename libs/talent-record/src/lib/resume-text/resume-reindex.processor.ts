@@ -9,7 +9,7 @@ import {
   RESUME_REINDEX_QUEUE_NAME,
 } from './resume-reindex.queue.constants.js';
 
-// Search PR-2 — the résumé re-extract tick worker. Drains `pending`
+// Search PR-2 — the resume re-extract tick worker. Drains `pending`
 // talent_resume_text rows (the polling-outbox signal) via
 // ResumeTextService.drainPendingBatch on each BullMQ repeat tick.
 //

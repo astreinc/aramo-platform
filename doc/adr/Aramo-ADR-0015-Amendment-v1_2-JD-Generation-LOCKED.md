@@ -23,7 +23,7 @@ AI/LLM provider consumption remains confined to `libs/ai-draft` and its **declar
 1. **Engagement outreach** (existing) — `libs/engagement` → `AiDraftService.generateDraft()`.
 2. **(NEW) Job-description & Golden-Profile generation** — `libs/requisition` (and/or a `libs/job-domain` generation surface) → `AiDraftService` for JD prose + structured GoldenProfile extraction from a recruiter brief.
 
-All other parse/inference surfaces MUST continue to use deterministic heuristics, NOT LLM calls (résumé parse, skill inference, matching analysis remain deterministic — unchanged). Any *further* surface beyond these two declared consumers requires a further Decision 10 amendment.
+All other parse/inference surfaces MUST continue to use deterministic heuristics, NOT LLM calls (resume parse, skill inference, matching analysis remain deterministic — unchanged). Any *further* surface beyond these two declared consumers requires a further Decision 10 amendment.
 
 The no-llm-boundary specs are updated to permit the new declared consumer's import path and to continue rejecting LLM imports everywhere else.
 
@@ -44,7 +44,7 @@ Nothing AI-generated is committed to the canonical Requisition/GoldenProfile wit
 
 **G5 — PII redaction (Decision 6) + no raw prompt/completion in logs (Decision 7) STILL APPLY.** Unchanged. The brief is redacted of PII before the LLM call per Decision 6; neither the prompt nor the completion is logged raw per Decision 7.
 
-**G6 — Deterministic surfaces stay deterministic.** This amendment authorizes LLM use ONLY for JD prose + GoldenProfile *generation from a brief*. It does NOT authorize LLM use in matching, examination, résumé parse, or skill inference — those remain deterministic per Decision 10. The GoldenProfile, once generated and confirmed, is consumed by the deterministic matching engine; the LLM does not participate in matching.
+**G6 — Deterministic surfaces stay deterministic.** This amendment authorizes LLM use ONLY for JD prose + GoldenProfile *generation from a brief*. It does NOT authorize LLM use in matching, examination, resume parse, or skill inference — those remain deterministic per Decision 10. The GoldenProfile, once generated and confirmed, is consumed by the deterministic matching engine; the LLM does not participate in matching.
 
 **G7 — Model reference.** Reuse the existing `libs/ai-draft` provider/model configuration (`AiDraftService`); this amendment does not introduce a new provider, model string, or API key.
 
@@ -52,7 +52,7 @@ Nothing AI-generated is committed to the canonical Requisition/GoldenProfile wit
 
 ## Enforcement
 
-- The `no-llm-boundary` specs are extended to permit the JD-generation consumer's declared import path and to keep rejecting LLM imports in all non-declared surfaces (matching/examination/résumé/skills remain LLM-free, asserted).
+- The `no-llm-boundary` specs are extended to permit the JD-generation consumer's declared import path and to keep rejecting LLM imports in all non-declared surfaces (matching/examination/resume/skills remain LLM-free, asserted).
 - A spec asserts **G4**: the generation prompt construction excludes commercial/notes fields (the allowlist is positively tested — a commercial field added to the Requisition does not leak into the prompt).
 - G1/G2 are proven by the draft→confirm endpoint tests (draft persists without committing; confirm requires a valid draft event reference).
 
@@ -66,4 +66,4 @@ Nothing AI-generated is committed to the canonical Requisition/GoldenProfile wit
 
 ---
 
-*End of ADR-0015 Amendment v1.2. Adds JD & GoldenProfile generation as the 2nd declared `libs/ai-draft` consumer, governed by draft→confirm + idempotency + audit (mirroring outreach), NO consent gate (no external recipient), and a binding constraint that commercial/financial data + internal notes are NEVER sent to the LLM (G4 — prompt built from a role-content allowlist). PII-redaction (D6) + no-raw-prompt-logging (D7) still apply; matching/examination/résumé/skills stay deterministic (G6). PREREQUISITE to the Job-module PR — must be ratified before the LLM code is legal (no-llm-boundary specs enforce it). BA files; filing = ratification (PL-76).*
+*End of ADR-0015 Amendment v1.2. Adds JD & GoldenProfile generation as the 2nd declared `libs/ai-draft` consumer, governed by draft→confirm + idempotency + audit (mirroring outreach), NO consent gate (no external recipient), and a binding constraint that commercial/financial data + internal notes are NEVER sent to the LLM (G4 — prompt built from a role-content allowlist). PII-redaction (D6) + no-raw-prompt-logging (D7) still apply; matching/examination/resume/skills stay deterministic (G6). PREREQUISITE to the Job-module PR — must be ratified before the LLM code is legal (no-llm-boundary specs enforce it). BA files; filing = ratification (PL-76).*

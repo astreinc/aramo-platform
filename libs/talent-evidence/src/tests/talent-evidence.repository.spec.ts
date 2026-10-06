@@ -50,7 +50,7 @@ describe('TalentEvidenceRepository — surface', () => {
     'updateDerivedSnapshotCanonicalYears',
   ];
 
-  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A/TI-1D-C résumé-edition methods', () => {
+  it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A/TI-1D-C resume-edition methods', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
       .sort();
@@ -79,7 +79,7 @@ describe('TalentEvidenceRepository — surface', () => {
         'findTalentSkillEvidenceByTalent',
         'countTalentSkillEvidenceByTalent',
         // Talent-detail work-history read (LOCKED scope expansion — Add-Talent
-        // Governed-LLM extraction; declared 'from résumé' rows for display).
+        // Governed-LLM extraction; declared 'from resume' rows for display).
         'findWorkHistoryByTalent',
         // Enterprise Search GS-2A — authoritative work-history for the PII-min semantic projection.
         'findAuthoritativeWorkHistoryForEmbedding',
@@ -106,7 +106,7 @@ describe('TalentEvidenceRepository — surface', () => {
         'findProjectExperienceByTalent',
         // TALENT-INTEL-1 TI-1G §3 — full work-auth assertion history read (by-talent).
         'findWorkAuthorizationByTalent',
-        // TALENT-INTEL-1 (TI-1A §5) — résumé-edition substrate: the edition
+        // TALENT-INTEL-1 (TI-1A §5) — resume-edition substrate: the edition
         // companion to TalentDocument (create + by-id + by-talent list) and the
         // separate default/presentation selection (upsert + find).
         'createTalentResumeEdition',

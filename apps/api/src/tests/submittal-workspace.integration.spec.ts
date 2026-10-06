@@ -81,7 +81,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // node-pg handles multi-statement + dollar-quoted bodies natively.
       for (const f of migrationFiles()) await setup.query(readFileSync(f, 'utf8'));
       await applyPipelineSchema((s) => setup.query(s), ROOT);
-      // The working-résumé-selection table lives in the pipeline schema, in a separate
+      // The working-resume-selection table lives in the pipeline schema, in a separate
       // migration from the live-episode set the SW-1 fixture applies.
       await setup.query(
         readFileSync(resolve(ROOT, 'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql'), 'utf8'),
@@ -89,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Seed a fully-ready submittal + its context (raw; the INSERT bypasses the
       // BEFORE-UPDATE immutability trigger). Requisition open + bill rate; talent;
-      // company; a LIVE pipeline episode; a working résumé selection.
+      // company; a LIVE pipeline episode; a working resume selection.
       await setup.query(
         `INSERT INTO company."Company" (id,tenant_id,name) VALUES ($1,$2,'Freddie Mac')`,
         [COMPANY, TENANT],

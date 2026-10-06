@@ -1,5 +1,5 @@
--- Search PR-2 — résumé full-text persistence + index (the talent_resume_text
--- table). Authorized by the ADR-0015 Addendum (Résumé-Text-Persistence).
+-- Search PR-2 — resume full-text persistence + index (the talent_resume_text
+-- table). Authorized by the ADR-0015 Addendum (Resume-Text-Persistence).
 -- Lead rulings: R2 (redact SSN-shaped at persist — enforced in the service,
 -- only redacted text reaches this table) · R3 (generated tsvector + GIN,
 -- websearch_to_tsquery at query time) · R5 (DB onDelete CASCADE — same-schema
@@ -12,7 +12,7 @@
 -- free). full-text search is CORE Postgres — NO extension needed (unlike
 -- PR-1's pg_trgm). Mirrors PR-1's hand-authored-migration substrate norm.
 
--- The dedicated résumé-text table (PII-isolation model — NOT a column on
+-- The dedicated resume-text table (PII-isolation model — NOT a column on
 -- TalentRecord). 1:1-latest via the UNIQUE talent_record_id.
 CREATE TABLE "talent_record"."talent_resume_text" (
     "id"               UUID NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE "talent_record"."talent_resume_text" (
     CONSTRAINT "talent_resume_text_pkey" PRIMARY KEY ("id")
 );
 
--- 1:1-latest: one résumé-text row per talent record (re-attach upserts).
+-- 1:1-latest: one resume-text row per talent record (re-attach upserts).
 CREATE UNIQUE INDEX "talent_resume_text_talent_record_id_key"
     ON "talent_record"."talent_resume_text" ("talent_record_id");
 
@@ -40,7 +40,7 @@ CREATE INDEX "talent_resume_text_status_idx"
     ON "talent_record"."talent_resume_text" ("status");
 
 -- R5 — the D1 purge-on-delete cascade. Same-schema FK with ON DELETE
--- CASCADE: deleting a TalentRecord drops its résumé-text row (and, with the
+-- CASCADE: deleting a TalentRecord drops its resume-text row (and, with the
 -- row, its tsvector GIN entry). DB-ENFORCED — cannot be bypassed by any
 -- future delete code path. This is the load-bearing self-cleaning guarantee.
 ALTER TABLE "talent_record"."talent_resume_text"

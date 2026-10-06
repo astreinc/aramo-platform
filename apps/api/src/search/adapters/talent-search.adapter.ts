@@ -19,7 +19,7 @@ import { EmbeddingProcessingConfig } from '../../embedding/embedding-processing.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Per-leg base relevance. Exact-identifier hits sit above every lexical hit (directive
-// §6/§18); within the lexical tier a name match outranks a résumé-body match. The tiny
+// §6/§18); within the lexical tier a name match outranks a resume-body match. The tiny
 // per-position decrement preserves each leg's own source order deterministically through
 // the orchestrator's relevance-desc sort without relying on sort stability. limit <= 50,
 // so the decrements never let one leg's band cross into another's. Semantic relevance
@@ -36,7 +36,7 @@ const SIGNAL_RANK: Record<SearchMatchSignal, number> = { exact: 0, lexical: 1, s
 // Enterprise Search (GS-1 + GS-2A) — the Talent adapter. Owns Talent's authorized retrieval and
 // maps rows to lean SearchHits; the orchestrator owns cross-cutting policy. Talent is pool-open,
 // so "authority" is tenant + optional site (no per-record visibility resolver); every leg —
-// exact-email, name, résumé FTS, and the GS-2A semantic vector leg — is bound to that same
+// exact-email, name, resume FTS, and the GS-2A semantic vector leg — is bound to that same
 // contract by the repository / the visibility-co-located vector SQL, so no leg widens authority
 // (watch-point 1). A record matched by more than one leg collapses to exactly one hit, keeping the
 // strongest signal (watch-point 2).
@@ -75,7 +75,7 @@ export class TalentSearchAdapter implements SearchEntityAdapter {
 
     // Deterministic dedupe — ONE hit per TalentRecord. A record matched by multiple legs keeps the
     // highest-precedence signal (exact > lexical > semantic) and that signal's relevance; ties
-    // within a signal take the max relevance. A résumé-leg snippet is preserved.
+    // within a signal take the max relevance. A resume-leg snippet is preserved.
     const byId = new Map<string, SearchHit>();
     const merge = (
       row: TalentRecordView,

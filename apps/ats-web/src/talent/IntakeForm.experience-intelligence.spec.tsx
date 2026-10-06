@@ -6,7 +6,7 @@ import { emptyIntakeState } from './intake-fields';
 import type { CertificationDraft, EducationDraft, WorkHistoryDraft } from './types';
 
 // HF2 §29 — the recruiter review surface: a concise experience preview + the
-// optionally-expandable "skills used" / "projects / context", and the résumé-
+// optionally-expandable "skills used" / "projects / context", and the resume-
 // derived education + certifications review. Read-only intelligence; the review
 // optimizes for the recruiter (not an atomic-claim editor).
 
@@ -66,7 +66,7 @@ describe('IntakeForm — HF2 Experience Intelligence review (§29)', () => {
     expect(screen.queryByText(/Projects \/ context/)).not.toBeInTheDocument();
   });
 
-  it('renders résumé-derived education + certifications read-only (FROM RESUME)', () => {
+  it('renders resume-derived education + certifications read-only (FROM RESUME)', () => {
     renderForm({
       workHistory: [],
       education: [

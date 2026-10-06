@@ -34,14 +34,14 @@ export type QualifiedBand = 'ready_to_submit' | 'needs_action';
 export interface BoardReadiness {
   readonly requisition_state: 'open' | 'paused' | 'closed';
   readonly requisition_reason: string | null; // deadline_passed | limit_reached | manual_hold | paused
-  // Per-card recruiting-fact blockers already available on main (résumé selected,
+  // Per-card recruiting-fact blockers already available on main (resume selected,
   // RTR executed). The FULL per-talent policy gate is re-grounded at TB-4.
   readonly blockers: readonly string[];
   readonly band: QualifiedBand | null; // set only for cards in the `qualified` column
 }
 
-// The requisition-specific résumé (§13) — the working selection pre-submit, the
-// frozen submitted edition post-submit. Never the Talent's latest résumé.
+// The requisition-specific resume (§13) — the working selection pre-submit, the
+// frozen submitted edition post-submit. Never the Talent's latest resume.
 export interface BoardResume {
   readonly resume_edition_id: string | null;
   readonly source: 'working_selection' | 'submitted_frozen' | 'none';

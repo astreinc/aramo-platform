@@ -130,7 +130,7 @@ export class ObjectStorageService {
   /**
    * SRC-1 PR-2 (R13.1/R13.3) — server-side ingestion object write.
    *
-   * The résumé surface above is presigned (the browser PUTs bytes). A webhook
+   * The resume surface above is presigned (the browser PUTs bytes). A webhook
    * arrival ORIGINATES the bytes server-side (Indeed POSTs the full signed
    * payload — there is no browser and no prior presigned upload), so this method
    * performs the PUT itself with the platform's existing S3 client + credentials
@@ -203,7 +203,7 @@ export class ObjectStorageService {
     // SRC-2 R11.1 (D-SRC1-STORAGEREF-1) — storage_ref is the BARE S3 key, the
     // single platform-wide meaning: exactly the key the presigned-GET path
     // (createPresignedGet → GetObjectCommand.Key) consumes, matching the A8-3b
-    // résumé convention (Attachment.storage_key). SRC-1 PR-2 returned an
+    // resume convention (Attachment.storage_key). SRC-1 PR-2 returned an
     // `s3://bucket/key` URL, which the reader mis-keyed → 404; that was the
     // latent defect this fix closes. No `s3://` scheme, no bucket, in a stored ref.
     return { storage_ref: storage_key, sha256 };
@@ -428,7 +428,7 @@ export class ObjectStorageService {
   }
 
   /**
-   * A8-3b — clear the orphan-pending tag on a résumé object after the
+   * A8-3b — clear the orphan-pending tag on a resume object after the
    * Attachment row is committed. AttachmentService calls this from its
    * create path when is_resume=true, the post-DB-commit step.
    *

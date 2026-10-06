@@ -26,7 +26,7 @@ import {
 
 const SCOPE_LABELS: Record<ConsentScope, string> = {
   profile_storage: 'Store my profile',
-  resume_processing: 'Process my résumé',
+  resume_processing: 'Process my resume',
   matching: 'Match me to opportunities',
   contacting: 'Contact me about opportunities',
   cross_tenant_visibility: 'Share my profile beyond this organization',

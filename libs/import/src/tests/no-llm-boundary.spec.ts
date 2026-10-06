@@ -12,7 +12,7 @@ import {
 // ADR-0015 Decision 10 (Scope of AI consumption, added at A8-3b): AI/LLM
 // provider consumption is confined to libs/ai-draft and its declared
 // consumers. New substrate surfaces -- import column-mapping (A8-2),
-// résumé parse (A8-3b), and any future parse/inference surfaces -- MUST
+// resume parse (A8-3b), and any future parse/inference surfaces -- MUST
 // use deterministic heuristics. An LLM in any of these surfaces is a NEW
 // AI-consumption surface requiring an explicit ADR amendment.
 //

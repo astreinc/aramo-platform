@@ -1,9 +1,9 @@
-# Amendment Request — ADR-0015 Decision 6: scoped email/phone exception for governed résumé-draft extraction
+# Amendment Request — ADR-0015 Decision 6: scoped email/phone exception for governed resume-draft extraction
 
 **Type:** Request for a LOCKED Architect amendment (PO → Architect relay).
 **Requested by:** PO (Purush), 2026-09-11.
 **Decision on the table (PO-selected):** In `resume.extraction_mode = governed_llm`, the
-governed LLM must be the **sole** résumé extractor for **all** supported Add-Talent fields,
+governed LLM must be the **sole** resume extractor for **all** supported Add-Talent fields,
 **including email and phone**. This requires amending ADR-0015 Decision 6 (PII redaction) so
 email/phone can reach the model on this one path.
 **Executor status:** Building everything else now; the **email/phone-through-model** piece is
@@ -32,7 +32,7 @@ which the closed redaction forbids. Hence the amendment.
 1. A **scoped, opt-in redaction policy** on `AiDraftService.generateDraft`: a per-call option
    (default OFF = today's full redaction, backward-compatible) that **exempts EMAIL and PHONE
    only** — **SSN, credit-card, and ABA routing stay redacted always**.
-2. The exemption is invocable **only** by the governed résumé-draft extraction consumer
+2. The exemption is invocable **only** by the governed resume-draft extraction consumer
    (`talent-extraction.extractResumeDraft`), for the purpose of populating Add-Talent contact
    anchors the recruiter then reviews. No other consumer may set it.
 3. **Compensating controls (keep the audit posture, §17/§18):**
@@ -48,7 +48,7 @@ which the closed redaction forbids. Hence the amendment.
 
 - `redactPii(text, { exemptKinds?: ('EMAIL'|'PHONE')[] })` — default exempts nothing (identical
   to today). `generateDraft` gains an optional `redaction_policy` passed through only when the
-  résumé-draft consumer sets it.
+  resume-draft consumer sets it.
 - `extractResumeDraft` prompt/DTO gains a **contact group** (`email`, `phone` with
   `source_excerpt`); post-model deterministic **validators** verify email syntax + normalize
   phone + confirm the excerpt exists (validation, not a second extractor).

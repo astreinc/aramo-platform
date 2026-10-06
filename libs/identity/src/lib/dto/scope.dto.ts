@@ -106,7 +106,7 @@ export const SEED_SCOPE_KEYS = [
   'esign:envelope:create',      // esign_sender+ (upload PDF, place fields, create envelope)
   'esign:envelope:send',        // esign_sender+ (dispatch an envelope for signature)
   'pipeline:read',              // recruiter+
-  // TI-1D-D — set the Requisition-context résumé selection (PUT
+  // TI-1D-D — set the Requisition-context resume selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT
   // grant to the four pipeline:change-status holders (recruiter, account_manager,
   // tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES — NOT a reuse of

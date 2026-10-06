@@ -88,7 +88,7 @@ export function TalentCreateView() {
   // Governed-LLM extraction warning (non-blocking) — set when the tenant is on
   // governed_llm and the LLM could not run/produce (§15).
   const [parseWarning, setParseWarning] = useState<string | null>(null);
-  // Reviewable work-history (governed_llm) — extracted 'from résumé', recruiter-
+  // Reviewable work-history (governed_llm) — extracted 'from resume', recruiter-
   // editable, persisted at create as TalentWorkHistoryEntry (source='resume').
   const [workHistory, setWorkHistory] = useState<WorkHistoryDraft[]>([]);
   // HF1 Gate-6 — structured skills + source_refs and the corpus provenance
@@ -106,7 +106,7 @@ export function TalentCreateView() {
     resume_text_hash?: string;
   }>({});
   // TI-1F-C — the durable ResumeExtractionDraft id from the parse (the Confirm-
-  // Create authority; null when the résumé path was not used / no draft persisted).
+  // Create authority; null when the resume path was not used / no draft persisted).
   const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -285,7 +285,7 @@ export function TalentCreateView() {
   const phoneOk = fields.phone_cell.trim() !== '';
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
-  // Work authorization + desired rate are OPTIONAL (PO ruling): the résumé often
+  // Work authorization + desired rate are OPTIONAL (PO ruling): the resume often
   // does not state them, and they are captured later on the Talent record. They
   // are NOT part of the create gate or the required checklist.
   const resumeOk = resume.storage_key !== undefined;
@@ -305,8 +305,8 @@ export function TalentCreateView() {
     setSubmitError(null);
     setAttachWarning(null);
 
-    // HF1 Gate-6 — the résumé document + corpus provenance, carried into the
-    // create request so the BE creates the résumé TalentDocument AFTER confirmed
+    // HF1 Gate-6 — the resume document + corpus provenance, carried into the
+    // create request so the BE creates the resume TalentDocument AFTER confirmed
     // creation and stamps durable provenance onto the persisted evidence.
     const resumeDocument =
       resume.file !== undefined && resume.storage_key !== undefined
@@ -505,9 +505,9 @@ export function TalentCreateView() {
             />
             <p className="rc-secnote">
               Work authorization and desired rate are optional — capture them
-              later if the résumé doesn’t state them.
+              later if the resume doesn’t state them.
             </p>
-            {/* Résumé preview alongside the form so the recruiter can check the
+            {/* Resume preview alongside the form so the recruiter can check the
                 proposed values against the source while reviewing. Rendered from
                 the file already in memory (no server round-trip). */}
             {resume.file !== undefined ? (

@@ -8,7 +8,7 @@
 # ★ CLOSES THE RECON GAP (§G): prod had NO IAM app principal (staging had an
 # IAM user). Rather than copy the legacy IAM user, prod gets the
 # compute-native principals — per-service task EXECUTION + task ROLES — and
-# the api task role carries the résumé-bucket least-privilege policy
+# the api task role carries the resume-bucket least-privilege policy
 # directly (the migration the iam-app-principal README anticipated). So prod
 # now has app principals, of the better kind.
 #
@@ -142,7 +142,7 @@ module "ecs_service_api" {
   environment_variables = local.api_env
   secrets               = local.api_secrets
 
-  # The prod app principal (closes the recon gap): the résumé-bucket
+  # The prod app principal (closes the recon gap): the resume-bucket
   # least-privilege policy on the task role. TENANT-LLM-1 retired the platform
   # anthropic-api-key; per-tenant BYO keys live at
   # aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key and are read+written by

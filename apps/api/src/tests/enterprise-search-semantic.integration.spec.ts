@@ -157,7 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(hits.findIndex((h) => h.id === ADA)).toBeLessThan(hits.findIndex((h) => h.id === BOB));
     });
 
-    it('returns a pure-semantic match for a query that matches no name/email/résumé', async () => {
+    it('returns a pure-semantic match for a query that matches no name/email/resume', async () => {
       const hits = await talentHits('distributed systems platform', TENANT_A);
       // BOB (nearest) present with signal semantic; every returned hit is semantic (no lexical match).
       const bob = hits.find((h) => h.id === BOB);

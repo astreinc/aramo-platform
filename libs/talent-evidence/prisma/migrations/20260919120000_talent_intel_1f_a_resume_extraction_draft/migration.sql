@@ -1,4 +1,4 @@
--- TALENT-INTEL-1 (TI-1F-A) — the durable governed-résumé-extraction REVIEW
+-- TALENT-INTEL-1 (TI-1F-A) — the durable governed-resume-extraction REVIEW
 -- artifact. ADDITIVE ONLY: a new ResumeExtractionDraft table + two enums. It is
 -- pre-confirmation review state (NOT Talent truth, NOT accepted evidence — that
 -- is TI-1F-B confirm/promotion). No change to any existing evidence row, no

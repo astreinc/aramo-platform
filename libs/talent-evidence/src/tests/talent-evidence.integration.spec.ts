@@ -228,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(readWh?.source).toBe('resume');
     });
 
-    it('HF1: persists + reads back durable résumé provenance on WH + skill evidence (Gate-6 R1/R2/R8)', async () => {
+    it('HF1: persists + reads back durable resume provenance on WH + skill evidence (Gate-6 R1/R2/R8)', async () => {
       const wh = await repo.createTalentWorkHistoryEntry({
         id: '00000000-0000-7000-8000-0000000000fa',
         talent_id: TALENT,
@@ -494,7 +494,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(client['talentSelectionEvent']).toBeUndefined();
     });
 
-    it('TALENT-INTEL-1 §5 (TI-1A) — résumé editions coexist; default is separate; document_id is UNIQUE', async () => {
+    it('TALENT-INTEL-1 §5 (TI-1A) — resume editions coexist; default is separate; document_id is UNIQUE', async () => {
       const DOCA = '4a000000-0000-7000-8000-000000000001';
       const DOCB = '4b000000-0000-7000-8000-000000000002';
       const EDA = 'ed000000-0000-7000-8000-00000000000a';

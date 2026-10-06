@@ -3,13 +3,13 @@ import { Button } from '@aramo/fe-foundation';
 
 import { Icons } from '../ui';
 
-// Shared résumé preview panel used by BOTH Add-Talent (Create) and the full
-// profile Edit. Renders the résumé inline so the recruiter can validate the
+// Shared resume preview panel used by BOTH Add-Talent (Create) and the full
+// profile Edit. Renders the resume inline so the recruiter can validate the
 // form against the source. Two sources:
-//   • `file` — an in-memory File (Create, or a just-replaced résumé).
-//   • `src`  — a presigned GET URL (Edit: the résumé already stored on S3).
+//   • `file` — an in-memory File (Create, or a just-replaced resume).
+//   • `src`  — a presigned GET URL (Edit: the resume already stored on S3).
 // PDFs render in an <iframe>. DOCX is converted to HTML in the browser via a
-// lazy-loaded mammoth (no backend), so Word résumés preview too. Anything else
+// lazy-loaded mammoth (no backend), so Word resumes preview too. Anything else
 // shows a note. An Expand button opens a full-screen overlay.
 type DocxState = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -92,7 +92,7 @@ export function ResumePreview(props: {
 
   const body = ((): React.ReactNode => {
     if (isPdf && pdfUrl !== null) {
-      return <iframe className="rc-rpreview__frame" title="Résumé preview" src={pdfUrl} />;
+      return <iframe className="rc-rpreview__frame" title="Resume preview" src={pdfUrl} />;
     }
     if (isDocx) {
       if (docxState === 'ready' && docxHtml !== null) {
@@ -100,7 +100,7 @@ export function ResumePreview(props: {
           <div
             className="rc-rpreview__docx"
             // mammoth emits structural HTML (headings/paragraphs/tables/lists);
-            // no scripts. Source is the recruiter's own uploaded résumé.
+            // no scripts. Source is the recruiter's own uploaded resume.
             dangerouslySetInnerHTML={{ __html: docxHtml }}
           />
         );
@@ -108,27 +108,27 @@ export function ResumePreview(props: {
       if (docxState === 'error') {
         return (
           <p className="rc-secnote">
-            We couldn’t render this .docx inline — the attached résumé is saved
+            We couldn’t render this .docx inline — the attached resume is saved
             with the record and can be opened from Documents.
           </p>
         );
       }
-      return <p className="rc-secnote">Rendering résumé…</p>;
+      return <p className="rc-secnote">Rendering resume…</p>;
     }
     return (
       <p className="rc-secnote">
-        Inline preview isn’t available for a .{ext} file — the attached résumé is
+        Inline preview isn’t available for a .{ext} file — the attached resume is
         saved with the record and can be opened from Documents.
       </p>
     );
   })();
 
   return (
-    <section className="rc-sidecard rc-rpreview" aria-label="Résumé preview">
+    <section className="rc-sidecard rc-rpreview" aria-label="Resume preview">
       <div className="rc-rpreview__hdrow">
         <h3 className="rc-sidecard__h">
           <Icons.IconFile />
-          Résumé preview
+          Resume preview
         </h3>
         <div className="rc-rpreview__hdactions">
           {action ?? null}
@@ -149,7 +149,7 @@ export function ResumePreview(props: {
           className="rc-rpreview__overlay"
           role="dialog"
           aria-modal="true"
-          aria-label="Résumé full preview"
+          aria-label="Resume full preview"
         >
           <div className="rc-rpreview__ovbar">
             <span className="rc-rpreview__ovtitle">{fileName}</span>
@@ -162,7 +162,7 @@ export function ResumePreview(props: {
             </Button>
           </div>
           {isPdf && pdfUrl !== null ? (
-            <iframe className="rc-rpreview__ovframe" title="Résumé full preview" src={pdfUrl} />
+            <iframe className="rc-rpreview__ovframe" title="Resume full preview" src={pdfUrl} />
           ) : (
             <div
               className="rc-rpreview__ovdocx"

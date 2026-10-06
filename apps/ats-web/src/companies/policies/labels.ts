@@ -15,7 +15,7 @@ export const SUBMITTAL_KEYS = [
 export type SubmittalKey = (typeof SUBMITTAL_KEYS)[number];
 
 export const SUBMITTAL_LABELS: Record<string, string> = {
-  resume_selected: 'Résumé selected',
+  resume_selected: 'Resume selected',
   engagement_satisfied: 'Engagement satisfied',
   work_authorization_present: 'Work authorization',
   bill_rate_present: 'Bill rate',
@@ -23,7 +23,7 @@ export const SUBMITTAL_LABELS: Record<string, string> = {
 };
 
 export const SUBMITTAL_DESCRIPTIONS: Record<string, string> = {
-  resume_selected: 'A résumé chosen for this position',
+  resume_selected: 'A resume chosen for this position',
   engagement_satisfied: 'Meets this client’s Engagement policy',
   work_authorization_present: 'Work authorization on the talent record',
   bill_rate_present: 'Bill rate recorded for the submittal',

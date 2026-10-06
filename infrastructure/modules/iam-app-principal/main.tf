@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# iam-app-principal — the app principal binding for the résumé bucket.
+# iam-app-principal — the app principal binding for the resume bucket.
 #
 # The s3-resume-bucket module EMITS a least-privilege policy document
 # (`app_iam_policy_json`: PutObject / GetObject / PutObjectTagging on the
@@ -44,7 +44,7 @@ resource "aws_iam_user" "this" {
   })
 }
 
-# The scoped résumé-bucket policy, attached inline (1:1 with this user — the
+# The scoped resume-bucket policy, attached inline (1:1 with this user — the
 # policy is meaningless without the user, so inline keeps them lifecycle-
 # bound). The JSON is the s3-resume-bucket module's least-privilege contract
 # (bucket + KMS ARNs already resolved inside it).

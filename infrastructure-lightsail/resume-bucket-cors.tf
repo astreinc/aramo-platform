@@ -1,7 +1,7 @@
-# Résumé-upload CORS (incident 2026-09-21).
+# Resume-upload CORS (incident 2026-09-21).
 #
-# The Add-Talent résumé upload is a browser -> S3 DIRECT PUT via a presigned URL.
-# That cross-origin PUT requires a CORS configuration on the résumé bucket
+# The Add-Talent resume upload is a browser -> S3 DIRECT PUT via a presigned URL.
+# That cross-origin PUT requires a CORS configuration on the resume bucket
 # allowing the app origin. The prod bucket (aramo-prod-resumes-use1) had NO CORS
 # (`aws s3api get-bucket-cors` -> NoSuchCORSConfiguration), so every upload's
 # preflight failed and the flow died before reaching /draft-from-resume — with

@@ -6,7 +6,7 @@
 export const INDEED_APPLY_WEBHOOK_ROUTE = '/v1/webhooks/indeed/apply';
 
 // RECON-3c — the route-scoped raw parser's size cap. Indeed apply payloads carry
-// a base64 résumé (large), so this ONE route accepts up to 2 MiB of raw bytes —
+// a base64 resume (large), so this ONE route accepts up to 2 MiB of raw bytes —
 // well above the default ~100 kB JSON limit that every other route keeps.
 export const INDEED_APPLY_MAX_BODY_BYTES = 2 * 1024 * 1024;
 

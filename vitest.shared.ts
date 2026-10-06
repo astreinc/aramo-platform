@@ -188,7 +188,7 @@ export default defineConfig({
       // tsconfig.base.json alias so vitest runtime resolves the
       // AppModule import + the assignment-visibility integration spec.
       '@aramo/requisition': resolve(root, 'libs/requisition/src/index.ts'),
-      // A8-3b — résumé parse leaf (deterministic text-extraction + heuristic
+      // A8-3b — resume parse leaf (deterministic text-extraction + heuristic
       // field-extraction; NO LLM per ADR-0015 Decision 10). Mirrors
       // tsconfig.base.json @aramo/resume-parse alias so vitest runtime
       // resolves the apps/api AppModule import + the A8-3b integration spec.

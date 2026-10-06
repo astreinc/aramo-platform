@@ -9,7 +9,7 @@ import type { WorkHistoryDraft } from './types';
 // create body must preserve those refs to the persistence seam (where durable
 // column persistence is a filed HALT — see the Gate-6 schema proposal).
 
-describe('buildCreateBody — résumé source_refs survive to the create request', () => {
+describe('buildCreateBody — resume source_refs survive to the create request', () => {
   it('carries work-history source_refs through unchanged', () => {
     const state = { ...emptyIntakeState(), first_name: 'Sarah', last_name: 'Nolan' };
     const workHistory: WorkHistoryDraft[] = [
@@ -25,11 +25,11 @@ describe('buildCreateBody — résumé source_refs survive to the create request
     };
     expect(body.work_history).toHaveLength(1);
     expect(body.work_history?.[0]?.source_refs).toEqual(['B004', 'B005']);
-    // R4 — no résumé narrative rides along.
+    // R4 — no resume narrative rides along.
     expect(body.work_history?.[0]).not.toHaveProperty('description');
   });
 
-  it('carries structured skills + résumé document provenance into the create body', () => {
+  it('carries structured skills + resume document provenance into the create body', () => {
     const state = { ...emptyIntakeState(), first_name: 'Sarah', last_name: 'Nolan' };
     const body = buildCreateBody(state, [], {
       skills: [{ surface_form: 'C#', source_refs: ['B003'] }],

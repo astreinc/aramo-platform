@@ -458,14 +458,14 @@ export function attesterDescriptorKey(attesterCanonical: Record<string, unknown>
   return `nameco:${norm(name)}|${norm(company)}`;
 }
 
-// EXPERIENCE_CLAIM (HF2 R1/R7): a résumé-derived atomic activity/accomplishment
+// EXPERIENCE_CLAIM (HF2 R1/R7): a resume-derived atomic activity/accomplishment
 // assertion (the compact activity classification + the paraphrased statement +
 // an optional grounded metric). `statement_raw` is required; `activity_type_raw`
 // (the governed activity token) required; `metric_raw` optional. `grounding_class`
 // travels through UNTOUCHED so later Vector/KG projections know this is a
 // SOURCE_ASSOCIATED_INTERPRETATION, not a value-verified fact. `work_experience_ref`
 // (the owning WorkExperience id) travels through for KG edges. This type is
-// DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES — a résumé-derived
+// DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES — a resume-derived
 // interpretation MUST NOT elevate any trust band (elevation is a later, verified
 // act by amendment, never by drift — same discipline as ATTESTATION/DEGREE).
 const experienceClaimShape: ClaimShape = (p) => {
@@ -564,7 +564,7 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   // attestation is THIRD_PARTY_UNVERIFIED and MUST NOT elevate. The verified-
   // attester elevation is TR-9-B, by amendment, never by drift.
   ATTESTATION: attestationShape,
-  // HF2 R1/R7 — résumé-derived experience assertion. Registered for payload
+  // HF2 R1/R7 — resume-derived experience assertion. Registered for payload
   // comparability; DELIBERATELY ABSENT from AUTHORITATIVE_ASSERTION_TYPES (a
   // source-associated interpretation MUST NOT elevate a trust band).
   EXPERIENCE_CLAIM: experienceClaimShape,

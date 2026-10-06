@@ -114,8 +114,8 @@ export function RecordSubmittalDialog({
     >
       <div className="sw-modal__recap">
         <span>
-          <span className="sw-modal__recap-k">RÉSUMÉ</span>
-          <b>{resumeLabel ?? 'Selected résumé'}</b>
+          <span className="sw-modal__recap-k">RESUME</span>
+          <b>{resumeLabel ?? 'Selected resume'}</b>
         </span>
         {billRateLabel !== null ? (
           <span>
@@ -156,7 +156,7 @@ export function RecordSubmittalDialog({
 
       <p className="sw-modal__note">
         Aramo records this handoff; it does not send anything to the client. The
-        résumé and client rate above are frozen once recorded.
+        resume and client rate above are frozen once recorded.
       </p>
 
       {error !== null ? (

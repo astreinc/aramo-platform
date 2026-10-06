@@ -10,7 +10,7 @@ import { AttachmentRepository } from './attachment.repository.js';
 //
 // Placement rationale: `attachment → talent-record` is an established edge
 // (AttachmentRepository → TalentRecordRepository); the reverse would cycle. So
-// the résumé-extraction orchestrator (in talent-record) depends on the PORT,
+// the resume-extraction orchestrator (in talent-record) depends on the PORT,
 // and this concrete resolver — which owns AttachmentRepository — lives here and
 // is bound to RESUME_ATTACHMENT_RESOLVER at the composition layer.
 //
@@ -76,7 +76,7 @@ export class AttachmentResumeResolver implements ResumeAttachmentResolver {
       throw this.unauthorized(input.requestId, 'talent_ownership_mismatch');
     }
     if (row.is_resume !== true) {
-      // A non-résumé attachment is not an authorized extraction source.
+      // A non-resume attachment is not an authorized extraction source.
       throw this.unauthorized(input.requestId, 'not_a_resume_attachment');
     }
     return row;
@@ -85,7 +85,7 @@ export class AttachmentResumeResolver implements ResumeAttachmentResolver {
   private unauthorized(requestId: string, reason: string): AramoError {
     return new AramoError(
       'RESUME_SOURCE_UNAUTHORIZED',
-      'résumé source is not authorized for this request',
+      'resume source is not authorized for this request',
       403,
       { requestId, details: { reason } },
     );

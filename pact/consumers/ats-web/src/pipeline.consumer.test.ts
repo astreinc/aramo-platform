@@ -43,7 +43,7 @@ const provider = makeAtsWebProvider();
 const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
 const PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
 const PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
-// TI-1D-D — the résumé edition the provider seeds for the pipeline talent.
+// TI-1D-D — the resume edition the provider seeds for the pipeline talent.
 const PIPE_RE_ED = '00000000-0000-7000-8000-71be000000e1';
 
 function pipelineView(

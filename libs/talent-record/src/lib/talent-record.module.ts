@@ -31,7 +31,7 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
 //     validation gate for the PERSON_CLUSTER link). DIRECTIONAL EDGE
 //     ONLY — `identity-index` does NOT import `talent-record`. No cycle.
 //   - ObjectStorageModule (A8-3b) → ObjectStorageService (the E1
-//     presigned-PUT helper for résumé uploads).
+//     presigned-PUT helper for resume uploads).
 //   - ResumeParseModule (A8-3b) → ResumeParserService (the E2
 //     deterministic parse-to-prefill; NO LLM per ADR-0015 Decision 10).
 //     Edge is one-way (talent-record → resume-parse); the inverse
@@ -50,10 +50,10 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
-    // Add-Talent governed-LLM résumé extraction. TalentExtractionModule →
+    // Add-Talent governed-LLM resume extraction. TalentExtractionModule →
     // TalentExtractionService.extractResumeDraft (the governed LLM draft
     // extractor, an ats→cip edge — permitted). Governed LLM is the SOLE
-    // production résumé fact extractor (TI-1F P0.2); the deterministic mode
+    // production resume fact extractor (TI-1F P0.2); the deterministic mode
     // resolver (SettingsModule/TenantSettingService) is retired here.
     TalentExtractionModule,
     // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
@@ -73,7 +73,7 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     TalentRecordReconcileRepository,
     TalentRecordService,
     TalentLinkService,
-    // Search PR-2 — the résumé-text re-extract + persistence service. The
+    // Search PR-2 — the resume-text re-extract + persistence service. The
     // enqueue side is consumed by AttachmentController (the commit seam);
     // the drain side by the ResumeReindexProcessor (the separate worker
     // module). ObjectStorageModule + ResumeParseModule (already imported)
@@ -90,7 +90,7 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     // bound by the composition layer that owns the EDIT re-extraction consumer.
     ResumeSourceAuthorizer,
     ResumeExtractionOrchestrator,
-    // TALENT-INTEL-1 TI-1D-C — the shared résumé-edition ingestion composition
+    // TALENT-INTEL-1 TI-1D-C — the shared resume-edition ingestion composition
     // (document→edition→default policy). Consumed by the confirmed-create block
     // and the resume-editions routes; exported for the apps/api composition layer.
     ResumeEditionIngestionService,

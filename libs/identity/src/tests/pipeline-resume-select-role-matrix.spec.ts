@@ -6,7 +6,7 @@ import { SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 // TI-1D-D — the pipeline:resume:set role-matrix gate (unit tier).
 //
 // pipeline:resume:set is the DEDICATED mutation scope for setting a
-// Requisition-context résumé selection (PUT /v1/pipelines/{id}/resume-edition).
+// Requisition-context resume selection (PUT /v1/pipelines/{id}/resume-edition).
 // It is an EXPLICIT TI-1D-D grant decision (NOT auto-inherited from
 // pipeline:change-status): the operating model grants active Pipeline work to
 // recruiters + account managers, while tenant owners/admins retain full

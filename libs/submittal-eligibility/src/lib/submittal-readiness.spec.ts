@@ -77,7 +77,7 @@ describe('deriveSubmittalReadiness (neutral shared authority)', () => {
     expect(r.deny).toBeNull();
   });
 
-  it('no résumé selected → needs_action + resume_missing (orthogonal pre-check, not a policy gate)', () => {
+  it('no resume selected → needs_action + resume_missing (orthogonal pre-check, not a policy gate)', () => {
     const r = deriveSubmittalReadiness({ ...base, resume_selected: false });
     expect(r.band).toBe('needs_action');
     expect(r.resume_missing).toBe(true);

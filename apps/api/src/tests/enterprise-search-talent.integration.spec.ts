@@ -32,13 +32,13 @@ const EMPTY_SEMANTIC = {
 } as unknown as TalentEmbeddingSearchPort;
 
 // Enterprise Search GS-1 — the Talent adapter against a REAL Postgres 17, exercising the
-// three retrieval legs (exact-email, name lexical, résumé FTS) through the real
+// three retrieval legs (exact-email, name lexical, resume FTS) through the real
 // TalentRecordRepository. Proves the directive + PO watch-points that only a live DB can:
 //   - tenant isolation on EVERY leg (a match in another tenant is structurally absent);
 //   - exact-email stays INSIDE the pool-open tenant+site+live contract — never a bypass
 //     (watch-point 1): a same-email record in another tenant / another site is not returned;
 //   - deterministic dedupe — one TalentRecord yields ONE SearchHit even when it matches
-//     both name and résumé (watch-point 2), exact signal preferred, résumé snippet kept;
+//     both name and resume (watch-point 2), exact signal preferred, resume snippet kept;
 //   - lean projection — a hit carries no email/phone/compensation PII (directive §5/§8/§17).
 
 const MIGRATIONS_DIR = resolve(__dirname, '../../../../libs/talent-record/prisma/migrations');
@@ -53,7 +53,7 @@ const TENANT_B = '22222222-2222-7222-8222-222222222222';
 const SITE_1 = 'aaaaaaaa-1111-7111-8111-aaaaaaaaaaaa';
 const SITE_2 = 'bbbbbbbb-2222-7222-8222-bbbbbbbbbbbb';
 
-// splitDdl (résumé-text edition-history precedent) — strip `--` comments to EOL, then split
+// splitDdl (resume-text edition-history precedent) — strip `--` comments to EOL, then split
 // on statement-terminating `;\n`. Comment-safe per the splitter-guard rule.
 function splitDdl(sql: string): string[] {
   return sql
@@ -85,8 +85,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let repo: TalentRecordRepository;
     let adapter: TalentSearchAdapter;
 
-    // talentA1: tenant A, site_1, "Alice Kovacs", alice@acme.test, résumé mentions Snowflake.
-    // talentA2: tenant A, site_2, "Bob Nguyen",   bob@acme.test,   résumé mentions Nguyen.
+    // talentA1: tenant A, site_1, "Alice Kovacs", alice@acme.test, resume mentions Snowflake.
+    // talentA2: tenant A, site_2, "Bob Nguyen",   bob@acme.test,   resume mentions Nguyen.
     // talentB1: tenant B, (no site), "Alice Kovacs", alice@acme.test — same name+email as A1.
     const talentA1 = uuidv7();
     const talentA2 = uuidv7();
@@ -172,7 +172,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rightSite.map((h) => h.entity_id)).toEqual([talentA1]);
     });
 
-    it('résumé FTS leg matches redacted résumé text, tenant-isolated, with a snippet', async () => {
+    it('resume FTS leg matches redacted resume text, tenant-isolated, with a snippet', async () => {
       const hits = await adapter.search('Snowflake', authority(TENANT_A), 10);
       expect(hits.map((h) => h.entity_id)).toEqual([talentA1]); // NOT talentB1 (tenant B)
       expect(hits[0]?.match.signal).toBe('lexical');
@@ -180,12 +180,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(hits[0]?.snippet?.toLowerCase()).toContain('snowflake');
     });
 
-    it('dedupes name + résumé matches into ONE hit (watch-point 2)', async () => {
-      // "Nguyen" matches Bob Nguyen by BOTH last_name and résumé text.
+    it('dedupes name + resume matches into ONE hit (watch-point 2)', async () => {
+      // "Nguyen" matches Bob Nguyen by BOTH last_name and resume text.
       const hits = await adapter.search('Nguyen', authority(TENANT_A), 10);
       const forBob = hits.filter((h) => h.entity_id === talentA2);
       expect(forBob).toHaveLength(1);
-      // strongest leg wins the relevance; the résumé snippet is preserved on the merged hit.
+      // strongest leg wins the relevance; the resume snippet is preserved on the merged hit.
       expect(forBob[0]?.match.signal).toBe('lexical');
       expect(forBob[0]?.snippet).toContain('<mark>');
     });

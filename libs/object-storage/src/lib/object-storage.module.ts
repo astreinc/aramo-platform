@@ -9,7 +9,7 @@ import { S3ClientFactory } from './s3-client.factory.js';
 // Mirrors the M5 PR-11 separation precedent (CrossSchemaConsistencyModule
 // moved out of CommonModule per PL-88): cross-cutting infrastructure
 // modules with their own AWS-SDK lifecycle + env surface + PII floor
-// earn their own home. Future object-storage consumers (A8-3b résumé
+// earn their own home. Future object-storage consumers (A8-3b resume
 // upload; later A4 owner_types — requisition / company / contact) all
 // consume ObjectStorageService through this module.
 //

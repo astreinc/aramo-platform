@@ -1,9 +1,9 @@
-# Aramo A8-3a — S3 résumé-bucket module (4th module under
+# Aramo A8-3a — S3 resume-bucket module (4th module under
 # infrastructure/modules/, following the M4 PR-9 cloudwatch-log-group /
 # M5 PR-10a rds precedents).
 #
 # Provisions:
-#   - aws_s3_bucket.resumes              — the résumé-class object bucket
+#   - aws_s3_bucket.resumes              — the resume-class object bucket
 #   - aws_s3_bucket.resumes_logs         — S3-server-access-log destination
 #                                          for the resumes bucket (PII floor: audit trail)
 #   - aws_s3_bucket_public_access_block  — block all public access
@@ -11,9 +11,9 @@
 #   - aws_kms_key.resumes                — DEDICATED CMK for SSE-KMS
 #                                          (departs from ADR-0016 Decision 7's
 #                                          account-default-KMS posture because
-#                                          résumés are dense PII — the
+#                                          resumes are dense PII — the
 #                                          enum-column F16-deferral does not
-#                                          apply to a résumé-class artifact)
+#                                          apply to a resume-class artifact)
 #   - aws_s3_bucket_server_side_encryption_configuration
 #                                        — SSE-KMS with bucket_key_enabled
 #                                          (cost optimization + per-object key
@@ -74,7 +74,7 @@ terraform {
 # Dedicated KMS key for SSE-KMS (the PII-floor item).
 # -----------------------------------------------------------------------------
 resource "aws_kms_key" "resumes" {
-  description             = "Aramo ${var.environment} résumé-bucket SSE-KMS key (A8-3a, dedicated; departs from ADR-0016 Decision 7 account-default posture because résumés are dense PII)."
+  description             = "Aramo ${var.environment} resume-bucket SSE-KMS key (A8-3a, dedicated; departs from ADR-0016 Decision 7 account-default posture because resumes are dense PII)."
   deletion_window_in_days = var.kms_deletion_window_in_days
   enable_key_rotation     = true
 
@@ -114,10 +114,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "resumes_logs" {
   bucket = aws_s3_bucket.resumes_logs.id
 
   # The logs bucket holds server-access-log records that NAME the
-  # résumé bucket's object keys (which embed tenant_id + talent_record_id
-  # in the key path). The logs are therefore résumé-class data and ride
+  # resume bucket's object keys (which embed tenant_id + talent_record_id
+  # in the key path). The logs are therefore resume-class data and ride
   # the SAME dedicated CMK as the main bucket -- NOT S3-managed AES256
-  # (the tfsec dedicated-CMK rule + the PII floor for résumé-class data).
+  # (the tfsec dedicated-CMK rule + the PII floor for resume-class data).
   rule {
     apply_server_side_encryption_by_default {
       sse_algorithm     = "aws:kms"
@@ -143,7 +143,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "resumes_logs" {
 }
 
 # -----------------------------------------------------------------------------
-# The résumé bucket.
+# The resume bucket.
 # -----------------------------------------------------------------------------
 resource "aws_s3_bucket" "resumes" {
   bucket = "aramo-${var.environment}-resumes"

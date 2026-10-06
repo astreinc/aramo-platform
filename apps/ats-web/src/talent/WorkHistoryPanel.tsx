@@ -49,7 +49,7 @@ export function WorkHistoryPanel({ talentId }: { readonly talentId: string }) {
       {rows === null && !failed ? <p className="rc-muted-line rc-mt-8">Loading…</p> : null}
       {rows !== null && rows.length === 0 ? (
         <p className="rc-muted-line rc-mt-8">
-          No work history yet — it’s captured from the résumé at creation.
+          No work history yet — it’s captured from the resume at creation.
         </p>
       ) : null}
       {rows !== null && rows.length > 0 ? (

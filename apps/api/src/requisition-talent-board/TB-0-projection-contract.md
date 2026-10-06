@@ -19,15 +19,15 @@ domains — it owns presentation only, never lifecycle/policy/authz truth (§1).
 The Board projection carries **STATE ENUMS ONLY** (mirroring `talent-journey-read.service.ts`
 R3) — no compensation/bill field is ever composed except at an explicitly-scoped boundary.
 
-## Résumé version (§13/§31) — REUSE, no gap
+## Resume version (§13/§31) — REUSE, no gap
 - Working (pre-submit): `pipeline.TalentRequisitionResume` keyed `(tenant, talent_record_id, requisition_id)`; current = MAX(selected_at); `PipelineRepository.getCurrentRequisitionResume`. Write scope `pipeline:resume:set`.
-- Submitted evidence (frozen): `submittal.TalentSubmittalRecord.resume_edition_id`, pinned once at `submitted_to_client`; refusal `SUBMITTAL_RESUME_SELECTION_REQUIRED` — **no latest-résumé fallback**.
+- Submitted evidence (frozen): `submittal.TalentSubmittalRecord.resume_edition_id`, pinned once at `submitted_to_client`; refusal `SUBMITTAL_RESUME_SELECTION_REQUIRED` — **no latest-resume fallback**.
 - Drawer: pre-submit shows the working selection (editable by recruiter, `pipeline:resume:set`); post-submit shows the frozen submitted version (locked).
 
 ## Client Submittal readiness (§7/§32) — NOT blocked on the Client-Scoped Business Policy program
 - Landed on main: `libs/submittal-eligibility` `RequisitionSubmittalEligibilityReader.deriveByRequisitionIds(tenant, req_ids, now)` → tri-state `open|paused|closed` + reason (`deadline_passed|limit_reached|manual_hold|paused`), batched/SET-oriented, EXCLUDES per-talent restriction.
 - Per-talent gates (restriction/engagement/RTR/document) exist only inside the submit `$transaction` (EngagementGateService, DocumentReadinessGate) via the pure `evaluateEligibility` port (v1).
-- **V1 (TB-1..TB-3):** the Qualified "Ready to submit / Needs action" band uses the requisition-grain tri-state + the per-card recruiting facts already available (résumé selected, RTR status). **TB-4** re-grounds the FULL per-talent readiness against the landed Client Submittal Policy contract; do NOT duplicate policy logic (§7). No interim eligibility algorithm invented.
+- **V1 (TB-1..TB-3):** the Qualified "Ready to submit / Needs action" band uses the requisition-grain tri-state + the per-card recruiting facts already available (resume selected, RTR status). **TB-4** re-grounds the FULL per-talent readiness against the landed Client Submittal Policy contract; do NOT duplicate policy logic (§7). No interim eligibility algorithm invented.
 
 ## Gap resolutions (no new data model — no Architect stop per §36)
 - **Days-in-stage (G-A):** no `entered_at` column; derive from the latest `PipelineStatusHistory.changed_at` into the current status (append-only history). Deterministic; not fabricated from `updated_at` (§22).

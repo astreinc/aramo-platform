@@ -16,9 +16,9 @@ import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from './cold-ingest-extraction.queu
 //       IngestionModule → IngestionRepository (the STAGED arrival poll — the
 //                         extract-once markers are preserved for TI-1F-A).
 //
-//   - TI-1F P0.2 — heuristic résumé FACT extraction is RETIRED (governed LLM is
-//     the sole production résumé fact extractor). The service no longer parses
-//     résumés or writes declared evidence, so ResumeParseModule + TalentTrustModule
+//   - TI-1F P0.2 — heuristic resume FACT extraction is RETIRED (governed LLM is
+//     the sole production resume fact extractor). The service no longer parses
+//     resumes or writes declared evidence, so ResumeParseModule + TalentTrustModule
 //     are no longer imported. Arrivals are left STAGED for the governed extractor
 //     (TI-1F-A), which will re-introduce the appropriate edges.
 //

@@ -13,7 +13,7 @@ tension the replace-set introduces and the follow-up work to resolve it properly
 The full-profile edit (Talent → detail → Edit profile → Edit full profile) lets the
 recruiter edit **key_skills AND work-history**, because a returning talent's profile
 (skills, roles) genuinely changes over time and arrives refreshed from upstream
-(channels, sourcing platforms, a new résumé). Blocking work-history edits would fight
+(channels, sourcing platforms, a new resume). Blocking work-history edits would fight
 how the data actually flows in.
 
 Mechanism (shipped):
@@ -43,7 +43,7 @@ immutable** ("evidence created cannot be changed"). `replaceWorkHistoryForTalent
    sending `work_history` only when the recruiter actually touched the section — an
    untouched edit leaves the rows alone — but any genuine edit still re-mints.)
 3. **Provenance drift is invisible.** When a recruiter edits work-history that originally
-   came from an upstream channel / résumé, we currently have no signal that the declared
+   came from an upstream channel / resume, we currently have no signal that the declared
    value has diverged from its sourced origin.
 
 ## Follow-up work (to design later)

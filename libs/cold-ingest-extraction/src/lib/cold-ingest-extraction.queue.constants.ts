@@ -2,8 +2,8 @@
 // BullModule.registerQueue, the @Processor decorator, and getQueueToken()
 // callers).
 //
-// TI-1F P0.2 — cold-ingest is PARKED. Heuristic résumé FACT extraction is
-// retired (governed LLM is the SOLE production résumé fact extractor;
+// TI-1F P0.2 — cold-ingest is PARKED. Heuristic resume FACT extraction is
+// retired (governed LLM is the SOLE production resume fact extractor;
 // …-TI-1F-…-v1_0-LOCKED §4-D). The worker is INERT and drains nothing; the
 // ingestion arrival/staging substrate (RawPayloadReference rows +
 // IngestionRepository poll) is preserved untouched for a future architecture

@@ -141,7 +141,7 @@ module "ecs_service_api" {
   environment_variables = local.api_env
   secrets               = local.api_secrets
 
-  # Task role = the résumé-bucket least-privilege policy (the compute-native
+  # Task role = the resume-bucket least-privilege policy (the compute-native
   # successor to the iam-app-principal IAM user). TENANT-LLM-1 retired the
   # platform anthropic-api-key; per-tenant BYO keys live at
   # aramo/<env>/tenant-llm/<tenant_id>/anthropic-api-key and are read+written by

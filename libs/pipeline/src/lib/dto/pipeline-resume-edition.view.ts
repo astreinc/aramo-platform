@@ -1,6 +1,6 @@
 import type { ResumeEditionSummary } from '../resume-edition-reader.port.js';
 
-// TALENT-INTEL-1 TI-1D-D — the résumé-edition state for a Talent×requisition,
+// TALENT-INTEL-1 TI-1D-D — the resume-edition state for a Talent×requisition,
 // resolved through the Pipeline aggregate. Distinguishes the EXPLICIT working
 // selection (Layer A), the Talent-global default (a SUGGESTION only — never
 // authoritative for a requisition), and the ACTIVE editions the recruiter may

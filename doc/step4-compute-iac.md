@@ -88,7 +88,7 @@ module creates containers only, never `secret_version`).
 **AWS credentials:** Fargate tasks get AWS perms from the **task role** —
 no `AWS_ACCESS_KEY_ID`/`SECRET` env. This is the migration the
 `iam-app-principal` README anticipated; the api task role carries the
-résumé-bucket least-privilege policy directly.
+resume-bucket least-privilege policy directly.
 
 ---
 

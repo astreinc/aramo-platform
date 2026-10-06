@@ -291,7 +291,7 @@ model OutboxEvent {
   @@schema("pipeline")
 }
 
-// TALENT-INTEL-1 TI-1D-D — the recruiter's WORKING résumé-edition selection for a
+// TALENT-INTEL-1 TI-1D-D — the recruiter's WORKING resume-edition selection for a
 // Talent worked against a requisition (Layer A). APPEND-ONLY history: multiple
 // rows per (tenant, talent_record_id, requisition_id) are permitted; the CURRENT
 // selection is the row with the latest selected_at. Deliberately keyed on

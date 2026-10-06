@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from 'react';
 
 // Enterprise Search GS-1 — SAFE highlighting. Both helpers render only text nodes and <mark>
-// elements — never dangerouslySetInnerHTML — so résumé-/user-derived content can never inject
+// elements — never dangerouslySetInnerHTML — so resume-/user-derived content can never inject
 // markup (no XSS surface).
 
 function escapeRegExp(s: string): string {
@@ -24,7 +24,7 @@ export function Highlight({ text, query }: { text: string; query: string }): Rea
   );
 }
 
-// Render a server snippet that already carries <mark>…</mark> markers (résumé ts_headline) as
+// Render a server snippet that already carries <mark>…</mark> markers (resume ts_headline) as
 // safe <mark> elements — the markers are parsed, never interpreted as HTML.
 export function SnippetText({ snippet }: { snippet: string }): ReactNode {
   const parts = snippet.split(/(<mark>|<\/mark>)/g);

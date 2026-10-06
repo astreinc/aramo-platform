@@ -38,7 +38,7 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
       status: 'READY',
       requirements: [
         { key: 'rtr', label: 'Right to Represent executed', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
-        { key: 'resume_selected', label: 'Résumé selected for this requisition', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
+        { key: 'resume_selected', label: 'Resume selected for this requisition', required: true, satisfied: true, severity: 'blocking', source: 'documents', reason: null, remediation: null, deny_code: null },
       ],
     },
     documents: { rtr_satisfied: true, rtr_deny: null, resume_selected: true },
@@ -113,7 +113,7 @@ describe('SubmittalWorkspaceView', () => {
     renderWorkspace();
     await screen.findByText('Divya Vasudevan');
     expect(screen.getByText('Right to Represent executed')).toBeInTheDocument();
-    expect(screen.getByText('Résumé selected for this requisition')).toBeInTheDocument();
+    expect(screen.getByText('Resume selected for this requisition')).toBeInTheDocument();
   });
 
   it('commercial: present with scope → shows live bill rate; absent (null) → no commercial card', async () => {

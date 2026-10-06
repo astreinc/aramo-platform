@@ -124,7 +124,7 @@ describe('extractResumeDraft — HF1 structured, source-ref grounded', () => {
     expect(out.proposal.rejected_count).toBe(0);
   });
 
-  it('L: exactly ONE governed model call per résumé (never the free-text path)', async () => {
+  it('L: exactly ONE governed model call per resume (never the free-text path)', async () => {
     const { svc, generateStructured, generateDraft } = makeService(
       ok({ skills: [], work_history: [] }),
     );

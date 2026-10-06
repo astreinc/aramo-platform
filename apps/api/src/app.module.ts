@@ -276,10 +276,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     TalentRecordModule,
     AttachmentModule,
     // TALENT-INTEL-1 TI-1D-C — bind RESUME_ATTACHMENT_RESOLVER (talent-record port)
-    // to the concrete AttachmentResumeResolver for the résumé-editions ingestion.
+    // to the concrete AttachmentResumeResolver for the resume-editions ingestion.
     ResumeAttachmentResolverModule,
     // TALENT-INTEL-1 TI-1D-D — bind the Pipeline RESUME_EDITION_READER port to the
-    // talent-evidence-backed adapter (résumé-edition selection for a requisition).
+    // talent-evidence-backed adapter (resume-edition selection for a requisition).
     ResumeEditionReaderModule,
     // Tasks backend — the last core recruiter surface (the actionable,
     // due-dated, assignable to-do).
@@ -314,13 +314,13 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       requisitionContextValidator: TaskRequisitionContextAdapter,
       imports: [IdentityCoreModule, PipelineModule],
     }),
-    // Search PR-2 — the résumé re-extract worker. SEPARATE from
+    // Search PR-2 — the resume re-extract worker. SEPARATE from
     // TalentRecordModule (imported widely) so only apps/api stands up the
     // BullMQ tick worker; AttachmentModule gets ResumeTextService.enqueueReindex
     // via TalentRecordModule WITHOUT the worker. Imported AFTER both, since it
     // depends on TalentRecordModule (ResumeTextService.drainPendingBatch).
     ResumeReindexModule,
-    // TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker (apps/api-only,
+    // TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft worker (apps/api-only,
     // same separation rationale): drains PROCESSING ATTACHMENT drafts via the
     // governed orchestrator → READY_FOR_REVIEW | FAILED. No typed evidence.
     ResumeExtractionDraftWorkerModule,
@@ -538,8 +538,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     CanonicalizationModule,
     // Cold-Ingest Extraction — the resolved-arrival → declared-identity-evidence
     // poll (NEW leaf lib, scope:cip). Registers a BullMQ tick worker that drains
-    // resolved RawPayloadReference rows whose résumé still needs extraction,
-    // re-reads the retained résumé with the deterministic parser (no LLM), and
+    // resolved RawPayloadReference rows whose resume still needs extraction,
+    // re-reads the retained resume with the deterministic parser (no LLM), and
     // writes name/phone/address as THIRD_PARTY_UNVERIFIED declared evidence onto
     // the arrival's resolved_subject_id — unblocking cold-ingest promotion (a
     // TalentRecord needs a name). Consumer leaf: imports {ingestion, resume-parse,
@@ -568,7 +568,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // Activates the dormant A4 Attachment.storage_key + M2
     // RawPayloadReference.storage_ref patterns end-to-end. Leaf lib:
     // imports = [] (AramoError + AramoLogger are TS-level imports);
-    // exports = [ObjectStorageService] only. Consumers (A8-3b résumé
+    // exports = [ObjectStorageService] only. Consumers (A8-3b resume
     // upload; later A4 owner_types) consume ObjectStorageService at
     // the cross-lib boundary.
     ObjectStorageModule,

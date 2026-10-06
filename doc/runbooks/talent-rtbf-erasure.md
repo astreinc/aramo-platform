@@ -2,9 +2,9 @@
 
 **Status:** operator procedure (go-live). **Owner:** platform/compliance on-call.
 **Why this exists:** a verified right-to-be-forgotten request must reach EVERY
-place a talent's data lives — not just the résumé. Deleting a `TalentRecord`
-cascades only its same-schema children (résumé **text**, field provenance,
-reconcile-contradiction); it does **not** touch the S3 résumé **file**, the
+place a talent's data lives — not just the resume. Deleting a `TalentRecord`
+cascades only its same-schema children (resume **text**, field provenance,
+reconcile-contradiction); it does **not** touch the S3 resume **file**, the
 `Attachment` rows, the ~20 cross-schema operational holders, the trust-side PII
 (anchors, evidence payloads, verification rows), or the person's superseded
 **husks** — all cross-schema UUID refs with no FK (Architecture §7.3). This
@@ -26,7 +26,7 @@ runbook closes the full gap. See the register entry in
 > IAM): it prints the object keys; you still run Step 2 below with elevated creds.
 > The manual SQL steps below remain the authoritative reference + the S3 procedure.
 
-> Scope: this erases the ATS-side résumé artifacts, every operational + trust-side
+> Scope: this erases the ATS-side resume artifacts, every operational + trust-side
 > PII holder, the person's husk chain, and the (TalentRecord-keyed) consent-event
 > ledger. RETAINED as the append-only **record of process**: the consent audit
 > stream (`audit."ConsentAuditEvent"`) and the merge-operation audit
@@ -107,7 +107,7 @@ ids without purging.
   recruiter console or a tenant-scoped DB read.
 - DB read/write access to the `attachment` and `talent_record` schemas.
 - AWS credentials with `s3:ListObjectVersions` + `s3:DeleteObject` +
-  `s3:DeleteObjectVersion` on the résumé bucket `aramo-<env>-resumes`.
+  `s3:DeleteObjectVersion` on the resume bucket `aramo-<env>-resumes`.
   ⚠️ The app's runtime IAM policy intentionally has **no** DeleteObject — this
   deletion is an operator action with elevated credentials, not an app path.
 
@@ -122,7 +122,7 @@ TENANT_ID=<the tenant_id, a UUID>
 
 ---
 
-## Step 1 — Locate the résumé object key(s)
+## Step 1 — Locate the resume object key(s)
 
 The S3 object key is the `Attachment.storage_key`. There is no S3 enumeration
 by talent — the key lives in Postgres. Query the attachment rows for this
@@ -137,7 +137,7 @@ WHERE tenant_id = :TENANT_ID
 ```
 
 Record every `storage_key` returned (a talent may have multiple attachments;
-`is_resume = true` marks résumés, but **erase all** the person's attachments for
+`is_resume = true` marks resumes, but **erase all** the person's attachments for
 a full RTBF). Keep this list — it is your deletion worklist and your audit
 evidence.
 
@@ -194,10 +194,10 @@ WHERE tenant_id = :TENANT_ID
   AND owner_id   = :TALENT_ID;
 ```
 
-## Step 4 — Delete the TalentRecord (cascades the résumé text)
+## Step 4 — Delete the TalentRecord (cascades the resume text)
 
 Prefer the API (`DELETE /v1/talent-records/:id`, scope `talent:delete`) so the
-existing not-found/tenant checks apply. The résumé-text row purges automatically
+existing not-found/tenant checks apply. The resume-text row purges automatically
 via the `ON DELETE CASCADE` FK (ADR-0015). If deleting directly in the DB:
 
 ```sql
@@ -250,10 +250,10 @@ PII scope is enumerated honestly so a reviewer knows exactly what persists:
 - **`audit."ConsentAuditEvent"`** — the consent decision/process log, keyed by
   `subject_id = TALENT_ID`. After erasure it holds the historical
   grant/revoke/check rows (their `event_payload` JSONB carries scope + reason
-  codes, and reconcile rows carry from/to record ids — no name/email/résumé) PLUS
+  codes, and reconcile rows carry from/to record ids — no name/email/resume) PLUS
   the new `consent.erased` marker row (payload: the record + subject id sets and
   the tables cleared). **PII scope: identifiers (UUIDs) + consent decisions, no
-  résumé/name/contact content.** `is_anonymized` reads the marker and returns true.
+  resume/name/contact content.** `is_anonymized` reads the marker and returns true.
 - **`talent_trust."SubjectMergeOperation"`** — the merge/reversal audit, keyed by
   `surviving_/merged_subject_id` + `surviving_/superseded_record_id`. Its JSONB
   (`sweep_steps` / `ref_actions` / `collision_records`) may embed **row content
@@ -276,7 +276,7 @@ residual identifiers — they are the forensic proof the erasure was performed.
 
 - **Orphan sweep does NOT do this for you.** The S3 lifecycle `orphan-pending`
   rule only reaps objects whose upload was *never committed* to an attachment
-  (≈24h). A committed résumé is tagged `committed` and is retained until its
+  (≈24h). A committed resume is tagged `committed` and is retained until its
   retention-policy lifecycle rule or an explicit deletion like this one.
 - This is a destructive, multi-system operation. Capture the Step-1 worklist and
   the Step-5 verification output as the erasure evidence.

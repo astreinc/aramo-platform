@@ -12,7 +12,7 @@ import { loadMailerConfig, type MailerConfig } from './mailer.config.js';
 // Nest even in stub mode without touching SES env or AWS.
 //
 // Credentials: SDK default chain (env / shared / instance-profile / IRSA)
-// — NEVER hardcoded. Same path the S3 résumé adapter uses; on the single
+// — NEVER hardcoded. Same path the S3 resume adapter uses; on the single
 // box these resolve from the static AWS_* env creds.
 
 @Injectable()

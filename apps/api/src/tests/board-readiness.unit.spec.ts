@@ -29,7 +29,7 @@ const base = {
 };
 
 describe('deriveQualifiedReadiness — never a false-positive Ready (TB-4)', () => {
-  it('all applicable gates satisfied (dormant engagement, open window, no restriction, résumé, RTR ungated) → ready', () => {
+  it('all applicable gates satisfied (dormant engagement, open window, no restriction, resume, RTR ungated) → ready', () => {
     const r = deriveQualifiedReadiness(base);
     expect(r.band).toBe('ready_to_submit');
     expect(r.blockers).toEqual([]);
@@ -62,7 +62,7 @@ describe('deriveQualifiedReadiness — never a false-positive Ready (TB-4)', () 
     expect(r.blockers).toContain('rtr_not_executed');
   });
 
-  it('no résumé selected → NEEDS ACTION + resume_not_selected (orthogonal Board pre-check)', () => {
+  it('no resume selected → NEEDS ACTION + resume_not_selected (orthogonal Board pre-check)', () => {
     const r = deriveQualifiedReadiness({ ...base, resume: RESUME_NONE });
     expect(r.band).toBe('needs_action');
     expect(r.blockers).toContain('resume_not_selected');

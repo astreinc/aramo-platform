@@ -140,7 +140,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   resolved ONLY from **AWS Secrets Manager** at `aramo/${ARAMO_ENV}/anthropic-api-key`
   (no env fallback — ADR-0015 Decision 4). The secret must be **provisioned per
   environment** before the AI lane works — exactly like the Cognito / S3 IAM
-  out-of-band creds (see "Staging résumé bucket" below). Verified absent for
+  out-of-band creds (see "Staging resume bucket" below). Verified absent for
   `ARAMO_ENV=local` (and account-wide) at authoring: `describe-secret` →
   `ResourceNotFoundException`, so every draft returns `AI_PROVIDER_UNAVAILABLE`
   until it is created. The AI lane is **DARK-BY-CONFIG, not broken** — the code is
@@ -166,12 +166,12 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
 
 ## Talent
 
-### RTBF / talent erasure: manual, with résumé-object + attachment orphaning
+### RTBF / talent erasure: manual, with resume-object + attachment orphaning
 - **Date:** 2026-06-17 · **Branch:** `feat/add-talent-rebuild-resume-s3`
-- **Present:** deleting a TalentRecord cascades the résumé **text** row
+- **Present:** deleting a TalentRecord cascades the resume **text** row
   (`talent_record.talent_resume_text`, `ON DELETE CASCADE` — ADR-0015). SSN-
   shaped patterns are redacted before that text is stored (D4).
-- **NOT enforced:** (1) the **S3 résumé object is not deleted** by any
+- **NOT enforced:** (1) the **S3 resume object is not deleted** by any
   application path — `Attachment.storage_key` points at the object, there is no
   `DeleteObject` in the app's IAM policy, and talent-delete does not touch S3;
   (2) **Attachment rows orphan** on talent-delete — `Attachment` references the
@@ -179,7 +179,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   the cascade does not reach them; (3) the **ADR-0007 anonymization state
   machine is not built** — `is_anonymized` is a hardcoded `false` placeholder.
 - **Risk:** **a verified right-to-be-forgotten request cannot be fully honored
-  by the product alone.** Résumé text purges automatically, but the résumé
+  by the product alone.** Resume text purges automatically, but the resume
   *file* in S3 and its attachment metadata persist. Manual operator action is
   required to complete erasure — see the runbook below.
 - **Mitigation (this PR):** the **manual erasure runbook**
@@ -191,7 +191,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   rows + tag/delete S3 objects), and build the ADR-0007 anonymization state
   machine. Until then, RTBF is a runbook-driven operator procedure.
 
-### Staging résumé bucket: app IAM principal bound; live real-PII on apply
+### Staging resume bucket: app IAM principal bound; live real-PII on apply
 - **Date:** 2026-06-17 · **Branch:** `feat/staging-resume-bucket-iam`
 - **Present (authored, pending manual apply):** the `s3-resume-bucket` module
   (private bucket + dedicated SSE-KMS CMK + versioning + scoped CORS +
@@ -201,7 +201,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   / PutObjectTagging on the bucket + KMS GenerateDataKey / Decrypt on its CMK
   ONLY — no `ListBucket`, no `DeleteObject`, no wildcard). CORS allows the real
   staging origin (`https://staging.aramo.app`).
-- **On apply, this bucket holds real résumé PII** — the **RTBF obligation is in
+- **On apply, this bucket holds real resume PII** — the **RTBF obligation is in
   force**: the manual-erasure runbook
   [doc/runbooks/talent-rtbf-erasure.md](runbooks/talent-rtbf-erasure.md) is the
   only path to honor a verified erasure (the app principal deliberately has **no
@@ -244,7 +244,7 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
 - **Date:** 2026-06-17 · **Branch:** `feat/add-talent-rebuild-resume-s3`
 - **Present:** a read-only "Work history & education — capture coming soon"
   reserved seam on the Add-Talent form.
-- **NOT present:** structured work-history / education capture. The résumé
+- **NOT present:** structured work-history / education capture. The resume
   parser extracts neither (`TalentRecordPrefill` omits them), there is no
   `talent-evidence` write controller, and `POST /v1/talent-records` stores
   neither. Rendering editable entries would be fabricated (nothing persists).

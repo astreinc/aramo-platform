@@ -14,7 +14,7 @@ import { SesMailerClientFactory } from './ses-mailer-client.factory.js';
 // ses:FromAddress condition key on the address part only (support@aramo.ai),
 // so the display name does not affect the grant (Email-S1 §2.1). Region +
 // credentials come from the SESv2
-// client factory (SDK default chain — same path the S3 résumé adapter
+// client factory (SDK default chain — same path the S3 resume adapter
 // uses; no explicit creds).
 //
 // S1 sends PRE-RENDERED html/text — there is no templating here. Subject /

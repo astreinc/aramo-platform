@@ -91,7 +91,7 @@ describe('evaluateSubmittalReadiness — unified authoritative readiness', () =>
     expect(req(r, 'requisition_open')).toMatchObject({ satisfied: false, deny_code: 'REQUISITION_NOT_OPEN' });
   });
 
-  it('résumé not selected → resume_selected blocking, SUBMITTAL_RESUME_SELECTION_REQUIRED', () => {
+  it('resume not selected → resume_selected blocking, SUBMITTAL_RESUME_SELECTION_REQUIRED', () => {
     const r = evaluateSubmittalReadiness(ready({ resume_selected: false }));
     expect(req(r, 'resume_selected')).toMatchObject({ satisfied: false, deny_code: 'SUBMITTAL_RESUME_SELECTION_REQUIRED' });
   });

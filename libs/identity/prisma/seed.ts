@@ -2604,7 +2604,7 @@ const ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 })();
 
 // TI-1D-D — the pipeline:resume:set grant matrix. pipeline:resume:set is the
-// DEDICATED mutation scope for setting a Requisition-context résumé selection
+// DEDICATED mutation scope for setting a Requisition-context resume selection
 // (PUT /v1/pipelines/{id}/resume-edition). It is granted to the four
 // pipeline:change-status holders — recruiter + account_manager (active Pipeline
 // workers) and tenant_admin + tenant_owner (operational oversight) — as an
@@ -2968,7 +2968,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['attachment:create'], 'attachment:create', 'Attach a file to an owner');
   await upsertScope(prisma, SEED_IDS.scopes['attachment:delete'], 'attachment:delete', 'Detach a file from its owner (recruiter+ via bounded Ruling 1 carve-out — junction/link delete, not entity destruction)');
   await upsertScope(prisma, SEED_IDS.scopes['pipeline:read'], 'pipeline:read', 'Read pipelines / pipeline history');
-  await upsertScope(prisma, SEED_IDS.scopes['pipeline:resume:set'], 'pipeline:resume:set', 'TI-1D-D — set the Requisition-context résumé selection for a pipeline (PUT /v1/pipelines/{id}/resume-edition; appends a TalentRequisitionResume working-selection row, never mutates prior). DEDICATED mutation scope; GRANTED to the four pipeline:change-status holders (recruiter, account_manager, tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES as an EXPLICIT TI-1D-D decision — NOT auto-inherited from pipeline:change-status and NOT a reuse of it (the dedicated scope preserves the lifecycle-vs-selection distinction). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:resume:set'], 'pipeline:resume:set', 'TI-1D-D — set the Requisition-context resume selection for a pipeline (PUT /v1/pipelines/{id}/resume-edition; appends a TalentRequisitionResume working-selection row, never mutates prior). DEDICATED mutation scope; GRANTED to the four pipeline:change-status holders (recruiter, account_manager, tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES as an EXPLICIT TI-1D-D decision — NOT auto-inherited from pipeline:change-status and NOT a reuse of it (the dedicated scope preserves the lifecycle-vs-selection distinction). NO scope.created (scope-seed precedent).');
   // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:create'], 'client-selection:create', 'Lane 2 / L2-F (F1) — create a ClientSelectionProcess from a Submittal (POST /v1/client-selection, apps/api create-from-submittal orchestration). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (the ATS delivery matrix; mirrors placement:create). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['client-selection:read'], 'client-selection:read', 'Lane 2 / L2-F (F1) — read a ClientSelectionProcess (GET /v1/client-selection/:id). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');

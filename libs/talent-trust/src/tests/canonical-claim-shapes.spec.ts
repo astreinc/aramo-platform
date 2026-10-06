@@ -109,7 +109,7 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       'SKILL',
       // TR-4 B3 — the consistency detector's CONTINUITY gap signal.
       'TIMELINE_GAP',
-      // HF2 R1/R7 — résumé-derived experience assertion (registered for
+      // HF2 R1/R7 — resume-derived experience assertion (registered for
       // comparability; NOT in AUTHORITATIVE_ASSERTION_TYPES — must not elevate).
       'EXPERIENCE_CLAIM',
       // TALENT-INTEL-1 TI-1C — declared right-to-work, registered for payload

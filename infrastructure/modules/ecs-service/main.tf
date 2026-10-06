@@ -5,7 +5,7 @@
 #   - the task EXECUTION role (ECR pull + CloudWatch logs via the AWS managed
 #     policy, + GetSecretValue on exactly the secrets this task injects)
 #   - the task ROLE (the app's runtime AWS perms — an optional inline policy
-#     such as the résumé-bucket least-privilege doc, + GetSecretValue on any
+#     such as the resume-bucket least-privilege doc, + GetSecretValue on any
 #     SDK-read secrets like the Anthropic key)
 #   - the Fargate task definition (env-driven; NO secrets baked — plaintext
 #     config in `environment`, secret material injected from Secrets Manager
@@ -15,7 +15,7 @@
 #
 # This is the compute-native principal the iam-app-principal module README
 # anticipated ("when a compute platform lands, MIGRATE to a task role"): the
-# api task role carries the résumé-bucket policy directly — no IAM user.
+# api task role carries the resume-bucket policy directly — no IAM user.
 
 terraform {
   required_version = ">= 1.6.0"
@@ -101,7 +101,7 @@ resource "aws_iam_role" "task" {
   tags = merge(var.tags, { Name = "${var.name}-task" })
 }
 
-# Optional app runtime policy (e.g. the résumé-bucket least-privilege JSON
+# Optional app runtime policy (e.g. the resume-bucket least-privilege JSON
 # from the s3-resume-bucket module). Null for services with no AWS perms.
 resource "aws_iam_role_policy" "task_inline" {
   count = var.task_role_inline_policy_json == null ? 0 : 1

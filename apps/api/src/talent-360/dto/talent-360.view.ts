@@ -310,7 +310,7 @@ export interface ProfileView {
 
 export interface TalentDocumentView {
   readonly id: string;
-  // Recruiter-facing kind label ("Résumé", "RTR · Freddie Mac").
+  // Recruiter-facing kind label ("Resume", "RTR · Freddie Mac").
   readonly kind: string;
   readonly requisition_id: string | null;
   readonly requisition_label: string | null;

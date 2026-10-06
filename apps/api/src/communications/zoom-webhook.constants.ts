@@ -5,7 +5,7 @@
 // authenticated Communications resource).
 export const ZOOM_WEBHOOK_ROUTE = '/v1/webhooks/communications/zoom';
 
-// Zoom phone webhook payloads are small control events (no résumé/media) — a
+// Zoom phone webhook payloads are small control events (no resume/media) — a
 // tight raw-body cap; well under the default JSON limit other routes keep.
 export const ZOOM_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 

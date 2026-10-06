@@ -188,7 +188,7 @@ export async function updateTalent(
   );
 }
 
-// TALENT-INTEL-1 TI-1D-C — the résumé-edition surface. Selecting/viewing an
+// TALENT-INTEL-1 TI-1D-C — the resume-edition surface. Selecting/viewing an
 // edition and changing the default are PRESENTATION concerns ONLY; they never
 // alter the talent PATCH provenance or make an edition "talent truth".
 export async function listTalentResumeEditions(
@@ -209,7 +209,7 @@ export async function createTalentResumeEdition(
   );
 }
 
-// TALENT-INTEL-1 TI-1H §9 — the redacted text belonging to ONE résumé edition
+// TALENT-INTEL-1 TI-1H §9 — the redacted text belonging to ONE resume edition
 // (preview). Opening edition R returns R's own text — never another edition's.
 export async function getTalentResumeEditionText(
   id: string,
@@ -230,7 +230,7 @@ export async function setTalentResumeEditionDefault(
   );
 }
 
-// TALENT-INTEL-1 TI-1F-B/C — the human-governed review actions on a résumé
+// TALENT-INTEL-1 TI-1F-B/C — the human-governed review actions on a resume
 // edition whose governed extraction is READY_FOR_REVIEW. CONFIRM promotes the
 // accepted facts to typed evidence (then reconcile signals fire server-side, and
 // the caller re-fetches hydration §4-L); REJECT discards the draft with no

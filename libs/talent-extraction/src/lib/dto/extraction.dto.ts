@@ -2,7 +2,7 @@
 
 // The declared source the extraction reads FROM. The caller (the G1-B
 // derivation/endpoint) supplies the already-parsed declared text — the redacted
-// résumé body + the recruiter-entered key_skills — so this lib stays a pure
+// resume body + the recruiter-entered key_skills — so this lib stays a pure
 // extract→persist service (no talent-record read edge). CONSTRAINED-TO-SOURCE:
 // nothing is extracted that is not verbatim present in this text.
 export interface ExtractDeclaredEvidenceInput {
@@ -10,8 +10,8 @@ export interface ExtractDeclaredEvidenceInput {
   // The talent's OWN TalentRecord.id (post-ADR-0016 the evidence spine is
   // TalentRecord-keyed).
   talent_id: string;
-  // Redacted résumé body text (TalentResumeText.redacted_text) — optional; a
-  // talent may have no résumé on file.
+  // Redacted resume body text (TalentResumeText.redacted_text) — optional; a
+  // talent may have no resume on file.
   resume_text?: string;
   // The recruiter-entered free-text key_skills string — optional.
   key_skills?: string;
@@ -68,21 +68,21 @@ export interface ExtractionCompletion {
   certifications: ExtractedCertification[];
 }
 
-// ── Résumé-draft (pre-create) extraction — HF1 durable fact extraction ───────
+// ── Resume-draft (pre-create) extraction — HF1 durable fact extraction ───────
 // The Add-Talent governed-LLM intake PROPOSAL. A DRAFT for the recruiter to
 // review — NOT persisted evidence, NOT a verified claim, NOT TalentRecord-keyed.
 //
 // HF1 (Durable-Fact-Extraction-Directive v1.0) architecture:
 //   - SINGLE-READ, FACT-ONLY, SOURCE-REFERENCED (§2/R3). The model returns the
 //     structured facts the Add-Talent domain needs PLUS compact `source_refs`
-//     (source-map block ids) — NEVER copied résumé prose / `source_excerpt`.
+//     (source-map block ids) — NEVER copied resume prose / `source_excerpt`.
 //   - Work-history carries NO free-text `description` (R4): structured facts only.
 //   - Grounding (§5/R5) resolves `source_refs` against the Aramo-OWNED source-map
 //     (below), validating each fact locally — the model's reference alone is not
 //     proof.
 //   - Email/phone are DELIBERATELY absent + redacted before the model (§17/R10).
 
-// HF1 §3 — the canonical résumé source-map, CONSUMER copy. The authoritative
+// HF1 §3 — the canonical resume source-map, CONSUMER copy. The authoritative
 // builder lives in @aramo/resume-parse (the bytes→text owner); this lib grounds
 // against a structurally-identical value passed BY VALUE through the controller
 // seam, so talent-extraction takes NO import edge on resume-parse (R1).
@@ -157,7 +157,7 @@ export interface ResumeDraftSkillFact {
 //     (skill surface_form, version, employer, role_title, dates, education,
 //     certification, a NAMED project, a grounded metric).
 //   SOURCE_ASSOCIATED_INTERPRETATION — a model-produced compact interpretation
-//     carrying valid source_refs; résumé-DERIVED, NOT independently verified and
+//     carrying valid source_refs; resume-DERIVED, NOT independently verified and
 //     NOT value-validated (experience_summary, assertion.statement,
 //     project.context, activity classification). The refs still resolve and
 //     invented metrics/named-projects are still rejected — but downstream (Vector
@@ -167,7 +167,7 @@ export type GroundingClass = 'DIRECT_FACT' | 'SOURCE_ASSOCIATED_INTERPRETATION';
 // R3/R16 — a time-aware, per-experience skill usage. surface_form + version are
 // DIRECT_FACT (substring-grounded); `activity` is a SOURCE_ASSOCIATED_
 // INTERPRETATION (a governed classification, not verbatim text).
-// usage_period_basis distinguishes EXPLICIT (résumé stated the skill's own
+// usage_period_basis distinguishes EXPLICIT (resume stated the skill's own
 // dates → usage_start/end carried) from WORK_EXPERIENCE_CONTEXT (dates NOT
 // carried here; Aramo resolves the effective interval from the parent
 // WorkExperience at derivation time — P4 ruling) from UNKNOWN.
@@ -264,8 +264,8 @@ export interface ResumeDraftSkill {
   source_refs: string[];
 }
 
-// HF1 §16/R1/R8 — the shared durable-provenance anchors for résumé-derived
-// evidence persisted at confirmed-create time: the résumé TalentDocument id and
+// HF1 §16/R1/R8 — the shared durable-provenance anchors for resume-derived
+// evidence persisted at confirmed-create time: the resume TalentDocument id and
 // which source-map corpus (version + text hash) the per-item source_refs resolve
 // against. All optional — absent ⇒ rows persist with NULL/empty provenance.
 export interface ResumeProvenance {
@@ -300,7 +300,7 @@ export interface ResumeDraftWorkHistory {
 
 // Talent-detail work-history read (LOCKED scope expansion). What was persisted,
 // for display. `verified` is ALWAYS false at this stage — these are DECLARED
-// ('from résumé'), not independently verified (ADR-0015 v1.3 §4.3); a later
+// ('from resume'), not independently verified (ADR-0015 v1.3 §4.3); a later
 // verification pass is what would flip it (the green VERIFIED badge).
 export interface TalentWorkHistoryView {
   id: string;

@@ -113,7 +113,7 @@ export class SubmittalWorkspaceService {
     const requisition_id = submittal.job_id;
     const talent_id = submittal.talent_id;
 
-    // 2 — requisition (tenant-scoped) + talent + company + linked pipeline + working résumé,
+    // 2 — requisition (tenant-scoped) + talent + company + linked pipeline + working resume,
     // all tenant-scoped raw reads on the same connection. Absent rows ⇒ explicit null.
     const reqs = await this.db.$queryRawUnsafe<
       Array<{

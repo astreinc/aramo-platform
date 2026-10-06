@@ -9,7 +9,7 @@ import {
   uuid,
 } from './support/ats-web-pact.js';
 
-// TALENT-INTEL-1 TI-1D-C — Pact consumer for ats-web résumé editions (GET list /
+// TALENT-INTEL-1 TI-1D-C — Pact consumer for ats-web resume editions (GET list /
 // POST ingest / PUT default). Multiple editions coexist; the default is explicit
 // (never latest-wins); filename/mime_type/uploaded_at are projected from the
 // TalentDocument. Guard chain: @RequireCapability('ats') + talent:read (GET) /
@@ -48,7 +48,7 @@ describe('ats-web → GET /v1/talent-records/:id/resume-editions', () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a talent with resume editions exist')
-      .uponReceiving('a résumé-edition list read')
+      .uponReceiving('a resume-edition list read')
       .withRequest('GET', `/v1/talent-records/${TALENT_ID}/resume-editions`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
       })
@@ -80,7 +80,7 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions', () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a talent with an owned resume attachment exist')
-      .uponReceiving('a résumé-edition ingestion from an owned attachment')
+      .uponReceiving('a resume-edition ingestion from an owned attachment')
       .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
         b.jsonBody({ attachment_id: uuid(ATT_ID), purpose: 'GENERAL' });
@@ -121,7 +121,7 @@ describe('ats-web → PUT /v1/talent-records/:id/resume-editions/default', () =>
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a talent with a resume edition exist')
-      .uponReceiving('an explicit résumé-edition default change')
+      .uponReceiving('an explicit resume-edition default change')
       .withRequest('PUT', `/v1/talent-records/${TALENT_ID}/resume-editions/default`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
         b.jsonBody({ resume_edition_id: uuid(ED_A) });
@@ -149,8 +149,8 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/con
   it('returns 200 with the reviewed edition (processing_status ACCEPTED)', async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a talent with a résumé edition ready for review exist')
-      .uponReceiving('a résumé-edition review CONFIRM')
+      .given('an ats-web recruiter and a talent with a resume edition ready for review exist')
+      .uponReceiving('a resume-edition review CONFIRM')
       .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/confirm`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
         b.jsonBody({});
@@ -188,8 +188,8 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/rej
   it('returns 200 with the edition (processing_status REJECTED; no evidence promoted)', async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a talent with a résumé edition ready for review exist')
-      .uponReceiving('a résumé-edition review REJECT')
+      .given('an ats-web recruiter and a talent with a resume edition ready for review exist')
+      .uponReceiving('a resume-edition review REJECT')
       .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/reject`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
         b.jsonBody({});
@@ -223,7 +223,7 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/rej
   });
 });
 
-// TALENT-INTEL-1 TI-1H §9 — per-edition résumé TEXT (preview). Reading edition R
+// TALENT-INTEL-1 TI-1H §9 — per-edition resume TEXT (preview). Reading edition R
 // returns R's OWN redacted text; only redacted text is exposed (D4). status is
 // 'extracted' once the async re-extract has run.
 const RT_TALENT_ID = '00000000-0000-7000-8000-7a0000000019';
@@ -233,8 +233,8 @@ describe('ats-web → GET /v1/talent-records/:id/resume-editions/:editionId/text
   it("returns 200 with that edition's redacted text", async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a talent with a résumé edition text row exist')
-      .uponReceiving('a per-edition résumé-text read')
+      .given('an ats-web recruiter and a talent with a resume edition text row exist')
+      .uponReceiving('a per-edition resume-text read')
       .withRequest(
         'GET',
         `/v1/talent-records/${RT_TALENT_ID}/resume-editions/${RT_ED}/text`,

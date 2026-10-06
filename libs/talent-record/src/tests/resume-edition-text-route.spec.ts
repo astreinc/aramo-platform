@@ -7,7 +7,7 @@ import { TalentRecordController } from '../lib/talent-record.controller.js';
 // text belonging to ONE edition (preview). Reading edition R returns R's own
 // text; 404 when the talent is not in the tenant OR the edition is not the
 // talent's; only redacted text is exposed (D4). Plus the §6/§17 proof that
-// changing the default résumé never writes/deletes résumé text.
+// changing the default resume never writes/deletes resume text.
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const TALENT = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -51,7 +51,7 @@ describe('TI-1H §9 — GET :id/resume-editions/:editionId/text', () => {
     expect(res.status).toBe('extracted');
     expect(res.redacted_text).toBe('edition A redacted body');
     expect(res.extracted_at).toBe('2026-07-01T00:00:00.000Z');
-    // The read is scoped to the requested edition — never "the talent's résumé".
+    // The read is scoped to the requested edition — never "the talent's resume".
     expect(findResumeEditionText).toHaveBeenCalledWith(
       expect.objectContaining({ tenant_id: TENANT, talent_record_id: TALENT, resume_edition_id: ED_A }),
     );
@@ -78,8 +78,8 @@ describe('TI-1H §9 — GET :id/resume-editions/:editionId/text', () => {
   });
 });
 
-describe('TI-1H §6 — changing the default résumé never writes/deletes résumé text', () => {
-  it('the default-set path does not touch the résumé-text writer', async () => {
+describe('TI-1H §6 — changing the default resume never writes/deletes resume text', () => {
+  it('the default-set path does not touch the resume-text writer', async () => {
     // Full projected rows so the response mapper (toResumeEditionView) is satisfied.
     const fullRow = (id: string) => ({
       id, tenant_id: TENANT, talent_id: TALENT, talent_document_id: `doc-${id}`, attachment_id: null,

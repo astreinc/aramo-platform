@@ -20,7 +20,7 @@ import { governedDropTargets, resolveGovernedMove } from './board-governed-move'
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
 // surface only: it renders the backend-authoritative column placement, owner-attributed state,
-// Closed disposition, résumé linkage and Qualified band. It owns NO lifecycle truth and issues
+// Closed disposition, resume linkage and Qualified band. It owns NO lifecycle truth and issues
 // NO write — the governed next action + governed drag route to the owning drawer surface; the
 // VOID (Remove from requisition) opens the shared confirmation. Clicking a card opens the SAME
 // TalentDetailPanel drawer the List uses via `onSelectCard(pipeline_id)` (no second per-card
@@ -77,13 +77,13 @@ function ageTone(days: number): '' | 'warn' | 'hot' {
   return '';
 }
 
-// Résumé-for-this-requisition linkage, from the authoritative selection source. The human
+// Resume-for-this-requisition linkage, from the authoritative selection source. The human
 // edition LABEL is not on the board payload (LIVE-BUT-UNWIRED) — we surface selected / submitted
 // / not-selected from `source`, never a fabricated label.
 function resumeText(card: BoardCardView): string {
-  if (card.resume.source === 'none') return 'Résumé · not selected';
-  if (card.resume.locked || card.resume.source === 'submitted_frozen') return 'Résumé · submitted';
-  return 'Résumé · selected';
+  if (card.resume.source === 'none') return 'Resume · not selected';
+  if (card.resume.locked || card.resume.source === 'submitted_frozen') return 'Resume · submitted';
+  return 'Resume · selected';
 }
 
 export interface RequisitionTalentBoardProps {
@@ -113,7 +113,7 @@ function talentLabel(names: RequisitionTalentBoardProps['talentNames'], id: stri
   return `Talent ${id.slice(0, 8)}`;
 }
 
-// A bounded line-icon for the résumé row + the ⋯ menu (stroked, inherits colour).
+// A bounded line-icon for the resume row + the ⋯ menu (stroked, inherits colour).
 function ResumeIcon(): JSX.Element {
   return (
     <svg

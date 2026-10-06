@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-// HF1 §3 / R1 — the canonical résumé source-map.
+// HF1 §3 / R1 — the canonical resume source-map.
 //
 // resume-parse owns document-bytes → extracted-text, so it also owns the
 // deterministic text → ordered-source-blocks transform. The source-map is the
@@ -43,15 +43,15 @@ function sha256Hex(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-// Left-pad the 1-based block number, widening past 3 digits only when a résumé
-// is long enough to need it (keeps ids compact + stable for typical résumés).
+// Left-pad the 1-based block number, widening past 3 digits only when a resume
+// is long enough to need it (keeps ids compact + stable for typical resumes).
 function blockId(oneBasedIndex: number, total: number): string {
   const width = Math.max(3, String(total).length);
   return `B${String(oneBasedIndex).padStart(width, '0')}`;
 }
 
 /**
- * Build the canonical source-map for a résumé's extracted text. One block per
+ * Build the canonical source-map for a resume's extracted text. One block per
  * non-blank line; blank lines advance the offset cursor but emit no block.
  */
 export function buildResumeSourceMap(text: string): ResumeSourceMap {

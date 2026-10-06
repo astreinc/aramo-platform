@@ -70,7 +70,7 @@ module "resume_bucket" {
 }
 
 # The app principal binding (the piece the readiness track owed): attaches the
-# résumé-bucket least-privilege policy to the IAM user the API authenticates
+# resume-bucket least-privilege policy to the IAM user the API authenticates
 # as. Scoped to PUT/GET/Tagging on THIS bucket + its KMS key only — no
 # wildcard, no other-bucket access. Access keys are generated out-of-band into
 # the secret store (see module README); migrate to an instance/task role when

@@ -5,7 +5,7 @@ import { TalentRecordController } from '../lib/talent-record.controller.js';
 import { ResumeExtractionOrchestrator } from '../lib/resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-authorizer.js';
 
-// Add-Talent draft-from-resume — GOVERNED LLM IS THE SOLE production résumé
+// Add-Talent draft-from-resume — GOVERNED LLM IS THE SOLE production resume
 // fact extractor (TI-1F P0.2; …-TI-1F-…-v1_0-LOCKED §4-D). There is no mode
 // toggle and no deterministic fact-extraction branch; an LLM failure yields an
 // empty prefill + warning + retry, NEVER a silent fallback to the heuristic
@@ -15,7 +15,7 @@ import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-a
 // ResumeExtractionOrchestrator; this spec drives the controller through a REAL
 // orchestrator + authorizer over a fake parser/extraction, so the end-to-end
 // routing + the ruling-15 authorization both hold. Every request uses a VALID
-// Aramo résumé key under the authenticated tenant.
+// Aramo resume key under the authenticated tenant.
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
 const DRAFT = '01900000-0000-7000-8000-0000000000aa';
@@ -53,7 +53,7 @@ function makeController(opts: {
   const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-create-1' });
   const talentExtraction = { extractResumeDraft, upsertResumeExtractionDraft };
   const extractTextFromStorageKey = vi.fn().mockResolvedValue(opts.text ?? null);
-  // The résumé parser now exposes ONLY deterministic file→text extraction; the
+  // The resume parser now exposes ONLY deterministic file→text extraction; the
   // heuristic fact method is gone (TI-1F P0.2), so there is no path to fall back
   // to — governed LLM is structurally the sole extractor.
   const resumeParser = { extractTextFromStorageKey };
@@ -255,7 +255,7 @@ describe('draft-from-resume — governed-LLM sole extractor', () => {
     expect(res.warning).toBeDefined();
   });
 
-  it('unreadable résumé (null text) → empty prefill + warning, LLM NOT called', async () => {
+  it('unreadable resume (null text) → empty prefill + warning, LLM NOT called', async () => {
     const { ctl, extractResumeDraft } = makeController({ text: null });
     const res = await ctl.draftFromResume(AUTH, { storage_key: VALID_KEY }, 'rq-1');
     expect(res.prefill).toEqual({});

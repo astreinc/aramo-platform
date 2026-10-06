@@ -218,7 +218,7 @@ export function SubmittalWorkspaceView() {
   } else if (!historical && readyButViewOnly) {
     banner = { tone: 'info', title: 'All requirements complete', body: 'This submittal is ready to be recorded with the client by the requisition team.' };
   } else if (!historical && ready) {
-    banner = { tone: 'ok', title: 'All requirements complete', body: 'This submittal is ready to be recorded with the client. Recording it freezes the résumé and client rate shown here.' };
+    banner = { tone: 'ok', title: 'All requirements complete', body: 'This submittal is ready to be recorded with the client. Recording it freezes the resume and client rate shown here.' };
   }
 
   const scrollPrep = () => prepRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });

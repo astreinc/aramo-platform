@@ -78,7 +78,7 @@ export class PipelineController {
     private readonly pipelineRepository: PipelineRepository,
     private readonly addTalentPolicy: AddTalentPolicyService,
     private readonly idempotencyService: IdempotencyService,
-    // TALENT-INTEL-1 TI-1D-D — the résumé-edition reader PORT (scope wall: the
+    // TALENT-INTEL-1 TI-1D-D — the resume-edition reader PORT (scope wall: the
     // concrete adapter reading talent-evidence is bound @Global in apps/api).
     // @Optional so the many hand-wired PipelineController test sites boot without it.
     @Optional()
@@ -135,7 +135,7 @@ export class PipelineController {
     return view;
   }
 
-  // TALENT-INTEL-1 TI-1D-D — the résumé-edition state for this Talent×requisition.
+  // TALENT-INTEL-1 TI-1D-D — the resume-edition state for this Talent×requisition.
   // The Pipeline resolves tenant + talent_record_id + requisition_id, reads the
   // current working selection (append-only latest), and presents the Talent-global
   // default (suggestion only) + the active editions. Read-visibility parity: a
@@ -167,7 +167,7 @@ export class PipelineController {
     return this.buildResumeEditionView(authContext.tenant_id, id, view.talent_record_id, view.requisition_id);
   }
 
-  // TALENT-INTEL-1 TI-1D-D — EXPLICITLY select "use this résumé for this
+  // TALENT-INTEL-1 TI-1D-D — EXPLICITLY select "use this resume for this
   // requisition". Inserts a NEW append-only working-selection row (never mutates a
   // prior selection). Eligibility: the edition must belong to this Talent (the
   // reader is tenant+talent-scoped) AND be lifecycle=active. New dedicated scope
@@ -199,7 +199,7 @@ export class PipelineController {
       );
     }
     if (this.editionReader === undefined) {
-      throw new AramoError('INTERNAL_ERROR', 'résumé-edition reader is not available', 500, { requestId });
+      throw new AramoError('INTERNAL_ERROR', 'resume-edition reader is not available', 500, { requestId });
     }
     // Eligibility: the edition must belong to this Talent (the reader is
     // tenant+talent-scoped) and be active. Archived/retracted cannot be newly
@@ -212,7 +212,7 @@ export class PipelineController {
     if (target === undefined) {
       throw new AramoError(
         'NOT_FOUND',
-        'résumé edition not found for this talent',
+        'resume edition not found for this talent',
         404,
         { requestId, details: { resume_edition_id: body.resume_edition_id } },
       );
@@ -220,7 +220,7 @@ export class PipelineController {
     if (target.lifecycle_status !== 'active') {
       throw new AramoError(
         'VALIDATION_ERROR',
-        'only an active résumé edition may be selected for a requisition',
+        'only an active resume edition may be selected for a requisition',
         422,
         { requestId, details: { resume_edition_id: body.resume_edition_id, lifecycle_status: target.lifecycle_status } },
       );

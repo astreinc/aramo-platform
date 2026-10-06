@@ -282,7 +282,7 @@ describe('extractResumeDraft v3 — experience intelligence', () => {
     );
     await svc.extractResumeDraft({ tenant_id: TENANT, source_map: mapOf([{ id: 'B001', text: 'x' }]) });
     const request = generateStructured.mock.calls[0][0];
-    // The v3 résumé-draft path uses the FORCED_TOOL transport (the schema is too
+    // The v3 resume-draft path uses the FORCED_TOOL transport (the schema is too
     // large for strict constrained-decoding grammar compilation).
     expect(request.transport).toBe('FORCED_TOOL');
     const schema = request.json_schema;

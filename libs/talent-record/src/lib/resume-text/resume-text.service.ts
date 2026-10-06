@@ -7,12 +7,12 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 import { redactResumeText } from './redaction.js';
 
-// Search PR-2 — ResumeTextService: the async résumé-text re-extract +
+// Search PR-2 — ResumeTextService: the async resume-text re-extract +
 // persistence path (the NEW post-create seam; the E2 parse path is untouched).
 //
-// THE TRIGGER (Lead Ruling R1 — async, post-attachment-commit). The résumé
+// THE TRIGGER (Lead Ruling R1 — async, post-attachment-commit). The resume
 // Attachment binds in a SEPARATE request AFTER the TalentRecord is created
-// (E3), so the natural anchor is the résumé-attachment commit, not talent-
+// (E3), so the natural anchor is the resume-attachment commit, not talent-
 // create. At that seam the AttachmentController calls enqueueReindex() — a
 // single fast upsert that writes a `pending` row (NO S3 fetch in the request
 // path). The heavy work (S3 fetch + extract + redact) runs asynchronously in
@@ -34,7 +34,7 @@ const RESUME_REINDEX_BATCH_DEFAULT = 50;
 export interface EnqueueReindexInput {
   tenant_id: string;
   talent_record_id: string;
-  // The producing résumé Attachment. OPTIONAL since TI-1H: the confirmed-create
+  // The producing resume Attachment. OPTIONAL since TI-1H: the confirmed-create
   // path mints an edition from a raw draft upload with NO owned Attachment
   // (attachment_id stays null on that edition's text row).
   attachment_id?: string;
@@ -62,7 +62,7 @@ export class ResumeTextService {
     @Inject('ResumeTextServiceLogger') private readonly logger: AramoLogger,
   ) {}
 
-  // Enqueue (or re-enqueue) a résumé for text re-extraction. TI-1H: EDITION-
+  // Enqueue (or re-enqueue) a resume for text re-extraction. TI-1H: EDITION-
   // AWARE. A single fast set of writes (no S3 fetch here) — safe in the
   // attachment-commit request path. Two modes:
   //
@@ -74,7 +74,7 @@ export class ResumeTextService {
   //     Same-edition retry re-pends the same row (idempotent — no duplicate
   //     history, §7).
   //   • edition-blind (resume_edition_id omitted, attachment-commit): maintains a
-  //     single transient row per résumé attachment (deduped by attachment_id);
+  //     single transient row per resume attachment (deduped by attachment_id);
   //     if an edition already owns that attachment, re-pends the edition row.
   async enqueueReindex(input: EnqueueReindexInput): Promise<void> {
     if (input.resume_edition_id !== undefined) {
@@ -159,7 +159,7 @@ export class ResumeTextService {
     });
   }
 
-  // Edition-blind write (attachment-commit): a committed résumé attachment not
+  // Edition-blind write (attachment-commit): a committed resume attachment not
   // (yet) an edition. If an edition already owns this attachment, re-pend that
   // row; else keep a single transient per attachment.
   private async writeTransientRow(input: EnqueueReindexInput): Promise<void> {
@@ -259,7 +259,7 @@ export class ResumeTextService {
 
     const response = await fetch(presigned_url);
     if (!response.ok) {
-      throw new Error(`résumé fetch returned status ${response.status}`);
+      throw new Error(`resume fetch returned status ${response.status}`);
     }
     const buffer = Buffer.from(await response.arrayBuffer());
 

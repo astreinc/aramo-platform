@@ -118,7 +118,7 @@ export async function getTalentRecord(id: string): Promise<TalentRecordSummary> 
   return apiClient.get<TalentRecordSummary>(`/v1/talent-records/${id}`);
 }
 
-// TI-1D-D — the Requisition-context résumé selection for a pipeline (pipeline:read).
+// TI-1D-D — the Requisition-context resume selection for a pipeline (pipeline:read).
 // Returns the explicit working selection (null when never selected), the
 // Talent-global default (a suggestion only), and the active editions eligible for
 // a new selection.
@@ -130,7 +130,7 @@ export async function getPipelineResumeEdition(
   );
 }
 
-// TI-1D-D — explicitly select the résumé edition for this Talent × requisition
+// TI-1D-D — explicitly select the resume edition for this Talent × requisition
 // (pipeline:resume:set). Appends a new append-only working-selection row; never
 // mutates a prior selection and never binds at send. Returns the updated view.
 export async function setPipelineResumeEdition(

@@ -7,9 +7,9 @@
   tables + RDS SG. (DB tier from M5 PR-10a; public/private-app + IGW/NAT
   added by Step-4 Directive 2.)
 - `rds` — RDS Postgres (managed master secret).
-- `s3-resume-bucket` — private SSE-KMS résumé bucket + least-privilege
+- `s3-resume-bucket` — private SSE-KMS resume bucket + least-privilege
   policy doc.
-- `iam-app-principal` — legacy scoped IAM **user** for the résumé bucket
+- `iam-app-principal` — legacy scoped IAM **user** for the resume bucket
   (superseded by the ECS task role once compute lands; retire follow-up).
 - `iam-certbot-dns` — least-privilege IAM **user** for certbot DNS-01 challenges
   (Front-Door ADR-0023): TXT / `_acme-challenge.aramo.ai`-only Route53 write,

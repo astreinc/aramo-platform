@@ -25,7 +25,7 @@ export interface HydratedFieldValueProps {
 // source_type, never a client-inferred origin.
 const SOURCE_LABEL: Record<HydrationSourceType, string> = {
   MANUAL: 'Manual',
-  RESUME: 'Résumé',
+  RESUME: 'Resume',
   RECONCILED: 'Reconciled',
   IMPORT: 'Import',
 };

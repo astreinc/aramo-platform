@@ -3,7 +3,7 @@ import type { AuthContextType } from '@aramo/auth';
 
 import { PipelineController } from '../lib/pipeline.controller.js';
 
-// TALENT-INTEL-1 TI-1D-D — the Pipeline résumé-edition routes (GET state / PUT
+// TALENT-INTEL-1 TI-1D-D — the Pipeline resume-edition routes (GET state / PUT
 // explicit select). The default is a suggestion only; selection is explicit +
 // append-only; new selection requires an ACTIVE edition of THIS talent.
 

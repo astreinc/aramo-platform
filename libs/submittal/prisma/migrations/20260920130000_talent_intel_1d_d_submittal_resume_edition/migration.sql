@@ -1,4 +1,4 @@
--- TALENT-INTEL-1 TI-1D-D (Layer B) — freeze the exact résumé edition SENT to the
+-- TALENT-INTEL-1 TI-1D-D (Layer B) — freeze the exact resume edition SENT to the
 -- client on TalentSubmittalRecord. Adds nullable resume_edition_id (pinned ONCE at
 -- the send transition, frozen thereafter) and REWRITES the enumerated-allowlist
 -- immutability trigger to account for it in every legal branch. While rewriting,

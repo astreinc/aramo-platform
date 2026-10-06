@@ -8,7 +8,7 @@ import { RESUME_ATTACHMENT_RESOLVER } from '@aramo/talent-record';
 // are joined: libs/talent-record depends solely on the port interface and never
 // imports attachment (no nx cycle; attachment → talent-record is the real edge).
 // @Global so the TalentRecordController (declared in its own module) can inject the
-// token for the résumé-editions POST ingestion and the EDIT re-extraction path.
+// token for the resume-editions POST ingestion and the EDIT re-extraction path.
 // A STRING token (not a bare class) — avoids the non-strict app.get bare-class
 // provider-collision trap.
 @Global()

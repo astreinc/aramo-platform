@@ -6,7 +6,7 @@ import { ResumeExtractionOrchestrator } from '../lib/resume-extraction/resume-ex
 import { ResumeSourceAuthorizer } from '../lib/resume-extraction/resume-source-authorizer.js';
 
 // HF1 Gate-6 confirmed-create provenance sequence (rulings R1/R2/R8) + the
-// review-before-create contract. POSITIVE: a résumé-first create creates the
+// review-before-create contract. POSITIVE: a resume-first create creates the
 // TalentDocument AFTER the record and threads its id + corpus provenance onto
 // BOTH work-history and skill evidence. NEGATIVE: draft/review (draftFromResume)
 // creates NO document and NO evidence — nothing is persisted until Create.
@@ -53,7 +53,7 @@ function makeController(extra: Record<string, unknown> = {}) {
     resumeParser as never,
     talentExtraction as never,
   );
-  // TI-1D-C — the edition-ingestion companion (create-from-résumé mints the
+  // TI-1D-C — the edition-ingestion companion (create-from-resume mints the
   // companion edition). Returns is_default true (first edition) by default.
   const createEditionForDocument = vi
     .fn()
@@ -75,7 +75,7 @@ function makeController(extra: Record<string, unknown> = {}) {
 }
 
 describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
-  it('creates the résumé TalentDocument then threads its id + provenance onto WH + skill evidence', async () => {
+  it('creates the resume TalentDocument then threads its id + provenance onto WH + skill evidence', async () => {
     const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
       makeController();
     const body = {
@@ -97,7 +97,7 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
     const res = await ctl.create(CREATE_AUTH, body as never, 'rq-1');
     expect(res.id).toBe('tal-new');
 
-    // R1 — the document is created for the confirmed talent, off the résumé key.
+    // R1 — the document is created for the confirmed talent, off the resume key.
     expect(createResumeDocument).toHaveBeenCalledOnce();
     expect(createResumeDocument.mock.calls[0][0]).toMatchObject({
       talent_id: 'tal-new',
@@ -127,7 +127,7 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
     });
   });
 
-  // TALENT-INTEL-1 TI-1D-C §A/§B — confirmed-create mints the companion résumé
+  // TALENT-INTEL-1 TI-1D-C §A/§B — confirmed-create mints the companion resume
   // edition off the SAME TalentDocument + draft hash (no second extraction).
   it('creates the companion TalentResumeEdition off the minted document id + resume_text_hash', async () => {
     const { ctl, createEditionForDocument } = makeController();
@@ -156,7 +156,7 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
     );
   });
 
-  it('no résumé_text_hash → no companion edition (content_hash is required)', async () => {
+  it('no resume_text_hash → no companion edition (content_hash is required)', async () => {
     const { ctl, createEditionForDocument } = makeController();
     const body = {
       first_name: 'Ada',
@@ -174,7 +174,7 @@ describe('create — HF1 confirmed-create provenance (R1/R2/R8)', () => {
     expect(createEditionForDocument).not.toHaveBeenCalled();
   });
 
-  it('no résumé document → no document created, provenance empty (pre-HF1 body)', async () => {
+  it('no resume document → no document created, provenance empty (pre-HF1 body)', async () => {
     const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
       makeController();
     const body = {
@@ -230,7 +230,7 @@ describe('TI-1F-B — CREATE_DRAFT_UPLOAD close-out on confirmed create', () => 
       draft_id: 'draft-create-1',
     };
     await ctl.create(CREATE_AUTH, body as never, 'rq-1');
-    // The résumé document is minted (its id anchors evidence + links the draft).
+    // The resume document is minted (its id anchors evidence + links the draft).
     expect(createResumeDocument).toHaveBeenCalledOnce();
     expect(markResumeExtractionDraftAccepted).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -259,7 +259,7 @@ describe('draft/review — NOTHING is persisted before Create (review-before-cre
     const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
       makeController();
     // Governed draft path → the orchestrator returns an empty prefill (fake text
-    // = null); NOTHING is persisted before Create. TI-1B — a VALID Aramo résumé
+    // = null); NOTHING is persisted before Create. TI-1B — a VALID Aramo resume
     // key under the authenticated tenant (the orchestrator authorizes it).
     const validKey = `${TENANT}/talent/01900000-0000-7000-8000-0000000000aa/resume/01900000-0000-7000-8000-0000000000bb-Resume.pdf`;
     await ctl.draftFromResume(READ_AUTH, { storage_key: validKey }, 'rq-1');

@@ -48,7 +48,7 @@ export interface SearchHit {
   entity_id: string;
   display_label: string; // primary line (person / company / requisition name)
   subtitle: string | null; // secondary line (e.g. title, location)
-  snippet: string | null; // matched-context excerpt where the leg provides one (résumé FTS)
+  snippet: string | null; // matched-context excerpt where the leg provides one (resume FTS)
   route: string; // in-app navigation target (e.g. `/talent/${id}`)
   match: SearchMatch;
 }

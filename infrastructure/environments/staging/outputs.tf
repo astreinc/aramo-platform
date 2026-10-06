@@ -5,7 +5,7 @@
 # module README).
 
 output "resume_bucket_name" {
-  description = "Résumé bucket name — wire to the app's S3_RESUME_BUCKET env var."
+  description = "Resume bucket name — wire to the app's S3_RESUME_BUCKET env var."
   value       = module.resume_bucket.bucket_name
 }
 
@@ -32,6 +32,6 @@ output "ecr_auth_repository_url" {
 }
 
 output "api_task_role_arn" {
-  description = "api ECS task role ARN — the compute-native app principal carrying the résumé-bucket policy (supersedes the legacy api_principal IAM user)."
+  description = "api ECS task role ARN — the compute-native app principal carrying the resume-bucket policy (supersedes the legacy api_principal IAM user)."
   value       = module.ecs_service_api.task_role_arn
 }

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ResumeExtractionDraftProcessor } from '../lib/resume-extraction-draft/resume-extraction-draft.processor.js';
 
-// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker. Proves the
+// TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft worker. Proves the
 // EXISTING-Talent path is WORKER-OWNED after enqueue: a PROCESSING ATTACHMENT
 // draft is driven to READY_FOR_REVIEW | FAILED by ONE governed extraction, and
 // the worker writes NO typed Talent evidence (the mock exposes only draft ops).

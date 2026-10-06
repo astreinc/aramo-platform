@@ -24,7 +24,7 @@ vi.mock('@aramo/resume-parse', async (importOriginal) => {
   return { ...actual, extractResumeText: vi.fn() };
 });
 
-// Search PR-2 — résumé full-text proofs. Lead pre-committed rulings:
+// Search PR-2 — resume full-text proofs. Lead pre-committed rulings:
 //   R1 async re-extract · R2 SSN redaction at persist · R3 websearch_to_tsquery
 //   + ts_rank + generated tsvector/GIN · R4 ?resume_q= AND ?q= · R5 DB
 //   onDelete cascade purge. Unit-level construction + structural proofs
@@ -64,7 +64,7 @@ function makeController(): {
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
-    // talentExtraction — unused by the résumé-search path.
+    // talentExtraction — unused by the resume-search path.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).
@@ -103,7 +103,7 @@ describe('PR-2 proof #1 — SSN-shaped redaction (R2/D4)', () => {
 // ---------------------------------------------------------------------------
 // PROOF #2/#3/#4 + R4 — the ?resume_q= query construction (repo, mocked raw).
 // ---------------------------------------------------------------------------
-describe('PR-2 proof #2/#3/#4 — résumé content-search SQL (repo)', () => {
+describe('PR-2 proof #2/#3/#4 — resume content-search SQL (repo)', () => {
   async function runSearch(args: {
     tenant_id: string;
     site_id?: string;
@@ -468,7 +468,7 @@ describe('PR-2 — enqueue + async re-extract (R1)', () => {
 // PROOF #5 (load-bearing) — purge-on-delete cascade is DB-ENFORCED.
 // Structural proof (R1 drift-spec precedent): the FK ON DELETE CASCADE is
 // declared in BOTH the migration and the schema, so deleting a TalentRecord
-// purges the résumé-text row (and its tsvector GIN entry) at the DB level.
+// purges the resume-text row (and its tsvector GIN entry) at the DB level.
 // ---------------------------------------------------------------------------
 describe('PR-2 proof #5 — purge-on-delete cascade (R5/D1)', () => {
   const migrationSql = readFileSync(
@@ -492,7 +492,7 @@ describe('PR-2 proof #5 — purge-on-delete cascade (R5/D1)', () => {
     expect(migrationSql).toMatch(/ON DELETE CASCADE/);
   });
 
-  it('schema declares onDelete: Cascade on the résumé-text relation', () => {
+  it('schema declares onDelete: Cascade on the resume-text relation', () => {
     expect(schema).toContain('model TalentResumeText');
     expect(schema).toMatch(/references:\s*\[id\],\s*onDelete:\s*Cascade/);
   });

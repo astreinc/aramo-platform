@@ -88,8 +88,8 @@ const SCHEDULES = [
     job_id: 'skill-canonicalization-daily',
     repeat: { pattern: '0 5 * * *', tz: 'UTC' as const },
   },
-  // Search PR-2 — the résumé re-extract tick. Drains `pending`
-  // talent_resume_text rows (the polling-outbox signal written at the résumé-
+  // Search PR-2 — the resume re-extract tick. Drains `pending`
+  // talent_resume_text rows (the polling-outbox signal written at the resume-
   // attachment commit seam): S3 fetch + deterministic extract + D4 redaction +
   // persist. Every 60s — re-extract is search-infra, near-real-time is ample.
   {
@@ -110,8 +110,8 @@ const SCHEDULES = [
     repeat: { every: TALENT_EMBEDDING_TICK_INTERVAL_MS },
   },
   // SRC-2 PR-1 — the cold-ingest extraction sweep. Drains resolved arrivals whose
-  // résumé still needs extraction (identity evidence for promotion). Every 60s,
-  // matching resume-reindex — the two are sibling résumé-extraction drains; a
+  // resume still needs extraction (identity evidence for promotion). Every 60s,
+  // matching resume-reindex — the two are sibling resume-extraction drains; a
   // large first-tick backlog processes by design (the deploy note reports the
   // count). Registered here so the SRC-1-webhook-originated arrivals are actually
   // swept (the worker existed but was never scheduled — SRC-2 recon finding).

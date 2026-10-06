@@ -392,7 +392,7 @@ describe('Talent360Service — composes authorized truth, is not the authority',
         fakePort({
           listDocuments: async () => [
             docRow({ id: 'd-rtr', document_type_name: 'Right to Represent', status: 'EXECUTED', executed_at: '2026-09-26T00:00:00Z' }),
-            docRow({ id: 'd-res', document_type_name: 'Résumé', status: 'DRAFT', executed_at: null }),
+            docRow({ id: 'd-res', document_type_name: 'Resume', status: 'DRAFT', executed_at: null }),
           ],
         }),
       );
@@ -501,7 +501,7 @@ function docRow(overrides: Partial<DocumentRow> = {}): DocumentRow {
     id: 'd-1',
     title: 'file.docx',
     document_type_key: 'RESUME',
-    document_type_name: 'Résumé',
+    document_type_name: 'Resume',
     status: 'DRAFT',
     executed_at: null,
     created_at: '2026-09-14T00:00:00Z',

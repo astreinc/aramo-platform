@@ -9,7 +9,7 @@ import {
 
 // Cold-Ingest Extraction — THE no-LLM-boundary structural spec (ADR-0015
 // Decision 10). AI/LLM provider consumption is confined to libs/ai-draft and
-// its declared consumers. This poll re-reads a résumé with the DETERMINISTIC
+// its declared consumers. This poll re-reads a resume with the DETERMINISTIC
 // parser (resume-parse — pdf-parse / mammoth heuristics, no LLM) and writes the
 // parsed fields as declared evidence. It MUST NOT import @aramo/ai-draft,
 // @anthropic-ai/sdk, DraftProvider, or any llm/LLM/anthropic identifier.

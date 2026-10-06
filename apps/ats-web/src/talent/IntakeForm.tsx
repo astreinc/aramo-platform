@@ -28,7 +28,7 @@ interface IntakeFormProps {
   readonly values: IntakeState;
   readonly provenance: ProvenanceMap;
   readonly workHistory: readonly WorkHistoryDraft[];
-  // HF2 — grounded education + certifications from the résumé draft (read-only
+  // HF2 — grounded education + certifications from the resume draft (read-only
   // review; persisted at create as declared evidence). Optional (absent on the
   // manual-add / edit paths).
   readonly education?: readonly EducationDraft[];
@@ -254,7 +254,7 @@ export function IntakeForm({
             onChange={(ev) => onField('key_skills', ev.target.value)}
           />
           <p className="rc-secnote">
-            Free text — review and correct. Auto-filled from the résumé when governed
+            Free text — review and correct. Auto-filled from the resume when governed
             extraction is enabled for your tenant; otherwise enter the key skills
             manually. Canonical structured skill evidence is produced separately.
           </p>
@@ -342,7 +342,7 @@ function Section({
 }
 
 // Work-History review card — the recruiter edits the extracted rows before
-// create (LOCKED scope expansion). Declared 'from résumé', NOT verified; the
+// create (LOCKED scope expansion). Declared 'from resume', NOT verified; the
 // green VERIFIED badge appears only later on the Detail once verification runs.
 function WorkHistoryEditor({
   entries,
@@ -361,7 +361,7 @@ function WorkHistoryEditor({
     <div className="rc-secfield rc-secfield--full">
       {entries.length === 0 ? (
         <p className="rc-secnote">
-          No roles yet — add one, or roles appear here when parsed from a résumé.
+          No roles yet — add one, or roles appear here when parsed from a resume.
         </p>
       ) : null}
       {entries.map((e, i) => (
@@ -416,7 +416,7 @@ function WorkHistoryEditor({
           </div>
           {/* HF2 — the role's Work experience is the grounded, editable
               experience_summary (≤600, R10). Replaces the legacy free-text
-              "Description" box: one editable field, pre-filled from the résumé,
+              "Description" box: one editable field, pre-filled from the resume,
               persisted to experience_summary on create. */}
           <label className="rc-secfield rc-secfield--full">
             <span className="rc-secfield__lb"><span>Work experience</span></span>
@@ -449,7 +449,7 @@ function WorkHistoryEditor({
         </Button>
       </div>
       <p className="rc-secnote">
-        From résumé — review and correct. Saved as declared work history (not
+        From resume — review and correct. Saved as declared work history (not
         verified) when you create.
       </p>
     </div>
@@ -504,8 +504,8 @@ function ExperienceIntelligence({ entry }: { readonly entry: WorkHistoryDraft })
   );
 }
 
-// HF2 §29 — the résumé-derived Education + Certifications review. When the
-// governed draft produced them they are shown read-only (declared 'from résumé';
+// HF2 §29 — the resume-derived Education + Certifications review. When the
+// governed draft produced them they are shown read-only (declared 'from resume';
 // persisted as structured evidence at create). Absent (manual add / no draft) →
 // the prior "captured after creation" note stands.
 function EducationCertificationsReview({
@@ -528,7 +528,7 @@ function EducationCertificationsReview({
   return (
     <div className="rc-secfield rc-secfield--full">
       {education.length > 0 ? (
-        <ul className="rc-edu__list" aria-label="Education from résumé">
+        <ul className="rc-edu__list" aria-label="Education from resume">
           {education.map((ed, i) => (
             <li className="rc-edu__item" key={i}>
               <span className="rc-edu__degree">{ed.degree_name}</span>
@@ -544,7 +544,7 @@ function EducationCertificationsReview({
         </ul>
       ) : null}
       {certifications.length > 0 ? (
-        <ul className="rc-cert__list" aria-label="Certifications from résumé">
+        <ul className="rc-cert__list" aria-label="Certifications from resume">
           {certifications.map((c, i) => (
             <li className="rc-cert__item" key={i}>
               <span className="rc-cert__name">{c.certification_name}</span>
@@ -556,7 +556,7 @@ function EducationCertificationsReview({
         </ul>
       ) : null}
       <p className="rc-secnote">
-        From résumé — saved as declared education / certifications (not verified)
+        From resume — saved as declared education / certifications (not verified)
         when you create.
       </p>
     </div>

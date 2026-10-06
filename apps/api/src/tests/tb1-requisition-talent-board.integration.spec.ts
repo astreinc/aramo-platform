@@ -26,7 +26,7 @@ import type { EngagementGateService } from '../engagement/engagement-gate.servic
 // intra-schema RequisitionAssignment→Requisition). Proves: deepest-owner column derivation,
 // owner attribution (source_object_id), canonical-state-only projection, correct Closed
 // derivation, tenant isolation, requisition scoping, 404 concealment (AUTHZ-D4b), the
-// STATE-ENUMS-ONLY no-compensation guarantee, résumé linkage (working vs frozen), days-in-
+// STATE-ENUMS-ONLY no-compensation guarantee, resume linkage (working vs frozen), days-in-
 // stage from history, the assigned recruiter, the Qualified band — and NO per-card fan-out
 // (every batched reader is invoked exactly once regardless of card count — directive §19).
 
@@ -496,12 +496,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ---------------------------------------------------------------------------------------
-    // TB1-10 — résumé linkage (§13): working selection pre-submit; frozen edition post-submit.
-    // NEVER the talent's latest résumé.
+    // TB1-10 — resume linkage (§13): working selection pre-submit; frozen edition post-submit.
+    // NEVER the talent's latest resume.
     // ---------------------------------------------------------------------------------------
     it('TB1-10: pre-submit → working_selection (unlocked); submitted → submitted_frozen (locked)', async () => {
       const tenant = randomUUID(); const req = randomUUID();
-      // Pre-submit: a working résumé selection on a qualified pipeline (no submittal).
+      // Pre-submit: a working resume selection on a qualified pipeline (no submittal).
       const t1 = randomUUID(); await seedPipeline(tenant, req, t1, 'qualified');
       const working = randomUUID();
       await seedResume(tenant, t1, req, working, new Date('2026-01-10T00:00:00Z'));
@@ -548,11 +548,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // ---------------------------------------------------------------------------------------
     // TB1-13 — the Qualified band (§6): ready_to_submit vs needs_action with specific blockers.
     // ---------------------------------------------------------------------------------------
-    it('TB1-13: Qualified band = ready_to_submit with a résumé (open req); needs_action + resume_not_selected without', async () => {
+    it('TB1-13: Qualified band = ready_to_submit with a resume (open req); needs_action + resume_not_selected without', async () => {
       const tenant = randomUUID(); const req = randomUUID();
       const ready = randomUUID(); await seedPipeline(tenant, req, ready, 'qualified');
       await seedResume(tenant, ready, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));
-      const needs = randomUUID(); await seedPipeline(tenant, req, needs, 'qualified'); // no résumé
+      const needs = randomUUID(); await seedPipeline(tenant, req, needs, 'qualified'); // no resume
 
       const board = await call(tenant, req);
       const readyCard = cardsIn(board, 'qualified').find((c) => c.talent_record_id === ready)!;
@@ -625,9 +625,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---------------------------------------------------------------------------------------
     // TB4-1 — the Qualified band is re-grounded on the REAL evaluateEligibility port: with NO
-    // policy row (open window) and NO RTR requirement (ungated) + a résumé → ready_to_submit.
+    // policy row (open window) and NO RTR requirement (ungated) + a resume → ready_to_submit.
     // ---------------------------------------------------------------------------------------
-    it('TB4-1: open window + RTR not required + résumé → ready_to_submit (via the real eligibility port)', async () => {
+    it('TB4-1: open window + RTR not required + resume → ready_to_submit (via the real eligibility port)', async () => {
       const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
       await seedPipeline(tenant, req, talent, 'qualified');
       await seedResume(tenant, talent, req, randomUUID(), new Date('2026-01-10T00:00:00Z'));

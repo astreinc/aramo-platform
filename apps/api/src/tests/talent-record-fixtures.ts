@@ -15,7 +15,7 @@ const ROOT = resolve(__dirname, '../../../..');
 // The COLUMN-mutating talent-record migrations. The Prisma client projects
 // every scalar column on findFirst, so the table must match the client (init +
 // the additive columns, minus the 4e-rest identity-link column drop). The trgm /
-// résumé-text / search-index migrations add no TalentRecord scalar columns and
+// resume-text / search-index migrations add no TalentRecord scalar columns and
 // are intentionally omitted.
 const TALENT_RECORD_MIGRATION_PATHS = [
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',

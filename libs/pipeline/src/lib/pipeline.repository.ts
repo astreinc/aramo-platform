@@ -196,7 +196,7 @@ interface PipelineStatusHistoryRow {
   note: string | null;
 }
 
-// TALENT-INTEL-1 TI-1D-D — a working résumé-selection history row (Layer A).
+// TALENT-INTEL-1 TI-1D-D — a working resume-selection history row (Layer A).
 export interface TalentRequisitionResumeRow {
   id: string;
   tenant_id: string;
@@ -1575,7 +1575,7 @@ export class PipelineRepository {
     }));
   }
 
-  // ── TALENT-INTEL-1 TI-1D-D — requisition résumé selection (append-only) ──────
+  // ── TALENT-INTEL-1 TI-1D-D — requisition resume selection (append-only) ──────
 
   // Append a new working-selection row (never mutates a prior row — the table is
   // DB-append-only). The current selection is the latest selected_at for the triple.
@@ -1619,7 +1619,7 @@ export class PipelineRepository {
     return (row as TalentRequisitionResumeRow | null) ?? null;
   }
 
-  // Requisition Talent Board (TB-1) — BATCHED current-résumé selection for a SET
+  // Requisition Talent Board (TB-1) — BATCHED current-resume selection for a SET
   // of talent records on ONE requisition. The per-id sibling `getCurrentRequisitionResume`
   // would fan out N queries across a Board's talent set (N+1, directive §19); this
   // issues ONE `talent_record_id IN (...)` read and reduces to the current (MAX

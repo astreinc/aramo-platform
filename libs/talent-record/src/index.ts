@@ -32,7 +32,7 @@ export type {
 // Segment 4b — cross-schema facet-counts result shape (composed in apps/api).
 export type { CrossFacets } from './lib/dto/talent-cross-facets.port.js';
 
-// Search PR-2 — résumé full-text surfaces.
+// Search PR-2 — resume full-text surfaces.
 export { ResumeTextService } from './lib/resume-text/resume-text.service.js';
 export type {
   EnqueueReindexInput,
@@ -45,7 +45,7 @@ export {
   RESUME_REINDEX_QUEUE_NAME,
   RESUME_REINDEX_BATCH_SIZE,
 } from './lib/resume-text/resume-reindex.queue.constants.js';
-// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker (apps/api-only).
+// TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft worker (apps/api-only).
 export { ResumeExtractionDraftWorkerModule } from './lib/resume-extraction-draft/resume-extraction-draft.module.js';
 export { ResumeExtractionDraftProcessor } from './lib/resume-extraction-draft/resume-extraction-draft.processor.js';
 export {
@@ -69,7 +69,7 @@ export {
 } from './lib/profile-hydration.js';
 export { LinkTalentRecordRequestDto } from './lib/dto/link-talent-record-request.dto.js';
 
-// TALENT-INTEL-1 (TI-1B) — the shared résumé-extraction orchestrator + its
+// TALENT-INTEL-1 (TI-1B) — the shared resume-extraction orchestrator + its
 // authorization seam, and the dependency-inversion PORT for the ATTACHMENT
 // (EDIT/re-extraction) source form. `libs/attachment` (which already depends on
 // talent-record) implements ResumeAttachmentResolver and binds it to the

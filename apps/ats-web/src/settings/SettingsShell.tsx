@@ -184,7 +184,7 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         status: 'live',
       },
       {
-        // Recruiting-behaviour defaults (Compensation display + Résumé
+        // Recruiting-behaviour defaults (Compensation display + Resume
         // extraction). Home for the previously-unlinked SettingsView; two of
         // its controls directly govern recruiting/Add-Talent behaviour. The
         // financial-auditor grant is an authorization control and moves to

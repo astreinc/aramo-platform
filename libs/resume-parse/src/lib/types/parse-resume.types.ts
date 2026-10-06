@@ -1,6 +1,6 @@
-// Résumé draft prefill types — the recruiter-facing prefill + status shape.
+// Resume draft prefill types — the recruiter-facing prefill + status shape.
 //
-// Governed LLM is the SOLE production résumé fact extractor (…-TI-1F-…-v1_0-
+// Governed LLM is the SOLE production resume fact extractor (…-TI-1F-…-v1_0-
 // LOCKED §4-D); the governed orchestrator (libs/talent-record) builds a
 // TalentRecordPrefill + ParseStatus from its grounded proposal. The shape
 // mirrors the structurally-relevant subset of CreateTalentRecordRequestDto and

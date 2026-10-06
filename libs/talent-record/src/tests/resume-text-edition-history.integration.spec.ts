@@ -13,7 +13,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentRecordRepository } from '../lib/talent-record.repository.js';
 import { ResumeTextService } from '../lib/resume-text/resume-text.service.js';
 
-// TALENT-INTEL-1 TI-1H — end-to-end proof of edition-aware résumé-text history
+// TALENT-INTEL-1 TI-1H — end-to-end proof of edition-aware resume-text history
 // against a real Postgres 17. Exercises the REAL migration chain (drops
 // UNIQUE(talent_record_id), adds the per-edition key + partial-unique transient)
 // and the REAL ResumeTextService write path + repository readers — NOT mocks.
@@ -47,7 +47,7 @@ function splitDdl(sql: string): string[] {
 }
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'résumé-text edition history — integration (real Postgres 17)',
+  'resume-text edition history — integration (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let prisma: PrismaService;
@@ -178,11 +178,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('tenant A cannot read tenant B’s edition text', async () => {
       const ed = uuidv7();
       await service.enqueueReindex({ tenant_id: TENANT_B, talent_record_id: talentB, storage_key: 'k/b', resume_edition_id: ed });
-      await setText(TENANT_B, talentB, ed, 'tenant B private résumé');
+      await setText(TENANT_B, talentB, ed, 'tenant B private resume');
       // Correct tenant sees it; the other tenant does not.
       const own = await repo.findResumeEditionText({ tenant_id: TENANT_B, talent_record_id: talentB, resume_edition_id: ed });
       const cross = await repo.findResumeEditionText({ tenant_id: TENANT_A, talent_record_id: talentB, resume_edition_id: ed });
-      expect(own?.redacted_text).toBe('tenant B private résumé');
+      expect(own?.redacted_text).toBe('tenant B private resume');
       expect(cross).toBeNull();
     });
 
@@ -190,7 +190,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const talent = uuidv7();
       await prisma.talentRecord.create({ data: { id: talent, tenant_id: TENANT_A, first_name: 'Alan', last_name: 'Turing', email1: 'alan@x.co' } });
       const att = uuidv7();
-      // A committed résumé attachment that never becomes an edition (TalentEditDrawer).
+      // A committed resume attachment that never becomes an edition (TalentEditDrawer).
       await service.enqueueReindex({ tenant_id: TENANT_A, talent_record_id: talent, attachment_id: att, storage_key: 'k/legacy' });
       const rows = await prisma.talentResumeText.findMany({ where: { talent_record_id: talent } });
       expect(rows).toHaveLength(1);

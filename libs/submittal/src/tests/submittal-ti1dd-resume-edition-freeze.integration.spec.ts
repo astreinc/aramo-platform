@@ -8,7 +8,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 
 // TALENT-INTEL-1 TI-1D-D (Layer B) — the DB-layer proofs for the frozen send-time
-// résumé snapshot on TalentSubmittalRecord: the ready_for_review → submitted_to_client
+// resume snapshot on TalentSubmittalRecord: the ready_for_review → submitted_to_client
 // send transition is the ONE place resume_edition_id may be pinned (from NULL);
 // any later mutation of resume_edition_id is rejected; and the previously-leaky
 // pipeline_id is now frozen too. The record is raw-INSERTed (bypassing the
@@ -63,7 +63,7 @@ const TENANT = '11111111-1111-7111-8111-111111111111';
 const ACTOR = '55555555-5555-7555-8555-555555555555';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'TI-1D-D submittal résumé-edition freeze (real Postgres 17)',
+  'TI-1D-D submittal resume-edition freeze (real Postgres 17)',
   () => {
     let container: StartedPostgreSqlContainer;
     let c: Client;

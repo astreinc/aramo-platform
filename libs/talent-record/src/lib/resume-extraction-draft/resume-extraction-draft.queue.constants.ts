@@ -1,10 +1,10 @@
-// TALENT-INTEL-1 (TI-1F-A) — the résumé-extraction-draft worker queue constants.
+// TALENT-INTEL-1 (TI-1F-A) — the resume-extraction-draft worker queue constants.
 // Mirrors the RESUME_REINDEX / CANONICALIZATION_TRIGGER queue-constants pattern
 // (one source of truth shared by BullModule.registerQueue, the @Processor
 // decorator, and the registration.ts getQueueToken caller).
 //
 // Polling-outbox shape: a PROCESSING ResumeExtractionDraft row IS the work-to-do
-// signal (written synchronously at the existing-Talent add-résumé-edition seam).
+// signal (written synchronously at the existing-Talent add-resume-edition seam).
 // The repeat-tick worker drains PROCESSING drafts — one governed
 // ResumeExtractionOrchestrator ATTACHMENT extraction per draft → READY_FOR_REVIEW
 // or FAILED. NO typed evidence (that is TI-1F-B). Redis-gated: inert in CI /

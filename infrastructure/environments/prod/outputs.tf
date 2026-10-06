@@ -4,7 +4,7 @@
 # outputs.tf).
 
 output "resume_bucket_name" {
-  description = "Résumé bucket name — wire to the app's S3_RESUME_BUCKET env var (already injected into the api task via compute.tf)."
+  description = "Resume bucket name — wire to the app's S3_RESUME_BUCKET env var (already injected into the api task via compute.tf)."
   value       = module.resume_bucket.bucket_name
 }
 
@@ -31,7 +31,7 @@ output "ecr_auth_repository_url" {
 }
 
 output "api_task_role_arn" {
-  description = "api ECS task role ARN — the prod app principal (carries the résumé-bucket policy; closes the recon's staging/prod IAM gap with the compute-native principal)."
+  description = "api ECS task role ARN — the prod app principal (carries the resume-bucket policy; closes the recon's staging/prod IAM gap with the compute-native principal)."
   value       = module.ecs_service_api.task_role_arn
 }
 

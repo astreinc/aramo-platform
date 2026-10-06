@@ -50,7 +50,7 @@ export interface WorkspaceDocumentsSection {
   /** RTR (Right to Represent) readiness verdict for this talent + requisition. */
   readonly rtr_satisfied: boolean;
   readonly rtr_deny: string | null;
-  /** The résumé edition selected for this requisition (working selection), if any. */
+  /** The resume edition selected for this requisition (working selection), if any. */
   readonly resume_selected: boolean;
 }
 

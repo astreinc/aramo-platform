@@ -139,7 +139,7 @@ describe('CI-B6P AnthropicConversationIntelligenceAdapter', () => {
   });
 
   // HF2 hotfix boundary — Conversation Intelligence MUST keep native STRICT
-  // constrained decoding; only the HF2 résumé-draft path uses FORCED_TOOL. This
+  // constrained decoding; only the HF2 resume-draft path uses FORCED_TOOL. This
   // guards against the shared adapter being accidentally moved to tool-use.
   it('uses STRICT native structured output — NEVER the FORCED_TOOL transport', async () => {
     let captured: StructuredGenerationRequest | null = null;
