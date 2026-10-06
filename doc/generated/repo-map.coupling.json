@@ -11563,6 +11563,12 @@
     },
     {
       "excludedBy": "src/**/*.spec.ts",
+      "from": "apps/ats-web/src/offer-start/offer-start-steps.spec.ts",
+      "status": "excluded",
+      "to": "libs/placement/src/tests/offer-start-exceptions.spec.ts"
+    },
+    {
+      "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/offers/offer-state-drift.spec.ts",
       "status": "excluded",
       "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
