@@ -109,6 +109,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId,
         expected_version: cur!.version,
         visible_requisition_ids: null,
+        // Recruiting-Journey I1 — the evidence-backed milestones (contacted /
+        // talent_responded) require grounded provenance; these substrate tests advance
+        // through them with synthetic evidence (the gate itself is proven in the
+        // evidence-milestones spec — here we assert capacity is untouched).
+        ...(to === 'contacted' || to === 'talent_responded'
+          ? { evidence_provenance: { kind: 'communication_interaction', id: randomUUID() } }
+          : {}),
       });
     }
 
