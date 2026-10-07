@@ -86,8 +86,10 @@ describe('canonical call state machine', () => {
   });
 
   it('does NOT admit canceled/busy in B1 (deferred to B6)', () => {
-    // The locked B1 state set is exactly 8 values; canceled/busy are absent.
-    expect(COMMUNICATION_INTERACTION_STATES).toHaveLength(8);
+    // The B1 state set (8) plus Recruiting-Journey §16's terminal `recorded` = 9;
+    // canceled/busy remain absent (still deferred to B6 — the invariant this guards).
+    expect(COMMUNICATION_INTERACTION_STATES).toHaveLength(9);
+    expect(COMMUNICATION_INTERACTION_STATES as readonly string[]).toContain('recorded');
     expect(COMMUNICATION_INTERACTION_STATES as readonly string[]).not.toContain('canceled');
     expect(COMMUNICATION_INTERACTION_STATES as readonly string[]).not.toContain('busy');
   });
