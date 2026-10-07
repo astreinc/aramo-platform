@@ -63,7 +63,13 @@ export class VoiceEvidenceReaderAdapter implements VoiceEvidenceReader {
       return {
         channel: 'email',
         availability: 'available',
-        recorded_evidence: rows.some((r) => r.status === 'completed'),
+        // §16 ruling pt 5 — a provider-accepted send is provider provenance: require
+        // evidence_authority=provider_verified, not status alone. Existing completed
+        // sends default provider_verified (§19 unchanged); an attested inbound email
+        // response (status `recorded`, recruiter_attested) is NOT a provider send.
+        recorded_evidence: rows.some(
+          (r) => r.status === 'completed' && r.evidence_authority === 'provider_verified',
+        ),
       };
     } catch {
       return { channel: 'email', availability: 'read_error' };
@@ -77,7 +83,17 @@ export class VoiceEvidenceReaderAdapter implements VoiceEvidenceReader {
   ): Promise<EngagementEvidenceFact> {
     try {
       const rows = await this.comms.findVoiceEvidenceInteractions(tenantId, talentId, requisitionId);
-      const providerTwoWay = rows.some((r) => r.status === 'connected' || r.status === 'completed');
+      // Recruiting-Journey §16 (I3), ruling pt 5 — PROVIDER_VERIFIED requires provider
+      // PROVENANCE, not just a two-way call-status. `connected`/`completed` alone can
+      // NEVER imply provider verification: the row must also carry
+      // evidence_authority=provider_verified. Existing rows default provider_verified,
+      // so provider-backed grading is unchanged (§19); a recruiter-attested callback
+      // (recruiter_attested) can never be promoted to provider-verified.
+      const providerTwoWay = rows.some(
+        (r) =>
+          r.evidence_authority === 'provider_verified' &&
+          (r.status === 'connected' || r.status === 'completed'),
+      );
       const recruiterTwoWay = rows.some((r) =>
         r.dispositions.some((d) => QUALIFYING_TWO_WAY_DISPOSITIONS.has(d.disposition)),
       );

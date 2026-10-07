@@ -1,7 +1,6 @@
 import { apiClient } from '@aramo/fe-foundation';
 
 import type {
-  PipelineActionRequest,
   PipelineHistoryResponse,
   PipelineListResponse,
   PipelineResumeEditionView,
@@ -84,21 +83,12 @@ export async function transitionPipeline(
   );
 }
 
-// L2-C — the recruiter named-action surface (POST /v1/pipelines/{id}/actions,
-// pipeline:change-status). A thin echo of transitionPipeline for the named
-// commands (CONTACT / MARK_RESPONDED / START_QUALIFICATION / QUALIFY /
-// DISPOSITION); the server maps the action to its to_status and, for DISPOSITION,
-// writes the authority-partitioned reason in the terminal transaction. COMPLETE is
-// NOT reachable here (system-only — a body carrying it is refused 422).
-export async function applyPipelineAction(
-  pipelineId: string,
-  body: PipelineActionRequest,
-): Promise<PipelineView> {
-  return apiClient.post<PipelineView>(
-    `/v1/pipelines/${pipelineId}/actions`,
-    body,
-  );
-}
+// Recruiting-Journey §17/§30 — the generic recruiter named-action client
+// (applyPipelineAction → POST /actions) was REMOVED. The evidence-backed milestones
+// (contacted / talent_responded) are never reached from the FE via a naked action;
+// they originate from backend evidence authority (email/voice orchestration, the
+// recruiter-attested response command, or the provider connector). The recruiter
+// DECISION edges (qualifying / qualified) ride transitionPipeline directly.
 
 // Accidental-Add Correction — "Remove from requisition" (VOID). A governed
 // correction, NOT a recruiting disposition and NOT a delete. The backend is

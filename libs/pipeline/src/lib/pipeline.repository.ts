@@ -17,6 +17,8 @@ import {
   ACTIVE_FLOW_STAGES,
   activeStageOrdinal,
   isLiveStatus,
+  isEvidenceBackedStage,
+  EVIDENCE_BACKED_STAGES,
   TERMINAL_STATUSES,
   RECRUITER_ACTION_TO_STATUS,
   type PipelineStatus,
@@ -537,6 +539,15 @@ export class PipelineRepository {
     // completed). A second disposition on the pipeline_id is exact-name translated
     // to PIPELINE_ALREADY_DISPOSITIONED (409). Callers validate authority/reason.
     disposition?: DispositionWriteInput;
+    // Recruiting-Journey Evidence-Governed Milestones (§3/§7/§17, I1/I2) — the
+    // grounding evidence a transition into an EVIDENCE_BACKED stage (contacted /
+    // talent_responded) rests on. REQUIRED for those targets (absent → refused with
+    // PIPELINE_STAGE_REQUIRES_EVIDENCE); the evidence-bearing commands set it, the
+    // generic /transition + recruiter /actions surfaces never do. `kind` is the
+    // evidence TYPE (e.g. communication_interaction) and `id` its durable
+    // identifier — carried into the outbox payload + history note for §28
+    // reconstruction (a reference/provenance, NOT a copy of the evidence payload).
+    evidence_provenance?: { kind: string; id: string };
   }): Promise<PipelineView> {
     const current = await this.prisma.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
@@ -630,6 +641,40 @@ export class PipelineRepository {
       );
     }
 
+    // Step 3b — EVIDENCE GATE (Recruiting-Journey §3/§7/§17, I1/I2). A transition
+    // INTO an evidence-backed milestone (contacted / talent_responded) must carry
+    // grounding evidence provenance. The generic /transition + recruiter /actions
+    // surfaces never supply it, so a naked click into these milestones is refused
+    // here in the canonical domain authority (not via FE hiding). The evidence-
+    // bearing commands recordContactEvidence / recordResponseEvidence are the only
+    // producers; the recruiter DECISION edges (qualifying / qualified) are exempt.
+    if (
+      isEvidenceBackedStage(args.to_status) &&
+      args.evidence_provenance === undefined
+    ) {
+      this.logger.log({
+        event: 'pipeline_transition_refused',
+        tenant_id: args.tenant_id,
+        pipeline_id: args.id,
+        code: 'PIPELINE_STAGE_REQUIRES_EVIDENCE',
+        from_status: fromStatus,
+        to_status: args.to_status,
+      });
+      throw new AramoError(
+        'PIPELINE_STAGE_REQUIRES_EVIDENCE',
+        `Pipeline milestone ${args.to_status} is established only from grounded evidence; a naked transition is refused`,
+        422,
+        {
+          requestId: args.requestId,
+          details: {
+            pipeline_id: args.id,
+            from_status: fromStatus,
+            to_status: args.to_status,
+          },
+        },
+      );
+    }
+
     // Step 4 — atomic interactive transaction (PR-A5b-1 widens the
     // composition with the placement decrement leg; the interactive form
     // preserves Ruling 6 atomicity AND allows the over-capacity guard to
@@ -646,9 +691,14 @@ export class PipelineRepository {
     const note = args.note ?? null;
     const site_id = (current as PipelineRow).site_id ?? undefined;
     const requisition_id = (current as PipelineRow).requisition_id;
+    const evidenceSuffix =
+      args.evidence_provenance === undefined
+        ? ''
+        : ` [evidence ${args.evidence_provenance.kind}:${args.evidence_provenance.id}]`;
     const transitionNote =
       `pipeline ${fromStatus} -> ${args.to_status}` +
-      (noteForActivity === null ? '' : `: ${noteForActivity}`);
+      (noteForActivity === null ? '' : `: ${noteForActivity}`) +
+      evidenceSuffix;
 
     // Lane 2 / L2-B — episode terminal timestamp on the live -> terminal flip.
     // Derived from isLiveStatus so it AUTO-TRACKS the L2-C partition; captured ONCE
@@ -661,10 +711,15 @@ export class PipelineRepository {
     const { updatedRow, historyRow } = await this.prisma.$transaction(
       async (tx) => {
         // 4a — UPDATE Pipeline.status (+ bump the optimistic-concurrency version
-        // in the SAME tx; L2-A). The CAS was validated above; the increment
-        // commits atomically with the status/history/activity/metering writes.
-        const updated = await tx.pipeline.update({
-          where: { id: args.id },
+        // in the SAME tx; L2-A). The CAS is enforced IN THE WRITE, not only by the
+        // JS pre-check above: `version = currentVersion` is a WHERE predicate, so a
+        // writer whose row was concurrently advanced between our findFirst and this
+        // update matches 0 rows instead of clobbering (write-skew guard, directive
+        // §13 / I7). The JS pre-check still gives the rich early 409 for the common
+        // already-stale case; this guard closes the read→write race the pre-check
+        // cannot see. tenant_id is pinned too so the predicate is fully scoped.
+        const writeResult = await tx.pipeline.updateMany({
+          where: { id: args.id, tenant_id, version: currentVersion },
           data: {
             status: args.to_status,
             version: { increment: 1 },
@@ -676,6 +731,33 @@ export class PipelineRepository {
               : {}),
           },
         });
+        if (writeResult.count === 0) {
+          // A concurrent writer advanced the row AFTER our findFirst cleared the
+          // pre-check — the version-guarded write matched nothing. Re-read for the
+          // conflict detail and refuse; nothing in this tx has committed. Same
+          // PIPELINE_TRANSITION_CONFLICT (409) code/shape as the pre-check path.
+          const fresh = (await tx.pipeline.findFirst({
+            where: { id: args.id },
+          })) as PipelineRow | null;
+          throw new AramoError(
+            'PIPELINE_TRANSITION_CONFLICT',
+            'Pipeline was modified concurrently; refresh and retry',
+            409,
+            {
+              requestId: args.requestId,
+              details: {
+                pipeline_id: args.id,
+                current_status: fresh?.status ?? null,
+                current_version: fresh?.version ?? null,
+              },
+            },
+          );
+        }
+        // updateMany returns only a count; re-read the row we just advanced so the
+        // outbox payload + returned view carry the canonical post-write version.
+        const updated = (await tx.pipeline.findFirst({
+          where: { id: args.id },
+        })) as PipelineRow;
         // 4b — INSERT PipelineStatusHistory
         const history = await tx.pipelineStatusHistory.create({
           data: {
@@ -716,6 +798,15 @@ export class PipelineRepository {
               from_status: fromStatus,
               to_status: args.to_status,
               version: updated.version,
+              // §28 — evidence-derived milestone reconstruction: carry the source
+              // evidence TYPE + ID (a reference, never the evidence payload). Absent
+              // for the recruiter DECISION edges (qualifying / qualified).
+              ...(args.evidence_provenance === undefined
+                ? {}
+                : {
+                    evidence_kind: args.evidence_provenance.kind,
+                    evidence_id: args.evidence_provenance.id,
+                  }),
             },
           },
         });
@@ -828,6 +919,149 @@ export class PipelineRepository {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // Evidence-bearing milestone commands (Recruiting-Journey §3/§5/§6/§7/§17)
+  //
+  // The ONLY producers of the EVIDENCE_BACKED milestones. Each is a thin wrapper
+  // over transition() that supplies evidence_provenance, so the naked /transition
+  // and recruiter /actions surfaces can never reach contacted / talent_responded
+  // (they are refused by the evidence gate). CAS, legality, audit, outbox and the
+  // write-skew guard are all transition()'s. A failed communication never reaches
+  // here — the orchestrator advances only AFTER durable evidence exists (§3/§5).
+  // -------------------------------------------------------------------------
+
+  // CONTACT evidence → `contacted` (§5 email / §6 voice). `evidence` references the
+  // durable communication evidence (kind + id) the advance rests on.
+  async recordContactEvidence(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    evidence: { kind: string; id: string };
+    note?: string;
+  }): Promise<PipelineView> {
+    return this.transition({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      to_status: 'contacted',
+      changed_by_id: args.changed_by_id,
+      ...(args.note === undefined ? {} : { note: args.note }),
+      requestId: args.requestId,
+      expected_version: args.expected_version,
+      visible_requisition_ids: args.visible_requisition_ids,
+      evidence_provenance: args.evidence,
+    });
+  }
+
+  // RESPONSE evidence → `talent_responded` (§7 recruiter-attested / §8 two-way voice
+  // / future provider-verified inbound). `evidence` references the durable response
+  // evidence (kind + id).
+  async recordResponseEvidence(args: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    evidence: { kind: string; id: string };
+    note?: string;
+  }): Promise<PipelineView> {
+    return this.transition({
+      tenant_id: args.tenant_id,
+      id: args.id,
+      to_status: 'talent_responded',
+      changed_by_id: args.changed_by_id,
+      ...(args.note === undefined ? {} : { note: args.note }),
+      requestId: args.requestId,
+      expected_version: args.expected_version,
+      visible_requisition_ids: args.visible_requisition_ids,
+      evidence_provenance: args.evidence,
+    });
+  }
+
+  // reconcileForward (§8/§11/§12, I5/I6) — repair a LAGGING Pipeline from durable
+  // evidence by walking FORWARD through the ordered evidence-backed milestones
+  // (no_contact → contacted → talent_responded) up to `target`, each step via the
+  // canonical evidence-bearing command (CAS-protected, audited). FORWARD-ONLY and
+  // IDEMPOTENT: a Pipeline already at or past `target` — or a terminal episode — is
+  // a no-op (zero transitions, zero events); milestones below the current stage are
+  // never re-written (no backward move). This is the smallest repair seam the
+  // synchronous orchestrators (email / voice / response) call after evidence lands;
+  // it introduces no new workflow engine. `target` MUST be an evidence-backed stage.
+  async reconcileForward(args: {
+    tenant_id: string;
+    id: string;
+    target: PipelineStatus;
+    changed_by_id: string;
+    requestId: string;
+    visible_requisition_ids: ReadonlySet<string> | null;
+    evidence: { kind: string; id: string };
+  }): Promise<PipelineView> {
+    if (!isEvidenceBackedStage(args.target)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `reconcileForward target must be an evidence-backed stage; got ${args.target}`,
+        422,
+        { requestId: args.requestId, details: { pipeline_id: args.id, target: args.target } },
+      );
+    }
+    const current = await this.prisma.pipeline.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+    });
+    if (
+      current === null ||
+      (args.visible_requisition_ids !== null &&
+        !args.visible_requisition_ids.has((current as PipelineRow).requisition_id))
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'Pipeline not found in tenant (or not visible to actor)',
+        404,
+        { requestId: args.requestId, details: { id: args.id } },
+      );
+    }
+    let row = current as PipelineRow;
+    const targetOrdinal = activeStageOrdinal(args.target);
+    // Terminal (ordinal -1) or already at/past target → idempotent no-op. Forward-
+    // only: a terminal episode is never reopened (§11), and we never move backward.
+    let currentOrdinal = activeStageOrdinal(row.status);
+    if (currentOrdinal < 0 || currentOrdinal >= targetOrdinal) {
+      return projectView(row);
+    }
+    // Walk the ordered evidence-backed milestones strictly ABOVE the current stage,
+    // up to and including target. Each hop re-reads the version it just advanced
+    // (CAS) so a concurrent writer surfaces as a conflict rather than a clobber.
+    for (const stage of EVIDENCE_BACKED_STAGES) {
+      const stageOrdinal = activeStageOrdinal(stage);
+      if (stageOrdinal <= currentOrdinal || stageOrdinal > targetOrdinal) continue;
+      const advanced =
+        stage === 'contacted'
+          ? await this.recordContactEvidence({
+              tenant_id: args.tenant_id,
+              id: args.id,
+              expected_version: row.version,
+              changed_by_id: args.changed_by_id,
+              requestId: args.requestId,
+              visible_requisition_ids: args.visible_requisition_ids,
+              evidence: args.evidence,
+            })
+          : await this.recordResponseEvidence({
+              tenant_id: args.tenant_id,
+              id: args.id,
+              expected_version: row.version,
+              changed_by_id: args.changed_by_id,
+              requestId: args.requestId,
+              visible_requisition_ids: args.visible_requisition_ids,
+              evidence: args.evidence,
+            });
+      row = { ...row, status: advanced.status, version: advanced.version };
+      currentOrdinal = activeStageOrdinal(row.status);
+    }
+    return projectView(row);
+  }
+
   // Accidental-Add Correction — the governed VOID command (no_contact → voided).
   // A DEDICATED command (NOT routed through transition(): `no_contact → voided` is
   // deliberately NOT a legal generic edge — §9, the named action owns correction).
@@ -898,8 +1132,11 @@ export class PipelineRepository {
     const { updatedRow, historyRow } = await this.prisma.$transaction(async (tx) => {
       // Release the live-episode slot: status → voided (a canonical terminal, so the
       // partial live index no longer covers this row) + CAS version bump + ended_at.
-      const updated = await tx.pipeline.update({
-        where: { id: args.id },
+      // CAS IN THE WRITE (directive §13 / I7): `version = row.version` is a WHERE
+      // predicate, so a concurrent advance between the pre-check and here matches 0
+      // rows and conflicts rather than clobbering.
+      const writeResult = await tx.pipeline.updateMany({
+        where: { id: args.id, tenant_id, version: row.version },
         data: {
           status: 'voided',
           version: { increment: 1 },
@@ -907,6 +1144,27 @@ export class PipelineRepository {
           ended_by_id: args.changed_by_id,
         },
       });
+      if (writeResult.count === 0) {
+        const fresh = (await tx.pipeline.findFirst({
+          where: { id: args.id },
+        })) as PipelineRow | null;
+        throw new AramoError(
+          'PIPELINE_TRANSITION_CONFLICT',
+          'Pipeline was modified concurrently; refresh and retry',
+          409,
+          {
+            requestId: args.requestId,
+            details: {
+              pipeline_id: args.id,
+              current_status: fresh?.status ?? null,
+              current_version: fresh?.version ?? null,
+            },
+          },
+        );
+      }
+      const updated = (await tx.pipeline.findFirst({
+        where: { id: args.id },
+      })) as PipelineRow;
       // Durable history — the accidental add + its correction remain visible (§10).
       const history = await tx.pipelineStatusHistory.create({
         data: {

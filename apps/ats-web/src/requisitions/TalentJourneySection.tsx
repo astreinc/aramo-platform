@@ -3,6 +3,7 @@ import { Button } from '@aramo/fe-foundation';
 
 import type {
   JourneyOwner,
+  RecruitingAvailableAction,
   TalentRequisitionJourney,
 } from '../pipeline/talent-journey-api';
 
@@ -88,23 +89,42 @@ const RECRUITING_STEPS = [
 const RECRUITING_STEP_INDEX: Record<string, number> = Object.fromEntries(
   RECRUITING_STEPS.map((s, i) => [s.status, i]),
 );
-// The next legal recruiting advance for each pipeline status (target status for the
-// CAS transition). Mirrors RECRUITER_ACTION_TO_STATUS (pipeline-state.ts).
-const RECRUITING_NEXT: Record<string, { label: string; to: string }> = {
-  no_contact: { label: 'Contact Talent', to: 'contacted' },
-  contacted: { label: 'Mark responded', to: 'talent_responded' },
-  talent_responded: { label: 'Start qualification', to: 'qualifying' },
-  qualifying: { label: 'Qualify Talent', to: 'qualified' },
+// Recruiting-Journey §14/§15 — the recruiting Next-step CTA is derived from the
+// BACKEND-OWNED `recruiting_available_actions` (NEVER from stage equality, I8). Each
+// canonical action maps to its copy + dispatch kind:
+//   • contact_talent / record_talent_response perform a REAL business action (open the
+//     contact workflow / the evidence-recording modal) — NEVER a naked stage write (I1/I2);
+//   • start_qualifying / mark_qualified are recruiter DECISIONS (a governed transition).
+type RecruitingActionDispatch = 'contact' | 'record_response' | 'decision';
+const RECRUITING_ACTION_CTA: Record<
+  RecruitingAvailableAction,
+  { readonly nextText: string; readonly buttonLabel: string; readonly hint?: string; readonly dispatch: RecruitingActionDispatch; readonly to?: 'qualifying' | 'qualified' }
+> = {
+  contact_talent: { nextText: 'Contact Talent', buttonLabel: 'Contact Talent', dispatch: 'contact' },
+  record_talent_response: {
+    nextText: 'Waiting for Talent response',
+    buttonLabel: 'Record Talent response',
+    hint: 'Replies to your Microsoft 365 email are picked up automatically. If they responded another way, record it.',
+    dispatch: 'record_response',
+  },
+  start_qualifying: { nextText: 'Start qualifying', buttonLabel: 'Start qualifying', dispatch: 'decision', to: 'qualifying' },
+  mark_qualified: { nextText: 'Complete qualification', buttonLabel: 'Mark qualified', dispatch: 'decision', to: 'qualified' },
 };
 
 export interface TalentJourneySectionProps {
   readonly journey: TalentRequisitionJourney;
   readonly talentRecordId: string;
   readonly requisitionId: string;
-  /** pipeline:change-status — gates the recruiting advance CTA. */
+  /** pipeline:change-status — gates the recruiting next-action CTA. */
   readonly canAdvancePipeline: boolean;
-  /** Governed recruiting advance (CAS transition + journey refetch), owned by the drawer. */
-  readonly onRecruitingAdvance: (toStatus: string) => void;
+  /** Governed recruiter DECISION advance — a CAS transition + journey refetch, owned by
+   *  the drawer. Typed to ONLY the decision edges so the FE cannot pass an evidence-backed
+   *  stage (contacted / talent_responded) through this path (I1/I2, compile-enforced). */
+  readonly onRecruitingAdvance: (toStatus: 'qualifying' | 'qualified') => void;
+  /** §4 — open the real contact workflow (Send email / Call). NEVER a stage write. */
+  readonly onContactTalent: () => void;
+  /** §7 — open the shared Record Talent Response modal (records evidence). */
+  readonly onRecordResponse: () => void;
   readonly pipelineBusy: boolean;
   readonly error: string | null;
 }
@@ -115,6 +135,8 @@ export function TalentJourneySection({
   requisitionId,
   canAdvancePipeline,
   onRecruitingAdvance,
+  onContactTalent,
+  onRecordResponse,
   pipelineBusy,
   error,
 }: TalentJourneySectionProps): JSX.Element {
@@ -144,7 +166,17 @@ export function TalentJourneySection({
       (s) => s.owner === 'client-selection' || s.owner === 'interview',
     )?.source_object_id ?? null;
 
-  const nextRecruiting = RECRUITING_NEXT[pipelineStage];
+  // §14 — the canonical recruiting next-action is the backend's (not stage equality).
+  // At most one recruiting action is available per milestone; qualified/terminal → none.
+  const recruitingAction: RecruitingAvailableAction | null =
+    journey.recruiting_available_actions.find((a) => a in RECRUITING_ACTION_CTA) ?? null;
+  const recruitingCta = recruitingAction === null ? null : RECRUITING_ACTION_CTA[recruitingAction];
+  const onRecruitingCtaClick = (): void => {
+    if (recruitingCta === null) return;
+    if (recruitingCta.dispatch === 'contact') onContactTalent();
+    else if (recruitingCta.dispatch === 'record_response') onRecordResponse();
+    else if (recruitingCta.dispatch === 'decision' && recruitingCta.to !== undefined) onRecruitingAdvance(recruitingCta.to);
+  };
   const currentStepIdx = RECRUITING_STEP_INDEX[pipelineStage] ?? 0;
 
   return (
@@ -245,17 +277,18 @@ export function TalentJourneySection({
       <div className="rc-cjr__next">
         <span className="rc-cjr__nextl">Next step</span>
         {currentMilestone === 'recruiting' ? (
-          nextRecruiting != null ? (
+          recruitingCta != null ? (
             <div className="rc-cjr__nextbody">
-              <p className="rc-cjr__nexttxt">{nextRecruiting.label}</p>
+              <p className="rc-cjr__nexttxt">{recruitingCta.nextText}</p>
+              {recruitingCta.hint != null ? <p className="rc-cjr__why">{recruitingCta.hint}</p> : null}
               {canAdvancePipeline ? (
                 <Button unstyled
                   type="button"
                   className="rc-cjr__cta"
                   disabled={pipelineBusy}
-                  onClick={() => onRecruitingAdvance(nextRecruiting.to)}
+                  onClick={onRecruitingCtaClick}
                 >
-                  {nextRecruiting.label}
+                  {recruitingCta.buttonLabel}
                 </Button>
               ) : (
                 <p className="rc-cjr__why">You do not have permission for this action.</p>

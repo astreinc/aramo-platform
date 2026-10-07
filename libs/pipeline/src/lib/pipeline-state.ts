@@ -79,6 +79,23 @@ export function activeStageOrdinal(status: PipelineStatus): number {
   return ACTIVE_FLOW_STAGES.indexOf(status);
 }
 
+// EVIDENCE_BACKED_STAGES (Recruiting-Journey Evidence-Governed Milestones,
+// §3/§7, I1/I2) — the two milestones that may be established ONLY from grounded
+// contact/response evidence, never by a naked stage click. A transition INTO one
+// of these without evidence provenance is refused in the domain authority
+// (PIPELINE_STAGE_REQUIRES_EVIDENCE); the evidence-bearing commands
+// recordContactEvidence / recordResponseEvidence are the only producers. The
+// decision milestones (qualifying / qualified) are deliberately NOT here — they
+// remain explicit recruiter decisions (§9/§10, I4).
+export const EVIDENCE_BACKED_STAGES: readonly PipelineStatus[] = [
+  'contacted',
+  'talent_responded',
+];
+
+export function isEvidenceBackedStage(status: PipelineStatus): boolean {
+  return (EVIDENCE_BACKED_STAGES as readonly string[]).includes(status);
+}
+
 // LEGAL_TRANSITIONS — the transition map.
 //
 // Each key lists the legal `to` states from the key state. An attempted
@@ -90,12 +107,24 @@ const LEGAL_TRANSITIONS: Record<PipelineStatus, readonly PipelineStatus[]> = {
   // Initial state. Forward to contacted/talent_responded, or rejection.
   no_contact: ['contacted', 'talent_responded', 'not_in_consideration'],
 
-  // Recruiter reached the talent. Forward to talent_responded; back to
-  // no_contact (correction: never actually reached).
+  // CONTACTED (§3 LOCKED) — at least one legitimate recruiter→Talent contact
+  // action was successfully executed and DURABLY EVIDENCED for this Talent ×
+  // Requisition/Pipeline context. It does NOT mean the Talent replied, was
+  // reached live, or that two-way communication occurred (that is
+  // talent_responded), nor that the Email+Voice engagement policy is satisfied
+  // (that is downstream Submittal readiness — a separate semantic, §19).
+  // Established by grounded contact evidence (provider-accepted recruiter email
+  // OR a durably-recorded provider-backed voice/contact attempt), never by a
+  // naked stage click (I1). Forward to talent_responded; one-step back to
+  // no_contact (correction: the recorded contact evidence was invalid).
   contacted: ['talent_responded', 'no_contact', 'not_in_consideration'],
 
-  // Talent responded. Forward to qualifying; back to contacted (correction:
-  // response was non-substantive, treat as not-yet-replied).
+  // TALENT_RESPONDED (§7 LOCKED) — Aramo has DURABLE EVIDENCE that the Talent
+  // responded to recruiter contact (provider-verified two-way voice / inbound
+  // reply where such producers exist, or a recruiter-attested off-platform
+  // response record). Established by grounded response evidence, never by a naked
+  // stage click (I2). Forward to qualifying; one-step back to contacted
+  // (correction: the recorded response evidence was invalid).
   talent_responded: ['qualifying', 'contacted', 'not_in_consideration'],
 
   // Recruiter qualifying the talent. Forward to `qualified` (QUALIFY — the
@@ -180,9 +209,15 @@ export function legalNextStates(from: PipelineStatus): readonly PipelineStatus[]
 // canTransition (an action illegal from the current status →
 // INVALID_PIPELINE_TRANSITION, 422). COMPLETE is deliberately NOT here — it is the
 // system-only command (§5), rejected on the recruiter /actions surface.
+//
+// Recruiting-Journey Evidence-Governed Milestones (§17, I1/I2) — CONTACT and
+// MARK_RESPONDED were RETIRED from this recruiter surface: `contacted` and
+// `talent_responded` are EVIDENCE-BACKED milestones (EVIDENCE_BACKED_STAGES),
+// reachable only via the evidence-bearing commands (recordContactEvidence /
+// recordResponseEvidence). A body carrying CONTACT / MARK_RESPONDED on /actions is
+// now an unrecognised action (422). Only the recruiter DECISION edges + DISPOSITION
+// remain nakedly invocable here (§9/§10, I4).
 export const RECRUITER_ACTION_TO_STATUS = {
-  CONTACT: 'contacted',
-  MARK_RESPONDED: 'talent_responded',
   START_QUALIFICATION: 'qualifying',
   QUALIFY: 'qualified',
   DISPOSITION: 'not_in_consideration',

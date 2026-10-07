@@ -50,14 +50,14 @@ function makeService(opts: {
   consentResult?: string;
   pipeline?: Record<string, unknown> | null;
   scopes?: string[];
-  applyActionRejects?: boolean;
+  recordContactEvidenceRejects?: boolean;
 }) {
-  const applyAction = vi.fn(async () => pipelineView({ status: 'contacted', version: 1 }));
-  if (opts.applyActionRejects) applyAction.mockRejectedValue(new Error('PIPELINE_TRANSITION_CONFLICT'));
+  const recordContactEvidence = vi.fn(async () => pipelineView({ status: 'contacted', version: 1 }));
+  if (opts.recordContactEvidenceRejects) recordContactEvidence.mockRejectedValue(new Error('PIPELINE_TRANSITION_CONFLICT'));
 
   const pipelines = {
     findByIdForActor: vi.fn(async () => (opts.pipeline === undefined ? pipelineView() : opts.pipeline)),
-    applyAction,
+    recordContactEvidence,
   } as unknown as ConstructorParameters<typeof CommunicationCallService>[7];
 
   const talentRecords = {
@@ -118,7 +118,7 @@ function makeService(opts: {
     scopes: opts.scopes ?? ['communication:voice:call', 'pipeline:change-status'],
   } as unknown as AuthContextType;
 
-  return { service, auth, comms, consent, pipelines, associate, applyAction };
+  return { service, auth, comms, consent, pipelines, associate, recordContactEvidence };
 }
 
 const DTO: InitiateCommunicationCallDto = {
@@ -129,50 +129,51 @@ const DTO: InitiateCommunicationCallDto = {
 
 describe('CommunicationCallService — COMM-C2A orchestration', () => {
   it('writes talent + requisition + pipeline associations and drives governed CONTACT (no_contact)', async () => {
-    const { service, auth, associate, applyAction } = makeService({});
+    const { service, auth, associate, recordContactEvidence } = makeService({});
     await service.initiate(auth, DTO, 'req-1', null);
     // Three associations: talent(subject), requisition(regarding), pipeline(regarding).
     expect(associate).toHaveBeenCalledTimes(3);
     const subjectTypes = associate.mock.calls.map((c) => (c[0] as { subject_type: string }).subject_type);
     expect(subjectTypes).toEqual(['talent_record', 'requisition', 'pipeline']);
-    // Governed CONTACT via the state machine with the read CAS version.
-    expect(applyAction).toHaveBeenCalledTimes(1);
-    expect(applyAction.mock.calls[0][0]).toMatchObject({
-      action: 'CONTACT',
+    // Governed evidence-backed CONTACT via the canonical command with the read CAS
+    // version, grounded on the durable voice interaction (provider provenance).
+    expect(recordContactEvidence).toHaveBeenCalledTimes(1);
+    expect(recordContactEvidence.mock.calls[0][0]).toMatchObject({
       expected_version: 0,
       changed_by_id: RECRUITER,
+      evidence: { kind: 'communication_interaction' },
     });
   });
 
   it('fail-closed consent denies before any interaction or CONTACT', async () => {
-    const { service, auth, comms, applyAction } = makeService({ consentResult: 'denied' });
+    const { service, auth, comms, recordContactEvidence } = makeService({ consentResult: 'denied' });
     await expect(service.initiate(auth, DTO, 'req-2', null)).rejects.toMatchObject({
       code: 'COMMUNICATION_CALL_CONSENT_DENIED',
       statusCode: 403,
     });
     expect((comms as unknown as { createOutboundInteraction: ReturnType<typeof vi.fn> }).createOutboundInteraction).not.toHaveBeenCalled();
-    expect(applyAction).not.toHaveBeenCalled();
+    expect(recordContactEvidence).not.toHaveBeenCalled();
   });
 
   it('does NOT replay CONTACT when the pipeline is already past no_contact', async () => {
-    const { service, auth, applyAction, associate } = makeService({ pipeline: pipelineView({ status: 'contacted', version: 3 }) });
+    const { service, auth, recordContactEvidence, associate } = makeService({ pipeline: pipelineView({ status: 'contacted', version: 3 }) });
     await service.initiate(auth, DTO, 'req-3', null);
     expect(associate).toHaveBeenCalledTimes(3); // evidence still recorded
-    expect(applyAction).not.toHaveBeenCalled(); // no regression/replay
+    expect(recordContactEvidence).not.toHaveBeenCalled(); // no regression/replay
   });
 
   it('does NOT advance the pipeline without pipeline:change-status authority', async () => {
-    const { service, auth, applyAction } = makeService({ scopes: ['communication:voice:call'] });
+    const { service, auth, recordContactEvidence } = makeService({ scopes: ['communication:voice:call'] });
     await service.initiate(auth, DTO, 'req-4', null);
-    expect(applyAction).not.toHaveBeenCalled();
+    expect(recordContactEvidence).not.toHaveBeenCalled();
   });
 
   it('preserves the call/evidence when the CONTACT transition conflicts (CAS)', async () => {
-    const { service, auth, applyAction } = makeService({ applyActionRejects: true });
+    const { service, auth, recordContactEvidence } = makeService({ recordContactEvidenceRejects: true });
     // The call resolves normally — a failed transition is swallowed, not surfaced.
     const view = await service.initiate(auth, DTO, 'req-5', null);
     expect(view.id).toBe('int-1');
-    expect(applyAction).toHaveBeenCalledTimes(1);
+    expect(recordContactEvidence).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a call whose pipeline does not match the talent × requisition (R5)', async () => {

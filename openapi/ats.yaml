@@ -5370,6 +5370,68 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  /v1/communications/talent-responses:
+    post:
+      operationId: recordTalentResponse
+      summary: Record a recruiter-attested Talent response (Recruiting-Journey §7).
+      description: |
+        Record a recruiter's attested account that the Talent responded to recruiting
+        contact. Requires the `ats` capability and the `pipeline:change-status` scope.
+
+        This NEVER sets the Pipeline stage directly. It persists durable recruiter-
+        attested response EVIDENCE (an inbound CommunicationInteraction with
+        `evidence_authority=recruiter_attested` + a disposition, associated to the
+        Talent/Requisition/Pipeline — NO provider connection, NO fabricated provider
+        id), then advances the milestone through canonical Pipeline evidence authority
+        (reconcileForward: no_contact → contacted → talent_responded, forward-only,
+        CAS-protected). The Talent and Requisition are resolved server-side FROM the
+        pipeline; a non-visible/cross-tenant pipeline is concealed as 404.
+
+        Refusals:
+          - 400 VALIDATION_ERROR — body invariants, a missing/non-UUID Idempotency-Key,
+            occurred_at in the future, occurred_at before the first grounded outbound
+            contact for this Talent × Requisition, or channel=other with no note.
+          - 404 NOT_FOUND — the pipeline is absent, cross-tenant, or not visible.
+          - 409 PIPELINE_TRANSITION_CONFLICT — the journey changed concurrently
+            (stale); refresh and retry.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: |
+            UUID idempotency key. A retried recorder (same key) returns the existing
+            evidence with no second write and one effective milestone advancement;
+            genuinely separate responses carry distinct keys. Missing/non-UUID → 400.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordTalentResponseRequest'
+      responses:
+        '200':
+          description: Response evidence recorded; the milestone advanced to `talent_responded` (or already at/past it).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordTalentResponseView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/communications/email-drafts/requisition-contact:
     post:
       operationId: prepareRequisitionContactEmailDraft
@@ -8486,6 +8548,7 @@ components:
         - stages
         - sub_states
         - actions
+        - recruiting_available_actions
         - offer_document
         - pre_start
         - placement
@@ -8500,6 +8563,16 @@ components:
         actions:
           type: array
           items: { $ref: '#/components/schemas/JourneyActionView' }
+        # Recruiting-Journey §14 — the CANONICAL recruiting next-action availability,
+        # derived and owned by the Pipeline/Recruiting domain. Consumers RENDER these;
+        # they never re-derive recruiting eligibility from stage equality. The evidence-
+        # backed milestones expose the evidence-recording action (contact_talent /
+        # record_talent_response); the decisions expose the recruiter decision.
+        recruiting_available_actions:
+          type: array
+          items:
+            type: string
+            enum: [contact_talent, record_talent_response, start_qualifying, mark_qualified]
         # Offer & Start §6.7 — the opt-in offer-letter document signal; null on the Talent 360
         # embed (opt-out, D-ARCH-1) and until an offer-letter exists. Distinct from acceptance.
         offer_document:
@@ -9281,6 +9354,60 @@ components:
         status:
           type: string
           enum: [active, unmapped, disabled, reauth_required]
+    RecordTalentResponseRequest:
+      type: object
+      additionalProperties: false
+      description: |
+        Record a recruiter-attested Talent response (Recruiting-Journey §7). The Talent
+        and Requisition are resolved server-side FROM the pipeline (never trusted from
+        the body). This persists durable recruiter-attested evidence and advances the
+        milestone through canonical Pipeline authority; it is NEVER a direct stage write.
+      required:
+        - pipeline_id
+        - channel
+        - occurred_at
+      properties:
+        pipeline_id:
+          type: string
+          format: uuid
+          description: The bound Pipeline episode whose milestone this response grounds.
+        channel:
+          type: string
+          enum: [voice, email, sms, other]
+          description: How the Talent responded (the FE "Phone" tile maps to `voice`).
+        occurred_at:
+          type: string
+          format: date-time
+          description: |
+            When the Talent responded. Must NOT be in the future and must NOT precede
+            the first grounded outbound contact for this Talent × Requisition.
+        note:
+          type: string
+          maxLength: 500
+          description: Optional recruiter note; REQUIRED when channel is `other`.
+    RecordTalentResponseView:
+      type: object
+      additionalProperties: false
+      description: The recorded evidence reference + the resulting canonical Pipeline milestone.
+      required:
+        - interaction_id
+        - deduped
+        - pipeline_stage
+        - pipeline_version
+      properties:
+        interaction_id:
+          type: string
+          format: uuid
+          description: The durable recruiter-attested communication interaction recorded.
+        deduped:
+          type: boolean
+          description: True when a retried recorder (same Idempotency-Key) returned the existing evidence with no second write.
+        pipeline_stage:
+          type: string
+          description: The canonical Pipeline stage after the advance (`talent_responded`, or already at/past it).
+        pipeline_version:
+          type: integer
+          description: The optimistic-concurrency version after the advance.
     InitiateCommunicationCallRequest:
       type: object
       additionalProperties: false

@@ -809,6 +809,15 @@ export const ERROR_CODES = [
   // DOWNSTREAM_OUTCOME reasons are rejected: an external provider observation can never
   // cross the authority partition. HTTP 422.
   'PIPELINE_PROVIDER_MAPPING_TARGET_INVALID',
+  // Recruiting-Journey Evidence-Governed Milestones (§3/§7/§17, I1/I2) — a naked
+  // transition into an EVIDENCE-BACKED stage (contacted / talent_responded) was
+  // refused because it carried no grounded contact/response evidence provenance.
+  // HTTP 422. These two milestones are established ONLY by the evidence-bearing
+  // commands (recordContactEvidence / recordResponseEvidence), driven by the
+  // email/voice orchestrators, the recruiter-attested response capture, or the
+  // forward reconciler — never by the generic /transition or recruiter /actions
+  // surfaces. The recruiter decision edges (qualifying / qualified) are unaffected.
+  'PIPELINE_STAGE_REQUIRES_EVIDENCE',
   // Lane 2 / L2-F (F1) — the Client-Selection owner.
   'CLIENT_SELECTION_SUBMITTAL_INVALID', // the referenced Submittal is not valid for a new client-selection process — non-existent / cross-tenant, OR already owns a process (409)
   'CLIENT_SELECTION_TRANSITION_CONFLICT', // stale expected_version CAS conflict (409)

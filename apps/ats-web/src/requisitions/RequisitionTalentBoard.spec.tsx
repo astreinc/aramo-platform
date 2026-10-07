@@ -191,7 +191,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     const c = card({
       talent_record_id: 't1', pipeline_id: 'pipe-void', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
       next_actions: [
-        { key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: 'POST /v1/pipelines/pipe-void/actions', required_scope: 'pipeline:change-status' },
+        { key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: 'POST /v1/pipelines/pipe-void/actions', required_scope: 'pipeline:change-status' },
         { key: 'pipeline.void', label: 'Remove from requisition', owner: 'pipeline', command_route: 'POST /v1/pipelines/pipe-void/void', required_scope: 'pipeline:change-status' },
       ],
     });
@@ -205,7 +205,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
 
   it('does not render "Remove from requisition" when the server did not project pipeline.void', async () => {
     const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
-      next_actions: [{ key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }] });
+      next_actions: [{ key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }] });
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestVoid={vi.fn()} />);
     await screen.findByLabelText('Talent board');
@@ -271,19 +271,19 @@ describe('RequisitionTalentBoard (TB-2)', () => {
       talent_record_id: 't1',
       pipeline_id: 'p1',
       column: 'qualified',
-      next_actions: [{ key: 'pipeline.qualify', label: 'Qualify', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }],
+      next_actions: [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: 'POST /v1/pipelines/p1/actions', required_scope: 'pipeline:change-status' }],
     });
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [withAction] }] }));
 
     // WITHOUT the scope → the action is hidden (UI hiding is not the boundary, but the affordance is gated).
     const { unmount } = render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={[]} onSelectCard={vi.fn()} />);
     await screen.findByLabelText('Talent board');
-    expect(screen.queryByRole('button', { name: 'Qualify' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mark qualified' })).not.toBeInTheDocument();
     unmount();
 
     // WITH the scope → the action renders.
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} />);
-    expect(await screen.findByRole('button', { name: 'Qualify' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Mark qualified' })).toBeInTheDocument();
   });
 
   // TB-4 — the port-grounded readiness blockers + the RTR-needed indicator.

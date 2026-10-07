@@ -133,6 +133,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql',
   'libs/communications/prisma/migrations/20260928140000_email_template/migration.sql',
   'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
+  'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
   // DOC-5 — the documents schema, so the REAL DocumentReadinessGate resolves
   // against a real DocumentRequirement table. init + DOC-2 (requirements) + the
   // DOC-5 RTR SYSTEM-type seed. None of these pre-RTR tenants declare an RTR

@@ -192,7 +192,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
-      for (const action of ['CONTACT', 'MARK_RESPONDED', 'START_QUALIFICATION', 'QUALIFY'] as const) {
+      // Evidence-backed milestones via the canonical evidence commands; decisions via applyAction.
+      await repo.recordContactEvidence({
+        tenant_id: tenant, id: created.id, expected_version: await currentVersion(tenant, created.id),
+        changed_by_id: actor, requestId: 'seed-contact', visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
+      });
+      await repo.recordResponseEvidence({
+        tenant_id: tenant, id: created.id, expected_version: await currentVersion(tenant, created.id),
+        changed_by_id: actor, requestId: 'seed-response', visible_requisition_ids: null,
+        evidence: { kind: 'test_response', id: randomUUID() },
+      });
+      for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({
           tenant_id: tenant,
           id: created.id,

@@ -223,22 +223,28 @@ export class MicrosoftEmailService {
       args.pipeline_id.length > 0 &&
       args.authContext.scopes.includes(PIPELINE_CHANGE_STATUS_SCOPE)
     ) {
-      await this.maybeAdvanceToContacted(args, args.pipeline_id);
+      await this.maybeAdvanceToContacted(args, args.pipeline_id, interactionId);
     }
     return this.view(interactionId, args, false);
   }
 
   /**
-   * COMM-C4 — advance the bound episode no_contact→contacted through the governed
-   * CONTACT action iff it is still no_contact. AUTHORITATIVE: the pipeline is
-   * resolved tenant/visibility-scoped and validated to match this Talent ×
-   * Requisition (never browser-authoritative). Never replays past `contacted`,
-   * never sets talent_responded, never bypasses the state machine/CAS, and NEVER
-   * throws — the email evidence is already durable, so any anomaly (concealed/
-   * absent/mismatched pipeline, CAS conflict, transition error) is logged and the
-   * send result is preserved. Mirrors the COMM-C2A voice orchestration.
+   * COMM-C4 / Recruiting-Journey §5 — advance the bound episode no_contact→contacted
+   * through the EVIDENCE-BEARING command recordContactEvidence, grounded on THIS
+   * durable email interaction (evidence kind communication_interaction + id), iff it
+   * is still no_contact. AUTHORITATIVE: the pipeline is resolved tenant/visibility-
+   * scoped and validated to match this Talent × Requisition (never browser-
+   * authoritative — §18). Never replays past `contacted`, never sets talent_responded,
+   * never bypasses the state machine/CAS, and NEVER throws — the email evidence is
+   * already durable, so any anomaly (concealed/absent/mismatched pipeline, CAS
+   * conflict, transition error) is logged and the send result is preserved (§5).
+   * Mirrors the COMM-C2A voice orchestration.
    */
-  private async maybeAdvanceToContacted(args: SendRecruiterEmailArgs, pipelineId: string): Promise<void> {
+  private async maybeAdvanceToContacted(
+    args: SendRecruiterEmailArgs,
+    pipelineId: string,
+    evidenceInteractionId: string,
+  ): Promise<void> {
     try {
       const pipeline = await this.pipelines.findByIdForActor({
         tenant_id: args.tenant_id,
@@ -253,14 +259,14 @@ export class MicrosoftEmailService {
       ) {
         return;
       }
-      await this.pipelines.applyAction({
+      await this.pipelines.recordContactEvidence({
         tenant_id: args.tenant_id,
         id: pipeline.id,
-        action: 'CONTACT',
         expected_version: pipeline.version,
         changed_by_id: args.recruiter_id,
         requestId: args.requestId,
         visible_requisition_ids: args.visible_requisition_ids,
+        evidence: { kind: 'communication_interaction', id: evidenceInteractionId },
       });
     } catch (err) {
       this.logger.warn(

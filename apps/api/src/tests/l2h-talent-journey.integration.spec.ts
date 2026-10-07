@@ -547,5 +547,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The offer action is gated on ClientSelection SELECTED.
       expect(j.actions.some((a) => a.owner === 'offer')).toBe(false);
     });
+
+    // §14 — the Journey read OWNS recruiting next-action availability (the FE renders
+    // it; it never re-derives from stage equality). Evidence-backed milestones expose
+    // the evidence-recording action; decisions expose the recruiter decision; qualified
+    // + terminals expose none.
+    it('§14: recruiting_available_actions is backend-owned and canonical per milestone', async () => {
+      const tenant = randomUUID();
+      const cases: Array<[string, string[]]> = [
+        ['no_contact', ['contact_talent']],
+        ['contacted', ['record_talent_response']],
+        ['talent_responded', ['start_qualifying']],
+        ['qualifying', ['mark_qualified']],
+        ['qualified', []],
+        ['not_in_consideration', []],
+      ];
+      for (const [status, expected] of cases) {
+        const pipe = await seedPipeline(tenant, randomUUID(), randomUUID(), status);
+        const j = await call(tenant, pipe);
+        expect(j.recruiting_available_actions).toEqual(expected);
+      }
+    });
   },
 );

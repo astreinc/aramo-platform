@@ -1,30 +1,56 @@
 import { AramoError } from '@aramo/common';
 import {
-  RECRUITER_ACTION_TO_STATUS,
   RECRUITER_DISPOSITION_AUTHORITIES,
   PIPELINE_DISPOSITION_REASONS,
   type PipelineDispositionAuthority,
+  type PipelineStatus,
 } from '@aramo/pipeline';
 
-// L2-I (D1) — the canonical PROVIDER-MAPPABLE target vocabulary (R2, PO ruling). apps/api
-// is the layer that owns the @aramo/pipeline vocabulary (SB-7 keeps it out of libs/integration),
-// so author-time validation of a provider mapping target lives HERE. The allowed set is
-// DERIVED from the pipeline domain (Rule D — never restated as a local literal list):
-//   - recruiter named ACTIONS  (RECRUITER_ACTION_TO_STATUS keys)
-//   - NON-system disposition REASONS (RECRUITER / TALENT / ENGAGEMENT authority classes)
-// System-only COMPLETE (absent from RECRUITER_ACTION_TO_STATUS) and ALL DOWNSTREAM_OUTCOME
-// reasons are DELIBERATELY EXCLUDED — an external provider observation can never cross the
-// authority partition (pipeline-disposition RECRUITER_DISPOSITION_AUTHORITIES).
+// L2-I (D1) — the canonical PROVIDER-MAPPABLE target vocabulary (R2). apps/api owns the
+// @aramo/pipeline vocabulary (SB-7 keeps it out of libs/integration), so author-time
+// validation of a provider mapping target lives HERE.
+//
+// Recruiting-Journey Evidence-Governed Milestones (L2I convergence ruling) — the provider
+// vocabulary is DECOUPLED from RECRUITER_ACTION_TO_STATUS and expresses EVIDENCE SEMANTICS,
+// not recruiter actions. A provider observation is provider-VERIFIED evidence, so the two
+// evidence-backed milestones are mapped as EVIDENCE targets (translated to the canonical
+// evidence commands by the orchestrator), never the retired naked CONTACT / MARK_RESPONDED
+// recruiter actions:
+//   - CONTACT_EVIDENCE  → `contacted`        (recordContactEvidence)
+//   - RESPONSE_EVIDENCE → `talent_responded` (recordResponseEvidence)
+// The recruiter DECISION edges a provider may still drive remain plain actions
+// (START_QUALIFICATION / QUALIFY → applyAction). Plus NON-system disposition REASONS
+// (RECRUITER / TALENT / ENGAGEMENT). System-only COMPLETE and ALL DOWNSTREAM_OUTCOME reasons
+// stay excluded — a provider observation can never cross the authority partition.
 
-export const PROVIDER_MAPPABLE_ACTIONS: ReadonlySet<string> = new Set(
-  Object.keys(RECRUITER_ACTION_TO_STATUS),
-);
+// Evidence-semantic provider targets → the evidence-backed milestone they ground.
+export const PROVIDER_EVIDENCE_TARGETS = {
+  CONTACT_EVIDENCE: 'contacted',
+  RESPONSE_EVIDENCE: 'talent_responded',
+} as const satisfies Record<string, PipelineStatus>;
+export type ProviderEvidenceTarget = keyof typeof PROVIDER_EVIDENCE_TARGETS;
+
+// Recruiter DECISION edges a provider may drive via applyAction (NOT evidence-backed).
+export const PROVIDER_DECISION_ACTIONS: readonly string[] = ['START_QUALIFICATION', 'QUALIFY'];
+
+export const PROVIDER_MAPPABLE_ACTIONS: ReadonlySet<string> = new Set<string>([
+  ...Object.keys(PROVIDER_EVIDENCE_TARGETS),
+  ...PROVIDER_DECISION_ACTIONS,
+]);
 
 export const PROVIDER_MAPPABLE_REASONS: ReadonlySet<string> = new Set(
   RECRUITER_DISPOSITION_AUTHORITIES.flatMap((authority) => [
     ...PIPELINE_DISPOSITION_REASONS[authority],
   ]),
 );
+
+// Map a provider EVIDENCE target token to the milestone it grounds (null if the token
+// is not an evidence target — e.g. a decision action or reason).
+export function resolveProviderEvidenceTarget(target: string): PipelineStatus | null {
+  return Object.prototype.hasOwnProperty.call(PROVIDER_EVIDENCE_TARGETS, target)
+    ? PROVIDER_EVIDENCE_TARGETS[target as ProviderEvidenceTarget]
+    : null;
+}
 
 export type ProviderMappingTargetKind = 'action' | 'reason';
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
@@ -26,6 +26,7 @@ import {
   WORK_AUTHORIZATION_VALUES,
   type WorkAuthorization,
 } from '../talent/stated-fields';
+import { RecordTalentResponseModal } from '../communications/RecordTalentResponseModal';
 
 import { TalentJourneySection } from './TalentJourneySection';
 import { ResumeSelectionSection } from './ResumeSelectionSection';
@@ -203,10 +204,20 @@ export function TalentDetailPanel({
     refetchJourney();
   };
 
+  // §4 — "Contact Talent" opens the REAL contact workflow (the inline Voice + Microsoft
+  // 365 send-email controls); it NEVER writes Pipeline stage. The milestone advances
+  // only after durable contact evidence (the email/voice orchestration), via journey refetch.
+  const contactRef = useRef<HTMLDivElement>(null);
+  const onContactTalent = (): void => {
+    contactRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  // §7 — "Record Talent response" opens the shared evidence-capture modal.
+  const [responseOpen, setResponseOpen] = useState(false);
+
   // Recruiting-lane advance — a REAL governed Pipeline transition (CAS-guarded).
   // Legality is the backend's; a rejected move surfaces a controlled message and
   // never advances the UI. On success we re-read the journey (the authority).
-  const handleRecruitingAdvance = (toStatus: string): void => {
+  const handleRecruitingAdvance = (toStatus: 'qualifying' | 'qualified'): void => {
     setPipelineBusy(true);
     setPipelineErr(null);
     void transitionPipeline(entry.id, {
@@ -334,6 +345,8 @@ export function TalentDetailPanel({
                 requisitionId={entry.requisition_id}
                 canAdvancePipeline={canAdvancePipeline}
                 onRecruitingAdvance={handleRecruitingAdvance}
+                onContactTalent={onContactTalent}
+                onRecordResponse={() => setResponseOpen(true)}
                 pipelineBusy={pipelineBusy}
                 error={pipelineErr}
               />
@@ -358,7 +371,7 @@ export function TalentDetailPanel({
               Talent × Requisition. Placing a call records durable evidence and can
               drive the governed no_contact→contacted transition server-side; it
               NEVER implies qualification or client-submittal eligibility (R8). */}
-          <section className="rc-cdp__sec" data-testid="voice-engagement">
+          <section ref={contactRef} className="rc-cdp__sec" data-testid="voice-engagement">
             <div className="rc-cdp__seclabel">Voice engagement</div>
             <VoiceEvidenceSummary evidence={voiceEvidence} />
             {record !== null ? (
@@ -600,6 +613,20 @@ export function TalentDetailPanel({
           </Link>
         </footer>
       </aside>
+      {/* §7 — the shared Record Talent Response modal. On success the backend has
+          recorded evidence + advanced the milestone; we refetch canonical journey
+          state (never force a stage FE-side). */}
+      <RecordTalentResponseModal
+        open={responseOpen}
+        pipelineId={entry.id}
+        talentName={talentName ?? 'Talent'}
+        reqCode={reqCode}
+        onRecorded={() => {
+          setResponseOpen(false);
+          refetchJourney();
+        }}
+        onClose={() => setResponseOpen(false)}
+      />
     </>
   );
 }

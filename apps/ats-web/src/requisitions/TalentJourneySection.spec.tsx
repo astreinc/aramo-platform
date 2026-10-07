@@ -2,7 +2,10 @@ import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { TalentRequisitionJourney } from '../pipeline/talent-journey-api';
+import type {
+  RecruitingAvailableAction,
+  TalentRequisitionJourney,
+} from '../pipeline/talent-journey-api';
 
 import { TalentJourneySection } from './TalentJourneySection';
 
@@ -16,6 +19,7 @@ function makeJourney(
   stages: TalentRequisitionJourney['stages'],
   sub: Sub,
   actions: TalentRequisitionJourney['actions'] = [],
+  recruitingActions: readonly RecruitingAvailableAction[] = [],
 ): TalentRequisitionJourney {
   const current =
     stages.length === 0 ? 'SOURCED' : stages[stages.length - 1]!.stage;
@@ -25,7 +29,13 @@ function makeJourney(
     current_journey_stage: current,
     stages,
     sub_states: sub,
+    offer_start_exceptions: [],
     actions,
+    // §14 — the FE renders the recruiting CTA from THIS (backend-owned), never stage equality.
+    recruiting_available_actions: recruitingActions,
+    offer_document: null,
+    pre_start: null,
+    placement: null,
   };
 }
 
@@ -34,6 +44,8 @@ function renderSection(
   over: { canAdvancePipeline?: boolean } = {},
 ) {
   const onRecruitingAdvance = vi.fn();
+  const onContactTalent = vi.fn();
+  const onRecordResponse = vi.fn();
   render(
     <MemoryRouter>
       <TalentJourneySection
@@ -42,12 +54,14 @@ function renderSection(
         requisitionId="r1"
         canAdvancePipeline={over.canAdvancePipeline ?? true}
         onRecruitingAdvance={onRecruitingAdvance}
+        onContactTalent={onContactTalent}
+        onRecordResponse={onRecordResponse}
         pipelineBusy={false}
         error={null}
       />
     </MemoryRouter>,
   );
-  return { onRecruitingAdvance };
+  return { onRecruitingAdvance, onContactTalent, onRecordResponse };
 }
 
 // The rail milestone <li> class (done/current/pending), scoped to the rail list.
@@ -58,11 +72,13 @@ function railState(label: string): string {
 
 describe('TalentJourneySection — workflow sequencing', () => {
   // Test 1 + Test 8 — a newly-added Talent (no_contact, no downstream owner rows).
-  it('new Talent (no_contact): Recruiting current, all downstream PENDING, no offer/submittal CTA', () => {
-    const { onRecruitingAdvance } = renderSection(
+  it('new Talent (no_contact): Recruiting current, all downstream PENDING, Contact Talent opens the contact workflow (NOT a stage mutation)', () => {
+    const { onRecruitingAdvance, onContactTalent } = renderSection(
       makeJourney(
         [{ stage: 'SOURCED', owner: 'pipeline', source_object_id: 'p1' }],
         { pipeline_stage: 'no_contact', selection_state: null, offer_state: null },
+        [],
+        ['contact_talent'],
       ),
     );
     expect(railState('Recruiting')).toContain('rc-cjr__m--current');
@@ -74,10 +90,55 @@ describe('TalentJourneySection — workflow sequencing', () => {
     expect(screen.queryByText(/Create offer/i)).toBeNull();
     expect(screen.queryByText(/Make offer/i)).toBeNull();
     expect(screen.queryByText('Prepare submittal')).toBeNull();
-    // Primary CTA = the legal recruiting action.
-    const cta = screen.getByRole('button', { name: 'Contact Talent' });
-    cta.click();
-    expect(onRecruitingAdvance).toHaveBeenCalledWith('contacted');
+    // I1 — "Contact Talent" opens the real contact workflow; it NEVER advances the stage.
+    screen.getByRole('button', { name: 'Contact Talent' }).click();
+    expect(onContactTalent).toHaveBeenCalledTimes(1);
+    expect(onRecruitingAdvance).not.toHaveBeenCalled();
+  });
+
+  // §7/I2 — at CONTACTED the recruiting action is record_talent_response: the CTA opens
+  // the shared Record-response modal (evidence), NEVER a naked transition.
+  it('contacted: Record Talent response opens the modal (NOT a stage mutation); shows the auto-reply hint', () => {
+    const { onRecordResponse, onRecruitingAdvance } = renderSection(
+      makeJourney(
+        [{ stage: 'CONTACTED', owner: 'pipeline', source_object_id: 'p1' }],
+        { pipeline_stage: 'contacted', selection_state: null, offer_state: null },
+        [],
+        ['record_talent_response'],
+      ),
+    );
+    expect(screen.getByText('Waiting for Talent response')).toBeTruthy();
+    expect(screen.getByText(/picked up automatically/i)).toBeTruthy();
+    screen.getByRole('button', { name: 'Record Talent response' }).click();
+    expect(onRecordResponse).toHaveBeenCalledTimes(1);
+    expect(onRecruitingAdvance).not.toHaveBeenCalled();
+  });
+
+  // §9/I4 — decision edges DO transition (qualifying / qualified are recruiter decisions).
+  it('talent_responded: Start qualifying advances via the governed decision transition', () => {
+    const { onRecruitingAdvance } = renderSection(
+      makeJourney(
+        [{ stage: 'ENGAGED', owner: 'pipeline', source_object_id: 'p1' }],
+        { pipeline_stage: 'talent_responded', selection_state: null, offer_state: null },
+        [],
+        ['start_qualifying'],
+      ),
+    );
+    screen.getByRole('button', { name: 'Start qualifying' }).click();
+    expect(onRecruitingAdvance).toHaveBeenCalledWith('qualifying');
+  });
+
+  // Availability-gated: action absent ⇒ the CTA is hidden (never derived from stage equality).
+  it('contacted with NO record_talent_response availability ⇒ the Record-response CTA is hidden', () => {
+    renderSection(
+      makeJourney(
+        [{ stage: 'CONTACTED', owner: 'pipeline', source_object_id: 'p1' }],
+        { pipeline_stage: 'contacted', selection_state: null, offer_state: null },
+        [],
+        [],
+      ),
+    );
+    expect(screen.queryByRole('button', { name: 'Record Talent response' })).toBeNull();
   });
 
   // Test 2 — Qualified: recruiting current, Prepare submittal available, offer absent.
@@ -183,6 +244,8 @@ describe('TalentJourneySection — workflow sequencing', () => {
       makeJourney(
         [{ stage: 'SOURCED', owner: 'pipeline', source_object_id: 'p1' }],
         { pipeline_stage: 'no_contact', selection_state: null, offer_state: null },
+        [],
+        ['contact_talent'],
       ),
       { canAdvancePipeline: false },
     );

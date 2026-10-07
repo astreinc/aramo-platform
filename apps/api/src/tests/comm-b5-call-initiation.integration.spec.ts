@@ -50,6 +50,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260921170000_comm_c4_email_content_capture/migration.sql',
   'libs/communications/prisma/migrations/20260928140000_email_template/migration.sql',
   'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
+  'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
