@@ -43,9 +43,10 @@ import {
 } from './resume-edition-reader.port.js';
 import type { SetPipelineResumeEditionRequestDto } from './dto/set-pipeline-resume-edition-request.dto.js';
 import {
-  toAvailable,
+  orderedAvailableEditions,
   type PipelineResumeEditionView,
 } from './dto/pipeline-resume-edition.view.js';
+import { resumeSelectionEligibility } from './resume-selection-eligibility.js';
 
 // PipelineController — PR-A5a Gate 5 ATS Batch 4a (the state machine).
 //
@@ -251,6 +252,20 @@ export class PipelineController {
       ? await this.editionReader.listResumeEditions({ tenant_id: tenantId, talent_id: talentRecordId })
       : [];
     const defaultEdition = editions.find((e) => e.is_default);
+    // Resume Revision Lifecycle §9 — resolve the CURRENT selection's lifecycle from
+    // the FULL editions list (which includes archived/retracted), before the
+    // active-only filter below. A selection that is no longer active requires the
+    // recruiter's attention; the view never silently substitutes another edition.
+    const selectedEdition =
+      current?.resume_edition_id != null
+        ? editions.find((e) => e.edition_id === current.resume_edition_id)
+        : undefined;
+    // §9 — the SINGLE eligibility owner (same rule the submit guard applies). The
+    // FE "requires attention" banner is just this rule's UX projection.
+    const eligibility = resumeSelectionEligibility(
+      current?.resume_edition_id ?? null,
+      selectedEdition?.lifecycle_status ?? null,
+    );
     return {
       pipeline_id: pipelineId,
       talent_record_id: talentRecordId,
@@ -259,9 +274,9 @@ export class PipelineController {
       selected_at: current?.selected_at.toISOString() ?? null,
       selected_by: current?.selected_by ?? null,
       default_edition_id: defaultEdition?.edition_id ?? null,
-      available_editions: editions
-        .filter((e) => e.lifecycle_status === 'active')
-        .map(toAvailable),
+      selected_lifecycle_status: eligibility.lifecycle_status,
+      selected_requires_attention: eligibility.status === 'ineligible',
+      available_editions: orderedAvailableEditions(editions, requisitionId),
     };
   }
 
