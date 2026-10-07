@@ -5455,7 +5455,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const requisition = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
             const company = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
             const pipeline = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
-            await c.query(`DELETE FROM pipeline."Pipeline" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            // Recruiting-Journey — clear prior pipelines with TRUNCATE…CASCADE (NOT a
+            // row DELETE): the evidence-milestone interactions now leave PipelineStatusHistory
+            // rows, and that table's L2-B append-only trigger REJECTS a cascaded row DELETE
+            // (`DELETE FROM pipeline."Pipeline"` would abort this whole setup → the requisition
+            // below never commits → the draft 422s requisition_not_found). TRUNCATE does not
+            // fire the row-level trigger (mirrors resetAllRows), so the cascade to history is
+            // clean. Single-tenant harness, so the tenant-wide truncate is equivalent.
+            await c.query(`TRUNCATE TABLE pipeline."Pipeline" CASCADE`);
             await c.query(
               `INSERT INTO talent_record."TalentRecord"
                  (id, tenant_id, first_name, last_name, email1, created_at, updated_at)
