@@ -454,6 +454,13 @@ const TALENT_EVIDENCE_DOC1B_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
 );
+// Resume Revision Lifecycle §4 — additive artifact byte-SHA-256 + per-Talent
+// exact-duplicate uniqueness guard on TalentResumeEdition (depends only on the
+// 1a resume_edition table; ALTER + CREATE UNIQUE INDEX, no documents dependency).
+const TALENT_EVIDENCE_RESUME_SHA256_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql',
+);
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -3550,6 +3557,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_TI1FA_MIGRATION,
         TALENT_EVIDENCE_TI1G_MIGRATION,
         TALENT_EVIDENCE_DOC1B_MIGRATION,
+        TALENT_EVIDENCE_RESUME_SHA256_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
@@ -4310,6 +4318,18 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // retired heuristic parseFromStorageKey is no longer wired/stubbed.
       const mockResumeParser = {
         extractTextFromStorageKey: async () => 'Grace Hopper resume — pact-seed text.',
+        // Resume Revision Lifecycle §4 — the add-edition path now resolves the
+        // extracted text AND the artifact byte SHA-256 in a single fetch; the
+        // confirmed-create path computes the byte hash alone. Deterministic seed.
+        extractTextAndSha256FromStorageKey: async () => ({
+          text: 'Grace Hopper resume — pact-seed text.',
+          artifact_sha256:
+            'f1e2d3c4b5a69788776655443322110000112233445566778899aabbccddeeff',
+        }),
+        computeArtifactSha256FromStorageKey: async () => ({
+          artifact_sha256:
+            'f1e2d3c4b5a69788776655443322110000112233445566778899aabbccddeeff',
+        }),
       };
       const mockDeliveryProvider = {
         deliver: async (): Promise<{
@@ -6816,6 +6836,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               ATSW_SUB_JOB_ID,
               '00000000-0000-7000-8000-5b00000000e3',
               '00000000-0000-7000-8000-5b00000000a3',
+            ],
+          );
+          // Resume Revision Lifecycle §9 — the send transition now ALSO requires the
+          // selected edition to be ACTIVE (archived/retracted →
+          // SUBMITTAL_RESUME_SELECTION_INELIGIBLE 422). Seed the ACTIVE edition the
+          // working selection points at so the happy-path send returns 200.
+          await c.query(
+            `INSERT INTO talent_evidence."TalentResumeEdition"
+               (id, tenant_id, talent_id, talent_document_id, content_hash, purpose, created_at, created_by)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'pact-ready-hash',
+                'GENERAL'::"talent_evidence"."TalentResumeEditionPurpose", '2026-07-01T00:00:00Z', $2::uuid)`,
+            [
+              '00000000-0000-7000-8000-5b00000000e3',
+              TENANT_ID,
+              PACT_TALENT_ID,
+              '00000000-0000-7000-8000-5b00000000d3',
             ],
           );
           await seedAtsWebSubmittalChain(c, {

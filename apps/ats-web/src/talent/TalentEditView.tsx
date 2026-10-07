@@ -7,6 +7,7 @@ import { Icons, InlineAlert, PageHeader } from '../ui';
 import { IntakeForm } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
+  archiveTalentResumeEdition,
   confirmTalentResumeEdition,
   createAttachment,
   createTalentResumeEdition,
@@ -265,14 +266,22 @@ function EditResumePanel({
   // TALENT-INTEL-1 TI-1F-C — the per-edition review action in flight (the edition
   // whose CONFIRM/REJECT is running) so the buttons disable + no double-submit.
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  // Resume Revision Lifecycle §8/§10 — archive action in flight + whether the
+  // archived-history section is expanded (archived revisions are hidden by default).
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const loadEditions = (): Promise<void> =>
     listTalentResumeEditions(talentId)
       .then((res) => {
         const list = res.editions ?? [];
         setEditions(list);
-        // Default the SELECTION to the explicit default edition (never "newest").
-        const def = list.find((e) => e.is_default) ?? list[0];
+        // Resume Revision Lifecycle §18 — seed the preview selection from the
+        // EXPLICIT default ONLY. No first-item/latest-item fallback: position and
+        // recency must never act as a selection authority (the prior `?? list[0]`
+        // guess is removed). When there is no default, nothing is pre-selected and
+        // the recruiter chooses explicitly.
+        const def = list.find((e) => e.is_default && e.lifecycle_status === 'active') ?? null;
         setSelectedId((prev) => prev ?? def?.edition_id ?? null);
       })
       .catch(() => {
@@ -362,6 +371,22 @@ function EditResumePanel({
       .catch(() => undefined);
   };
 
+  // Resume Revision Lifecycle §8 — archive a revision (active → archived). Archive
+  // is not delete; the backend keeps it in history and resolvable by completed
+  // Submittals. Re-read the collection so the row moves to archived-history.
+  const onArchive = (editionId: string): void => {
+    setArchivingId(editionId);
+    archiveTalentResumeEdition(talentId, editionId)
+      .then((res) => {
+        setEditions(res.editions);
+        // If the archived revision was the previewed selection, clear it (no
+        // silent switch — the recruiter re-chooses).
+        setSelectedId((prev) => (prev === editionId ? null : prev));
+      })
+      .catch(() => undefined)
+      .finally(() => setArchivingId(null));
+  };
+
   const action = (
     <>
       {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native file picker — distinct native behavior, no fe-foundation primitive */}
@@ -385,62 +410,115 @@ function EditResumePanel({
     </>
   );
 
-  // The edition chooser — explicit selection + default, presentation-only.
+  // Resume Revision Lifecycle §8/§10 — ordinary selectors show ACTIVE revisions;
+  // archived revisions are hidden behind a "View archived" affordance (history
+  // only — not offered for selection), but remain resolvable.
+  const activeEditions = editions.filter((e) => e.lifecycle_status === 'active');
+  const archivedEditions = editions.filter((e) => e.lifecycle_status !== 'active');
+
+  // §2/§3/§10 — the meaningful revision identity beyond the (often identical)
+  // filename: the derived ordinal + whether it is tailored to a requisition.
+  const revisionContext = (e: TalentResumeEditionView): string => {
+    const rev = e.revision_number !== null ? `Revision ${e.revision_number}` : 'Revision';
+    const ctx = e.requisition_id !== null ? 'Tailored for a requisition' : 'General resume';
+    return `${rev} · ${ctx}`;
+  };
+
+  const renderRow = (e: TalentResumeEditionView, archived: boolean): JSX.Element => (
+    <li key={e.edition_id} className="rc-redition" data-testid={`redition-${e.edition_id}`}>
+      <Button unstyled
+        type="button"
+        className="rc-redition__pick"
+        aria-pressed={e.edition_id === selectedId}
+        onClick={() => setSelectedId(e.edition_id)}
+      >
+        {e.filename}
+        {e.label !== null ? ` — ${e.label}` : ''}
+      </Button>
+      <span className="rc-secnote rc-redition__ctx" data-testid={`redition-context-${e.edition_id}`}>
+        {revisionContext(e)}
+      </span>
+      {archived ? (
+        <span className="rc-secnote rc-redition__archived" data-testid={`redition-archived-${e.edition_id}`}>
+          Archived
+        </span>
+      ) : e.is_default ? (
+        <span className="rc-secnote rc-redition__default">Default</span>
+      ) : (
+        <Button unstyled
+          type="button"
+          className="rc-redition__setdefault"
+          disabled={disabled}
+          onClick={() => onMakeDefault(e.edition_id)}
+        >
+          Make default
+        </Button>
+      )}
+      {/* TI-1F-C §4-L — the governed-extraction lifecycle + review action (active only). */}
+      {!archived && resumeReviewLabel(e.processing_status) !== null ? (
+        <span className="rc-secnote rc-redition__status">
+          {resumeReviewLabel(e.processing_status)}
+        </span>
+      ) : null}
+      {!archived && e.processing_status === 'READY_FOR_REVIEW' ? (
+        <>
+          <Button unstyled
+            type="button"
+            className="rc-redition__confirm"
+            disabled={disabled || reviewingId === e.edition_id}
+            onClick={() => onConfirm(e.edition_id)}
+          >
+            {reviewingId === e.edition_id ? 'Confirming…' : 'Confirm'}
+          </Button>
+          <Button unstyled
+            type="button"
+            className="rc-redition__reject"
+            disabled={disabled || reviewingId === e.edition_id}
+            onClick={() => onReject(e.edition_id)}
+          >
+            Reject
+          </Button>
+        </>
+      ) : null}
+      {/* §8 — archive a resume revision (active only; archive is not delete). */}
+      {!archived ? (
+        <Button unstyled
+          type="button"
+          className="rc-redition__archive"
+          data-testid={`redition-archive-${e.edition_id}`}
+          disabled={disabled || archivingId === e.edition_id}
+          onClick={() => onArchive(e.edition_id)}
+        >
+          {archivingId === e.edition_id ? 'Archiving…' : 'Archive'}
+        </Button>
+      ) : null}
+    </li>
+  );
+
   const chooser =
     editions.length === 0 ? null : (
-      <ul className="rc-redition-list" aria-label="Resume editions">
-        {editions.map((e) => (
-          <li key={e.edition_id} className="rc-redition">
+      <>
+        <ul className="rc-redition-list" aria-label="Resume revisions">
+          {activeEditions.map((e) => renderRow(e, false))}
+        </ul>
+        {archivedEditions.length > 0 ? (
+          <div className="rc-redition-archived">
             <Button unstyled
               type="button"
-              className="rc-redition__pick"
-              aria-pressed={e.edition_id === selectedId}
-              onClick={() => setSelectedId(e.edition_id)}
+              className="rc-redition__togglearchived"
+              data-testid="redition-view-archived"
+              onClick={() => setShowArchived((v) => !v)}
             >
-              {e.filename}
-              {e.label !== null ? ` — ${e.label}` : ''}
+              {showArchived ? 'Hide archived' : `View archived (${archivedEditions.length})`}
             </Button>
-            {e.is_default ? (
-              <span className="rc-secnote rc-redition__default">Default</span>
-            ) : (
-              <Button unstyled
-                type="button"
-                className="rc-redition__setdefault"
-                disabled={disabled}
-                onClick={() => onMakeDefault(e.edition_id)}
-              >
-                Make default
-              </Button>
-            )}
-            {/* TI-1F-C §4-L — the governed-extraction lifecycle + review action. */}
-            {resumeReviewLabel(e.processing_status) !== null ? (
-              <span className="rc-secnote rc-redition__status">
-                {resumeReviewLabel(e.processing_status)}
-              </span>
+            {showArchived ? (
+              <ul className="rc-redition-list rc-redition-list--archived" aria-label="Archived resume revisions">
+                {archivedEditions.map((e) => renderRow(e, true))}
+              </ul>
             ) : null}
-            {e.processing_status === 'READY_FOR_REVIEW' ? (
-              <>
-                <Button unstyled
-                  type="button"
-                  className="rc-redition__confirm"
-                  disabled={disabled || reviewingId === e.edition_id}
-                  onClick={() => onConfirm(e.edition_id)}
-                >
-                  {reviewingId === e.edition_id ? 'Confirming…' : 'Confirm'}
-                </Button>
-                <Button unstyled
-                  type="button"
-                  className="rc-redition__reject"
-                  disabled={disabled || reviewingId === e.edition_id}
-                  onClick={() => onReject(e.edition_id)}
-                >
-                  Reject
-                </Button>
-              </>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+          </div>
+        ) : null}
+      </>
     );
 
   if (replacedFile !== null && selected === null) {

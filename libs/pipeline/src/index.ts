@@ -10,6 +10,10 @@ export {
   type ResumeEditionReaderPort,
   type ResumeEditionSummary,
 } from './lib/resume-edition-reader.port.js';
+export {
+  resumeSelectionEligibility,
+  type ResumeSelectionEligibility,
+} from './lib/resume-selection-eligibility.js';
 export { PrismaService as PipelinePrismaService } from './lib/prisma/prisma.service.js';
 // Lane 2 / L2-B — the pipeline outbox drain surface, consumed by libs/outbox-publisher.
 export { PipelineOutboxRepository } from './lib/pipeline-outbox.repository.js';

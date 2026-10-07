@@ -86,14 +86,27 @@ export function ResumeSelectionSection({
     defaultId === null
       ? null
       : editions.find((e) => e.edition_id === defaultId) ?? null;
+  // Resume Revision Lifecycle §9 — the selected revision was archived after it was
+  // selected (so it is absent from the active-only available list). The system does
+  // NOT silently switch to another revision; it asks the recruiter to replace it.
+  // This is the UX projection of the SAME rule the backend submit guard enforces.
+  const requiresAttention = view.selected_requires_attention === true;
 
   return (
     <section className="rc-cdp__sec" data-testid="resume-selection">
       <div className="rc-cdp__seclabel">Resume — this position</div>
 
-      {selected !== null ? (
+      {requiresAttention ? (
+        <p className="rc-cdp__err" data-testid="resume-requires-attention">
+          Resume requires attention — the selected resume has been archived. Choose an
+          active resume below before submitting to the client.
+        </p>
+      ) : selected !== null ? (
         <p className="rc-cdp__note" data-testid="resume-current-selection">
           Selected for this requisition: <strong>{selected.filename}</strong>
+          {selected.revision_number !== null ? (
+            <> — Revision {selected.revision_number}</>
+          ) : null}
         </p>
       ) : defaultEdition !== null ? (
         // The default is a SUGGESTION only — explicitly labelled, never bound.
@@ -113,6 +126,7 @@ export function ResumeSelectionSection({
           <ResumeRow
             key={e.edition_id}
             edition={e}
+            currentRequisitionId={view.requisition_id}
             isSelected={e.edition_id === selectedId}
             canSetSelection={canSetSelection}
             busy={busyId === e.edition_id}
@@ -126,20 +140,32 @@ export function ResumeSelectionSection({
 
 function ResumeRow({
   edition,
+  currentRequisitionId,
   isSelected,
   canSetSelection,
   busy,
   onUse,
 }: {
   readonly edition: PipelineResumeEditionAvailable;
+  readonly currentRequisitionId: string;
   readonly isSelected: boolean;
   readonly canSetSelection: boolean;
   readonly busy: boolean;
   readonly onUse: () => void;
 }): JSX.Element {
+  // §3/§10 — a revision tailored for THIS requisition is distinguished from a
+  // general one; the revision ordinal gives the recruiter a stable identity beyond
+  // the (often identical) filename.
+  const tailoredForThis =
+    edition.requisition_id !== null && edition.requisition_id === currentRequisitionId;
+  const context = tailoredForThis ? 'Tailored for this requisition' : 'General resume';
   return (
     <li className="rc-cdp__resume" data-testid={`resume-row-${edition.edition_id}`}>
       <span className="rc-cdp__resumename">{edition.filename}</span>
+      <span className="rc-cdp__resumectx" data-testid={`resume-context-${edition.edition_id}`}>
+        {edition.revision_number !== null ? `Revision ${edition.revision_number} · ` : ''}
+        {context}
+      </span>
       {edition.is_default ? <span className="rc-cdp__resumetag">Default</span> : null}
       {isSelected ? <span className="rc-cdp__resumetag">Selected</span> : null}
       {/* PREVIEW — DISABLED (TI-1E-B1). The prior href pointed at

@@ -31,6 +31,7 @@ export class ResumeEditionReaderAdapter implements ResumeEditionReaderPort {
       is_default: r.is_default,
       purpose: r.purpose,
       label: r.label,
+      requisition_id: r.requisition_id,
       filename: r.document_filename,
       mime_type: r.document_mime_type,
       created_at: r.created_at.toISOString(),

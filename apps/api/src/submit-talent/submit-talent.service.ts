@@ -3,7 +3,11 @@ import { v7 as uuidv7 } from 'uuid';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { recordUsage } from '@aramo/metering';
 import { canTransitionSubmittal } from '@aramo/submittal';
-import { isLiveStatus, type PipelineStatus } from '@aramo/pipeline';
+import {
+  isLiveStatus,
+  resumeSelectionEligibility,
+  type PipelineStatus,
+} from '@aramo/pipeline';
 import {
   consumeSlot,
   evaluateEligibility,
@@ -306,6 +310,37 @@ export class SubmitTalentToClientService {
           'A resume edition must be explicitly selected for this requisition before submitting to the client',
           422,
           { submittal_id, requisition_id },
+        );
+      }
+      // Resume Revision Lifecycle §9 — the selected edition must be ACTIVE. An
+      // archived (or retracted) selection requires replacement and must NOT silently
+      // reach a client handoff. Resolve its lifecycle in THIS transaction (the
+      // service's sanctioned cross-schema-SQL boundary — no module edge) and apply
+      // the SINGLE-owner eligibility rule shared with the Pipeline resume view, so
+      // the FE "requires attention" banner and this hard refusal never diverge. A
+      // historical Submittal that already froze its edition is untouched (freeze is
+      // a separate immutable snapshot, §7) — this gate governs only the NEW handoff.
+      const editionRows = await tx.$queryRawUnsafe<Array<{ lifecycle_status: string }>>(
+        `SELECT "lifecycle_status" FROM "talent_evidence"."TalentResumeEdition"
+           WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid LIMIT 1`,
+        resume_edition_id,
+        tenant_id,
+      );
+      const eligibility = resumeSelectionEligibility(
+        resume_edition_id,
+        editionRows[0]?.lifecycle_status ?? null,
+      );
+      if (eligibility.status !== 'eligible') {
+        throw err(
+          'SUBMITTAL_RESUME_SELECTION_INELIGIBLE',
+          'The resume selected for this requisition is archived and must be replaced with an active revision before submitting to the client',
+          422,
+          {
+            submittal_id,
+            requisition_id,
+            resume_edition_id,
+            lifecycle_status: eligibility.lifecycle_status,
+          },
         );
       }
 
