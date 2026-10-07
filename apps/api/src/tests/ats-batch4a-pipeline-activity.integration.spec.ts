@@ -935,23 +935,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await cleanupPipeline(created.id);
     });
 
-    it('Legal transition (no_contact -> contacted): atomic 4-write commits — status + history + activity + metering', async () => {
+    it('Legal transition (talent_responded -> qualifying): atomic 4-write commits — status + history + activity + metering', async () => {
+      // Recruiting-Journey I1/§17 — the evidence-backed milestones (contacted /
+      // talent_responded) are NEVER reached by a naked endpoint transition (that is
+      // refused PIPELINE_STAGE_REQUIRES_EVIDENCE); they originate from the evidence-
+      // bearing commands. The transition ENDPOINT now carries the recruiter DECISION
+      // edges. This proves the SAME atomic 4-write (status + history + activity +
+      // metering) on a legal decision transition: seed the episode at talent_responded
+      // (the evidence prerequisite is proven in the evidence-milestones spec), then
+      // advance to qualifying through the endpoint.
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
+      await setupClient.query(
+        `UPDATE pipeline."Pipeline" SET status = 'talent_responded' WHERE id = $1::uuid`,
+        [created.id],
+      );
       const usageBefore = await countUsageEvents();
 
       const r = await transition(
         recruiterJwt_Ats_SiteA,
         created.id,
-        'contacted',
-        'left voicemail',
+        'qualifying',
+        'ready to qualify',
       );
       expect(r.status).toBe(200);
       const body = r.body as { status: string };
-      expect(body.status).toBe('contacted');
+      expect(body.status).toBe('qualifying');
 
       // Atomic 4-write structural check. History is 2: the L2-B birth row +
-      // this transition row.
-      expect(await readStatus(created.id)).toBe('contacted');
+      // this transition row (the SQL status seed writes no history).
+      expect(await readStatus(created.id)).toBe('qualifying');
       expect(await countHistoryRows(created.id)).toBe(2);
       expect(await countActivityRows(created.id)).toBe(1);
       expect(await countUsageEvents()).toBe(usageBefore + 1);
@@ -1020,19 +1032,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // -------------------------------------------------------------------------
 
     it('Metering-in-transaction: a usage event is recorded iff the transition commits', async () => {
+      // Recruiting-Journey §17 — drive the metering proof through a legal DECISION
+      // edge (the endpoint no longer accepts the evidence-backed milestones naked).
       const created = await createPipeline(recruiterJwt_Ats_SiteA);
+      await setupClient.query(
+        `UPDATE pipeline."Pipeline" SET status = 'talent_responded' WHERE id = $1::uuid`,
+        [created.id],
+      );
 
       const usageBefore = await countUsageEvents();
-      // Legal: +1 usage.
+      // Legal (talent_responded -> qualifying): +1 usage.
       const legal = await transition(
         recruiterJwt_Ats_SiteA,
         created.id,
-        'contacted',
+        'qualifying',
       );
       expect(legal.status).toBe(200);
       expect(await countUsageEvents()).toBe(usageBefore + 1);
 
-      // Illegal from contacted -> completed: +0 usage (completed is legal only from qualified).
+      // Illegal from qualifying -> completed: +0 usage (completed is legal only from qualified).
       const usageMid = await countUsageEvents();
       const illegal = await transition(
         recruiterJwt_Ats_SiteA,
