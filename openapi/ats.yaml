@@ -7477,6 +7477,285 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
+  # ── Durable Async Résumé-First Talent Intake ──────────────────────────────
+  # The async creation path (replaces the retired synchronous draft-from-resume):
+  # create-intake → upload → complete-upload(202) → background worker → GET/SSE →
+  # promote. GET is authoritative; SSE is notification-only.
+  /v1/talent-intake-drafts:
+    post:
+      operationId: createTalentIntakeDraft
+      summary: Create a durable résumé Talent Intake draft + upload target.
+      description: |
+        Creates a tenant-scoped TalentIntakeDraft and returns a presigned upload
+        target. No extraction runs on this request. Gated: capability ats + scope
+        talent:create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTalentIntakeDraftRequest'
+      responses:
+        '201':
+          description: The created intake draft + presigned upload target.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTalentIntakeDraftResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listTalentIntakeDrafts
+      summary: List the recruiter's resumable Talent Intake drafts.
+      description: |
+        The Draft Talents recovery surface — the recruiter's unpromoted drafts.
+        Gated: capability ats + scope talent:read.
+      responses:
+        '200':
+          description: The recruiter's intake drafts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeDraftListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}/complete-upload:
+    post:
+      operationId: completeTalentIntakeUpload
+      summary: Complete the résumé upload and queue async extraction.
+      description: |
+        Verifies the uploaded object, then atomically marks the draft QUEUED and
+        writes the intake outbox event (the durable handoff). Extraction runs
+        asynchronously in a worker — this request never waits for the LLM.
+        Idempotent. Gated: capability ats + scope talent:create.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteTalentIntakeUploadRequest'
+      responses:
+        '202':
+          description: Accepted — extraction queued; the draft is durable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeAcceptedView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}:
+    get:
+      operationId: getTalentIntakeDraft
+      summary: The authoritative Talent Intake draft read model.
+      description: |
+        The authoritative recovery read model for one draft (processing + review
+        state, persisted review values, available actions). Gated: capability ats
+        + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The intake draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeDraftView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: patchTalentIntakeReview
+      summary: Persist recruiter review edits (optimistic concurrency).
+      description: |
+        Persists recruiter-reviewed values against the draft, guarded by
+        expected_version. A stale version returns 409 (the draft changed in
+        another session). Gated: capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchTalentIntakeReviewRequest'
+      responses:
+        '200':
+          description: The updated intake draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeDraftView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Version conflict — the draft was changed in another session.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}/retry:
+    post:
+      operationId: retryTalentIntakeExtraction
+      summary: Retry extraction on the same stored résumé (no re-upload).
+      description: |
+        Re-queues extraction against the same stored artifact (no re-upload).
+        A no-op when the draft is not in a retryable (FAILED/PARTIAL) state.
+        Gated: capability ats + scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The re-queued intake draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeDraftView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}/promote:
+    post:
+      operationId: promoteTalentIntakeDraft
+      summary: Promote the reviewed draft into exactly one TalentRecord.
+      description: |
+        The only step that creates a TalentRecord. Reuses the canonical Talent
+        creation + Documents authorities; idempotent (a repeat/racing promote
+        returns the same TalentRecord). Missing admission fields return 422 with
+        details.missing. Gated: capability ats + scope talent:create.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201':
+          description: The created (or already-promoted) TalentRecord.
+          content:
+            application/json:
+              schema:
+                # The full canonical TalentRecord (same shape POST /v1/talent-records
+                # returns). The fields the intake flow relies on are listed; the
+                # record carries the complete talent profile.
+                type: object
+                additionalProperties: true
+                required:
+                  - id
+                  - first_name
+                  - last_name
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  first_name:
+                    type: string
+                  last_name:
+                    type: string
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: A different active talent already uses this primary email.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}/events:
+    get:
+      operationId: streamTalentIntakeEvents
+      summary: SSE notification stream for a Talent Intake draft.
+      description: |
+        Notification-only Server-Sent Events. On change, emits a small 'draft'
+        event with { draft_id, version, processing_status, review_status } — never
+        the extracted payload or recruiter fields. GET remains authoritative; a
+        missed stream is harmless. Gated: capability ats + scope talent:read.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: A Server-Sent Events stream of draft notifications.
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeEvent'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -7511,6 +7790,180 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── Durable Async Résumé-First Talent Intake ──────────────────────────────
+    CreateTalentIntakeDraftRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - filename
+        - content_type
+      properties:
+        filename:
+          type: string
+        content_type:
+          type: string
+    CreateTalentIntakeDraftResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_id
+        - upload_url
+        - storage_key
+        - processing_status
+        - expires_at
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        upload_url:
+          type: string
+        storage_key:
+          type: string
+        processing_status:
+          type: string
+        expires_at:
+          type: string
+    CompleteTalentIntakeUploadRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        artifact_sha256:
+          type: string
+    TalentIntakeAcceptedView:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_id
+        - processing_status
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        processing_status:
+          type: string
+    TalentIntakeDraftView:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source_filename
+        - processing_status
+        - review_status
+        - version
+        - created_at
+        - updated_at
+        - actions
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_filename:
+          type: string
+        mime_type:
+          type: [string, 'null']
+        size_bytes:
+          type: [integer, 'null']
+        processing_status:
+          type: string
+        review_status:
+          type: string
+        structured_payload:
+          type: [object, 'null']
+          additionalProperties: true
+        review_payload:
+          type: [object, 'null']
+          additionalProperties: true
+        warning:
+          type: [string, 'null']
+        failure:
+          type: [string, 'null']
+        promoted_talent_record_id:
+          type: [string, 'null']
+          format: uuid
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        processing_completed_at:
+          type: [string, 'null']
+          format: date-time
+        actions:
+          type: array
+          items:
+            type: string
+    TalentIntakeDraftListItem:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - source_filename
+        - processing_status
+        - review_status
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        source_filename:
+          type: string
+        processing_status:
+          type: string
+        review_status:
+          type: string
+        promoted_talent_record_id:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TalentIntakeDraftListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TalentIntakeDraftListItem'
+    PatchTalentIntakeReviewRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - review
+        - expected_version
+      properties:
+        review:
+          type: object
+          additionalProperties: true
+        expected_version:
+          type: integer
+    TalentIntakeEvent:
+      type: object
+      additionalProperties: false
+      required:
+        - draft_id
+        - version
+        - processing_status
+        - review_status
+      properties:
+        draft_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        processing_status:
+          type: string
+        review_status:
+          type: string
     # ── PO RULING "Consent Capture" — capture request/response + versioned texts ──
     ConsentCaptureRequest:
       type: object

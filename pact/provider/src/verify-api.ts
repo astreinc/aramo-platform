@@ -33,13 +33,6 @@ import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/p
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
 import { ResumeParserService } from '@aramo/resume-parse';
-// TI-1F P0.2 — the draft-from-resume orchestrator calls the governed
-// TalentExtractionService.extractResumeDraft (the sole production resume fact
-// extractor). Only that ONE method is spied in verify (see the app.init block)
-// so the contract's parsed prefill holds without a live model; the service's
-// other methods (the resume-edition routes) stay REAL — a wholesale override
-// would 500 those routes.
-import { TalentExtractionService } from '@aramo/talent-extraction';
 // PC-7c — Symbol()-keyed ports the tenant-user lifecycle injects. Overriding a
 // Symbol token requires the token itself (Gate-5 eslint amendment). MAILER_PORT
 // is a plain string ('MAILER_PORT'), overridden by string literal below.
@@ -453,6 +446,13 @@ const DOCUMENTS_DOC2_MIGRATION = resolve(
 const TALENT_EVIDENCE_DOC1B_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql',
+);
+// Durable Async Résumé-First Talent Intake — the TalentIntakeDraft parent
+// aggregate + TalentIntakeOutboxEvent (additive). Registered so the intake
+// provider-state handlers can seed TalentIntakeDraft rows.
+const TALENT_EVIDENCE_INTAKE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20261006190000_durable_async_talent_intake/migration.sql',
 );
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
@@ -1474,6 +1474,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // confirm/reject interactions collide on the (tenant, source_kind, source_ref)
       // unique key unless reset between interactions).
       await c.query('TRUNCATE TABLE talent_evidence."ResumeExtractionDraft" CASCADE');
+      // Durable Async Talent Intake — the durable intake parent + its outbox
+      // (fixed-id fixtures collide on (tenant, storage_key) unless reset).
+      await c.query('TRUNCATE TABLE talent_evidence."TalentIntakeDraft" CASCADE');
+      await c.query('TRUNCATE TABLE talent_evidence."TalentIntakeOutboxEvent" CASCADE');
       // TI-1G — fixed-id work-auth fixtures must not collide across interactions.
       await c.query('TRUNCATE TABLE talent_evidence."TalentWorkAuthorization" CASCADE');
       await c.query('TRUNCATE TABLE talent_evidence."TalentDocument" CASCADE');
@@ -3550,6 +3554,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_TI1FA_MIGRATION,
         TALENT_EVIDENCE_TI1G_MIGRATION,
         TALENT_EVIDENCE_DOC1B_MIGRATION,
+        TALENT_EVIDENCE_INTAKE_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
@@ -4297,6 +4302,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           presigned_url: 'https://mock-storage.local/put/pact-seed',
           expires_at: '2026-05-25T00:05:00.000Z',
         }),
+        // Durable Async Talent Intake — complete-upload verifies the object +
+        // clears the orphan-pending tag. External infra (already overridden here).
+        headObject: async () => ({ byte_length: 1234, content_type: 'application/pdf' }),
+        markResumeCommitted: async () => undefined,
         // DOC-4C (R1 seam C) — the source-PDF read the RevisionSourceService performs
         // (via AramoS3DocumentStorageAdapter.getArtifact → objectStorage.getObjectBytes)
         // for the esign-service source pull. Object storage is external infra (already
@@ -4408,30 +4417,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       await app.init();
 
-      // TI-1F P0.2 — the governed resume extractor's model call cannot run in the
-      // verify env. Spy ONLY extractResumeDraft on the REAL TalentExtractionService
-      // instance (all its other methods — the resume-edition routes — stay real) so
-      // the draft-from-resume contract's parsed prefill holds: identity from the
-      // proposal, email from result.contact (R17), parse_status 'parsed'.
-      vi.spyOn(
-        app.get(TalentExtractionService, { strict: false }),
-        'extractResumeDraft',
-      ).mockResolvedValue({
-        status: 'success',
-        contact: { emails: ['grace@example.com'], phones: [] },
-        proposal: {
-          first_name: 'Grace',
-          last_name: 'Hopper',
-          skills: [],
-          work_history: [],
-          education: [],
-          certifications: [],
-          rejected_count: 0,
-          overflow: false,
-          source_map_version: 'resume-source-map/v1',
-          resume_text_hash: 'pact-seed',
-        },
-      } as never);
+      // (Removed) the extractResumeDraft spy — it existed only for the retired
+      // synchronous draft-from-resume contract. Résumé-first creation is now the
+      // durable async Talent Intake flow; extraction runs in the worker (not any
+      // verified HTTP path), so no provider interaction invokes the governed
+      // extractor synchronously.
 
       const server = await app.listen(0);
       const address = server.address() as AddressInfo;
@@ -8182,6 +8172,61 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // ===============================================================
       'an ats-web recruiter can start a resume flow': async () => {
         await withClient((c) => resetAllRows(c));
+      },
+      // Durable Async Résumé-First Talent Intake — seed TalentIntakeDraft rows for
+      // the complete-upload / GET / promote-missing contracts.
+      'an ats-web recruiter and an uploaded talent intake draft exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await c.query(
+            `INSERT INTO talent_evidence."TalentIntakeDraft"
+               (id, tenant_id, created_by, source_type, source_filename, storage_key,
+                processing_status, review_status, version, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'RESUME_UPLOAD', 'grace.pdf', 'resumes/pact-seed.pdf',
+                'UPLOADED'::"talent_evidence"."TalentIntakeProcessingStatus",
+                'NOT_STARTED'::"talent_evidence"."TalentIntakeReviewStatus", 0, NOW(), NOW())`,
+            ['00000000-0000-7000-8000-7a1d00000001', TENANT_ID, PACT_RECRUITER_ACTOR_ID],
+          );
+        });
+      },
+      'an ats-web recruiter and a ready talent intake draft exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await c.query(
+            `INSERT INTO talent_evidence."TalentIntakeDraft"
+               (id, tenant_id, created_by, source_type, source_filename, storage_key,
+                processing_status, review_status, structured_payload, review_payload,
+                version, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'RESUME_UPLOAD', 'grace.pdf', 'resumes/pact-seed.pdf',
+                'READY'::"talent_evidence"."TalentIntakeProcessingStatus",
+                'IN_REVIEW'::"talent_evidence"."TalentIntakeReviewStatus",
+                '{}'::jsonb,
+                '{"fields":{"first_name":{"value":"Grace","origin":"RESUME_EXTRACTION"}}}'::jsonb,
+                2, NOW(), NOW())`,
+            ['00000000-0000-7000-8000-7a1d00000002', TENANT_ID, PACT_RECRUITER_ACTOR_ID],
+          );
+        });
+      },
+      'an ats-web recruiter and an intake draft missing admission fields exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await c.query(
+            `INSERT INTO talent_evidence."TalentIntakeDraft"
+               (id, tenant_id, created_by, source_type, source_filename, storage_key,
+                processing_status, review_status, review_payload, resume_extraction_draft_id,
+                version, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, $3::uuid, 'RESUME_UPLOAD', 'empty.pdf', 'resumes/pact-empty.pdf',
+                'READY'::"talent_evidence"."TalentIntakeProcessingStatus",
+                'IN_REVIEW'::"talent_evidence"."TalentIntakeReviewStatus",
+                '{"fields":{}}'::jsonb, $4::uuid, 1, NOW(), NOW())`,
+            [
+              '00000000-0000-7000-8000-7a1d00000003',
+              TENANT_ID,
+              PACT_RECRUITER_ACTOR_ID,
+              '00000000-0000-7000-8000-7a1d0000c001',
+            ],
+          );
+        });
       },
       'an ats-web recruiter can draft a requisition from intake': async () => {
         await withClient((c) => resetAllRows(c));

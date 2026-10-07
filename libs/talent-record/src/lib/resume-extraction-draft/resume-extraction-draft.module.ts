@@ -8,6 +8,8 @@ import {
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 
 import { TalentRecordModule } from '../talent-record.module.js';
+import { TalentIntakeRelayProcessor } from '../talent-intake/talent-intake-relay.processor.js';
+import { TALENT_INTAKE_RELAY_QUEUE_NAME } from '../talent-intake/talent-intake.constants.js';
 
 import { ResumeExtractionDraftProcessor } from './resume-extraction-draft.processor.js';
 import { RESUME_EXTRACTION_DRAFT_QUEUE_NAME } from './resume-extraction-draft.queue.constants.js';
@@ -58,6 +60,10 @@ import { RESUME_EXTRACTION_DRAFT_QUEUE_NAME } from './resume-extraction-draft.qu
       extraProviders: [RedisConnectionConfig],
     }),
     BullModule.registerQueue({ name: RESUME_EXTRACTION_DRAFT_QUEUE_NAME }),
+    // Durable Async Talent Intake — the relay's own scheduled tick queue. It
+    // enqueues onto the resume-extraction-draft queue above (same module, so the
+    // queue token is injectable into the relay).
+    BullModule.registerQueue({ name: TALENT_INTAKE_RELAY_QUEUE_NAME }),
   ],
   providers: [
     ResumeExtractionDraftProcessor,
@@ -65,7 +71,12 @@ import { RESUME_EXTRACTION_DRAFT_QUEUE_NAME } from './resume-extraction-draft.qu
       provide: 'ResumeExtractionDraftProcessorLogger',
       useFactory: () => createAramoLogger(ResumeExtractionDraftProcessor.name),
     },
+    TalentIntakeRelayProcessor,
+    {
+      provide: 'TalentIntakeRelayProcessorLogger',
+      useFactory: () => createAramoLogger(TalentIntakeRelayProcessor.name),
+    },
   ],
-  exports: [ResumeExtractionDraftProcessor],
+  exports: [ResumeExtractionDraftProcessor, TalentIntakeRelayProcessor],
 })
 export class ResumeExtractionDraftWorkerModule {}

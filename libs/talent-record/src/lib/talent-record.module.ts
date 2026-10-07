@@ -20,6 +20,10 @@ import { ResumeTextService } from './resume-text/resume-text.service.js';
 import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
 import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
+import { TalentCreateFromDraftService } from './talent-create-from-draft.service.js';
+import { TalentIntakeController } from './talent-intake/talent-intake.controller.js';
+import { TalentIntakeService } from './talent-intake/talent-intake.service.js';
+import { TalentIntakePromotionService } from './talent-intake/talent-intake-promotion.service.js';
 
 // TalentRecordModule — PR-A4 Gate 5 ATS Batch 3.
 //
@@ -63,10 +67,17 @@ import { ResumeEditionIngestionService } from './resume-extraction/resume-editio
     // the queue-name contract) — no talent-record → talent-reconcile cycle.
     TalentReconcileSignalModule,
   ],
-  controllers: [TalentRecordController],
+  controllers: [TalentRecordController, TalentIntakeController],
   providers: [
     PrismaService,
     TalentRecordRepository,
+    // Durable Async Résumé-First Talent Intake — the HTTP intake lifecycle +
+    // promotion. TalentCreateFromDraftService is the SHARED create-from-draft
+    // composition reused by both the synchronous create path and the async
+    // intake promote (no duplicated Talent-create logic).
+    TalentCreateFromDraftService,
+    TalentIntakeService,
+    TalentIntakePromotionService,
     // Promotion Gate Slice-B1 — reconcile writes (enrich + provenance +
     // pending contradictions). Consumed by the apps/api reconcile poll above
     // the I15 wall (mirrors TalentRecordRepository's cross-lib export).

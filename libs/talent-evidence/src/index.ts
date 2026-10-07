@@ -73,6 +73,12 @@ export type {
   ResumeExtractionDraftRow,
   ResumeExtractionDraftSourceKindValue,
   ResumeExtractionDraftStatusValue,
+  // Durable Async Talent Intake — thin parent aggregate + transactional outbox
+  TalentIntakeDraftRow,
+  CreateTalentIntakeDraftInput,
+  TalentIntakeOutboxEventRow,
+  TalentIntakeProcessingStatusValue,
+  TalentIntakeReviewStatusValue,
   // TI-1F-B promotion — the typed-evidence row inputs the confirm path shapes.
   CreateTalentProjectExperienceInput,
   CreateTalentEducationEntryInput,

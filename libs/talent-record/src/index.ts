@@ -52,6 +52,14 @@ export {
   RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
   RESUME_EXTRACTION_DRAFT_BATCH_SIZE,
 } from './lib/resume-extraction-draft/resume-extraction-draft.queue.constants.js';
+// Durable Async Talent Intake — the outbox→BullMQ relay (apps/api schedules it).
+export { TalentIntakeRelayProcessor } from './lib/talent-intake/talent-intake-relay.processor.js';
+export {
+  TALENT_INTAKE_RELAY_QUEUE_NAME,
+  TALENT_INTAKE_RELAY_BATCH_SIZE,
+  TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
+  TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
+} from './lib/talent-intake/talent-intake.constants.js';
 
 export type {
   TalentRecordView,

@@ -6,7 +6,11 @@ import { STALE_CONSENT_QUEUE_NAME } from '@aramo/consent';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from '@aramo/outbox-publisher';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
-import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
+import {
+  RESUME_REINDEX_QUEUE_NAME,
+  RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
+  TALENT_INTAKE_RELAY_QUEUE_NAME,
+} from '@aramo/talent-record';
 import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from '@aramo/cold-ingest-extraction';
 
 import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
@@ -97,6 +101,27 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'resume-reindex-60s',
     repeat: { every: 60_000 },
+  },
+  // Durable Async Talent Intake — activate the resume-extraction-draft worker
+  // (previously registered but NEVER scheduled → dead). This tick drives BOTH
+  // the existing-Talent ATTACHMENT drain (repairing the stranded PROCESSING
+  // drafts) AND the safety-net drain of QUEUED intake drafts the relay may not
+  // have enqueued. Every 60s.
+  {
+    queue_name: RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'resume-extraction-draft-60s',
+    repeat: { every: 60_000 },
+  },
+  // Durable Async Talent Intake — the transactional-outbox → BullMQ relay tick.
+  // Drains unpublished intake outbox rows and enqueues an idempotent extraction
+  // job (job id derived from the outbox event id). Every 15s for low enqueue
+  // latency; the DB commit already made the work durable.
+  {
+    queue_name: TALENT_INTAKE_RELAY_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'talent-intake-relay-15s',
+    repeat: { every: 15_000 },
   },
   // Enterprise Search GS-2A Slice-5b — the talent-embedding tick. Every 300s: reconcile (enqueue new
   // live Talents lacking an embedding row) then drain the pending set (consent → projection → embed →

@@ -702,3 +702,125 @@ model ResumeExtractionDraft {
   @@index([status])
   @@schema("talent_evidence")
 }
+
+// ============================================================================
+// Durable Async Résumé-First Talent Intake (Durable-Async-Resume-First-Talent-
+// Intake directive). A résumé upload creates a durable, tenant-scoped
+// TalentIntakeDraft — the PRE-TALENT workflow authority. It survives
+// navigation, logout, browser close, worker restarts, and recruiter return
+// days later. A TalentRecord is created ONLY on explicit promotion, when the
+// admission invariant passes — there is NO DRAFT TalentRecord.
+//
+// Model split (recon-grounded CHILD-OF-INTAKE): this thin parent owns the
+// durable WORKFLOW + REVIEW + RECOVERY state; the existing ResumeExtractionDraft
+// (above) remains the governed-extraction RESULT/evidence child, reused
+// unchanged by the worker + promotion. Two dimensions (processing_status,
+// review_status) are kept separate so neither lifecycle distorts the other.
+// ============================================================================
+
+// Worker-owned processing lifecycle (separate from recruiter review).
+enum TalentIntakeProcessingStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  READY
+  PARTIAL
+  FAILED
+
+  @@schema("talent_evidence")
+}
+
+// Recruiter-owned review lifecycle (separate from worker processing).
+// ABANDONED is terminal-by-governance; expiry is NOT implemented in this
+// increment (retention is a filed governance backlog item).
+enum TalentIntakeReviewStatus {
+  NOT_STARTED
+  IN_REVIEW
+  READY_TO_PROMOTE
+  PROMOTED
+  ABANDONED
+
+  @@schema("talent_evidence")
+}
+
+model TalentIntakeDraft {
+  id         String @id @db.Uuid
+  tenant_id  String @db.Uuid
+  created_by String @db.Uuid
+
+  // Durable source artifact (already in object storage, tenant-scoped key).
+  source_type     String // e.g. RESUME_UPLOAD
+  source_filename String
+  storage_key     String
+  artifact_sha256 String? // byte hash when available; NULL when not computed
+  mime_type       String?
+  size_bytes      Int?
+
+  // Two independent lifecycle dimensions.
+  processing_status TalentIntakeProcessingStatus @default(UPLOADED)
+  review_status     TalentIntakeReviewStatus     @default(NOT_STARTED)
+
+  // Review read-model: the grounded governed-LLM prefill mirrored from the
+  // ResumeExtractionDraft child for fast, GET-authoritative reads. NOT Talent
+  // evidence (evidence is established at promotion via the child path).
+  structured_payload Json?
+
+  // Persisted recruiter review values + per-field origin (RESUME_EXTRACTION vs
+  // RECRUITER). Backend-owned so reopening from another session/device is
+  // correct; late extraction may populate only untouched fields.
+  review_payload Json?
+
+  // Recruiter-safe surfacing only (internal detail never projected).
+  warning_code  String?
+  failure_code  String?
+  failure_detail String?
+
+  // Model provenance mirrored from the governed extraction.
+  extraction_provider         String?
+  extraction_model            String?
+  extraction_contract_version String?
+
+  // Link to the governed-extraction RESULT child (UUID-only, no FK / §7.3).
+  resume_extraction_draft_id String? @db.Uuid
+
+  // Promotion linkage (ADD-not-rename: a distinct column, NOT the overloaded
+  // ResumeExtractionDraft.talent_id). Set once, atomically, at promotion.
+  promoted_talent_record_id String?   @db.Uuid
+  promoted_at               DateTime? @db.Timestamptz
+
+  // Optimistic concurrency for CAS claim + concurrent-edit guard.
+  version Int @default(0)
+
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @updatedAt @db.Timestamptz
+  processing_started_at   DateTime? @db.Timestamptz
+  processing_completed_at DateTime? @db.Timestamptz
+  last_opened_at          DateTime? @db.Timestamptz
+
+  // Idempotency anchor: at most one intake per uploaded object within a tenant
+  // → complete-upload replay and double-submit return the same draft.
+  @@unique([tenant_id, storage_key])
+  @@index([tenant_id, created_by, review_status])
+  @@index([tenant_id, processing_status])
+  @@index([tenant_id, created_at])
+  @@index([artifact_sha256])
+  @@index([promoted_talent_record_id])
+  @@schema("talent_evidence")
+}
+
+// Transactional outbox for the intake domain. Written in the SAME DB
+// transaction as the TalentIntakeDraft state change (the durable handoff
+// boundary — the commit does NOT depend on Redis). A dedicated relay drains
+// unpublished rows and enqueues an idempotent BullMQ extraction job after
+// commit. Shape mirrors the established per-schema OutboxEvent precedent.
+model TalentIntakeOutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  @@index([published_at, created_at])
+  @@schema("talent_evidence")
+}

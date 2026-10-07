@@ -7,8 +7,6 @@ import type {
   AttachmentView,
   CreateAttachmentRequest,
   CreateTalentRecordRequest,
-  DraftFromResumeRequest,
-  DraftFromResumeResult,
   EmailSlot,
   EmailVerificationRequestResult,
   EmailVerificationStatusResponse,
@@ -297,18 +295,9 @@ export async function putResumeToStorage(
   }
 }
 
-// Step 3: ask the BE to parse the uploaded file. Scope: talent:read
-// (Gate-5 surfaced — a parse is a READ-side draft, not a write). Returns
-// {prefill, parse_status}. The endpoint NEVER throws on parse failure
-// — a 'failed' status is a normal 200 response with empty prefill.
-export async function parseDraftFromResume(
-  body: DraftFromResumeRequest,
-): Promise<DraftFromResumeResult> {
-  return apiClient.post<DraftFromResumeResult>(
-    '/v1/talent-records/draft-from-resume',
-    body,
-  );
-}
+// (Retired) The synchronous POST /v1/talent-records/draft-from-resume parse call
+// was replaced by the durable async Talent Intake flow (talent-intake-api.ts):
+// create-intake → upload → complete-upload(202) → background worker → GET/SSE.
 
 // TR-3 B2 — request an email-verification for a STORED slot (email1|email2).
 // Server derives the address from the stored field; the FE never sends a

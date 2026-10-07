@@ -26,6 +26,10 @@ import {
   type ResumeExtractionDraftRow,
   type ResumeExtractionDraftSourceKindValue,
   type TalentWorkAuthorizationStatusValue,
+  type TalentIntakeDraftRow,
+  type TalentIntakeOutboxEventRow,
+  type TalentIntakeReviewStatusValue,
+  type CreateTalentIntakeDraftInput,
 } from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
@@ -1581,6 +1585,124 @@ export class TalentExtractionService {
     reviewed_at: Date;
   }): Promise<number> {
     return this.evidence.markResumeExtractionDraftRejected(input);
+  }
+
+  // Durable Async Talent Intake — thin passthroughs over the same
+  // TalentEvidenceRepository (no new cross-lib edge). The TalentIntakeDraft is
+  // the pre-Talent workflow/recovery authority; the ResumeExtractionDraft above
+  // remains the governed-extraction-result child.
+  async createTalentIntakeDraft(
+    input: CreateTalentIntakeDraftInput,
+  ): Promise<TalentIntakeDraftRow> {
+    return this.evidence.createTalentIntakeDraft(input);
+  }
+
+  async findTalentIntakeDraftById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<TalentIntakeDraftRow | null> {
+    return this.evidence.findTalentIntakeDraftById(args);
+  }
+
+  async listTalentIntakeDraftsForCreator(input: {
+    tenant_id: string;
+    created_by: string;
+    limit: number;
+    includePromoted?: boolean;
+  }): Promise<TalentIntakeDraftRow[]> {
+    return this.evidence.listTalentIntakeDraftsForCreator(input);
+  }
+
+  async completeTalentIntakeUploadWithOutbox(input: {
+    tenant_id: string;
+    id: string;
+    artifact_sha256?: string | null;
+    mime_type?: string | null;
+    size_bytes?: number | null;
+    event_type: string;
+    event_payload: unknown;
+  }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    return this.evidence.completeUploadWithOutbox(input);
+  }
+
+  async requeueTalentIntakeDraftWithOutbox(input: {
+    tenant_id: string;
+    id: string;
+    event_type: string;
+    event_payload: unknown;
+  }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    return this.evidence.requeueTalentIntakeDraftWithOutbox(input);
+  }
+
+  async claimTalentIntakeDraftForProcessing(input: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+  }): Promise<number> {
+    return this.evidence.claimTalentIntakeDraftForProcessing(input);
+  }
+
+  async findQueuedTalentIntakeDrafts(args: {
+    limit: number;
+  }): Promise<TalentIntakeDraftRow[]> {
+    return this.evidence.findQueuedTalentIntakeDrafts(args);
+  }
+
+  async markTalentIntakeDraftProcessed(input: {
+    tenant_id: string;
+    id: string;
+    processing_status: 'READY' | 'PARTIAL' | 'FAILED';
+    structured_payload?: unknown;
+    review_payload?: unknown;
+    warning_code?: string | null;
+    failure_code?: string | null;
+    failure_detail?: string | null;
+    extraction_provider?: string | null;
+    extraction_model?: string | null;
+    extraction_contract_version?: string | null;
+    resume_extraction_draft_id?: string | null;
+    processing_completed_at: Date;
+  }): Promise<void> {
+    return this.evidence.markTalentIntakeDraftProcessed(input);
+  }
+
+  async saveTalentIntakeDraftReview(input: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    review_payload: unknown;
+    review_status?: TalentIntakeReviewStatusValue;
+  }): Promise<number> {
+    return this.evidence.saveTalentIntakeDraftReview(input);
+  }
+
+  async markTalentIntakeDraftPromoted(input: {
+    tenant_id: string;
+    id: string;
+    promoted_talent_record_id: string;
+    promoted_at: Date;
+  }): Promise<number> {
+    return this.evidence.markTalentIntakeDraftPromoted(input);
+  }
+
+  async touchTalentIntakeDraftOpened(input: {
+    tenant_id: string;
+    id: string;
+  }): Promise<void> {
+    return this.evidence.touchTalentIntakeDraftOpened(input);
+  }
+
+  async findUnpublishedTalentIntakeOutboxEvents(args: {
+    limit: number;
+  }): Promise<TalentIntakeOutboxEventRow[]> {
+    return this.evidence.findUnpublishedTalentIntakeOutboxEvents(args);
+  }
+
+  async markTalentIntakeOutboxPublished(args: {
+    event_ids: string[];
+    published_at: Date;
+  }): Promise<number> {
+    return this.evidence.markTalentIntakeOutboxPublished(args);
   }
 
   // TI-1F-B — the EXISTING-Talent CONFIRM promotion (directive §3, §4-E/F/G).

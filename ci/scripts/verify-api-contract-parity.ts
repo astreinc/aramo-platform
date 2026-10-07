@@ -42,6 +42,9 @@ const VERB_DECORATORS: Record<string, string> = {
   Patch: 'PATCH',
   Delete: 'DELETE',
   All: 'ALL',
+  // @Sse(path) (Nest Server-Sent Events) is served over GET — the Durable Async
+  // Talent Intake notification stream is the first SSE route in the repo.
+  Sse: 'GET',
 };
 const HTTP_METHODS = ['get', 'post', 'put', 'patch', 'delete'] as const;
 

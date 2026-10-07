@@ -55,6 +55,24 @@ server {
     proxy_pass http://api:3000;
   }
 
+  # Durable Async Talent Intake — the SSE notification stream. Regex location so
+  # it wins over the /v1/ prefix; SSE-specific handling SCOPED to this one route.
+  # This is the long-lived event channel, NOT the résumé-extraction request — it
+  # carries only small {status, version} notifications; GET remains authoritative.
+  # Deliberately: buffering OFF + X-Accel-Buffering:no (so events flush immediately)
+  # and a long READ timeout for the STREAM. This is NOT a /v1/ timeout change and
+  # NOT a workaround to hold a synchronous extraction request open (extraction is
+  # fully async; no request is ever bound to LLM latency).
+  location ~ ^/v1/talent-intake-drafts/[^/]+/events$ {
+    proxy_pass http://api:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Connection '';
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    add_header X-Accel-Buffering no;
+  }
+
   # API + auth surfaces → container-internal backends (paths reach the services
   # unchanged; proxy_pass carries no URI part).
   location /v1/ {

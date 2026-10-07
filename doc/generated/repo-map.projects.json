@@ -1522,6 +1522,11 @@
       "ResumeReindexProcessor",
       "ResumeSourceAuthorizer",
       "ResumeTextService",
+      "TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT",
+      "TALENT_INTAKE_RELAY_BATCH_SIZE",
+      "TALENT_INTAKE_RELAY_QUEUE_NAME",
+      "TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD",
+      "TalentIntakeRelayProcessor",
       "TalentLinkService",
       "TalentRecordController",
       "TalentRecordModule",
@@ -2460,12 +2465,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/create-work-history.spec.ts",
-        "project": "talent-record",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/draft-from-resume-mode.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -5173,6 +5172,12 @@
       },
       { "project": "talent-reconcile", "status": "production" },
       { "project": "talent-reconcile-signal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/durable-async-talent-intake.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/profile-hydration.integration.spec.ts",
@@ -8116,7 +8121,14 @@
         "project": "submittal",
         "status": "excluded"
       },
-      { "project": "talent-extraction", "status": "production" }
+      { "project": "talent-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/durable-async-talent-intake.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-extraction": [
       {
@@ -8133,13 +8145,14 @@
       },
       { "project": "api", "status": "production" },
       {
-        "from": "pact/provider/src/verify-api.ts",
-        "project": "aramo-pact-provider",
-        "status": "unscoped"
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/create-from-draft-upload.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/create-from-draft-upload.spec.ts",
+        "from": "libs/talent-record/src/tests/durable-async-talent-intake.integration.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },

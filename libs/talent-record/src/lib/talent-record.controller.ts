@@ -48,8 +48,6 @@ import {
   toWorkAuthorizationAssertionView,
   type WorkAuthorizationStateView,
 } from './dto/work-authorization-state.view.js';
-import type { DraftFromResumeRequestDto } from './dto/draft-from-resume-request.dto.js';
-import type { DraftFromResumeResponse } from './dto/draft-from-resume.response.js';
 import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
 import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
@@ -86,6 +84,7 @@ import {
 } from './dto/talent-resume-edition.view.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentCreateFromDraftService } from './talent-create-from-draft.service.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
 
 const SORT_KEYS: readonly TalentSortKey[] = [
@@ -205,6 +204,12 @@ export class TalentRecordController {
     // canonicalReconcile) so hand-wired unit-test construction sites keep compiling;
     // apps/api wires TalentReconcileSignalModule so production always has it.
     @Optional() private readonly talentReconcile?: TalentReconcileProducer,
+    // The SHARED CREATE-from-draft composition (TI-1F-B), reused by the async
+    // Talent-intake PROMOTE path. @Optional + appended LAST so the many hand-wired
+    // unit-test construction sites keep their positional alignment; apps/api wires
+    // TalentRecordModule (which provides it), so the confirmed-create path always
+    // has it in production.
+    @Optional() private readonly createFromDraft?: TalentCreateFromDraftService,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -1185,122 +1190,25 @@ export class TalentRecordController {
   // duplicate Talent, duplicate evidence, or a second governed model call.
   // Returns null when the draft is absent / not a CREATE_DRAFT_UPLOAD / not
   // reviewable → the caller falls back to the normal create path.
+  // Delegates to the SHARED TalentCreateFromDraftService (extracted verbatim) so
+  // the async Talent-intake PROMOTE path runs the identical 3-phase composition.
   private async confirmCreateFromDraftUpload(
     authContext: AuthContextType,
     body: CreateTalentRecordRequestDto,
     email1: string,
     requestId: string,
   ): Promise<TalentRecordView | null> {
-    const tenant_id = authContext.tenant_id;
-    const draftId = body.draft_id as string;
-    const draft = await this.talentExtraction.findResumeExtractionDraftById({ tenant_id, id: draftId });
-    if (draft === null || draft.source_kind !== 'CREATE_DRAFT_UPLOAD') return null;
-
-    // Already fully promoted (idempotent duplicate submit) → return the Talent.
-    if (draft.status === 'ACCEPTED') {
-      if (draft.talent_id != null) {
-        const existing = await this.repo.findById({ tenant_id, id: draft.talent_id });
-        if (existing !== null) return existing;
-      }
+    // undefined only in hand-wired unit tests that do not exercise this path;
+    // production wires TalentCreateFromDraftService via TalentRecordModule.
+    if (this.createFromDraft === undefined) {
       return null;
     }
-    // A PROCESSING / FAILED / REJECTED draft is not confirmable here → normal path.
-    if (draft.status !== 'READY_FOR_REVIEW') return null;
-
-    // Reserved identity: reuse the linked id on a retry, else it is minted in phase 1.
-    let reservedId: string | undefined = draft.talent_id ?? undefined;
-    let documentId: string | undefined = draft.talent_document_id ?? undefined;
-    let editionId: string | undefined = draft.resume_edition_id ?? undefined;
-
-    // Dedup with the reserved-id exception: our OWN in-flight Talent (a retry after
-    // phase 2 committed) is not a duplicate; a DIFFERENT active record with the same
-    // email is.
-    const duplicate = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
-    if (duplicate !== null && duplicate.id !== reservedId) {
-      throw new AramoError(
-        'TALENT_RECORD_DUPLICATE',
-        'A talent with this primary email already exists in your tenant.',
-        409,
-        { requestId, details: { email1, existing_id: duplicate.id } },
-      );
-    }
-
-    const rd = body.resume_document!;
-    // PHASE 1 — establish the accepted evidence lifecycle (atomic) if not yet linked.
-    if (draft.talent_id == null) {
-      const reserved = uuidv7();
-      try {
-        const established = await this.talentExtraction.establishCreateDraftEvidence({
-          tenant_id,
-          talent_id: reserved,
-          actor_id: authContext.sub,
-          draft_id: draftId,
-          resume_document: {
-            storage_key: rd.storage_key,
-            file_name: rd.file_name,
-            mime_type: rd.mime_type,
-            size_bytes: rd.size_bytes,
-            source_map_version: rd.source_map_version,
-            resume_text_hash: rd.resume_text_hash,
-          },
-          work_history: body.work_history,
-          skills: body.skills,
-          education: body.education,
-          certifications: body.certifications,
-        });
-        reservedId = reserved;
-        documentId = established.document_id;
-        editionId = established.edition_id;
-      } catch (err) {
-        // Lost the phase-1 CAS to a concurrent confirm → re-read + reuse the
-        // winner's linked identity (converge, no duplicate Talent/evidence).
-        if (err instanceof ResumeExtractionDraftNotReviewableError) {
-          const relinked = await this.talentExtraction.findResumeExtractionDraftById({ tenant_id, id: draftId });
-          if (relinked?.talent_id != null) {
-            reservedId = relinked.talent_id;
-            documentId = relinked.talent_document_id ?? undefined;
-            editionId = relinked.resume_edition_id ?? undefined;
-          } else {
-            throw err;
-          }
-        } else {
-          throw err;
-        }
-      }
-    }
-    if (reservedId === undefined) return null; // defensive — never expected
-
-    // PHASE 2 — TalentRecord is the FINAL admission step, idempotent on the reserved id.
-    let created = await this.repo.findById({ tenant_id, id: reservedId });
-    if (created === null) {
-      created = await this.repo.create({
-        tenant_id,
-        entered_by_id: authContext.sub,
-        input: body,
-        requestId,
-        id: reservedId,
-      });
-    }
-
-    // PHASE 3 — only NOW does the draft cross into a durable Talent: ACCEPTED.
-    // Guarded READY_FOR_REVIEW→ACCEPTED (idempotent; a prior success is a no-op).
-    await this.talentExtraction.markResumeExtractionDraftAccepted({
-      id: draftId,
-      tenant_id,
-      talent_id: reservedId,
-      talent_document_id: documentId ?? null,
-      resume_edition_id: editionId ?? null,
-      reviewed_by: authContext.sub,
-      reviewed_at: new Date(),
-    });
-
-    // §4-H — both reconcile signals after the durable Talent exists (best-effort).
-    await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
-    await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
-    // TI-1G §1 — an explicit work-auth value on the confirmed create is a governed
-    // assertion (resume-backed create has NO special authority — same path).
-    await this.recordWorkAuthEvidence(authContext, reservedId, body);
-    return created;
+    return this.createFromDraft.confirmCreateFromDraftUpload(
+      authContext,
+      body,
+      email1,
+      requestId,
+    );
   }
 
   // TALENT-INTEL-1 TI-1G §1 — append governed RIGHT_TO_WORK evidence when a Create/
@@ -1310,24 +1218,17 @@ export class TalentRecordController {
   // field writes NO value-evidence — the governed clear is the existing
   // EXPLICITLY_CLEARED field-state; omitted is untouched (P0 dirty-PATCH ensures an
   // untouched field is omitted, so this never fires spuriously). NO inference.
+  // Delegates to the SHARED TalentCreateFromDraftService (reused by create/update/
+  // confirm and the async intake promote).
   private async recordWorkAuthEvidence(
     authContext: AuthContextType,
     talentId: string,
     body: { work_authorization?: string | null },
   ): Promise<void> {
-    const wa = body.work_authorization;
-    if (typeof wa !== 'string' || wa.trim() === '') return;
-    try {
-      await this.talentExtraction.recordDeclaredWorkAuthorization({
-        talent_id: talentId,
-        tenant_id: authContext.tenant_id,
-        work_authorization_status: wa as WorkAuthorization,
-        asserted_by: authContext.sub,
-      });
-    } catch {
-      // non-fatal — the scalar is the user-facing current state; evidence is durable
-      // history recorded best-effort (no resume/backfill path re-creates it).
+    if (this.createFromDraft === undefined) {
+      return;
     }
+    return this.createFromDraft.recordWorkAuthEvidence(authContext, talentId, body);
   }
 
   @Patch(':id')
@@ -1667,63 +1568,11 @@ export class TalentRecordController {
     });
   }
 
-  @Post('draft-from-resume')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:read')
-  @RequireSiteMatch()
-  async draftFromResume(
-    @AuthContext() authContext: AuthContextType,
-    @Body() body: DraftFromResumeRequestDto,
-    @RequestId() requestId: string,
-  ): Promise<DraftFromResumeResponse> {
-    if (typeof body.storage_key !== 'string' || body.storage_key.length === 0) {
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'storage_key must be a non-empty string',
-        422,
-        { requestId, details: { field: 'storage_key' } },
-      );
-    }
-
-    // Governed LLM is the SOLE production resume fact extractor (TI-1F P0.2;
-    // …-TI-1F-…-v1_0-LOCKED §4-D). Deterministic resume FACT extraction is
-    // RETIRED — there is no mode toggle and no silent fallback to the heuristic
-    // parser. The orchestrator authorizes the draft key internally (tenant +
-    // resume namespace); a raw client storage_key is never the auth anchor.
-    const ctx = { tenant_id: authContext.tenant_id, requestId };
-    const result = await this.resumeOrchestrator.extractResume(
-      { kind: 'CREATE_DRAFT_UPLOAD', storage_key: body.storage_key },
-      ctx,
-    );
-
-    // TALENT-INTEL-1 (TI-1F-A) — additively persist a CREATE_DRAFT_UPLOAD
-    // ResumeExtractionDraft from the SAME governed result above (NO second model
-    // call). This is ONE architecture: create + existing both land in a draft.
-    // In A the create flow stays synchronous — the prefill `result` remains the
-    // user-facing authority, so this persistence is BEST-EFFORT + non-blocking (a
-    // draft-write hiccup never affects the Create form). No TalentDocument /
-    // TalentResumeEdition / typed evidence here (that is TI-1F-B's Confirm-Create).
-    // Idempotent on (tenant, CREATE_DRAFT_UPLOAD, storage_key). TI-1F-C makes this
-    // durable/required when the create flow depends on the draft (the transitional
-    // sync-create / async-existing asymmetry is intentional for A).
-    let draft_id: string | undefined;
-    try {
-      const draft = await this.talentExtraction.upsertResumeExtractionDraft({
-        tenant_id: authContext.tenant_id,
-        source_kind: 'CREATE_DRAFT_UPLOAD',
-        source_ref: body.storage_key,
-        status: 'READY_FOR_REVIEW',
-        structured_payload: result,
-        source_map_version: result.source_map_version ?? null,
-        resume_text_hash: result.resume_text_hash ?? null,
-        created_at: new Date(),
-        created_by: authContext.sub,
-      });
-      draft_id = draft.id;
-    } catch {
-      // Non-fatal — the synchronous prefill response is the authority in A.
-    }
-
-    return { ...result, ...(draft_id !== undefined ? { draft_id } : {}) };
-  }
+  // (Retired) POST /v1/talent-records/draft-from-resume — the synchronous
+  // résumé-draft parse. It held the HTTP request open for the governed LLM call,
+  // which the front door severed at its read timeout. Replaced by the durable
+  // async Talent Intake flow (TalentIntakeController): create-intake →
+  // complete-upload(202) → outbox → worker → GET/SSE → promote. The shared
+  // governed orchestrator (ResumeExtractionOrchestrator.extractResume) is reused
+  // by the worker; the response DTO is reused as that orchestrator's return type.
 }

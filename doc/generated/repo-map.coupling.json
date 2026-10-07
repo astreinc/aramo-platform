@@ -11847,11 +11847,6 @@
       "to": "doc/go-live-known-limitations.md"
     },
     {
-      "from": "apps/ats-web/src/talent/TalentCreateView.tsx",
-      "status": "production",
-      "to": "doc/backlog/add-talent-consent-capture.md"
-    },
-    {
       "from": "apps/ats-web/src/talent/consent.ts",
       "status": "production",
       "to": "libs/consent/src/lib/dto/consent-grant-request.dto.ts"
@@ -12582,6 +12577,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -18927,6 +18927,11 @@
       "to": "apps/ats-web/src/placement/placement-api.ts"
     },
     {
+      "from": "pact/consumers/ats-web/src/resume-flow.consumer.test.ts",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
       "from": "pact/consumers/ats-web/src/selection.consumer.test.ts",
       "status": "unscoped",
       "to": "apps/ats-web/src/selection/selection-api.ts"
@@ -19815,6 +19820,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/migrations/20261006190000_durable_async_talent_intake/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

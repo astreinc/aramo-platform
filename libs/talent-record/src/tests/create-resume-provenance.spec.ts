@@ -254,17 +254,9 @@ describe('TI-1F-B — CREATE_DRAFT_UPLOAD close-out on confirmed create', () => 
   });
 });
 
-describe('draft/review — NOTHING is persisted before Create (review-before-create)', () => {
-  it('draftFromResume creates no document and no evidence rows', async () => {
-    const { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills } =
-      makeController();
-    // Governed draft path → the orchestrator returns an empty prefill (fake text
-    // = null); NOTHING is persisted before Create. TI-1B — a VALID Aramo resume
-    // key under the authenticated tenant (the orchestrator authorizes it).
-    const validKey = `${TENANT}/talent/01900000-0000-7000-8000-0000000000aa/resume/01900000-0000-7000-8000-0000000000bb-Resume.pdf`;
-    await ctl.draftFromResume(READ_AUTH, { storage_key: validKey }, 'rq-1');
-    expect(createResumeDocument).not.toHaveBeenCalled();
-    expect(persistDeclaredWorkHistory).not.toHaveBeenCalled();
-    expect(persistDeclaredSkills).not.toHaveBeenCalled();
-  });
-});
+// (Removed) the "draftFromResume creates no document before Create" negative
+// test — the synchronous draft-from-resume endpoint is retired. The equivalent
+// guarantee (extraction persists no Talent/Documents before promotion) is proven
+// for the async flow by the durable-async-talent-intake integration spec (the
+// child ResumeExtractionDraft holds the result; promotion is the only step that
+// mints Talent + Documents).

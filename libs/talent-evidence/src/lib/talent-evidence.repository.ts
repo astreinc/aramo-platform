@@ -631,6 +631,79 @@ export class ResumeExtractionDraftNotReviewableError extends Error {
   }
 }
 
+// ============================================================================
+// Durable Async Talent Intake — row/input types for the thin parent aggregate
+// (TalentIntakeDraft) and its transactional outbox (TalentIntakeOutboxEvent).
+// The parent owns durable workflow + review + recovery state; the governed
+// ResumeExtractionDraft remains the extraction-result child.
+// ============================================================================
+
+export type TalentIntakeProcessingStatusValue =
+  | 'UPLOADED'
+  | 'QUEUED'
+  | 'PROCESSING'
+  | 'READY'
+  | 'PARTIAL'
+  | 'FAILED';
+
+export type TalentIntakeReviewStatusValue =
+  | 'NOT_STARTED'
+  | 'IN_REVIEW'
+  | 'READY_TO_PROMOTE'
+  | 'PROMOTED'
+  | 'ABANDONED';
+
+export interface TalentIntakeDraftRow {
+  id: string;
+  tenant_id: string;
+  created_by: string;
+  source_type: string;
+  source_filename: string;
+  storage_key: string;
+  artifact_sha256: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  processing_status: TalentIntakeProcessingStatusValue;
+  review_status: TalentIntakeReviewStatusValue;
+  structured_payload: unknown;
+  review_payload: unknown;
+  warning_code: string | null;
+  failure_code: string | null;
+  failure_detail: string | null;
+  extraction_provider: string | null;
+  extraction_model: string | null;
+  extraction_contract_version: string | null;
+  resume_extraction_draft_id: string | null;
+  promoted_talent_record_id: string | null;
+  promoted_at: Date | null;
+  version: number;
+  created_at: Date;
+  updated_at: Date;
+  processing_started_at: Date | null;
+  processing_completed_at: Date | null;
+  last_opened_at: Date | null;
+}
+
+export interface CreateTalentIntakeDraftInput {
+  id: string;
+  tenant_id: string;
+  created_by: string;
+  source_type: string;
+  source_filename: string;
+  storage_key: string;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+}
+
+export interface TalentIntakeOutboxEventRow {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  event_payload: unknown;
+  created_at: Date;
+  published_at: Date | null;
+}
+
 @Injectable()
 export class TalentEvidenceRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -1674,6 +1747,312 @@ export class TalentEvidenceRepository {
     const updated = await this.prisma.resumeExtractionDraft.updateMany({
       where: { id: input.id, tenant_id: input.tenant_id, status: 'READY_FOR_REVIEW' },
       data: { status: 'REJECTED', reviewed_by: input.reviewed_by, reviewed_at: input.reviewed_at },
+    });
+    return updated.count;
+  }
+
+  // ==========================================================================
+  // Durable Async Talent Intake — the thin parent aggregate (TalentIntakeDraft)
+  // + its transactional outbox. All reads/writes are tenant-scoped. Concurrency
+  // is guarded with an optimistic `version` CAS. The DB commit is the durable
+  // handoff boundary and never depends on Redis.
+  // ==========================================================================
+
+  // Create intake: a durable pre-Talent draft in UPLOADED state. The object key
+  // is already minted; the binary is uploaded directly by the browser next.
+  async createTalentIntakeDraft(
+    input: CreateTalentIntakeDraftInput,
+  ): Promise<TalentIntakeDraftRow> {
+    const row = await this.prisma.talentIntakeDraft.create({
+      data: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        created_by: input.created_by,
+        source_type: input.source_type,
+        source_filename: input.source_filename,
+        storage_key: input.storage_key,
+        mime_type: input.mime_type ?? null,
+        size_bytes: input.size_bytes ?? null,
+        processing_status: 'UPLOADED',
+        review_status: 'NOT_STARTED',
+      },
+    });
+    return row as unknown as TalentIntakeDraftRow;
+  }
+
+  async findTalentIntakeDraftById(args: {
+    tenant_id: string;
+    id: string;
+  }): Promise<TalentIntakeDraftRow | null> {
+    const row = await this.prisma.talentIntakeDraft.findFirst({
+      where: { id: args.id, tenant_id: args.tenant_id },
+    });
+    return (row as unknown as TalentIntakeDraftRow | null) ?? null;
+  }
+
+  // Recovery surface — a recruiter's resumable drafts, newest first. Promoted
+  // drafts normally leave the active list.
+  async listTalentIntakeDraftsForCreator(input: {
+    tenant_id: string;
+    created_by: string;
+    limit: number;
+    includePromoted?: boolean;
+  }): Promise<TalentIntakeDraftRow[]> {
+    const rows = await this.prisma.talentIntakeDraft.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        created_by: input.created_by,
+        ...(input.includePromoted === true ? {} : { review_status: { not: 'PROMOTED' } }),
+      },
+      orderBy: { created_at: 'desc' },
+      take: input.limit,
+    });
+    return rows as unknown as TalentIntakeDraftRow[];
+  }
+
+  // complete-upload: ONE DB transaction — flip UPLOADED → QUEUED and write the
+  // outbox event atomically (the durable handoff). Guarded on UPLOADED so a
+  // replay (already QUEUED/PROCESSING/…) is an idempotent no-op that enqueues
+  // nothing and returns the existing draft.
+  async completeUploadWithOutbox(input: {
+    tenant_id: string;
+    id: string;
+    artifact_sha256?: string | null;
+    mime_type?: string | null;
+    size_bytes?: number | null;
+    event_type: string;
+    event_payload: unknown;
+  }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.talentIntakeDraft.updateMany({
+        where: { id: input.id, tenant_id: input.tenant_id, processing_status: 'UPLOADED' },
+        data: {
+          processing_status: 'QUEUED',
+          artifact_sha256: input.artifact_sha256 ?? undefined,
+          mime_type: input.mime_type ?? undefined,
+          size_bytes: input.size_bytes ?? undefined,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count === 1) {
+        await tx.talentIntakeOutboxEvent.create({
+          data: {
+            tenant_id: input.tenant_id,
+            event_type: input.event_type,
+            event_payload: input.event_payload as never,
+          },
+        });
+      }
+      const draft = await tx.talentIntakeDraft.findFirst({
+        where: { id: input.id, tenant_id: input.tenant_id },
+      });
+      return {
+        enqueued: updated.count === 1,
+        draft: (draft as unknown as TalentIntakeDraftRow | null) ?? null,
+      };
+    });
+  }
+
+  // retry: re-queue a FAILED/PARTIAL draft against the SAME stored artifact and
+  // re-emit the outbox event, in one transaction. No re-upload. Clears prior
+  // failure/warning surfacing. Guarded so an in-flight (QUEUED/PROCESSING) or
+  // PROMOTED draft is never re-queued.
+  async requeueTalentIntakeDraftWithOutbox(input: {
+    tenant_id: string;
+    id: string;
+    event_type: string;
+    event_payload: unknown;
+  }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.talentIntakeDraft.updateMany({
+        where: {
+          id: input.id,
+          tenant_id: input.tenant_id,
+          processing_status: { in: ['FAILED', 'PARTIAL'] },
+          promoted_talent_record_id: null,
+        },
+        data: {
+          processing_status: 'QUEUED',
+          failure_code: null,
+          failure_detail: null,
+          warning_code: null,
+          processing_started_at: null,
+          processing_completed_at: null,
+          version: { increment: 1 },
+        },
+      });
+      if (updated.count === 1) {
+        await tx.talentIntakeOutboxEvent.create({
+          data: {
+            tenant_id: input.tenant_id,
+            event_type: input.event_type,
+            event_payload: input.event_payload as never,
+          },
+        });
+      }
+      const draft = await tx.talentIntakeDraft.findFirst({
+        where: { id: input.id, tenant_id: input.tenant_id },
+      });
+      return {
+        enqueued: updated.count === 1,
+        draft: (draft as unknown as TalentIntakeDraftRow | null) ?? null,
+      };
+    });
+  }
+
+  // Worker CAS claim: QUEUED → PROCESSING guarded on the exact version, so
+  // at-least-once queue delivery / duplicate ticks produce exactly one claimer
+  // (count === 1). A non-claimer gets 0 and skips.
+  async claimTalentIntakeDraftForProcessing(input: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+  }): Promise<number> {
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        version: input.expected_version,
+        processing_status: 'QUEUED',
+      },
+      data: {
+        processing_status: 'PROCESSING',
+        processing_started_at: new Date(),
+        version: { increment: 1 },
+      },
+    });
+    return updated.count;
+  }
+
+  // Safety-net drain — QUEUED drafts the relay may not have enqueued (Redis down
+  // at commit time, relay lag). Oldest first.
+  async findQueuedTalentIntakeDrafts(args: {
+    limit: number;
+  }): Promise<TalentIntakeDraftRow[]> {
+    const rows = await this.prisma.talentIntakeDraft.findMany({
+      where: { processing_status: 'QUEUED' },
+      orderBy: { created_at: 'asc' },
+      take: args.limit,
+    });
+    return rows as unknown as TalentIntakeDraftRow[];
+  }
+
+  // Worker result — persist the governed extraction outcome and advance the
+  // processing dimension to a terminal state. The merged review_payload (edits
+  // preserved) is computed by the worker and passed verbatim.
+  async markTalentIntakeDraftProcessed(input: {
+    tenant_id: string;
+    id: string;
+    processing_status: 'READY' | 'PARTIAL' | 'FAILED';
+    structured_payload?: unknown;
+    review_payload?: unknown;
+    warning_code?: string | null;
+    failure_code?: string | null;
+    failure_detail?: string | null;
+    extraction_provider?: string | null;
+    extraction_model?: string | null;
+    extraction_contract_version?: string | null;
+    resume_extraction_draft_id?: string | null;
+    processing_completed_at: Date;
+  }): Promise<void> {
+    await this.prisma.talentIntakeDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id },
+      data: {
+        processing_status: input.processing_status,
+        ...(input.structured_payload !== undefined
+          ? { structured_payload: input.structured_payload as never }
+          : {}),
+        ...(input.review_payload !== undefined
+          ? { review_payload: input.review_payload as never }
+          : {}),
+        warning_code: input.warning_code ?? undefined,
+        failure_code: input.failure_code ?? undefined,
+        failure_detail: input.failure_detail ?? undefined,
+        extraction_provider: input.extraction_provider ?? undefined,
+        extraction_model: input.extraction_model ?? undefined,
+        extraction_contract_version: input.extraction_contract_version ?? undefined,
+        resume_extraction_draft_id: input.resume_extraction_draft_id ?? undefined,
+        processing_completed_at: input.processing_completed_at,
+        version: { increment: 1 },
+      },
+    });
+  }
+
+  // Persisted recruiter review — CAS on the exact version so a stale save (older
+  // tab / device) returns 0 and the caller can 409. review_status advances to
+  // IN_REVIEW on the first save unless the caller overrides.
+  async saveTalentIntakeDraftReview(input: {
+    tenant_id: string;
+    id: string;
+    expected_version: number;
+    review_payload: unknown;
+    review_status?: TalentIntakeReviewStatusValue;
+  }): Promise<number> {
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id, version: input.expected_version },
+      data: {
+        review_payload: input.review_payload as never,
+        ...(input.review_status !== undefined ? { review_status: input.review_status } : {}),
+        version: { increment: 1 },
+      },
+    });
+    return updated.count;
+  }
+
+  // Promotion linkage — set ONCE, guarded on promoted_talent_record_id IS NULL,
+  // so a racing/duplicate promote gets count 0 and resolves to the existing
+  // TalentRecord (idempotency). Distinct column — never the overloaded child
+  // ResumeExtractionDraft.talent_id.
+  async markTalentIntakeDraftPromoted(input: {
+    tenant_id: string;
+    id: string;
+    promoted_talent_record_id: string;
+    promoted_at: Date;
+  }): Promise<number> {
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id, promoted_talent_record_id: null },
+      data: {
+        review_status: 'PROMOTED',
+        promoted_talent_record_id: input.promoted_talent_record_id,
+        promoted_at: input.promoted_at,
+        version: { increment: 1 },
+      },
+    });
+    return updated.count;
+  }
+
+  async touchTalentIntakeDraftOpened(input: {
+    tenant_id: string;
+    id: string;
+  }): Promise<void> {
+    await this.prisma.talentIntakeDraft.updateMany({
+      where: { id: input.id, tenant_id: input.tenant_id },
+      data: { last_opened_at: new Date() },
+    });
+  }
+
+  // Intake outbox drain (read side for the relay).
+  async findUnpublishedTalentIntakeOutboxEvents(args: {
+    limit: number;
+  }): Promise<TalentIntakeOutboxEventRow[]> {
+    const rows = await this.prisma.talentIntakeOutboxEvent.findMany({
+      where: { published_at: null },
+      orderBy: { created_at: 'asc' },
+      take: args.limit,
+    });
+    return rows as unknown as TalentIntakeOutboxEventRow[];
+  }
+
+  async markTalentIntakeOutboxPublished(args: {
+    event_ids: string[];
+    published_at: Date;
+  }): Promise<number> {
+    if (args.event_ids.length === 0) {
+      return 0;
+    }
+    const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
+      where: { id: { in: args.event_ids } },
+      data: { published_at: args.published_at },
     });
     return updated.count;
   }
