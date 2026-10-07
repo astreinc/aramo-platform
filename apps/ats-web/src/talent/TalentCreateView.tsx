@@ -214,7 +214,6 @@ export function TalentCreateView() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reopenDraftId]);
 
   // ── Watch: notify-on-change (SSE) + poll fallback while processing ──────
