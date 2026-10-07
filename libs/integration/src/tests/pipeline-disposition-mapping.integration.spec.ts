@@ -99,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // No mapping authored yet → no active set → null.
       expect(await mappings.findByConnectionState(TENANT, conn, 'anything')).toBeNull();
       // Active set exists but the token is absent → still null.
-      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'known', mapped_target: 'CONTACT', target_kind: 'action' });
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'known', mapped_target: 'CONTACT_EVIDENCE', target_kind: 'action' });
       expect(await mappings.findByConnectionState(TENANT, conn, 'unknown_token')).toBeNull();
     });
 
@@ -122,7 +122,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('one-active-set partial unique: a second active set for a connection is rejected', async () => {
       const conn = await seedConn();
-      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'x', mapped_target: 'CONTACT', target_kind: 'action' });
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'x', mapped_target: 'CONTACT_EVIDENCE', target_kind: 'action' });
       await expect(
         db.query(
           `INSERT INTO integration."PipelineProviderDispositionMappingSet" (id, tenant_id, connection_id, version, status, created_by)

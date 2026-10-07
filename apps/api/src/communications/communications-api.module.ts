@@ -23,6 +23,8 @@ import { CommunicationsController } from './communications.controller.js';
 import { TalentCommunicationsController } from './talent-communications.controller.js';
 import { CommunicationsApiService } from './communications-api.service.js';
 import { CommunicationCallService } from './communication-call.service.js';
+import { TalentResponseController } from './talent-response.controller.js';
+import { TalentResponseService } from './talent-response.service.js';
 import { CommunicationTimelineService } from './communication-timeline.service.js';
 import { RequisitionContactDraftController } from './requisition-contact-draft.controller.js';
 import { RequisitionContactDraftService } from './requisition-contact-draft.service.js';
@@ -85,6 +87,8 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
     CommunicationsController,
     ZoomWebhookController,
     TalentCommunicationsController,
+    // Recruiting-Journey §7/§15 — the canonical "Record Talent response" command.
+    TalentResponseController,
     RequisitionContactDraftController,
     // COMM-RECRUITER-W1 (W1-A2) — Talent-only General Talent Contact draft.
     GeneralTalentContactDraftController,
@@ -94,6 +98,8 @@ const ZOOM_VOICE_PROVIDER_REGISTRAR = Symbol('ZOOM_VOICE_PROVIDER_REGISTRAR');
   providers: [
     CommunicationsApiService,
     CommunicationCallService,
+    // Recruiting-Journey §7 — recruiter-attested response → canonical milestone advance.
+    TalentResponseService,
     // COMM-C4 (RCE-1) — requisition-contact draft generation. Reuses the C
     // recipient resolver (TalentEmailRecipientAdapter) so the recipient authority
     // model is identical to the send path; the governed template is code-owned.

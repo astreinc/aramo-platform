@@ -151,29 +151,12 @@ export interface PipelineHistoryResponse {
   readonly items: readonly PipelineStatusHistoryView[];
 }
 
-// L2-C — the recruiter named-action surface (POST /v1/pipelines/{id}/actions).
-// Hand-mirrored from libs/pipeline/src/lib/pipeline-state.ts
-// (RECRUITER_ACTION_TO_STATUS) + dto/pipeline-action-request.dto.ts. COMPLETE is
-// deliberately EXCLUDED — it is the system-only command (a recruiter body carrying
-// it is a 422); the FE never offers it (see recruiterNextStates in ./legal-transitions).
-export type RecruiterPipelineAction =
-  | 'CONTACT'
-  | 'MARK_RESPONDED'
-  | 'START_QUALIFICATION'
-  | 'QUALIFY'
-  | 'DISPOSITION';
-
-// POST body for the named-action surface. `authority_class` + `reason` are
-// REQUIRED only for DISPOSITION (a valid RECRUITER/TALENT/ENGAGEMENT pair —
-// mismatch is 422 PIPELINE_DISPOSITION_REASON_INVALID). `expected_version` is the
-// same optimistic-concurrency token the transition surface uses.
-export interface PipelineActionRequest {
-  readonly action: RecruiterPipelineAction;
-  readonly expected_version: number;
-  readonly reason?: string;
-  readonly note?: string;
-  readonly authority_class?: 'RECRUITER' | 'TALENT' | 'ENGAGEMENT';
-}
+// Recruiting-Journey §17/§30 — the FE recruiter named-action vocabulary
+// (RecruiterPipelineAction / PipelineActionRequest, formerly mirroring
+// RECRUITER_ACTION_TO_STATUS incl. CONTACT / MARK_RESPONDED) was REMOVED along with
+// the applyPipelineAction client. The FE no longer names or requests those actions:
+// contacted / talent_responded originate from backend evidence authority, and the
+// recruiter DECISION edges (qualifying / qualified) ride transitionPipeline.
 
 // POST body for transition. `note` rides the transition transaction and
 // is recorded on PipelineStatusHistory + the auto pipeline_status_change

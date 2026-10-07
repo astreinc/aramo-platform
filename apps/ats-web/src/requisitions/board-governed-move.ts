@@ -12,8 +12,8 @@ import type { BoardCardView, BoardColumnKey, BoardNextAction } from './requisiti
 // card's column (same-column transitions like mark_responded / qualify / advance_interview /
 // offer.transition) are intentionally ABSENT — a drag must represent a visible forward move.
 const NEXT_ACTION_TARGET_COLUMN: Readonly<Record<string, BoardColumnKey>> = {
-  'pipeline.contact': 'contacted',
-  'pipeline.start_qualification': 'qualified',
+  'pipeline.contact_talent': 'contacted',
+  'pipeline.start_qualifying': 'qualified',
   'client_selection.mark_selected': 'selected',
 };
 

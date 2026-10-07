@@ -89,9 +89,10 @@ class FakeRecipients implements EmailRecipientResolver {
   }
 }
 
-// COMM-C4 — authoritative pipeline read/act for the acceptance→CONTACT
-// orchestration. Records the actions applied (to prove ONLY 'CONTACT' is ever
-// used) and the resolution inputs (to prove tenant/visibility binding).
+// COMM-C4 / Recruiting-Journey §5 — authoritative pipeline read/act for the
+// acceptance→CONTACT orchestration. Records the evidence-bearing calls (to prove the
+// advance goes through recordContactEvidence with communication_interaction
+// provenance, NEVER a naked action) and the resolution inputs (tenant/visibility).
 class FakePipelines {
   status: 'no_contact' | 'contacted' = 'no_contact';
   requisitionId = '';
@@ -99,15 +100,15 @@ class FakePipelines {
   present = true;
   version = 3;
   failApply = false;
-  applyActions: string[] = [];
+  contactEvidenceCalls: Array<{ kind: string; id: string }> = [];
   findCalls: Array<{ tenant_id: string; visible: ReadonlySet<string> | null }> = [];
   async findByIdForActor(a: { tenant_id: string; id: string; visible_requisition_ids: ReadonlySet<string> | null }) {
     this.findCalls.push({ tenant_id: a.tenant_id, visible: a.visible_requisition_ids });
     if (!this.present) return null;
     return { id: a.id, requisition_id: this.requisitionId, talent_record_id: this.talentId, status: this.status, version: this.version };
   }
-  async applyAction(a: { id: string; action: string; expected_version: number }) {
-    this.applyActions.push(a.action);
+  async recordContactEvidence(a: { id: string; expected_version: number; evidence: { kind: string; id: string } }) {
+    this.contactEvidenceCalls.push(a.evidence);
     if (this.failApply) throw new Error('pipeline CAS conflict');
     return { id: a.id, status: 'contacted', version: this.version + 1 };
   }
@@ -353,7 +354,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('accept + no_contact + pipeline scope → governed CONTACT advances to contacted', async () => {
       const view = await svc.sendRecruiterEmail(baseArgs({ authContext: authWithPipelineScope }));
       expect(view.status).toBe('accepted');
-      expect(pipelines.applyActions).toEqual(['CONTACT']); // exactly one governed CONTACT
+      expect(pipelines.contactEvidenceCalls).toHaveLength(1); // exactly one governed CONTACT
+      expect(pipelines.contactEvidenceCalls[0]!.kind).toBe('communication_interaction');
       // the additive pipeline association is still written (evidence intact).
       const assoc = await db.query(
         `SELECT count(*)::int AS n FROM communications."CommunicationAssociation" WHERE interaction_id=$1 AND subject_type='pipeline'`,
@@ -366,7 +368,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const view = await svc.sendRecruiterEmail(baseArgs()); // authContext scopes: []
       expect(view.status).toBe('accepted');
       expect(pipelines.findCalls).toHaveLength(0); // pipeline never even resolved
-      expect(pipelines.applyActions).toHaveLength(0); // never advanced
+      expect(pipelines.contactEvidenceCalls).toHaveLength(0); // never advanced
     });
 
     it('a failed Graph send makes NO CONTACT attempt (trigger is acceptance only)', async () => {
@@ -375,14 +377,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         svc.sendRecruiterEmail(baseArgs({ authContext: authWithPipelineScope })),
       ).rejects.toThrow();
       expect(pipelines.findCalls).toHaveLength(0);
-      expect(pipelines.applyActions).toHaveLength(0);
+      expect(pipelines.contactEvidenceCalls).toHaveLength(0);
     });
 
     it('an episode already past no_contact is NOT re-transitioned (no replay)', async () => {
       pipelines.status = 'contacted';
       const view = await svc.sendRecruiterEmail(baseArgs({ authContext: authWithPipelineScope }));
       expect(view.status).toBe('accepted');
-      expect(pipelines.applyActions).toHaveLength(0);
+      expect(pipelines.contactEvidenceCalls).toHaveLength(0);
     });
 
     it('a CONTACT failure is swallowed — email evidence stays durable and the send still reports accepted', async () => {
@@ -392,7 +394,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.status).toBe('accepted');
       expect(view.idempotent_replay).toBe(false);
       expect(await countInteractions()).toBe(before + 1); // evidence written and NOT rolled back
-      expect(pipelines.applyActions).toEqual(['CONTACT']); // attempted, then swallowed
+      expect(pipelines.contactEvidenceCalls).toHaveLength(1); // attempted, then swallowed
+      expect(pipelines.contactEvidenceCalls[0]!.kind).toBe('communication_interaction');
     });
 
     it('CONTACT resolution is tenant/requisition/talent bound (not browser-authoritative); a mismatch does not advance', async () => {
@@ -401,13 +404,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.status).toBe('accepted');
       expect(pipelines.findCalls[0]?.tenant_id).toBe(TENANT); // tenant-scoped resolution
       expect(pipelines.findCalls[0]?.visible).toEqual(new Set([REQ])); // visibility-scoped
-      expect(pipelines.applyActions).toHaveLength(0); // binding mismatch → no transition
+      expect(pipelines.contactEvidenceCalls).toHaveLength(0); // binding mismatch → no transition
     });
 
-    it('the orchestration NEVER issues an action other than CONTACT (never talent_responded)', async () => {
+    it('the orchestration ONLY records contact evidence (never talent_responded)', async () => {
       await svc.sendRecruiterEmail(baseArgs({ authContext: authWithPipelineScope }));
-      expect(pipelines.applyActions.every((a) => a === 'CONTACT')).toBe(true);
-      expect(pipelines.applyActions).not.toContain('RESPOND');
+      // Every advance is a CONTACT-evidence call (communication_interaction provenance);
+      // the email path never touches the response seam (the fake exposes no
+      // recordResponseEvidence — a response advance would throw), so talent_responded
+      // is structurally unreachable from an email send.
+      expect(pipelines.contactEvidenceCalls.length).toBeGreaterThan(0);
+      expect(pipelines.contactEvidenceCalls.every((e) => e.kind === 'communication_interaction')).toBe(true);
     });
 
     // ---- D-EMAIL-TPL-1 (ET-8) — descriptive template provenance ----

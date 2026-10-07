@@ -380,6 +380,7 @@
       "COMMUNICATION_CHANNELS",
       "COMMUNICATION_DIRECTIONS",
       "COMMUNICATION_DISPOSITION_OUTCOMES",
+      "COMMUNICATION_EVIDENCE_AUTHORITIES",
       "COMMUNICATION_INTERACTION_STATES",
       "COMMUNICATION_PROVIDER_EVENT_STATUSES",
       "COMMUNICATION_PROVIDER_IDENTITY_STATUSES",
@@ -2189,6 +2190,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3787,6 +3794,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4550,6 +4563,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/pipeline-capacity-authority-removed-b2.integration.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-evidence-milestones.integration.spec.ts",
         "project": "pipeline",
         "status": "excluded"
       },
@@ -5353,6 +5372,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/company": [
@@ -6027,6 +6052,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/communications/ConfigureZoomCredentialDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/communications/RecordTalentResponseModal.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -7078,7 +7109,12 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/object-storage": [
       {
@@ -7187,6 +7223,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-lifecycle-package.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

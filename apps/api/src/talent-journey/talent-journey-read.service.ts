@@ -39,6 +39,7 @@ import type {
   JourneyPreStart,
   JourneyPreStartRequirement,
   JourneyPlacement,
+  RecruitingAvailableAction,
   TalentRequisitionJourney,
 } from './dto/talent-journey.view.js';
 
@@ -332,10 +333,34 @@ export class TalentJourneyReadService {
         placement_state: sub_states.placement_state,
       }),
       actions,
+      // §14 — canonical recruiting next-action availability (domain-owned; FE renders).
+      recruiting_available_actions: deriveRecruitingAvailableActions(episode.status),
       offer_document: offerDocument,
       pre_start: preStart,
       placement,
     };
+  }
+}
+
+// Recruiting-Journey §14 — the canonical recruiting next-action availability for a
+// milestone. Evidence-backed milestones expose the EVIDENCE-RECORDING action (the FE
+// opens the contact/response surface — never a naked stage write); decision milestones
+// expose the recruiter decision. qualified + terminals have no recruiting next-action.
+// Only actions actually supported by the workflow appear (no generic action platform).
+function deriveRecruitingAvailableActions(
+  status: PipelineView['status'],
+): RecruitingAvailableAction[] {
+  switch (status) {
+    case 'no_contact':
+      return ['contact_talent'];
+    case 'contacted':
+      return ['record_talent_response'];
+    case 'talent_responded':
+      return ['start_qualifying'];
+    case 'qualifying':
+      return ['mark_qualified'];
+    default:
+      return [];
   }
 }
 

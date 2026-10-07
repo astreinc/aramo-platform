@@ -107,9 +107,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('AC-2 primitive: an unmapped provider token resolves to null (the pending trigger), a mapped one resolves', async () => {
       const conn = await seedConn();
-      await admin.authorMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'contacted_by_provider', mapped_target: 'CONTACT', requestId: 'r' });
+      await admin.authorMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'contacted_by_provider', mapped_target: 'CONTACT_EVIDENCE', requestId: 'r' });
       expect(await mappings.findByConnectionState(TENANT, conn, 'never_authored')).toBeNull();
-      expect((await mappings.findByConnectionState(TENANT, conn, 'contacted_by_provider'))!.mapped_target).toBe('CONTACT');
+      expect((await mappings.findByConnectionState(TENANT, conn, 'contacted_by_provider'))!.mapped_target).toBe('CONTACT_EVIDENCE');
     });
   },
 );

@@ -133,9 +133,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return v!.version;
     }
 
-    // Drive an episode up the recruiter funnel to `qualified` via the named-action
-    // surface (applyAction), reading the CAS token before each step. Returns the
-    // episode ids for the test to assert against.
+    // Drive an episode up the recruiter funnel to `qualified`, reading the CAS token
+    // before each step. The evidence-backed milestones (contacted / talent_responded)
+    // advance through the canonical evidence commands (recordContact/ResponseEvidence);
+    // the recruiter DECISION edges (qualifying / qualified) advance via the named-action
+    // surface (applyAction). Returns the episode ids for the test to assert against.
     async function walkToQualified(tenant: string, actor: string) {
       const req = await seedRequisition(tenant);
       const talent = randomUUID();
@@ -144,12 +146,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         input: { talent_record_id: talent, requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
-      for (const action of [
-        'CONTACT',
-        'MARK_RESPONDED',
-        'START_QUALIFICATION',
-        'QUALIFY',
-      ] as const) {
+      await repo.recordContactEvidence({
+        tenant_id: tenant,
+        id: created.id,
+        expected_version: await currentVersion(tenant, created.id),
+        changed_by_id: actor,
+        requestId: 'walk-contact',
+        visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
+      });
+      await repo.recordResponseEvidence({
+        tenant_id: tenant,
+        id: created.id,
+        expected_version: await currentVersion(tenant, created.id),
+        changed_by_id: actor,
+        requestId: 'walk-response',
+        visible_requisition_ids: null,
+        evidence: { kind: 'test_response', id: randomUUID() },
+      });
+      for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({
           tenant_id: tenant,
           id: created.id,
@@ -550,14 +565,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
         created_by_id: actor,
       });
-      await repo.applyAction({
+      await repo.recordContactEvidence({
         tenant_id: tenant,
         id: created.id,
-        action: 'CONTACT',
         expected_version: await currentVersion(tenant, created.id),
         changed_by_id: actor,
         requestId: 'ac10-contact',
         visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
       });
 
       await expect(

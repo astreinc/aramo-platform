@@ -33,6 +33,11 @@ export const CALL_STATE_TRANSITIONS: Readonly<
   failed: [],
   missed: [],
   rejected: [],
+  // Recruiting-Journey §7/§16 — `recorded` is the terminal state of a recruiter-
+  // attested interaction. It is set DIRECTLY at create time (never reached via a
+  // provider transition), so it has no incoming edge in this machine and no
+  // outgoing edges.
+  recorded: [],
 });
 
 /** The terminal states (no outgoing transition). */

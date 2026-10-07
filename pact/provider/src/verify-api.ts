@@ -44,6 +44,14 @@ import { TalentExtractionService } from '@aramo/talent-extraction';
 // Symbol token requires the token itself (Gate-5 eslint amendment). MAILER_PORT
 // is a plain string ('MAILER_PORT'), overridden by string literal below.
 import { TENANT_COGNITO_PORT, AUDIT_FINANCIALS_GATE } from '@aramo/identity';
+// Recruiting-Journey §5/§27 (email→CONTACT) — the recruiter email send replays the REAL
+// provider-backed path. Both overridable symbols are LIB exports (no apps/api-internal
+// import; the module-boundary wall is honoured): MICROSOFT_GRAPH_PORT (string token) fakes
+// the network Graph calls and DelegatedAuthorizationService (concrete lib class) fakes the
+// bound-recruiter token resolution so no OAuth/token-store/provider-identity fixture is
+// needed. The config resolver + consent gate + recipient resolver + pipeline + evidence
+// store all stay REAL, exercising the legal send→evidence→no_contact→contacted convergence.
+import { MICROSOFT_GRAPH_PORT, DelegatedAuthorizationService } from '@aramo/microsoft-graph';
 // M5 PR-9 §4.2 — hashCanonicalizedBody imported for idempotency
 // replay/conflict state-handlers. The same hash function the controllers
 // use computes the request_hash that the seeded IdempotencyKey row must
@@ -330,6 +338,15 @@ const COMMUNICATIONS_EMAIL_TEMPLATE_MIGRATION = resolve(
 const COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
+);
+// Recruiting-Journey §16 — CommunicationInteraction attested-response evidence
+// (nullable integration_connection_id, evidence_authority enum, `recorded` status,
+// `other` channel). SEPARATE const (single resolve() arg — a 2nd arg to the const
+// above concatenated the two relative paths into one nested path → ENOTDIR, which
+// crashed the whole apps/api provider verification before any interaction ran).
+const COMMUNICATIONS_ATTESTED_RESPONSE_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
 );
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
@@ -2307,6 +2324,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
+    // Recruiting-Journey §5/§27 (email→CONTACT) — the deterministic microsoft_graph
+    // connection id the email-send state seeds; its SM secret id is the ONLY id the
+    // secrets override returns a value for. Declared at describe scope so BOTH the
+    // overrideProvider block (in beforeAll) and the state handler can reference it.
+    const ATSW_MS_CONN_ID = '00000000-0000-7000-8000-a1c000000001';
     // TI-1D-D — resume-edition selection fixtures for the pipeline talent
     // (ATSW_PIPE_TALENT_ID owns the edition so the RESUME_EDITION_READER adapter
     // resolves it for GET/PUT /v1/pipelines/{id}/resume-edition).
@@ -3631,6 +3653,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_C4_MIGRATION,
         COMMUNICATIONS_EMAIL_TEMPLATE_MIGRATION,
         COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION,
+        COMMUNICATIONS_ATTESTED_RESPONSE_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -4364,6 +4387,40 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         send: async () => ({ message_id: 'pact-mock-message-id' }),
       };
 
+      // Recruiting-Journey §5/§27 (email→CONTACT) — the fakes that stand in for the
+      // network/credential layers of the recruiter email send. ATSW_MS_CONN_ID (describe
+      // scope) is the connection id resolved by provider_key; its SM secret id
+      // (aramo/<env>/connector/<tenant>/<conn>) is the ONLY id the secrets override below
+      // returns a value for (everything else — e.g. TENANT-LLM — still throws not-found).
+      const mockMicrosoftGraph = {
+        // The service reads only `user_principal_name` off getMe.
+        getMe: async () => ({
+          ms_object_id: 'ms-oid-pact',
+          ms_tenant_id: 'ms-tid-pact',
+          user_principal_name: 'recruiter@contoso.example',
+          display_name: 'Pact Recruiter',
+        }),
+        sendMail: async () => undefined,
+        createOnlineMeeting: async () => {
+          throw new Error('createOnlineMeeting not used by the email pact');
+        },
+      };
+      // Fake the bound-recruiter token resolution so no OAuth refresh / token-store /
+      // provider-identity binding fixture is needed. The returned access_token is inert
+      // (the Graph port is faked); the shape mirrors UsableToken.
+      const mockDelegatedAuthorization = {
+        getUsableAccessToken: async () => ({
+          access_token: 'inert-pact-access-token',
+          provider_identity_id: '00000000-0000-7000-8000-9de000000001',
+          ms_object_id: 'ms-oid-pact',
+        }),
+      };
+      // Email consent gate (EMAIL_CONSENT_GATE string token): allow — the pact exercises
+      // the permitted send; consent-denial behaviour is proven in the apps/api suite.
+      const mockEmailConsentGate = {
+        assertEmailContactAllowed: async () => undefined,
+      };
+
       module = await Test.createTestingModule({
         imports: [AppModule],
       })
@@ -4395,10 +4452,31 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // is ever surfaced; the consumer contract type-matches `configured`.
         .overrideProvider(SECRETS_MANAGER_PORT)
         .useValue({
-          getSecretValue: async () => {
+          // Recruiting-Journey §5 — the Microsoft email send resolves a client secret for
+          // its connection id (aramo/<env>/connector/<tenant>/<MS_CONN_ID>). Return an inert
+          // value for THAT id only so MicrosoftConfigResolver.resolveConfig returns instead
+          // of throwing; every other id (e.g. TENANT-LLM's aramo/<env>/tenant-llm/...) still
+          // throws not-found, preserving the configured:false status-read behaviour above.
+          getSecretValue: async (id: string) => {
+            if (
+              typeof id === 'string' &&
+              id.includes('/connector/') &&
+              id.endsWith(ATSW_MS_CONN_ID)
+            ) {
+              return 'inert-pact-client-secret';
+            }
             throw new Error('ResourceNotFoundException');
           },
         })
+        // Recruiting-Journey §5/§27 (email→CONTACT) — fake the network Graph client + the
+        // bound-recruiter token resolution + the consent gate so the REAL send/evidence/
+        // convergence path runs without touching Microsoft or the token store.
+        .overrideProvider(MICROSOFT_GRAPH_PORT)
+        .useValue(mockMicrosoftGraph)
+        .overrideProvider(DelegatedAuthorizationService)
+        .useValue(mockDelegatedAuthorization)
+        .overrideProvider('EMAIL_CONSENT_GATE')
+        .useValue(mockEmailConsentGate)
         // HF-AUTH-1 — bind the version-keyed configurable resolver (MODE A) so the
         // guard hydrates AuthContext.scopes from the per-token grants above; the
         // provider verifies contract shape, not RBAC derivation.
@@ -5377,7 +5455,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const requisition = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb';
             const company = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
             const pipeline = 'ffffffff-ffff-7fff-8fff-ffffffffffff';
-            await c.query(`DELETE FROM pipeline."Pipeline" WHERE tenant_id = $1::uuid`, [TENANT_ID]);
+            // Recruiting-Journey — clear prior pipelines with TRUNCATE…CASCADE (NOT a
+            // row DELETE): the evidence-milestone interactions now leave PipelineStatusHistory
+            // rows, and that table's L2-B append-only trigger REJECTS a cascaded row DELETE
+            // (`DELETE FROM pipeline."Pipeline"` would abort this whole setup → the requisition
+            // below never commits → the draft 422s requisition_not_found). TRUNCATE does not
+            // fire the row-level trigger (mirrors resetAllRows), so the cascade to history is
+            // clean. Single-tenant harness, so the tenant-wide truncate is equivalent.
+            await c.query(`TRUNCATE TABLE pipeline."Pipeline" CASCADE`);
             await c.query(
               `INSERT INTO talent_record."TalentRecord"
                  (id, tenant_id, first_name, last_name, email1, created_at, updated_at)
@@ -7343,6 +7428,99 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           );
         });
       },
+
+      // Recruiting-Journey §27 — a pipeline AT talent_responded, for the recruiter
+      // DECISION transition pact (talent_responded -> qualifying). Advanced by a raw
+      // status seed (the decision pact only needs the from-state; version stays 0),
+      // never through the evidence commands.
+      'an ats-web recruiter and a pipeline at talent_responded exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_REQ_ID,
+          });
+          await c.query(
+            `UPDATE pipeline."Pipeline" SET status = 'talent_responded' WHERE id = $1::uuid`,
+            [ATSW_PIPE_ID],
+          );
+        });
+      },
+
+      // Recruiting-Journey §14/§27 — a pipeline AT the `contacted` milestone. Serves two
+      // interactions: (1) GET :id/journey, where the composed journey exposes
+      // recruiting_available_actions=['record_talent_response'] (the FE's sole next-action
+      // source); (2) POST /v1/communications/talent-responses, the recruiter-attested
+      // response command that advances contacted->talent_responded through canonical
+      // evidence authority. The talent row makes the journey/visibility compose; there is
+      // NO prior outbound contact for the pair, so the occurred_at floor is unconstrained
+      // (null floor → any past instant is accepted). version stays 0 so the response
+      // command's single advance yields version 1.
+      'an ats-web recruiter and a pipeline at contacted exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebPipeline(c, {
+            id: ATSW_PIPE_ID,
+            talentRecordId: ATSW_PIPE_TALENT_ID,
+            requisitionId: ATSW_PIPE_REQ_ID,
+            status: 'contacted',
+          });
+          await c.query(
+            `INSERT INTO talent_record."TalentRecord"
+               (id, tenant_id, first_name, last_name, tenant_status,
+                source_channel, email1, phone_cell, city, state,
+                work_authorization, desired_pay, created_at, updated_at)
+             VALUES ($1::uuid, $2::uuid, 'Dana', 'Rivera', 'active',
+                'self_signup', 'dana.rivera@example.com', '+1-512-555-0101',
+                'Austin', 'TX', 'us_citizen', '$85/hr', NOW(), NOW())
+             ON CONFLICT (id) DO NOTHING`,
+            [ATSW_PIPE_TALENT_ID, TENANT_ID],
+          );
+        });
+      },
+
+      // Recruiting-Journey §5/§27 (email→CONTACT) — a configured microsoft_graph connection
+      // + a no_contact pipeline for the (talent, requisition). The recruiter email send
+      // resolves the connection by provider_key, resolves the recipient from the seeded
+      // Talent's email1, sends through the faked Graph port, writes the email evidence, and
+      // converges no_contact→contacted via recordContactEvidence. The connection's config
+      // carries non-secret client_id/authority_tenant; the client secret is served inert by
+      // the scoped secrets override (keyed to ATSW_MS_CONN_ID). version 0 → after the one
+      // contact advance the episode is at contacted/version 1 (asserted only in integration).
+      'an ats-web recruiter with a configured microsoft connection and a no_contact pipeline exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await c.query(
+              `DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`,
+              [TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO integration."IntegrationConnection"
+                 (id, tenant_id, provider_key, status, secret_ref, config, version, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'microsoft_graph', 'configured', 'connector:v1:pact',
+                 '{"client_id":"ms-client-pact","authority_tenant":"common"}'::jsonb, 0, now(), now())
+               ON CONFLICT (id) DO NOTHING`,
+              [ATSW_MS_CONN_ID, TENANT_ID],
+            );
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_REQ_ID,
+              status: 'no_contact',
+            });
+            await c.query(
+              `INSERT INTO talent_record."TalentRecord"
+                 (id, tenant_id, first_name, last_name, tenant_status,
+                  source_channel, email1, phone_cell, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'Dana', 'Rivera', 'active',
+                  'self_signup', 'dana.rivera@example.com', '+1-512-555-0101', NOW(), NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [ATSW_PIPE_TALENT_ID, TENANT_ID],
+            );
+          });
+        },
 
       // -- a pipeline with one status-history entry (create() writes no
       // history, so the row is seeded directly for the history read).

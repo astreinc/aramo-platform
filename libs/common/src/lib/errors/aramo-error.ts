@@ -244,6 +244,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PIPELINE_VOID_HAS_ENGAGEMENT: 409,
   PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY: 409,
   PIPELINE_PROVIDER_MAPPING_TARGET_INVALID: 422,
+  // Recruiting-Journey Evidence-Governed Milestones (§3/§7/§17) — naked transition
+  // into an evidence-backed milestone without grounding evidence.
+  PIPELINE_STAGE_REQUIRES_EVIDENCE: 422,
   // Lane 2 / L2-F (F1) — Client-Selection owner refusals.
   CLIENT_SELECTION_SUBMITTAL_INVALID: 409,
   CLIENT_SELECTION_TRANSITION_CONFLICT: 409,

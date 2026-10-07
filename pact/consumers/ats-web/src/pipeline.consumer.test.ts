@@ -4,6 +4,7 @@ import {
   ACCESS_COOKIE,
   ISO_TIMESTAMP,
   TENANT_ID,
+  eachLike,
   errorBody,
   like,
   makeAtsWebProvider,
@@ -26,6 +27,11 @@ import {
 //     truth the mirror must track).
 //   (The former over-capacity refusal interaction was RETIRED — see the note
 //    at the end of the describe block.)
+//
+// Recruiting-Journey §14/§27 additions: the transition happy-path is now a recruiter
+// DECISION edge (talent_responded->qualifying) and a naked evidence-backed transition is
+// a 422 refusal (PIPELINE_STAGE_REQUIRES_EVIDENCE); GET :id/journey is pinned for the
+// `recruiting_available_actions` field the FE renders as the sole next-action source.
 //
 // idempotency: L2-B — POST /v1/pipelines now REQUIRES a UUID Idempotency-Key
 //   (the create interaction sends one); the transition + read endpoints remain
@@ -152,6 +158,54 @@ describe('ats-web → GET /v1/pipelines/:id/history', () => {
 });
 
 // ======================================================================
+// GET /v1/pipelines/:id/journey — happy (Recruiting-Journey §14/§27)
+// ======================================================================
+describe('ats-web → GET /v1/pipelines/:id/journey', () => {
+  // Recruiting-Journey §14/§27 — the Unified Talent Journey read is the SINGLE source
+  // of the recruiting next-action availability. The FE RENDERS `recruiting_available_actions`
+  // (owned + derived by the Pipeline/Recruiting domain from the current milestone); it never
+  // re-derives availability from stage equality. This pins the new contract field: at the
+  // `contacted` milestone the server offers exactly the evidence-recording action
+  // `record_talent_response` (never a naked stage write). The provider returns the full
+  // composed journey; the consumer asserts only the subset it depends on.
+  it('returns 200 exposing recruiting_available_actions for a contacted episode', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pipeline at contacted exist')
+      .uponReceiving('a talent journey read for a contacted episode')
+      .withRequest('GET', `/v1/pipelines/${PIPE_ID}/journey`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          requisition_id: uuid(PIPE_REQ_ID),
+          talent_record_id: uuid(PIPE_TALENT_ID),
+          current_journey_stage: like('CONTACTED'),
+          sub_states: {
+            // The canonical pipeline milestone the recruiting availability derives from.
+            pipeline_stage: like('contacted'),
+          },
+          // The new canonical field — a non-empty array of the recruiting next-action
+          // vocabulary. At `contacted` the sole offered action records response evidence.
+          recruiting_available_actions: eachLike('record_talent_response'),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/pipelines/${PIPE_ID}/journey`, {
+          headers: { Cookie: ACCESS_COOKIE },
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          recruiting_available_actions: string[];
+          sub_states: { pipeline_stage: string };
+        };
+        expect(Array.isArray(body.recruiting_available_actions)).toBe(true);
+        expect(body.recruiting_available_actions).toContain('record_talent_response');
+      });
+  });
+});
+
+// ======================================================================
 // POST /v1/pipelines — happy (create at no_contact; 201)
 // ======================================================================
 describe('ats-web → POST /v1/pipelines', () => {
@@ -194,19 +248,24 @@ describe('ats-web → POST /v1/pipelines', () => {
 // POST /v1/pipelines/:id/transition — happy + illegal-state + refusal
 // ======================================================================
 describe('ats-web → POST /v1/pipelines/:id/transition', () => {
-  it('returns 200 for a legal transition (no_contact -> contacted)', async () => {
-    const BODY = { to_status: 'contacted', expected_version: 0 };
+  // Recruiting-Journey §17/§27 — the FE's transitionPipeline now carries ONLY the
+  // recruiter DECISION edges (qualifying / qualified). The evidence-backed milestones
+  // (contacted / talent_responded) are NEVER reached via a naked transition from the
+  // FE; they originate from backend evidence authority. This proves the real decision
+  // call: a talent_responded episode advances to qualifying.
+  it('returns 200 for a legal recruiter DECISION transition (talent_responded -> qualifying)', async () => {
+    const BODY = { to_status: 'qualifying', expected_version: 0 };
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a pipeline exist')
-      .uponReceiving('a legal pipeline transition')
+      .given('an ats-web recruiter and a pipeline at talent_responded exist')
+      .uponReceiving('a legal recruiter decision transition')
       .withRequest('POST', `/v1/pipelines/${PIPE_ID}/transition`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
           BODY,
         );
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody(pipelineView(PIPE_ID, { status: 'contacted' }));
+        b.jsonBody(pipelineView(PIPE_ID, { status: 'qualifying' }));
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/pipelines/${PIPE_ID}/transition`, {
@@ -216,7 +275,36 @@ describe('ats-web → POST /v1/pipelines/:id/transition', () => {
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as { status: string };
-        expect(body.status).toBe('contacted');
+        expect(body.status).toBe('qualifying');
+      });
+  });
+
+  // Recruiting-Journey I1/§17/§27 — a naked transition into an EVIDENCE-backed milestone
+  // is refused in the domain authority (PIPELINE_STAGE_REQUIRES_EVIDENCE, 422). This is
+  // the contract-level proof that `contacted` can never be manufactured by a stage click.
+  it('returns 422 PIPELINE_STAGE_REQUIRES_EVIDENCE for a naked evidence-backed transition (no_contact -> contacted)', async () => {
+    const BODY = { to_status: 'contacted', expected_version: 0 };
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pipeline exist')
+      .uponReceiving('a naked evidence-backed transition')
+      .withRequest('POST', `/v1/pipelines/${PIPE_ID}/transition`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(
+          BODY,
+        );
+      })
+      .willRespondWith(422, (b) => {
+        b.jsonBody(
+          errorBody('PIPELINE_STAGE_REQUIRES_EVIDENCE', 'Pipeline milestone is established only from grounded evidence'),
+        );
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/pipelines/${PIPE_ID}/transition`, {
+          method: 'POST',
+          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+          body: JSON.stringify(BODY),
+        });
+        expect(res.status).toBe(422);
       });
   });
 

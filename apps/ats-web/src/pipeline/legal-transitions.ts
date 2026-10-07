@@ -39,21 +39,16 @@ export const SYSTEM_ONLY_TARGET_STATUSES: readonly PipelineStatus[] = [
   'completed',
 ];
 
-// legalNextStates — the raw matrix row (BE mirror). Not the menu source; use
-// recruiterNextStates for the affordance so system-only targets are excluded.
+// legalNextStates — the raw matrix row (BE mirror), retained as the drift-guarded
+// FE mirror of the pipeline transition matrix.
 export function legalNextStates(
   from: PipelineStatus,
 ): readonly PipelineStatus[] {
   return LEGAL_TRANSITIONS[from];
 }
 
-// recruiterNextStates — the UI affordance helper. Returns the legal targets a
-// recruiter is permitted to CHOOSE from `from`: the matrix row minus the
-// system-only targets. The "Move to…" Popover renders ONLY these.
-export function recruiterNextStates(
-  from: PipelineStatus,
-): readonly PipelineStatus[] {
-  return LEGAL_TRANSITIONS[from].filter(
-    (to) => !SYSTEM_ONLY_TARGET_STATUSES.includes(to),
-  );
-}
+// Recruiting-Journey §30 — recruiterNextStates (the old "Move to…" affordance helper
+// that offered contacted / talent_responded as recruiter-choosable targets) was
+// REMOVED with its sole consumer (MoveToMenu). Recruiting next-action eligibility is
+// now backend-owned (recruiting_available_actions); the FE never derives choosable
+// evidence-backed targets from the matrix.

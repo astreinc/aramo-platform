@@ -107,7 +107,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('a caller holding only integration:read is DENIED author (403); the narrow scope is required', async () => {
       const before = await rowCount();
-      const res = await fetch(url(MAPPINGS(CONN_A)), { method: 'POST', ...auth(readOnlyJwt), body: JSON.stringify({ provider_token: 'x', mapped_target: 'CONTACT' }) });
+      const res = await fetch(url(MAPPINGS(CONN_A)), { method: 'POST', ...auth(readOnlyJwt), body: JSON.stringify({ provider_token: 'x', mapped_target: 'CONTACT_EVIDENCE' }) });
       expect(res.status).toBe(403);
       expect(await rowCount()).toBe(before); // 403 wrote nothing
     });
@@ -133,12 +133,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('a cross-tenant / unknown connection conceals as 404 (never 403)', async () => {
-      const res = await fetch(url(MAPPINGS('01900000-0000-7000-8000-0000000000ff')), { method: 'POST', ...auth(writeJwt), body: JSON.stringify({ provider_token: 'y', mapped_target: 'CONTACT' }) });
+      const res = await fetch(url(MAPPINGS('01900000-0000-7000-8000-0000000000ff')), { method: 'POST', ...auth(writeJwt), body: JSON.stringify({ provider_token: 'y', mapped_target: 'CONTACT_EVIDENCE' }) });
       expect(res.status).toBe(404);
     });
 
     it('a missing provider_token is a 400 shape error', async () => {
-      const res = await fetch(url(MAPPINGS(CONN_A)), { method: 'POST', ...auth(writeJwt), body: JSON.stringify({ mapped_target: 'CONTACT' }) });
+      const res = await fetch(url(MAPPINGS(CONN_A)), { method: 'POST', ...auth(writeJwt), body: JSON.stringify({ mapped_target: 'CONTACT_EVIDENCE' }) });
       expect(res.status).toBe(400);
     });
   },

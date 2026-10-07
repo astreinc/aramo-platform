@@ -8,7 +8,7 @@ import {
   PipelineExternalTransitionProvenanceRepository,
 } from '@aramo/integration';
 
-import { resolveReasonAuthority } from './pipeline-provider-mapping-target.js';
+import { resolveProviderEvidenceTarget, resolveReasonAuthority } from './pipeline-provider-mapping-target.js';
 
 // L2-I (D1) — the inbound PIPELINE provider-observation reconciler-analog (apps/api
 // composition root; the ONLY layer permitted to hold both the integration mapping seam AND
@@ -101,24 +101,52 @@ export class PipelineProviderObservationOrchestrator {
     // The CAS token is ALWAYS the Aramo episode version — NEVER obs.provider_sequence.
     const expected_version = episode.version;
     const isReason = mapping.target_kind === 'reason';
-    const action: RecruiterPipelineAction = isReason ? 'DISPOSITION' : (mapping.mapped_target as RecruiterPipelineAction);
+    // L2I convergence (Recruiting-Journey ruling) — an EVIDENCE-backed milestone is
+    // advanced through the CANONICAL evidence command (reconcileForward), carrying
+    // PROVIDER-VERIFIED provenance (the durable external provider event), NEVER a naked
+    // action and NEVER manufactured recruiter attestation. The provider connector now
+    // shares the exact seam used by email/voice/recruiter-attested flows — one canonical
+    // evidence-backed authority. Decision edges (START_QUALIFICATION / QUALIFY) and
+    // disposition REASONS remain plain governed actions.
+    const evidenceStage = isReason
+      ? null
+      : resolveProviderEvidenceTarget(mapping.mapped_target as string);
     const reason = isReason ? (mapping.mapped_target ?? undefined) : undefined;
     // The DISPOSITION command requires the reason's authority class (RECRUITER/TALENT/
     // ENGAGEMENT) — resolved from the pipeline vocabulary here (apps/api).
     const authority_class = isReason && reason !== undefined ? resolveReasonAuthority(reason) : null;
 
     try {
-      await this.pipeline.applyAction({
-        tenant_id: obs.tenant_id,
-        id: identity.pipeline_id,
-        action,
-        expected_version,
-        changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
-        requestId: obs.requestId,
-        visible_requisition_ids: null,
-        ...(reason === undefined ? {} : { reason }),
-        ...(authority_class === null ? {} : { authority_class }),
-      });
+      if (evidenceStage !== null) {
+        // CONVERGED provider-verified evidence path (CONTACT_EVIDENCE / RESPONSE_EVIDENCE).
+        // reconcileForward walks FORWARD through the ordered milestones, is idempotent,
+        // forward-only, and CAS-protected — the provider sequence is NEVER the CAS token.
+        await this.pipeline.reconcileForward({
+          tenant_id: obs.tenant_id,
+          id: identity.pipeline_id,
+          target: evidenceStage,
+          changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
+          requestId: obs.requestId,
+          visible_requisition_ids: null,
+          evidence: { kind: 'provider_observation', id: obs.external_event_id },
+        });
+      } else {
+        // Recruiter DECISION edge (START_QUALIFICATION / QUALIFY) or DISPOSITION reason.
+        const action: RecruiterPipelineAction = isReason
+          ? 'DISPOSITION'
+          : (mapping.mapped_target as RecruiterPipelineAction);
+        await this.pipeline.applyAction({
+          tenant_id: obs.tenant_id,
+          id: identity.pipeline_id,
+          action,
+          expected_version,
+          changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
+          requestId: obs.requestId,
+          visible_requisition_ids: null,
+          ...(reason === undefined ? {} : { reason }),
+          ...(authority_class === null ? {} : { authority_class }),
+        });
+      }
     } catch (err) {
       // Illegal-from-state / invalid reason → pending (NEVER a partial mutation).
       const code = err instanceof AramoError ? err.code : undefined;

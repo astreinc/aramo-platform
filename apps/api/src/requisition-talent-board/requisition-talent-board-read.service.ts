@@ -460,6 +460,11 @@ function deriveNextActions(
   engaged: boolean,
 ): BoardNextAction[] {
   const PIPELINE_ROUTE = `POST /v1/pipelines/${pipelineId}/actions`;
+  // Evidence-backed milestones are NOT reached by a naked /actions POST (§17). These
+  // surface hints name the governed evidence surfaces the drawer opens; the board card
+  // routes to the drawer (onSelectCard) and never POSTs a stage transition itself.
+  const CONTACT_SURFACE = `POST /v1/integrations/microsoft/email`;
+  const RESPONSE_SURFACE = `POST /v1/communications/talent-responses`;
   switch (winner.owner) {
     case 'pipeline':
       switch (winner.owner_state) {
@@ -469,18 +474,25 @@ function deriveNextActions(
           // (a no_contact card in the pipeline column has no downstream by construction).
           // The server re-checks all guards on execution — this projection is never the
           // authority (§13). Routes to the dedicated correction endpoint (POST …/void).
+          // Recruiting-Journey §4/§14 — CONTACTED is evidence-backed: the board never
+          // offers a naked mark-contacted action. It offers "Contact Talent", which opens the
+          // contact workflow in the governed drawer (the card routes to onSelectCard; the
+          // command_route is an informational surface hint, NOT a naked transition).
           return [
-            { key: 'pipeline.contact', label: 'Mark contacted', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' },
+            { key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: CONTACT_SURFACE, required_scope: 'pipeline:change-status' },
             ...(engaged
               ? []
               : [{ key: 'pipeline.void', label: 'Remove from requisition', owner: 'pipeline' as const, command_route: `POST /v1/pipelines/${pipelineId}/void`, required_scope: 'pipeline:change-status' }]),
           ];
         case 'contacted':
-          return [{ key: 'pipeline.mark_responded', label: 'Mark responded', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          // §7 — TALENT_RESPONDED is evidence-backed: "Record response" opens the shared
+          // recruiter-attested evidence modal (response-evidence API), never a naked
+          // MARK_RESPONDED. Provider-integrated replies advance automatically.
+          return [{ key: 'pipeline.record_talent_response', label: 'Record response', owner: 'pipeline', command_route: RESPONSE_SURFACE, required_scope: 'pipeline:change-status' }];
         case 'talent_responded':
-          return [{ key: 'pipeline.start_qualification', label: 'Start qualification', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          return [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
         case 'qualifying':
-          return [{ key: 'pipeline.qualify', label: 'Qualify', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          return [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
         default:
           // `qualified` (top of the recruiter ladder — submit runs in the drawer wizard) and
           // the `started`/`completed` fallback have no bounded pipeline command here.

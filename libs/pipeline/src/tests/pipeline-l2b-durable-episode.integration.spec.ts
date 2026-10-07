@@ -211,6 +211,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'ac7',
         expected_version: cur!.version,
         visible_requisition_ids: null,
+        // Recruiting-Journey I1 — contacted is evidence-backed; advance with synthetic provenance.
+        evidence_provenance: { kind: 'communication_interaction', id: randomUUID() },
       });
 
       const afterTransition = await outboxRows(tenant);
@@ -249,6 +251,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'ac1-neg',
         expected_version: cur!.version,
         visible_requisition_ids: null,
+        // Recruiting-Journey I1 — contacted is evidence-backed; advance with synthetic provenance.
+        evidence_provenance: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(await historyRows(created.id)).toHaveLength(2);
     });
@@ -318,6 +322,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'ac5-live',
         expected_version: beforeRow!.version,
         visible_requisition_ids: null,
+        // Recruiting-Journey I1 — contacted is evidence-backed; advance with synthetic provenance.
+        evidence_provenance: { kind: 'communication_interaction', id: randomUUID() },
       });
       const liveRaw = await prisma.pipeline.findUniqueOrThrow({
         where: { id: created.id },
@@ -378,6 +384,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'ac9-seed',
         expected_version: cur!.version,
         visible_requisition_ids: null,
+        // Recruiting-Journey I1 — contacted is evidence-backed; advance with synthetic provenance.
+        evidence_provenance: { kind: 'communication_interaction', id: randomUUID() },
       });
       const before = await historyRows(created.id);
       expect(before).toHaveLength(2);

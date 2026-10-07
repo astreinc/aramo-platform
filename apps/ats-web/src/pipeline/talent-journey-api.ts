@@ -81,6 +81,16 @@ export interface OfferStartException {
   readonly detail: string;
 }
 
+// Recruiting-Journey §14 — the canonical recruiting next-action availability, owned
+// and derived by the backend. The FE RENDERS these; it NEVER re-derives eligibility
+// from stage equality. This is the ONLY source of truth for which recruiting action a
+// surface may offer.
+export type RecruitingAvailableAction =
+  | 'contact_talent'
+  | 'record_talent_response'
+  | 'start_qualifying'
+  | 'mark_qualified';
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -89,6 +99,7 @@ export interface TalentRequisitionJourney {
   readonly sub_states: Readonly<Record<string, string | null>>;
   readonly offer_start_exceptions: readonly OfferStartException[];
   readonly actions: readonly JourneyAction[];
+  readonly recruiting_available_actions: readonly RecruitingAvailableAction[];
   readonly offer_document: JourneyOfferDocument | null;
   readonly pre_start: JourneyPreStart | null;
   readonly placement: JourneyPlacement | null;
