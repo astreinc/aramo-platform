@@ -236,7 +236,7 @@ export function RecordTalentResponseModal({
             value={note}
             disabled={saving}
             maxLength={NOTE_MAX}
-            placeholder={channel === 'other' ? 'How did they respond? e.g. via LinkedIn message' : 'What did they say? e.g. Interested, available after Oct 20'}
+            placeholder={channel === 'other' ? 'How did they respond? e.g. via a direct message or referral' : 'What did they say? e.g. Interested, available after Oct 20'}
             onChange={(e) => {
               setNote(e.target.value);
               setBanner(null);
