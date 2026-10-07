@@ -367,11 +367,18 @@ describe('ats-web → GET /v1/pipelines/:id/resume-edition', () => {
           selected_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
           selected_by: uuid(),
           default_edition_id: uuid(PIPE_RE_ED),
+          // Resume Revision Lifecycle §9 — the current selection's lifecycle + the
+          // requires-attention flag the requisition panel renders.
+          selected_lifecycle_status: like('active'),
+          selected_requires_attention: like(false),
           available_editions: [
             {
               edition_id: uuid(PIPE_RE_ED),
               purpose: like('GENERAL'),
               label: null,
+              // §3/§5 tailoring context + §2/§10 derived revision ordinal.
+              requisition_id: null,
+              revision_number: like(1),
               filename: like('dana-general.pdf'),
               mime_type: like('application/pdf'),
               created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),

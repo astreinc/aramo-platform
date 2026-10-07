@@ -1094,6 +1094,7 @@
       "projectEntryProvenanceForEvent",
       "projectExternalSourceEventToEntryProvenance",
       "resolveAddTalentOutcome",
+      "resumeSelectionEligibility",
       "toEnforcementDisposition"
     ],
     "@aramo/placement": [
@@ -2297,7 +2298,19 @@
       { "project": "company", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-capture.service.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent.integration.spec.ts",
         "project": "consent",
         "status": "excluded"
       },
@@ -6063,6 +6076,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/components/InlineEditField.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/consent/RecordConsentDialog.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

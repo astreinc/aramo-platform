@@ -292,6 +292,7 @@ export const ERROR_CODES = [
   'TALENT_RECORD_DUPLICATE',  // B3/B4 — manual-create dedup refusal: an active TalentRecord with the same primary email already exists in the tenant. HTTP 409.
   'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',  // TI-1F-B — confirm/reject of a resume extraction draft that is no longer READY_FOR_REVIEW (already ACCEPTED/REJECTED, or a lost confirm race). HTTP 409.
   'RESUME_SOURCE_UNAUTHORIZED',  // TALENT-INTEL-1 (TI-1B, ruling 15) — resume-extraction source is not authorized for the request; refused BEFORE any object-storage access. HTTP 403. One code, details.reason discriminator: tenant_mismatch | not_aramo_resume_key | not_resume_namespace (CREATE fresh-upload key validation) | attachment_not_found_in_tenant | talent_ownership_mismatch | not_a_resume_attachment (EDIT owned-attachment resolution). A client-supplied raw storage_key is never the authorization anchor.
+  'RESUME_DUPLICATE_ARTIFACT',  // Resume Revision Lifecycle §4 — exact-duplicate protection: an upload whose artifact byte SHA-256 already exists on this Talent is refused (never a new revision). HTTP 409. details carry the existing edition so the UI can offer "already on this Talent's profile — Revision N · [View existing]". Deterministic artifact equality only — never filename, never extracted text, never cross-tenant/cross-Talent.
 
   // TR-6 B2 (DDR D5 + PC Exit Accounting §5.1) — advisory-resolution domain refusal codes.
   // These REPLACE the AramoExceptionFilter status-collapse (409→IDEMPOTENCY_KEY_CONFLICT,
@@ -682,6 +683,14 @@ export const ERROR_CODES = [
   // (tenant, talent, requisition). No automatic Talent-default fallback: the exact
   // resume edition sent to the client must be a deliberate recruiter choice.
   'SUBMITTAL_RESUME_SELECTION_REQUIRED',
+  // SUBMITTAL_RESUME_SELECTION_INELIGIBLE (422): Resume Revision Lifecycle §9 —
+  // client send refused because the currently-selected resume revision is ARCHIVED
+  // (or otherwise not active). The recruiter must select an ACTIVE revision first;
+  // the system never silently switches to another revision. Shares its single
+  // eligibility rule (resumeSelectionEligibility) with the Pipeline resume view's
+  // "requires attention" signal — the UI warning and this refusal never diverge.
+  // A historical Submittal that already froze its edition is unaffected (§7).
+  'SUBMITTAL_RESUME_SELECTION_INELIGIBLE',
   // OFFER_ALREADY_LIVE (409): Offer Lifecycle — create refused because a live
   // (non-terminal) Offer already exists for (tenant_id, submittal_id). The
   // one-live invariant: at most one DRAFT/SENT/NEGOTIATION offer per submittal.

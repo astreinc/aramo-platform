@@ -88,6 +88,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'RESUME_EXTRACTION_DRAFT_ALREADY_REVIEWED',
       // TALENT-INTEL-1 (TI-1B) — resume-extraction source authorization refusal.
       'RESUME_SOURCE_UNAUTHORIZED',
+      // Resume Revision Lifecycle §4 — exact-artifact duplicate refusal (409).
+      'RESUME_DUPLICATE_ARTIFACT',
       // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
       // AramoExceptionFilter status-collapse on the advisory surface only).
       'ADVISORY_NOT_PENDING',
@@ -224,6 +226,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'SUBMITTAL_NO_LIVE_PIPELINE_EPISODE',
       'SUBMITTAL_DELIVERY_CHANNEL_INVALID',
       'SUBMITTAL_RESUME_SELECTION_REQUIRED',
+      'SUBMITTAL_RESUME_SELECTION_INELIGIBLE',
       'OFFER_ALREADY_LIVE',
       'OFFER_ILLEGAL_TRANSITION',
       'COMMERCIAL_PROPOSAL_STATE_INVALID',

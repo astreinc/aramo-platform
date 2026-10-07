@@ -19,6 +19,7 @@ function edition(id: string, over: Record<string, unknown> = {}) {
     is_default: false,
     purpose: 'GENERAL',
     label: null,
+    requisition_id: null,
     filename: 'r.pdf',
     mime_type: 'application/pdf',
     created_at: '2026-07-01T00:00:00.000Z',
@@ -66,6 +67,45 @@ describe('TI-1D-D — GET /v1/pipelines/:id/resume-edition', () => {
   it('404 when the pipeline is not visible to the actor', async () => {
     const { ctl, req } = make({ view: null });
     await expect(ctl.getResumeEdition(AUTH, 'missing', 'rq-1', req)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  });
+
+  // §5 / §17 acceptance test 6 — the revision tailored for THIS requisition is
+  // offered first, then general, then revisions tailored for another requisition;
+  // archived is excluded. Derived revision ordinals accompany each (§2/§10).
+  it('§5 — orders available editions: tailored-for-this-requisition, then general, then other', async () => {
+    const { ctl, req } = make({
+      current: null,
+      editions: [
+        edition('ed-general', { created_at: '2026-07-02T00:00:00.000Z' }),
+        edition('ed-this-req', { requisition_id: REQ, purpose: 'REQUISITION', created_at: '2026-07-01T00:00:00.000Z' }),
+        edition('ed-other-req', { requisition_id: 'cccccccc-cccc-7ccc-8ccc-cccccccccccc', purpose: 'REQUISITION', created_at: '2026-07-03T00:00:00.000Z' }),
+        edition('ed-archived', { lifecycle_status: 'archived', created_at: '2026-07-04T00:00:00.000Z' }),
+      ],
+    });
+    const res = await ctl.getResumeEdition(AUTH, 'pl-1', 'rq-1', req);
+    // tailored-for-REQ first, then general, then other-requisition; archived dropped.
+    expect(res.available_editions.map((e) => e.edition_id)).toEqual(['ed-this-req', 'ed-general', 'ed-other-req']);
+    // §3 — the tailored edition carries its authoritative requisition association.
+    expect(res.available_editions[0].requisition_id).toBe(REQ);
+    // §2/§10 — revision ordinals derived oldest→newest across ALL editions.
+    const ordinalById = new Map(res.available_editions.map((e) => [e.edition_id, e.revision_number]));
+    expect(ordinalById.get('ed-this-req')).toBe(1); // oldest
+    expect(ordinalById.get('ed-general')).toBe(2);
+  });
+
+  // §9 / §17 acceptance test 11 — a selection that has since been archived is NOT
+  // silently replaced: the view flags it requires-attention (the recruiter owns
+  // the replacement), and the archived edition is excluded from the picker.
+  it('§9 — an archived current selection surfaces requires_attention', async () => {
+    const { ctl, req } = make({
+      current: { resume_edition_id: 'ed-arch', selected_at: new Date('2026-07-05T00:00:00.000Z'), selected_by: 'me' },
+      editions: [edition('ed-arch', { lifecycle_status: 'archived' }), edition('ed-live', { is_default: true })],
+    });
+    const res = await ctl.getResumeEdition(AUTH, 'pl-1', 'rq-1', req);
+    expect(res.selected_edition_id).toBe('ed-arch');
+    expect(res.selected_lifecycle_status).toBe('archived');
+    expect(res.selected_requires_attention).toBe(true);
+    expect(res.available_editions.map((e) => e.edition_id)).toEqual(['ed-live']); // archived not offered
   });
 });
 

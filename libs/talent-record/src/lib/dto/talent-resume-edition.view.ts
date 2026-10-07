@@ -16,6 +16,17 @@ export interface TalentResumeEditionView {
   mime_type: string;
   uploaded_at: string;
   is_default: boolean;
+  // Resume Revision Lifecycle §2/§10 — the per-lineage revision ordinal (Revision
+  // 1, 2, 3…), DERIVED at read time from created_at order (D-3 PO ruling: NOT a
+  // stored column). null only on a single-row path with no list context.
+  revision_number: number | null;
+  // Resume Revision Lifecycle §3 — the AUTHORITATIVE requisition/client the
+  // revision was tailored for (null for a general revision). Never inferred from
+  // filename or contents; the recruiter/requisition-context upload sets it.
+  requisition_id: string | null;
+  client_context_id: string | null;
+  // Resume Revision Lifecycle §3 — lineage: the edition this one was derived from.
+  derived_from_edition_id: string | null;
   // TALENT-INTEL-1 (TI-1F-A) — the governed-extraction lifecycle for this
   // edition, DERIVED from its ResumeExtractionDraft (no new source of truth):
   // PROCESSING | READY_FOR_REVIEW | ACCEPTED | REJECTED | FAILED, or null for an
@@ -42,6 +53,7 @@ export interface TalentResumeEditionTextView {
 
 export function toResumeEditionView(
   row: TalentResumeEditionWithDocumentRow,
+  revisionNumber: number | null = null,
 ): TalentResumeEditionView {
   return {
     edition_id: row.id,
@@ -55,6 +67,42 @@ export function toResumeEditionView(
     mime_type: row.document_mime_type,
     uploaded_at: row.document_uploaded_at.toISOString(),
     is_default: row.is_default,
+    revision_number: revisionNumber,
+    requisition_id: row.requisition_id,
+    client_context_id: row.client_context_id,
+    derived_from_edition_id: row.derived_from_edition_id,
     processing_status: row.processing_status,
   };
+}
+
+// Resume Revision Lifecycle §2/§10 — the per-lineage revision ordinals, DERIVED
+// (D-3 PO ruling: not stored). Editions are ranked oldest→newest by created_at so
+// the first upload is "Revision 1"; a stable tiebreak on id keeps equal instants
+// deterministic. Returns a Map(edition_id → ordinal).
+function revisionOrdinals(
+  rows: readonly TalentResumeEditionWithDocumentRow[],
+): Map<string, number> {
+  const ascending = [...rows].sort((a, b) => {
+    const delta = a.created_at.getTime() - b.created_at.getTime();
+    return delta !== 0 ? delta : a.id.localeCompare(b.id);
+  });
+  const ordinals = new Map<string, number>();
+  ascending.forEach((row, index) => ordinals.set(row.id, index + 1));
+  return ordinals;
+}
+
+// The derived revision ordinal for ONE edition, given its sibling list.
+export function revisionOrdinalOf(
+  rows: readonly TalentResumeEditionWithDocumentRow[],
+  editionId: string,
+): number | null {
+  return revisionOrdinals(rows).get(editionId) ?? null;
+}
+
+// List-aware mapper: projects the whole collection WITH derived revision ordinals.
+export function toResumeEditionViews(
+  rows: readonly TalentResumeEditionWithDocumentRow[],
+): TalentResumeEditionView[] {
+  const ordinals = revisionOrdinals(rows);
+  return rows.map((row) => toResumeEditionView(row, ordinals.get(row.id) ?? null));
 }

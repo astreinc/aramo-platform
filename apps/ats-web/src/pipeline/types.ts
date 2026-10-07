@@ -99,6 +99,11 @@ export interface PipelineResumeEditionAvailable {
   readonly edition_id: string;
   readonly purpose: string;
   readonly label: string | null;
+  // Resume Revision Lifecycle §3/§5 — the requisition this edition was tailored
+  // for (null = general); used to label "Tailored for this requisition".
+  readonly requisition_id: string | null;
+  // Resume Revision Lifecycle §2/§10 — derived per-lineage revision ordinal.
+  readonly revision_number: number | null;
   readonly filename: string;
   readonly mime_type: string;
   readonly created_at: string;
@@ -115,6 +120,11 @@ export interface PipelineResumeEditionView {
   readonly selected_by: string | null;
   // The Talent-global presentation default — a suggestion only.
   readonly default_edition_id: string | null;
+  // Resume Revision Lifecycle §9 — lifecycle of the current selection, and whether
+  // it requires the recruiter's attention (archived/retracted → requires replacement
+  // before a client handoff; the backend submit guard enforces the same rule).
+  readonly selected_lifecycle_status: string | null;
+  readonly selected_requires_attention: boolean;
   // Editions eligible for a NEW selection (lifecycle=active).
   readonly available_editions: readonly PipelineResumeEditionAvailable[];
 }

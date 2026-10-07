@@ -3215,6 +3215,46 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/{editionId}/archive:
+    post:
+      operationId: archiveTalentResumeEdition
+      summary: Archive a resume revision — active to archived (Resume Revision Lifecycle §8).
+      description: |
+        Archive a resume revision (lifecycle active -> archived). Archive is NOT
+        delete: the revision remains stored, visible in history, and resolvable by
+        completed Submittals; it is excluded from ordinary selectors and from new
+        requisition selection. Idempotent; transitions only from active (never
+        clobbers an explicit retracted); no un-archive in this increment. Returns the
+        full edition collection with the updated lifecycle. Gated: capability ats +
+        scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The resume-edition collection with the archived revision's updated lifecycle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
 
   /v1/placements:
     get:
@@ -7449,6 +7489,96 @@ paths:
       security:
         - BearerAuth: []
 
+  # ── PO RULING "Consent Capture" — recruiter-driven profile consent capture.
+  # The recruiter-capture consent text is implemented as the PROVISIONAL version
+  # `recruiter-capture-v1-draft` (pending legal ratification); self_signup uses
+  # the approved first-person portal text. ──
+  /v1/consent/capture:
+    post:
+      operationId: captureProfileConsent
+      summary: Record recruiter-captured profile consent (multi-scope).
+      description: |
+        Records the affirmatively-attested profile consent scopes for a Talent
+        through the authoritative consent writer. The versioned consent text is
+        rendered and hashed SERVER-SIDE (the client never supplies legal text).
+        The selected scopes must be dependency-closed
+        (profile_storage -> matching -> contacting); grants are written in
+        dependency order and are idempotent per scope under the request
+        Idempotency-Key. Only the attested scopes are recorded.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsentCaptureRequest'
+      responses:
+        '201':
+          description: Consent recorded (one grant per attested scope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentCaptureResponse'
+        '400':
+          description: Validation error (missing/non-UUID Idempotency-Key, unknown scope/method).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: Idempotency-key conflict or invalid scope combination.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Dependency-incomplete scope set.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /v1/consent/capture-texts:
+    get:
+      operationId: getConsentCaptureTexts
+      summary: Versioned consent statement per scope for a capture method.
+      description: |
+        Returns the EXACT versioned consent text per profile scope that must be
+        displayed before recording — the D7 hash preimage. self_signup returns
+        the approved first-person portal text; recruiter_capture returns the
+        provisional recruiter attestation text (recruiter-capture-v1-draft).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: captured_method
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - self_signup
+              - recruiter_capture
+      responses:
+        '200':
+          description: Per-scope consent statements at the current version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsentCaptureTextsResponse'
+        '400':
+          description: Missing or invalid captured_method.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant
@@ -7483,6 +7613,122 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── PO RULING "Consent Capture" — capture request/response + versioned texts ──
+    ConsentCaptureRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_record_id
+        - captured_method
+        - scopes
+      properties:
+        talent_record_id:
+          type: string
+          format: uuid
+        captured_method:
+          type: string
+          enum:
+            - self_signup
+            - recruiter_capture
+        scopes:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum:
+              - profile_storage
+              - matching
+              - contacting
+    ConsentCaptureScopeResult:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - event_id
+        - consent_version
+        - consent_text_hash
+        - occurred_at
+        - recorded_at
+      properties:
+        scope:
+          type: string
+          enum:
+            - profile_storage
+            - matching
+            - contacting
+        event_id:
+          type: string
+          format: uuid
+        consent_version:
+          type: string
+        consent_text_hash:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        recorded_at:
+          type: string
+          format: date-time
+    ConsentCaptureResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - talent_record_id
+        - captured_method
+        - consent_version
+        - results
+      properties:
+        talent_record_id:
+          type: string
+          format: uuid
+        captured_method:
+          type: string
+          enum:
+            - self_signup
+            - recruiter_capture
+        consent_version:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentCaptureScopeResult'
+    ConsentCaptureTextEntry:
+      type: object
+      additionalProperties: false
+      required:
+        - scope
+        - text
+      properties:
+        scope:
+          type: string
+          enum:
+            - profile_storage
+            - matching
+            - contacting
+        text:
+          type: string
+    ConsentCaptureTextsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - version
+        - captured_method
+        - texts
+      properties:
+        version:
+          type: string
+        captured_method:
+          type: string
+          enum:
+            - self_signup
+            - recruiter_capture
+        texts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConsentCaptureTextEntry'
     # ── Enterprise Search Program Directive GS-1 ──
     EnterpriseSearchResults:
       type: object
@@ -7541,6 +7787,8 @@ components:
         - edition_id
         - purpose
         - label
+        - requisition_id
+        - revision_number
         - filename
         - mime_type
         - created_at
@@ -7554,6 +7802,14 @@ components:
           enum: [GENERAL, ROLE_FAMILY, REQUISITION, CLIENT_SUBMITTAL, USER_DEFINED]
         label:
           type: [string, 'null']
+        # Resume Revision Lifecycle §3/§5 — requisition this edition was tailored
+        # for (null = general); drives ordering + the "Tailored for this
+        # requisition" label. §2/§10 revision_number = derived per-lineage ordinal.
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+        revision_number:
+          type: [integer, 'null']
         filename:
           type: string
         mime_type:
@@ -7574,6 +7830,8 @@ components:
         - selected_at
         - selected_by
         - default_edition_id
+        - selected_lifecycle_status
+        - selected_requires_attention
         - available_editions
       properties:
         pipeline_id:
@@ -7600,6 +7858,14 @@ components:
         default_edition_id:
           type: [string, 'null']
           format: uuid
+        # Resume Revision Lifecycle §9 — lifecycle of the current selection, and
+        # whether it requires the recruiter's attention (archived/retracted ⇒
+        # requires replacement before a client handoff; the submit guard enforces
+        # the same rule). null lifecycle when nothing is selected.
+        selected_lifecycle_status:
+          type: [string, 'null']
+        selected_requires_attention:
+          type: boolean
         # Editions eligible for a NEW selection (lifecycle=active).
         available_editions:
           type: array
@@ -7630,6 +7896,10 @@ components:
         - mime_type
         - uploaded_at
         - is_default
+        - revision_number
+        - requisition_id
+        - client_context_id
+        - derived_from_edition_id
         - processing_status
       properties:
         edition_id:
@@ -7663,6 +7933,21 @@ components:
           format: date-time
         is_default:
           type: boolean
+        # Resume Revision Lifecycle §2/§10 — derived per-lineage revision ordinal
+        # (Revision 1,2,3…); null only on a single-row path with no list context.
+        revision_number:
+          type: [integer, 'null']
+        # Resume Revision Lifecycle §3 — authoritative requisition this revision was
+        # tailored for (null = general); lineage pointer when derived. UUID-only.
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+        client_context_id:
+          type: [string, 'null']
+          format: uuid
+        derived_from_edition_id:
+          type: [string, 'null']
+          format: uuid
         # TI-1F-A — governed-extraction lifecycle, DERIVED from the edition's
         # ResumeExtractionDraft (no new source of truth). null for an edition
         # with no draft (created before TI-1F-A). READ-ONLY projection.

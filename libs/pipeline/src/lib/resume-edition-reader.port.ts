@@ -20,6 +20,11 @@ export interface ResumeEditionSummary {
   is_default: boolean;
   purpose: string;
   label: string | null;
+  /** Resume Revision Lifecycle §3/§5 — the requisition this edition was tailored
+   *  for (null for a general edition). Drives §5 ordering (tailored-for-current-
+   *  requisition first) and the "Tailored for REQ" label. UUID-only; never
+   *  inferred from filename/contents. */
+  requisition_id: string | null;
   filename: string;
   mime_type: string;
   created_at: string;

@@ -96,3 +96,50 @@ export interface ConsentDecisionLogResponse {
   next_cursor: string | null;
   is_anonymized: boolean;
 }
+
+// ── PO RULING "Consent Capture" — recruiter-driven capture ───────────────────
+// Mirrors the server capture DTOs (libs/consent/src/lib/dto/consent-capture-*).
+// The three profile scopes that govern recruiter contactability, captured
+// together (dependency-closed) through the server-authoritative capture seam.
+export type ConsentCaptureScope = 'profile_storage' | 'matching' | 'contacting';
+export const CONSENT_CAPTURE_SCOPES: readonly ConsentCaptureScope[] = [
+  'profile_storage',
+  'matching',
+  'contacting',
+];
+
+// "Captured from": the Talent directly (approved first-person text) vs the
+// recruiter recording the Talent's authorization (provisional attestation).
+export type ConsentCaptureMethod = 'self_signup' | 'recruiter_capture';
+
+export interface ConsentCaptureTextEntry {
+  scope: ConsentCaptureScope;
+  text: string;
+}
+export interface ConsentCaptureTextsResponse {
+  version: string;
+  captured_method: ConsentCaptureMethod;
+  texts: ConsentCaptureTextEntry[];
+}
+
+export interface ConsentCaptureRequest {
+  talent_record_id: string;
+  captured_method: ConsentCaptureMethod;
+  scopes: ConsentCaptureScope[];
+}
+
+export interface ConsentCaptureScopeResult {
+  scope: ConsentCaptureScope;
+  event_id: string;
+  consent_version: string;
+  consent_text_hash: string;
+  occurred_at: string;
+  expires_at?: string;
+  recorded_at: string;
+}
+export interface ConsentCaptureResponse {
+  talent_record_id: string;
+  captured_method: ConsentCaptureMethod;
+  consent_version: string;
+  results: ConsentCaptureScopeResult[];
+}

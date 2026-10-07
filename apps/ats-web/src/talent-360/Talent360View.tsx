@@ -26,6 +26,7 @@ import { createNote } from '../activity/activity-api';
 import { createTask, updateTask } from '../task/task-api';
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 import { submittalEntryHref, entryActionLabel } from '../submittal-workspace/present';
+import { RecordConsentDialog } from '../consent/RecordConsentDialog';
 
 import { getTalent360 } from './talent-360-api';
 import type {
@@ -204,6 +205,7 @@ export function Talent360View() {
   const [generalEmailOpen, setGeneralEmailOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
 
   const load = useCallback(() => {
     if (talentId === '') return;
@@ -355,6 +357,14 @@ export function Talent360View() {
           }}
         />
       )}
+      {consentOpen && (
+        <RecordConsentDialog
+          talentRecordId={talentId}
+          open={consentOpen}
+          onOpenChange={setConsentOpen}
+          onRecorded={load}
+        />
+      )}
 
       <KpiStrip strip={strip} onOpen={(t) => setTab(t)} />
 
@@ -404,7 +414,7 @@ export function Talent360View() {
               canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
               onChanged={load}
             />
-            <ContactabilityCard model={model} />
+            <ContactabilityCard model={model} onRecordConsent={() => setConsentOpen(true)} />
             <IdentityCard model={model} onTrust={() => setTab('trust')} />
             <RelationshipCard model={model} />
           </div>
@@ -436,7 +446,7 @@ export function Talent360View() {
               canFollowUp={canTaskWrite && model.header.contactability.recruiting_permitted}
               onChanged={load}
             />
-            <ContactabilityCard model={model} />
+            <ContactabilityCard model={model} onRecordConsent={() => setConsentOpen(true)} />
             <IdentityCard model={model} onTrust={() => setTab('trust')} />
             <RelationshipCard model={model} />
           </div>
@@ -1498,7 +1508,13 @@ function FollowUpDialog({
   );
 }
 
-function ContactabilityCard({ model }: { model: Talent360ViewModel }) {
+function ContactabilityCard({
+  model,
+  onRecordConsent,
+}: {
+  model: Talent360ViewModel;
+  onRecordConsent: () => void;
+}) {
   const c = model.header.contactability;
   const lc = model.relationship_strip.last_contact;
   const yn = (b: boolean) => (
@@ -1531,6 +1547,23 @@ function ContactabilityCard({ model }: { model: Talent360ViewModel }) {
               {relativeDay(lc.at)} {clockTime(lc.at)} · {labelize(lc.channel)}
             </span>
           </div>
+        )}
+      </div>
+      <div
+        className="t360-rail-row--divider"
+        style={{ display: 'grid', gap: 8, marginTop: 10, paddingTop: 10 }}
+      >
+        {c.recruiting_permitted ? (
+          <span className="t360-val-ok">Consent recorded</span>
+        ) : (
+          <>
+            <span className="t360-val-no">No recruiting-contact consent recorded.</span>
+            <div>
+              <Button variant="secondary" type="button" onClick={onRecordConsent}>
+                Record consent
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </div>

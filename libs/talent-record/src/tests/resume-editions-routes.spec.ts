@@ -46,6 +46,10 @@ function make(parts: {
   text?: string | null;
   editionById?: unknown;
   priorDraft?: unknown;
+  // Resume Revision Lifecycle §4 — the artifact byte SHA-256 the parser returns,
+  // and the existing edition (if any) the dedup lookup resolves for that hash.
+  sha?: string;
+  duplicate?: unknown;
 } = {}) {
   const findById = vi.fn().mockResolvedValue(parts.view === undefined ? { id: TALENT } : parts.view);
   const repo = { findById };
@@ -62,6 +66,7 @@ function make(parts: {
   // same-attachment retry via the draft's source identity.
   const findResumeExtractionDraftBySource = vi.fn().mockResolvedValue(parts.priorDraft ?? null);
   const upsertResumeExtractionDraft = vi.fn().mockResolvedValue({ id: 'draft-1' });
+  const findResumeEditionByArtifactSha256 = vi.fn().mockResolvedValue(parts.duplicate ?? null);
   const talentExtraction = {
     listResumeEditionsWithDocument,
     createResumeDocument,
@@ -69,9 +74,14 @@ function make(parts: {
     setDefaultResumeEdition,
     findResumeExtractionDraftBySource,
     upsertResumeExtractionDraft,
+    findResumeEditionByArtifactSha256,
   };
   const resumeParser = {
-    extractTextFromStorageKey: vi.fn().mockResolvedValue(parts.text === undefined ? 'Alan Turing resume' : parts.text),
+    // §4 — single fetch returns BOTH the extracted text and the artifact byte hash.
+    extractTextAndSha256FromStorageKey: vi.fn().mockResolvedValue({
+      text: parts.text === undefined ? 'Alan Turing resume' : parts.text,
+      artifact_sha256: parts.sha ?? 'sha-general',
+    }),
   };
   const resolveOwnedResume = vi.fn().mockResolvedValue(
     parts.resolveMeta ?? { storage_key: 's3/r.pdf', filename: 'resume.pdf', mime_type: 'application/pdf', size_bytes: 42 },
@@ -92,7 +102,7 @@ function make(parts: {
     resumeResolver as never,
     resumeText as never,
   );
-  return { ctl, findById, listResumeEditionsWithDocument, createResumeDocument, createEditionForDocument, resolveOwnedResume, enqueueReindex, findResumeEditionById, setDefaultResumeEdition, findResumeExtractionDraftBySource, upsertResumeExtractionDraft };
+  return { ctl, findById, listResumeEditionsWithDocument, createResumeDocument, createEditionForDocument, resolveOwnedResume, enqueueReindex, findResumeEditionById, setDefaultResumeEdition, findResumeExtractionDraftBySource, upsertResumeExtractionDraft, findResumeEditionByArtifactSha256 };
 }
 
 describe('TI-1D-C — GET :id/resume-editions', () => {
@@ -130,8 +140,48 @@ describe('TI-1D-C — POST :id/resume-editions', () => {
     expect(createEditionForDocument).toHaveBeenCalledWith(
       expect.objectContaining({ talent_document_id: 'doc-new', content_hash: expectedHash, attachment_id: 'att-1', purpose: 'CLIENT_SUBMITTAL', label: 'GenAI' }),
     );
+    // Resume Revision Lifecycle §4 — the authoritative artifact byte SHA-256 is
+    // threaded into BOTH the canonical document mint and the edition row.
+    expect(createResumeDocument).toHaveBeenCalledWith(expect.objectContaining({ artifact_sha256: 'sha-general' }));
+    expect(createEditionForDocument).toHaveBeenCalledWith(expect.objectContaining({ artifact_sha256: 'sha-general' }));
     // §D — the resume-text cache is associated with the producing edition.
     expect(enqueueReindex).toHaveBeenCalledWith(expect.objectContaining({ talent_record_id: TALENT, resume_edition_id: 'ed-new' }));
+  });
+
+  // §4 / §17 acceptance test 1 — uploading the EXACT same file again for one
+  // Talent (even via a different attachment) is rejected: no second revision, a
+  // RESUME_DUPLICATE_ARTIFACT 409 carrying the existing edition for View-existing.
+  it('§4 — exact-duplicate artifact bytes are rejected (409), never a new revision', async () => {
+    const { ctl, createResumeDocument, createEditionForDocument, findResumeEditionByArtifactSha256 } = make({
+      sha: 'sha-identical',
+      duplicate: { id: 'ed-existing', talent_document_id: 'doc-existing' },
+    });
+    await expect(
+      ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-2' } as never, 'rq-1'),
+    ).rejects.toMatchObject({
+      code: 'RESUME_DUPLICATE_ARTIFACT',
+      statusCode: 409,
+      // AramoError stores the options bag as `context` ({ requestId, details }).
+      context: { details: expect.objectContaining({ existing_edition_id: 'ed-existing' }) },
+    });
+    // The dedup lookup is deterministic artifact equality, scoped to this Talent.
+    expect(findResumeEditionByArtifactSha256).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: TENANT, talent_id: TALENT, artifact_sha256: 'sha-identical' }),
+    );
+    // No duplicate revision is created.
+    expect(createResumeDocument).not.toHaveBeenCalled();
+    expect(createEditionForDocument).not.toHaveBeenCalled();
+  });
+
+  // §4 / §17 acceptance test 2 — the SAME filename with CHANGED bytes is a
+  // legitimate new revision (dedup is on bytes, never filename).
+  it('§4 — same filename, changed bytes → a new revision is minted', async () => {
+    const { ctl, createResumeDocument, createEditionForDocument } = make({
+      sha: 'sha-changed-bytes', // a different hash → no duplicate match (default null)
+    });
+    await ctl.createResumeEdition(AUTH, TALENT, { attachment_id: 'att-3' } as never, 'rq-1');
+    expect(createResumeDocument).toHaveBeenCalledWith(expect.objectContaining({ artifact_sha256: 'sha-changed-bytes' }));
+    expect(createEditionForDocument).toHaveBeenCalledWith(expect.objectContaining({ artifact_sha256: 'sha-changed-bytes' }));
   });
 
   it('TI-1F-A — enqueues a PROCESSING ATTACHMENT draft (governed extraction is worker-owned) and the sync response projects processing_status=PROCESSING', async () => {

@@ -1444,6 +1444,8 @@ export class TalentExtractionService {
     filename: string;
     mime_type: string;
     size_bytes: number;
+    // Resume Revision Lifecycle §4 — real artifact byte SHA-256 (omitted ⇒ legacy).
+    artifact_sha256?: string;
   }): Promise<string> {
     const id = uuidv7();
     await this.evidence.createTalentDocument({
@@ -1457,6 +1459,7 @@ export class TalentExtractionService {
       file_storage_ref: input.storage_key,
       mime_type: input.mime_type,
       size_bytes: input.size_bytes,
+      artifact_sha256: input.artifact_sha256,
       // The governed extraction ran off this document's text — 'parsed'.
       parse_status: 'parsed',
       consent_scope_at_upload: [],
@@ -1480,6 +1483,26 @@ export class TalentExtractionService {
     talentDocumentId: string,
   ): Promise<TalentResumeEditionRow | null> {
     return this.evidence.findResumeEditionByDocumentId(talentDocumentId);
+  }
+
+  // Resume Revision Lifecycle §4 — exact-artifact dedup lookup passthrough
+  // (tenant+talent scoped, deterministic byte-SHA-256 equality).
+  async findResumeEditionByArtifactSha256(args: {
+    tenant_id: string;
+    talent_id: string;
+    artifact_sha256: string;
+  }): Promise<TalentResumeEditionRow | null> {
+    return this.evidence.findResumeEditionByArtifactSha256(args);
+  }
+
+  // Resume Revision Lifecycle §8 — archive-edition passthrough (active → archived;
+  // archive is not delete; no un-archive this increment).
+  async archiveResumeEdition(args: {
+    tenant_id: string;
+    talent_id: string;
+    edition_id: string;
+  }): Promise<TalentResumeEditionRow | null> {
+    return this.evidence.archiveResumeEdition(args);
   }
 
   async findResumeEditionById(id: string): Promise<TalentResumeEditionRow | null> {

@@ -31,6 +31,9 @@ export interface CreateEditionForDocumentInput {
   // The deterministic extracted-text/source-map SHA-256 (ruling C — reuse the
   // existing resume_text_hash; do NOT re-hash bytes here).
   content_hash: string;
+  // Resume Revision Lifecycle §4 — the authoritative artifact byte SHA-256
+  // (exact-duplicate key, distinct from the text content_hash). Optional ⇒ legacy.
+  artifact_sha256?: string;
   created_by: string;
   attachment_id?: string;
   purpose?: ResumeEditionPurpose;
@@ -70,6 +73,7 @@ export class ResumeEditionIngestionService {
         talent_id: input.talent_id,
         talent_document_id: input.talent_document_id,
         content_hash: input.content_hash,
+        artifact_sha256: input.artifact_sha256,
         created_at: new Date(),
         created_by: input.created_by,
         attachment_id: input.attachment_id,

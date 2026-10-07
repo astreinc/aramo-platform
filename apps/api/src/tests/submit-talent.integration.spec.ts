@@ -110,6 +110,12 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   // TALENT-INTEL-1 TI-1D-D — the working resume-selection table (Layer A).
   'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
+  // Resume Revision Lifecycle §9 — the submit guard resolves the selected edition's
+  // lifecycle_status in-tx, so the TalentResumeEdition table must exist. init (schema
+  // + base tables) → 1a (TalentResumeEdition/Default) → artifact_sha256 (§4 additive).
+  'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql',
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',
@@ -233,12 +239,45 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // the gate admits — so the pre-L1-C fixtures pass the new gate unchanged.
     // TALENT-INTEL-1 TI-1D-D — seed the explicit working resume selection the
     // client-send now requires (append-only; the latest selected_at is current).
-    async function seedRequisitionResume(t: string, talent: string, req: string, edition: string): Promise<void> {
+    async function seedRequisitionResume(t: string, talent: string, req: string, edition: string, selectedAt?: string): Promise<void> {
+      if (selectedAt === undefined) {
+        await sql.query(
+          `INSERT INTO pipeline."TalentRequisitionResume"
+             (id,tenant_id,talent_record_id,requisition_id,resume_edition_id,selected_by)
+           VALUES ($1,$2,$3,$4,$5,$6)`,
+          [randomUUID(), t, talent, req, edition, randomUUID()],
+        );
+      } else {
+        // Explicit selected_at so a replacement selection deterministically wins the
+        // MAX(selected_at) "current selection" race (used by the §9 archive-race proof).
+        await sql.query(
+          `INSERT INTO pipeline."TalentRequisitionResume"
+             (id,tenant_id,talent_record_id,requisition_id,resume_edition_id,selected_by,selected_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz)`,
+          [randomUUID(), t, talent, req, edition, randomUUID(), selectedAt],
+        );
+      }
+      // Resume Revision Lifecycle §9 — the submit guard resolves the selected
+      // edition's lifecycle in-tx, so the edition must exist as ACTIVE. Upsert it
+      // (tests run serially, each seeds right before its submit; the shared edition
+      // id is re-pointed to the current test's tenant + ACTIVE).
+      await seedResumeEdition(t, talent, edition, 'active');
+    }
+    async function seedResumeEdition(
+      t: string,
+      talent: string,
+      edition: string,
+      lifecycle: 'active' | 'archived' | 'retracted',
+    ): Promise<void> {
       await sql.query(
-        `INSERT INTO pipeline."TalentRequisitionResume"
-           (id,tenant_id,talent_record_id,requisition_id,resume_edition_id,selected_by)
-         VALUES ($1,$2,$3,$4,$5,$6)`,
-        [randomUUID(), t, talent, req, edition, randomUUID()],
+        `INSERT INTO talent_evidence."TalentResumeEdition"
+           (id,tenant_id,talent_id,talent_document_id,content_hash,created_at,created_by,lifecycle_status)
+         VALUES ($1,$2,$3,$4,'seed-hash',now(),$5,$6::talent_evidence."TalentResumeEditionLifecycle")
+         ON CONFLICT (id) DO UPDATE
+           SET tenant_id = EXCLUDED.tenant_id,
+               talent_id = EXCLUDED.talent_id,
+               lifecycle_status = EXCLUDED.lifecycle_status`,
+        [edition, t, talent, randomUUID(), randomUUID(), lifecycle],
       );
     }
     async function seedRequisition(t: string, req: string, status = 'open'): Promise<void> {
@@ -420,6 +459,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(null);
       expect(await count('submittal."TalentSubmittalEvent"', 'submittal_id=$1', [sub])).toBe('0');
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+    });
+
+    // ---- §9 archive-race: an archived selection cannot reach a client handoff ---
+    it('§9 archive-race: archived selection → submit refused (SUBMITTAL_RESUME_SELECTION_INELIGIBLE); selecting an active revision unblocks it', async () => {
+      const t = randomUUID(), req = randomUUID(), talent = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      const edArchived = randomUUID(), edActive4 = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      // 1–2) Revision selected while ACTIVE, then archived by the recruiter.
+      await seedRequisitionResume(t, talent, req, edArchived, '2026-07-01T00:00:00.000Z'); // seeds active + selects
+      await seedResumeEdition(t, talent, edArchived, 'archived'); // recruiter archives it
+      // 3–5) submit attempted without replacement → the AUTHORITATIVE backend refuses;
+      //      no freeze, no send, no side-effects (the UI banner is not the only guard).
+      await expect(
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'rrl-arch' }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_INELIGIBLE', statusCode: 422 });
+      expect(await submittalState(sub)).toBe('ready_for_review|false');
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(null);
+      expect(await count('submittal."TalentSubmittalEvent"', 'submittal_id=$1', [sub])).toBe('0');
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      // 6–7) recruiter selects an ACTIVE Revision 4 → readiness valid again → submit succeeds,
+      //      freezing the ACTIVE replacement (never the archived one).
+      await seedRequisitionResume(t, talent, req, edActive4, '2026-07-02T00:00:00.000Z');
+      await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'rrl-ok' });
+      expect(await submittalState(sub)).toBe('submitted_to_client|true');
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(edActive4);
+    });
+
+    // ---- §7/§8 enterprise invariant: archive is safe for history ---------------
+    it('§7/§8: an archived edition stays resolvable from a historical submittal, yet is ineligible for a NEW submit', async () => {
+      const t = randomUUID(), talent = randomUUID();
+      const req1 = randomUUID(), pipe1 = randomUUID(), sub1 = randomUUID();
+      const req2 = randomUUID(), pipe2 = randomUUID(), sub2 = randomUUID();
+      const edX = randomUUID();
+      await seedRequisition(t, req1, 'open');
+      await seedPipeline(t, pipe1, talent, req1);
+      await seedSubmittal(t, sub1, talent, req1, pipe1);
+      // Submit sub1 while edX is ACTIVE → the exact edition is FROZEN onto the submittal.
+      await seedRequisitionResume(t, talent, req1, edX);
+      await svc.submitToClient({ tenant_id: t, submittal_id: sub1, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'inv-submit' });
+      expect(await submittalState(sub1)).toBe('submitted_to_client|true');
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub1])).toBe(edX);
+      // A second requisition selects edX, then the recruiter archives edX.
+      await seedRequisition(t, req2, 'open');
+      await seedPipeline(t, pipe2, talent, req2);
+      await seedSubmittal(t, sub2, talent, req2, pipe2);
+      await seedRequisitionResume(t, talent, req2, edX);
+      await seedResumeEdition(t, talent, edX, 'archived');
+      // RESOLVABLE — the edition row still EXISTS (archived, never deleted: §8)…
+      expect(await one(`SELECT lifecycle_status::text AS c FROM talent_evidence."TalentResumeEdition" WHERE id=$1`, [edX])).toBe('archived');
+      // …and the historical submittal STILL resolves to edX (freeze is immutable: §7).
+      expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub1])).toBe(edX);
+      // INELIGIBLE — a NEW submit whose selection is the now-archived edX is refused.
+      await expect(
+        svc.submitToClient({ tenant_id: t, submittal_id: sub2, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'inv-refuse' }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_INELIGIBLE', statusCode: 422 });
+      expect(await submittalState(sub2)).toBe('ready_for_review|false');
     });
 
     // ---- P2: concurrent limit=1 -------------------------------------------------

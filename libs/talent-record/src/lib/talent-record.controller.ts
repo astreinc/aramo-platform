@@ -80,6 +80,8 @@ import type {
 } from './dto/resume-edition-request.dto.js';
 import {
   toResumeEditionView,
+  toResumeEditionViews,
+  revisionOrdinalOf,
   type TalentResumeEditionView,
   type TalentResumeEditionsResponse,
   type TalentResumeEditionTextView,
@@ -512,7 +514,7 @@ export class TalentRecordController {
       tenant_id: authContext.tenant_id,
       talent_id: id,
     });
-    return { talent_id: id, editions: rows.map(toResumeEditionView) };
+    return { talent_id: id, editions: toResumeEditionViews(rows) };
   }
 
   // TALENT-INTEL-1 TI-1H §9 — per-edition resume TEXT (preview). Resolves the
@@ -603,9 +605,9 @@ export class TalentRecordController {
     // TALENT-INTEL-1 (TI-1F-A) — retry idempotency (Ruling B): the SAME owned
     // attachment re-submitted resolves to the SAME already-created edition, never
     // a duplicate document/edition/draft. The ResumeExtractionDraft (unique on
-    // (tenant, ATTACHMENT, attachment_id)) is the coordination boundary; content
-    // hash is NEVER the identity. A different attachment (identical bytes) → a new
-    // edition (falls through).
+    // (tenant, ATTACHMENT, attachment_id)) is the coordination boundary. A
+    // DIFFERENT attachment carrying identical bytes is handled by the §4
+    // exact-artifact dedup gate below (it is a duplicate, NOT a new revision).
     const priorDraft = await this.talentExtraction.findResumeExtractionDraftBySource({
       tenant_id: authContext.tenant_id,
       source_kind: 'ATTACHMENT',
@@ -617,19 +619,50 @@ export class TalentRecordController {
         talent_id: id,
       });
       const prior = priorRows.find((r) => r.id === priorDraft.resume_edition_id);
-      if (prior !== undefined) return toResumeEditionView(prior);
+      if (prior !== undefined) return toResumeEditionView(prior, revisionOrdinalOf(priorRows, prior.id));
     }
-    // 2. Deterministic text extraction → the content_hash (source-map text hash,
-    //    the SAME hash the draft flow produces — ruling C). No LLM, no evidence
-    //    authoring here.
+    // 2. Single object-storage fetch → BOTH the extracted text (→ content_hash,
+    //    source-map text hash, ruling C) AND the authoritative artifact byte
+    //    SHA-256 (→ §4 exact-duplicate key). No LLM, no evidence authoring here.
     let text: string | null;
+    let artifact_sha256 = '';
     try {
-      text = await this.resumeParser.extractTextFromStorageKey({
+      const parsed = await this.resumeParser.extractTextAndSha256FromStorageKey({
         storage_key: meta.storage_key,
         requestId,
       });
+      text = parsed.text;
+      artifact_sha256 = parsed.artifact_sha256;
     } catch {
       text = null;
+    }
+    // 3. §4 exact-duplicate protection — reject a re-upload of identical bytes for
+    //    this Talent BEFORE minting. Deterministic artifact equality ONLY (never
+    //    filename, never extracted text, never cross-Talent / cross-tenant). This
+    //    supersedes the prior "different attachment, identical bytes → new edition"
+    //    behavior: identical bytes are a duplicate, surfaced with the existing
+    //    revision so the recruiter can View existing / Cancel.
+    if (artifact_sha256 !== '') {
+      const duplicate = await this.talentExtraction.findResumeEditionByArtifactSha256({
+        tenant_id: authContext.tenant_id,
+        talent_id: id,
+        artifact_sha256,
+      });
+      if (duplicate !== null) {
+        throw new AramoError(
+          'RESUME_DUPLICATE_ARTIFACT',
+          'This resume is already on this Talent’s profile.',
+          409,
+          {
+            requestId,
+            details: {
+              existing_edition_id: duplicate.id,
+              talent_document_id: duplicate.talent_document_id,
+              filename: meta.filename,
+            },
+          },
+        );
+      }
     }
     if (text === null || text.trim() === '') {
       throw new AramoError(
@@ -640,7 +673,8 @@ export class TalentRecordController {
       );
     }
     const content_hash = buildResumeSourceMap(text).text_hash;
-    // 3. Mint the evidence-document identity for this edition.
+    // 4. Mint the evidence-document identity for this edition (carrying the real
+    //    artifact byte SHA-256 into the canonical DocumentRevision/DocumentArtifact).
     const talent_document_id = await this.talentExtraction.createResumeDocument({
       talent_id: id,
       tenant_id: authContext.tenant_id,
@@ -649,6 +683,7 @@ export class TalentRecordController {
       filename: meta.filename,
       mime_type: meta.mime_type,
       size_bytes: meta.size_bytes,
+      artifact_sha256,
     });
     // 4. Mint exactly one companion edition (idempotent on the document; the first
     //    edition establishes the default).
@@ -657,6 +692,7 @@ export class TalentRecordController {
       talent_id: id,
       talent_document_id,
       content_hash,
+      artifact_sha256,
       created_by: authContext.sub,
       attachment_id: body.attachment_id,
       purpose: body.purpose,
@@ -703,7 +739,7 @@ export class TalentRecordController {
       talent_id: id,
     });
     const created = rows.find((r) => r.id === result.edition.id);
-    if (created !== undefined) return toResumeEditionView(created);
+    if (created !== undefined) return toResumeEditionView(created, revisionOrdinalOf(rows, created.id));
     // Fallback (should not happen — the row was just created): build from parts.
     return {
       edition_id: result.edition.id,
@@ -717,6 +753,12 @@ export class TalentRecordController {
       mime_type: meta.mime_type,
       uploaded_at: result.edition.created_at.toISOString(),
       is_default: result.is_default,
+      // Fallback path (the just-created row wasn't in the re-read list): the
+      // derived ordinal needs the list context, so it is null here.
+      revision_number: null,
+      requisition_id: result.edition.requisition_id,
+      client_context_id: result.edition.client_context_id,
+      derived_from_edition_id: result.edition.derived_from_edition_id,
       // A PROCESSING draft was just enqueued (step 5b) for this edition.
       processing_status: 'PROCESSING',
     };
@@ -762,7 +804,50 @@ export class TalentRecordController {
       tenant_id: authContext.tenant_id,
       talent_id: id,
     });
-    return { talent_id: id, editions: rows.map(toResumeEditionView) };
+    return { talent_id: id, editions: toResumeEditionViews(rows) };
+  }
+
+  // Resume Revision Lifecycle §8 — ARCHIVE a resume edition (active → archived).
+  // Archive is NOT delete: the edition stays stored, remains visible in history,
+  // and remains referenced by completed Submittals (§7/§8). It is simply excluded
+  // from ordinary selectors and new requisition selection. Validates ownership
+  // (tenant + talent); idempotent; no un-archive this increment (ACTIVE/ARCHIVED
+  // only). Archiving an edition currently SELECTED for an unsubmitted requisition
+  // does NOT silently replace it — the requisition readiness surfaces the §9
+  // "requires attention" prompt; the recruiter owns the replacement choice.
+  @Post(':id/resume-editions/:editionId/archive')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async archiveResumeEdition(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Param('editionId') editionId: string,
+    @RequestId() requestId: string,
+  ): Promise<TalentResumeEditionsResponse> {
+    const edition = await this.talentExtraction.findResumeEditionById(editionId);
+    if (
+      edition === null ||
+      edition.tenant_id !== authContext.tenant_id ||
+      edition.talent_id !== id
+    ) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'resume edition not found for this talent',
+        404,
+        { requestId, details: { resume_edition_id: editionId } },
+      );
+    }
+    await this.talentExtraction.archiveResumeEdition({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+      edition_id: editionId,
+    });
+    const rows = await this.talentExtraction.listResumeEditionsWithDocument({
+      tenant_id: authContext.tenant_id,
+      talent_id: id,
+    });
+    return { talent_id: id, editions: toResumeEditionViews(rows) };
   }
 
   // TALENT-INTEL-1 TI-1F-B — CONFIRM: promote the reviewed resume draft's accepted
@@ -915,7 +1000,7 @@ export class TalentRecordController {
       talent_id: talentId,
     });
     const view = rows.find((r) => r.id === editionId);
-    if (view !== undefined) return toResumeEditionView(view);
+    if (view !== undefined) return toResumeEditionView(view, revisionOrdinalOf(rows, view.id));
     throw new AramoError('NOT_FOUND', 'resume edition not found for this talent', 404, {
       requestId,
       details: { resume_edition_id: editionId },
@@ -1026,11 +1111,26 @@ export class TalentRecordController {
     // link + ACCEPT its originating CREATE_DRAFT_UPLOAD draft (below).
     let sourceDocumentId: string | undefined;
     let resumeEditionId: string | undefined;
+    let artifactSha: string | undefined;
     try {
       // R1 — create/link the resume TalentDocument ONLY here, after confirmed
       // creation (never at draft/proposal time). Its id anchors the evidence.
       const rd = body.resume_document;
+      // Resume Revision Lifecycle §4 — compute the authoritative artifact byte
+      // SHA-256 server-side from the retained draft object, so a later edit-upload
+      // of the same file is caught by the exact-duplicate gate. Best-effort: a
+      // hash hiccup (or a parser without the capability, in unit mocks) never
+      // fails the create — the edition is simply minted hashless (null).
       if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
+        try {
+          const hashed = await this.resumeParser.computeArtifactSha256FromStorageKey?.({
+            storage_key: rd.storage_key,
+            requestId,
+          });
+          artifactSha = hashed?.artifact_sha256;
+        } catch {
+          artifactSha = undefined;
+        }
         sourceDocumentId = await this.talentExtraction.createResumeDocument({
           talent_id: created.id,
           tenant_id: authContext.tenant_id,
@@ -1039,6 +1139,7 @@ export class TalentRecordController {
           filename: rd.file_name,
           mime_type: rd.mime_type,
           size_bytes: rd.size_bytes,
+          artifact_sha256: artifactSha,
         });
       }
       // TALENT-INTEL-1 TI-1D-C §A/§B — create the companion TalentResumeEdition
@@ -1056,6 +1157,7 @@ export class TalentRecordController {
           talent_id: created.id,
           talent_document_id: sourceDocumentId,
           content_hash: rd.resume_text_hash,
+          artifact_sha256: artifactSha,
           created_by: authContext.sub,
           // Confirmed-create is a raw draft upload (no owned Attachment yet); a
           // GENERAL first edition. attachment_id stays null.

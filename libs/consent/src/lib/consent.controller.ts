@@ -23,6 +23,13 @@ import {
   type ConsentScopeValue,
 } from './dto/consent-grant-request.dto.js';
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
+import {
+  CONSENT_CAPTURE_METHODS,
+  ConsentCaptureRequestDto,
+  type ConsentCaptureMethodValue,
+} from './dto/consent-capture-request.dto.js';
+import type { ConsentCaptureResponseDto } from './dto/consent-capture-response.dto.js';
+import type { ConsentCaptureTextsResponseDto } from './dto/consent-capture-texts-response.dto.js';
 import { ConsentRevokeRequestDto } from './dto/consent-revoke-request.dto.js';
 import type { ConsentRevokeResponseDto } from './dto/consent-revoke-response.dto.js';
 import type { ConsentHistoryResponseDto } from './dto/consent-history-response.dto.js';
@@ -83,6 +90,46 @@ export class ConsentController {
       authContext,
       requestId,
     );
+  }
+
+  // PO RULING "Consent Capture" — recruiter-driven multi-scope profile-consent
+  // capture (ats-web Add-Talent post-create + Talent-360 "Record consent"). The
+  // service renders + hashes the versioned text SERVER-SIDE and records ONLY the
+  // affirmatively-attested scopes via the authoritative writer. Idempotency-Key
+  // REQUIRED (fans out per scope). Auth-only, matching the /consent/grant posture
+  // (no new scope added).
+  @Post('capture')
+  @HttpCode(HttpStatus.CREATED)
+  async captureConsent(
+    @Body() request: ConsentCaptureRequestDto,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConsentCaptureResponseDto> {
+    this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+    return this.consentService.captureProfileConsent({
+      talent_record_id: request.talent_record_id,
+      captured_method: request.captured_method,
+      scopes: request.scopes,
+      authContext,
+      idempotencyKey: idempotencyKey as string,
+      requestId,
+    });
+  }
+
+  // PO RULING "Consent Capture" — the EXACT versioned consent text per scope the
+  // recruiter must see before recording (the D7 hash preimage; displayed bytes ==
+  // hashed preimage). Informational read; no Idempotency-Key. captured_method is
+  // a required, validated query param.
+  @Get('capture-texts')
+  @HttpCode(HttpStatus.OK)
+  async getConsentCaptureTexts(
+    @Query('captured_method') capturedMethodRaw: string | undefined,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ConsentCaptureTextsResponseDto> {
+    const capturedMethod = this.parseCaptureMethod(capturedMethodRaw, requestId);
+    return this.consentService.getCaptureTexts(capturedMethod, authContext.tenant_id);
   }
 
   // PR-4: /consent/check is a 200-returning endpoint with the decision in
@@ -285,6 +332,27 @@ export class ConsentController {
       );
     }
     return scopeRaw as ConsentScopeValue;
+  }
+
+  // PO RULING "Consent Capture" — captured_method query param for GET
+  // /capture-texts: required, single-valued, must be a known capture method.
+  private parseCaptureMethod(
+    capturedMethodRaw: string | undefined,
+    requestId: string,
+  ): ConsentCaptureMethodValue {
+    if (
+      capturedMethodRaw === undefined ||
+      capturedMethodRaw === '' ||
+      !(CONSENT_CAPTURE_METHODS as readonly string[]).includes(capturedMethodRaw)
+    ) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        `captured_method must be one of ${CONSENT_CAPTURE_METHODS.join(', ')}`,
+        400,
+        { requestId, details: { invalid_field: 'captured_method' } },
+      );
+    }
+    return capturedMethodRaw as ConsentCaptureMethodValue;
   }
 
   // PR-7 §7 event_type filter: optional, single-valued, must be a member
