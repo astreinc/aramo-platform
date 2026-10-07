@@ -1,9 +1,17 @@
+import { createHash } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import { ObjectStorageService } from '@aramo/object-storage';
 
 import { extractResumeText } from './heuristics/text-extractor.js';
 import type { ParseResumeInput } from './types/parse-resume.types.js';
+
+// Deterministic hex SHA-256 of raw bytes — the canonical artifact content
+// identity (mirrors documents' executed-write-back sha256Hex).
+function sha256Hex(bytes: Buffer): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
 
 // ResumeParserService — deterministic file → TEXT extraction (NO LLM, ADR-0015
 // Decision 10).
@@ -40,6 +48,37 @@ export class ResumeParserService {
       text_length: text?.length ?? 0,
     });
     return text;
+  }
+
+  // Resume Revision Lifecycle §4/§11 (D-2 PO ruling) — the AUTHORITATIVE artifact
+  // content identity: a deterministic SHA-256 of the raw object BYTES (NOT the
+  // extracted text, NOT the filename). This is the key for exact-duplicate
+  // rejection. Single fetch + hash. Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a
+  // fetch failure (the caller maps it); never returns a placeholder hash.
+  async computeArtifactSha256FromStorageKey(
+    input: ParseResumeInput,
+  ): Promise<{ artifact_sha256: string }> {
+    const buffer = await this.fetchBytes(input);
+    return { artifact_sha256: sha256Hex(buffer) };
+  }
+
+  // Resume Revision Lifecycle §4/§11 — the add-edition hot path needs BOTH the
+  // extracted text (→ content_hash) and the artifact byte SHA-256 (→ dedup). Fetch
+  // the object ONCE and derive both, so a new-edition upload costs a single
+  // object-storage GET. Text may be null (unreadable resume) while the byte hash
+  // is always computable from the fetched bytes.
+  async extractTextAndSha256FromStorageKey(
+    input: ParseResumeInput,
+  ): Promise<{ text: string | null; artifact_sha256: string }> {
+    const buffer = await this.fetchBytes(input);
+    const text = await extractResumeText(buffer);
+    this.logger.log({
+      event: text === null ? 'resume_text.failed' : 'resume_text.extracted',
+      requestId: input.requestId,
+      storage_key: input.storage_key,
+      text_length: text?.length ?? 0,
+    });
+    return { text, artifact_sha256: sha256Hex(buffer) };
   }
 
   // The presigned-GET + fetch. Throws OBJECT_STORAGE_UPLOAD_FAILED (502) on a

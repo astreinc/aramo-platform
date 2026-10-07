@@ -119,6 +119,12 @@ describe('TalentEvidenceRepository — surface', () => {
         // TalentDocument metadata + default marker).
         'findResumeEditionByDocumentId',
         'findResumeEditionsWithDocumentByTalent',
+        // Resume Revision Lifecycle §4/§8 — the exact-artifact dedup lookup
+        // (deterministic byte-SHA-256 equality, tenant+talent scoped) and the
+        // archive transition (active → archived; archive is not delete). Conscious
+        // closed-surface additions; neither carries a forbidden update/delete name.
+        'findResumeEditionByArtifactSha256',
+        'archiveResumeEdition',
         // TALENT-INTEL-1 (TI-1F-A) — the ResumeExtractionDraft governed-extraction
         // review substrate: an idempotent upsert (the polling-outbox work signal),
         // the by-source identity lookup (retry idempotency), the PROCESSING drain

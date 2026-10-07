@@ -3215,6 +3215,46 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/talent-records/{id}/resume-editions/{editionId}/archive:
+    post:
+      operationId: archiveTalentResumeEdition
+      summary: Archive a resume revision — active to archived (Resume Revision Lifecycle §8).
+      description: |
+        Archive a resume revision (lifecycle active -> archived). Archive is NOT
+        delete: the revision remains stored, visible in history, and resolvable by
+        completed Submittals; it is excluded from ordinary selectors and from new
+        requisition selection. Idempotent; transitions only from active (never
+        clobbers an explicit retracted); no un-archive in this increment. Returns the
+        full edition collection with the updated lifecycle. Gated: capability ats +
+        scope talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: editionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The resume-edition collection with the archived revision's updated lifecycle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentResumeEditionsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
 
   /v1/placements:
     get:
@@ -8138,6 +8178,8 @@ components:
         - edition_id
         - purpose
         - label
+        - requisition_id
+        - revision_number
         - filename
         - mime_type
         - created_at
@@ -8151,6 +8193,14 @@ components:
           enum: [GENERAL, ROLE_FAMILY, REQUISITION, CLIENT_SUBMITTAL, USER_DEFINED]
         label:
           type: [string, 'null']
+        # Resume Revision Lifecycle §3/§5 — requisition this edition was tailored
+        # for (null = general); drives ordering + the "Tailored for this
+        # requisition" label. §2/§10 revision_number = derived per-lineage ordinal.
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+        revision_number:
+          type: [integer, 'null']
         filename:
           type: string
         mime_type:
@@ -8171,6 +8221,8 @@ components:
         - selected_at
         - selected_by
         - default_edition_id
+        - selected_lifecycle_status
+        - selected_requires_attention
         - available_editions
       properties:
         pipeline_id:
@@ -8197,6 +8249,14 @@ components:
         default_edition_id:
           type: [string, 'null']
           format: uuid
+        # Resume Revision Lifecycle §9 — lifecycle of the current selection, and
+        # whether it requires the recruiter's attention (archived/retracted ⇒
+        # requires replacement before a client handoff; the submit guard enforces
+        # the same rule). null lifecycle when nothing is selected.
+        selected_lifecycle_status:
+          type: [string, 'null']
+        selected_requires_attention:
+          type: boolean
         # Editions eligible for a NEW selection (lifecycle=active).
         available_editions:
           type: array
@@ -8227,6 +8287,10 @@ components:
         - mime_type
         - uploaded_at
         - is_default
+        - revision_number
+        - requisition_id
+        - client_context_id
+        - derived_from_edition_id
         - processing_status
       properties:
         edition_id:
@@ -8260,6 +8324,21 @@ components:
           format: date-time
         is_default:
           type: boolean
+        # Resume Revision Lifecycle §2/§10 — derived per-lineage revision ordinal
+        # (Revision 1,2,3…); null only on a single-row path with no list context.
+        revision_number:
+          type: [integer, 'null']
+        # Resume Revision Lifecycle §3 — authoritative requisition this revision was
+        # tailored for (null = general); lineage pointer when derived. UUID-only.
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+        client_context_id:
+          type: [string, 'null']
+          format: uuid
+        derived_from_edition_id:
+          type: [string, 'null']
+          format: uuid
         # TI-1F-A — governed-extraction lifecycle, DERIVED from the edition's
         # ResumeExtractionDraft (no new source of truth). null for an edition
         # with no draft (created before TI-1F-A). READ-ONLY projection.

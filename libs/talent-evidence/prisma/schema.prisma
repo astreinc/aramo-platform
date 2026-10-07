@@ -575,8 +575,17 @@ model TalentResumeEdition {
   attachment_id            String?                      @db.Uuid
 
   // Content identity for idempotent re-extraction (§25 / ruling 12): the hash of
-  // the resume text/bytes. A NEW content_hash is the re-extraction trigger key.
+  // the resume TEXT (source-map text_hash). A NEW content_hash is the
+  // re-extraction trigger key. NOT the dedup key (that is artifact_sha256).
   content_hash             String
+
+  // Resume Revision Lifecycle §4/§11 (D-2 PO ruling) — the AUTHORITATIVE artifact
+  // byte SHA-256 (deterministic hash of the raw object bytes). The exact-duplicate
+  // key: a re-upload of identical bytes for the same Talent is rejected, never a
+  // new revision. NULLABLE — legacy rows (pre-this-migration) and editions minted
+  // before a byte hash was computed carry null; Postgres UNIQUE treats nulls as
+  // distinct so they never collide. NEVER dedup by filename or extracted text.
+  artifact_sha256          String?
 
   // Resume-specific context (ruling 18). Requisition/client refs are UUID-only,
   // no FK (cross-domain seams).
@@ -597,6 +606,11 @@ model TalentResumeEdition {
   @@index([tenant_id])
   @@index([tenant_id, talent_id])
   @@index([tenant_id, talent_id, purpose])
+  // Resume Revision Lifecycle §4 — exact-artifact dedup guard. Deterministic
+  // backstop against a concurrent double-upload of identical bytes (the app
+  // surface checks first; this makes the invariant race-proof). Nulls are
+  // distinct in Postgres, so legacy/hashless rows are unaffected.
+  @@unique([tenant_id, talent_id, artifact_sha256])
   @@schema("talent_evidence")
 }
 

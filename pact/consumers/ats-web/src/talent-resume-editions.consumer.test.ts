@@ -31,12 +31,18 @@ function editionRow(over: Record<string, unknown>) {
     attachment_id: over['attachment_id'] ?? null,
     purpose: over['purpose'] ?? 'GENERAL',
     label: over['label'] ?? null,
-    lifecycle_status: 'active',
+    lifecycle_status: over['lifecycle_status'] ?? 'active',
     created_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
     filename: like((over['filename'] as string) ?? 'grace-general.pdf'),
     mime_type: like((over['mime_type'] as string) ?? 'application/pdf'),
     uploaded_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00Z'),
     is_default: over['is_default'] ?? false,
+    // Resume Revision Lifecycle §2/§3/§10 — derived revision ordinal + the
+    // authoritative requisition/lineage context (null for a general revision).
+    revision_number: over['revision_number'] ?? like(1),
+    requisition_id: over['requisition_id'] ?? null,
+    client_context_id: over['client_context_id'] ?? null,
+    derived_from_edition_id: over['derived_from_edition_id'] ?? null,
     // TI-1F-A — DERIVED from the edition's ResumeExtractionDraft; null for
     // editions seeded without a draft (the list-read provider state).
     processing_status: over['processing_status'] ?? null,
@@ -219,6 +225,46 @@ describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/rej
         expect(res.status).toBe(200);
         const body = (await res.json()) as { processing_status: string };
         expect(body.processing_status).toBe('REJECTED');
+      });
+  });
+});
+
+describe('ats-web → POST /v1/talent-records/:id/resume-editions/:editionId/archive', () => {
+  it('returns 200 with the collection; the archived revision is lifecycle_status=archived (§8)', async () => {
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a talent with a resume edition exist')
+      .uponReceiving('a resume-revision archive')
+      .withRequest('POST', `/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/archive`, (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE) });
+        b.jsonBody({});
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          talent_id: uuid(TALENT_ID),
+          editions: [
+            editionRow({
+              edition_id: ED_A,
+              talent_document_id: DOC_A,
+              filename: 'grace.pdf',
+              lifecycle_status: 'archived',
+              is_default: false,
+            }),
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(
+          `${mock.url}/v1/talent-records/${TALENT_ID}/resume-editions/${ED_A}/archive`,
+          {
+            method: 'POST',
+            headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+          },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { editions: Array<{ lifecycle_status: string }> };
+        expect(body.editions[0]?.lifecycle_status).toBe('archived');
       });
   });
 });

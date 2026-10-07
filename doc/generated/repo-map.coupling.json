@@ -7956,6 +7956,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
       "status": "excluded",
       "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
@@ -19820,6 +19838,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/talent-evidence/prisma/migrations/20260922120000_doc1b_talentdocument_reconciliation/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

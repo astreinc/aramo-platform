@@ -487,6 +487,13 @@ export interface TalentResumeEditionView {
   readonly mime_type: string;
   readonly uploaded_at: string;
   readonly is_default: boolean;
+  // Resume Revision Lifecycle §2/§10 — derived per-lineage revision ordinal.
+  readonly revision_number: number | null;
+  // Resume Revision Lifecycle §3 — the authoritative requisition this revision was
+  // tailored for (null for a general revision); lineage pointer when derived.
+  readonly requisition_id: string | null;
+  readonly client_context_id: string | null;
+  readonly derived_from_edition_id: string | null;
   // TALENT-INTEL-1 (TI-1F-A) — governed-extraction lifecycle, DERIVED from the
   // edition's ResumeExtractionDraft (READ-ONLY): PROCESSING | READY_FOR_REVIEW |
   // ACCEPTED | REJECTED | FAILED, or null for an edition with no draft. TI-1F-C

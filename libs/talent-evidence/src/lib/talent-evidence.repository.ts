@@ -411,6 +411,9 @@ export interface CreateTalentDocumentInput {
   consent_scope_at_upload: readonly string[];
   retention_policy: TalentDocumentRetentionPolicyValue;
   is_active: boolean;
+  // Resume Revision Lifecycle §4 — real artifact byte SHA-256 for the canonical
+  // DocumentRevision/DocumentArtifact (replaces the 'unknown' placeholder).
+  artifact_sha256?: string;
 }
 
 // DOC-1b — TalentDocument is now a Talent-specific projection over the canonical
@@ -448,6 +451,9 @@ export interface CreateTalentResumeEditionInput {
   content_hash: string;
   created_at: Date;
   created_by: string;
+  // Resume Revision Lifecycle §4 — the authoritative artifact byte SHA-256
+  // (exact-duplicate key). NULLABLE — omitted ⇒ legacy/hashless edition.
+  artifact_sha256?: string;
   // Optional context / lineage (all NULLABLE).
   attachment_id?: string;
   purpose?: TalentResumeEditionPurposeValue; // omitted ⇒ GENERAL (DB default)
@@ -465,6 +471,7 @@ export interface TalentResumeEditionRow {
   talent_document_id: string;
   attachment_id: string | null;
   content_hash: string;
+  artifact_sha256: string | null;
   purpose: TalentResumeEditionPurposeValue;
   label: string | null;
   requisition_id: string | null;
@@ -1435,6 +1442,10 @@ export class TalentEvidenceRepository {
       uploaded_by_actor_id: string;
       uploaded_at: Date;
       is_active: boolean;
+      // Resume Revision Lifecycle §4 — the real artifact byte SHA-256, written
+      // into the canonical DocumentRevision/DocumentArtifact instead of the
+      // 'unknown' placeholder. Absent ⇒ legacy 'unknown' (non-resume callers).
+      artifact_sha256?: string;
     },
   ): Promise<string> {
     const documentId = randomUUID();
@@ -1443,17 +1454,18 @@ export class TalentEvidenceRepository {
     const associationId = randomUUID();
     const typeId = TalentEvidenceRepository.TALENT_DOCUMENT_TYPE_IDS[input.document_type];
     const status = input.is_active ? 'EXECUTED' : 'VOIDED';
+    const sha256 = input.artifact_sha256 ?? 'unknown';
     await tx.$executeRawUnsafe(
       `INSERT INTO "documents"."Document" ("id","tenant_id","document_type_id","title","status","execution_mode","source_kind","created_by","created_at") VALUES ($1,$2,$3,$4,$5,'NO_SIGNATURE','UPLOADED',$6,$7)`,
       documentId, input.tenant_id, typeId, input.filename, status, input.uploaded_by_actor_id, input.uploaded_at,
     );
     await tx.$executeRawUnsafe(
-      `INSERT INTO "documents"."DocumentRevision" ("id","tenant_id","document_id","revision_number","mime_type","byte_size","content_sha256","status","created_by","created_at","frozen_at") VALUES ($1,$2,$3,1,$4,$5,'unknown','FROZEN',$6,$7,$7)`,
-      revisionId, input.tenant_id, documentId, input.mime_type, input.size_bytes, input.uploaded_by_actor_id, input.uploaded_at,
+      `INSERT INTO "documents"."DocumentRevision" ("id","tenant_id","document_id","revision_number","mime_type","byte_size","content_sha256","status","created_by","created_at","frozen_at") VALUES ($1,$2,$3,1,$4,$5,$6,'FROZEN',$7,$8,$8)`,
+      revisionId, input.tenant_id, documentId, input.mime_type, input.size_bytes, sha256, input.uploaded_by_actor_id, input.uploaded_at,
     );
     await tx.$executeRawUnsafe(
-      `INSERT INTO "documents"."DocumentArtifact" ("id","tenant_id","revision_id","document_id","artifact_role","storage_provider","storage_locator","mime_type","byte_size","sha256","immutability_state","retention_class","created_at","created_by") VALUES ($1,$2,$3,$4,'SOURCE_UPLOAD','aramo-s3',$5,$6,$7,'unknown','FROZEN','TALENT_DOCUMENT',$8,$9)`,
-      artifactId, input.tenant_id, revisionId, documentId, input.file_storage_ref, input.mime_type, input.size_bytes, input.uploaded_at, input.uploaded_by_actor_id,
+      `INSERT INTO "documents"."DocumentArtifact" ("id","tenant_id","revision_id","document_id","artifact_role","storage_provider","storage_locator","mime_type","byte_size","sha256","immutability_state","retention_class","created_at","created_by") VALUES ($1,$2,$3,$4,'SOURCE_UPLOAD','aramo-s3',$5,$6,$7,$8,'FROZEN','TALENT_DOCUMENT',$9,$10)`,
+      artifactId, input.tenant_id, revisionId, documentId, input.file_storage_ref, input.mime_type, input.size_bytes, sha256, input.uploaded_at, input.uploaded_by_actor_id,
     );
     await tx.$executeRawUnsafe(
       `INSERT INTO "documents"."DocumentAssociation" ("id","tenant_id","document_id","resource_type","resource_id","relationship","created_at","created_by") VALUES ($1,$2,$3,'TALENT',$4,'SUBJECT',$5,$6)`,
@@ -1477,6 +1489,7 @@ export class TalentEvidenceRepository {
         uploaded_by_actor_id: input.uploaded_by_actor_id,
         uploaded_at: input.uploaded_at,
         is_active: input.is_active,
+        artifact_sha256: input.artifact_sha256,
       });
       const created = await tx.talentDocument.create({
         data: {
@@ -1511,6 +1524,7 @@ export class TalentEvidenceRepository {
         talent_id: input.talent_id,
         talent_document_id: input.talent_document_id,
         content_hash: input.content_hash,
+        artifact_sha256: input.artifact_sha256,
         created_at: input.created_at,
         created_by: input.created_by,
         attachment_id: input.attachment_id,
@@ -2440,6 +2454,57 @@ export class TalentEvidenceRepository {
     return (row as TalentResumeEditionRow | null) ?? null;
   }
 
+  // Resume Revision Lifecycle §4 — the exact-artifact dedup lookup: does this
+  // Talent already have an edition whose artifact byte SHA-256 matches? Scoped to
+  // (tenant, talent) — never cross-Talent, never cross-tenant (§4/§16). Returns
+  // the EXISTING edition (any lifecycle_status, incl. archived — the artifact is
+  // still "on the profile") so the caller can surface "already on this Talent's
+  // profile — Revision N". Deterministic artifact equality only; the DB
+  // UNIQUE(tenant, talent, artifact_sha256) is the race backstop.
+  async findResumeEditionByArtifactSha256(args: {
+    tenant_id: string;
+    talent_id: string;
+    artifact_sha256: string;
+  }): Promise<TalentResumeEditionRow | null> {
+    const row = await this.prisma.talentResumeEdition.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_id: args.talent_id,
+        artifact_sha256: args.artifact_sha256,
+      },
+      orderBy: { created_at: 'asc' },
+    });
+    return (row as TalentResumeEditionRow | null) ?? null;
+  }
+
+  // Resume Revision Lifecycle §8 — ARCHIVE a resume edition (active → archived).
+  // Archive is NOT delete: the row, its artifact, and any historical Submittal
+  // reference remain intact; the edition is merely excluded from ordinary
+  // selectors and new requisition selection. Scoped to (tenant, talent) and
+  // transitions ONLY from 'active' (never clobbers an explicit 'retracted');
+  // re-archiving an already-archived edition is an idempotent no-op. No
+  // un-archive in this increment (ACTIVE/ARCHIVED only, §8/§16). Returns the
+  // current row (null if the edition is absent / not owned).
+  async archiveResumeEdition(args: {
+    tenant_id: string;
+    talent_id: string;
+    edition_id: string;
+  }): Promise<TalentResumeEditionRow | null> {
+    await this.prisma.talentResumeEdition.updateMany({
+      where: {
+        id: args.edition_id,
+        tenant_id: args.tenant_id,
+        talent_id: args.talent_id,
+        lifecycle_status: 'active',
+      },
+      data: { lifecycle_status: 'archived' },
+    });
+    const row = await this.prisma.talentResumeEdition.findUnique({
+      where: { id: args.edition_id },
+    });
+    return (row as TalentResumeEditionRow | null) ?? null;
+  }
+
   // TALENT-INTEL-1 TI-1D-C — the edition COLLECTION for the read API, each row
   // projected with its TalentDocument metadata (filename/mime_type/uploaded_at)
   // and a default marker. Editions and TalentDocuments are same-schema
@@ -2459,7 +2524,8 @@ export class TalentEvidenceRepository {
       // filename→Document.title, mime_type→DocumentRevision.mime_type,
       // uploaded_at→Document.created_at. The output aliases are unchanged.
       `SELECT e.id, e.tenant_id, e.talent_id, e.talent_document_id, e.attachment_id,
-              e.content_hash, e.purpose, e.label, e.requisition_id, e.client_context_id,
+              e.content_hash, e.artifact_sha256, e.purpose, e.label, e.requisition_id,
+              e.client_context_id,
               e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
               doc.title AS document_filename, rev.mime_type AS document_mime_type,
               doc.created_at AS document_uploaded_at,
@@ -2489,6 +2555,7 @@ export class TalentEvidenceRepository {
       talent_document_id: r['talent_document_id'] as string,
       attachment_id: (r['attachment_id'] as string | null) ?? null,
       content_hash: r['content_hash'] as string,
+      artifact_sha256: (r['artifact_sha256'] as string | null) ?? null,
       purpose: r['purpose'] as TalentResumeEditionPurposeValue,
       label: (r['label'] as string | null) ?? null,
       requisition_id: (r['requisition_id'] as string | null) ?? null,

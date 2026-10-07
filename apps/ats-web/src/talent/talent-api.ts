@@ -253,6 +253,20 @@ export async function rejectTalentResumeEdition(
   );
 }
 
+// Resume Revision Lifecycle §8 — ARCHIVE a resume revision (active → archived).
+// Archive is not delete: the revision stays in history and remains resolvable by
+// any completed Submittal; it is just excluded from ordinary selectors and new
+// requisition selection. Returns the refreshed edition collection.
+export async function archiveTalentResumeEdition(
+  id: string,
+  editionId: string,
+): Promise<TalentResumeEditionsResponse> {
+  return apiClient.post<TalentResumeEditionsResponse>(
+    `/v1/talent-records/${encodeURIComponent(id)}/resume-editions/${encodeURIComponent(editionId)}/archive`,
+    {},
+  );
+}
+
 // R5 — the resume flow (the 3-step: upload-url → presigned PUT → parse).
 //
 // Step 1: ask the BE for a presigned PUT URL. Scope: attachment:create
