@@ -616,17 +616,23 @@ export function TalentDetailPanel({
       {/* §7 — the shared Record Talent Response modal. On success the backend has
           recorded evidence + advanced the milestone; we refetch canonical journey
           state (never force a stage FE-side). */}
-      <RecordTalentResponseModal
-        open={responseOpen}
-        pipelineId={entry.id}
-        talentName={talentName ?? 'Talent'}
-        reqCode={reqCode}
-        onRecorded={() => {
-          setResponseOpen(false);
-          refetchJourney();
-        }}
-        onClose={() => setResponseOpen(false)}
-      />
+      {/* Mounted only while open: the modal calls useToast() at render, so mounting it
+          closed would require a ToastProvider in every TalentDetailPanel host (incl. the
+          inline list/board preview). Gating the mount scopes that dependency to the actual
+          open action (the app root provides ToastProvider). */}
+      {responseOpen && (
+        <RecordTalentResponseModal
+          open
+          pipelineId={entry.id}
+          talentName={talentName ?? 'Talent'}
+          reqCode={reqCode}
+          onRecorded={() => {
+            setResponseOpen(false);
+            refetchJourney();
+          }}
+          onClose={() => setResponseOpen(false)}
+        />
+      )}
     </>
   );
 }

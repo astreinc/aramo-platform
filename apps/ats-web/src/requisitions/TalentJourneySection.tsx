@@ -169,7 +169,7 @@ export function TalentJourneySection({
   // §14 — the canonical recruiting next-action is the backend's (not stage equality).
   // At most one recruiting action is available per milestone; qualified/terminal → none.
   const recruitingAction: RecruitingAvailableAction | null =
-    journey.recruiting_available_actions.find((a) => a in RECRUITING_ACTION_CTA) ?? null;
+    (journey.recruiting_available_actions ?? []).find((a) => a in RECRUITING_ACTION_CTA) ?? null;
   const recruitingCta = recruitingAction === null ? null : RECRUITING_ACTION_CTA[recruitingAction];
   const onRecruitingCtaClick = (): void => {
     if (recruitingCta === null) return;
