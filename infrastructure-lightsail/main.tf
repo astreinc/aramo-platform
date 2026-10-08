@@ -30,11 +30,26 @@ resource "aws_lightsail_instance" "this" {
     Name = var.instance_name
     Role = "single-box-app"
   }
+
+  # user_data is create-only and the Lightsail API does NOT return it, so after a
+  # `terraform import` (e.g. the 2026-10-07 snapshot-based resize) state reads it
+  # as empty while the config has the file content — WITHOUT this, that phantom
+  # diff would FORCE-REPLACE the running prod instance. Ignore it: user_data only
+  # ever runs at first boot, which is irrelevant for an imported/snapshot box.
+  # key_pair_name: the 2026-10-07 snapshot-recreated box reports
+  # "LightsailDefaultKeyPair" (create-from-snapshot didn't re-pin the key pair),
+  # but SSH works via the baked authorized_keys. key_pair_name is force-new, so
+  # without ignoring it the import would FORCE-REPLACE the running prod instance.
+  lifecycle {
+    ignore_changes = [user_data, key_pair_name]
+  }
 }
 
 # --- Static IP + attachment -------------------------------------------------
 resource "aws_lightsail_static_ip" "this" {
-  name = "${var.instance_name}-ip"
+  # Decoupled from instance_name (2026-10-07 resize) so an instance rename never
+  # churns the IP. The real resource name stays "astre-aramo-prod-ip".
+  name = var.static_ip_name
 }
 
 resource "aws_lightsail_static_ip_attachment" "this" {
