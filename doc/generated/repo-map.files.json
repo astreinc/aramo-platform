@@ -467,6 +467,7 @@
     "apps/api/src/tests/embedding-resolution.spec.ts",
     "apps/api/src/tests/engagement-gate.service.spec.ts",
     "apps/api/src/tests/engagement-policy-publish-ownership.spec.ts",
+    "apps/api/src/tests/engagement-publish-dto.validation.spec.ts",
     "apps/api/src/tests/enterprise-search-company.integration.spec.ts",
     "apps/api/src/tests/enterprise-search-contact.integration.spec.ts",
     "apps/api/src/tests/enterprise-search-read.service.spec.ts",
