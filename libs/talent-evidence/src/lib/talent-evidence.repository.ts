@@ -735,15 +735,6 @@ export interface CreateSourceIntakeWithOutboxInput {
   event_payload: unknown;
 }
 
-export interface TalentIntakeOutboxEventRow {
-  id: string;
-  tenant_id: string;
-  event_type: string;
-  event_payload: unknown;
-  created_at: Date;
-  published_at: Date | null;
-}
-
 // A leased outbox row in the canonical envelope shape (ADR-0033). Structurally
 // compatible with @aramo/events CanonicalOutboxRow; the apps/api composition
 // root binds this repo to the LeaseSafeOutboxRepository port without a direct
@@ -2164,17 +2155,6 @@ export class TalentEvidenceRepository {
     });
   }
 
-  // Intake outbox drain (read side for the relay).
-  async findUnpublishedTalentIntakeOutboxEvents(args: {
-    limit: number;
-  }): Promise<TalentIntakeOutboxEventRow[]> {
-    const rows = await this.prisma.talentIntakeOutboxEvent.findMany({
-      where: { published_at: null },
-      orderBy: { created_at: 'asc' },
-      take: args.limit,
-    });
-    return rows as unknown as TalentIntakeOutboxEventRow[];
-  }
 
   async markTalentIntakeOutboxPublished(args: {
     event_ids: string[];

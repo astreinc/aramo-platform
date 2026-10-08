@@ -78,7 +78,6 @@ export type {
   CreateTalentIntakeDraftInput,
   CreateSourceIntakeWithOutboxInput,
   TalentIntakeOutboxClaimRow,
-  TalentIntakeOutboxEventRow,
   TalentIntakeProcessingStatusValue,
   TalentIntakeReviewStatusValue,
   // TI-1F-B promotion — the typed-evidence row inputs the confirm path shapes.
