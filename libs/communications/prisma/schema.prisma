@@ -43,6 +43,10 @@ enum CommunicationChannel {
   email
   // COMM-C2B — provider-neutral meeting channel (e.g. a Teams online meeting).
   meeting
+  // Recruiting-Journey §7 — a recruiter-attested response via an unintegrated
+  // channel the recruiter describes in the note ("Other"). Only attested records
+  // use it; no provider adapter emits it.
+  other
 
   @@schema("communications")
 }
@@ -52,6 +56,21 @@ enum CommunicationChannel {
 enum CommunicationDirection {
   outbound
   inbound
+
+  @@schema("communications")
+}
+
+// CommunicationEvidenceAuthority (Recruiting-Journey §7/§16, I3) — the EXPLICIT
+// authority of an interaction's evidence, stored (never guessed from call-status).
+// `provider_verified` = mediated by an integration connection (Microsoft Graph /
+// Zoom); `recruiter_attested` = a recruiter's attested account of an off-platform
+// contact/response (integration_connection_id is NULL, provider ids NULL). These
+// authorities stay distinguishable (I3): an attested record is NEVER graded
+// provider-verified. Existing rows default `provider_verified` (they were all
+// provider-mediated), so downstream engagement/submittal grading is unchanged (§19).
+enum CommunicationEvidenceAuthority {
+  provider_verified
+  recruiter_attested
 
   @@schema("communications")
 }
@@ -73,6 +92,12 @@ enum CommunicationInteractionStatus {
   failed
   missed
   rejected
+  // Recruiting-Journey §7/§16 — the NEUTRAL terminal state of a recruiter-attested
+  // interaction (an off-platform contact/response the recruiter records). It has NO
+  // provider semantics: `recorded` is never `connected`/`completed`, so an attested
+  // callback can never be read as a provider-verified two-way call. Only attested
+  // (evidence_authority=recruiter_attested) interactions use it.
+  recorded
 
   @@schema("communications")
 }
@@ -150,8 +175,18 @@ model CommunicationInteraction {
   direction CommunicationDirection
   status    CommunicationInteractionStatus @default(created)
 
-  // UUID-only reference to integration.IntegrationConnection (no FK).
-  integration_connection_id String @db.Uuid
+  // Recruiting-Journey §7/§16, I3 — the CANONICAL evidence authority of this
+  // interaction. Authority is STORED here, never inferred from status. Defaults to
+  // provider_verified so every pre-existing (provider-mediated) row is classified
+  // correctly by the backfill without fabricating provenance (§19 unchanged).
+  evidence_authority CommunicationEvidenceAuthority @default(provider_verified)
+
+  // UUID-only reference to integration.IntegrationConnection (no FK). NULLABLE only
+  // for non-provider provenance (evidence_authority=recruiter_attested): a recruiter-
+  // attested off-platform interaction has NO integration connection and NO provider
+  // identifiers — never a sentinel/fabricated connection (§16, I3). Provider-backed
+  // (Microsoft/Zoom) rows ALWAYS carry a real connection id, unchanged.
+  integration_connection_id String? @db.Uuid
 
   // Provider correlation metadata ONLY — never Aramo identity. Current Zoom
   // call-element model (R-COMM-ZOOM-IDENTITY); all nullable.

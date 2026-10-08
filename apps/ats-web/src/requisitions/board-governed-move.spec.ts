@@ -28,7 +28,7 @@ const move = (c: BoardCardView, target: BoardColumnKey, scopes: string[]) =>
 
 describe('resolveGovernedMove (TB-5 governance)', () => {
   it('accepts a forward drop matching the card’s projected governed action', () => {
-    const c = card('pipeline', [action('pipeline.contact', 'pipeline:change-status')]);
+    const c = card('pipeline', [action('pipeline.contact_talent', 'pipeline:change-status')]);
     const r = move(c, 'contacted', ['pipeline:change-status']);
     expect(r).toEqual({ ok: true, action: c.next_actions[0], target: 'contacted' });
   });
@@ -39,7 +39,7 @@ describe('resolveGovernedMove (TB-5 governance)', () => {
   });
 
   it('rejects a drop that maps to no governed action for the card', () => {
-    const c = card('pipeline', [action('pipeline.contact', 'pipeline:change-status')]);
+    const c = card('pipeline', [action('pipeline.contact_talent', 'pipeline:change-status')]);
     expect(move(c, 'qualified', ['pipeline:change-status'])).toEqual({ ok: false, reason: 'no_governed_action' });
   });
 
@@ -55,7 +55,7 @@ describe('resolveGovernedMove (TB-5 governance)', () => {
   });
 
   it('rejects when the actor lacks the action’s scope', () => {
-    const c = card('pipeline', [action('pipeline.contact', 'pipeline:change-status')]);
+    const c = card('pipeline', [action('pipeline.contact_talent', 'pipeline:change-status')]);
     expect(move(c, 'contacted', [])).toEqual({ ok: false, reason: 'scope_missing' });
   });
 

@@ -137,30 +137,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(created.version).toBe(0); // BEFORE — fresh episode at version 0
 
-      // A committed transition advances the version 0 -> 1.
-      const first = await repo.transition({
+      // A committed advance (evidence-backed contacted) moves version 0 -> 1.
+      const first = await repo.recordContactEvidence({
         tenant_id: tenant,
         id: created.id,
-        to_status: 'contacted',
         changed_by_id: randomUUID(),
         requestId: 'cas-1a',
         expected_version: 0,
         visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
       });
       expect(first.version).toBe(1); // EXACT after
       // Two history rows now: the L2-B birth row + this committed transition.
       expect(await historyCount(created.id)).toBe(2);
 
-      // The second transition presents the STALE version 0 (it should be 1 now).
+      // The second advance presents the STALE version 0 (it should be 1 now).
       await expect(
-        repo.transition({
+        repo.recordResponseEvidence({
           tenant_id: tenant,
           id: created.id,
-          to_status: 'talent_responded',
           changed_by_id: randomUUID(),
           requestId: 'cas-1b',
           expected_version: 0,
           visible_requisition_ids: null,
+          evidence: { kind: 'test_response', id: randomUUID() },
         }),
       ).rejects.toMatchObject({
         code: 'PIPELINE_TRANSITION_CONFLICT',
@@ -184,20 +184,103 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         input: { talent_record_id: randomUUID(), requisition_id: randomUUID() }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       let v = created.version; // 0
-      for (const to of ['contacted', 'talent_responded', 'qualifying'] as const) {
-        const res = await repo.transition({
-          tenant_id: tenant,
-          id: created.id,
-          to_status: to,
-          changed_by_id: randomUUID(),
-          requestId: `mono-${to}`,
-          expected_version: v,
-          visible_requisition_ids: null,
-        });
-        expect(res.version).toBe(v + 1); // EXACT +1 each hop
-        v = res.version;
-      }
+      // contacted + talent_responded are evidence-backed (evidence-bearing commands);
+      // qualifying is a recruiter DECISION edge (naked transition, no evidence).
+      const contacted = await repo.recordContactEvidence({
+        tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
+        requestId: 'mono-contacted', expected_version: v, visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
+      });
+      expect(contacted.version).toBe(v + 1); v = contacted.version;
+      const responded = await repo.recordResponseEvidence({
+        tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
+        requestId: 'mono-responded', expected_version: v, visible_requisition_ids: null,
+        evidence: { kind: 'test_response', id: randomUUID() },
+      });
+      expect(responded.version).toBe(v + 1); v = responded.version;
+      const qualifying = await repo.transition({
+        tenant_id: tenant, id: created.id, to_status: 'qualifying', changed_by_id: randomUUID(),
+        requestId: 'mono-qualifying', expected_version: v, visible_requisition_ids: null,
+      });
+      expect(qualifying.version).toBe(v + 1); v = qualifying.version;
       expect(v).toBe(3);
+    });
+
+    // ---- CAS-3 — write-skew guard: a concurrent advance landing BETWEEN the read
+    // and the guarded write cannot clobber (deterministic read-barrier) ----
+    //
+    // CAS-1 only proves the JS pre-check: a version already stale at findFirst time.
+    // The write-SKEW hazard is a second writer that commits AFTER this caller's
+    // findFirst passed but BEFORE its own write executes — two same-version writers
+    // both clear the JS compare, and an unguarded `update WHERE id` lets the loser
+    // silently clobber the winner. We make the interleave DETERMINISTIC (never a
+    // flaky race) by advancing the row on a side-channel connection exactly at the
+    // $transaction boundary — i.e. strictly after the repo's findFirst (which read
+    // v0 and cleared the pre-check) and strictly before its guarded write.
+    //
+    // NEGATIVE CONTROL: against an unguarded `update WHERE id`, the stale writer
+    // commits talent_responded at version 2 with a stale (no_contact ->
+    // talent_responded) history row, clobbering writer A's contacted/v1 — this test
+    // is RED against that pin. With the version-guarded write the stale write
+    // matches 0 rows and resolves as PIPELINE_TRANSITION_CONFLICT, committing nothing.
+    it('CAS: a concurrent advance between read and guarded write cannot clobber (write-skew)', async () => {
+      const tenant = randomUUID();
+      const created = await repo.create({
+        tenant_id: tenant,
+        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() },
+        entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
+      });
+      expect(created.version).toBe(0); // BEFORE — fresh episode at version 0
+
+      // Deterministic read-barrier: at the FIRST $transaction (the stale writer's
+      // write tx) simulate writer A committing no_contact -> contacted (v0 -> v1) on
+      // a separate connection — strictly between the stale writer's findFirst and
+      // its guarded write.
+      const realTx = prisma.$transaction.bind(prisma);
+      let barrierFired = false;
+      (prisma as unknown as { $transaction: unknown }).$transaction = (async (
+        fn: unknown,
+        opts: unknown,
+      ) => {
+        if (!barrierFired) {
+          barrierFired = true;
+          await setup.$executeRawUnsafe(
+            `UPDATE pipeline."Pipeline" SET status = 'contacted', version = version + 1 WHERE id = '${created.id}'`,
+          );
+        }
+        return (realTx as (fn: unknown, opts: unknown) => unknown)(fn, opts);
+      }) as unknown as typeof prisma.$transaction;
+
+      try {
+        // The stale writer presents the version it read (0) and a LEGAL,
+        // evidence-backed target (no_contact -> talent_responded). Writer A has since
+        // advanced the row to contacted/v1 — the guarded write must see 0 rows and
+        // conflict (the evidence gate is satisfied; the CAS guard is what refuses).
+        await expect(
+          repo.recordResponseEvidence({
+            tenant_id: tenant,
+            id: created.id,
+            changed_by_id: randomUUID(),
+            requestId: 'cas-3-stale',
+            expected_version: 0,
+            visible_requisition_ids: null,
+            evidence: { kind: 'test_response', id: randomUUID() },
+          }),
+        ).rejects.toMatchObject({ code: 'PIPELINE_TRANSITION_CONFLICT', statusCode: 409 });
+      } finally {
+        (prisma as unknown as { $transaction: unknown }).$transaction = realTx;
+      }
+
+      expect(barrierFired).toBe(true); // the barrier DID interleave
+
+      // Writer A's commit SURVIVES; the stale writer clobbered NOTHING: contacted,
+      // version EXACTLY 1, and only the L2-B birth row in history (writer A's
+      // side-channel UPDATE writes no history row; the stale transition committed
+      // none). Against the unguarded pin this reads talent_responded / v2 / 2 rows.
+      const after = await repo.findById({ tenant_id: tenant, id: created.id });
+      expect(after?.status).toBe('contacted');
+      expect(after?.version).toBe(1);
+      expect(await historyCount(created.id)).toBe(1);
     });
 
     // ---- VIS-1 — transition on a non-visible pipeline is concealed as 404, mutates nothing ----
@@ -212,14 +295,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const excludes = new Set<string>([randomUUID()]);
 
       await expect(
-        repo.transition({
+        repo.recordContactEvidence({
           tenant_id: tenant,
           id: created.id,
-          to_status: 'contacted',
           changed_by_id: randomUUID(),
           requestId: 'vis-1',
           expected_version: 0,
           visible_requisition_ids: excludes,
+          evidence: { kind: 'test_contact', id: randomUUID() },
         }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
 
@@ -231,15 +314,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(after?.version).toBe(0);
       expect(await historyCount(created.id)).toBe(1);
 
-      // Control: see-all (null) transitions successfully — the row IS mutable when visible.
-      const ok = await repo.transition({
+      // Control: see-all (null) advances successfully — the row IS mutable when visible.
+      const ok = await repo.recordContactEvidence({
         tenant_id: tenant,
         id: created.id,
-        to_status: 'contacted',
         changed_by_id: randomUUID(),
         requestId: 'vis-1-ok',
         expected_version: 0,
         visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
       });
       expect(ok.status).toBe('contacted');
     });
@@ -260,14 +343,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: tenant,
         input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
-      await repo.transition({
+      await repo.recordContactEvidence({
         tenant_id: tenant,
         id: created.id,
-        to_status: 'contacted',
         changed_by_id: randomUUID(),
         requestId: 'vis-3-seed',
         expected_version: 0,
         visible_requisition_ids: null,
+        evidence: { kind: 'test_contact', id: randomUUID() },
       });
       const excludes = new Set<string>([randomUUID()]);
 

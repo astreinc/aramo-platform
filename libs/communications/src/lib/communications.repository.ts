@@ -5,6 +5,7 @@ import type {
   CommunicationChannel,
   CommunicationDirection,
   CommunicationDispositionOutcome,
+  CommunicationEvidenceAuthority,
   CommunicationInteractionStatus,
   CommunicationProviderIdentityStatus,
   CommunicationRelationType,
@@ -53,6 +54,7 @@ export interface InteractionRow {
 export interface VoiceEvidenceInteractionRow {
   id: string;
   status: CommunicationInteractionStatus;
+  evidence_authority: CommunicationEvidenceAuthority;
   created_at: Date;
   dispositions: { disposition: CommunicationDispositionOutcome; dispositioned_at: Date }[];
 }
@@ -122,6 +124,140 @@ export class CommunicationsRepository {
         ended_at: args.ended_at ?? null,
       },
     })) as InteractionRow;
+  }
+
+  // Recruiting-Journey §7/§16 — ATOMICALLY record a recruiter-attested Talent
+  // response as a first-class communication interaction. ONE transaction writes the
+  // interaction (direction=inbound, status=recorded, evidence_authority=
+  // recruiter_attested, NO integration connection, NO provider ids), its canonical
+  // associations (talent subject + requisition/pipeline regarding), AND its
+  // disposition — so a response interaction is NEVER persisted without its
+  // associations/disposition (watch-item #1). Idempotent on (tenant, idempotency_key):
+  // a retried recorder returns the existing row (deduped) WITHOUT a second write;
+  // genuinely separate responses carry distinct keys and both persist (watch-item #3).
+  async recordAttestedResponse(args: {
+    tenant_id: string;
+    site_id?: string | null;
+    talent_record_id: string;
+    requisition_id: string;
+    pipeline_id: string;
+    channel: CommunicationChannel;
+    occurred_at: Date;
+    recorded_by_id: string;
+    disposition: CommunicationDispositionOutcome;
+    note?: string | null;
+    idempotency_key: string;
+  }): Promise<{ interaction_id: string; deduped: boolean }> {
+    const existing = await this.prisma.communicationInteraction.findFirst({
+      where: { tenant_id: args.tenant_id, idempotency_key: args.idempotency_key },
+      select: { id: true },
+    });
+    if (existing !== null) return { interaction_id: existing.id, deduped: true };
+
+    const interaction = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.communicationInteraction.create({
+        data: {
+          tenant_id: args.tenant_id,
+          site_id: args.site_id ?? null,
+          channel: args.channel,
+          direction: 'inbound',
+          status: 'recorded',
+          evidence_authority: 'recruiter_attested',
+          // No provider provenance — attested, off-platform (§16, I3).
+          integration_connection_id: null,
+          provider_interaction_id: null,
+          // No captured transport addresses for an attested off-platform response.
+          from_address: '',
+          to_address: '',
+          initiated_by_id: args.recorded_by_id,
+          idempotency_key: args.idempotency_key,
+          // occurred_at — WHEN the Talent responded (recruiter-supplied).
+          connected_at: args.occurred_at,
+        },
+      });
+      await tx.communicationAssociation.createMany({
+        data: [
+          {
+            tenant_id: args.tenant_id,
+            interaction_id: created.id,
+            subject_type: 'talent_record' satisfies CommunicationSubjectType,
+            subject_id: args.talent_record_id,
+            relation_type: 'subject' satisfies CommunicationRelationType,
+          },
+          {
+            tenant_id: args.tenant_id,
+            interaction_id: created.id,
+            subject_type: 'requisition' satisfies CommunicationSubjectType,
+            subject_id: args.requisition_id,
+            relation_type: 'regarding' satisfies CommunicationRelationType,
+          },
+          {
+            tenant_id: args.tenant_id,
+            interaction_id: created.id,
+            subject_type: 'pipeline' satisfies CommunicationSubjectType,
+            subject_id: args.pipeline_id,
+            relation_type: 'regarding' satisfies CommunicationRelationType,
+          },
+        ],
+      });
+      await tx.communicationDisposition.create({
+        data: {
+          tenant_id: args.tenant_id,
+          interaction_id: created.id,
+          // A recorded response is a two-way contact fact (the Talent responded);
+          // `connected` is its canonical recruiter-attested disposition.
+          disposition: 'connected' satisfies CommunicationDispositionOutcome,
+          notes: args.note ?? null,
+          dispositioned_by_id: args.recorded_by_id,
+        },
+      });
+      return created;
+    });
+    return { interaction_id: interaction.id, deduped: false };
+  }
+
+  // Recruiting-Journey §7 (watch-item #2) — the instant of the FIRST grounded
+  // OUTBOUND contact for this Talent × Requisition (the contact evidence that could
+  // ground `contacted`). The response `occurred_at` floor compares against THIS, not
+  // any historical contact for the Talent in another context. Null when no outbound
+  // contact is yet recorded for the pair. Tenant-scoped; associations intersect
+  // (talent subject ∩ requisition regarding).
+  async findFirstOutboundContactInstant(
+    tenantId: string,
+    talentId: string,
+    requisitionId: string,
+  ): Promise<Date | null> {
+    const row = await this.prisma.communicationInteraction.findFirst({
+      where: {
+        tenant_id: tenantId,
+        direction: 'outbound' satisfies CommunicationDirection,
+        AND: [
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'talent_record' satisfies CommunicationSubjectType,
+                subject_id: talentId,
+                relation_type: 'subject' satisfies CommunicationRelationType,
+              },
+            },
+          },
+          {
+            associations: {
+              some: {
+                tenant_id: tenantId,
+                subject_type: 'requisition' satisfies CommunicationSubjectType,
+                subject_id: requisitionId,
+                relation_type: 'regarding' satisfies CommunicationRelationType,
+              },
+            },
+          },
+        ],
+      },
+      select: { created_at: true },
+      orderBy: { created_at: 'asc' },
+    });
+    return row === null ? null : row.created_at;
   }
 
   /** COMM-C2B — idempotency lookup for outbound email (tenant-scoped). */
@@ -271,6 +407,23 @@ export class CommunicationsRepository {
       data: data as never,
     });
     return res.count;
+  }
+
+  // Recruiting-Journey §8 — the pipeline episode an interaction is `regarding`
+  // (null when the interaction carries no pipeline association). Lets the Zoom
+  // two-way convergence resolve the milestone target from the correlated
+  // interaction, so a provider-verified two-way call advances the SAME canonical
+  // response-evidence seam as recruiter attestation (no special pipeline path).
+  async findAssociatedPipelineId(tenantId: string, interactionId: string): Promise<string | null> {
+    const row = await this.prisma.communicationAssociation.findFirst({
+      where: {
+        tenant_id: tenantId,
+        interaction_id: interactionId,
+        subject_type: 'pipeline' satisfies CommunicationSubjectType,
+      },
+      select: { subject_id: true },
+    });
+    return row === null ? null : row.subject_id;
   }
 
   // ---- CommunicationAssociation ----
@@ -571,6 +724,7 @@ export class CommunicationsRepository {
       select: {
         id: true,
         status: true,
+        evidence_authority: true,
         created_at: true,
         dispositions: {
           select: { disposition: true, dispositioned_at: true },
@@ -593,7 +747,7 @@ export class CommunicationsRepository {
     talentId: string,
     requisitionId: string,
     channel: CommunicationChannel,
-  ): Promise<Array<{ id: string; status: CommunicationInteractionStatus }>> {
+  ): Promise<Array<{ id: string; status: CommunicationInteractionStatus; evidence_authority: CommunicationEvidenceAuthority }>> {
     return (await this.prisma.communicationInteraction.findMany({
       where: {
         tenant_id: tenantId,
@@ -621,9 +775,9 @@ export class CommunicationsRepository {
           },
         ],
       },
-      select: { id: true, status: true },
+      select: { id: true, status: true, evidence_authority: true },
       orderBy: { created_at: 'desc' },
-    })) as Array<{ id: string; status: CommunicationInteractionStatus }>;
+    })) as Array<{ id: string; status: CommunicationInteractionStatus; evidence_authority: CommunicationEvidenceAuthority }>;
   }
 
   // ---- CommunicationDisposition ----

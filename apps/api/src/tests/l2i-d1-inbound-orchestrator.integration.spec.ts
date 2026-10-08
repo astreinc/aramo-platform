@@ -157,7 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('positive + AC-4: a mapped-and-legal action executes via the governed command; provenance carries mapping_version + Aramo CAS token, NOT the provider sequence', async () => {
       const { conn, pipeline_id } = await seedConnBoundEpisode('EXT-C');
       // CONTACT is legal from no_contact.
-      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'reached', mapped_target: 'CONTACT', target_kind: 'action' });
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'reached', mapped_target: 'CONTACT_EVIDENCE', target_kind: 'action' });
       expect(await statusOf(pipeline_id)).toBe('no_contact');
       // A deliberately BOGUS huge provider sequence — must NEVER be the CAS token.
       const BOGUS_SEQ = 999999;
@@ -169,7 +169,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       const p = prov.rows[0]!;
       expect(p.mapping_version).toBe(1); // resolved from the ACTIVE set
-      expect(p.mapped_target).toBe('CONTACT');
+      expect(p.mapped_target).toBe('CONTACT_EVIDENCE');
       expect(Number(p.aramo_expected_version)).toBe(0); // the episode version at execution (created=0)
       expect(Number(p.provider_sequence)).toBe(BOGUS_SEQ); // recorded for audit ONLY
       // AC-4 core: the CAS token used (0) is the Aramo version, NOT the provider sequence (999999).

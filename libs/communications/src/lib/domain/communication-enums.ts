@@ -5,7 +5,7 @@
 
 /** The medium of an interaction. `voice` executes in COMM-V1; sms/email/meeting
  *  carried by design (email + meeting execute in COMM-C2B). */
-export const COMMUNICATION_CHANNELS = ['voice', 'sms', 'email', 'meeting'] as const;
+export const COMMUNICATION_CHANNELS = ['voice', 'sms', 'email', 'meeting', 'other'] as const;
 export type CommunicationChannel = (typeof COMMUNICATION_CHANNELS)[number];
 
 /** Direction of an interaction. Outbound is the COMM-V1 target. */
@@ -26,8 +26,22 @@ export const COMMUNICATION_INTERACTION_STATES = [
   'failed',
   'missed',
   'rejected',
+  // Recruiting-Journey §7/§16 — neutral terminal state of a recruiter-attested
+  // interaction. NO provider semantics (never connected/completed), so an attested
+  // callback can never be read as a provider-verified two-way call.
+  'recorded',
 ] as const;
 export type CommunicationInteractionStatus = (typeof COMMUNICATION_INTERACTION_STATES)[number];
+
+/**
+ * Recruiting-Journey §7/§16 (I3) — the CANONICAL evidence authority of an
+ * interaction. STORED, never derived from status. `provider_verified` = mediated by
+ * an integration connection; `recruiter_attested` = a recruiter's attested account
+ * of an off-platform contact/response. These authorities stay distinguishable — an
+ * attested record is never graded provider-verified.
+ */
+export const COMMUNICATION_EVIDENCE_AUTHORITIES = ['provider_verified', 'recruiter_attested'] as const;
+export type CommunicationEvidenceAuthority = (typeof COMMUNICATION_EVIDENCE_AUTHORITIES)[number];
 
 /** Polymorphic association subjects (subject_id is a UUID-only cross-schema ref). */
 export const COMMUNICATION_SUBJECT_TYPES = ['talent_record', 'requisition', 'pipeline'] as const;

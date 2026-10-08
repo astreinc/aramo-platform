@@ -55,7 +55,7 @@ export interface BoardResume {
 // `talent-journey-read.deriveActions`. `required_scope` lets the UI hide an action the actor
 // cannot perform — the SERVER stays authoritative (UI hiding is never the boundary, §16).
 export interface BoardNextAction {
-  readonly key: string; // stable action key (e.g. 'pipeline.qualify', 'offer.create')
+  readonly key: string; // stable action key (e.g. 'pipeline.mark_qualified', 'offer.create')
   readonly label: string;
   readonly owner: BoardOwner;
   readonly command_route: string; // an EXISTING governed command route (never a Board route)

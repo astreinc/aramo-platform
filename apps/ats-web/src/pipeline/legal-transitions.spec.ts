@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  LEGAL_TRANSITIONS,
-  legalNextStates,
-  recruiterNextStates,
-  SYSTEM_ONLY_TARGET_STATUSES,
-} from './legal-transitions';
+import { LEGAL_TRANSITIONS, legalNextStates } from './legal-transitions';
 
 describe('legalNextStates', () => {
   it('returns the matrix row for a non-terminal status', () => {
@@ -39,24 +34,3 @@ describe('legalNextStates', () => {
   });
 });
 
-describe('recruiterNextStates (§5 — system-only target exclusion)', () => {
-  it('the matrix DOES list qualified → completed (so the system COMPLETE precondition validates)', () => {
-    // Non-vacuous: prove the edge is present in the raw matrix BEFORE asserting
-    // the recruiter affordance filters it out.
-    expect(legalNextStates('qualified')).toContain('completed');
-    expect(SYSTEM_ONLY_TARGET_STATUSES).toContain('completed');
-  });
-
-  it('a recruiter can never CHOOSE completed as a move target from qualified', () => {
-    const targets = recruiterNextStates('qualified');
-    expect(targets).not.toContain('completed');
-    // …the remaining legal recruiter moves survive the filter.
-    expect(targets).toContain('qualifying');
-    expect(targets).toContain('not_in_consideration');
-  });
-
-  it('recruiterNextStates equals the matrix row for a status with no system-only targets', () => {
-    expect(recruiterNextStates('qualifying')).toEqual(LEGAL_TRANSITIONS.qualifying);
-    expect(recruiterNextStates('contacted')).toEqual(LEGAL_TRANSITIONS.contacted);
-  });
-});

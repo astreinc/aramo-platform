@@ -460,6 +460,55 @@ describe('ats-web → POST /v1/communications/email-drafts/requisition-contact (
   // ids-only draft interaction above is the sole requisition-contact draft shape.
 });
 
+describe('ats-web → POST /v1/communications/talent-responses (Recruiting-Journey §7/§15/§16)', () => {
+  // Recruiting-Journey §7/§15/§16 — the canonical "Record Talent response" command. The
+  // recruiter attests a Talent response for a bound Pipeline; the backend persists durable
+  // RECRUITER-ATTESTED evidence (never a fabricated provider id) and advances the milestone
+  // to talent_responded through canonical Pipeline authority. The FE NEVER sets stage. The
+  // Talent/Requisition are resolved server-side FROM the pipeline (never sent). A required
+  // Idempotency-Key makes a retried recorder a no-op (one evidence, one effective milestone).
+  it('returns 200 recording attested response evidence and advancing the milestone', async () => {
+    const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
+    const IDEMPOTENCY_KEY = '00000000-0000-7000-8000-7e5900000001';
+    // email channel; a past instant with no prior contact floor to violate.
+    const BODY = { pipeline_id: PIPE_ID, channel: 'email', occurred_at: '2026-09-10T15:04:05Z' };
+    await provider
+      .addInteraction()
+      .given('an ats-web recruiter and a pipeline at contacted exist')
+      .uponReceiving('an ats-web record-talent-response command')
+      .withRequest('POST', '/v1/communications/talent-responses', (b) => {
+        b.headers({
+          Cookie: like(ACCESS_COOKIE),
+          'Content-Type': 'application/json',
+          'Idempotency-Key': like(IDEMPOTENCY_KEY),
+        }).jsonBody(BODY);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          interaction_id: uuid('eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee'),
+          deduped: like(false),
+          // The milestone advanced through canonical evidence authority.
+          pipeline_stage: like('talent_responded'),
+          pipeline_version: like(1),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/communications/talent-responses`, {
+          method: 'POST',
+          headers: {
+            Cookie: ACCESS_COOKIE,
+            'Content-Type': 'application/json',
+            'Idempotency-Key': IDEMPOTENCY_KEY,
+          },
+          body: JSON.stringify(BODY),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { pipeline_stage: string; deduped: boolean };
+        expect(body.pipeline_stage).toBe('talent_responded');
+      });
+  });
+});
+
 describe('ats-web → POST /v1/communications/email-drafts/general-contact (COMM-RECRUITER-W1)', () => {
   it('returns 200 with a prepared Talent-only draft — NO requisition, recipient server-owned (editable:false)', async () => {
     await provider

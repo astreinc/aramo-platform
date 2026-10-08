@@ -576,7 +576,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const card = anyCard(board, talent)!;
       expect(card.next_actions).toHaveLength(1);
       expect(card.next_actions[0]).toMatchObject({
-        key: 'pipeline.qualify',
+        key: 'pipeline.mark_qualified',
         owner: 'pipeline',
         command_route: `POST /v1/pipelines/${pipe}/actions`,
         required_scope: 'pipeline:change-status',

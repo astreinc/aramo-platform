@@ -22,7 +22,7 @@ canonical prototype (`TalentBoard.dc.html`).
 | Populated actionable lanes | Pipeline / Contacted / Qualified / Submitted / Interviewing / Client Selected with counts + cards |
 | Qualified Ready-to-submit band | green "Ready to submit" pill + "Resume locked" + "Submit to client" action |
 | Qualified Needs-action band | amber "Needs action" + "RTR needed" + blockers ("Right to represent not executed · Restricted at client"; "Resume not selected") |
-| Governed action buttons | Mark contacted / Start qualification / Submit to client / Mark client selected / Create offer — rendered per card state |
+| Governed action buttons | Contact Talent / Record response / Start qualifying / Mark qualified / Submit to client / Mark client selected / Create offer — rendered per card state (contacted + talent_responded are evidence-backed; the board opens the governed drawer, never a naked transition) |
 | Drag drop-target | Interviewing column shows the dashed brand outline (`rc-tboard__col--drop`) |
 | Downstream tracking / handoff | Offer + Started cards render dashed with a "Tracked · Offer" / "Tracked · Placement" chip |
 | Closed summary + expansion | `<details>` open: Not in consideration (2) · Client declined (1) · Offer declined (1); total 4 |

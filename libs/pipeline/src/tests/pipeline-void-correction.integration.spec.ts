@@ -152,7 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // contacted
       const rc = await seedRequisition(tenant); const tc = randomUUID();
       const c = await create(tenant, tc, rc, actor);
-      await repo.applyAction({ tenant_id: tenant, id: c.id, action: 'CONTACT', expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'c', visible_requisition_ids: null });
+      await repo.recordContactEvidence({ tenant_id: tenant, id: c.id, expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'c', visible_requisition_ids: null, evidence: { kind: 'test_contact', id: randomUUID() } });
       expect(await status(tenant, c.id)).toBe('contacted'); // BEFORE
       let e1: unknown;
       try { await repo.void({ tenant_id: tenant, id: c.id, reason: 'ADDED_BY_MISTAKE', expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'v', visible_requisition_ids: null }); } catch (e) { e1 = e; }
@@ -163,7 +163,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // qualified
       const rq = await seedRequisition(tenant); const tq = randomUUID();
       const q = await create(tenant, tq, rq, actor);
-      for (const action of ['CONTACT', 'MARK_RESPONDED', 'START_QUALIFICATION', 'QUALIFY'] as const) {
+      // contacted + talent_responded are evidence-backed (evidence commands); qualifying
+      // + qualified remain recruiter DECISION actions (applyAction).
+      await repo.recordContactEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-contact', visible_requisition_ids: null, evidence: { kind: 'test_contact', id: randomUUID() } });
+      await repo.recordResponseEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-response', visible_requisition_ids: null, evidence: { kind: 'test_response', id: randomUUID() } });
+      for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({ tenant_id: tenant, id: q.id, action, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: action, visible_requisition_ids: null });
       }
       expect(await status(tenant, q.id)).toBe('qualified'); // BEFORE

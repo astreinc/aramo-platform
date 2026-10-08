@@ -262,41 +262,44 @@ export class CommunicationCallService {
 
     const initiated = await this.comms.transition(tenantId, interaction.id, 'initiated');
 
-    // 9) COMM-C2A (R6) — governed no_contact→contacted orchestration. A durable
-    // voice attempt now exists. If the caller holds pipeline authority and the
-    // episode is still `no_contact`, drive the governed CONTACT action through the
-    // Pipeline state machine (never a direct status write). BEST-EFFORT: a CAS
-    // conflict, concealment, or any Pipeline error is swallowed — the
-    // communication evidence is preserved and never rolled back.
+    // 9) COMM-C2A (R6) / Recruiting-Journey §6 — governed no_contact→contacted
+    // orchestration. A durable voice ATTEMPT now exists (§6 — a valid provider-
+    // backed attempt is contact evidence; two-way is NOT required for contacted).
+    // If the caller holds pipeline authority and the episode is still `no_contact`,
+    // advance through the EVIDENCE-BEARING command grounded on THIS voice interaction
+    // (never a direct status write). BEST-EFFORT: a CAS conflict, concealment, or any
+    // Pipeline error is swallowed — the communication evidence is preserved.
     if (pipeline !== null && auth.scopes.includes(PIPELINE_CHANGE_STATUS_SCOPE)) {
-      await this.maybeAdvanceToContacted(auth, pipeline, visibleRequisitionIds, requestId);
+      await this.maybeAdvanceToContacted(auth, pipeline, visibleRequisitionIds, requestId, interaction.id);
     }
 
     return toView(initiated);
   }
 
   /**
-   * COMM-C2A — drive the governed CONTACT action iff the episode is still
-   * `no_contact`. Never replays past `contacted` (R6), never bypasses the state
-   * machine/CAS, and never throws: evidence is already durable, so a failed
-   * transition is logged and reconciled-safe, not surfaced to the caller.
+   * COMM-C2A / §6 — drive the evidence-bearing CONTACT advance iff the episode is
+   * still `no_contact`, grounded on the durable voice interaction (evidence kind
+   * communication_interaction + id). Never replays past `contacted` (R6), never
+   * bypasses the state machine/CAS, and never throws: evidence is already durable,
+   * so a failed transition is logged and reconcile-safe, not surfaced to the caller.
    */
   private async maybeAdvanceToContacted(
     auth: AuthContextType,
     pipeline: PipelineView,
     visibleRequisitionIds: ReadonlySet<string> | null,
     requestId: string,
+    evidenceInteractionId: string,
   ): Promise<void> {
     if (pipeline.status !== 'no_contact') return;
     try {
-      await this.pipelines.applyAction({
+      await this.pipelines.recordContactEvidence({
         tenant_id: auth.tenant_id,
         id: pipeline.id,
-        action: 'CONTACT',
         expected_version: pipeline.version,
         changed_by_id: auth.sub,
         requestId,
         visible_requisition_ids: visibleRequisitionIds,
+        evidence: { kind: 'communication_interaction', id: evidenceInteractionId },
       });
     } catch (err) {
       // Reconcile-safe: preserve the evidence, do not fail the call.

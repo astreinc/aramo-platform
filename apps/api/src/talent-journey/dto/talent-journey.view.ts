@@ -142,6 +142,17 @@ export interface JourneyPlacement {
 }
 
 // The composed journey for one (tenant, requisition, talent) episode.
+// Recruiting-Journey §14 — the canonical recruiting next-action vocabulary. Only
+// actions actually supported by the current workflow appear; NOT a generic action
+// platform. contact_talent / record_talent_response open the evidence-recording
+// surfaces (never a naked stage write); start_qualifying / mark_qualified are the
+// recruiter decisions.
+export type RecruitingAvailableAction =
+  | 'contact_talent'
+  | 'record_talent_response'
+  | 'start_qualifying'
+  | 'mark_qualified';
+
 export interface TalentRequisitionJourney {
   readonly requisition_id: string;
   readonly talent_record_id: string;
@@ -153,6 +164,13 @@ export interface TalentRequisitionJourney {
   // worklist uses. Consumers render these; they never re-derive the predicates.
   readonly offer_start_exceptions: readonly OfferStartException[];
   readonly actions: readonly JourneyAction[];
+  // Recruiting-Journey §14 — the CANONICAL recruiting next-action availability, owned
+  // by the Pipeline/Recruiting domain and derived from the current milestone. The FE
+  // RENDERS these; it never re-derives availability from stage equality. Evidence-
+  // backed milestones expose the action that RECORDS evidence (contact_talent /
+  // record_talent_response); decision milestones expose the recruiter decision
+  // (start_qualifying / mark_qualified). Empty at terminal/qualified.
+  readonly recruiting_available_actions: readonly RecruitingAvailableAction[];
   // null when the caller did not opt in OR no offer-letter document exists yet.
   readonly offer_document: JourneyOfferDocument | null;
   // §7 — null when the caller did not opt in OR there is no placement yet.
