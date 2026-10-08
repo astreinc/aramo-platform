@@ -47,17 +47,6 @@ export class TalentIntakePromotionService {
       }
     }
 
-    // A governed extraction child is required (extraction must have reached a
-    // terminal state and persisted its result).
-    if (intake.resume_extraction_draft_id === null) {
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'This résumé is still being read. Please wait for it to finish, then review and create the talent.',
-        422,
-        { requestId, details: { processing_status: intake.processing_status } },
-      );
-    }
-
     const body = this.buildCreateInput(intake);
     const email1 = (body.email1 ?? '').trim();
     const phoneCell = (body.phone_cell ?? '').trim();
@@ -67,8 +56,11 @@ export class TalentIntakePromotionService {
     if (email1 === '') missing.push('email1');
     if (phoneCell === '') missing.push('phone_cell');
     if (missing.length > 0) {
-      // Admission invariant — no TalentRecord is created when required fields are
-      // missing (field-keyed so the FE can direct the recruiter).
+      // Admission invariant — the ONLY precondition for creation (ADR-0033
+      // local-gap PO ruling): résumé extraction is async ENRICHMENT, NEVER a
+      // prerequisite. A slow/failed/unavailable extraction (EventBridge / SQS /
+      // consumer / LLM) must never stop a recruiter from creating a Talent whose
+      // required fields are present. Field-keyed so the FE can direct the recruiter.
       throw new AramoError(
         'VALIDATION_ERROR',
         'A name, a primary email, and a cell phone are required to create a talent.',
@@ -77,38 +69,50 @@ export class TalentIntakePromotionService {
       );
     }
 
-    // Reuse the SHARED create-from-draft composition (canonical create + Documents
-    // + evidence; CAS-converges on a concurrent confirm).
-    const created = await this.createFromDraft.confirmCreateFromDraftUpload(
-      authContext,
-      body,
-      email1,
-      requestId,
-    );
-    if (created === null) {
-      // The child was not READY_FOR_REVIEW (still processing / decided elsewhere).
-      // Converge: a racing promote may have linked the Talent already.
-      const reread = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
-      if (reread?.promoted_talent_record_id != null) {
-        const existing = await this.repo.findById({
-          tenant_id,
-          id: reread.promoted_talent_record_id,
-        });
-        if (existing !== null) {
-          return existing;
+    // ENRICHMENT path — when a governed extraction child has completed
+    // (READY_FOR_REVIEW), promote through the shared 3-phase composition so its
+    // accepted résumé evidence lifecycle is linked. A null result means the child
+    // is not yet promotable (still PROCESSING / FAILED / decided elsewhere) → fall
+    // through to the decoupled create rather than blocking the recruiter.
+    let created: TalentRecordView | null = null;
+    if (intake.resume_extraction_draft_id !== null) {
+      created = await this.createFromDraft.confirmCreateFromDraftUpload(
+        authContext,
+        body,
+        email1,
+        requestId,
+      );
+      if (created === null) {
+        // Converge: a racing promote may have already linked the Talent.
+        const reread = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
+        if (reread?.promoted_talent_record_id != null) {
+          const existing = await this.repo.findById({
+            tenant_id,
+            id: reread.promoted_talent_record_id,
+          });
+          if (existing !== null) return existing;
         }
       }
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'This draft could not be promoted yet. Please retry extraction or review the details.',
-        422,
-        { requestId, details: { processing_status: intake.processing_status } },
+    }
+
+    // DECOUPLED path — no governed extraction child (child absent, or not yet
+    // promotable because the async EventBridge→SQS→consumer path is unavailable /
+    // slow). The recruiter-reviewed fields ALONE create the Talent; the résumé
+    // artifact stays attached. Late extraction can never overwrite the created
+    // TalentRecord (it writes only the child + intake row), and once promoted the
+    // intake can no longer be claimed for extraction (the repository claim is
+    // guarded on promoted_talent_record_id IS NULL).
+    if (created === null) {
+      created = await this.createFromDraft.createFromReviewedUpload(
+        authContext,
+        body,
+        email1,
+        requestId,
       );
     }
 
     // Guarded promotion linkage on the PARENT — a racing promote gets count 0 and
-    // still returns the same TalentRecord (the create was idempotent on the
-    // reserved id).
+    // still returns the same TalentRecord (create converges on the email anchor).
     await this.talentExtraction.markTalentIntakeDraftPromoted({
       tenant_id,
       id,

@@ -358,5 +358,44 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const claim2 = await repo.claimTalentIntakeOutboxBatch({ limit: 10, lease_seconds: 300, max_attempts: 5 });
       expect(claim2).toHaveLength(0);
     });
+
+    // ---- (3) ADR-0033 decoupling — late-extraction no-op after manual promote --
+    it('a PROMOTED intake can NEVER be claimed for extraction (late-extraction no-op); an unpromoted QUEUED draft still claims', async () => {
+      // Control: a QUEUED, unpromoted draft claims exactly once at its version.
+      const ctl = await seedSourceIntake('claim-control');
+      const ctlRow = (await draftRows()).find((d) => d.id === ctl.draftId)!;
+      expect(ctlRow.processing_status).toBe('QUEUED');
+      expect(
+        await repo.claimTalentIntakeDraftForProcessing({
+          tenant_id: TENANT_A,
+          id: ctl.draftId,
+          expected_version: ctlRow.version,
+        }),
+      ).toBe(1);
+
+      // Guard: the recruiter promoted a still-QUEUED draft (manual create while the
+      // async extraction path was unavailable). A late extraction delivery then
+      // tries to claim it AT ITS CURRENT VERSION → 0, blocked by the
+      // promoted_talent_record_id guard (NOT a version mismatch). promote does not
+      // change processing_status, so only the new guard prevents the claim.
+      const g = await seedSourceIntake('claim-guard');
+      const promoted = await repo.markTalentIntakeDraftPromoted({
+        tenant_id: TENANT_A,
+        id: g.draftId,
+        promoted_talent_record_id: uuidv7(),
+        promoted_at: new Date(),
+      });
+      expect(promoted).toBe(1);
+      const gRow = (await draftRows()).find((d) => d.id === g.draftId)!;
+      expect(gRow.processing_status).toBe('QUEUED'); // promote leaves processing dimension untouched
+      expect(gRow.promoted_talent_record_id).not.toBeNull();
+      expect(
+        await repo.claimTalentIntakeDraftForProcessing({
+          tenant_id: TENANT_A,
+          id: g.draftId,
+          expected_version: gRow.version,
+        }),
+      ).toBe(0);
+    });
   },
 );

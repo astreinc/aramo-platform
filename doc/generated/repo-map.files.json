@@ -3960,6 +3960,7 @@
     "libs/talent-record/src/tests/resume-text-edition-history.integration.spec.ts",
     "libs/talent-record/src/tests/search-pr1.spec.ts",
     "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
+    "libs/talent-record/src/tests/talent-intake-promotion-decoupling.spec.ts",
     "libs/talent-record/src/tests/talent-link.service.spec.ts",
     "libs/talent-record/src/tests/talent-profile-field-state.spec.ts",
     "libs/talent-record/src/tests/talent-record-reconcile.integration.spec.ts",
@@ -4238,6 +4239,8 @@
     "tools/seed-e2e-data.spec.ts",
     "tools/seed-e2e-data.ts",
     "tools/send-mailer-proof.ts",
+    "tools/talent-intake-dev-consumer.cjs",
+    "tools/talent-intake-localstack-provision.cjs",
     "tools/vitest.config.ts",
     "tsconfig.base.json",
     "vitest.shared.ts"
