@@ -39,7 +39,23 @@ export class PublishEngagementPolicyRequestDto {
   @IsArray()
   @ArrayMaxSize(8)
   @ValidateNested({ each: true })
-  @Type(() => Object)
+  // The requirement array is a `channel`-discriminated union. `@Type(() => Object)`
+  // would deserialize each element to a bare Object with NO class-validator
+  // metadata, so under the global pipe's `forbidNonWhitelisted` EVERY property
+  // (channel/required/condition) is rejected as "should not exist" (HTTP 400) —
+  // i.e. every real publish fails. Mapping each element to its concrete Voice/
+  // Email DTO via the `channel` discriminator whitelists the nested props; the
+  // Engagement domain then re-validates + activation-guards the resolved shape.
+  @Type(() => Object, {
+    keepDiscriminatorProperty: true,
+    discriminator: {
+      property: 'channel',
+      subTypes: [
+        { value: VoiceRequirementDto, name: 'voice' },
+        { value: EmailRequirementDto, name: 'email' },
+      ],
+    },
+  })
   requirements!: Array<VoiceRequirementDto | EmailRequirementDto>;
   @IsOptional() @IsString() effective_from?: string;
   // PART A — how the policy applies at submit. OPTIONAL (A2): an absent mode is
