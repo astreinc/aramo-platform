@@ -32,6 +32,7 @@
       "@aramo/contact": ["../../dist/libs/contact/src/index.d.ts"],
       "@aramo/selection": ["../../dist/libs/selection/src/index.d.ts"],
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/events": ["../../dist/libs/events/src/index.d.ts"],
       "@aramo/export": ["../../dist/libs/export/src/index.d.ts"],
       "@aramo/field-masking": ["../../dist/libs/field-masking/src/index.d.ts"],
       "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],

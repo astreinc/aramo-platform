@@ -1,6 +1,11 @@
 # ADR-0018: Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals)
 
-**Status:** Accepted
+**Status:** Accepted (BullMQ service-local decision). Its deferred *cross-service
+cloud-transport* decision — Decision 4 / Architecture §9.1 "Outbox → SNS → SQS" —
+is **superseded by [ADR-0033](0033-cross-service-durable-event-foundation.md)**
+(Outbox → EventBridge → consumer-owned SQS), 2026-10-07. The SNS→SQS half was
+deferred and never implemented; this is an append-only pointer, not a rewrite of
+the Decision below.
 
 **Date:** 2026-05-27
 

@@ -36,7 +36,7 @@ export interface TalentIntakeAcceptedView {
 
 export interface TalentIntakeDraftView {
   id: string;
-  source_filename: string;
+  source_filename: string | null; // null for non-upload (artifact-less) sources
   mime_type: string | null;
   size_bytes: number | null;
   processing_status: string;
@@ -58,7 +58,7 @@ export interface TalentIntakeDraftView {
 
 export interface TalentIntakeDraftListItemView {
   id: string;
-  source_filename: string;
+  source_filename: string | null; // null for non-upload (artifact-less) sources
   processing_status: string;
   review_status: string;
   promoted_talent_record_id: string | null;

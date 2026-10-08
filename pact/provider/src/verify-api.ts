@@ -454,6 +454,14 @@ const TALENT_EVIDENCE_INTAKE_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20261006190000_durable_async_talent_intake/migration.sql',
 );
+// ADR-0033 — additive envelope + concurrency-safe lease + source-agnostic columns
+// on the intake outbox/draft. Applied AFTER the intake init migration (it ALTERs
+// those tables); the regenerated client SELECTs the new columns, so provider
+// states that seed TalentIntakeDraft/TalentIntakeOutboxEvent require it.
+const TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20261007120000_talent_intake_envelope_lease_source_agnostic/migration.sql',
+);
 // Resume Revision Lifecycle §4 — additive artifact byte-SHA-256 + per-Talent
 // exact-duplicate uniqueness guard on TalentResumeEdition (depends only on the
 // 1a resume_edition table; ALTER + CREATE UNIQUE INDEX, no documents dependency).
@@ -3563,6 +3571,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_DOC1B_MIGRATION,
         TALENT_EVIDENCE_RESUME_SHA256_MIGRATION,
         TALENT_EVIDENCE_INTAKE_MIGRATION,
+        TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,

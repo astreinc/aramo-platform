@@ -76,6 +76,8 @@ export type {
   // Durable Async Talent Intake — thin parent aggregate + transactional outbox
   TalentIntakeDraftRow,
   CreateTalentIntakeDraftInput,
+  CreateSourceIntakeWithOutboxInput,
+  TalentIntakeOutboxClaimRow,
   TalentIntakeOutboxEventRow,
   TalentIntakeProcessingStatusValue,
   TalentIntakeReviewStatusValue,

@@ -122,8 +122,8 @@ export class TalentIntakePromotionService {
   // governed extraction child. Recruiter-reviewed values are the source of truth;
   // the draft_id links the child so the shared composition promotes its evidence.
   private buildCreateInput(intake: {
-    storage_key: string;
-    source_filename: string;
+    storage_key: string | null;
+    source_filename: string | null;
     mime_type: string | null;
     size_bytes: number | null;
     resume_extraction_draft_id: string | null;
@@ -180,14 +180,21 @@ export class TalentIntakePromotionService {
       education: review.education as CreateTalentRecordRequestDto['education'],
       certifications: review.certifications as CreateTalentRecordRequestDto['certifications'],
       draft_id: intake.resume_extraction_draft_id ?? undefined,
-      resume_document: {
-        storage_key: intake.storage_key,
-        file_name: intake.source_filename,
-        mime_type: intake.mime_type ?? 'application/octet-stream',
-        size_bytes: intake.size_bytes ?? 0,
-        source_map_version: prov.source_map_version,
-        resume_text_hash: prov.resume_text_hash,
-      },
+      // resume_document is attached ONLY for artifact-backed sources. A
+      // non-upload source (ADR-0033 §5, storage_key null) promotes with no
+      // résumé evidence document.
+      ...(intake.storage_key !== null
+        ? {
+            resume_document: {
+              storage_key: intake.storage_key,
+              file_name: intake.source_filename ?? 'resume',
+              mime_type: intake.mime_type ?? 'application/octet-stream',
+              size_bytes: intake.size_bytes ?? 0,
+              source_map_version: prov.source_map_version,
+              resume_text_hash: prov.resume_text_hash,
+            },
+          }
+        : {}),
     };
     // Drop undefined scalar keys so the create contract sees them as "not set".
     const cleaned = Object.fromEntries(

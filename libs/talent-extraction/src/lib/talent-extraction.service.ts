@@ -27,9 +27,9 @@ import {
   type ResumeExtractionDraftSourceKindValue,
   type TalentWorkAuthorizationStatusValue,
   type TalentIntakeDraftRow,
-  type TalentIntakeOutboxEventRow,
   type TalentIntakeReviewStatusValue,
   type CreateTalentIntakeDraftInput,
+  type CreateSourceIntakeWithOutboxInput,
 } from '@aramo/talent-evidence';
 import { TalentTrustService } from '@aramo/talent-trust';
 
@@ -1620,6 +1620,15 @@ export class TalentExtractionService {
     return this.evidence.createTalentIntakeDraft(input);
   }
 
+  // ADR-0033 Decision 5 — source-agnostic admission passthrough. Idempotent on
+  // (tenant_id, source_type, source_event_id); emits the canonical outbox event
+  // on first creation only.
+  async createOrRecoverSourceIntakeWithOutbox(
+    input: CreateSourceIntakeWithOutboxInput,
+  ): Promise<{ created: boolean; draft: TalentIntakeDraftRow }> {
+    return this.evidence.createOrRecoverSourceIntakeWithOutbox(input);
+  }
+
   async findTalentIntakeDraftById(args: {
     tenant_id: string;
     id: string;
@@ -1713,19 +1722,6 @@ export class TalentExtractionService {
     id: string;
   }): Promise<void> {
     return this.evidence.touchTalentIntakeDraftOpened(input);
-  }
-
-  async findUnpublishedTalentIntakeOutboxEvents(args: {
-    limit: number;
-  }): Promise<TalentIntakeOutboxEventRow[]> {
-    return this.evidence.findUnpublishedTalentIntakeOutboxEvents(args);
-  }
-
-  async markTalentIntakeOutboxPublished(args: {
-    event_ids: string[];
-    published_at: Date;
-  }): Promise<number> {
-    return this.evidence.markTalentIntakeOutboxPublished(args);
   }
 
   // TI-1F-B — the EXISTING-Talent CONFIRM promotion (directive §3, §4-E/F/G).

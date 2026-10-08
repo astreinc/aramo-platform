@@ -22,6 +22,9 @@ import {
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
   TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
+  TALENT_INTAKE_EVENT_SOURCE,
+  TALENT_INTAKE_EVENT_VERSION,
+  TALENT_INTAKE_SUBJECT_TYPE,
 } from './talent-intake.constants.js';
 
 // Durable Async Résumé-First Talent Intake — the HTTP intake lifecycle (create →
@@ -94,6 +97,71 @@ export class TalentIntakeService {
     };
   }
 
+  // 1b — Source-agnostic admission (ADR-0033 Decision 5). A NON-upload producer
+  // (job board / sourcing / agent / import / integration / external API) enters
+  // the SAME Talent Intake authority WITHOUT fabricating an S3 upload. Idempotent
+  // on (tenant_id, source_type, source_event_id): a producer that redelivers the
+  // same source_event_id converges on the SAME draft and emits the canonical
+  // event only once. The artifact is OPTIONAL. Only the Talent authority ever
+  // promotes to a canonical TalentRecord — this just admits intake.
+  async createSourceIntake(
+    authContext: AuthContextType,
+    body: {
+      source_type: string;
+      source_event_id: string;
+      source_ref?: string | null;
+      storage_key?: string | null;
+      source_filename?: string | null;
+      mime_type?: string | null;
+      size_bytes?: number | null;
+      structured_payload?: unknown;
+    },
+    requestId: string,
+  ): Promise<{ draft_id: string; created: boolean; processing_status: string }> {
+    const sourceType = (body.source_type ?? '').trim();
+    const sourceEventId = (body.source_event_id ?? '').trim();
+    if (sourceType === '' || sourceType === TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'source_type must be a non-empty non-upload source.',
+        422,
+        { requestId, details: { field: 'source_type' } },
+      );
+    }
+    if (sourceEventId === '') {
+      throw new AramoError('VALIDATION_ERROR', 'source_event_id must be a non-empty string', 422, {
+        requestId,
+        details: { field: 'source_event_id' },
+      });
+    }
+    const draftId = uuidv7();
+    const { created, draft } = await this.talentExtraction.createOrRecoverSourceIntakeWithOutbox({
+      id: draftId,
+      tenant_id: authContext.tenant_id,
+      created_by: authContext.sub,
+      source_type: sourceType,
+      source_event_id: sourceEventId,
+      source_ref: body.source_ref ?? null,
+      storage_key: body.storage_key ?? null,
+      source_filename: body.source_filename ?? null,
+      mime_type: body.mime_type ?? null,
+      size_bytes: body.size_bytes ?? null,
+      structured_payload: body.structured_payload,
+      event_type: TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
+      event_version: TALENT_INTAKE_EVENT_VERSION,
+      source: TALENT_INTAKE_EVENT_SOURCE,
+      subject_type: TALENT_INTAKE_SUBJECT_TYPE,
+      correlation_id: requestId,
+      event_payload: {
+        draft_id: draftId,
+        correlation_id: requestId,
+        source_type: sourceType,
+        source_event_id: sourceEventId,
+      },
+    });
+    return { draft_id: draft.id, created, processing_status: draft.processing_status };
+  }
+
   // 2 — Complete upload: verify the object exists, record authoritative metadata,
   // clear the orphan-sweep tag, then atomically QUEUE + write the outbox event.
   // Idempotent: a replay (already QUEUED/PROCESSING/…) enqueues nothing.
@@ -108,9 +176,20 @@ export class TalentIntakeService {
     if (draft === null) {
       throw this.notFound(id, requestId);
     }
+    if (draft.storage_key === null) {
+      // complete-upload is the artifact-backed (RESUME_UPLOAD) path; a
+      // non-upload source (ADR-0033 §5) has no object to commit.
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'This intake has no uploaded artifact to complete.',
+        422,
+        { requestId, details: { reason: 'no_artifact' } },
+      );
+    }
+    const storageKey = draft.storage_key;
 
     const head = await this.objectStorage.headObject({
-      storage_key: draft.storage_key,
+      storage_key: storageKey,
       requestId,
     });
     if (head === null) {
@@ -122,7 +201,7 @@ export class TalentIntakeService {
       );
     }
     // The object is now durable — clear the orphan-sweep pending tag.
-    await this.objectStorage.markResumeCommitted({ storage_key: draft.storage_key, requestId });
+    await this.objectStorage.markResumeCommitted({ storage_key: storageKey, requestId });
 
     const { draft: updated } = await this.talentExtraction.completeTalentIntakeUploadWithOutbox({
       tenant_id,

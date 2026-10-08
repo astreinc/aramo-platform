@@ -11,6 +11,7 @@
     "paths": {
       "@aramo/canonicalization": ["../../dist/libs/canonicalization/src/index.d.ts"],
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/events": ["../../dist/libs/events/src/index.d.ts"],
       "@aramo/consent": ["../../dist/libs/consent/src/index.d.ts"],
       "@aramo/selection": ["../../dist/libs/selection/src/index.d.ts"],
       "@aramo/placement": ["../../dist/libs/placement/src/index.d.ts"],

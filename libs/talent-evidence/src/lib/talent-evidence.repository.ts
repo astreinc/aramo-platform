@@ -665,8 +665,10 @@ export interface TalentIntakeDraftRow {
   tenant_id: string;
   created_by: string;
   source_type: string;
-  source_filename: string;
-  storage_key: string;
+  source_ref: string | null;
+  source_event_id: string | null;
+  source_filename: string | null;
+  storage_key: string | null;
   artifact_sha256: string | null;
   mime_type: string | null;
   size_bytes: number | null;
@@ -696,10 +698,41 @@ export interface CreateTalentIntakeDraftInput {
   tenant_id: string;
   created_by: string;
   source_type: string;
-  source_filename: string;
-  storage_key: string;
+  // Artifact metadata — OPTIONAL (null for non-upload sources).
+  source_filename?: string | null;
+  storage_key?: string | null;
   mime_type?: string | null;
   size_bytes?: number | null;
+  // Source identity (ADR-0033 Decision 5) — present for non-upload producers.
+  source_ref?: string | null;
+  source_event_id?: string | null;
+}
+
+// Non-upload (source-agnostic) admission: idempotently create-or-recover the
+// durable intake aggregate from producer identity, with no artifact, and emit
+// the canonical intake event on first creation only.
+export interface CreateSourceIntakeWithOutboxInput {
+  id: string;
+  tenant_id: string;
+  created_by: string;
+  source_type: string;
+  source_event_id: string;
+  source_ref?: string | null;
+  // Optional artifact for sources that happen to carry one (e.g. a job-board
+  // résumé). Absent → a pure structured-source intake, no object storage.
+  storage_key?: string | null;
+  source_filename?: string | null;
+  mime_type?: string | null;
+  size_bytes?: number | null;
+  // Optional structured source payload/evidence supplied by the producer.
+  structured_payload?: unknown;
+  // Canonical envelope fields for the emitted outbox event.
+  event_type: string;
+  event_version: string;
+  source: string;
+  subject_type: string;
+  correlation_id: string;
+  event_payload: unknown;
 }
 
 export interface TalentIntakeOutboxEventRow {
@@ -709,6 +742,27 @@ export interface TalentIntakeOutboxEventRow {
   event_payload: unknown;
   created_at: Date;
   published_at: Date | null;
+}
+
+// A leased outbox row in the canonical envelope shape (ADR-0033). Structurally
+// compatible with @aramo/events CanonicalOutboxRow; the apps/api composition
+// root binds this repo to the LeaseSafeOutboxRepository port without a direct
+// talent-evidence → events nx edge.
+export interface TalentIntakeOutboxClaimRow {
+  id: string;
+  tenant_id: string;
+  event_type: string;
+  event_payload: unknown;
+  created_at: Date;
+  event_version: string | null;
+  source: string | null;
+  subject_type: string | null;
+  subject_id: string | null;
+  correlation_id: string | null;
+  causation_id: string | null;
+  // PERSISTED post-claim attempt count — the drain's deterministic
+  // retry-vs-quarantine signal (never process memory).
+  publish_attempts: number;
 }
 
 @Injectable()
@@ -1783,8 +1837,10 @@ export class TalentEvidenceRepository {
         tenant_id: input.tenant_id,
         created_by: input.created_by,
         source_type: input.source_type,
-        source_filename: input.source_filename,
-        storage_key: input.storage_key,
+        source_ref: input.source_ref ?? null,
+        source_event_id: input.source_event_id ?? null,
+        source_filename: input.source_filename ?? null,
+        storage_key: input.storage_key ?? null,
         mime_type: input.mime_type ?? null,
         size_bytes: input.size_bytes ?? null,
         processing_status: 'UPLOADED',
@@ -1792,6 +1848,69 @@ export class TalentEvidenceRepository {
       },
     });
     return row as unknown as TalentIntakeDraftRow;
+  }
+
+  // Source-agnostic admission (ADR-0033 Decision 5). ONE transaction:
+  // idempotently insert the aggregate keyed on (tenant_id, source_type,
+  // source_event_id) via the partial unique index, and emit the canonical
+  // outbox event ONLY on a fresh insert. A producer that redelivers the same
+  // source_event_id (job-board retry, sourcing redelivery) converges on the
+  // SAME TalentIntakeDraft and enqueues nothing the second time — the
+  // invariant: same tenant + source_type + source_event_id → one intake. No
+  // fake storage_key is required; the artifact is optional.
+  async createOrRecoverSourceIntakeWithOutbox(
+    input: CreateSourceIntakeWithOutboxInput,
+  ): Promise<{ created: boolean; draft: TalentIntakeDraftRow }> {
+    return this.prisma.$transaction(async (tx) => {
+      // Idempotent insert. ON CONFLICT targets the partial unique index
+      // predicate (source_event_id IS NOT NULL); a conflict returns no row.
+      const inserted = await tx.$queryRaw<Array<{ id: string }>>`
+        INSERT INTO "talent_evidence"."TalentIntakeDraft"
+          ("id", "tenant_id", "created_by", "source_type", "source_ref",
+           "source_event_id", "source_filename", "storage_key", "mime_type",
+           "size_bytes", "structured_payload", "processing_status",
+           "review_status", "version", "created_at", "updated_at")
+        VALUES
+          (${input.id}::uuid, ${input.tenant_id}::uuid, ${input.created_by}::uuid,
+           ${input.source_type}, ${input.source_ref ?? null},
+           ${input.source_event_id}, ${input.source_filename ?? null},
+           ${input.storage_key ?? null}, ${input.mime_type ?? null},
+           ${input.size_bytes ?? null},
+           ${input.structured_payload === undefined ? null : JSON.stringify(input.structured_payload)}::jsonb,
+           'QUEUED', 'NOT_STARTED', 0, now(), now())
+        ON CONFLICT ("tenant_id", "source_type", "source_event_id")
+          WHERE "source_event_id" IS NOT NULL
+        DO NOTHING
+        RETURNING "id"
+      `;
+      const created = inserted.length === 1;
+      if (created) {
+        await tx.talentIntakeOutboxEvent.create({
+          data: {
+            tenant_id: input.tenant_id,
+            event_type: input.event_type,
+            event_payload: input.event_payload as never,
+            event_version: input.event_version,
+            source: input.source,
+            subject_type: input.subject_type,
+            subject_id: input.id,
+            correlation_id: input.correlation_id,
+          },
+        });
+      }
+      const draft = await tx.talentIntakeDraft.findFirst({
+        where: {
+          tenant_id: input.tenant_id,
+          source_type: input.source_type,
+          source_event_id: input.source_event_id,
+        },
+      });
+      if (draft === null) {
+        // Unreachable: either the insert created it or a prior row conflicted.
+        throw new Error('talent_intake_source_admission_row_missing');
+      }
+      return { created, draft: draft as unknown as TalentIntakeDraftRow };
+    });
   }
 
   async findTalentIntakeDraftById(args: {
@@ -2067,6 +2186,74 @@ export class TalentEvidenceRepository {
     const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
       where: { id: { in: args.event_ids } },
       data: { published_at: args.published_at },
+    });
+    return updated.count;
+  }
+
+  // ADR-0033 Decision 1 — concurrency-safe claim. Atomically lease up to `limit`
+  // CLAIMABLE rows (unpublished, not quarantined, under the attempt budget, lease
+  // absent/expired), OLDEST-FIRST, stamping lease_expires_at from DB now() (NOT
+  // an app clock) and bumping publish_attempts. FOR UPDATE SKIP LOCKED lets
+  // multiple publishers run without ever claiming the same row. Returns the
+  // claimed rows in the canonical envelope shape.
+  async claimTalentIntakeOutboxBatch(input: {
+    limit: number;
+    lease_seconds: number;
+    max_attempts: number;
+  }): Promise<TalentIntakeOutboxClaimRow[]> {
+    const rows = await this.prisma.$queryRaw<TalentIntakeOutboxClaimRow[]>`
+      UPDATE "talent_evidence"."TalentIntakeOutboxEvent" AS o
+      SET "claimed_at" = now(),
+          "lease_expires_at" = now() + make_interval(secs => ${input.lease_seconds}::double precision),
+          "publish_attempts" = o."publish_attempts" + 1
+      FROM (
+        SELECT "id"
+        FROM "talent_evidence"."TalentIntakeOutboxEvent"
+        WHERE "published_at" IS NULL
+          AND "quarantined_at" IS NULL
+          AND "publish_attempts" < ${input.max_attempts}
+          AND ("lease_expires_at" IS NULL OR "lease_expires_at" < now())
+        ORDER BY "created_at" ASC
+        LIMIT ${input.limit}
+        FOR UPDATE SKIP LOCKED
+      ) AS c
+      WHERE o."id" = c."id"
+      RETURNING o."id", o."tenant_id", o."event_type", o."event_payload",
+                o."created_at", o."event_version", o."source", o."subject_type",
+                o."subject_id", o."correlation_id", o."causation_id",
+                o."publish_attempts"
+    `;
+    return rows;
+  }
+
+  // Release the lease on confirmed-FAILED rows → immediately reclaimable next
+  // tick. Records last_publish_error; never sets published_at. Guarded so a row
+  // that was published/quarantined meanwhile is untouched.
+  async releaseTalentIntakeOutboxLease(input: {
+    event_ids: string[];
+    last_error: string;
+  }): Promise<number> {
+    if (input.event_ids.length === 0) {
+      return 0;
+    }
+    const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
+      where: { id: { in: input.event_ids }, published_at: null, quarantined_at: null },
+      data: { claimed_at: null, lease_expires_at: null, last_publish_error: input.last_error },
+    });
+    return updated.count;
+  }
+
+  // Park non-transient / unmappable rows: stop claiming them, keep them visible.
+  async quarantineTalentIntakeOutboxEvents(input: {
+    event_ids: string[];
+    reason: string;
+  }): Promise<number> {
+    if (input.event_ids.length === 0) {
+      return 0;
+    }
+    const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
+      where: { id: { in: input.event_ids }, published_at: null },
+      data: { quarantined_at: new Date(), quarantine_reason: input.reason },
     });
     return updated.count;
   }

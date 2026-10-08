@@ -74,6 +74,7 @@ import { TaskModule } from '@aramo/task';
 import { EsignServiceHttpProvider } from './esign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
+import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-intake-publisher.module.js';
 import { RtrModule } from './rtr/rtr.module.js';
 import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
@@ -324,6 +325,11 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // same separation rationale): drains PROCESSING ATTACHMENT drafts via the
     // governed orchestrator → READY_FOR_REVIEW | FAILED. No typed evidence.
     ResumeExtractionDraftWorkerModule,
+    // ADR-0033 Checkpoint C — the Talent Intake PUBLISHER (api side): outbox →
+    // lease-safe drain → EventBridge. Fail-closed on missing EventBridge config;
+    // Redis-independent drain; no BullMQ intake path. (The CONSUMER half —
+    // handler + extraction — runs in the Lambda via TalentIntakeConsumerModule.)
+    TalentIntakePublisherModule,
     // PR-A5a Gate 5 — fourth ATS-domain batch (part a): pipeline state
     // machine + activity log. ActivityModule is imported BEFORE
     // PipelineModule because PipelineModule depends on it (pipeline ->
