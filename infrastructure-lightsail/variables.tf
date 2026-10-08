@@ -13,15 +13,25 @@ variable "availability_zone" {
 # --- The box ----------------------------------------------------------------
 
 variable "instance_name" {
-  description = "Lightsail instance name (Aramo go-live #1 box)."
+  description = "Lightsail instance name. Was 'astre-aramo-prod' (medium_3_0); 2026-10-07 resized to 8GB — Lightsail has no in-place resize, so the box was snapshot→recreated as 'astre-aramo-prod-8gb' (the name can't be reused while the old instance exists). The static IP name is now decoupled (var.static_ip_name) so this rename does NOT churn the IP."
   type        = string
-  default     = "astre-aramo-prod"
+  default     = "astre-aramo-prod-8gb"
+}
+
+# Static IP name is DECOUPLED from instance_name (2026-10-07 resize): the IP
+# resource 'astre-aramo-prod-ip' (32.194.54.33) + its Route53 A records must
+# survive an instance rename. If this stayed "${instance_name}-ip", renaming the
+# instance would destroy/recreate the static IP — releasing 32.194.54.33.
+variable "static_ip_name" {
+  description = "Lightsail static IP name (stable across instance rename/resize)."
+  type        = string
+  default     = "astre-aramo-prod-ip"
 }
 
 variable "bundle_id" {
-  description = "Lightsail bundle (sizing). medium_3_0 = 2 vCPU / 4 GB / 80 GB SSD, dual-stack with a public IPv4 (recon §A.2). The IPv4 matters: the static IP + Route 53 A record are IPv4."
+  description = "Lightsail bundle (sizing). large_3_0 = 2 vCPU / 8 GB / 160 GB SSD / 5 TB transfer, dual-stack with a public IPv4 (2026-10-07 resize from medium_3_0 = 4 GB). The IPv4 matters: the static IP + Route 53 A record are IPv4."
   type        = string
-  default     = "medium_3_0"
+  default     = "large_3_0"
 }
 
 variable "blueprint_id" {
