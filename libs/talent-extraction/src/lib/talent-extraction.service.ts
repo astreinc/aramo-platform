@@ -1632,6 +1632,7 @@ export class TalentExtractionService {
   async findTalentIntakeDraftById(args: {
     tenant_id: string;
     id: string;
+    created_by?: string;
   }): Promise<TalentIntakeDraftRow | null> {
     return this.evidence.findTalentIntakeDraftById(args);
   }
@@ -1648,6 +1649,7 @@ export class TalentExtractionService {
   async completeTalentIntakeUploadWithOutbox(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     artifact_sha256?: string | null;
     mime_type?: string | null;
     size_bytes?: number | null;
@@ -1660,6 +1662,7 @@ export class TalentExtractionService {
   async requeueTalentIntakeDraftWithOutbox(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     event_type: string;
     event_payload: unknown;
   }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
@@ -1701,6 +1704,7 @@ export class TalentExtractionService {
   async saveTalentIntakeDraftReview(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     expected_version: number;
     review_payload: unknown;
     review_status?: TalentIntakeReviewStatusValue;
@@ -1711,6 +1715,7 @@ export class TalentExtractionService {
   async markTalentIntakeDraftPromoted(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     promoted_talent_record_id: string;
     promoted_at: Date;
   }): Promise<number> {
@@ -1720,8 +1725,28 @@ export class TalentExtractionService {
   async touchTalentIntakeDraftOpened(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
   }): Promise<void> {
     return this.evidence.touchTalentIntakeDraftOpened(input);
+  }
+
+  async deleteTalentIntakeDraft(input: {
+    tenant_id: string;
+    id: string;
+    created_by: string;
+  }): Promise<number> {
+    return this.evidence.deleteTalentIntakeDraft(input);
+  }
+
+  async replaceTalentIntakeDraftArtifact(input: {
+    tenant_id: string;
+    id: string;
+    created_by: string;
+    storage_key: string;
+    source_filename: string;
+    mime_type: string;
+  }): Promise<number> {
+    return this.evidence.replaceTalentIntakeDraftArtifact(input);
   }
 
   // TI-1F-B — the EXISTING-Talent CONFIRM promotion (directive §3, §4-E/F/G).

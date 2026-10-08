@@ -6,6 +6,7 @@ import { AramoError } from '@aramo/common';
 import { type AuthContextType } from '@aramo/auth';
 import { ObjectStorageService } from '@aramo/object-storage';
 import { TalentExtractionService } from '@aramo/talent-extraction';
+import type { TalentIntakeDraftRow } from '@aramo/talent-evidence';
 
 import {
   type CompleteTalentIntakeUploadRequestDto,
@@ -15,9 +16,13 @@ import {
   type TalentIntakeAcceptedView,
   type TalentIntakeDraftListView,
   type TalentIntakeDraftView,
+  type TalentIntakeDuplicateView,
   toTalentIntakeDraftListItemView,
   toTalentIntakeDraftView,
 } from '../dto/talent-intake.dto.js';
+import { TalentRecordRepository } from '../talent-record.repository.js';
+
+import { asReviewPayload } from './talent-intake-review.js';
 
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
@@ -36,6 +41,7 @@ export class TalentIntakeService {
   constructor(
     private readonly objectStorage: ObjectStorageService,
     private readonly talentExtraction: TalentExtractionService,
+    private readonly talentRecord: TalentRecordRepository,
   ) {}
 
   private notFound(id: string, requestId: string): AramoError {
@@ -43,6 +49,55 @@ export class TalentIntakeService {
       requestId,
       details: { id },
     });
+  }
+
+  // Compose the authoritative read model with the draft-level duplicate
+  // projection (§15). The duplicate reuses the SAME active-email authority as
+  // the create-time 409; it is surfaced at review time so the recruiter is not
+  // surprised at promote. An already-promoted draft never carries a duplicate.
+  private async buildView(
+    authContext: AuthContextType,
+    row: TalentIntakeDraftRow,
+  ): Promise<TalentIntakeDraftView> {
+    const duplicate = await this.computeDuplicate(authContext, row);
+    return toTalentIntakeDraftView(row, { duplicate });
+  }
+
+  private async computeDuplicate(
+    authContext: AuthContextType,
+    row: TalentIntakeDraftRow,
+  ): Promise<TalentIntakeDuplicateView | null> {
+    if (row.promoted_talent_record_id !== null) {
+      return null;
+    }
+    const review = asReviewPayload(row.review_payload);
+    const emailField = review.fields['email1'];
+    const email =
+      emailField !== undefined && typeof emailField.value === 'string'
+        ? emailField.value.trim()
+        : '';
+    if (email === '') {
+      return null;
+    }
+    const match = await this.talentRecord.findDuplicateByEmail({
+      tenant_id: authContext.tenant_id,
+      email,
+    });
+    if (match === null) {
+      return null;
+    }
+    const location =
+      [match.city, match.state].filter((x) => x !== null && x.trim() !== '').join(', ') || null;
+    return {
+      talent_record_id: match.id,
+      display_name: `${match.first_name} ${match.last_name}`.trim(),
+      title: match.title,
+      location,
+      reason: 'email',
+      // V1 (PO ruling): an active-email duplicate is a hard create block — the
+      // 409 is preserved — so Continue anyway is never authorized.
+      continue_anyway: false,
+    };
   }
 
   // 1 — Create intake: mint the object key, persist a durable UPLOADED draft, and
@@ -172,7 +227,12 @@ export class TalentIntakeService {
     requestId: string,
   ): Promise<TalentIntakeAcceptedView> {
     const tenant_id = authContext.tenant_id;
-    const draft = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
+    const created_by = authContext.sub;
+    const draft = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
     if (draft === null) {
       throw this.notFound(id, requestId);
     }
@@ -206,6 +266,7 @@ export class TalentIntakeService {
     const { draft: updated } = await this.talentExtraction.completeTalentIntakeUploadWithOutbox({
       tenant_id,
       id,
+      created_by,
       artifact_sha256: body.artifact_sha256 ?? null,
       mime_type: head.content_type ?? draft.mime_type ?? null,
       size_bytes: head.byte_length,
@@ -240,6 +301,7 @@ export class TalentIntakeService {
     const row = await this.talentExtraction.findTalentIntakeDraftById({
       tenant_id: authContext.tenant_id,
       id,
+      created_by: authContext.sub,
     });
     if (row === null) {
       throw this.notFound(id, requestId);
@@ -247,8 +309,9 @@ export class TalentIntakeService {
     await this.talentExtraction.touchTalentIntakeDraftOpened({
       tenant_id: authContext.tenant_id,
       id,
+      created_by: authContext.sub,
     });
-    return toTalentIntakeDraftView(row);
+    return this.buildView(authContext, row);
   }
 
   // 5 — Persist recruiter review edits (CAS on the exact version). A stale save
@@ -260,7 +323,12 @@ export class TalentIntakeService {
     requestId: string,
   ): Promise<TalentIntakeDraftView> {
     const tenant_id = authContext.tenant_id;
-    const existing = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
+    const created_by = authContext.sub;
+    const existing = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
     if (existing === null) {
       throw this.notFound(id, requestId);
     }
@@ -273,6 +341,7 @@ export class TalentIntakeService {
     const count = await this.talentExtraction.saveTalentIntakeDraftReview({
       tenant_id,
       id,
+      created_by,
       expected_version: body.expected_version,
       review_payload: body.review,
       review_status: 'IN_REVIEW',
@@ -285,8 +354,12 @@ export class TalentIntakeService {
         { requestId, details: { reason: 'version_conflict' } },
       );
     }
-    const reloaded = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
-    return toTalentIntakeDraftView(reloaded ?? existing);
+    const reloaded = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
+    return this.buildView(authContext, reloaded ?? existing);
   }
 
   // 6 — Retry extraction on the SAME stored artifact (no re-upload). A no-op when
@@ -297,18 +370,141 @@ export class TalentIntakeService {
     requestId: string,
   ): Promise<TalentIntakeDraftView> {
     const tenant_id = authContext.tenant_id;
-    const existing = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
+    const created_by = authContext.sub;
+    const existing = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
     if (existing === null) {
       throw this.notFound(id, requestId);
     }
     await this.talentExtraction.requeueTalentIntakeDraftWithOutbox({
       tenant_id,
       id,
+      created_by,
       event_type: TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
       event_payload: { draft_id: id, correlation_id: requestId },
     });
-    const reloaded = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id });
-    return toTalentIntakeDraftView(reloaded ?? existing);
+    const reloaded = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
+    return this.buildView(authContext, reloaded ?? existing);
+  }
+
+  // 6b — Discard (§18): explicit, actor-owned, hard delete of an unfinished draft
+  // plus its uploaded résumé object. There is NO age-based auto-deletion — this
+  // is the only deletion path. The row delete is authoritative; the object is
+  // removed best-effort afterward (orphan-sweep is the backstop).
+  async discard(authContext: AuthContextType, id: string, requestId: string): Promise<void> {
+    const tenant_id = authContext.tenant_id;
+    const created_by = authContext.sub;
+    const existing = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
+    if (existing === null) {
+      throw this.notFound(id, requestId);
+    }
+    if (existing.review_status === 'PROMOTED') {
+      throw new AramoError('VALIDATION_ERROR', 'A created talent cannot be discarded.', 422, {
+        requestId,
+        details: { review_status: existing.review_status },
+      });
+    }
+    const count = await this.talentExtraction.deleteTalentIntakeDraft({ tenant_id, id, created_by });
+    if (count === 0) {
+      // Lost a race (promoted/discarded elsewhere between read and delete).
+      throw this.notFound(id, requestId);
+    }
+    if (existing.storage_key !== null) {
+      try {
+        await this.objectStorage.deleteObjectByKey({ storage_key: existing.storage_key, requestId });
+      } catch {
+        // The row is already gone; a storage hiccup must not resurrect the draft.
+        // The S3 orphan-sweep lifecycle rule reclaims the object.
+      }
+    }
+  }
+
+  // 6c — Replace résumé (§13): mint a NEW object key, re-point the owned draft to
+  // it, reset to UPLOADED (clears prior failure) so the existing complete-upload
+  // path re-queues a fresh extraction. The OLD object is deleted best-effort.
+  // The browser uploads to the returned presigned URL, then calls complete-upload.
+  async replaceResume(
+    authContext: AuthContextType,
+    id: string,
+    body: CreateTalentIntakeDraftRequestDto,
+    requestId: string,
+  ): Promise<CreateTalentIntakeDraftResponse> {
+    const tenant_id = authContext.tenant_id;
+    const created_by = authContext.sub;
+    const filename = (body.filename ?? '').trim();
+    const contentType = (body.content_type ?? '').trim();
+    if (filename === '') {
+      throw new AramoError('VALIDATION_ERROR', 'filename must be a non-empty string', 422, {
+        requestId,
+        details: { field: 'filename' },
+      });
+    }
+    if (contentType === '') {
+      throw new AramoError('VALIDATION_ERROR', 'content_type must be a non-empty string', 422, {
+        requestId,
+        details: { field: 'content_type' },
+      });
+    }
+    const existing = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id,
+      created_by,
+    });
+    if (existing === null) {
+      throw this.notFound(id, requestId);
+    }
+    if (existing.review_status === 'PROMOTED') {
+      throw new AramoError('VALIDATION_ERROR', 'A created talent cannot be edited here.', 422, {
+        requestId,
+        details: { review_status: existing.review_status },
+      });
+    }
+    const presign = await this.objectStorage.createResumePresignedPut({
+      tenant_id,
+      talent_record_id: id,
+      filename,
+      content_type: contentType,
+      requestId,
+    });
+    const count = await this.talentExtraction.replaceTalentIntakeDraftArtifact({
+      tenant_id,
+      id,
+      created_by,
+      storage_key: presign.storage_key,
+      source_filename: filename,
+      mime_type: contentType,
+    });
+    if (count === 0) {
+      throw this.notFound(id, requestId);
+    }
+    // Best-effort delete of the superseded object (fresh uuid key → never the new
+    // one). Orphan-sweep backstops a failure.
+    const oldKey = existing.storage_key;
+    if (oldKey !== null && oldKey !== presign.storage_key) {
+      try {
+        await this.objectStorage.deleteObjectByKey({ storage_key: oldKey, requestId });
+      } catch {
+        // Superseded object left for the orphan-sweep lifecycle rule.
+      }
+    }
+    return {
+      draft_id: id,
+      upload_url: presign.presigned_url,
+      storage_key: presign.storage_key,
+      processing_status: 'UPLOADED',
+      expires_at: String(presign.expires_at),
+    };
   }
 
   // 7 — SSE NOTIFICATION. This is notification-only: GET remains authoritative.
@@ -321,6 +517,7 @@ export class TalentIntakeService {
     const row = await this.talentExtraction.findTalentIntakeDraftById({
       tenant_id: authContext.tenant_id,
       id,
+      created_by: authContext.sub,
     });
     if (row === null) {
       return { type: 'not_found', data: { id } };

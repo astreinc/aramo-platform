@@ -62,7 +62,7 @@ import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
-import { DraftTalentsView } from './talent/DraftTalentsView';
+import { DraftsLegacyRedirect } from './talent/DraftsLegacyRedirect';
 import { Talent360View } from './talent-360/Talent360View';
 import { TalentEditView } from './talent/TalentEditView';
 import { RecruiterShell } from './shell/RecruiterShell';
@@ -357,10 +357,10 @@ export function App() {
                       path="talent/drafts"
                       element={
                         <RouteGuard
-                          requireScope="talent:create"
+                          requireScope="talent:read"
                           sessionStateOverride={state}
                         >
-                          <DraftTalentsView />
+                          <DraftsLegacyRedirect />
                         </RouteGuard>
                       }
                     />

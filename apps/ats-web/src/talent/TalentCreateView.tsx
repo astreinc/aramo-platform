@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ApiError, Button } from '@aramo/fe-foundation';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ApiError, Button, useToast } from '@aramo/fe-foundation';
 
 import { useMe } from '../shell/me-api';
-import { Icons, InlineAlert, PageHeader } from '../ui';
-import { RecordConsentDialog } from '../consent/RecordConsentDialog';
+import { Icons, InlineAlert, PageHeader, StatusPill } from '../ui';
+// (Consent is captured on Talent 360 after create — no interstitial screen, §16.)
 
 import { ResumeDropzone } from './ResumeDropzone';
 import { ParseProgress } from './ParseProgress';
@@ -18,14 +18,19 @@ import {
 import {
   completeTalentIntakeUpload,
   createTalentIntakeDraft,
+  discardTalentIntakeDraft,
   getTalentIntakeDraft,
   openTalentIntakeEvents,
   patchTalentIntakeReview,
+  listTalentIntakeDrafts,
   promoteTalentIntakeDraft,
+  replaceTalentIntakeResume,
   retryTalentIntakeExtraction,
+  type TalentIntakeDraftListItem,
   type TalentIntakeDraftView,
   type TalentIntakeReviewPayload,
 } from './talent-intake-api';
+import { draftTitle, inProgressDrafts, presentDraft } from './draft-recovery';
 import { createErrorMessage, uploadErrorMessage } from './error-messages';
 import { emptyIntakeState, INTAKE_TEXT_KEYS, type IntakeState } from './intake-fields';
 import type { Provenance, ProvenanceMap } from './provenance';
@@ -47,7 +52,7 @@ import type {
 // live processing banner + persisted edits) → success. ?draft restores a
 // persisted draft fully from backend state.
 
-type Phase = 'intake' | 'processing' | 'form' | 'success';
+type Phase = 'intake' | 'processing' | 'form';
 
 const TERMINAL = new Set(['READY', 'PARTIAL', 'FAILED']);
 
@@ -62,10 +67,31 @@ function provenanceFromOrigin(origin: string): Provenance {
 export function TalentCreateView() {
   const navigate = useNavigate();
   const me = useMe();
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const reopenDraftId = searchParams.get('draft');
+  // Talent Draft Recovery (§11/§17) — preserve origin so the backlink and
+  // Save & close return to In progress when that is where the recruiter came from.
+  const fromInProgress = searchParams.get('from') === 'in-progress';
+  const backTo = fromInProgress ? '/talent?view=in-progress' : '/talent';
+  // §8 — the actor's other in-progress drafts, offered as "Continue adding (n)"
+  // on Step 1 when starting fresh (never when reopening a specific draft).
+  const [intakeDrafts, setIntakeDrafts] = useState<TalentIntakeDraftListItem[]>([]);
+  useEffect(() => {
+    if (reopenDraftId !== null) return;
+    let cancelled = false;
+    listTalentIntakeDrafts()
+      .then((r) => {
+        if (!cancelled) setIntakeDrafts(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setIntakeDrafts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reopenDraftId]);
 
-  const [consentOpen, setConsentOpen] = useState(false);
   const authorName = me?.user.display_name ?? me?.user.email ?? 'you';
   const addedToday = new Date().toLocaleDateString('en-US', {
     month: 'short',
@@ -104,7 +130,6 @@ export function TalentCreateView() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[] | null>(null);
   const [duplicate, setDuplicate] = useState<TalentDuplicateMatch | null>(null);
-  const [created, setCreated] = useState<TalentRecordView | null>(null);
 
   // Autosave bookkeeping.
   const [reviewDirty, setReviewDirty] = useState(false);
@@ -228,7 +253,7 @@ export function TalentCreateView() {
   }, [draftId, hydrateFromView]);
 
   useEffect(() => {
-    if (draftId === null || isTerminal || phase === 'success') return;
+    if (draftId === null || isTerminal) return;
     // SSE triggers a refetch only (notification-only); GET is the source of truth.
     const closeSse = openTalentIntakeEvents(draftId, () => {
       void refetchDraft();
@@ -366,6 +391,44 @@ export function TalentCreateView() {
     }
   }
 
+  // §15/§18 — discard the unfinished draft (e.g. from the duplicate panel: the
+  // recruiter decided it IS the existing Talent) and return to the origin.
+  async function onDiscardDraft(): Promise<void> {
+    if (draftId === null) {
+      navigate(backTo);
+      return;
+    }
+    try {
+      await discardTalentIntakeDraft(draftId);
+    } catch {
+      // The draft may already be gone; returning to Talent is still correct.
+    }
+    navigate(backTo);
+  }
+
+  // §13 — replace the résumé on this draft: mint a fresh upload target, PUT the
+  // new file, then complete-upload to re-queue extraction (same durable path).
+  async function onReplaceResume(file: File): Promise<void> {
+    if (draftId === null) return;
+    setUploadError(null);
+    try {
+      const presign = await replaceTalentIntakeResume(draftId, {
+        filename: file.name,
+        content_type: file.type === '' ? 'application/octet-stream' : file.type,
+      });
+      await fetch(presign.upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type === '' ? 'application/octet-stream' : file.type },
+      });
+      await completeTalentIntakeUpload(draftId);
+      const view = await getTalentIntakeDraft(draftId);
+      hydrateFromView(view, true);
+    } catch (err) {
+      setUploadError(uploadErrorMessage(err));
+    }
+  }
+
   function resetAll(): void {
     setPhase('intake');
     setDraftId(null);
@@ -388,7 +451,6 @@ export function TalentCreateView() {
     setSubmitError(null);
     setMissingFields(null);
     setDuplicate(null);
-    setCreated(null);
     setReviewDirty(false);
     navigate('/talent/new');
   }
@@ -421,9 +483,11 @@ export function TalentCreateView() {
   const phoneOk = fields.phone_cell.trim() !== '';
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
-  const resumeOk = draftId !== null;
-  const canCreate =
-    nameOk && emailOk && phoneOk && cityOk && stateOk && resumeOk && duplicate === null && !submitting;
+  // Create authority (§9/§13) — canonical admission ONLY (name + email + phone).
+  // A résumé is NOT required and city/state are completeness guidance, never
+  // creation gates. An active-email duplicate is the one backend-authoritative
+  // block (the 409 is preserved — PO ruling), surfaced via `duplicate`.
+  const canCreate = nameOk && emailOk && phoneOk && duplicate === null && !submitting;
 
   // ── Promote (replaces direct createTalent for the résumé-first flow) ────
   async function onCreate(): Promise<void> {
@@ -435,8 +499,12 @@ export function TalentCreateView() {
     await flushSave();
     try {
       const record = await promoteTalentIntakeDraft(draftId);
-      setCreated(record);
-      setPhase('success');
+      // §16 — on successful promotion: toast then navigate to Talent 360. The
+      // draft leaves In progress / Continue adding / the cue immediately because
+      // the next list read no longer returns it (review_status = PROMOTED).
+      const fullName = `${record.first_name} ${record.last_name}`.trim();
+      toast.show(`Talent created · ${fullName}`);
+      navigate(`/talent/${record.id}`);
     } catch (err) {
       if (err instanceof ApiError && err.code === 'TALENT_RECORD_DUPLICATE') {
         const existing = err.details?.['existing_id'];
@@ -472,25 +540,9 @@ export function TalentCreateView() {
   }
 
   // ── Render ────────────────────────────────────────────────────────────
-  if (phase === 'success' && created !== null) {
-    return (
-      <>
-        <SuccessScreen
-          name={`${created.first_name} ${created.last_name}`}
-          onOpen={() => navigate(`/talent/${created.id}`)}
-          onAnother={resetAll}
-          onRecordConsent={() => setConsentOpen(true)}
-        />
-        {consentOpen && (
-          <RecordConsentDialog
-            talentRecordId={created.id}
-            open={consentOpen}
-            onOpenChange={setConsentOpen}
-          />
-        )}
-      </>
-    );
-  }
+  // §16 — successful promotion navigates straight to Talent 360 with a toast;
+  // there is no interstitial success screen. Consent is captured on Talent 360
+  // (the shipped Consent-Capture surface).
 
   return (
     <section className="rc-addtalent">
@@ -498,9 +550,51 @@ export function TalentCreateView() {
 
       {phase === 'intake' ? (
         <div className="rc-stepwrap">
+          <div className="rc-stepeyebrow">Step 1 of 2 · Résumé</div>
+          {/* §8 — Continue adding (n): the actor's in-progress drafts, max 3 rows,
+              then "View all {n} in progress ›". Starting someone new stays direct
+              (no modal, no mandatory chooser) — it's the section right below. */}
+          {reopenDraftId === null && inProgressDrafts(intakeDrafts).length > 0 ? (
+            <div className="rc-continueadd">
+              <div className="rc-continueadd__hd">
+                Continue adding ({inProgressDrafts(intakeDrafts).length})
+              </div>
+              <div className="rc-continueadd__list">
+                {inProgressDrafts(intakeDrafts)
+                  .slice(0, 3)
+                  .map((d) => {
+                    const p = presentDraft(d);
+                    const { title, file } = draftTitle(d);
+                    return (
+                      <div key={d.id} className="rc-continueadd__row">
+                        <span className="rc-continueadd__nm">
+                          {title}
+                          <span className="rc-continueadd__file"> · {file}</span>
+                        </span>
+                        <StatusPill tone={p.pillTone}>{p.label}</StatusPill>
+                        <Link
+                          to={`/talent/new?draft=${encodeURIComponent(d.id)}&from=in-progress`}
+                          className="rc-hbtn rc-hbtn--primary"
+                        >
+                          Continue
+                        </Link>
+                      </div>
+                    );
+                  })}
+              </div>
+              {inProgressDrafts(intakeDrafts).length > 3 ? (
+                <Link to="/talent?view=in-progress" className="rc-continueadd__all">
+                  View all {inProgressDrafts(intakeDrafts).length} in progress ›
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
           <div className="rc-stepintro">
-            <div className="rc-stepeyebrow">Step 1 of 2 · Source</div>
-            <h2 className="rc-steptitle">Start with the résumé</h2>
+            <h2 className="rc-steptitle">
+              {reopenDraftId === null && inProgressDrafts(intakeDrafts).length > 0
+                ? 'Or start someone new'
+                : 'Start with the résumé'}
+            </h2>
             <p className="rc-stepdesc">
               Aramo reads it in the background — you can leave and come back any
               time. Nothing is created until you review and confirm.
@@ -510,7 +604,9 @@ export function TalentCreateView() {
             <InlineAlert variant="error">{uploadError}</InlineAlert>
           ) : null}
           <ResumeDropzone onFile={handleFile} />
-          <p className="rc-stepreq">A résumé is required to create a Talent record.</p>
+          <p className="rc-stepreq">
+            Add a résumé to prefill details, or enter the Talent information manually.
+          </p>
           <div className="rc-stepcancel">
             <Button unstyled type="button" className="rc-btn" onClick={() => navigate('/talent')}>
               Cancel
@@ -536,9 +632,9 @@ export function TalentCreateView() {
                 type="button"
                 className="rc-step__back"
                 disabled={submitting}
-                onClick={() => navigate('/talent/drafts')}
+                onClick={() => navigate(backTo)}
               >
-                ← Draft talents
+                ← Talent
               </Button>
               <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
             </div>
@@ -547,6 +643,7 @@ export function TalentCreateView() {
               processingStatus={processingStatus}
               failure={draftFailure}
               onRetry={onRetry}
+              onReplace={onReplaceResume}
             />
             {draftWarning !== null && processingStatus !== 'FAILED' ? (
               <div className="rc-warnnote" role="status">
@@ -564,7 +661,7 @@ export function TalentCreateView() {
                 match={duplicate}
                 email={email1}
                 onReview={(id) => navigate(`/talent/${id}`)}
-                onDifferent={() => onField('email1', '')}
+                onDiscard={onDiscardDraft}
               />
             ) : null}
             {submitError !== null ? (
@@ -585,6 +682,28 @@ export function TalentCreateView() {
             />
           </div>
 
+          {/* §20 — compact rail summary shown <760px (the full rail is hidden):
+              "{file} · {x}/5 required ▾" with the checklist disclosed on toggle. */}
+          <details className="rc-railsummary">
+            <summary>
+              <Icons.IconFile aria-hidden="true" />
+              {sourceFilename ?? 'résumé'} ·{' '}
+              {[nameOk, emailOk, phoneOk, cityOk && stateOk, draftId !== null].filter(Boolean).length}
+              /5 required ▾
+            </summary>
+            <div className="rc-railsummary__body">
+              <RequirementList
+                gates={[
+                  { ok: nameOk, label: 'First and last name' },
+                  { ok: emailOk, label: 'Email address' },
+                  { ok: phoneOk, label: 'Phone number' },
+                  { ok: cityOk && stateOk, label: 'City and state' },
+                  { ok: draftId !== null, label: 'Résumé attached' },
+                ]}
+              />
+            </div>
+          </details>
+
           <aside className="rc-editgrid__rail">
             {sourceFilename !== null ? (
               <ResumeCard fileName={sourceFilename} sizeBytes={sizeBytes ?? 0} />
@@ -595,7 +714,7 @@ export function TalentCreateView() {
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
                 { ok: cityOk && stateOk, label: 'City and state' },
-                { ok: resumeOk, label: 'Résumé attached' },
+                { ok: draftId !== null, label: 'Résumé attached' },
               ]}
             />
             <p className="rc-secnote">
@@ -627,7 +746,7 @@ export function TalentCreateView() {
               type="button"
               className="rc-btn"
               disabled={submitting}
-              onClick={() => navigate('/talent/drafts')}
+              onClick={() => navigate(backTo)}
             >
               Save &amp; close
             </Button>
@@ -647,20 +766,46 @@ function ProcessingBanner({
   processingStatus,
   failure,
   onRetry,
+  onReplace,
 }: {
   readonly processingStatus: string;
   readonly failure: string | null;
   readonly onRetry: () => void;
+  readonly onReplace: (file: File) => void;
 }) {
+  const fileRef = useRef<HTMLInputElement>(null);
   if (processingStatus === 'FAILED') {
+    // §13 — failure NEVER blocks creation; manual entry remains available and the
+    // résumé stays attached. Try reading again / Replace résumé are the recovery
+    // affordances.
     return (
-      <InlineAlert variant="error">
-        {failure ?? 'We couldn’t prepare the résumé details. Your uploaded résumé is safe.'}{' '}
-        <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
-          Retry extraction
-        </Button>{' '}
-        or complete the fields below manually.
-      </InlineAlert>
+      <div className="rc-failnote" role="alert">
+        {/* Genuine native need: a hidden file picker triggered programmatically
+            (the fe-foundation Input has no type=file + imperative click). */}
+        {/* eslint-disable-next-line no-restricted-syntax */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,.doc,.docx"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f !== undefined) onReplace(f);
+            e.target.value = '';
+          }}
+        />
+        <span>
+          <b>Couldn’t read this résumé.</b> Enter the details below — the résumé stays attached.
+        </span>
+        <span className="rc-failnote__acts">
+          <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
+            Try reading again
+          </Button>
+          <Button unstyled type="button" className="rc-linkbtn" onClick={() => fileRef.current?.click()}>
+            Replace résumé
+          </Button>
+        </span>
+      </div>
     );
   }
   if (processingStatus === 'READY' || processingStatus === 'PARTIAL') {
@@ -671,11 +816,11 @@ function ProcessingBanner({
       </div>
     );
   }
-  // UPLOADED / QUEUED / PROCESSING
+  // §12 — Reading state is informational (NOT a block): manual editing + creation
+  // remain available while extraction runs.
   return (
-    <div className="rc-warnnote" role="status" aria-live="polite">
-      Reading résumé… you can leave this page — we’ll keep processing it, and your
-      draft is saved.
+    <div className="rc-readingnote" role="status" aria-live="polite">
+      Reading résumé — fields fill in as they’re found. Edit now or leave; your progress is saved.
     </div>
   );
 }
@@ -685,12 +830,12 @@ function DupMatchCard({
   match,
   email,
   onReview,
-  onDifferent,
+  onDiscard,
 }: {
   readonly match: TalentDuplicateMatch;
   readonly email: string;
   readonly onReview: (id: string) => void;
-  readonly onDifferent: () => void;
+  readonly onDiscard: () => void;
 }) {
   const name = `${match.first_name} ${match.last_name}`.trim();
   const initials =
@@ -723,10 +868,12 @@ function DupMatchCard({
         </span>
         <span className="rc-dupcard__acts">
           <Button unstyled type="button" className="rc-dupcard__review" onClick={() => onReview(match.id)}>
-            Review existing Talent
+            Open existing Talent
           </Button>
-          <Button unstyled type="button" className="rc-dupcard__diff" onClick={onDifferent}>
-            Use a different email
+          {/* §15 / PO ruling — the ONLY other action is Discard. There is NO
+              "Continue anyway" in V1 (the active-email 409 is preserved). */}
+          <Button unstyled type="button" className="rc-dupcard__diff" onClick={onDiscard}>
+            Discard
           </Button>
         </span>
       </div>
@@ -765,10 +912,7 @@ function ResumeCard({
       </div>
       <p className="rc-consent__note">
         <Icons.IconShield />
-        <span>
-          SSN-shaped patterns are redacted before the résumé text is stored (D4).
-          Résumé text purges on delete (ADR-0015 cascade).
-        </span>
+        <span>SSN-like numbers are removed before the résumé text is stored.</span>
       </p>
     </section>
   );
@@ -801,40 +945,3 @@ function GateRow({ ok, label }: { readonly ok: boolean; readonly label: string }
   );
 }
 
-// ── Success screen ───────────────────────────────────────────────────────────
-function SuccessScreen({
-  name,
-  onOpen,
-  onAnother,
-  onRecordConsent,
-}: {
-  readonly name: string;
-  readonly onOpen: () => void;
-  readonly onAnother: () => void;
-  readonly onRecordConsent: () => void;
-}) {
-  return (
-    <section className="rc-success">
-      <div className="rc-success__ic" aria-hidden="true">
-        <Icons.IconCheck />
-      </div>
-      <h2>{name} added to your talent</h2>
-      <p>Profile created, résumé attached and queued for indexing.</p>
-      <p>
-        Contact permissions are separate from the profile. Record the Talent&apos;s
-        consent to enable recruiter email, phone and matching.
-      </p>
-      <div className="rc-success__btns">
-        <Button unstyled type="button" className="rc-btn rc-btn--primary" onClick={onRecordConsent}>
-          Record consent
-        </Button>
-        <Button unstyled type="button" className="rc-btn" onClick={onOpen}>
-          Open profile
-        </Button>
-        <Button unstyled type="button" className="rc-btn" onClick={onAnother}>
-          Add another
-        </Button>
-      </div>
-    </section>
-  );
-}

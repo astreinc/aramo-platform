@@ -2521,6 +2521,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/talent-profile-field-state.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -3795,6 +3801,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-actor-isolation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5226,6 +5238,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -8171,6 +8189,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-actor-isolation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8220,6 +8244,12 @@
         "status": "excluded"
       },
       { "project": "talent-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-view.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-extraction": [

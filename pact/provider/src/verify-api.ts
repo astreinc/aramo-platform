@@ -479,6 +479,14 @@ const TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20261007120000_talent_intake_envelope_lease_source_agnostic/migration.sql',
 );
+// Talent Draft Recovery (§22) — additive last_touched_at column (+ actor-scope
+// staleness index) on TalentIntakeDraft. Applied AFTER the envelope-lease ALTER;
+// the regenerated client SELECTs last_touched_at, which the intake draft view
+// now projects, so provider states that seed TalentIntakeDraft require it.
+const TALENT_EVIDENCE_INTAKE_LAST_TOUCHED_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20261008120000_talent_intake_actor_scope_last_touched/migration.sql',
+);
 // Resume Revision Lifecycle §4 — additive artifact byte-SHA-256 + per-Talent
 // exact-duplicate uniqueness guard on TalentResumeEdition (depends only on the
 // 1a resume_edition table; ALTER + CREATE UNIQUE INDEX, no documents dependency).
@@ -3594,6 +3602,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_RESUME_SHA256_MIGRATION,
         TALENT_EVIDENCE_INTAKE_MIGRATION,
         TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION,
+        TALENT_EVIDENCE_INTAKE_LAST_TOUCHED_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,

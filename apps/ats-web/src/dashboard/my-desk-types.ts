@@ -34,7 +34,10 @@ export type DeskActionKind =
   | 'email'
   // Offer & Start §11 — deep-link an exception into the single journey; rendered as a plain
   // link to the action's href (/offer-start/:pipelineId). Narrow, not a generic router.
-  | 'continue_offer_start';
+  | 'continue_offer_start'
+  // Talent Draft Recovery §19 — resume an unfinished Talent draft; rendered as a plain link
+  // to the action's href (/talent/new?draft=:id&from=in-progress).
+  | 'continue_draft';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;
@@ -79,7 +82,10 @@ export interface DeskInterviewView {
 export type DeskExceptionKind =
   | 'pre_start_blocked'
   | 'offer_expiring'
-  | 'identity_advisory';
+  | 'identity_advisory'
+  // Talent Draft Recovery §19 — an unfinished Talent (couldn't read the résumé, or
+  // untouched ≥ 3 days). The generic exceptions renderer deep-links primary_action.href.
+  | 'unfinished_talent';
 
 export type DeskExceptionSeverity = 'high' | 'medium';
 

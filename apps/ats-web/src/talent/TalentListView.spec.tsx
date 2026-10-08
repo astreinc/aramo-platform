@@ -190,6 +190,7 @@ function mockServer(
     }>;
     overGuard?: boolean;
     secondPage?: readonly TalentRecordView[];
+    drafts?: readonly unknown[];
   } = {},
 ) {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -199,6 +200,9 @@ function mockServer(
         status: s,
         headers: { 'Content-Type': 'application/json' },
       });
+    // Talent Draft Recovery — the actor's in-progress drafts (§4–§7).
+    if (url.includes('/v1/talent-intake-drafts'))
+      return json({ items: opts.drafts ?? [] });
     if (url.includes('/v1/tenant/users'))
       return json(opts.roster ?? { items: [] }, opts.rosterStatus ?? 200);
     // CRM-3 — reverse membership (Lists column). Backend is visibility-scoped;
@@ -552,6 +556,81 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     expect(screen.queryByRole('button', { name: /my hot list/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: /save current view/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ── Talent Draft Recovery IA (§4–§7, §20) ──────────────────────────────────
+function draftItem(over: Record<string, unknown> = {}) {
+  return {
+    id: 'd1',
+    source_filename: 'uma.pdf',
+    processing_status: 'PROCESSING',
+    review_status: 'IN_REVIEW',
+    promoted_talent_record_id: null,
+    created_at: '2026-09-01T00:00:00Z',
+    updated_at: '2026-09-01T00:00:00Z',
+    last_touched_at: '2026-09-01T00:00:00Z',
+    required: { met: 3, total: 5 },
+    admissible: false,
+    display_name: 'Uma Maheshwari',
+    ...over,
+  };
+}
+
+describe('TalentListView — Talent Draft Recovery IA', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('zero drafts → no In-progress tab, no recovery strip, no Add-talent dot', async () => {
+    mockServer({ talent: [], drafts: [] });
+    const { container } = renderInRouter(
+      <TalentListView sessionOverride={{ ...SESSION, scopes: ['talent:read', 'talent:create'] }} />,
+    );
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /in progress/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/you started adding/i)).not.toBeInTheDocument();
+    expect(container.querySelector('.rc-addtalent__dot')).toBeNull();
+  });
+
+  it('one draft → In-progress tab with count 1, recovery strip, and the Add-talent dot', async () => {
+    mockServer({ talent: [], drafts: [draftItem()] });
+    const { container } = renderInRouter(
+      <TalentListView sessionOverride={{ ...SESSION, scopes: ['talent:read', 'talent:create'] }} />,
+    );
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    const tab = await screen.findByRole('button', { name: /in progress/i });
+    expect(tab).toHaveTextContent('1');
+    expect(screen.getByText(/1 talent you started adding/i)).toBeInTheDocument();
+    expect(container.querySelector('.rc-addtalent__dot')).not.toBeNull();
+  });
+
+  it('?view=in-progress renders the In-progress recovery surface (incl. the narrow two-line row in DOM)', async () => {
+    mockServer({ talent: [], drafts: [draftItem()] });
+    const { container } = render(
+      <MemoryRouter initialEntries={['/?view=in-progress']}>
+        <TalentListView sessionOverride={SESSION} />
+      </MemoryRouter>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(/you started adding but haven't created yet/i),
+      ).toBeInTheDocument(),
+    );
+    // Both presentations are in the DOM; CSS shows one per breakpoint (§20).
+    expect(container.querySelector('.rc-ip-wide')).not.toBeNull();
+    expect(container.querySelector('[data-testid="in-progress-row-narrow"]')).not.toBeNull();
+  });
+
+  it('?view=in-progress with zero drafts normalizes away (no In-progress surface)', async () => {
+    mockServer({ talent: [], drafts: [] });
+    render(
+      <MemoryRouter initialEntries={['/?view=in-progress']}>
+        <TalentListView sessionOverride={SESSION} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Talent')).toBeInTheDocument());
+    expect(
+      screen.queryByText(/you started adding but haven't created yet/i),
     ).not.toBeInTheDocument();
   });
 });

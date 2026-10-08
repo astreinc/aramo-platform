@@ -691,6 +691,7 @@ export interface TalentIntakeDraftRow {
   processing_started_at: Date | null;
   processing_completed_at: Date | null;
   last_opened_at: Date | null;
+  last_touched_at: Date | null;
 }
 
 export interface CreateTalentIntakeDraftInput {
@@ -1836,6 +1837,8 @@ export class TalentEvidenceRepository {
         size_bytes: input.size_bytes ?? null,
         processing_status: 'UPLOADED',
         review_status: 'NOT_STARTED',
+        // Creation is the first recruiter touch (Talent Draft Recovery §22).
+        last_touched_at: new Date(),
       },
     });
     return row as unknown as TalentIntakeDraftRow;
@@ -1860,7 +1863,7 @@ export class TalentEvidenceRepository {
           ("id", "tenant_id", "created_by", "source_type", "source_ref",
            "source_event_id", "source_filename", "storage_key", "mime_type",
            "size_bytes", "structured_payload", "processing_status",
-           "review_status", "version", "created_at", "updated_at")
+           "review_status", "version", "created_at", "updated_at", "last_touched_at")
         VALUES
           (${input.id}::uuid, ${input.tenant_id}::uuid, ${input.created_by}::uuid,
            ${input.source_type}, ${input.source_ref ?? null},
@@ -1868,7 +1871,7 @@ export class TalentEvidenceRepository {
            ${input.storage_key ?? null}, ${input.mime_type ?? null},
            ${input.size_bytes ?? null},
            ${input.structured_payload === undefined ? null : JSON.stringify(input.structured_payload)}::jsonb,
-           'QUEUED', 'NOT_STARTED', 0, now(), now())
+           'QUEUED', 'NOT_STARTED', 0, now(), now(), now())
         ON CONFLICT ("tenant_id", "source_type", "source_event_id")
           WHERE "source_event_id" IS NOT NULL
         DO NOTHING
@@ -1904,12 +1907,21 @@ export class TalentEvidenceRepository {
     });
   }
 
+  // Actor-private draft ownership (Talent Draft Recovery §2.2): when created_by
+  // is supplied (every recruiter-facing path), a row owned by another recruiter
+  // in the same tenant resolves to null — the service then 404s, never leaking
+  // existence. Worker/system paths omit created_by and remain tenant-scoped.
   async findTalentIntakeDraftById(args: {
     tenant_id: string;
     id: string;
+    created_by?: string;
   }): Promise<TalentIntakeDraftRow | null> {
     const row = await this.prisma.talentIntakeDraft.findFirst({
-      where: { id: args.id, tenant_id: args.tenant_id },
+      where: {
+        id: args.id,
+        tenant_id: args.tenant_id,
+        ...(args.created_by !== undefined ? { created_by: args.created_by } : {}),
+      },
     });
     return (row as unknown as TalentIntakeDraftRow | null) ?? null;
   }
@@ -1941,15 +1953,17 @@ export class TalentEvidenceRepository {
   async completeUploadWithOutbox(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     artifact_sha256?: string | null;
     mime_type?: string | null;
     size_bytes?: number | null;
     event_type: string;
     event_payload: unknown;
   }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.talentIntakeDraft.updateMany({
-        where: { id: input.id, tenant_id: input.tenant_id, processing_status: 'UPLOADED' },
+        where: { id: input.id, tenant_id: input.tenant_id, ...owner, processing_status: 'UPLOADED' },
         data: {
           processing_status: 'QUEUED',
           artifact_sha256: input.artifact_sha256 ?? undefined,
@@ -1968,7 +1982,7 @@ export class TalentEvidenceRepository {
         });
       }
       const draft = await tx.talentIntakeDraft.findFirst({
-        where: { id: input.id, tenant_id: input.tenant_id },
+        where: { id: input.id, tenant_id: input.tenant_id, ...owner },
       });
       return {
         enqueued: updated.count === 1,
@@ -1984,14 +1998,17 @@ export class TalentEvidenceRepository {
   async requeueTalentIntakeDraftWithOutbox(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     event_type: string;
     event_payload: unknown;
   }): Promise<{ enqueued: boolean; draft: TalentIntakeDraftRow | null }> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.talentIntakeDraft.updateMany({
         where: {
           id: input.id,
           tenant_id: input.tenant_id,
+          ...owner,
           processing_status: { in: ['FAILED', 'PARTIAL'] },
           promoted_talent_record_id: null,
         },
@@ -2002,6 +2019,8 @@ export class TalentEvidenceRepository {
           warning_code: null,
           processing_started_at: null,
           processing_completed_at: null,
+          // Recruiter-initiated retry is a touch (§22).
+          last_touched_at: new Date(),
           version: { increment: 1 },
         },
       });
@@ -2015,7 +2034,7 @@ export class TalentEvidenceRepository {
         });
       }
       const draft = await tx.talentIntakeDraft.findFirst({
-        where: { id: input.id, tenant_id: input.tenant_id },
+        where: { id: input.id, tenant_id: input.tenant_id, ...owner },
       });
       return {
         enqueued: updated.count === 1,
@@ -2108,15 +2127,19 @@ export class TalentEvidenceRepository {
   async saveTalentIntakeDraftReview(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     expected_version: number;
     review_payload: unknown;
     review_status?: TalentIntakeReviewStatusValue;
   }): Promise<number> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
     const updated = await this.prisma.talentIntakeDraft.updateMany({
-      where: { id: input.id, tenant_id: input.tenant_id, version: input.expected_version },
+      where: { id: input.id, tenant_id: input.tenant_id, ...owner, version: input.expected_version },
       data: {
         review_payload: input.review_payload as never,
         ...(input.review_status !== undefined ? { review_status: input.review_status } : {}),
+        // Recruiter review edit is a touch (§22).
+        last_touched_at: new Date(),
         version: { increment: 1 },
       },
     });
@@ -2130,11 +2153,13 @@ export class TalentEvidenceRepository {
   async markTalentIntakeDraftPromoted(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
     promoted_talent_record_id: string;
     promoted_at: Date;
   }): Promise<number> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
     const updated = await this.prisma.talentIntakeDraft.updateMany({
-      where: { id: input.id, tenant_id: input.tenant_id, promoted_talent_record_id: null },
+      where: { id: input.id, tenant_id: input.tenant_id, ...owner, promoted_talent_record_id: null },
       data: {
         review_status: 'PROMOTED',
         promoted_talent_record_id: input.promoted_talent_record_id,
@@ -2145,14 +2170,80 @@ export class TalentEvidenceRepository {
     return updated.count;
   }
 
+  // An open updates last_opened_at ONLY — it is NOT a recruiter "touch" for the
+  // staleness rule (§22 enumerates touches as create / review PATCH / retry /
+  // replace), so last_touched_at is deliberately untouched here.
   async touchTalentIntakeDraftOpened(input: {
     tenant_id: string;
     id: string;
+    created_by?: string;
   }): Promise<void> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
     await this.prisma.talentIntakeDraft.updateMany({
-      where: { id: input.id, tenant_id: input.tenant_id },
+      where: { id: input.id, tenant_id: input.tenant_id, ...owner },
       data: { last_opened_at: new Date() },
     });
+  }
+
+  // Discard (§18) — hard-delete an unpromoted draft owned by the actor. A
+  // PROMOTED draft is a Talent now and is never discarded here. Actor-scoped at
+  // the write boundary (created_by). Returns the deleted count (0 → not found /
+  // not owned / already promoted). The attached résumé object is deleted by the
+  // service after the row is gone; there is NO age-based auto-deletion.
+  async deleteTalentIntakeDraft(input: {
+    tenant_id: string;
+    id: string;
+    created_by: string;
+  }): Promise<number> {
+    const deleted = await this.prisma.talentIntakeDraft.deleteMany({
+      where: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        created_by: input.created_by,
+        review_status: { not: 'PROMOTED' },
+      },
+    });
+    return deleted.count;
+  }
+
+  // Replace résumé (§13) — swap the stored artifact on an unpromoted, owned draft
+  // and reset it to UPLOADED so the existing complete-upload path re-queues a
+  // fresh extraction. Clears prior failure/warning + processing timestamps and
+  // the stale size/hash. A recruiter-sourced action → a touch. Guarded owner +
+  // not promoted; returns the updated count (0 → not found / not owned /
+  // promoted).
+  async replaceTalentIntakeDraftArtifact(input: {
+    tenant_id: string;
+    id: string;
+    created_by: string;
+    storage_key: string;
+    source_filename: string;
+    mime_type: string;
+  }): Promise<number> {
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        created_by: input.created_by,
+        review_status: { not: 'PROMOTED' },
+      },
+      data: {
+        storage_key: input.storage_key,
+        source_filename: input.source_filename,
+        mime_type: input.mime_type,
+        size_bytes: null,
+        artifact_sha256: null,
+        processing_status: 'UPLOADED',
+        failure_code: null,
+        failure_detail: null,
+        warning_code: null,
+        processing_started_at: null,
+        processing_completed_at: null,
+        last_touched_at: new Date(),
+        version: { increment: 1 },
+      },
+    });
+    return updated.count;
   }
 
 

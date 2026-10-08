@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -122,6 +123,35 @@ export class TalentIntakeController {
     @RequestId() requestId: string,
   ): Promise<TalentIntakeDraftView> {
     return this.intake.retry(authContext, id, requestId);
+  }
+
+  // Replace the résumé on the SAME draft (new object + re-queue). Returns a fresh
+  // presigned upload target; the browser uploads then calls complete-upload.
+  @Post(':id/replace-resume')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async replaceResume(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: CreateTalentIntakeDraftRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<CreateTalentIntakeDraftResponse> {
+    return this.intake.replaceResume(authContext, id, body, requestId);
+  }
+
+  // Discard → hard-delete an unfinished, actor-owned draft + its résumé object.
+  // The only deletion path (no age-based auto-deletion).
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('talent:edit')
+  @RequireSiteMatch()
+  async discard(
+    @AuthContext() authContext: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<void> {
+    await this.intake.discard(authContext, id, requestId);
   }
 
   // Promote → create exactly one canonical TalentRecord (idempotent).

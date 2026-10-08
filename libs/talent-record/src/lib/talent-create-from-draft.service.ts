@@ -158,6 +158,50 @@ export class TalentCreateFromDraftService {
     return created;
   }
 
+  // Manual admission create (Talent Draft Recovery §13) — the extraction path is
+  // UNAVAILABLE (no governed ResumeExtractionDraft child, or a child that never
+  // reached READY_FOR_REVIEW: FAILED / PROCESSING / REJECTED). Creates the
+  // TalentRecord from recruiter-reviewed fields ONLY, with NO résumé-evidence
+  // lifecycle (there is no governed extraction to establish). Extraction failure
+  // must NOT become a creation prerequisite: resume_extraction_draft_id is never
+  // required here. The email duplicate authority (the create-time 409) is still
+  // enforced, with the reserved-id exception so our own retry is not a duplicate.
+  // `reservedId` is minted + claimed by the caller (the promotion-linkage CAS is
+  // the single convergence point), so create is idempotent on it. Same reconcile
+  // + work-auth evidence tail as the governed path.
+  async createManualFromReview(
+    authContext: AuthContextType,
+    body: CreateTalentRecordRequestDto,
+    email1: string,
+    reservedId: string,
+    requestId: string,
+  ): Promise<TalentRecordView> {
+    const tenant_id = authContext.tenant_id;
+    const duplicate = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
+    if (duplicate !== null && duplicate.id !== reservedId) {
+      throw new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this primary email already exists in your tenant.',
+        409,
+        { requestId, details: { email1, existing_id: duplicate.id } },
+      );
+    }
+    let created = await this.repo.findById({ tenant_id, id: reservedId });
+    if (created === null) {
+      created = await this.repo.create({
+        tenant_id,
+        entered_by_id: authContext.sub,
+        input: body,
+        requestId,
+        id: reservedId,
+      });
+    }
+    await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
+    await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
+    await this.recordWorkAuthEvidence(authContext, reservedId, body);
+    return created;
+  }
+
   // TALENT-INTEL-1 TI-1G §1 — append governed RIGHT_TO_WORK evidence when a Create/
   // Edit carries an EXPLICIT work-authorization VALUE. Best-effort: the scalar
   // (written by repo.create/update) is the immediate current projection; a durable-

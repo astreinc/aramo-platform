@@ -142,6 +142,19 @@ export interface DeskDayWindow {
   readonly end_iso: string;
 }
 
+// Talent Draft Recovery §19 — a recruiter's own unfinished Talent draft, narrowed
+// for the desk. `needs_attention` = couldn't read the résumé (FAILED/PARTIAL);
+// `last_touched_at` drives the 3-day staleness rule (the service decides
+// eligibility — adapter does no derivation). Promoted drafts are excluded.
+export interface DeskUnfinishedTalentRow {
+  readonly id: string; // draft id (NOT a TalentRecord id — never fabricated)
+  readonly display_name: string | null;
+  readonly source_filename: string | null;
+  readonly needs_attention: boolean;
+  readonly reason: string | null; // recruiter-safe prose when needs_attention
+  readonly last_touched_at: string | null;
+}
+
 export interface MyDeskReadPort {
   listMyTasks(ctx: DeskActorContext): Promise<readonly DeskTaskRow[]>;
   listMyRequisitions(ctx: DeskActorContext): Promise<readonly DeskRequisitionRow[]>;
@@ -179,6 +192,11 @@ export interface MyDeskReadPort {
     ctx: DeskActorContext,
   ): Promise<readonly DeskBlockedPlacementRow[]>;
   listExpiringOffers(ctx: DeskActorContext): Promise<readonly DeskOfferRow[]>;
+  // Talent Draft Recovery §19 — the actor's own unfinished Talent drafts (not
+  // promoted). The service applies the needs-attention-OR-stale eligibility.
+  listUnfinishedTalentForActor(
+    ctx: DeskActorContext,
+  ): Promise<readonly DeskUnfinishedTalentRow[]>;
   // Offer & Start §11 — resolve the authoritative LIVE pipeline-episode id for each
   // (talent, requisition) pair (the person × requisition journey key), for the Offer &
   // Start deep-link. Bounded to the pairs the desk already surfaces as exceptions; keyed

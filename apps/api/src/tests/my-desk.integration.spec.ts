@@ -72,6 +72,10 @@ const MIGRATION_FILES: string[] = [
   // Increment-2 derived-kinds composition (submittal-readiness) authorities.
   ...migrationsFor('submittal-eligibility'),
   ...migrationsFor('documents'),
+  // Talent Draft Recovery §19 — the desk now reads the actor's unfinished intake
+  // drafts (TalentIntakeDraft). Applied AFTER documents (the DOC-1b reconciliation
+  // migration ALTERs TalentDocument / writes into documents).
+  ...migrationsFor('talent-evidence'),
   ...migrationsFor('client-talent-restriction'),
   // Not read by the desk — applied only so the CI processing reconciler's
   // onModuleInit scan (a background job) finds its table and does not raise an

@@ -16,6 +16,7 @@ import {
   type SubmittalPolicyInputs,
 } from '@aramo/submittal-eligibility';
 import { TalentRecordRepository } from '@aramo/talent-record';
+import { TalentExtractionService } from '@aramo/talent-extraction';
 import { TaskRepository } from '@aramo/task';
 
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
@@ -34,6 +35,7 @@ import type {
   DeskTaskOwnerType,
   DeskTaskRow,
   DeskTaskType,
+  DeskUnfinishedTalentRow,
   MyDeskReadPort,
 } from './my-desk.ports.js';
 
@@ -63,6 +65,9 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
     private readonly engagement: EngagementGateService,
     private readonly submittals: SubmittalRepository,
     private readonly consent: ConsentRepository,
+    // Talent Draft Recovery §19 — the actor's own unfinished intake drafts. Read
+    // only (no derivation here); the service applies the eligibility rule.
+    private readonly talentIntake: TalentExtractionService,
   ) {}
 
   async listMyTasks(ctx: DeskActorContext): Promise<readonly DeskTaskRow[]> {
@@ -428,6 +433,48 @@ export class MyDeskReadAdapter implements MyDeskReadPort {
       state: o.state,
       offer_expires_at: o.offer_expires_at,
     }));
+  }
+
+  // Talent Draft Recovery §19 — the actor's own unpromoted intake drafts, narrowed
+  // for the desk. needs_attention = FAILED/PARTIAL extraction (recruiter-safe
+  // prose for the reason). NO derivation here — the service decides which rows are
+  // desk-eligible (needs-attention OR stale ≥ 3 days).
+  async listUnfinishedTalentForActor(
+    ctx: DeskActorContext,
+  ): Promise<readonly DeskUnfinishedTalentRow[]> {
+    const rows = await this.talentIntake.listTalentIntakeDraftsForCreator({
+      tenant_id: ctx.tenant_id,
+      created_by: ctx.user_id,
+      limit: LIST_LIMIT,
+    });
+    return rows
+      .filter((d) => d.promoted_talent_record_id === null)
+      .map((d) => {
+        const needsAttention =
+          d.processing_status === 'FAILED' || d.processing_status === 'PARTIAL';
+        const fields =
+          d.review_payload !== null &&
+          typeof d.review_payload === 'object' &&
+          'fields' in (d.review_payload as Record<string, unknown>)
+            ? ((d.review_payload as { fields?: Record<string, { value?: unknown }> }).fields ?? {})
+            : {};
+        const str = (key: string): string => {
+          const v = fields[key]?.value;
+          return typeof v === 'string' ? v.trim() : '';
+        };
+        const name = `${str('first_name')} ${str('last_name')}`.trim();
+        return {
+          id: d.id,
+          display_name: name === '' ? null : name,
+          source_filename: d.source_filename,
+          needs_attention: needsAttention,
+          reason: needsAttention
+            ? ((d.failure_detail as string | null) ?? "Couldn't read résumé")
+            : null,
+          last_touched_at:
+            d.last_touched_at === null ? null : new Date(d.last_touched_at).toISOString(),
+        };
+      });
   }
 
   // Offer & Start §11 — the authoritative live pipeline-episode id per (talent, requisition),

@@ -79,10 +79,9 @@ const PRIMARY_NAV: readonly NavItem[] = [
   { to: '/requisitions', label: 'Requisitions', icon: <IconRequisitions />, scope: 'requisition:read' },
   { to: '/placements', label: 'Placements', icon: <IconBriefcase />, scope: 'pipeline:read' },
   { to: '/talent', label: 'Talent', icon: <IconTalent />, scope: 'talent:read' },
-  // Durable Async Résumé Intake — the "Draft talents" recovery surface (resume
-  // uploads still being read / awaiting review). Gated talent:create, same filter
-  // as its siblings.
-  { to: '/talent/drafts', label: 'Draft talents', icon: <IconTalent />, scope: 'talent:create' },
+  // Talent Draft Recovery (§4): unfinished talent is recovered INSIDE Talent (the
+  // "In progress" view), not a peer module — there is no "Draft talents" nav item
+  // and no draft badge on the Talent entry.
   // Promotion-Trigger slice B-ui — the sourcing pool (talent:source). Gated by
   // the same hasScope filter as its siblings; hidden from a non-sourcer.
   { to: '/sourcing', label: 'Sourcing', icon: <IconSourcing />, scope: 'talent:source' },
