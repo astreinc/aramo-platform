@@ -11,6 +11,7 @@ import { RequisitionModule } from '@aramo/requisition';
 import { SubmittalModule } from '@aramo/submittal';
 import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import { TalentRecordModule } from '@aramo/talent-record';
+import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TaskModule } from '@aramo/task';
 
 import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
@@ -42,6 +43,7 @@ import { MyDeskService } from './my-desk.service.js';
     PipelineModule,
     ClientSelectionModule,
     TalentRecordModule,
+    TalentExtractionModule,
     CompanyModule,
     PlacementModule,
     OfferModule,

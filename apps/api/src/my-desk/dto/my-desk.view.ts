@@ -52,7 +52,10 @@ export type DeskActionKind =
   // person × requisition journey. Narrow: the FE renders it as a plain link to
   // the action's `href` (/offer-start/:pipelineId); emitted ONLY where the
   // backend resolved an authoritative pipeline episode. NOT a generic router.
-  | 'continue_offer_start';
+  | 'continue_offer_start'
+  // Talent Draft Recovery §19 — resume an unfinished Talent draft. The FE renders
+  // it as a plain link to the action's `href` (/talent/new?draft=:id&from=in-progress).
+  | 'continue_draft';
 
 export interface DeskActionView {
   readonly kind: DeskActionKind;
@@ -107,7 +110,11 @@ export interface DeskInterviewView {
 export type DeskExceptionKind =
   | 'pre_start_blocked'
   | 'offer_expiring'
-  | 'identity_advisory';
+  | 'identity_advisory'
+  // Talent Draft Recovery §19 — an unfinished Talent the recruiter started: it
+  // needs attention (couldn't read the résumé) or has gone stale (untouched ≥ 3
+  // days). Own drafts only; clears automatically on promote / discard / touch.
+  | 'unfinished_talent';
 
 export type DeskExceptionSeverity = 'high' | 'medium';
 

@@ -16,7 +16,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
@@ -28,6 +28,14 @@ import type { PipelineStatus } from '../pipeline/types';
 import { AddToListDialog } from './components/AddToListDialog';
 import { LastContactCell } from './components/LastContactCell';
 import { ListsPanel } from './components/ListsPanel';
+import { InProgressTable } from './InProgressTable';
+import { listTalentIntakeDrafts, type TalentIntakeDraftListItem } from './talent-intake-api';
+import {
+  addTalentDotTone,
+  inProgressDrafts,
+  inProgressTooltip,
+  recoveryStripText,
+} from './draft-recovery';
 import { listTalentMemberships } from './saved-list-api';
 import { BulkBar } from './components/BulkBar';
 import { FilterBar } from './components/FilterBar';
@@ -199,6 +207,15 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [appendNote, setAppendNote] = useState<string | null>(null);
 
   const [scope, setScope] = useState<ScopeMode>('all');
+  // Talent Draft Recovery (§4–§7) — unfinished talent recovered INSIDE Talent.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [drafts, setDrafts] = useState<TalentIntakeDraftListItem[]>([]);
+  const [draftsLoaded, setDraftsLoaded] = useState(false);
+  const [draftsReloadKey, setDraftsReloadKey] = useState(0);
+  // The All-Talent recovery strip is dismissible for the current browser session
+  // only (no durable backend state); it reappears when the draft set changes or
+  // one enters Needs attention — tracked by a signature, not a bare boolean (§6).
+  const [stripDismissedSig, setStripDismissedSig] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewKey>('all');
   const [viewCounts, setViewCounts] = useState<Partial<Record<ViewKey, string>>>(
     {},
@@ -424,6 +441,58 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   };
   const pickView = (key: ViewKey) => setActiveView(key); // one active; 'all' clears
   const pickScope = (next: ScopeMode) => setScope(next);
+
+  // ── Talent Draft Recovery derivations (§4–§7) ──
+  const inProgress = inProgressDrafts(drafts);
+  const draftCount = inProgress.length;
+  const dotTone = addTalentDotTone(drafts);
+  const inProgressTab = searchParams.get('view') === 'in-progress' && draftCount > 0;
+  // Strip signature — changes when a draft is added/removed or attention arises.
+  const stripSig = `${inProgress.map((d) => d.id).sort().join(',')}|${dotTone ?? ''}`;
+  const showStrip =
+    draftCount > 0 && !listsTab && !inProgressTab && scope === 'all' && stripDismissedSig !== stripSig;
+  const refetchDrafts = () => setDraftsReloadKey((k) => k + 1);
+  const goInProgress = () => {
+    setListsTab(false);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('view', 'in-progress');
+      return next;
+    });
+  };
+  const clearViewParam = () =>
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('view');
+      return next;
+    });
+
+  // Load the recruiter's own in-progress drafts (actor-scoped server-side).
+  useEffect(() => {
+    let cancelled = false;
+    listTalentIntakeDrafts()
+      .then((r) => {
+        if (!cancelled) setDrafts(r.items);
+      })
+      .catch(() => {
+        if (!cancelled) setDrafts([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDraftsLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [draftsReloadKey]);
+
+  // Normalize an opened /talent?view=in-progress when there is nothing in
+  // progress (n === 0) → fall back to All talent (§5). Gated on draftsLoaded so
+  // the async list load does not strip the param before the drafts arrive.
+  useEffect(() => {
+    if (draftsLoaded && searchParams.get('view') === 'in-progress' && draftCount === 0) {
+      clearViewParam();
+    }
+  }, [draftsLoaded, searchParams, draftCount]);
   const toggleSel = (id: string) =>
     setSelected((s) => {
       const next = new Set(s);
@@ -546,10 +615,11 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
             <div className="rc-scopetabs" role="group" aria-label="Scope">
               <Button unstyled
                 type="button"
-                className={!listsTab && scope === 'all' ? 'on' : ''}
-                aria-pressed={!listsTab && scope === 'all'}
+                className={!listsTab && !inProgressTab && scope === 'all' ? 'on' : ''}
+                aria-pressed={!listsTab && !inProgressTab && scope === 'all'}
                 onClick={() => {
                   setListsTab(false);
+                  clearViewParam();
                   pickScope('all');
                 }}
               >
@@ -557,20 +627,37 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
               </Button>
               <Button unstyled
                 type="button"
-                className={!listsTab && scope === 'working_with_me' ? 'on' : ''}
-                aria-pressed={!listsTab && scope === 'working_with_me'}
+                className={!listsTab && !inProgressTab && scope === 'working_with_me' ? 'on' : ''}
+                aria-pressed={!listsTab && !inProgressTab && scope === 'working_with_me'}
                 onClick={() => {
                   setListsTab(false);
+                  clearViewParam();
                   pickScope('working_with_me');
                 }}
               >
                 Working with me
               </Button>
+              {/* Talent Draft Recovery (§5) — "In progress n" renders ONLY when
+                  n > 0, using the same tab chrome (not a parallel nav). */}
+              {draftCount > 0 ? (
+                <Button unstyled
+                  type="button"
+                  className={inProgressTab ? 'on' : ''}
+                  aria-pressed={inProgressTab}
+                  onClick={goInProgress}
+                >
+                  In progress
+                  <span className="rc-view__ct num">{draftCount}</span>
+                </Button>
+              ) : null}
               <Button unstyled
                 type="button"
                 className={listsTab ? 'on' : ''}
                 aria-pressed={listsTab}
-                onClick={() => setListsTab(true)}
+                onClick={() => {
+                  clearViewParam();
+                  setListsTab(true);
+                }}
               >
                 Lists
               </Button>
@@ -586,20 +673,55 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
           <ColumnsMenu cols={cols} setCols={setCols} />
           <SortMenu sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
           {canCreate ? (
-            <Link to="/talent/new" className="rc-hbtn rc-hbtn--primary">
+            <Link
+              to="/talent/new"
+              className="rc-hbtn rc-hbtn--primary rc-addtalent"
+              title={dotTone !== null ? inProgressTooltip(draftCount) : undefined}
+            >
               <Icons.IconPlus /> Add talent
+              {/* §7 — a subtle dot (blue normal / amber attention) when any draft
+                  is in progress; never a numeric badge, never on the nav item. */}
+              {dotTone !== null ? (
+                <span
+                  className={`rc-addtalent__dot rc-addtalent__dot--${dotTone}`}
+                  aria-hidden="true"
+                />
+              ) : null}
             </Link>
           ) : null}
         </div>
       </div>
 
-      {/* CRM-2 — the "Lists" tab replaces the talent workspace with the Lists
-          surface, a STRUCTURAL SHELL until the CRM-3 Lists UI lands (no
-          fabricated membership/empty state). */}
-      {listsTab ? (
+      {/* Talent Draft Recovery (§5) — the In-progress recovery view, hosted by
+          the same Talent surface (not a parallel module). */}
+      {inProgressTab ? (
+        <InProgressTable items={inProgress} onChanged={refetchDrafts} />
+      ) : listsTab ? (
         <ListsPanel sessionOverride={session ?? undefined} />
       ) : (
       <>
+      {/* Talent Draft Recovery (§6) — compact, dismissible recovery strip on All
+          talent only when work is in progress. Reappears on a new/attention draft. */}
+      {showStrip ? (
+        <div className="rc-recovery" role="status">
+          <span className={`rc-recovery__dot rc-recovery__dot--${dotTone ?? 'blue'}`} aria-hidden="true" />
+          <span className="rc-recovery__txt">{recoveryStripText(draftCount)}</span>
+          <span className="rc-recovery__sep" aria-hidden="true">·</span>
+          <Button unstyled type="button" className="rc-recovery__cta" onClick={goInProgress}>
+            Continue adding ›
+          </Button>
+          <Button
+            unstyled
+            type="button"
+            className="rc-recovery__x"
+            title="Hide for this session"
+            aria-label="Hide for this session"
+            onClick={() => setStripDismissedSig(stripSig)}
+          >
+            ×
+          </Button>
+        </div>
+      ) : null}
       {/* CRM-2 — quick-filter bar: exactly four chips (prototype). The pending
           chip (Not contacted 90+ days) renders disabled — its authoritative
           last-contact behavior activates in CRM-4 (never proxied by activity). */}

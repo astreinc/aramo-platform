@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { ToastProvider } from '@aramo/fe-foundation';
 
 import { TalentCreateView } from './TalentCreateView';
 
@@ -96,7 +97,9 @@ describe('TalentCreateView — durable async intake cutover', () => {
   it('uploading a résumé uses the async intake flow and NEVER calls draft-from-resume', async () => {
     render(
       <MemoryRouter>
-        <TalentCreateView />
+        <ToastProvider>
+          <TalentCreateView />
+        </ToastProvider>
       </MemoryRouter>,
     );
     const input = screen.getByTestId('resume-file-input');
@@ -122,7 +125,9 @@ describe('TalentCreateView — durable async intake cutover', () => {
   it('?draft= fully restores the persisted draft from backend state', async () => {
     render(
       <MemoryRouter initialEntries={['/talent/new?draft=d1']}>
-        <TalentCreateView />
+        <ToastProvider>
+          <TalentCreateView />
+        </ToastProvider>
       </MemoryRouter>,
     );
     // The form is hydrated from GET /v1/talent-intake-drafts/d1 — no re-upload.
@@ -141,7 +146,9 @@ describe('TalentCreateView — durable async intake cutover', () => {
     });
     render(
       <MemoryRouter initialEntries={['/talent/new?draft=d1']}>
-        <TalentCreateView />
+        <ToastProvider>
+          <TalentCreateView />
+        </ToastProvider>
       </MemoryRouter>,
     );
     await waitFor(() =>

@@ -61,7 +61,7 @@ export function ResumeDropzone({
         <div className="rc-dropzone__meta">
           <span>
             <Icons.IconCheck />
-            Resume text stored securely (ADR-0015)
+            Résumé text is stored securely
           </span>
           <span>
             <Icons.IconCheck />

@@ -823,6 +823,11 @@ model TalentIntakeDraft {
   processing_started_at   DateTime? @db.Timestamptz
   processing_completed_at DateTime? @db.Timestamptz
   last_opened_at          DateTime? @db.Timestamptz
+  // Authoritative recruiter-touch instant (Talent Draft Recovery §22). Set on
+  // creation and bumped ONLY by recruiter-sourced actions — review PATCH, retry,
+  // résumé replace. NEVER bumped by background extraction (that is updated_at) or
+  // by an open (that is last_opened_at). Drives the My Desk 3-day staleness rule.
+  last_touched_at         DateTime? @db.Timestamptz
 
   // Upload idempotency anchor: at most one intake per uploaded object within a
   // tenant → complete-upload replay and double-submit return the same draft.
@@ -833,6 +838,7 @@ model TalentIntakeDraft {
   // NULL filter).
   @@unique([tenant_id, storage_key])
   @@index([tenant_id, created_by, review_status])
+  @@index([tenant_id, created_by, last_touched_at])
   @@index([tenant_id, processing_status])
   @@index([tenant_id, created_at])
   @@index([artifact_sha256])

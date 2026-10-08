@@ -189,12 +189,21 @@ export class TalentCreateFromDraftService {
     body: CreateTalentRecordRequestDto,
     email1: string,
     requestId: string,
+    // Talent Draft Recovery convergence (PO/Lead merge ruling): a RESERVED
+    // talent_id claimed up-front by the promotion-linkage CAS. When present,
+    // create is idempotent on it (findById-then-create), and our OWN reserved
+    // record is not treated as a duplicate — so concurrent/replayed promotion of
+    // the same draft resolves to EXACTLY ONE TalentRecord (mirrors the governed
+    // path's PHASE-2 reserved-id idempotency). Absent → the prior behavior.
+    reservedId?: string,
   ): Promise<TalentRecordView> {
     const tenant_id = authContext.tenant_id;
     // Dedup on the admission anchor — a DIFFERENT active record with this primary
     // email is a conflict (same 409 as the manual create + the draft-backed path).
+    // Reserved-id exception: our own in-flight Talent (a retry after the reserved
+    // record committed) is not a duplicate.
     const duplicate = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
-    if (duplicate !== null) {
+    if (duplicate !== null && duplicate.id !== reservedId) {
       throw new AramoError(
         'TALENT_RECORD_DUPLICATE',
         'A talent with this primary email already exists in your tenant.',
@@ -203,13 +212,19 @@ export class TalentCreateFromDraftService {
       );
     }
     // The FINAL admission step — the admission invariant (name + email1 +
-    // phone_cell) rides structurally inside repo.create.
-    const created = await this.repo.create({
-      tenant_id,
-      entered_by_id: authContext.sub,
-      input: body,
-      requestId,
-    });
+    // phone_cell) rides structurally inside repo.create. Idempotent on the
+    // reserved id when one was claimed.
+    const existingReserved =
+      reservedId !== undefined ? await this.repo.findById({ tenant_id, id: reservedId }) : null;
+    const created =
+      existingReserved ??
+      (await this.repo.create({
+        tenant_id,
+        entered_by_id: authContext.sub,
+        input: body,
+        requestId,
+        ...(reservedId !== undefined ? { id: reservedId } : {}),
+      }));
 
     // Best-effort provenance/evidence block — the Talent IS created; a document/
     // edition/evidence hiccup never fails the create (mirrors the manual path).

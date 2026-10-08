@@ -38,6 +38,9 @@ import type {
 // FE derives every card and tab count from the returned arrays (directive §14).
 
 const DAY_MS = 86_400_000;
+// Talent Draft Recovery §2.5/§19 — fixed 3-day staleness threshold (no tenant
+// setting) for surfacing an untouched unfinished Talent on My Desk.
+const UNFINISHED_STALE_DAYS = 3;
 
 // task.type → recruiter queue kind. call/email/follow_up read as a follow-up;
 // everything else is a plain task. (The rtr/submittal/engagement/client kinds
@@ -96,6 +99,7 @@ export class MyDeskService {
       awaiting,
       blocked,
       offers,
+      unfinishedDrafts,
     ] = await Promise.all([
       this.port.listMyTasks(ctx),
       this.port.listMyRequisitions(ctx),
@@ -103,6 +107,7 @@ export class MyDeskService {
       this.port.listAwaitingClient(ctx),
       this.port.listBlockedPlacements(ctx),
       this.port.listExpiringOffers(ctx),
+      this.port.listUnfinishedTalentForActor(ctx),
     ]);
 
     const reqIds = requisitions.map((r) => r.id);
@@ -292,6 +297,41 @@ export class MyDeskService {
               : null,
         };
       }),
+      // Talent Draft Recovery §19 — an unfinished Talent surfaces ONLY when it
+      // needs attention (couldn't read the résumé) OR has gone stale (untouched
+      // ≥ 3 days). Own drafts only. No "Mark done" — it clears automatically when
+      // promoted / discarded / touched, because the next compose simply omits it.
+      ...unfinishedDrafts
+        .map((d) => {
+          const touchedMs = d.last_touched_at === null ? null : Date.parse(d.last_touched_at);
+          const staleDays =
+            touchedMs === null ? 0 : Math.floor((nowMs - touchedMs) / DAY_MS);
+          const stale = staleDays >= UNFINISHED_STALE_DAYS;
+          return { d, stale, staleDays };
+        })
+        .filter(({ d, stale }) => d.needs_attention || stale)
+        .map(({ d, stale, staleDays }) => {
+          const label = d.display_name ?? d.source_filename ?? 'résumé';
+          return {
+            id: d.id,
+            kind: 'unfinished_talent' as const,
+            severity: d.needs_attention ? ('high' as const) : ('medium' as const),
+            title: `Finish adding ${label}`,
+            body: d.needs_attention
+              ? (d.reason ?? "Couldn't read résumé")
+              : `Untouched ${staleDays} days`,
+            // A draft is NOT a TalentRecord — never fabricate a Talent identity.
+            talent_id: null,
+            requisition_id: null,
+            owned_by_me: true,
+            owner_label: null,
+            primary_action: {
+              kind: 'continue_draft' as const,
+              label: 'Continue',
+              href: `/talent/new?draft=${encodeURIComponent(d.id)}&from=in-progress`,
+            },
+          };
+        }),
     ];
 
     const requisitionRows = requisitions.map((r) =>

@@ -7741,6 +7741,75 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
       security:
         - BearerAuth: []
+    delete:
+      operationId: discardTalentIntakeDraft
+      summary: Discard an unfinished Talent Intake draft (and its résumé).
+      description: |
+        Hard-deletes an unfinished, actor-owned draft and its uploaded résumé
+        object. The only deletion path — there is no age-based auto-deletion.
+        A promoted draft cannot be discarded (422). Gated: capability ats + scope
+        talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Discarded — the draft and its résumé object are removed.
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-intake-drafts/{id}/replace-resume:
+    post:
+      operationId: replaceTalentIntakeResume
+      summary: Replace the résumé on an existing draft and re-queue extraction.
+      description: |
+        Mints a NEW presigned upload target for the same draft, re-points the
+        draft to it and resets it to UPLOADED so the complete-upload path
+        re-queues a fresh extraction. The superseded object is deleted. The
+        browser uploads to the returned URL then calls complete-upload. A
+        promoted draft cannot be edited (422). Gated: capability ats + scope
+        talent:edit.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTalentIntakeDraftRequest'
+      responses:
+        '200':
+          description: A fresh presigned upload target for the replaced résumé.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTalentIntakeDraftResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/talent-intake-drafts/{id}/retry:
     post:
       operationId: retryTalentIntakeExtraction
@@ -7983,10 +8052,55 @@ components:
         processing_completed_at:
           type: [string, 'null']
           format: date-time
+        last_touched_at:
+          type: [string, 'null']
+          format: date-time
+        duplicate:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required:
+                - talent_record_id
+                - display_name
+                - title
+                - location
+                - reason
+                - continue_anyway
+              properties:
+                talent_record_id:
+                  type: string
+                  format: uuid
+                display_name:
+                  type: string
+                title:
+                  type: [string, 'null']
+                location:
+                  type: [string, 'null']
+                reason:
+                  type: string
+                  enum: [email]
+                continue_anyway:
+                  type: boolean
+        required:
+          $ref: '#/components/schemas/TalentIntakeRequired'
+        admissible:
+          type: boolean
         actions:
           type: array
           items:
             type: string
+    TalentIntakeRequired:
+      type: object
+      additionalProperties: false
+      required:
+        - met
+        - total
+      properties:
+        met:
+          type: integer
+        total:
+          type: integer
     TalentIntakeDraftListItem:
       type: object
       additionalProperties: false
@@ -8016,6 +8130,15 @@ components:
         updated_at:
           type: string
           format: date-time
+        last_touched_at:
+          type: [string, 'null']
+          format: date-time
+        required:
+          $ref: '#/components/schemas/TalentIntakeRequired'
+        admissible:
+          type: boolean
+        display_name:
+          type: [string, 'null']
     TalentIntakeDraftListResponse:
       type: object
       additionalProperties: false

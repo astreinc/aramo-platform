@@ -2527,6 +2527,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/talent-profile-field-state.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -3801,6 +3807,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-actor-isolation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5243,6 +5255,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/talent-record-reconcile.integration.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -6494,6 +6512,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/talent-360/Talent360View.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/TalentCreateView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -8183,6 +8207,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-actor-isolation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8232,6 +8262,12 @@
         "status": "excluded"
       },
       { "project": "talent-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-view.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-extraction": [

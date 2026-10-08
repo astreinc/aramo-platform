@@ -42,6 +42,7 @@ function fakePort(overrides: Partial<MyDeskReadPort> = {}): MyDeskReadPort {
     listAwaitingClient: async () => [],
     listBlockedPlacements: async () => [],
     listExpiringOffers: async () => [],
+    listUnfinishedTalentForActor: async () => [],
     resolveLiveEpisodeIds: async () => new Map(),
     resolveTalentNames: async () => new Map(),
     resolveTalentContactability: async () => new Map(),
@@ -510,5 +511,85 @@ describe('MyDeskService.compose — domain-derived work kinds', () => {
     const kinds = (await svc.compose(CTX, NOW, TZ)).priority_items.map((i) => i.kind);
     // submittal > rtr > task, all 'today'.
     expect(kinds).toEqual(['submittal', 'rtr', 'task']);
+  });
+});
+
+describe('MyDeskService.compose — unfinished talent (§19)', () => {
+  const DAY = 86_400_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it('surfaces a needs-attention draft (high) with the reason and a Continue deep-link; no Talent id', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listUnfinishedTalentForActor: async () => [
+          {
+            id: 'draft-1',
+            display_name: 'Uma Maheshwari',
+            source_filename: 'uma.pdf',
+            needs_attention: true,
+            reason: "Couldn't read résumé",
+            last_touched_at: iso(NOW), // fresh, but needs attention
+          },
+        ],
+      }),
+    );
+    const exc = (await svc.compose(CTX, NOW, TZ)).exceptions.find(
+      (x) => x.kind === 'unfinished_talent',
+    );
+    expect(exc).toMatchObject({
+      severity: 'high',
+      title: 'Finish adding Uma Maheshwari',
+      body: "Couldn't read résumé",
+      talent_id: null, // a draft is never a TalentRecord
+      requisition_id: null,
+      owned_by_me: true,
+    });
+    expect(exc?.primary_action).toEqual({
+      kind: 'continue_draft',
+      label: 'Continue',
+      href: '/talent/new?draft=draft-1&from=in-progress',
+    });
+  });
+
+  it('surfaces a stale (untouched ≥ 3 days) draft as medium even when not needs-attention', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listUnfinishedTalentForActor: async () => [
+          {
+            id: 'draft-2',
+            display_name: 'Ravi Kumar',
+            source_filename: 'ravi.pdf',
+            needs_attention: false,
+            reason: null,
+            last_touched_at: iso(NOW - 4 * DAY),
+          },
+        ],
+      }),
+    );
+    const exc = (await svc.compose(CTX, NOW, TZ)).exceptions.find(
+      (x) => x.kind === 'unfinished_talent',
+    );
+    expect(exc).toMatchObject({ severity: 'medium', title: 'Finish adding Ravi Kumar', body: 'Untouched 4 days' });
+  });
+
+  it('does NOT surface a fresh, not-attention draft (touched < 3 days ago)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listUnfinishedTalentForActor: async () => [
+          {
+            id: 'draft-3',
+            display_name: 'Lina Chen',
+            source_filename: 'lina.pdf',
+            needs_attention: false,
+            reason: null,
+            last_touched_at: iso(NOW - 1 * DAY),
+          },
+        ],
+      }),
+    );
+    const exc = (await svc.compose(CTX, NOW, TZ)).exceptions.filter(
+      (x) => x.kind === 'unfinished_talent',
+    );
+    expect(exc).toHaveLength(0);
   });
 });
