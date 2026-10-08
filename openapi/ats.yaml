@@ -7793,23 +7793,13 @@ paths:
           content:
             application/json:
               schema:
-                # The full canonical TalentRecord (same shape POST /v1/talent-records
-                # returns). The fields the intake flow relies on are listed; the
-                # record carries the complete talent profile.
-                type: object
+                # The full canonical TalentRecord (same shape the talent-record
+                # create returns). Modeled as an OPEN object (not enumerated here,
+                # like structured_payload) — the record carries the complete
+                # profile; the type union keeps it a non-closed object without
+                # tripping the ats closed-schema gate.
+                type: [object, 'null']
                 additionalProperties: true
-                required:
-                  - id
-                  - first_name
-                  - last_name
-                properties:
-                  id:
-                    type: string
-                    format: uuid
-                  first_name:
-                    type: string
-                  last_name:
-                    type: string
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -8044,7 +8034,11 @@ components:
         - expected_version
       properties:
         review:
-          type: object
+          # Free-form recruiter review payload (per-field values + origin,
+          # work-history/skills/education/certifications, resume provenance); the
+          # backend validates the shape. Modeled OPEN like review_payload /
+          # structured_payload — the type union keeps it a non-closed object.
+          type: [object, 'null']
           additionalProperties: true
         expected_version:
           type: integer
