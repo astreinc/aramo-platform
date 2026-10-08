@@ -23,7 +23,6 @@ import {
 import { TalentRecordRepository } from '../talent-record.repository.js';
 
 import { asReviewPayload } from './talent-intake-review.js';
-
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
   TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,

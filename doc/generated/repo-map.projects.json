@@ -6517,6 +6517,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/TalentCreateView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/talent/components/TrustPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

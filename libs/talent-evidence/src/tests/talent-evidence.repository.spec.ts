@@ -70,6 +70,9 @@ describe('TalentEvidenceRepository — surface', () => {
     'saveTalentIntakeDraftReview',
     'markTalentIntakeDraftPromoted',
     'touchTalentIntakeDraftOpened',
+    // Talent Draft Recovery — discard (§18) + replace-résumé (§13) commands.
+    'deleteTalentIntakeDraft',
+    'replaceTalentIntakeDraftArtifact',
     'claimTalentIntakeOutboxBatch',
     'markTalentIntakeOutboxPublished',
     'releaseTalentIntakeOutboxLease',

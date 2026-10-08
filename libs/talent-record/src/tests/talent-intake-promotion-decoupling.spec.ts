@@ -66,10 +66,17 @@ function makeService(over: {
   };
   const createFromDraft = {
     confirmCreateFromDraftUpload: vi.fn().mockResolvedValue(over.createdFromDraft ?? null),
-    createFromReviewedUpload: vi.fn().mockResolvedValue(over.createdFromReviewed ?? { id: 'talent-1' }),
+    // Echo the reserved id (5th arg) the decoupled path claims, so created.id ===
+    // the claimed linkage (as it is in production). An explicit override wins.
+    createFromReviewedUpload: vi.fn(
+      async (_a: unknown, _b: unknown, _c: unknown, _d: unknown, reservedId?: string) =>
+        over.createdFromReviewed ?? { id: reservedId ?? 'talent-1' },
+    ),
   };
   const repo = {
     findById: vi.fn().mockResolvedValue(null),
+    // The decoupled path enforces the hard active-email 409 before claiming.
+    findActiveByEmail: vi.fn().mockResolvedValue(null),
   };
   const svc = new TalentIntakePromotionService(
     talentExtraction as never,
@@ -83,18 +90,30 @@ describe('TalentIntakePromotionService — extraction-decoupled promotion (ADR-0
   it('childless intake (resume_extraction_draft_id=null) with valid admission fields CREATES the Talent via the decoupled path — no 422', async () => {
     const { svc, createFromDraft, talentExtraction } = makeService({
       intake: intakeRow({ resume_extraction_draft_id: null }),
-      createdFromReviewed: { id: 'talent-1' },
+      // No override → the fake echoes the claimed reserved id (created.id === linkage).
     });
 
     const result = await svc.promote(AUTH, 'intake-1', 'req-1');
 
-    expect(result).toEqual({ id: 'talent-1' });
     // Decoupled create used; the enrichment (draft) path is NOT taken (no child).
     expect(createFromDraft.createFromReviewedUpload).toHaveBeenCalledTimes(1);
     expect(createFromDraft.confirmCreateFromDraftUpload).not.toHaveBeenCalled();
-    // Promotion linkage is recorded against the created Talent.
+    // Claim-first convergence: the promotion linkage is CLAIMED with a reserved id
+    // BEFORE the create, and the create is idempotent on that same id — so a
+    // concurrent/replayed promote of the same draft resolves to exactly one Talent.
+    const reservedId = talentExtraction.markTalentIntakeDraftPromoted.mock.calls[0][0]
+      .promoted_talent_record_id as string;
+    expect(typeof reservedId).toBe('string');
+    expect(createFromDraft.createFromReviewedUpload).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      reservedId,
+    );
+    expect(result).toEqual({ id: reservedId });
     expect(talentExtraction.markTalentIntakeDraftPromoted).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'intake-1', promoted_talent_record_id: 'talent-1' }),
+      expect.objectContaining({ id: 'intake-1', promoted_talent_record_id: reservedId }),
     );
   });
 
