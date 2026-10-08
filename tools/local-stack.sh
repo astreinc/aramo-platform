@@ -58,6 +58,20 @@ wait_for_pg() {
   die "Postgres did not become ready in time"
 }
 
+# ADR-0033 local-dev runtime — LocalStack hosts the Talent Intake EventBridge +
+# SQS substrate (same path as prod; only the endpoint differs).
+wait_for_localstack() {
+  log "waiting for LocalStack (events + sqs)…"
+  for _ in $(seq 1 60); do
+    if curl -sf http://localhost:4566/_localstack/health 2>/dev/null \
+      | grep -Eq '"sqs": ?"(running|available)"'; then
+      log "LocalStack ready"; return 0
+    fi
+    sleep 1
+  done
+  die "LocalStack did not become ready in time"
+}
+
 start_app() { # name  command...
   local name="$1"; shift
   if [ -f "$RUN_DIR/$name.pid" ] && kill -0 "$(cat "$RUN_DIR/$name.pid")" 2>/dev/null; then
@@ -82,9 +96,15 @@ cmd_up() {
   # The canonical local tenant (mirrors deploy/seed-prod.sh:82). Overridable.
   ASTRE_TENANT_ID="${ARAMO_ASTRE_TENANT_ID:-019000a0-0000-7000-8000-000000000001}"
 
-  log "1/7 infra: docker compose up -d (postgres + redis)"
+  log "1/7 infra: docker compose up -d (postgres + redis + localstack)"
   compose up -d
   wait_for_pg
+  wait_for_localstack
+  # Provision the Talent Intake transport (bus + source queue + 2 DLQs + policy +
+  # rule + target). Idempotent — safe on every up. Writes the queue URL for the
+  # dev consumer. Needs only @aws-sdk (node_modules) + the sourced TALENT_INTAKE_* env.
+  log "1b/7 aws: provision LocalStack Talent Intake transport (idempotent)"
+  node tools/talent-intake-localstack-provision.cjs
 
   log "2/7 db: apply migrations (tools/db-sync-local.sh)"
   bash tools/db-sync-local.sh
@@ -131,24 +151,28 @@ cmd_up() {
     ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
   fi
 
-  log "7/7 start: auth-service :3001, api :3000, ats-web :4201"
+  log "7/7 start: auth-service :3001, api :3000, ats-web :4201, talent-intake-consumer"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web
+  # ADR-0033 dev-only SQS consumer runner — LocalStack SQS → the SAME
+  # processTalentIntakeSqsBatch seam the prod Lambda uses. Redis-INDEPENDENT.
+  start_app talent-intake-consumer node tools/talent-intake-dev-consumer.cjs
 
   log "stack up:"
   log "  FE   → http://localhost:4201"
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
-  log "  logs → $RUN_DIR/{auth-service,api,ats-web}.log   (tools/local-stack.sh down to stop)"
+  log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
+  log "  logs → $RUN_DIR/{auth-service,api,ats-web,talent-intake-consumer}.log   (tools/local-stack.sh down to stop)"
 }
 
 cmd_down() {
-  stop_app ats-web; stop_app api; stop_app auth-service
+  stop_app talent-intake-consumer; stop_app ats-web; stop_app api; stop_app auth-service
   if command -v docker >/dev/null; then log "infra: docker compose down"; compose down; fi
 }
 
 cmd_status() {
-  for name in auth-service api ats-web; do
+  for name in auth-service api ats-web talent-intake-consumer; do
     local pidf="$RUN_DIR/$name.pid"
     if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
       printf '  %-13s UP   (pid %s)\n' "$name" "$(cat "$pidf")"
