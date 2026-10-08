@@ -691,7 +691,7 @@
       "toLifecycleEvent"
     ],
     "@aramo/esign-service": ["AppModule"],
-    "@aramo/events": ["EventsModule"],
+    "@aramo/events": ["EventsModule", "OUTBOX_PUBLISHER_PORT", "buildEventEnvelope"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
     "@aramo/examination": [
       "CANONICAL_MATCH_CLASSES",
@@ -1050,10 +1050,14 @@
       "parseResumeObjectKey"
     ],
     "@aramo/outbox-publisher": [
+      "EventBridgeOutboxPublisher",
+      "FakeOutboxPublisher",
+      "LeaseSafeOutboxDrainService",
       "OUTBOX_PUBLISHER_BATCH_SIZE",
       "OUTBOX_PUBLISHER_QUEUE_NAME",
       "OutboxPublisherModule",
-      "OutboxPublisherProcessor"
+      "OutboxPublisherProcessor",
+      "StructuredLogOutboxPublisher"
     ],
     "@aramo/pipeline": [
       "ACTIVE_FLOW_STAGES",
@@ -1524,6 +1528,14 @@
       "ResumeReindexProcessor",
       "ResumeSourceAuthorizer",
       "ResumeTextService",
+      "TALENT_INTAKE_EVENT_SOURCE",
+      "TALENT_INTAKE_EVENT_VERSION",
+      "TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT",
+      "TALENT_INTAKE_PROCESSING_PORT",
+      "TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD",
+      "TALENT_INTAKE_SUBJECT_TYPE",
+      "TalentIntakeExtractionService",
+      "TalentIntakeMessageHandler",
       "TalentLinkService",
       "TalentRecordController",
       "TalentRecordModule",
@@ -2468,12 +2480,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/create-work-history.spec.ts",
-        "project": "talent-record",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/draft-from-resume-mode.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -3789,6 +3795,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5855,7 +5873,23 @@
         "status": "unscoped"
       }
     ],
-    "@aramo/events": [],
+    "@aramo/events": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      { "project": "outbox-publisher", "status": "production" },
+      { "project": "talent-record", "status": "production" }
+    ],
     "@aramo/evidence": [
       { "project": "api", "status": "production" },
       {
@@ -7170,7 +7204,21 @@
       { "project": "resume-parse", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/outbox-publisher": [{ "project": "api", "status": "production" }],
+    "@aramo/outbox-publisher": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/pipeline": [
       {
         "from": "ci/scripts/verify-pipeline-write-authority.ts",
@@ -8123,6 +8171,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8159,9 +8219,16 @@
         "project": "submittal",
         "status": "excluded"
       },
-      { "project": "talent-extraction", "status": "production" }
+      { "project": "talent-extraction", "status": "production" },
+      { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-extraction": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
@@ -8175,11 +8242,6 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      {
-        "from": "pact/provider/src/verify-api.ts",
-        "project": "aramo-pact-provider",
-        "status": "unscoped"
-      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/create-from-draft-upload.spec.ts",
@@ -8276,6 +8338,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-email-recipient.adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

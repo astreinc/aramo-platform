@@ -1,22 +1,18 @@
 import type {
-  CertificationDraft,
-  CreateTalentRecordRequest,
-  EducationDraft,
-  SkillDraft,
-  TalentRecordPrefill,
   TalentRecordView,
   UpdateTalentRecordRequest,
   WorkHistoryDraft,
 } from './types';
-import type { Provenance, ProvenanceMap } from './provenance';
 
-// The Add-Talent intake field model + body construction.
+// The Add/Edit-Talent intake field model + the full-profile EDIT body builder.
 //
-// This is the CREATE-side field set rendered to mockup parity (Identity /
-// Contact / Location / Talent-stated / Skills / Notes). It is intentionally
-// the mockup's subset of the full TalentRecord — fields the mockup doesn't
-// show (address2, best_time_to_call) stay editable on the EDIT form. Every
-// field here maps 1:1 to a real CreateTalentRecordRequest key.
+// NOTE: the résumé-first CREATE helpers (applyPrefill, buildCreateBody) were
+// removed with the synchronous draft-from-resume cutover. The durable async
+// Talent Intake flow owns create-side mapping now: the FE maps the persisted
+// review_payload ↔ the form in TalentCreateView, and promotion builds the
+// canonical create input server-side (TalentIntakePromotionService). There is a
+// single create-body authority; this module now only serves the EDIT path
+// (stateFromTalent + buildPatchBody) and the shared field model.
 
 export interface IntakeState {
   first_name: string;
@@ -45,8 +41,7 @@ export interface IntakeState {
   source: string;
   notes: string;
   // R5 §2 — key_skills is FREE TEXT (a textarea the recruiter reviews/corrects),
-  // NOT a structured skill picker. The canonical TalentSkillEvidence is Core-only
-  // and NOT recruiter-facing (R5 §0/§6/§8).
+  // NOT a structured skill picker.
   key_skills: string;
   can_relocate: boolean;
   is_hot: boolean;
@@ -85,34 +80,6 @@ export const INTAKE_TEXT_KEYS: ReadonlyArray<
   'key_skills',
 ];
 
-// The resume prefill populates these keys from the governed-LLM extraction.
-// `key_skills` is EXCLUDED from this text-key set and applied separately (see
-// applyPrefill) — the governed extractor returns clean, grounded skills that
-// flow into the R5 §2 free-text field. key_skills stays a free-text field the
-// recruiter reviews; clean, structured skill extraction is the governed-LLM
-// surface, gated on a filed directive (ADR-0015 v1.3 is scoped to the Core scoring
-// layer, not the recruiter form — see the HALT note).
-const PREFILL_TEXT_KEYS: ReadonlyArray<keyof IntakeState> = [
-  'first_name',
-  'last_name',
-  'current_employer',
-  'email1',
-  'email2',
-  'phone_cell',
-  'phone_home',
-  'phone_work',
-  'web_site',
-  'title',
-  'address',
-  'address2',
-  'city',
-  'state',
-  'zip',
-  // Governed-LLM draft may propose country (grounded). Deterministic parser
-  // never populates it — harmless when absent.
-  'country',
-];
-
 export function emptyIntakeState(): IntakeState {
   return {
     first_name: '',
@@ -144,47 +111,6 @@ export function emptyIntakeState(): IntakeState {
     can_relocate: false,
     is_hot: false,
   };
-}
-
-export interface PrefillApplication {
-  readonly state: IntakeState;
-  readonly provenance: ProvenanceMap;
-}
-
-// Apply a resume prefill onto a fresh/empty state. Only keys present in the
-// prefill are populated, each tagged provenance 'resume' (key_skills included —
-// the raw free-text section, per R5 §2). Applied once on a clean intake — the
-// recruiter then edits; edits flip provenance to 'edited' in the view.
-export function applyPrefill(
-  base: IntakeState,
-  prefill: TalentRecordPrefill,
-): PrefillApplication {
-  const state: IntakeState = { ...base };
-  const provenance: ProvenanceMap = {};
-  // Governed LLM is the SOLE resume extractor (TI-1F P0.2); every prefilled
-  // field carries the governed-LLM provenance chip (§16).
-  const source: Provenance = 'governed_llm';
-  for (const key of PREFILL_TEXT_KEYS) {
-    const v = (prefill as Record<string, unknown>)[key];
-    if (typeof v === 'string' && v !== '') {
-      (state as unknown as Record<string, string>)[key] = v;
-      provenance[key] = source;
-    }
-  }
-  // The governed extractor returns clean, grounded skills that flow into the
-  // R5 §2 free-text key_skills field.
-  if (typeof prefill.key_skills === 'string' && prefill.key_skills !== '') {
-    state.key_skills = prefill.key_skills;
-    provenance['key_skills'] = source;
-  }
-  return { state, provenance };
-}
-
-// Mark a field 'edited' if it previously came from the resume. A field with
-// no prior provenance (recruiter-entered) carries none.
-export function provenanceAfterEdit(prev: Provenance | undefined): Provenance | undefined {
-  if (prev === 'governed_llm' || prev === 'edited') return 'edited';
-  return undefined;
 }
 
 // Full-profile EDIT — pre-fill the intake state from an existing record. Every
@@ -274,8 +200,7 @@ export function buildPatchBody(
     if (cur !== initVal) body[k] = cur === '' ? null : cur;
   }
 
-  // Work-history replace-set — only when the recruiter edited it. Keep only the
-  // entries with the required employer + role (mirrors buildCreateBody).
+  // Work-history replace-set — only when the recruiter edited it.
   if (workHistory !== undefined) {
     body['work_history'] = workHistory.filter(
       (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
@@ -283,72 +208,4 @@ export function buildPatchBody(
   }
 
   return body as unknown as UpdateTalentRecordRequest;
-}
-
-// HF1 §16/R1 — the resume document + corpus provenance carried from the draft
-// into the create request (only on the resume-first path).
-export interface ResumeDocumentCarry {
-  readonly storage_key: string;
-  readonly file_name: string;
-  readonly mime_type: string;
-  readonly size_bytes: number;
-  readonly source_map_version?: string;
-  readonly resume_text_hash?: string;
-}
-
-// Build the POST /v1/talent-records body. Required: first/last name.
-// Optional strings omitted when empty (the BE treats absent as "not set").
-export function buildCreateBody(
-  state: IntakeState,
-  workHistory: readonly WorkHistoryDraft[] = [],
-  // HF1 Gate-6 carry (R2/R8): structured skills + source_refs, and the resume
-  // document/corpus provenance. The BE persists declared skill + work-history
-  // evidence WITH provenance; the free-text key_skills scalar (above) is retained.
-  extras: {
-    readonly skills?: readonly SkillDraft[];
-    readonly resumeDocument?: ResumeDocumentCarry;
-    // HF2 R8/R18/R19 — grounded education + certifications carried from review.
-    readonly education?: readonly EducationDraft[];
-    readonly certifications?: readonly CertificationDraft[];
-    // TALENT-INTEL-1 TI-1F-C — the originating durable ResumeExtractionDraft. When
-    // present, Confirm-Create LINKS + ACCEPTS it (the durable draft — not the
-    // transient parse response — is the review/confirmation authority §4-A/§5).
-    readonly draftId?: string;
-  } = {},
-): CreateTalentRecordRequest {
-  const body: Record<string, unknown> = {
-    first_name: state.first_name.trim(),
-    last_name: state.last_name.trim(),
-  };
-  for (const key of INTAKE_TEXT_KEYS) {
-    if (key === 'first_name' || key === 'last_name') continue;
-    const v = state[key];
-    // key_skills is free text (R5 §2) — preserve interior newlines/commas; only
-    // trim the outer whitespace, same as every other text field.
-    if (typeof v === 'string' && v.trim() !== '') body[key] = v.trim();
-  }
-  if (state.can_relocate) body['can_relocate'] = true;
-  if (state.is_hot) body['is_hot'] = true;
-  // Reviewed work-history — only entries with the required employer + role
-  // (the recruiter may have cleared a row). Persisted as TalentWorkHistoryEntry
-  // WITH its source_refs (carried on each entry).
-  const wh = workHistory.filter(
-    (e) => e.employer_name.trim() !== '' && e.role_title.trim() !== '',
-  );
-  if (wh.length > 0) body['work_history'] = wh;
-  // HF1 — structured skills + refs (durable provenance) and the resume document.
-  if (extras.skills !== undefined && extras.skills.length > 0) body['skills'] = extras.skills;
-  if (extras.resumeDocument !== undefined) body['resume_document'] = extras.resumeDocument;
-  // HF2 — grounded education + certifications (persisted as declared evidence).
-  if (extras.education !== undefined && extras.education.length > 0) {
-    body['education'] = extras.education;
-  }
-  if (extras.certifications !== undefined && extras.certifications.length > 0) {
-    body['certifications'] = extras.certifications;
-  }
-  // TI-1F-C — carry the durable draft id so Confirm-Create links + accepts it.
-  if (typeof extras.draftId === 'string' && extras.draftId !== '') {
-    body['draft_id'] = extras.draftId;
-  }
-  return body as unknown as CreateTalentRecordRequest;
 }

@@ -98,6 +98,7 @@ TIER2_EXCLUDES=(
   ".nx"                               # PR-1: Nx workspace cache
   "coverage"                          # PR-1: test coverage output
   "package-lock.json"                 # PR-1: npm dependency resolution metadata
+  "infrastructure/modules/talent-intake-events/main.tf"  # ADR-0033: Terraform IaC (NOT product source). aws_cloudwatch_metric_alarm REQUIRES the provider attribute 'evaluation_periods' — an unavoidable third-party HCL argument name, not Aramo trust-vocabulary. Same pattern as the infrastructure-lightsail/*.tf exclusions.
   "**/prisma/generated/**"            # PR-1: per-module Prisma generated client output
   "playwright-report"                 # PR-1: Playwright HTML report output
   "test-results"                      # PR-1: Playwright test output

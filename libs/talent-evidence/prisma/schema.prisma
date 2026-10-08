@@ -716,3 +716,176 @@ model ResumeExtractionDraft {
   @@index([status])
   @@schema("talent_evidence")
 }
+
+// ============================================================================
+// Durable Async Résumé-First Talent Intake (Durable-Async-Resume-First-Talent-
+// Intake directive). A résumé upload creates a durable, tenant-scoped
+// TalentIntakeDraft — the PRE-TALENT workflow authority. It survives
+// navigation, logout, browser close, worker restarts, and recruiter return
+// days later. A TalentRecord is created ONLY on explicit promotion, when the
+// admission invariant passes — there is NO DRAFT TalentRecord.
+//
+// Model split (recon-grounded CHILD-OF-INTAKE): this thin parent owns the
+// durable WORKFLOW + REVIEW + RECOVERY state; the existing ResumeExtractionDraft
+// (above) remains the governed-extraction RESULT/evidence child, reused
+// unchanged by the worker + promotion. Two dimensions (processing_status,
+// review_status) are kept separate so neither lifecycle distorts the other.
+// ============================================================================
+
+// Worker-owned processing lifecycle (separate from recruiter review).
+enum TalentIntakeProcessingStatus {
+  UPLOADED
+  QUEUED
+  PROCESSING
+  READY
+  PARTIAL
+  FAILED
+
+  @@schema("talent_evidence")
+}
+
+// Recruiter-owned review lifecycle (separate from worker processing).
+// ABANDONED is terminal-by-governance; expiry is NOT implemented in this
+// increment (retention is a filed governance backlog item).
+enum TalentIntakeReviewStatus {
+  NOT_STARTED
+  IN_REVIEW
+  READY_TO_PROMOTE
+  PROMOTED
+  ABANDONED
+
+  @@schema("talent_evidence")
+}
+
+model TalentIntakeDraft {
+  id         String @id @db.Uuid
+  tenant_id  String @db.Uuid
+  created_by String @db.Uuid
+
+  // Source identity (ADR-0033 Decision 5 — behaviorally source-agnostic).
+  // source_type classifies the producer; source_ref is a useful external/domain
+  // reference (application id, sourcing subject id); source_event_id is the
+  // producer-stable ingestion idempotency identity. For NON-upload producers the
+  // idempotency uniqueness is (tenant_id, source_type, source_event_id) WHERE
+  // source_event_id IS NOT NULL — enforced by a PARTIAL UNIQUE INDEX in raw SQL
+  // (Prisma cannot express a filtered unique). storage_key is NOT overloaded for
+  // this role.
+  source_type     String // RESUME_UPLOAD, JOB_BOARD, SOURCING, AGENT, IMPORT, INTEGRATION, EXTERNAL_API
+  source_ref      String? // external/domain reference; NULL when not applicable
+  source_event_id String? // producer-stable idempotency identity; NULL for pure uploads
+
+  // Durable source artifact (object storage, tenant-scoped key) — OPTIONAL:
+  // present for artifact-backed sources (RESUME_UPLOAD), NULL for sources that
+  // genuinely have no uploaded object (job board / sourcing / agent).
+  source_filename String?
+  storage_key     String? // NULL = no artifact; uploads keep (tenant_id, storage_key) uniqueness
+  artifact_sha256 String? // byte hash when available; NULL when not computed
+  mime_type       String?
+  size_bytes      Int?
+
+  // Two independent lifecycle dimensions.
+  processing_status TalentIntakeProcessingStatus @default(UPLOADED)
+  review_status     TalentIntakeReviewStatus     @default(NOT_STARTED)
+
+  // Review read-model: the grounded governed-LLM prefill mirrored from the
+  // ResumeExtractionDraft child for fast, GET-authoritative reads. NOT Talent
+  // evidence (evidence is established at promotion via the child path).
+  structured_payload Json?
+
+  // Persisted recruiter review values + per-field origin (RESUME_EXTRACTION vs
+  // RECRUITER). Backend-owned so reopening from another session/device is
+  // correct; late extraction may populate only untouched fields.
+  review_payload Json?
+
+  // Recruiter-safe surfacing only (internal detail never projected).
+  warning_code  String?
+  failure_code  String?
+  failure_detail String?
+
+  // Model provenance mirrored from the governed extraction.
+  extraction_provider         String?
+  extraction_model            String?
+  extraction_contract_version String?
+
+  // Link to the governed-extraction RESULT child (UUID-only, no FK / §7.3).
+  resume_extraction_draft_id String? @db.Uuid
+
+  // Promotion linkage (ADD-not-rename: a distinct column, NOT the overloaded
+  // ResumeExtractionDraft.talent_id). Set once, atomically, at promotion.
+  promoted_talent_record_id String?   @db.Uuid
+  promoted_at               DateTime? @db.Timestamptz
+
+  // Optimistic concurrency for CAS claim + concurrent-edit guard.
+  version Int @default(0)
+
+  created_at              DateTime  @default(now()) @db.Timestamptz
+  updated_at              DateTime  @updatedAt @db.Timestamptz
+  processing_started_at   DateTime? @db.Timestamptz
+  processing_completed_at DateTime? @db.Timestamptz
+  last_opened_at          DateTime? @db.Timestamptz
+
+  // Upload idempotency anchor: at most one intake per uploaded object within a
+  // tenant → complete-upload replay and double-submit return the same draft.
+  // storage_key is now nullable; Postgres treats NULLs as distinct, so this
+  // constrains artifact-backed sources ONLY. Non-upload idempotency
+  // (tenant_id, source_type, source_event_id) is a PARTIAL UNIQUE INDEX added in
+  // the migration SQL (Prisma cannot express the WHERE source_event_id IS NOT
+  // NULL filter).
+  @@unique([tenant_id, storage_key])
+  @@index([tenant_id, created_by, review_status])
+  @@index([tenant_id, processing_status])
+  @@index([tenant_id, created_at])
+  @@index([artifact_sha256])
+  @@index([promoted_talent_record_id])
+  @@schema("talent_evidence")
+}
+
+// Transactional outbox for the intake domain. Written in the SAME DB
+// transaction as the TalentIntakeDraft state change (the durable handoff
+// boundary — the commit does NOT depend on Redis). The outbox publisher claims
+// unpublished rows under a lease, maps each to an ADR-0033 canonical envelope,
+// and dispatches via OutboxPublisherPort (EventBridge adapter). Shape mirrors
+// the established per-schema OutboxEvent precedent, extended with the canonical
+// envelope columns + a concurrency-safe lease for horizontally-scaled
+// publishers (ADR-0033 Decision 1 / 4).
+model TalentIntakeOutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  // Canonical event-envelope columns (ADR-0033 Decision 4). Nullable + additive
+  // (ADD-not-rename): pre-migration rows map via EnvelopeDefaults fallbacks
+  // (version/source derivable, subject_* + correlation from event_payload).
+  event_version  String? // explicit schema version, e.g. v1
+  source         String? // producing service/context, e.g. talent-intake
+  subject_type   String? // e.g. talent_intake_draft
+  subject_id     String? // the subject entity id
+  correlation_id String? // propagated end-to-end; defaults to row id when absent
+  causation_id   String? // the event/command that caused this; NULL at a flow root
+
+  // Concurrency-safe claim/lease (ADR-0033 Decision 1). A publisher claims a
+  // batch by stamping lease_expires_at = now() + lease; a crash before
+  // published_at makes the row reclaimable once the lease expires. A crash after
+  // EventBridge acceptance but before published_at may republish — harmless under
+  // at-least-once (the event_id/outbox-id dedup anchor makes consumers no-op).
+  claimed_at         DateTime? @db.Timestamptz
+  lease_expires_at   DateTime? @db.Timestamptz
+  publish_attempts   Int       @default(0)
+  last_publish_error String?
+
+  // Quarantine (ADR-0033 Decision 1): a non-transient/malformed row is parked
+  // here after exceeding the attempt budget so it stops being claimed but stays
+  // operationally visible (distinct from "still retrying"). Excluded from the
+  // claim scan.
+  quarantined_at    DateTime? @db.Timestamptz
+  quarantine_reason String?
+
+  // Claim scan uses a PARTIAL index (claimable = unpublished AND NOT
+  // quarantined, oldest-first) created in raw SQL — Prisma cannot express the
+  // WHERE filter. This plain index documents the base ordering.
+  @@index([published_at, created_at])
+  @@schema("talent_evidence")
+}

@@ -67,14 +67,19 @@ export class ResumeExtractionDraftProcessor
   }
 
   async process(job: Job<ResumeExtractionDraftTickInput>): Promise<void> {
-    const limit = job.data.override_batch_size ?? RESUME_EXTRACTION_DRAFT_BATCH_SIZE;
-    const result = await this.drainProcessingBatch({ limit });
+    // ADR-0033 cutover: Talent Intake no longer rides this worker — it flows
+    // outbox → EventBridge → SQS → Lambda. This scheduled tick drives ONLY the
+    // existing-Talent ATTACHMENT drain (the dead-worker repair), unchanged.
+    const limit =
+      (job.data as ResumeExtractionDraftTickInput).override_batch_size ??
+      RESUME_EXTRACTION_DRAFT_BATCH_SIZE;
+    const attachment = await this.drainProcessingBatch({ limit });
     this.logger.log({
       event: 'resume_extraction_draft_tick_completed',
       job_id: job.id ?? null,
-      attempted: result.attempted,
-      ready_for_review: result.ready_for_review,
-      failed: result.failed,
+      attempted: attachment.attempted,
+      ready_for_review: attachment.ready_for_review,
+      failed: attachment.failed,
     });
   }
 

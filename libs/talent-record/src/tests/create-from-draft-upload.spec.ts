@@ -3,6 +3,7 @@ import type { AuthContextType } from '@aramo/auth';
 import { ResumeExtractionDraftNotReviewableError } from '@aramo/talent-extraction';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
+import { TalentCreateFromDraftService } from '../lib/talent-create-from-draft.service.js';
 
 // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the ordered, idempotent, recoverable
 // CREATE_DRAFT_UPLOAD promotion. Invariant: a genuine TalentRecord never exists
@@ -82,6 +83,15 @@ function make(parts: {
     talentExtraction as never, {} as never, {} as never,
     { enqueueTalent: enqueueCanonical } as never, {} as never, {} as never, {} as never,
     { enqueueTalent: enqueueTalentReconcile } as never,
+    // The SHARED create-from-draft composition — this spec exercises the
+    // confirmCreateFromDraftUpload 3-phase via create(), so it wires the real
+    // service with the same mocks the controller used to delegate to.
+    new TalentCreateFromDraftService(
+      repo as never,
+      talentExtraction as never,
+      { enqueueTalent: enqueueCanonical } as never,
+      { enqueueTalent: enqueueTalentReconcile } as never,
+    ),
   );
   return { ctl, findActiveByEmail, findById, create, findResumeExtractionDraftById, establishCreateDraftEvidence, markResumeExtractionDraftAccepted, enqueueCanonical, enqueueTalentReconcile };
 }

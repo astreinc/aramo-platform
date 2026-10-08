@@ -50,6 +50,32 @@ describe('TalentEvidenceRepository — surface', () => {
     'updateDerivedSnapshotCanonicalYears',
   ];
 
+  // Durable Async Talent Intake (ADR-0033) — the thin pre-Talent intake
+  // aggregate + its transactional-outbox publisher surface: create/recover
+  // (upload + source-agnostic admission), recovery reads, the CAS review/promotion
+  // writes, and the lease-safe EventBridge outbox drain (claim → publish-confirm →
+  // release/quarantine). Each is single-purpose; enumerated so the closed-surface
+  // guard treats them as a conscious addition. The one list-shaped recovery read
+  // (listTalentIntakeDraftsForCreator) is allowlisted in the closed-surface check.
+  const TALENT_INTAKE_METHODS = [
+    'createTalentIntakeDraft',
+    'createOrRecoverSourceIntakeWithOutbox',
+    'findTalentIntakeDraftById',
+    'listTalentIntakeDraftsForCreator',
+    'completeUploadWithOutbox',
+    'requeueTalentIntakeDraftWithOutbox',
+    'claimTalentIntakeDraftForProcessing',
+    'findQueuedTalentIntakeDrafts',
+    'markTalentIntakeDraftProcessed',
+    'saveTalentIntakeDraftReview',
+    'markTalentIntakeDraftPromoted',
+    'touchTalentIntakeDraftOpened',
+    'claimTalentIntakeOutboxBatch',
+    'markTalentIntakeOutboxPublished',
+    'releaseTalentIntakeOutboxLease',
+    'quarantineTalentIntakeOutboxEvents',
+  ];
+
   it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A/TI-1D-C resume-edition methods', () => {
     const methods = Object.getOwnPropertyNames(TalentEvidenceRepository.prototype)
       .filter((m) => m !== 'constructor')
@@ -145,6 +171,7 @@ describe('TalentEvidenceRepository — surface', () => {
         'establishCreateDraftEvidence',
         ...TR4_B2_LEDGER_READS,
         ...SKILL_TAX_1G_RECON_METHODS,
+        ...TALENT_INTAKE_METHODS,
       ].sort(),
     );
   });
@@ -165,7 +192,8 @@ describe('TalentEvidenceRepository — surface', () => {
       (m) =>
         forbiddenPrefixes.some((p) => m.toLowerCase().startsWith(p.toLowerCase())) &&
         !TR4_B2_LEDGER_READS.includes(m) &&
-        !SKILL_TAX_1G_RECON_METHODS.includes(m),
+        !SKILL_TAX_1G_RECON_METHODS.includes(m) &&
+        !TALENT_INTAKE_METHODS.includes(m),
     );
     // Only the consciously-enumerated B2 ledger reads may carry a list-shaped name;
     // any NEW list/query method forces an explicit addition to the allowlist above.

@@ -115,6 +115,7 @@
     "libs/selection/src/lib/selection.controller.ts": "AP",
     "libs/submittal/src/lib/submittal.controller.ts": "AP",
     "libs/talent-record/src/lib/talent-record.controller.ts": "AP",
+    "libs/talent-record/src/lib/talent-intake/talent-intake.controller.ts": "AP",
     "libs/task/src/lib/task.controller.ts": "AP"
   },
   "routeOverrides": [
@@ -604,10 +605,6 @@
     {
       "method": "PATCH",
       "path": "/v1/talent-records/*"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent-records/draft-from-resume"
     },
     {
       "method": "POST",

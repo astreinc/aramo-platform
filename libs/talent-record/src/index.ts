@@ -52,6 +52,24 @@ export {
   RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
   RESUME_EXTRACTION_DRAFT_BATCH_SIZE,
 } from './lib/resume-extraction-draft/resume-extraction-draft.queue.constants.js';
+// Durable Async Talent Intake — canonical event identities (ADR-0033).
+export {
+  TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
+  TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
+  TALENT_INTAKE_EVENT_SOURCE,
+  TALENT_INTAKE_EVENT_VERSION,
+  TALENT_INTAKE_SUBJECT_TYPE,
+} from './lib/talent-intake/talent-intake.constants.js';
+// ADR-0033 — runtime-neutral extraction service + message handler + processing port.
+export { TalentIntakeExtractionService } from './lib/talent-intake/talent-intake-extraction.service.js';
+export {
+  TalentIntakeMessageHandler,
+  type TalentIntakeHandleOutcome,
+} from './lib/talent-intake/talent-intake-message.handler.js';
+export {
+  TALENT_INTAKE_PROCESSING_PORT,
+  type TalentIntakeProcessingPort,
+} from './lib/talent-intake/talent-intake-processing.port.js';
 
 export type {
   TalentRecordView,

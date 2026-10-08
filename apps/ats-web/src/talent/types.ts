@@ -417,28 +417,9 @@ export interface WorkHistoryDraft {
 
 // Add-Talent governed-LLM resume extraction. Hand-mirrors libs/talent-record
 // DraftFromResumeResponse. Governed LLM is the SOLE extractor (TI-1F P0.2);
-// `warning` is set when the LLM could not run/produce — the form opens with an
-// empty/partial prefill + a retry affordance (the heuristic parser never runs).
-export interface DraftFromResumeResult {
-  readonly prefill: TalentRecordPrefill;
-  readonly parse_status: ParseStatus;
-  readonly warning?: string;
-  // HF1 §13/R9 — distinguishes a technical failure from an honest partial/empty.
-  readonly extraction_status?: ResumeDraftStatus;
-  readonly work_history?: readonly WorkHistoryDraft[];
-  // HF1 R7 — structured skills + source_refs (the form uses prefill.key_skills).
-  readonly skills?: readonly SkillDraft[];
-  // HF2 R8/R18/R19 — grounded education + certifications carried to review.
-  readonly education?: readonly EducationDraft[];
-  readonly certifications?: readonly CertificationDraft[];
-  // HF1 §16 — corpus provenance carried back into the create request.
-  readonly source_map_version?: string;
-  readonly resume_text_hash?: string;
-  // TALENT-INTEL-1 TI-1F-C — the durable ResumeExtractionDraft persisted from this
-  // same governed result. Confirm-Create carries it back so the durable draft (not
-  // this transient response) is the linked confirmation authority (§4-A/§5).
-  readonly draft_id?: string;
-}
+// (Removed) DraftFromResumeResult — the synchronous draft-from-resume response
+// shape. Retired with that endpoint; the durable async intake flow uses
+// TalentIntakeDraftView (talent-intake-api.ts) as the authoritative read model.
 
 // Talent-detail work-history read. Hand-mirrors BE TalentWorkHistoryView.
 // `verified` is false for declared 'from resume' rows (ADR-0015 v1.3 §4.3).
@@ -473,9 +454,7 @@ export interface PresignedPutResult {
   readonly expires_at: string;
 }
 
-export interface DraftFromResumeRequest {
-  readonly storage_key: string;
-}
+// (Removed) DraftFromResumeRequest — see the DraftFromResumeResult note above.
 
 // Hand-mirrored from libs/attachment/src/lib/dto/create-attachment-request
 // .dto.ts. POST /v1/attachments body. is_resume=true triggers the BE to

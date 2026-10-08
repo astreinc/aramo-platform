@@ -6,7 +6,10 @@ import { STALE_CONSENT_QUEUE_NAME } from '@aramo/consent';
 import { OUTBOX_PUBLISHER_QUEUE_NAME } from '@aramo/outbox-publisher';
 import { CROSS_SCHEMA_CONSISTENCY_QUEUE_NAME } from '@aramo/common';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from '@aramo/skills-taxonomy';
-import { RESUME_REINDEX_QUEUE_NAME } from '@aramo/talent-record';
+import {
+  RESUME_REINDEX_QUEUE_NAME,
+  RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
+} from '@aramo/talent-record';
 import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from '@aramo/cold-ingest-extraction';
 
 import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
@@ -96,6 +99,16 @@ const SCHEDULES = [
     queue_name: RESUME_REINDEX_QUEUE_NAME,
     job_name: 'tick',
     job_id: 'resume-reindex-60s',
+    repeat: { every: 60_000 },
+  },
+  // Existing-Talent ATTACHMENT drain (repairing stranded PROCESSING drafts).
+  // Every 60s. (ADR-0033 cutover: Talent Intake no longer rides this worker —
+  // it flows outbox → EventBridge → SQS → Lambda; the former BullMQ relay tick
+  // + the intake safety-net drain were retired.)
+  {
+    queue_name: RESUME_EXTRACTION_DRAFT_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'resume-extraction-draft-60s',
     repeat: { every: 60_000 },
   },
   // Enterprise Search GS-2A Slice-5b — the talent-embedding tick. Every 300s: reconcile (enqueue new

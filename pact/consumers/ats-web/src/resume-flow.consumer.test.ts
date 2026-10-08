@@ -6,21 +6,20 @@ import {
   makeAtsWebProvider,
 } from './support/ats-web-pact.js';
 
-// PC-6 — mock-infra: the FE-orchestrated resume flow (PC-4a-resume). Backends
-// (ObjectStorageService, ResumeParserService) are provider-mocked; the
-// controller HTTP shapes stay live-verified. Merges into ats-web-aramo-core.json.
+// The résumé upload-url HTTP shape (presigned PUT). The FE consumes
+// presigned_url + storage_key; backends (ObjectStorageService) are
+// provider-mocked. Merges into ats-web-aramo-core.json.
 //
-// Scope (PC-6 Directive §1/§3 + Gate-5 ruling): 2 happy interactions —
-//   - POST /v1/talent-records/resume-upload-url (presigned PUT; FE consumes
-//     presigned_url + storage_key — upload-url internals rule from PC-4);
-//   - POST /v1/talent-records/draft-from-resume (parse -> prefill).
+// NOTE: the synchronous POST /v1/talent-records/draft-from-resume interaction was
+// REMOVED — that endpoint is retired. Résumé-first creation is now the durable
+// async Talent Intake flow (POST /v1/talent-intake-drafts → complete-upload(202)
+// → background worker → GET/SSE → promote), documented in openapi/ats.yaml and
+// proven end-to-end by libs/talent-record .../durable-async-talent-intake
+// integration spec. The intake HTTP interactions are added with matched provider
+// state handlers under the contracts follow-up.
 //
-// illegal-state / idempotency: 0-by-substrate. refusal: 0-by-ruling (the
-// filename/content_type/storage_key 422s re-confirmed framework-validation —
-// FE constrains — hardening park).
-//
-// Guard chain: @RequireCapability('ats') + @RequireScopes (attachment:create /
-// talent:read) + @RequireSiteMatch().
+// Guard chain: @RequireCapability('ats') + @RequireScopes (attachment:create) +
+// @RequireSiteMatch().
 
 const provider = makeAtsWebProvider();
 
@@ -47,48 +46,6 @@ describe('ats-web → POST /v1/talent-records/resume-upload-url', () => {
         const body = (await res.json()) as { presigned_url: string; storage_key: string };
         expect(body.presigned_url).toBeTruthy();
         expect(body.storage_key).toBeTruthy();
-      });
-  });
-});
-
-describe('ats-web → POST /v1/talent-records/draft-from-resume', () => {
-  it('returns 200 with a parsed prefill', async () => {
-    // TALENT-INTEL-1 TI-1B (ruling 15) — draft-from-resume now authorizes the
-    // storage_key BEFORE any object access: it must be an Aramo-convention (A8-3a)
-    // resume key inside the AUTHENTICATED tenant's namespace
-    // ({tenant_uuid}/talent/{uuid}/resume/{uuid}-{name}). The provider verifies as
-    // TENANT_ID (11111111-…), so the contract's key is tenant-bound to it — a raw
-    // non-conventional key is now (correctly) refused with 403.
-    const BODY = {
-      storage_key:
-        '11111111-1111-7111-8111-111111111111/talent/0190a000-0000-7000-8000-00000000a001/resume/0190a000-0000-7000-8000-00000000b001-pact-seed.pdf',
-    };
-    await provider
-      .addInteraction()
-      .given('an ats-web recruiter can start a resume flow')
-      .uponReceiving('a draft-from-resume parse request')
-      .withRequest('POST', '/v1/talent-records/draft-from-resume', (b) => {
-        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          prefill: {
-            first_name: like('Grace'),
-            last_name: like('Hopper'),
-            email1: like('grace@example.com'),
-          },
-          parse_status: 'parsed',
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/talent-records/draft-from-resume`, {
-          method: 'POST',
-          headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' },
-          body: JSON.stringify(BODY),
-        });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { parse_status: string };
-        expect(body.parse_status).toBe('parsed');
       });
   });
 });

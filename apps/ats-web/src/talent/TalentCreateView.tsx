@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ApiError, Button } from '@aramo/fe-foundation';
 
 import { useMe } from '../shell/me-api';
@@ -12,130 +12,388 @@ import { IntakeForm } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
   checkTalentDuplicate,
-  createAttachment,
-  createTalent,
-  parseDraftFromResume,
   putResumeToStorage,
-  requestResumeUploadUrl,
   type TalentDuplicateMatch,
 } from './talent-api';
 import {
-  attachErrorMessage,
-  createErrorMessage,
-  uploadErrorMessage,
-} from './error-messages';
-import {
-  applyPrefill,
-  buildCreateBody,
-  emptyIntakeState,
-  provenanceAfterEdit,
-  type IntakeState,
-} from './intake-fields';
+  completeTalentIntakeUpload,
+  createTalentIntakeDraft,
+  getTalentIntakeDraft,
+  openTalentIntakeEvents,
+  patchTalentIntakeReview,
+  promoteTalentIntakeDraft,
+  retryTalentIntakeExtraction,
+  type TalentIntakeDraftView,
+  type TalentIntakeReviewPayload,
+} from './talent-intake-api';
+import { createErrorMessage, uploadErrorMessage } from './error-messages';
+import { emptyIntakeState, INTAKE_TEXT_KEYS, type IntakeState } from './intake-fields';
 import type { Provenance, ProvenanceMap } from './provenance';
 import type {
   CertificationDraft,
   EducationDraft,
-  SkillDraft,
   TalentRecordView,
   WorkHistoryDraft,
 } from './types';
 
-// R5 (rebuild) — the Add-Talent surface, rebuilt to enterprise-mockup parity.
+// Durable Async Résumé-First Add-Talent. The browser is NOT part of the
+// durability boundary: a résumé upload persists a TalentIntakeDraft; extraction
+// runs asynchronously in a worker; the recruiter can leave and return (any
+// session/device) via Draft Talents or ?draft=<id>. GET is authoritative; SSE
+// is notification-only (triggers a refetch); the Talent is created only on an
+// idempotent PROMOTE. The old synchronous draft-from-resume path is retired.
 //
-// Phases: intake (dropzone) → parsing (real upload + parse) → form (two-column
-// edit + right rail) → success. Manual entry skips straight to the form.
-//
-// WIRED (real backend, no mock):
-//   • Resume S3 flow: presign PUT → direct-to-S3 PUT → deterministic parse
-//     (stated facts only, no-LLM per ADR-0015) → create → attach (auto-clears
-//     the orphan-pending tag). Attach fires in ALL parse branches; attach is
-//     soft-fail (talent is still created).
-//   • Provenance chips: REAL signal only (resume / edited).
-//
-// SEAMS (no backend → no fabrication):
-//   • Work history & education — captured AFTER creation as structured
-//     evidence (not free text) — surfaced on the Talent record.
-//
-// Consent / contact permissions are governed SEPARATELY from profile creation
-// (not captured here) — see doc/backlog/add-talent-consent-capture.md.
+// Phases: intake (dropzone) → processing (upload+commit) → form (review, with a
+// live processing banner + persisted edits) → success. ?draft restores a
+// persisted draft fully from backend state.
 
-type Phase = 'intake' | 'parsing' | 'form' | 'success';
+type Phase = 'intake' | 'processing' | 'form' | 'success';
 
-interface ResumeState {
-  readonly status: 'uploading' | 'parsing' | 'ready' | 'error';
-  readonly file?: File;
-  readonly storage_key?: string;
-  readonly error?: string;
+const TERMINAL = new Set(['READY', 'PARTIAL', 'FAILED']);
+
+function reviewFieldOrigin(p: Provenance | undefined): 'RESUME_EXTRACTION' | 'RECRUITER' {
+  return p === 'governed_llm' ? 'RESUME_EXTRACTION' : 'RECRUITER';
+}
+
+function provenanceFromOrigin(origin: string): Provenance {
+  return origin === 'RESUME_EXTRACTION' ? 'governed_llm' : 'edited';
 }
 
 export function TalentCreateView() {
   const navigate = useNavigate();
   const me = useMe();
-  // PO RULING "Consent Capture" — the post-create consent step is SEPARATE from
-  // talent creation (creation never blocks on consent); this just opens the
-  // reusable capture dialog once the talent exists.
+  const [searchParams] = useSearchParams();
+  const reopenDraftId = searchParams.get('draft');
+
   const [consentOpen, setConsentOpen] = useState(false);
-  // Header provenance preview — "source is recorded automatically" is literal:
-  // this previews the manual-add provenance that will be stamped (the current
-  // recruiter + today), mirroring the prototype's example parenthetical.
   const authorName = me?.user.display_name ?? me?.user.email ?? 'you';
   const addedToday = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
-  const headerDescription = `Resume-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
-  const [phase, setPhase] = useState<Phase>('intake');
-  const [resume, setResume] = useState<ResumeState>({ status: 'ready' });
+  const headerDescription = `Résumé-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
 
+  const [phase, setPhase] = useState<Phase>('intake');
+
+  // Durable draft identity + its persisted lifecycle (GET is authoritative).
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [version, setVersion] = useState<number>(0);
+  const [processingStatus, setProcessingStatus] = useState<string>('UPLOADED');
+  const [reviewStatus, setReviewStatus] = useState<string>('NOT_STARTED');
+  const [draftWarning, setDraftWarning] = useState<string | null>(null);
+  const [draftFailure, setDraftFailure] = useState<string | null>(null);
+
+  // Résumé artifact context. uploadFile is present only on a fresh upload (for
+  // the live preview); on reopen we have filename/size from the draft.
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [sourceFilename, setSourceFilename] = useState<string | null>(null);
+  const [sizeBytes, setSizeBytes] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Form state (the review).
   const [fields, setFields] = useState<IntakeState>(emptyIntakeState);
   const [provenance, setProvenance] = useState<ProvenanceMap>({});
-  // Governed-LLM extraction warning (non-blocking) — set when the tenant is on
-  // governed_llm and the LLM could not run/produce (§15).
-  const [parseWarning, setParseWarning] = useState<string | null>(null);
-  // Reviewable work-history (governed_llm) — extracted 'from resume', recruiter-
-  // editable, persisted at create as TalentWorkHistoryEntry (source='resume').
   const [workHistory, setWorkHistory] = useState<WorkHistoryDraft[]>([]);
-  // HF1 Gate-6 — structured skills + source_refs and the corpus provenance
-  // carried from the draft into the create request (durable evidence provenance;
-  // the free-text key_skills field remains the recruiter-facing surface).
-  const [resumeSkills, setResumeSkills] = useState<readonly SkillDraft[]>([]);
-  // HF2 R8/R18/R19 — grounded education + certifications carried from the draft
-  // into the create request (persisted at create as declared evidence).
-  const [resumeEducation, setResumeEducation] = useState<readonly EducationDraft[]>([]);
-  const [resumeCertifications, setResumeCertifications] = useState<
-    readonly CertificationDraft[]
-  >([]);
-  const [resumeProvenance, setResumeProvenance] = useState<{
-    source_map_version?: string;
-    resume_text_hash?: string;
-  }>({});
-  // TI-1F-C — the durable ResumeExtractionDraft id from the parse (the Confirm-
-  // Create authority; null when the resume path was not used / no draft persisted).
-  const [resumeDraftId, setResumeDraftId] = useState<string | null>(null);
-
-  const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [education, setEducation] = useState<readonly EducationDraft[]>([]);
+  const [certifications, setCertifications] = useState<readonly CertificationDraft[]>([]);
+  // Carried verbatim through PATCH/promote (not recruiter-edited on this form).
+  const skillsCarryRef = useRef<unknown[] | undefined>(undefined);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [attachWarning, setAttachWarning] = useState<string | null>(null);
-  // Delta-2 — the "Possible existing Talent" card. Populated PROACTIVELY: the
-  // effect below checks the entered/parsed primary email against the tenant's
-  // live records (email1 is the authoritative dedup anchor) BEFORE Create is
-  // pressed, and Create is blocked while a match stands. The create-time 409
-  // TALENT_RECORD_DUPLICATE remains the hard backstop for the check→create
-  // race. A TalentRecord can never be duplicated on primary email.
+  const [missingFields, setMissingFields] = useState<string[] | null>(null);
   const [duplicate, setDuplicate] = useState<TalentDuplicateMatch | null>(null);
   const [created, setCreated] = useState<TalentRecordView | null>(null);
 
-  const beginTimer = useCallback(() => {
-    setStartedAt((prev) => prev ?? Date.now());
-  }, []);
+  // Autosave bookkeeping.
+  const [reviewDirty, setReviewDirty] = useState(false);
+  const versionRef = useRef(version);
+  versionRef.current = version;
 
-  // Proactive duplicate check — debounced on the primary email. Fires whenever
-  // the email is a valid shape (after parse prefills it AND on manual entry);
-  // clears the card when the email is empty/invalid or no longer collides.
+  const isTerminal = TERMINAL.has(processingStatus);
+
+  // ── review_payload <-> form mapping ─────────────────────────────────────
+  const buildReviewPayload = useCallback((): TalentIntakeReviewPayload => {
+    const outFields: TalentIntakeReviewPayload['fields'] = {};
+    for (const key of INTAKE_TEXT_KEYS) {
+      const value = (fields[key] as string).trim();
+      const prov = provenance[key as string] as Provenance | undefined;
+      // Persist a field when it carries a value OR the recruiter edited it (so an
+      // intentional clear is recorded as RECRUITER and extraction won't refill).
+      if (value !== '' || prov === 'edited') {
+        outFields[key as string] = { value, origin: reviewFieldOrigin(prov) };
+      }
+    }
+    outFields['can_relocate'] = { value: fields.can_relocate, origin: 'RECRUITER' };
+    outFields['is_hot'] = { value: fields.is_hot, origin: 'RECRUITER' };
+    return {
+      fields: outFields,
+      work_history: workHistory.filter(
+        (e) => e.employer_name.trim() !== '' || e.role_title.trim() !== '',
+      ),
+      skills: skillsCarryRef.current,
+      education: [...education],
+      certifications: [...certifications],
+    };
+  }, [fields, provenance, workHistory, education, certifications]);
+
+  // Hydrate the form from a persisted draft view. preserveEdited keeps local
+  // recruiter edits (late extraction must never overwrite a recruiter value).
+  const hydrateFromView = useCallback(
+    (view: TalentIntakeDraftView, preserveEdited: boolean) => {
+      setVersion(view.version);
+      setProcessingStatus(view.processing_status);
+      setReviewStatus(view.review_status);
+      setDraftWarning(view.warning);
+      setDraftFailure(view.failure);
+      setSourceFilename(view.source_filename);
+      setSizeBytes(view.size_bytes);
+
+      const review = view.review_payload;
+      if (review === null) return;
+
+      setFields((prev) => {
+        const next: IntakeState = { ...prev };
+        for (const [key, cell] of Object.entries(review.fields)) {
+          const localProv = provenance[key] as Provenance | undefined;
+          if (preserveEdited && localProv === 'edited') continue; // recruiter wins
+          if (typeof cell.value === 'boolean') {
+            (next as unknown as Record<string, boolean>)[key] = cell.value;
+          } else if (typeof cell.value === 'string') {
+            (next as unknown as Record<string, string>)[key] = cell.value;
+          }
+        }
+        return next;
+      });
+      setProvenance((prev) => {
+        const next: ProvenanceMap = { ...prev };
+        for (const [key, cell] of Object.entries(review.fields)) {
+          if (preserveEdited && next[key] === 'edited') continue;
+          if (typeof cell.value === 'string' && cell.value !== '') {
+            next[key] = provenanceFromOrigin(cell.origin);
+          }
+        }
+        return next;
+      });
+      // Arrays — take from the persisted review unless the recruiter has started
+      // editing locally (tracked by a non-empty local set with edits).
+      if (review.work_history !== undefined && (!preserveEdited || workHistory.length === 0)) {
+        setWorkHistory(review.work_history as WorkHistoryDraft[]);
+      }
+      if (review.education !== undefined && (!preserveEdited || education.length === 0)) {
+        setEducation(review.education as EducationDraft[]);
+      }
+      if (review.certifications !== undefined && (!preserveEdited || certifications.length === 0)) {
+        setCertifications(review.certifications as CertificationDraft[]);
+      }
+      skillsCarryRef.current = review.skills as unknown[] | undefined;
+    },
+    [provenance, workHistory.length, education.length, certifications.length],
+  );
+
+  // ── Reopen (?draft=<id>) — fully restore from backend state ─────────────
+  useEffect(() => {
+    if (reopenDraftId === null) return;
+    let cancelled = false;
+    setDraftId(reopenDraftId);
+    setPhase('form');
+    getTalentIntakeDraft(reopenDraftId)
+      .then((view) => {
+        if (cancelled) return;
+        if (view.review_status === 'PROMOTED' && view.promoted_talent_record_id !== null) {
+          // Already promoted → resolve cleanly to the created Talent (no re-create).
+          navigate(`/talent/${view.promoted_talent_record_id}`);
+          return;
+        }
+        hydrateFromView(view, true);
+      })
+      .catch((err) => {
+        if (!cancelled) setUploadError(uploadErrorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reopenDraftId]);
+
+  // ── Watch: notify-on-change (SSE) + poll fallback while processing ──────
+  const refetchDraft = useCallback(async () => {
+    if (draftId === null) return;
+    try {
+      const view = await getTalentIntakeDraft(draftId);
+      hydrateFromView(view, true);
+    } catch {
+      // Non-fatal — GET stays authoritative; the next tick/open retries.
+    }
+  }, [draftId, hydrateFromView]);
+
+  useEffect(() => {
+    if (draftId === null || isTerminal || phase === 'success') return;
+    // SSE triggers a refetch only (notification-only); GET is the source of truth.
+    const closeSse = openTalentIntakeEvents(draftId, () => {
+      void refetchDraft();
+    });
+    // Polling fallback (only if SSE is dropped/absent) — GET every few seconds.
+    let active = true;
+    const tick = (): void => {
+      if (!active) return;
+      void refetchDraft().finally(() => {
+        if (active) window.setTimeout(tick, 2500);
+      });
+    };
+    const first = window.setTimeout(tick, 2500);
+    return () => {
+      active = false;
+      window.clearTimeout(first);
+      closeSse();
+    };
+  }, [draftId, isTerminal, phase, refetchDraft]);
+
+  // ── Autosave: persist recruiter edits after processing is terminal ──────
+  const flushSave = useCallback(async (): Promise<void> => {
+    if (draftId === null || !reviewDirty) return;
+    try {
+      const view = await patchTalentIntakeReview(draftId, {
+        review: buildReviewPayload(),
+        expected_version: versionRef.current,
+      });
+      setVersion(view.version);
+      setReviewStatus(view.review_status);
+      setReviewDirty(false);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        // Stale version (the worker advanced it) — refetch (merge preserves our
+        // edits) and leave dirty so the next pass re-saves against the new version.
+        await refetchDraft();
+      }
+      // Other errors: keep dirty; autosave retries on the next edit/flush.
+    }
+  }, [draftId, reviewDirty, buildReviewPayload, refetchDraft]);
+
+  useEffect(() => {
+    if (!reviewDirty || draftId === null || !isTerminal || reviewStatus === 'PROMOTED') return;
+    const t = window.setTimeout(() => {
+      void flushSave();
+    }, 800);
+    return () => window.clearTimeout(t);
+  }, [reviewDirty, draftId, isTerminal, reviewStatus, flushSave]);
+
+  // ── Field editing ───────────────────────────────────────────────────────
+  function markDirty(): void {
+    setReviewDirty(true);
+  }
+  function onField(key: keyof IntakeState, value: string): void {
+    setFields((s) => ({ ...s, [key]: value }));
+    setProvenance((p) => {
+      const prev = p[key as string] as Provenance | undefined;
+      const next = prev === 'governed_llm' || prev === 'edited' ? 'edited' : undefined;
+      const updated = { ...p };
+      // A recruiter-typed value with no prior provenance is a recruiter edit.
+      updated[key as string] = next ?? 'edited';
+      return updated;
+    });
+    markDirty();
+  }
+  function onToggle(key: 'can_relocate' | 'is_hot'): void {
+    setFields((s) => ({ ...s, [key]: !s[key] }));
+    markDirty();
+  }
+  function onWorkHistoryField(index: number, key: keyof WorkHistoryDraft, value: string): void {
+    setWorkHistory((prev) => prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)));
+    markDirty();
+  }
+  function onAddWorkHistory(): void {
+    setWorkHistory((prev) => [...prev, { employer_name: '', role_title: '' }]);
+    markDirty();
+  }
+  function onRemoveWorkHistory(index: number): void {
+    setWorkHistory((prev) => prev.filter((_, i) => i !== index));
+    markDirty();
+  }
+
+  // ── Upload flow (async; never calls the old synchronous endpoint) ───────
+  async function handleFile(file: File): Promise<void> {
+    setPhase('processing');
+    setUploadError(null);
+    setUploadFile(file);
+    setSourceFilename(file.name);
+    setSizeBytes(file.size);
+    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
+
+    let draft;
+    try {
+      // 1 — create intake (presigned upload target; NO LLM work on this request).
+      draft = await createTalentIntakeDraft({ filename: file.name, content_type: contentType });
+    } catch (err) {
+      setUploadError(uploadErrorMessage(err));
+      setPhase('intake');
+      return;
+    }
+    setDraftId(draft.draft_id);
+
+    try {
+      // 2 — upload the bytes directly to object storage.
+      await putResumeToStorage(draft.upload_url, file, contentType);
+    } catch (err) {
+      setUploadError(uploadErrorMessage(err));
+      setPhase('intake');
+      return;
+    }
+
+    try {
+      // 3 — complete upload → QUEUED + outbox, returns 202. Extraction runs async.
+      const accepted = await completeTalentIntakeUpload(draft.draft_id);
+      setProcessingStatus(accepted.processing_status);
+    } catch (err) {
+      setUploadError(uploadErrorMessage(err));
+      // The object IS uploaded — go to the form so the recruiter can still work
+      // and promote once required fields are set (failure is recoverable).
+      setPhase('form');
+      return;
+    }
+    // Move to the review form immediately; the watch effect streams/poll the
+    // extraction result and hydrates untouched fields when it lands.
+    setPhase('form');
+  }
+
+  async function onRetry(): Promise<void> {
+    if (draftId === null) return;
+    try {
+      const view = await retryTalentIntakeExtraction(draftId);
+      hydrateFromView(view, true);
+    } catch (err) {
+      setUploadError(uploadErrorMessage(err));
+    }
+  }
+
+  function resetAll(): void {
+    setPhase('intake');
+    setDraftId(null);
+    setVersion(0);
+    setProcessingStatus('UPLOADED');
+    setReviewStatus('NOT_STARTED');
+    setDraftWarning(null);
+    setDraftFailure(null);
+    setUploadFile(null);
+    setSourceFilename(null);
+    setSizeBytes(null);
+    setUploadError(null);
+    setFields(emptyIntakeState());
+    setProvenance({});
+    setWorkHistory([]);
+    setEducation([]);
+    setCertifications([]);
+    skillsCarryRef.current = undefined;
+    setSubmitting(false);
+    setSubmitError(null);
+    setMissingFields(null);
+    setDuplicate(null);
+    setCreated(null);
+    setReviewDirty(false);
+    navigate('/talent/new');
+  }
+
+  // ── Save gate ───────────────────────────────────────────────────────────
   const email1 = fields.email1.trim();
   useEffect(() => {
     if (!/\S+@\S+\.\S+/.test(email1)) {
@@ -149,8 +407,6 @@ export function TalentCreateView() {
           if (!cancelled) setDuplicate(res.match);
         })
         .catch(() => {
-          // Network/permission failure — never block create on a check error;
-          // the create-time 409 is the authoritative backstop.
           if (!cancelled) setDuplicate(null);
         });
     }, 400);
@@ -160,187 +416,28 @@ export function TalentCreateView() {
     };
   }, [email1]);
 
-  // ── Field editing ──────────────────────────────────────────────────────
-  function onField(key: keyof IntakeState, value: string): void {
-    setFields((s) => ({ ...s, [key]: value }));
-    setProvenance((p) => {
-      const next = provenanceAfterEdit(p[key as string] as Provenance | undefined);
-      if (next === p[key as string]) return p;
-      const updated = { ...p };
-      if (next === undefined) delete updated[key as string];
-      else updated[key as string] = next;
-      return updated;
-    });
-  }
-  function onToggle(key: 'can_relocate' | 'is_hot'): void {
-    setFields((s) => ({ ...s, [key]: !s[key] }));
-  }
-  // Work-history review-card editing (recruiter corrects the extracted rows).
-  function onWorkHistoryField(index: number, key: keyof WorkHistoryDraft, value: string): void {
-    setWorkHistory((prev) =>
-      prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)),
-    );
-  }
-  function onAddWorkHistory(): void {
-    setWorkHistory((prev) => [...prev, { employer_name: '', role_title: '' }]);
-  }
-  function onRemoveWorkHistory(index: number): void {
-    setWorkHistory((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  // ── Resume flow (the real 3-step) ───────────────────────────────────────
-  async function handleFile(file: File): Promise<void> {
-    beginTimer();
-    setPhase('parsing');
-    setParseWarning(null);
-    setResume({ status: 'uploading', file });
-    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
-
-    let storage_key: string;
-    let presigned_url: string;
-    try {
-      const presign = await requestResumeUploadUrl({
-        filename: file.name,
-        content_type: contentType,
-      });
-      storage_key = presign.storage_key;
-      presigned_url = presign.presigned_url;
-    } catch (err) {
-      // Upload-url failed before any S3 object exists. A resume is REQUIRED to
-      // create a talent (no manual-entry fallback), so stay on the intake
-      // screen with the error surfaced for retry.
-      setResume({ status: 'error', file, error: uploadErrorMessage(err) });
-      setPhase('intake');
-      return;
-    }
-
-    try {
-      await putResumeToStorage(presigned_url, file, contentType);
-    } catch (err) {
-      // The presigned PUT failed: no committed object. Resume is required, so
-      // stay on intake with the error for retry (no manual-entry fallback).
-      setResume({ status: 'error', file, error: uploadErrorMessage(err) });
-      setPhase('intake');
-      return;
-    }
-
-    setResume({ status: 'parsing', file, storage_key });
-    try {
-      const result = await parseDraftFromResume({ storage_key });
-      const applied = applyPrefill(emptyIntakeState(), result.prefill);
-      setFields(applied.state);
-      setProvenance(applied.provenance);
-      setWorkHistory(result.work_history ? [...result.work_history] : []);
-      // HF1 — carry structured skills + corpus provenance for durable evidence
-      // persistence at create (the free-text key_skills field is set via prefill).
-      setResumeSkills(result.skills ? [...result.skills] : []);
-      setResumeEducation(result.education ? [...result.education] : []);
-      setResumeCertifications(result.certifications ? [...result.certifications] : []);
-      setResumeProvenance({
-        source_map_version: result.source_map_version,
-        resume_text_hash: result.resume_text_hash,
-      });
-      // TI-1F-C — capture the durable ResumeExtractionDraft id. The recruiter
-      // reviews the prefilled form (that IS the review), then Confirm-Create links
-      // + accepts THIS durable draft — the persisted draft, not this transient
-      // response, is the confirmation authority (§4-A/§5). Same governed result,
-      // one model call (the draft was persisted from it server-side).
-      setResumeDraftId(result.draft_id ?? null);
-      // Governed-mode warning (LLM unavailable / unreadable / zero fields) is
-      // NON-BLOCKING (§15): the form opens for review + manual entry; the
-      // recruiter can go Back and re-upload to retry. No silent mode fallback.
-      setParseWarning(result.warning ?? null);
-      setResume({ status: 'ready', file, storage_key });
-    } catch (err) {
-      // Parse network failure (the BE never throws on parse FAILURE — a
-      // 'failed' status is a normal 200). The file IS uploaded; keep the
-      // storage_key so attach-on-create still fires (ruling 3).
-      setResume({ status: 'error', file, storage_key, error: uploadErrorMessage(err) });
-    }
-    setPhase('form');
-  }
-
-  function resetAll(): void {
-    setPhase('intake');
-    setResume({ status: 'ready' });
-    setFields(emptyIntakeState());
-    setProvenance({});
-    setParseWarning(null);
-    setWorkHistory([]);
-    setResumeSkills([]);
-    setResumeEducation([]);
-    setResumeCertifications([]);
-    setResumeProvenance({});
-    setResumeDraftId(null);
-    setStartedAt(null);
-    setElapsedMs(0);
-    setSubmitting(false);
-    setSubmitError(null);
-    setAttachWarning(null);
-    setDuplicate(null);
-    setCreated(null);
-  }
-
-  // ── Save gate ───────────────────────────────────────────────────────────
-  // Manual-create required set (PO-agreed). FE validation only — the DB stays
-  // nullable so externally-sourced / staged records are unaffected. Work
-  // authorization requires a CHOICE (NOT_DISCLOSED is a valid explicit value).
   const nameOk = fields.first_name.trim() !== '' && fields.last_name.trim() !== '';
   const emailOk = /\S+@\S+\.\S+/.test(fields.email1.trim());
   const phoneOk = fields.phone_cell.trim() !== '';
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
-  // Work authorization + desired rate are OPTIONAL (PO ruling): the resume often
-  // does not state them, and they are captured later on the Talent record. They
-  // are NOT part of the create gate or the required checklist.
-  const resumeOk = resume.storage_key !== undefined;
+  const resumeOk = draftId !== null;
   const canCreate =
-    nameOk &&
-    emailOk &&
-    phoneOk &&
-    cityOk &&
-    stateOk &&
-    resumeOk &&
-    duplicate === null &&
-    !submitting;
+    nameOk && emailOk && phoneOk && cityOk && stateOk && resumeOk && duplicate === null && !submitting;
 
+  // ── Promote (replaces direct createTalent for the résumé-first flow) ────
   async function onCreate(): Promise<void> {
-    if (!canCreate) return;
+    if (!canCreate || draftId === null) return;
     setSubmitting(true);
     setSubmitError(null);
-    setAttachWarning(null);
-
-    // HF1 Gate-6 — the resume document + corpus provenance, carried into the
-    // create request so the BE creates the resume TalentDocument AFTER confirmed
-    // creation and stamps durable provenance onto the persisted evidence.
-    const resumeDocument =
-      resume.file !== undefined && resume.storage_key !== undefined
-        ? {
-            storage_key: resume.storage_key,
-            file_name: resume.file.name,
-            mime_type: resume.file.type === '' ? 'application/octet-stream' : resume.file.type,
-            size_bytes: resume.file.size,
-            source_map_version: resumeProvenance.source_map_version,
-            resume_text_hash: resumeProvenance.resume_text_hash,
-          }
-        : undefined;
-
-    let record: TalentRecordView;
+    setMissingFields(null);
+    // Persist the latest edits before promoting.
+    await flushSave();
     try {
-      record = await createTalent(
-        buildCreateBody(fields, workHistory, {
-          skills: resumeSkills,
-          resumeDocument,
-          education: resumeEducation,
-          certifications: resumeCertifications,
-          draftId: resumeDraftId ?? undefined,
-        }),
-      );
+      const record = await promoteTalentIntakeDraft(draftId);
+      setCreated(record);
+      setPhase('success');
     } catch (err) {
-      // Backstop: the proactive check should already show the card + block
-      // Create, but a record can appear between check and create. On the 409
-      // re-fetch the existing record's display fields (accurate WHO) so the
-      // card surfaces rather than a generic error — never a silent merge.
       if (err instanceof ApiError && err.code === 'TALENT_RECORD_DUPLICATE') {
         const existing = err.details?.['existing_id'];
         const existingId = typeof existing === 'string' ? existing : undefined;
@@ -361,35 +458,17 @@ export function TalentCreateView() {
         } catch {
           setDuplicate(fallback);
         }
+      } else if (
+        err instanceof ApiError &&
+        err.status === 422 &&
+        Array.isArray(err.details?.['missing'])
+      ) {
+        setMissingFields(err.details['missing'] as string[]);
       } else {
         setSubmitError(createErrorMessage(err));
       }
       setSubmitting(false);
-      return;
     }
-
-    // Ruling 3: attach in ALL parse branches whenever the upload produced a
-    // storage_key (even an errored parse). Soft-fail — the talent IS created.
-    if (resume.file !== undefined && resume.storage_key !== undefined) {
-      try {
-        await createAttachment({
-          owner_type: 'talent',
-          owner_id: record.id,
-          file_name: resume.file.name,
-          mime: resume.file.type === '' ? 'application/octet-stream' : resume.file.type,
-          size_bytes: resume.file.size,
-          storage_key: resume.storage_key,
-          is_resume: true,
-        });
-      } catch (err) {
-        setAttachWarning(attachErrorMessage(err));
-      }
-    }
-
-    if (startedAt !== null) setElapsedMs(Date.now() - startedAt);
-    setCreated(record);
-    setSubmitting(false);
-    setPhase('success');
   }
 
   // ── Render ────────────────────────────────────────────────────────────
@@ -398,8 +477,6 @@ export function TalentCreateView() {
       <>
         <SuccessScreen
           name={`${created.first_name} ${created.last_name}`}
-          elapsedMs={elapsedMs}
-          attachWarning={attachWarning}
           onOpen={() => navigate(`/talent/${created.id}`)}
           onAnother={resetAll}
           onRecordConsent={() => setConsentOpen(true)}
@@ -423,22 +500,19 @@ export function TalentCreateView() {
         <div className="rc-stepwrap">
           <div className="rc-stepintro">
             <div className="rc-stepeyebrow">Step 1 of 2 · Source</div>
-            <h2 className="rc-steptitle">Start with the resume</h2>
+            <h2 className="rc-steptitle">Start with the résumé</h2>
             <p className="rc-stepdesc">
-              Aramo parses it, runs the identity check, and proposes values for
-              your review — nothing is created until you confirm.
+              Aramo reads it in the background — you can leave and come back any
+              time. Nothing is created until you review and confirm.
             </p>
           </div>
+          {uploadError !== null ? (
+            <InlineAlert variant="error">{uploadError}</InlineAlert>
+          ) : null}
           <ResumeDropzone onFile={handleFile} />
-          <p className="rc-stepreq">
-            A resume is required to create a Talent record.
-          </p>
+          <p className="rc-stepreq">A résumé is required to create a Talent record.</p>
           <div className="rc-stepcancel">
-            <Button unstyled
-              type="button"
-              className="rc-btn"
-              onClick={() => navigate('/talent')}
-            >
+            <Button unstyled type="button" className="rc-btn" onClick={() => navigate('/talent')}>
               Cancel
             </Button>
             <p className="rc-stepcancel__note">
@@ -449,32 +523,41 @@ export function TalentCreateView() {
         </div>
       ) : null}
 
-      {phase === 'parsing' && resume.file !== undefined ? (
-        <ParseProgress
-          phase={resume.status === 'uploading' ? 'uploading' : 'parsing'}
-          fileName={resume.file.name}
-        />
+      {phase === 'processing' ? (
+        <ParseProgress phase="uploading" fileName={sourceFilename ?? 'résumé'} />
       ) : null}
 
       {phase === 'form' ? (
         <div className="rc-editgrid">
           <div className="rc-editgrid__main">
             <div className="rc-stephdr">
-              <Button unstyled
+              <Button
+                unstyled
                 type="button"
                 className="rc-step__back"
                 disabled={submitting}
-                onClick={() => setPhase('intake')}
+                onClick={() => navigate('/talent/drafts')}
               >
-                ← Back
+                ← Draft talents
               </Button>
               <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
             </div>
-            <ParseBanner resume={resume} />
-            {parseWarning !== null ? (
+
+            <ProcessingBanner
+              processingStatus={processingStatus}
+              failure={draftFailure}
+              onRetry={onRetry}
+            />
+            {draftWarning !== null && processingStatus !== 'FAILED' ? (
               <div className="rc-warnnote" role="status">
-                {parseWarning}
+                {draftWarning}
               </div>
+            ) : null}
+            {missingFields !== null ? (
+              <InlineAlert variant="error">
+                A name, a primary email, and a cell phone are required to create a
+                talent ({missingFields.join(', ')}).
+              </InlineAlert>
             ) : null}
             {duplicate !== null ? (
               <DupMatchCard
@@ -491,8 +574,8 @@ export function TalentCreateView() {
               values={fields}
               provenance={provenance}
               workHistory={workHistory}
-              education={resumeEducation}
-              certifications={resumeCertifications}
+              education={education}
+              certifications={certifications}
               disabled={submitting}
               onField={onField}
               onToggle={onToggle}
@@ -503,42 +586,34 @@ export function TalentCreateView() {
           </div>
 
           <aside className="rc-editgrid__rail">
-            {/* The form phase is reached only after a resume upload committed
-                (resume is required), so the attached-resume card always shows. */}
-            {resume.file !== undefined ? (
-              <ResumeCard fileName={resume.file.name} sizeBytes={resume.file.size} />
+            {sourceFilename !== null ? (
+              <ResumeCard fileName={sourceFilename} sizeBytes={sizeBytes ?? 0} />
             ) : null}
-
             <RequirementList
               gates={[
                 { ok: nameOk, label: 'First and last name' },
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
                 { ok: cityOk && stateOk, label: 'City and state' },
-                { ok: resumeOk, label: 'Resume attached' },
+                { ok: resumeOk, label: 'Résumé attached' },
               ]}
             />
             <p className="rc-secnote">
-              Work authorization and desired rate are optional — capture them
-              later if the resume doesn’t state them.
+              Work authorization and desired rate are optional — capture them later
+              if the résumé doesn’t state them.
             </p>
-            {/* Resume preview alongside the form so the recruiter can check the
-                proposed values against the source while reviewing. Rendered from
-                the file already in memory (no server round-trip). */}
-            {resume.file !== undefined ? (
-              <ResumePreview file={resume.file} fileName={resume.file.name} mime={resume.file.type} />
+            {uploadFile !== null ? (
+              <ResumePreview file={uploadFile} fileName={uploadFile.name} mime={uploadFile.type} />
             ) : null}
           </aside>
         </div>
       ) : null}
 
-      {/* Step-2 footer — the create/cancel action bar. Step 1 carries its own
-          centered Cancel + note under the dropzone (no action bar there, since
-          nothing can be created until the form is reached). */}
       {phase === 'form' ? (
         <div className="rc-addfoot">
           <div className="rc-addfoot__actions">
-            <Button unstyled
+            <Button
+              unstyled
               type="button"
               className="rc-btn rc-btn--primary"
               disabled={!canCreate || submitting}
@@ -547,18 +622,19 @@ export function TalentCreateView() {
               <Icons.IconCheck />
               {submitting ? 'Creating…' : 'Create talent'}
             </Button>
-            <Button unstyled
+            <Button
+              unstyled
               type="button"
               className="rc-btn"
               disabled={submitting}
-              onClick={() => navigate('/talent')}
+              onClick={() => navigate('/talent/drafts')}
             >
-              Cancel
+              Save &amp; close
             </Button>
           </div>
           <p className="rc-addfoot__note">
-            Contact permissions are governed separately from profile creation ·
-            provenance is recorded automatically.
+            Your draft is saved automatically — you can leave and finish later.
+            Contact permissions are governed separately from profile creation.
           </p>
         </div>
       ) : null}
@@ -566,36 +642,45 @@ export function TalentCreateView() {
   );
 }
 
-// ── Parse banner ───────────────────────────────────────────────────────────
-function ParseBanner({ resume }: { readonly resume: ResumeState }) {
-  if (resume.status === 'error') {
+// ── Processing / failure banner ──────────────────────────────────────────────
+function ProcessingBanner({
+  processingStatus,
+  failure,
+  onRetry,
+}: {
+  readonly processingStatus: string;
+  readonly failure: string | null;
+  readonly onRetry: () => void;
+}) {
+  if (processingStatus === 'FAILED') {
     return (
       <InlineAlert variant="error">
-        We couldn’t auto-read this resume — review and complete the fields
-        below; the resume is attached and saved with the record.
+        {failure ?? 'We couldn’t prepare the résumé details. Your uploaded résumé is safe.'}{' '}
+        <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
+          Retry extraction
+        </Button>{' '}
+        or complete the fields below manually.
       </InlineAlert>
     );
   }
-  if (resume.file !== undefined && resume.storage_key !== undefined) {
+  if (processingStatus === 'READY' || processingStatus === 'PARTIAL') {
     return (
       <div className="rc-parsedpill">
         <Icons.IconCheck />
-        <span>
-          Parsed from {resume.file.name} — review the proposed values below.
-        </span>
+        <span>Résumé read — review the proposed values below.</span>
       </div>
     );
   }
-  return null;
+  // UPLOADED / QUEUED / PROCESSING
+  return (
+    <div className="rc-warnnote" role="status" aria-live="polite">
+      Reading résumé… you can leave this page — we’ll keep processing it, and your
+      draft is saved.
+    </div>
+  );
 }
 
-// ── Duplicate-match card (Delta 2) ───────────────────────────────────────────
-// Shown when the create is refused with 409 TALENT_RECORD_DUPLICATE — the
-// admission-invariant dedup found an active talent in the tenant with this
-// primary email. NEVER a silent merge: the recruiter reviews the existing
-// record or uses a different email. (The prototype's "Continue — different
-// person" does not apply to an EXACT-email match — the server enforces primary
-// email uniqueness — so the second action changes the email instead.)
+// ── Duplicate-match card ─────────────────────────────────────────────────────
 function DupMatchCard({
   match,
   email,
@@ -616,7 +701,6 @@ function DupMatchCard({
       .join('')
       .slice(0, 2)
       .toUpperCase() || '—';
-  // The existing record's context line: title · city, state (whatever is set).
   const location = [match.city, match.state].filter((v) => v && v.trim() !== '').join(', ');
   const context = [match.title ?? '', location].filter((v) => v.trim() !== '').join(' · ');
   return (
@@ -638,11 +722,7 @@ function DupMatchCard({
           </span>
         </span>
         <span className="rc-dupcard__acts">
-          <Button unstyled
-            type="button"
-            className="rc-dupcard__review"
-            onClick={() => onReview(match.id)}
-          >
+          <Button unstyled type="button" className="rc-dupcard__review" onClick={() => onReview(match.id)}>
             Review existing Talent
           </Button>
           <Button unstyled type="button" className="rc-dupcard__diff" onClick={onDifferent}>
@@ -658,7 +738,7 @@ function DupMatchCard({
   );
 }
 
-// ── Right-rail resume card ───────────────────────────────────────────────────
+// ── Right-rail résumé card ───────────────────────────────────────────────────
 function ResumeCard({
   fileName,
   sizeBytes,
@@ -667,10 +747,10 @@ function ResumeCard({
   readonly sizeBytes: number;
 }) {
   return (
-    <section className="rc-sidecard rc-resumecard" aria-label="Resume">
+    <section className="rc-sidecard rc-resumecard" aria-label="Résumé">
       <h3 className="rc-sidecard__h">
         <Icons.IconFile />
-        Resume
+        Résumé
       </h3>
       <div className="rc-resumecard__file">
         <span className="rc-resumecard__fic" aria-hidden="true">
@@ -679,15 +759,15 @@ function ResumeCard({
         <div>
           <div className="rc-resumecard__fn">{fileName}</div>
           <div className="rc-resumecard__fm">
-            {Math.max(1, Math.round(sizeBytes / 1024))} KB · attaches on save
+            {sizeBytes > 0 ? `${Math.max(1, Math.round(sizeBytes / 1024))} KB · ` : ''}attached
           </div>
         </div>
       </div>
       <p className="rc-consent__note">
         <Icons.IconShield />
         <span>
-          SSN-shaped patterns are redacted before the resume text is stored
-          (D4). Resume text purges on delete (ADR-0015 cascade).
+          SSN-shaped patterns are redacted before the résumé text is stored (D4).
+          Résumé text purges on delete (ADR-0015 cascade).
         </span>
       </p>
     </section>
@@ -695,9 +775,6 @@ function ResumeCard({
 }
 
 // ── Requirement checklist ────────────────────────────────────────────────────
-// The rail-side "what's still needed to create" list. The Create / Cancel
-// actions live in the persistent footer (rc-addfoot), so this component is a
-// read-only checklist mirroring the footer's disabled state.
 function RequirementList({
   gates,
 }: {
@@ -727,15 +804,11 @@ function GateRow({ ok, label }: { readonly ok: boolean; readonly label: string }
 // ── Success screen ───────────────────────────────────────────────────────────
 function SuccessScreen({
   name,
-  elapsedMs,
-  attachWarning,
   onOpen,
   onAnother,
   onRecordConsent,
 }: {
   readonly name: string;
-  readonly elapsedMs: number;
-  readonly attachWarning: string | null;
   readonly onOpen: () => void;
   readonly onAnother: () => void;
   readonly onRecordConsent: () => void;
@@ -746,13 +819,7 @@ function SuccessScreen({
         <Icons.IconCheck />
       </div>
       <h2>{name} added to your talent</h2>
-      <p>Profile created, resume attached and queued for indexing.</p>
-      {elapsedMs > 0 ? (
-        <div className="rc-success__big mono">{(elapsedMs / 1000).toFixed(1)}s</div>
-      ) : null}
-      {attachWarning !== null ? (
-        <InlineAlert variant="error">{attachWarning}</InlineAlert>
-      ) : null}
+      <p>Profile created, résumé attached and queued for indexing.</p>
       <p>
         Contact permissions are separate from the profile. Record the Talent&apos;s
         consent to enable recruiter email, phone and matching.

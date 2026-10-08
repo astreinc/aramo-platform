@@ -43,7 +43,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0014](0014-cve-scanning-conventions.md) | CVE Scanning Conventions (tfsec + npm-audit, Allow-list Mechanism, M4 PR-10 Substrate) | Accepted | 2026-05-24 |
 | [0016](0016-rds-substrate-conventions.md) | RDS Substrate Conventions (VPC + RDS Modules, Per-Env Scope, Secrets Manager Master Password) | Accepted | 2026-05-27 |
 | [0017](0017-rds-disaster-recovery-strategy.md) | RDS Disaster Recovery Strategy (Backup Retention + PITR Configuration, Per-Env Backup Window, M7 Deferrals) | Accepted | 2026-05-27 |
-| [0018](0018-background-jobs-substrate.md) | Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals) | Accepted | 2026-05-27 |
+| [0018](0018-background-jobs-substrate.md) | Background Jobs Substrate (BullMQ Pattern Standardization, 4 Aramo Core Jobs, PL-66 Category 5 Ratification, Deferrals) | Accepted (BullMQ service-local); cross-service SNS→SQS half superseded by [0033](0033-cross-service-durable-event-foundation.md) | 2026-05-27 |
 | [0019](0019-manual-recruiter-rating-r10-boundary.md) | Manual Recruiter Rating and the R10 Boundary | **Rejected** | 2026-06-16 |
 | [0020](0020-build-for-tenant-50-governing-principle.md) | **Build For Tenant #50 (Astre Is The Test Harness)** — governing principle (see above) | **Accepted — LOCKED** | 2026-06-26 |
 | [0024](0024-business-policy-engine.md) | Business Policy Engine | **Accepted — LOCKED** | 2026-07-30 |
@@ -51,6 +51,7 @@ ADRs are append-only in spirit: when a decision is revisited, write a new ADR th
 | [0027](0027-client-talent-restriction-r10-compatibility.md) | Client-Scoped Talent Restriction and the R10 Boundary | **Accepted — LOCKED** | 2026-08-01 |
 | [0029](0029-pipeline-boundary-modular-monolith.md) | Candidate Intelligence Pipeline Boundary: Modular Monolith, Extract When Forced (I15) — identifier corrected from provisional ADR-0017 under G-REC-1; ADR-0017 remains RDS Disaster Recovery Strategy | **Accepted — LOCKED** | 2026-06-30 |
 | [0031](0031-conversation-intelligence-architecture.md) | Conversation Intelligence Architecture — records `Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED` (CI-A0 baseline `dbce8742`; two bounded contexts `conversation-transcript` + `conversation-intelligence`; provider strategy; ARCHITECTURE_HALT list; build authority) | **Accepted — LOCKED** | 2026-09-07 |
+| [0033](0033-cross-service-durable-event-foundation.md) | Cross-Service Durable Event Foundation — canonical cross-service transport is Transactional Outbox → EventBridge → consumer-owned SQS (supersedes ADR-0018's deferred SNS→SQS half only; BullMQ stays service-local); SNS optional/specialised; application-owned orchestration default (Step Functions where it earns it); Lambda-first Talent Intake consumer behind a runtime-neutral handler (Fargate approved fallback); versioned event envelope; behaviorally source-agnostic Talent Intake with single promotion authority | Accepted | 2026-10-07 |
 
 ## When to write an ADR
 
