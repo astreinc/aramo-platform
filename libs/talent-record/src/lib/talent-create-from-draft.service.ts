@@ -4,6 +4,7 @@ import { AramoError } from '@aramo/common';
 import { type AuthContextType } from '@aramo/auth';
 import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
 import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
+import { ResumeParserService } from '@aramo/resume-parse';
 import {
   TalentExtractionService,
   ResumeExtractionDraftNotReviewableError,
@@ -13,6 +14,8 @@ import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-re
 import type { WorkAuthorization } from './dto/stated-fields.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
+import { ResumeTextService } from './resume-text/resume-text.service.js';
 
 // The SHARED CREATE-from-draft promotion authority (TI-1F-B), extracted verbatim
 // from TalentRecordController so BOTH the synchronous create()-with-draft path AND
@@ -38,6 +41,15 @@ export class TalentCreateFromDraftService {
     private readonly talentExtraction: TalentExtractionService,
     @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
     @Optional() private readonly talentReconcile?: TalentReconcileProducer,
+    // ADR-0033 local-gap decoupling — the résumé-edition companion + the resume
+    // -text reindex writer + the artifact-SHA parser, so the extraction-decoupled
+    // create (createFromReviewedUpload) mints the SAME résumé evidence the manual
+    // create does. @Optional + appended LAST so hand-wired unit-test `new
+    // TalentCreateFromDraftService(...)` sites keep positional alignment; apps/api
+    // wires TalentRecordModule (which provides all three) in production.
+    @Optional() private readonly editionIngestion?: ResumeEditionIngestionService,
+    @Optional() private readonly resumeText?: ResumeTextService,
+    @Optional() private readonly resumeParser?: ResumeParserService,
   ) {}
 
   async confirmCreateFromDraftUpload(
@@ -158,25 +170,38 @@ export class TalentCreateFromDraftService {
     return created;
   }
 
-  // Manual admission create (Talent Draft Recovery §13) — the extraction path is
-  // UNAVAILABLE (no governed ResumeExtractionDraft child, or a child that never
-  // reached READY_FOR_REVIEW: FAILED / PROCESSING / REJECTED). Creates the
-  // TalentRecord from recruiter-reviewed fields ONLY, with NO résumé-evidence
-  // lifecycle (there is no governed extraction to establish). Extraction failure
-  // must NOT become a creation prerequisite: resume_extraction_draft_id is never
-  // required here. The email duplicate authority (the create-time 409) is still
-  // enforced, with the reserved-id exception so our own retry is not a duplicate.
-  // `reservedId` is minted + claimed by the caller (the promotion-linkage CAS is
-  // the single convergence point), so create is idempotent on it. Same reconcile
-  // + work-auth evidence tail as the governed path.
-  async createManualFromReview(
+  // ADR-0033 local-gap PO ruling — the EXTRACTION-DECOUPLED create. Résumé
+  // extraction is async ENRICHMENT, never an admission prerequisite: when no
+  // governed extraction child is available (child absent / still PROCESSING /
+  // FAILED — e.g. the EventBridge→SQS→consumer path is unhealthy), the recruiter
+  // -reviewed fields ALONE create the Talent. Composition mirrors the manual
+  // create() non-draft path (TalentRecordController) using the SAME shared
+  // building blocks — repo.create (admission invariant rides inside) + best-effort
+  // résumé TalentDocument + edition + reindex + declared evidence + reconcile +
+  // work-auth. The résumé artifact STAYS attached (createResumeDocument keyed on
+  // storage_key). An originating extraction child, if supplied via body.draft_id,
+  // is linked + ACCEPTED best-effort (no-op when absent). Extraction can never
+  // mutate the created TalentRecord (it writes only the child + intake row), so a
+  // late extraction after a manual promote never overwrites recruiter-confirmed
+  // state.
+  async createFromReviewedUpload(
     authContext: AuthContextType,
     body: CreateTalentRecordRequestDto,
     email1: string,
-    reservedId: string,
     requestId: string,
+    // Talent Draft Recovery convergence (PO/Lead merge ruling): a RESERVED
+    // talent_id claimed up-front by the promotion-linkage CAS. When present,
+    // create is idempotent on it (findById-then-create), and our OWN reserved
+    // record is not treated as a duplicate — so concurrent/replayed promotion of
+    // the same draft resolves to EXACTLY ONE TalentRecord (mirrors the governed
+    // path's PHASE-2 reserved-id idempotency). Absent → the prior behavior.
+    reservedId?: string,
   ): Promise<TalentRecordView> {
     const tenant_id = authContext.tenant_id;
+    // Dedup on the admission anchor — a DIFFERENT active record with this primary
+    // email is a conflict (same 409 as the manual create + the draft-backed path).
+    // Reserved-id exception: our own in-flight Talent (a retry after the reserved
+    // record committed) is not a duplicate.
     const duplicate = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
     if (duplicate !== null && duplicate.id !== reservedId) {
       throw new AramoError(
@@ -186,19 +211,140 @@ export class TalentCreateFromDraftService {
         { requestId, details: { email1, existing_id: duplicate.id } },
       );
     }
-    let created = await this.repo.findById({ tenant_id, id: reservedId });
-    if (created === null) {
-      created = await this.repo.create({
+    // The FINAL admission step — the admission invariant (name + email1 +
+    // phone_cell) rides structurally inside repo.create. Idempotent on the
+    // reserved id when one was claimed.
+    const existingReserved =
+      reservedId !== undefined ? await this.repo.findById({ tenant_id, id: reservedId }) : null;
+    const created =
+      existingReserved ??
+      (await this.repo.create({
         tenant_id,
         entered_by_id: authContext.sub,
         input: body,
         requestId,
-        id: reservedId,
-      });
+        ...(reservedId !== undefined ? { id: reservedId } : {}),
+      }));
+
+    // Best-effort provenance/evidence block — the Talent IS created; a document/
+    // edition/evidence hiccup never fails the create (mirrors the manual path).
+    let sourceDocumentId: string | undefined;
+    let resumeEditionId: string | undefined;
+    let artifactSha: string | undefined;
+    try {
+      const rd = body.resume_document;
+      if (rd !== undefined && typeof rd.storage_key === 'string' && rd.storage_key !== '') {
+        try {
+          const hashed = await this.resumeParser?.computeArtifactSha256FromStorageKey?.({
+            storage_key: rd.storage_key,
+            requestId,
+          });
+          artifactSha = hashed?.artifact_sha256;
+        } catch {
+          artifactSha = undefined;
+        }
+        sourceDocumentId = await this.talentExtraction.createResumeDocument({
+          talent_id: created.id,
+          tenant_id,
+          uploaded_by_actor_id: authContext.sub,
+          storage_key: rd.storage_key,
+          filename: rd.file_name,
+          mime_type: rd.mime_type,
+          size_bytes: rd.size_bytes,
+          artifact_sha256: artifactSha,
+        });
+      }
+      if (
+        sourceDocumentId !== undefined &&
+        typeof rd?.resume_text_hash === 'string' &&
+        rd.resume_text_hash !== ''
+      ) {
+        const editionResult = await this.editionIngestion?.createEditionForDocument({
+          tenant_id,
+          talent_id: created.id,
+          talent_document_id: sourceDocumentId,
+          content_hash: rd.resume_text_hash,
+          artifact_sha256: artifactSha,
+          created_by: authContext.sub,
+        });
+        resumeEditionId = editionResult?.edition.id;
+        if (resumeEditionId !== undefined && typeof rd?.storage_key === 'string' && rd.storage_key !== '') {
+          try {
+            await this.resumeText?.enqueueReindex({
+              tenant_id,
+              talent_record_id: created.id,
+              storage_key: rd.storage_key,
+              resume_edition_id: resumeEditionId,
+            });
+          } catch {
+            // non-fatal
+          }
+        }
+      }
+      const provenance = {
+        ...(sourceDocumentId !== undefined ? { source_document_id: sourceDocumentId } : {}),
+        ...(rd?.source_map_version !== undefined ? { source_map_version: rd.source_map_version } : {}),
+        ...(rd?.resume_text_hash !== undefined ? { resume_text_hash: rd.resume_text_hash } : {}),
+      };
+      if (Array.isArray(body.work_history) && body.work_history.length > 0) {
+        await this.talentExtraction.persistDeclaredWorkHistory({
+          talent_id: created.id,
+          tenant_id,
+          entries: body.work_history,
+          provenance,
+        });
+      }
+      if (Array.isArray(body.skills) && body.skills.length > 0) {
+        await this.talentExtraction.persistDeclaredSkills({
+          talent_id: created.id,
+          tenant_id,
+          skills: body.skills,
+          provenance,
+        });
+      }
+      if (Array.isArray(body.education) && body.education.length > 0) {
+        await this.talentExtraction.persistDeclaredEducation({
+          talent_id: created.id,
+          tenant_id,
+          education: body.education,
+          provenance,
+        });
+      }
+      if (Array.isArray(body.certifications) && body.certifications.length > 0) {
+        await this.talentExtraction.persistDeclaredCertifications({
+          talent_id: created.id,
+          tenant_id,
+          certifications: body.certifications,
+          provenance,
+        });
+      }
+    } catch {
+      // Non-fatal: the record is created; the recruiter can add evidence on the
+      // Talent record. (No PII in logs.)
     }
-    await this.canonicalReconcile?.enqueueTalent(tenant_id, reservedId);
-    await this.talentReconcile?.enqueueTalent(tenant_id, reservedId);
-    await this.recordWorkAuthEvidence(authContext, reservedId, body);
+
+    await this.canonicalReconcile?.enqueueTalent(tenant_id, created.id);
+    await this.talentReconcile?.enqueueTalent(tenant_id, created.id);
+    await this.recordWorkAuthEvidence(authContext, created.id, body);
+
+    // CREATE_DRAFT_UPLOAD close-out — if an originating extraction child was
+    // supplied, LINK it + mark ACCEPTED (best-effort, guarded; a 0-count / absent
+    // child is a benign no-op). No re-promotion: evidence was written above.
+    if (typeof body.draft_id === 'string' && body.draft_id !== '') {
+      try {
+        await this.talentExtraction.markResumeExtractionDraftAccepted({
+          id: body.draft_id,
+          tenant_id,
+          talent_id: created.id,
+          talent_document_id: sourceDocumentId ?? null,
+          resume_edition_id: resumeEditionId ?? null,
+          reviewed_by: authContext.sub,
+          reviewed_at: new Date(),
+        });
+      } catch {
+        // Non-fatal: the Talent + evidence exist; a draft-link hiccup never fails.
+      }
+    }
     return created;
   }
 

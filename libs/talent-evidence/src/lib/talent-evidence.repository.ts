@@ -2046,6 +2046,13 @@ export class TalentEvidenceRepository {
   // Worker CAS claim: QUEUED → PROCESSING guarded on the exact version, so
   // at-least-once queue delivery / duplicate ticks produce exactly one claimer
   // (count === 1). A non-claimer gets 0 and skips.
+  //
+  // ADR-0033 local-gap decoupling — ALSO guarded on promoted_talent_record_id IS
+  // NULL: once an intake has been promoted (the recruiter created the Talent
+  // manually while extraction was still QUEUED / unavailable), a late extraction
+  // delivery can no longer claim it → the governed extraction becomes a strict
+  // no-op. It never mutates the already-created TalentRecord (extraction writes
+  // only the child + intake row), so recruiter-confirmed state is preserved.
   async claimTalentIntakeDraftForProcessing(input: {
     tenant_id: string;
     id: string;
@@ -2057,6 +2064,7 @@ export class TalentEvidenceRepository {
         tenant_id: input.tenant_id,
         version: input.expected_version,
         processing_status: 'QUEUED',
+        promoted_talent_record_id: null,
       },
       data: {
         processing_status: 'PROCESSING',

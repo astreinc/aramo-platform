@@ -16,6 +16,7 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     { "from": ".env.example", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
+    { "from": ".env.example", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
       "from": ".env.prod.example",
       "status": "unscoped",
@@ -15857,6 +15858,11 @@
     { "from": "docker-compose.yml", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "docker-compose.yml", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
+      "from": "docker-compose.yml",
+      "status": "unscoped",
+      "to": "tools/talent-intake-localstack-provision.cjs"
+    },
+    {
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts"
@@ -20915,11 +20921,31 @@
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-run-link.sh" },
     {
+      "from": "tools/local-stack.sh",
+      "status": "unscoped",
+      "to": "tools/talent-intake-dev-consumer.cjs"
+    },
+    {
+      "from": "tools/local-stack.sh",
+      "status": "unscoped",
+      "to": "tools/talent-intake-localstack-provision.cjs"
+    },
+    {
       "from": "tools/provision-e2e-recruiter.ts",
       "status": "unscoped",
       "to": "tools/local-run-link.sh"
     },
     { "from": "tools/send-mailer-proof.ts", "status": "unscoped", "to": "tools/local-run-link.sh" },
+    {
+      "from": "tools/talent-intake-dev-consumer.cjs",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
+      "from": "tools/talent-intake-localstack-provision.cjs",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
     {
       "from": "tsconfig.base.json",
@@ -21285,7 +21311,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 74,
+    "files": 76,
     "huskyPresent": false
   },
   "scripts": [
@@ -21742,7 +21768,9 @@
         { "kind": "prose", "path": "tools/provision-e2e-recruiter.ts" },
         { "kind": "prose", "path": "tools/seed-e2e-data.lib.ts" },
         { "kind": "prose", "path": "tools/seed-e2e-data.spec.ts" },
-        { "kind": "prose", "path": "tools/seed-e2e-data.ts" }
+        { "kind": "prose", "path": "tools/seed-e2e-data.ts" },
+        { "kind": "prose", "path": "tools/talent-intake-dev-consumer.cjs" },
+        { "kind": "prose", "path": "tools/talent-intake-localstack-provision.cjs" }
       ]
     },
     {

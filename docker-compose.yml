@@ -44,5 +44,28 @@ services:
       timeout: 3s
       retries: 20
 
+  # ADR-0033 local-dev runtime — the SAME AWS substrate as production, run
+  # locally via LocalStack. The Talent Intake durable-event transport (PostgreSQL
+  # outbox → EventBridge → SQS → consumer) uses EventBridge + SQS here instead of
+  # real AWS; only the endpoint changes (TALENT_INTAKE_EVENTBRIDGE_ENDPOINT). The
+  # bus/queue/DLQ/rule are provisioned idempotently by tools/local-stack.sh
+  # (tools/talent-intake-localstack-provision.cjs), and a dev-only SQS consumer
+  # runner feeds messages into the EXACT processTalentIntakeSqsBatch seam the
+  # Lambda uses in prod. No BullMQ, no in-process bypass, no fail-closed weakening.
+  localstack:
+    image: localstack/localstack:3
+    container_name: aramo-local-localstack
+    environment:
+      SERVICES: events,sqs
+      DEBUG: '0'
+      EAGER_SERVICE_LOADING: '1'
+    ports:
+      - '4566:4566'
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:4566/_localstack/health || exit 1']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
 volumes:
   aramo-pgdata:

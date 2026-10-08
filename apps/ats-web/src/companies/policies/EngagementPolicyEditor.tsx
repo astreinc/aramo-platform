@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { Button } from '../../ui';
 import {
@@ -146,8 +147,16 @@ export function EngagementPolicyEditor({
       });
       await load();
       onPublished?.();
-    } catch {
-      setError('Publish failed. Your changes were not saved.');
+    } catch (err) {
+      // Surface the backend reason (code/message) instead of swallowing it — a
+      // bare catch here previously hid every failure (e.g. a 400 validation
+      // error) behind one generic line, making the real cause invisible.
+      const reason = err instanceof ApiError ? err.message : null;
+      setError(
+        reason !== null && reason.length > 0
+          ? `Publish failed: ${reason}. Your changes were not saved.`
+          : 'Publish failed. Your changes were not saved.',
+      );
     } finally {
       setPublishing(false);
     }

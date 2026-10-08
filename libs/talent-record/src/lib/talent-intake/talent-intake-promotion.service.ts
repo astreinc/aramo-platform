@@ -12,12 +12,18 @@ import { TalentCreateFromDraftService } from '../talent-create-from-draft.servic
 import { asReviewPayload } from './talent-intake-review.js';
 
 // Durable Async Résumé-First Talent Intake — PROMOTE. The ONLY step that creates
-// a TalentRecord. It REUSES the shared TalentCreateFromDraftService 3-phase
-// composition (canonical Talent create + Documents + evidence) — no duplicated
-// Talent-create logic — then guards the parent's promotion linkage. Race-safety
-// comes from the canonical create transaction (idempotent on the reserved id, via
-// the child ACCEPTED guard) PLUS the guarded promoted_talent_record_id: repeated
-// or racing promotion converges to exactly one TalentRecord.
+// a TalentRecord. Extraction is async ENRICHMENT, never a prerequisite (ADR-0033
+// local gap): a confirmable governed child promotes through the shared 3-phase
+// composition (confirmCreateFromDraftUpload); otherwise the recruiter-reviewed
+// fields alone create the Talent (createFromReviewedUpload). Two settled
+// invariants hold across BOTH paths:
+//   G1 — actor-private authority: every draft read/mutation is scoped by
+//        tenant_id + created_by, so a same-tenant recruiter/manager can NEVER
+//        promote another recruiter's draft by id.
+//   Exactly-once/replay-safe: a replay of an already-promoted draft returns the
+//        existing record; concurrent promotion converges — the guarded
+//        promotion-linkage CAS (promoted_talent_record_id IS NULL) elects ONE
+//        winner and the create is idempotent on the claimed reserved id.
 @Injectable()
 export class TalentIntakePromotionService {
   constructor(
@@ -33,6 +39,7 @@ export class TalentIntakePromotionService {
   ): Promise<TalentRecordView> {
     const tenant_id = authContext.tenant_id;
     const created_by = authContext.sub;
+    // G1 — actor-scoped read: a non-owner resolves null → 404 (existence not leaked).
     const intake = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id, created_by });
     if (intake === null) {
       throw new AramoError('NOT_FOUND', 'Talent intake draft not found.', 404, {
@@ -41,7 +48,7 @@ export class TalentIntakePromotionService {
       });
     }
 
-    // Idempotent: already promoted → return the existing TalentRecord.
+    // Idempotent / replay-safe: already promoted → return the existing TalentRecord.
     if (intake.promoted_talent_record_id !== null) {
       const existing = await this.repo.findById({ tenant_id, id: intake.promoted_talent_record_id });
       if (existing !== null) {
@@ -49,10 +56,9 @@ export class TalentIntakePromotionService {
       }
     }
 
-    // ADMISSION is the ONLY creation prerequisite (§9/§13): a name, a primary
-    // email, and a cell phone. Extraction state is NOT a gate — a FAILED or still-
-    // reading résumé never blocks creation. This is checked up-front for BOTH the
-    // governed and the manual paths.
+    // ADMISSION is the ONLY creation prerequisite (§9/§13 + ADR-0033 local-gap):
+    // a name, a primary email, and a cell phone. Extraction state is NEVER a gate —
+    // a FAILED / still-reading / absent extraction never blocks creation.
     const body = this.buildCreateInput(intake);
     const email1 = (body.email1 ?? '').trim();
     const phoneCell = (body.phone_cell ?? '').trim();
@@ -62,8 +68,7 @@ export class TalentIntakePromotionService {
     if (email1 === '') missing.push('email1');
     if (phoneCell === '') missing.push('phone_cell');
     if (missing.length > 0) {
-      // Admission invariant — no TalentRecord is created when required fields are
-      // missing (field-keyed so the FE can direct the recruiter).
+      // Field-keyed so the FE can direct the recruiter.
       throw new AramoError(
         'VALIDATION_ERROR',
         'A name, a primary email, and a cell phone are required to create a talent.',
@@ -72,10 +77,11 @@ export class TalentIntakePromotionService {
       );
     }
 
-    // GOVERNED path — only when a résumé-extraction child exists AND is
-    // confirmable (READY_FOR_REVIEW). Reuses the SHARED create-from-draft
-    // composition (canonical create + Documents + governed evidence;
-    // CAS-converges on a concurrent confirm).
+    // ENRICHMENT path — a confirmable governed extraction child (READY_FOR_REVIEW)
+    // promotes through the shared 3-phase composition so its accepted résumé
+    // evidence lifecycle is linked (it carries its own reserved-id convergence). A
+    // null result means the child is not promotable (PROCESSING / FAILED / decided
+    // elsewhere) → fall through to the decoupled create rather than block (§13).
     if (intake.resume_extraction_draft_id !== null) {
       const created = await this.createFromDraft.confirmCreateFromDraftUpload(
         authContext,
@@ -84,6 +90,7 @@ export class TalentIntakePromotionService {
         requestId,
       );
       if (created !== null) {
+        // Link the parent (guarded CAS; G1 actor-scoped).
         await this.talentExtraction.markTalentIntakeDraftPromoted({
           tenant_id,
           id,
@@ -93,9 +100,7 @@ export class TalentIntakePromotionService {
         });
         return created;
       }
-      // The child is not confirmable (FAILED / PROCESSING / REJECTED). First
-      // converge on a racing promote; otherwise fall THROUGH to the manual path —
-      // a non-reviewable child must NOT block creation (§13).
+      // Child not confirmable → converge on a racing promote, else fall through.
       const reread = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id, created_by });
       if (reread?.promoted_talent_record_id != null) {
         const existing = await this.repo.findById({ tenant_id, id: reread.promoted_talent_record_id });
@@ -105,12 +110,27 @@ export class TalentIntakePromotionService {
       }
     }
 
-    // MANUAL admission path (§13) — no governed extraction evidence is available
-    // (no child, or a child that never reached READY_FOR_REVIEW). Mint a reserved
-    // id and CLAIM the promotion linkage: the guarded markTalentIntakeDraftPromoted
-    // (promoted_talent_record_id IS NULL) is the single convergence point, so a
-    // racing/duplicate promote resolves to exactly one TalentRecord. The create is
-    // then idempotent on the claimed id.
+    // DECOUPLED path — no confirmable governed child (absent, or the async
+    // EventBridge→SQS→consumer/LLM path is slow/failed). The recruiter-reviewed
+    // fields alone create the Talent; the résumé artifact stays attached.
+    //
+    // Convergence (PO/Lead merge ruling — exactly-once / replay-safe):
+    //   1. The hard active-email duplicate rule is enforced BEFORE any linkage
+    //      claim, so a blocked promote never leaves a stuck PROMOTED-but-recordless
+    //      draft. (A different active record with this email → 409.)
+    //   2. CLAIM the promotion linkage with a reserved id (guarded CAS); the single
+    //      winner then creates idempotently on that id. A racing/replayed promote
+    //      loses the claim and converges on the winner's record. → EXACTLY ONE
+    //      TalentRecord + one linkage.
+    const dup = await this.repo.findActiveByEmail({ tenant_id, email: email1 });
+    if (dup !== null) {
+      throw new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this primary email already exists in your tenant.',
+        409,
+        { requestId, details: { email1, existing_id: dup.id } },
+      );
+    }
     const reservedId = uuidv7();
     const claimed = await this.talentExtraction.markTalentIntakeDraftPromoted({
       tenant_id,
@@ -119,15 +139,20 @@ export class TalentIntakePromotionService {
       promoted_talent_record_id: reservedId,
       promoted_at: new Date(),
     });
-    let linkedId = reservedId;
     if (claimed === 0) {
-      // Lost the claim (already promoted) → converge on the winner's record id.
+      // Lost the claim (concurrent/replay) → converge on the winner's linked id.
       const reread = await this.talentExtraction.findTalentIntakeDraftById({ tenant_id, id, created_by });
-      if (reread?.promoted_talent_record_id != null) {
-        linkedId = reread.promoted_talent_record_id;
+      const linkedId = reread?.promoted_talent_record_id ?? reservedId;
+      const existing = await this.repo.findById({ tenant_id, id: linkedId });
+      if (existing !== null) {
+        return existing;
       }
+      // Winner claimed but has not finished creating yet (rare window) → complete
+      // idempotently on the winner's id.
+      return this.createFromDraft.createFromReviewedUpload(authContext, body, email1, requestId, linkedId);
     }
-    return this.createFromDraft.createManualFromReview(authContext, body, email1, linkedId, requestId);
+    // We own the linkage → create idempotently on the reserved id.
+    return this.createFromDraft.createFromReviewedUpload(authContext, body, email1, requestId, reservedId);
   }
 
   // Construct the canonical create input from the persisted review payload + the
