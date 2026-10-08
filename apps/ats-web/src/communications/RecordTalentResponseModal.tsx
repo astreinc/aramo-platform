@@ -113,8 +113,12 @@ export function RecordTalentResponseModal({
       if (err instanceof ApiError && err.status === 409) {
         // §10 — the journey changed while recording. Closing refetches the latest.
         setBanner('stale');
-      } else if (err instanceof ApiError && err.status === 400) {
-        // Field-level validation echoed inline (occurred_at is the only guarded field).
+      } else if (err instanceof ApiError && (err.status === 400 || err.status === 422)) {
+        // Field-level validation (400 DTO format) AND the §-rule rejections
+        // (422 business rules) echoed inline on the guarded field (occurred_at):
+        // "occurred_at cannot be in the future" / "...cannot precede the first
+        // recorded contact". Surface the server's specific reason so the recruiter
+        // can correct the time, instead of the generic "couldn't record" banner.
         setServerDateErr(typeof err.message === 'string' ? err.message : 'That value was rejected.');
         setTried(true);
       } else {

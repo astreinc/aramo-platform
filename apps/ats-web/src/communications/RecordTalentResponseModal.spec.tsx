@@ -108,4 +108,22 @@ describe('RecordTalentResponseModal', () => {
     expect(await screen.findByText(/journey changed while you were recording/i)).toBeTruthy();
     expect(onRecorded).not.toHaveBeenCalled();
   });
+
+  it('422 §-rule (response time precedes contact) → surfaces the server reason inline, NOT the generic banner', async () => {
+    const { onRecorded } = renderModal();
+    recordMock.mockRejectedValueOnce(
+      new ApiError(
+        422,
+        'occurred_at cannot precede the first recorded contact for this talent and requisition',
+        'VALIDATION_ERROR',
+      ),
+    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Email' }));
+    fireEvent.click(recordBtn());
+    // The specific server reason is shown so the recruiter can correct the time…
+    expect(await screen.findByText(/cannot precede the first recorded contact/i)).toBeTruthy();
+    // …and the generic "couldn’t record" banner is NOT shown.
+    expect(screen.queryByText(/Couldn’t record the response/i)).toBeNull();
+    expect(onRecorded).not.toHaveBeenCalled();
+  });
 });
