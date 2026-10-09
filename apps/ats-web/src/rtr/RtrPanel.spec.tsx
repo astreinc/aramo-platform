@@ -180,4 +180,33 @@ describe('RtrPanel', () => {
     renderPanel();
     expect(await screen.findByText('Standard Right to Represent · v3')).toBeInTheDocument();
   });
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§26) — template governance makes "no approved template"
+  // a real recruiter state. The panel refuses honestly and does NOT offer a useless
+  // retry (an admin must approve one first).
+  it('M — no approved RTR template is an honest, non-retryable refusal (admin must act)', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(null);
+    vi.mocked(requestRtr).mockRejectedValue(
+      Object.assign(new Error('not configured'), { code: 'RTR_TEMPLATE_NOT_CONFIGURED' }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByText('Request RTR'));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toContain('has not approved a Right to Represent template');
+    expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  // §26 — a missing authoritative binding fails CLOSED (never substituted); fixing the
+  // requisition data can help, so this one stays retryable.
+  it('N — a missing binding fails closed with an actionable, retryable message', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(current({ status: 'REQUESTED' }));
+    vi.mocked(sendRtr).mockRejectedValue(
+      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING' }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByText('Send for signature'));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toContain('a required detail');
+    expect(screen.getByText('Try again')).toBeInTheDocument();
+  });
 });

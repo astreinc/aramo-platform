@@ -30,6 +30,28 @@ function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// DOC-TEMPLATE-ADMIN-RTR-1 (§26) — map the backend's fail-closed template codes to
+// honest, actionable recruiter messaging. Template governance means a workspace may
+// have NO approved RTR template, or a required field may be unresolvable; the panel
+// NEVER fabricates or substitutes — it refuses and explains. `retryable` is false when
+// retrying cannot help (an admin must act); true when fixing the data can.
+function describeError(e: unknown): { text: string; retryable: boolean } {
+  const code = (e as { code?: string } | null)?.code;
+  if (code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') {
+    return {
+      text: 'Your workspace has not approved a Right to Represent template yet. Ask an admin to approve one in Settings → Documents.',
+      retryable: false,
+    };
+  }
+  if (code === 'RTR_TEMPLATE_BINDING_MISSING' || code === 'TEMPLATE_BINDING_UNSUPPORTED') {
+    return {
+      text: 'This RTR can’t be prepared yet — a required detail (such as the requisition reference) is missing. Complete the requisition, then try again.',
+      retryable: true,
+    };
+  }
+  return { text: messageOf(e), retryable: true };
+}
+
 export interface RtrPanelProps {
   talentId: string;
   requisitionId: string;
@@ -56,7 +78,7 @@ export function RtrPanel({
   const [current, setCurrent] = useState<RtrCurrentResponse | null>(null);
   const [loading, setLoading] = useState(canRead);
   const [busy, setBusy] = useState<'' | 'requesting' | 'sending' | 'refreshing' | 'previewing' | 'reminding'>('');
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState<{ text: string; retryable: boolean } | null>(null);
   // COMM-RECRUITER-W1 (W1-C3) — transient success note (e.g. "Reminder sent").
   const [notice, setNotice] = useState<string>('');
 
@@ -79,7 +101,7 @@ export function RtrPanel({
         const cur = await getCurrentRtr(talentId, requisitionId);
         if (active) setCurrent(cur);
       } catch (e) {
-        if (active) setError(messageOf(e));
+        if (active) setError(describeError(e));
       } finally {
         if (active) setLoading(false);
       }
@@ -91,12 +113,12 @@ export function RtrPanel({
 
   const run = async (phase: typeof busy, fn: () => Promise<void>): Promise<void> => {
     setBusy(phase);
-    setError('');
+    setError(null);
     setNotice('');
     try {
       await fn();
     } catch (e) {
-      setError(messageOf(e));
+      setError(describeError(e));
     } finally {
       setBusy('');
     }
@@ -143,10 +165,10 @@ export function RtrPanel({
     ) : null;
 
   const errorBlock =
-    error.length > 0 ? (
+    error !== null ? (
       <div className="rc-tj__rtr-error" role="alert">
-        <span>{error}</span>
-        {canRead ? (
+        <span>{error.text}</span>
+        {canRead && error.retryable ? (
           <Button unstyled type="button" className="rc-tj__rtrlink" onClick={() => void onRefresh()}>
             Try again
           </Button>
