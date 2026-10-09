@@ -109,6 +109,10 @@ export class TenantDocumentTemplateProvisioningService {
       tenant_id: tenantId,
       version_id: newVersion.id,
       actor_id: SYSTEM_ACTOR,
+      // Trusted system bootstrap: the default RTR content is copied verbatim from the
+      // sentinel and needs no admin preview-before-approval (§18 gate is for the
+      // tenant-admin editor path, not provisioning).
+      require_preview: false,
     });
 
     this.logger.log(

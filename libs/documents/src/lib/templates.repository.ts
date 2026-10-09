@@ -1,14 +1,43 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import {
   DocumentNotFoundError,
+  TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
   TemplateNotFoundError,
+  TemplatePreviewRequiredError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
+
+// DOC-TEMPLATE-ADMIN-RTR-1 (§18) — deterministic fingerprint of a version's editable
+// content (field_schema), used for the preview-revision gate. Canonical (key-sorted)
+// stringify so semantically-identical content hashes identically regardless of key
+// order returned by the driver.
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const obj = value as Record<string, unknown>;
+  return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+}
+function templateContentFingerprint(field_schema: unknown): string {
+  return createHash('sha256').update(stableStringify(field_schema ?? null)).digest('hex');
+}
+
+// §41 race backstop — map a Postgres unique-violation on the one-DRAFT partial index
+// to the typed TEMPLATE_DRAFT_ALREADY_EXISTS. Prisma 7 + PrismaPg surfaces the raw
+// index name at meta.driverAdapterError.cause.originalMessage (NOT meta.target).
+function mapOneDraftConflict(e: unknown, templateId: string): unknown {
+  const originalMessage = (e as {
+    meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } };
+  })?.meta?.driverAdapterError?.cause?.originalMessage;
+  if (typeof originalMessage === 'string' && originalMessage.includes('TemplateVersion_one_draft_per_template')) {
+    return new TemplateDraftAlreadyExistsError(templateId, 'concurrent');
+  }
+  return e;
+}
 
 // DOC-2 boundary 4 — DocumentTemplate + TemplateVersion + TemplateFieldDefinition
 // + TemplateAsset + DocumentPacket. A TemplateVersion is immutable once ACTIVE
@@ -105,26 +134,99 @@ export class TemplatesRepository {
   // ── Versions ─────────────────────────────────────────────────────────────
   async createVersion(input: CreateVersionInput) {
     await this.getTemplate(input.tenant_id, input.template_id);
+    // §41 one-DRAFT invariant — app-surface guard: if an open DRAFT already exists,
+    // refuse (return/navigate to it at the caller). The partial unique index is the
+    // concurrent-race backstop (mapOneDraftConflict below).
+    const existingDraft = await this.prisma.templateVersion.findFirst({
+      where: { tenant_id: input.tenant_id, template_id: input.template_id, status: 'DRAFT' },
+    });
+    if (existingDraft !== null) throw new TemplateDraftAlreadyExistsError(input.template_id, existingDraft.id);
     // Next version_number = max + 1 (unique tuple (template_id, version_number)).
     const last = await this.prisma.templateVersion.findFirst({
       where: { tenant_id: input.tenant_id, template_id: input.template_id },
       orderBy: { version_number: 'desc' },
     });
     const nextNumber = (last?.version_number ?? 0) + 1;
-    return this.prisma.templateVersion.create({
+    try {
+      return await this.prisma.templateVersion.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          template_id: input.template_id,
+          version_number: nextNumber,
+          status: 'DRAFT',
+          render_schema_version: input.render_schema_version,
+          field_schema: (input.field_schema ?? undefined) as never,
+          binding_schema: (input.binding_schema ?? undefined) as never,
+          source_artifact_id: input.source_artifact_id ?? null,
+          effective_from: input.effective_from ?? null,
+          created_by: input.created_by,
+          // §18 — fingerprint the starting content so the preview gate is armed on create.
+          content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
+        },
+      });
+    } catch (e) {
+      throw mapOneDraftConflict(e, input.template_id);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§8) — create a DRAFT vN+1 by COPYING the template's
+  // current ACTIVE version's editable content as the starting point. One-DRAFT guarded;
+  // never touches current_version_id or any workflow. Returns the existing DRAFT's id
+  // via TemplateDraftAlreadyExistsError if one is already open.
+  async createDraftFromActive(input: { tenant_id: string; template_id: string; created_by: string }) {
+    const template = await this.getTemplate(input.tenant_id, input.template_id);
+    const active =
+      template.current_version_id !== null
+        ? await this.prisma.templateVersion.findFirst({
+            where: { tenant_id: input.tenant_id, id: template.current_version_id },
+          })
+        : null;
+    return this.createVersion({
+      tenant_id: input.tenant_id,
+      template_id: input.template_id,
+      render_schema_version: active?.render_schema_version ?? 'rtr-generated-v1',
+      field_schema: active?.field_schema ?? undefined,
+      created_by: input.created_by,
+    });
+  }
+
+  // §9 — update a DRAFT version's editable content. DRAFT-ONLY (ACTIVE/RETIRED →
+  // TemplateImmutableError). Recomputes content_fingerprint and CLEARS
+  // previewed_fingerprint so the §18 preview gate re-arms (editing invalidates a prior
+  // preview). Never mutates version_number/status/tenant_id/template_id/created_by/
+  // activated_*/retired_*.
+  async updateDraftVersion(input: {
+    tenant_id: string;
+    version_id: string;
+    field_schema: unknown;
+    render_schema_version?: string;
+  }) {
+    const v = await this.getVersion(input.tenant_id, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    return this.prisma.templateVersion.update({
+      where: { id: input.version_id },
       data: {
-        id: randomUUID(),
-        tenant_id: input.tenant_id,
-        template_id: input.template_id,
-        version_number: nextNumber,
-        status: 'DRAFT',
-        render_schema_version: input.render_schema_version,
         field_schema: (input.field_schema ?? undefined) as never,
-        binding_schema: (input.binding_schema ?? undefined) as never,
-        source_artifact_id: input.source_artifact_id ?? null,
-        effective_from: input.effective_from ?? null,
-        created_by: input.created_by,
+        ...(input.render_schema_version !== undefined
+          ? { render_schema_version: input.render_schema_version }
+          : {}),
+        content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
+        previewed_fingerprint: null, // re-arm the preview gate on any content edit
       },
+    });
+  }
+
+  // §18 — record that the CURRENT draft content has been previewed:
+  // previewed_fingerprint := content_fingerprint. Deterministic + durable (not FE
+  // state). DRAFT-only (admin preview-before-approval targets a DRAFT).
+  async recordPreview(input: { tenant_id: string; version_id: string }) {
+    const v = await this.getVersion(input.tenant_id, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    const fp = v.content_fingerprint ?? templateContentFingerprint(v.field_schema ?? null);
+    return this.prisma.templateVersion.update({
+      where: { id: input.version_id },
+      data: { content_fingerprint: fp, previewed_fingerprint: fp },
     });
   }
 
@@ -152,10 +254,26 @@ export class TemplatesRepository {
   // DRAFT -> ACTIVE. Idempotent if already ACTIVE. Sets the template's
   // current_version_id and retires any prior ACTIVE version of the same template
   // (a template has at most one ACTIVE version). Immutability begins here.
-  async activateVersion(input: { tenant_id: string; version_id: string; actor_id: string }) {
+  // DRAFT -> ACTIVE. §18 preview gate + §21 actor provenance. `require_preview`
+  // defaults TRUE (the admin Approve & activate path): the CURRENT draft content must
+  // have been previewed (content_fingerprint == previewed_fingerprint), else
+  // TemplatePreviewRequiredError — backend-authoritative, never FE-only. Trusted
+  // bootstrap/provisioning (the default-RTR seed) passes require_preview:false.
+  async activateVersion(input: {
+    tenant_id: string;
+    version_id: string;
+    actor_id: string;
+    require_preview?: boolean;
+  }) {
     const v = await this.getVersion(input.tenant_id, input.version_id);
     if (v.status === 'ACTIVE') return v; // no-op
     if (v.status === 'RETIRED') throw new TemplateImmutableError(input.version_id);
+    if (input.require_preview !== false) {
+      const currentFp = v.content_fingerprint ?? templateContentFingerprint(v.field_schema ?? null);
+      if (v.previewed_fingerprint === null || v.previewed_fingerprint !== currentFp) {
+        throw new TemplatePreviewRequiredError(input.version_id);
+      }
+    }
     return this.prisma.$transaction(async (tx) => {
       // Retire the current ACTIVE version of this template, if any.
       await tx.templateVersion.updateMany({
@@ -164,7 +282,7 @@ export class TemplatesRepository {
       });
       await tx.templateVersion.update({
         where: { id: input.version_id },
-        data: { status: 'ACTIVE', activated_at: new Date() },
+        data: { status: 'ACTIVE', activated_at: new Date(), activated_by: input.actor_id },
       });
       await tx.documentTemplate.update({
         where: { id: v.template_id },

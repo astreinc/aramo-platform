@@ -20,8 +20,11 @@ import {
   DocumentNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
   DocumentRequirementNotFoundError,
+  TemplateBindingUnsupportedError,
+  TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
   TemplateNotFoundError,
+  TemplatePreviewRequiredError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -59,6 +62,9 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateVersionNotFoundError) return new AramoError('TEMPLATE_VERSION_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof TemplateVersionNotActiveError) return new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', e.message, 409, { requestId });
   if (e instanceof TemplateImmutableError) return new AramoError('TEMPLATE_IMMUTABLE', e.message, 409, { requestId });
+  if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
+  if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
+  if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
   if (e instanceof DocumentRequirementNotFoundError) return new AramoError('DOCUMENT_REQUIREMENT_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof DocumentRequirementAlreadySatisfiedError) return new AramoError('DOCUMENT_REQUIREMENT_ALREADY_SATISFIED', e.message, 409, { requestId });
   if (e instanceof DocumentNotFoundError) return new AramoError('DOCUMENT_NOT_FOUND', e.message, 404, { requestId });

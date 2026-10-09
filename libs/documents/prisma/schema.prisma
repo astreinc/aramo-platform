@@ -260,7 +260,14 @@ model TemplateVersion {
   created_by            String    @db.Uuid
   created_at            DateTime  @default(now()) @db.Timestamptz
   activated_at          DateTime? @db.Timestamptz
+  // DOC-TEMPLATE-ADMIN-RTR-1 — activation actor (§21); NOT created_by.
+  activated_by          String?   @db.Uuid
   retired_at            DateTime? @db.Timestamptz
+  // DOC-TEMPLATE-ADMIN-RTR-1 — preview-revision gate (§18). content_fingerprint =
+  // hash of current editable content; previewed_fingerprint = fingerprint at last
+  // admin preview. Activation requires they match (editing re-arms the gate).
+  content_fingerprint   String?
+  previewed_fingerprint String?
 
   template              DocumentTemplate          @relation(fields: [template_id], references: [id], onDelete: Restrict)
   fields                TemplateFieldDefinition[]
@@ -268,6 +275,9 @@ model TemplateVersion {
   @@unique([template_id, version_number])
   @@index([tenant_id])
   @@index([tenant_id, template_id])
+  // NOTE: the one-DRAFT partial unique index (tenant_id, template_id) WHERE
+  // status='DRAFT' is defined in the migration (Prisma schema cannot express a
+  // partial/WHERE index). It is the §41 race backstop.
   @@schema("documents")
 }
 
