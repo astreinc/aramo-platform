@@ -194,7 +194,7 @@ describe('RtrTemplateDetail — detail + version history (§7)', () => {
       </ToastProvider>,
     );
     fireEvent.click(await screen.findByTestId('rtr-detail-draft'));
-    await waitFor(() => expect(createDraftFn).toHaveBeenCalledWith('tpl-rtr', expect.anything()));
+    await waitFor(() => expect(createDraftFn).toHaveBeenCalledWith('tpl-rtr'));
     expect(await screen.findByTestId('rtr-draft-landing')).toBeInTheDocument();
   });
 

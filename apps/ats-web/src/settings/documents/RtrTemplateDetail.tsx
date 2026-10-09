@@ -6,13 +6,12 @@ import { Button, Card, EmptyState, ErrorState, LoadingState, safeErrorMessage } 
 import { SettingsSection, SettingCardHead, StatChip, SettingHint } from '../components';
 
 import {
-  createDraftVersion,
+  createDraftFromActive,
   listDocumentTemplates,
   listTemplateVersions,
   DOC_TEMPLATE_MANAGE_SCOPE,
   DOC_TEMPLATE_READ_SCOPE,
   RIGHT_TO_REPRESENT_TYPE_ID,
-  RTR_GENERATED_SCHEMA_V1,
   type DocumentTemplateView,
   type TemplateStatus,
   type TemplateVersionView,
@@ -49,14 +48,14 @@ interface Props {
   readonly sessionOverride?: Session;
   readonly listTemplatesFn?: typeof listDocumentTemplates;
   readonly listVersionsFn?: typeof listTemplateVersions;
-  readonly createDraftFn?: typeof createDraftVersion;
+  readonly createDraftFn?: typeof createDraftFromActive;
 }
 
 export function RtrTemplateDetail({
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
-  createDraftFn = createDraftVersion,
+  createDraftFn = createDraftFromActive,
 }: Props = {}) {
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
@@ -124,10 +123,7 @@ export function RtrTemplateDetail({
     }
     setBusy(true);
     try {
-      await createDraftFn(template.id, {
-        render_schema_version: RTR_GENERATED_SCHEMA_V1,
-        field_schema: undefined,
-      });
+      await createDraftFn(template.id);
       navigate(DRAFT_ROUTE);
     } catch (err) {
       toast.show(safeErrorMessage(err, 'Could not start a new draft. Please try again.'));

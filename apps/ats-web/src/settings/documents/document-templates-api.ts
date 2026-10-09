@@ -96,12 +96,9 @@ export async function listAllowedBindings(templateId: string): Promise<readonly 
 }
 
 // Open a new editable DRAFT (vN+1). The backend copies the current ACTIVE content as
-// the starting point and refuses (409 TEMPLATE_DRAFT_ALREADY_EXISTS) if one is open.
-export async function createDraftVersion(
-  templateId: string,
-  input: { render_schema_version: string; field_schema: unknown },
-): Promise<TemplateVersionView> {
-  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/versions`, input);
+// the starting point (§8) and refuses (409 TEMPLATE_DRAFT_ALREADY_EXISTS) if one is open.
+export async function createDraftFromActive(templateId: string): Promise<TemplateVersionView> {
+  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft`, {});
 }
 
 // Save DRAFT content (DRAFT-only; re-arms the §18 preview gate server-side).

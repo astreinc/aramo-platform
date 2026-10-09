@@ -195,6 +195,20 @@ export class DocumentTemplatesController {
     }
   }
 
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§8) — open a new editable DRAFT (vN+1) by COPYING the
+  // template's current ACTIVE content as the starting point (the backend owns the copy).
+  // One-DRAFT guarded (§41): if a DRAFT is already open, 409 TEMPLATE_DRAFT_ALREADY_EXISTS.
+  @Post(':id/draft')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('document_template:manage')
+  async createDraft(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      return await this.repo.createDraftFromActive({ tenant_id: auth.tenant_id, template_id: templateId, created_by: auth.sub });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
   @Get(':id/versions')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document_template:read')

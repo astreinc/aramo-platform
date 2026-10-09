@@ -60,6 +60,7 @@ import { DomainVerificationSection } from './settings/sections/DomainVerificatio
 import { RolesSection } from './settings/roles/RolesSection';
 import { DocumentTemplatesSection } from './settings/documents/DocumentTemplatesSection';
 import { RtrTemplateDetail } from './settings/documents/RtrTemplateDetail';
+import { RtrDraftEditor } from './settings/documents/RtrDraftEditor';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
@@ -666,6 +667,10 @@ export function App() {
                               <Route
                                 path="settings/document-templates/rtr"
                                 element={<RtrTemplateDetail />}
+                              />
+                              <Route
+                                path="settings/document-templates/rtr/draft"
+                                element={<RtrDraftEditor />}
                               />
                               <Route
                                 path="settings/engagement-policy"
