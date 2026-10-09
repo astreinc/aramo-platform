@@ -316,6 +316,56 @@ export class DocumentsRepository {
     return out;
   }
 
+  // Requisition Talent Board (TB-chips) — BATCHED current-document STATUS per SUBJECT talent for
+  // ONE requisition (the 3-state RTR board chip). Mirrors findExecutedSubjectTalentIds' batched
+  // join, but returns the CURRENT document's write-authoritative status per talent, selected with
+  // the SAME precedence the per-pair rtr-orchestrator.current() uses (selectCurrent): first
+  // non-terminal (not EXECUTED/VOIDED), else first EXECUTED, else most-recent. Caller maps the
+  // raw status to the chip's 3-state. ONE query; a talent with no document is simply absent from
+  // the Map. Read-only, tenant-scoped. Empty talent set → empty Map.
+  async findCurrentDocStatusBySubjectTalentIds(input: {
+    tenant_id: string;
+    document_type_key: string;
+    requisition_id: string;
+    talent_ids: readonly string[];
+  }): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (input.talent_ids.length === 0) return out;
+    const wanted = new Set(input.talent_ids);
+    const docs = await this.prisma.document.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        document_type: { key: input.document_type_key },
+        AND: [
+          { associations: { some: { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' } } },
+          { associations: { some: { resource_type: 'TALENT', resource_id: { in: Array.from(wanted) }, relationship: 'SUBJECT' } } },
+        ],
+      },
+      select: {
+        status: true,
+        associations: {
+          where: { resource_type: 'TALENT', relationship: 'SUBJECT' },
+          select: { resource_id: true },
+        },
+      },
+      orderBy: { created_at: 'desc' }, // created_at desc → selectCurrentDocStatus precedence holds
+    });
+    // Group each talent's statuses (created_at desc preserved), then apply the current-selection
+    // precedence. A document carries exactly one SUBJECT talent, but the join may surface several
+    // documents for the same talent (re-issued RTRs) — the precedence picks the live one.
+    const byTalent = new Map<string, string[]>();
+    for (const d of docs) {
+      for (const a of d.associations) {
+        if (!wanted.has(a.resource_id)) continue;
+        const list = byTalent.get(a.resource_id);
+        if (list === undefined) byTalent.set(a.resource_id, [d.status]);
+        else list.push(d.status);
+      }
+    }
+    for (const [talentId, statuses] of byTalent) out.set(talentId, selectCurrentDocStatus(statuses));
+    return out;
+  }
+
   // Talent 360 — list a TALENT's documents (those where the Talent is the
   // SUBJECT) for the person-centric read projection. Returns the lean fields the
   // Overview documents card shows: identity, type key/name, status, executed_at
@@ -476,4 +526,15 @@ export class DocumentsRepository {
       return tx.document.findFirstOrThrow({ where: { id: input.document_id } });
     });
   }
+}
+
+// The current-document status among a talent's documents (passed created_at desc), mirroring
+// rtr-orchestrator.selectCurrent EXACTLY so a batched board chip matches the per-pair drawer read:
+// first non-terminal (not EXECUTED/VOIDED) → first EXECUTED → most-recent. The caller only passes
+// NON-EMPTY arrays (a talent is present only with ≥1 document); the final 'VOIDED' is an
+// unreachable, type-satisfying floor (it maps to the mute NOT_SENT chip, never a false Confirmed).
+function selectCurrentDocStatus(statuses: readonly string[]): string {
+  const live = statuses.find((s) => s !== 'EXECUTED' && s !== 'VOIDED');
+  const executed = statuses.find((s) => s === 'EXECUTED');
+  return live ?? executed ?? statuses[0] ?? 'VOIDED';
 }

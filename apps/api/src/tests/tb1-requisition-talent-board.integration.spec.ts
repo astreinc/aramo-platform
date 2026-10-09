@@ -102,6 +102,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Accidental-Add — talents with a requisition interaction (controls the VOID-action gate;
     // the REAL comms reader is proven end-to-end in the VOID orchestrator integration spec).
     const engagedTalentSet = new Set<string>();
+    // TB-chips — email/voice evidence are stubbed at the comms boundary here (the REAL per-channel
+    // comms reads are proven in communications-persistence.integration.spec.ts); desired_pay is
+    // stubbed at the talent-record boundary. The RTR 3-state chip uses the REAL docs repo below.
+    const emailEvidenceSet = new Set<string>();
+    const voiceEvidenceSet = new Set<string>();
+    const desiredPayByTalent = new Map<string, string | null>();
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -148,7 +154,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const commsStub = {
         findTalentIdsWithRequisitionInteractions: async (a: { talent_record_ids: readonly string[] }): Promise<Set<string>> =>
           new Set(a.talent_record_ids.filter((t) => engagedTalentSet.has(t))),
+        findTalentIdsWithProviderVerifiedEmail: async (a: { talent_record_ids: readonly string[] }): Promise<Set<string>> =>
+          new Set(a.talent_record_ids.filter((t) => emailEvidenceSet.has(t))),
+        findTalentIdsWithVoiceTwoWay: async (a: { talent_record_ids: readonly string[] }): Promise<Set<string>> =>
+          new Set(a.talent_record_ids.filter((t) => voiceEvidenceSet.has(t))),
       } as unknown as ConstructorParameters<typeof RequisitionTalentBoardReadService>[11];
+      // TB-chips — the TALENT desired_pay source (stubbed; findContactByIds returns a lean contact
+      // map, of which only desired_pay is read here). Shape mirrors findContactByIds' Map value.
+      const talentStub = {
+        findContactByIds: async (_tenant: string, ids: readonly string[]): Promise<Map<string, { desired_pay: string | null }>> => {
+          const out = new Map<string, { desired_pay: string | null }>();
+          for (const id of ids) if (desiredPayByTalent.has(id)) out.set(id, { desired_pay: desiredPayByTalent.get(id) ?? null });
+          return out;
+        },
+      } as unknown as ConstructorParameters<typeof RequisitionTalentBoardReadService>[12];
       service = new RequisitionTalentBoardReadService(
         pipelineRepo,
         submittalRepo,
@@ -162,6 +181,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         restrictionRepo,
         engagementStub,
         commsStub,
+        talentStub,
         NOOP_LOGGER,
       );
     }, 240_000);
@@ -170,6 +190,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       companyIdByReq.clear();
       engagementMode = 'dormant';
       engagedTalentSet.clear();
+      emailEvidenceSet.clear();
+      voiceEvidenceSet.clear();
+      desiredPayByTalent.clear();
     });
 
     afterAll(async () => {
@@ -300,8 +323,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }
 
-    const call = (tenant: string, req: string, vis: ReadonlySet<string> | null = null) =>
-      service.getBoard({ tenant_id: tenant, requisition_id: req, visible_requisition_ids: vis, now: FIXED_NOW, requestId: 'r' });
+    // TB-chips — a non-EXECUTED RTR document in an arbitrary signing state (DRAFT/PREPARED/…),
+    // jointly associated to (talent SUBJECT, requisition REGARDING). Mirrors seedExecutedRtr but
+    // leaves executed_at NULL, so the current-status selection sees a live, unsigned document.
+    async function seedRtrDoc(tenant: string, req: string, talent: string, status: string): Promise<void> {
+      const docId = randomUUID();
+      await db.query(
+        `INSERT INTO documents."Document"
+           (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by)
+         VALUES ($1,$2,$3,'RTR',$4,'SINGLE_SIGNATURE','TEMPLATE_GENERATED',$5)`,
+        [docId, tenant, RIGHT_TO_REPRESENT_TYPE_ID, status, randomUUID()],
+      );
+      for (const [rtype, rid, rel] of [['REQUISITION', req, 'REGARDING'], ['TALENT', talent, 'SUBJECT']] as const) {
+        await db.query(
+          `INSERT INTO documents."DocumentAssociation" (id, tenant_id, document_id, resource_type, resource_id, relationship, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [randomUUID(), tenant, docId, rtype, rid, rel, randomUUID()],
+        );
+      }
+    }
+
+    const call = (tenant: string, req: string, vis: ReadonlySet<string> | null = null, canReadPay = false) =>
+      service.getBoard({ tenant_id: tenant, requisition_id: req, visible_requisition_ids: vis, now: FIXED_NOW, requestId: 'r', can_read_pay: canReadPay });
 
     const cardsIn = (board: Awaited<ReturnType<typeof call>>, key: string) =>
       board.columns.find((c) => c.key === key)?.cards ?? [];
@@ -672,6 +715,57 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(card.readiness?.band).toBe('ready_to_submit');
       expect(card.readiness?.blockers).toEqual([]);
       expect(card.rtr_state).toBeNull();
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TB-chips — the recruiting-stage readiness fact chips on the card: RTR 3-state (REAL docs
+    // substrate — same selectCurrent precedence as the drawer), email/voice evidence (stubbed at
+    // the comms boundary), and the talent-scoped desired_pay (composed ONLY with talent:read).
+    // ---------------------------------------------------------------------------------------
+    it('TB-chips: card carries rtr_status 3-state (CONFIRMED/SENT/NOT_SENT), email/voice evidence, and scope-gated desired_pay', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      const tConfirmed = randomUUID(); const tSent = randomUUID(); const tNotSent = randomUUID();
+      await seedPipeline(tenant, req, tConfirmed, 'qualified');
+      await seedPipeline(tenant, req, tSent, 'contacted');
+      await seedPipeline(tenant, req, tNotSent, 'no_contact');
+      await seedRtrRequirement(tenant, req); // RTR required for this requisition
+      await seedExecutedRtr(tenant, req, tConfirmed); // EXECUTED → CONFIRMED
+      await seedRtrDoc(tenant, req, tSent, 'PREPARED'); // awaiting signature → SENT
+      // tNotSent: RTR required but NO document → NOT_SENT
+      emailEvidenceSet.add(tConfirmed);
+      voiceEvidenceSet.add(tSent);
+      desiredPayByTalent.set(tConfirmed, '$70/hr');
+      desiredPayByTalent.set(tSent, '$62/hr');
+
+      // Actor WITH talent:read → desired_pay composed.
+      const withPay = await call(tenant, req, null, true);
+      const confirmed = anyCard(withPay, tConfirmed)!;
+      const sent = anyCard(withPay, tSent)!;
+      const notSent = anyCard(withPay, tNotSent)!;
+      expect(confirmed.rtr_status).toBe('CONFIRMED');
+      expect(sent.rtr_status).toBe('SENT');
+      expect(notSent.rtr_status).toBe('NOT_SENT');
+      expect(confirmed.email_evidence).toBe(true);
+      expect(confirmed.voice_evidence).toBe(false);
+      expect(sent.email_evidence).toBe(false);
+      expect(sent.voice_evidence).toBe(true);
+      expect(confirmed.desired_pay).toBe('$70/hr');
+      expect(sent.desired_pay).toBe('$62/hr');
+      expect(notSent.desired_pay).toBeNull();
+
+      // Actor WITHOUT talent:read → desired_pay suppressed (null) everywhere; other chips unchanged.
+      const noPay = await call(tenant, req, null, false);
+      expect(anyCard(noPay, tConfirmed)!.desired_pay).toBeNull();
+      expect(anyCard(noPay, tConfirmed)!.rtr_status).toBe('CONFIRMED');
+      expect(anyCard(noPay, tConfirmed)!.email_evidence).toBe(true);
+    });
+
+    // TB-chips — RTR NOT required for the requisition → rtr_status is null (the chip renders nothing).
+    it('TB-chips: no RTR requirement → rtr_status null (chip N/A)', async () => {
+      const tenant = randomUUID(); const req = randomUUID(); const talent = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      const board = await call(tenant, req);
+      expect(anyCard(board, talent)!.rtr_status).toBeNull();
     });
 
     // ---------------------------------------------------------------------------------------

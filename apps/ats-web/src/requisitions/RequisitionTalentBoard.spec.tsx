@@ -28,6 +28,10 @@ function card(overrides: Partial<BoardCardView> = {}): BoardCardView {
     owner_state: 'qualified',
     resume: { resume_edition_id: null, source: 'none', locked: false },
     rtr_state: null,
+    rtr_status: null,
+    email_evidence: false,
+    voice_evidence: false,
+    desired_pay: null,
     readiness: null,
     days_in_stage: null,
     stage_entered_at: null,
@@ -286,22 +290,56 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(await screen.findByRole('button', { name: 'Mark qualified' })).toBeInTheDocument();
   });
 
-  // TB-4 — the port-grounded readiness blockers + the RTR-needed indicator.
-  it('renders the RTR-needed indicator and the rtr_not_executed blocker (port-grounded)', async () => {
+  // TB-4 / TB-chips — the port-grounded readiness blockers + the RTR 3-state chip.
+  it('renders the RTR 3-state chip and the rtr_not_executed blocker (port-grounded)', async () => {
     const c = card({
       talent_record_id: 't1',
       pipeline_id: 'p1',
       column: 'qualified',
       rtr_state: 'NOT_EXECUTED',
+      rtr_status: 'NOT_SENT', // 3-state signing chip — RTR required but nothing sent to the talent yet
       readiness: { requisition_state: 'open', requisition_reason: null, blockers: ['rtr_not_executed'], band: 'needs_action' },
     });
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [c] }] }));
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     const col = await screen.findByLabelText('Qualified');
-    // RTR is a fact pill (binary — only the NOT_EXECUTED "Not sent" state is on the substrate).
     expect(within(col).getByText('RTR · Not sent')).toBeInTheDocument();
-    // The blocker surfaces in the Missing pill.
+    // Recruiting-stage cards always carry the grounded Email/Voice evidence chips (unknown → "–").
+    expect(within(col).getByText('Email –')).toBeInTheDocument();
+    expect(within(col).getByText('Voice –')).toBeInTheDocument();
+    // The blocker surfaces in the Missing pill (takes the last slot ahead of any pay chip).
     expect(within(col).getByText('Missing: Right to represent not executed')).toBeInTheDocument();
+  });
+
+  // TB-chips — the 3-state RTR tones + Email/Voice ✓ + the recruiter-lane pay chip.
+  it('renders RTR Sent/Confirmed tones, Email/Voice ✓, and the Wants pay chip when no Missing', async () => {
+    const sent = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted',
+      rtr_status: 'SENT', email_evidence: true, voice_evidence: false, desired_pay: '$62/hr',
+    });
+    const confirmed = card({
+      talent_record_id: 't2', pipeline_id: 'p2', column: 'qualified', owner_state: 'qualified',
+      rtr_status: 'CONFIRMED', email_evidence: true, voice_evidence: true, desired_pay: '$70/hr',
+    });
+    mockGet.mockResolvedValue(
+      board({
+        total_active: 2,
+        columns: [
+          { key: 'contacted', owner: 'pipeline', count: 1, cards: [sent] },
+          { key: 'qualified', owner: 'pipeline', count: 1, cards: [confirmed] },
+        ],
+      }),
+    );
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    const contacted = await screen.findByLabelText('Contacted');
+    expect(within(contacted).getByText('RTR · Sent')).toBeInTheDocument();
+    expect(within(contacted).getByText('Email ✓')).toBeInTheDocument();
+    expect(within(contacted).getByText('Voice –')).toBeInTheDocument();
+    expect(within(contacted).getByText('Wants $62/hr')).toBeInTheDocument(); // recruiter-lane pay, no Missing
+    const qualified = await screen.findByLabelText('Qualified');
+    expect(within(qualified).getByText('RTR · Confirmed')).toBeInTheDocument();
+    expect(within(qualified).getByText('Voice ✓')).toBeInTheDocument();
+    expect(within(qualified).getByText('Wants $70/hr')).toBeInTheDocument();
   });
 
   it('routes a next action to the governed drawer surface (onSelectCard by pipeline_id)', async () => {

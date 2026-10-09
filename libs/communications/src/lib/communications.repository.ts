@@ -71,6 +71,17 @@ export interface InteractionStatusPatch {
   provider_call_element_id?: string;
 }
 
+// Recruiter-attested two-way voice dispositions — the directive-locked set that marks a voice
+// interaction as a genuine two-way conversation. MUST mirror VoiceEvidenceReaderAdapter's
+// QUALIFYING_TWO_WAY_DISPOSITIONS (apps/api) so the batched board chip and the per-pair drawer
+// read agree; the set is directive-locked, so it is stable across the two read sites.
+const VOICE_TWO_WAY_DISPOSITIONS: ReadonlySet<string> = new Set([
+  'connected',
+  'interested',
+  'callback_requested',
+  'follow_up_required',
+]);
+
 @Injectable()
 export class CommunicationsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -778,6 +789,85 @@ export class CommunicationsRepository {
       select: { id: true, status: true, evidence_authority: true },
       orderBy: { created_at: 'desc' },
     })) as Array<{ id: string; status: CommunicationInteractionStatus; evidence_authority: CommunicationEvidenceAuthority }>;
+  }
+
+  // Requisition Talent Board (TB-chips) — BATCHED "which of these talents have provider-verified
+  // EMAIL evidence on this requisition" (the board's `Email ✓` chip). Mirrors
+  // VoiceEvidenceReaderAdapter.readEmail's predicate EXACTLY (a provider-ACCEPTED send on record —
+  // status `completed` AND evidence_authority `provider_verified`; an attested inbound reply is
+  // NOT a provider send), evaluated for the whole talent set in ONE query (never a per-talent
+  // loop). Returns the SUBJECT talent ids that qualify. Empty input → empty Set.
+  async findTalentIdsWithProviderVerifiedEmail(input: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (input.talent_record_ids.length === 0) return out;
+    const wanted = new Set(input.talent_record_ids);
+    const rows = await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        channel: 'email' satisfies CommunicationChannel,
+        status: 'completed' satisfies CommunicationInteractionStatus,
+        evidence_authority: 'provider_verified' satisfies CommunicationEvidenceAuthority,
+        AND: [
+          { associations: { some: { tenant_id: input.tenant_id, subject_type: 'talent_record' satisfies CommunicationSubjectType, subject_id: { in: Array.from(wanted) }, relation_type: 'subject' satisfies CommunicationRelationType } } },
+          { associations: { some: { tenant_id: input.tenant_id, subject_type: 'requisition' satisfies CommunicationSubjectType, subject_id: input.requisition_id, relation_type: 'regarding' satisfies CommunicationRelationType } } },
+        ],
+      },
+      select: {
+        associations: {
+          where: { subject_type: 'talent_record' satisfies CommunicationSubjectType, relation_type: 'subject' satisfies CommunicationRelationType },
+          select: { subject_id: true },
+        },
+      },
+    });
+    for (const r of rows) for (const a of r.associations) if (wanted.has(a.subject_id)) out.add(a.subject_id);
+    return out;
+  }
+
+  // Requisition Talent Board (TB-chips) — BATCHED "which of these talents have a two-way VOICE
+  // conversation on this requisition" (the board's `Voice ✓` chip). Mirrors
+  // VoiceEvidenceReaderAdapter.readVoice's two-way predicate EXACTLY: a provider-verified
+  // connected/completed call OR a recruiter-attested qualifying disposition. The disposition arm
+  // can't be a pure WHERE filter, so voice rows are read in ONE batched query and the shared
+  // predicate is applied in memory. Returns the SUBJECT talent ids that qualify. Empty → empty Set.
+  async findTalentIdsWithVoiceTwoWay(input: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_record_ids: readonly string[];
+  }): Promise<Set<string>> {
+    const out = new Set<string>();
+    if (input.talent_record_ids.length === 0) return out;
+    const wanted = new Set(input.talent_record_ids);
+    const rows = await this.prisma.communicationInteraction.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        channel: 'voice' satisfies CommunicationChannel,
+        AND: [
+          { associations: { some: { tenant_id: input.tenant_id, subject_type: 'talent_record' satisfies CommunicationSubjectType, subject_id: { in: Array.from(wanted) }, relation_type: 'subject' satisfies CommunicationRelationType } } },
+          { associations: { some: { tenant_id: input.tenant_id, subject_type: 'requisition' satisfies CommunicationSubjectType, subject_id: input.requisition_id, relation_type: 'regarding' satisfies CommunicationRelationType } } },
+        ],
+      },
+      select: {
+        status: true,
+        evidence_authority: true,
+        dispositions: { select: { disposition: true } },
+        associations: {
+          where: { subject_type: 'talent_record' satisfies CommunicationSubjectType, relation_type: 'subject' satisfies CommunicationRelationType },
+          select: { subject_id: true },
+        },
+      },
+    });
+    for (const r of rows) {
+      const providerTwoWay =
+        r.evidence_authority === 'provider_verified' && (r.status === 'connected' || r.status === 'completed');
+      const recruiterTwoWay = r.dispositions.some((d) => VOICE_TWO_WAY_DISPOSITIONS.has(d.disposition));
+      if (!providerTwoWay && !recruiterTwoWay) continue;
+      for (const a of r.associations) if (wanted.has(a.subject_id)) out.add(a.subject_id);
+    }
+    return out;
   }
 
   // ---- CommunicationDisposition ----
