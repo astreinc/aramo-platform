@@ -10,6 +10,12 @@ export {
   DocumentPacketsController,
 } from './lib/templates.controller.js';
 
+export {
+  TEMPLATE_CAPABILITIES,
+  type TemplateCapabilitiesPort,
+  type TemplateBindingDescriptor,
+  type TemplateSamplePreview,
+} from './lib/template-capabilities.port.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   DocumentsRepository,
