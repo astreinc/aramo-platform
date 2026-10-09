@@ -15454,6 +15454,4187 @@
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/api/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/vite.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/project.json"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/project.json"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/vite.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/project.json"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/vite.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/project.json"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/vite.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/main.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "infrastructure/modules/talent-intake-events/main.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/activity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/audit/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/canonicalization/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/company/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/esign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/examination/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/placement-outbox.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/submittal-eligibility/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/zoom-webhook.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/me.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/public-invitation.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/public-verification.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/integrations/esign/esign-events.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/offer/offer.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/talent-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/app/auth/auth.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "ci/scripts/compare-spec-to-openapi.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/auth.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/portal-auth.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/jwt-auth.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/require-scopes.decorator.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/aramo-exception.filter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/company/src/lib/company.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/lib/entitlement.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/api/client.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/consumer.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/scopes.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant-user/tenant-user-management.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/portal/src/lib/portal.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/selection/src/lib/selection.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-rights.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-rtbf.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/admin/AdminGate.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/routes/LoginPage.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/shell/me-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/app/auth/auth.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/LoginPage.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/auth.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/cognito-verifier.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/jwks.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/jwt-issuer.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/pkce.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/portal-login.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/refresh-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/session-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-storage/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-storage/src/lib/refresh-token.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/auth-context.types.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/auth.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/jwt-auth.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/authorization.metadata.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/require-scopes.decorator.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/consent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/consent/src/lib/consent.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/consent/src/lib/consent.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/session.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/field-masking/src/lib/compensation-scope.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/field-masking/src/lib/omit-by-scope.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/src/lib/cluster-purge.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/audit/audit.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization-version.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization/authorization-resolver.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization/identity-effective-authorization-resolver.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization/redis-scope-cache.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/role.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/policy-engine/src/lib/evaluate.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/policy-store/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/portal-identity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/portal-identity/src/lib/portal-identity.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/visibility/src/lib/visibility-resolver.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/visibility/src/lib/visibility.interceptor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-consumer.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-events.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/talent-intake-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/index.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile-signal/src/lib/talent-reconcile-signal.producer.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-reconcile/src/lib/talent-reconcile.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-create-from-draft.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake-message.handler.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake-processing.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake-promotion.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-link.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-trust/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "libs/talent-trust/src/lib/talent-trust.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/pre-start-requirement/pre-start-requirement.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-integration/lifecycle-ingress.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-integration/reconciliation-drain.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisitions/requisitions-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/activity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/integration/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/integration/src/lib/lifecycle/mapping-admin/requisition-lifecycle-mapping-admin.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/job-distribution/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/job-distribution/src/lib/posting-transition.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/job-domain/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/job-domain/src/lib/job-domain.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/pre-start-requirement/src/lib/pre-start-requirement.types.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/index.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/dto/external-lifecycle-command.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/dto/requisition-status.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/dto/requisition-transitions.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/policy/requisition-transition-policy.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/policy/set-priority-policy.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition-assignment.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition-intake.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition-lifecycle-event.store.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition-profile.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/client-decision-orchestration/client-decision.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/client-decision-orchestration/client-decision.orchestrator.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/communication-call.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-email.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/pipeline-integration/pipeline-provider-mapping-target.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/pipeline-void/pipeline-void.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/guarantee-terms.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement/placement.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/interviews/interviews-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/pipeline/pipeline-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/placement/placement-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisitions/AddTalentDialog.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/selection/selection-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittal-workspace/client-selection-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/src/lib/client-selection-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/src/lib/client-selection.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/src/lib/interview-session-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-disposition.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement-pipeline-bridge/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement-pipeline-bridge/src/lib/placement-pipeline-inbox.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/lifecycle/offer-lifecycle.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/selection/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/selection/src/lib/selection-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/selection/src/lib/selection.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/client-submittal-policy/client-submittal-policy.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/create-submittal/create-submittal.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/create-submittal/create-submittal.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/engagement/dto/engagement.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/engagement/engagement-gate.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/submit-talent/submit-talent.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/submit-talent/submit-talent.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/submittal-workspace/submittal-workspace.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/api/src/submittal-workspace/submittal-workspace.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/engagement/EngagementOverridePrompt.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/engagement/EngagementPolicyPanel.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/engagement/EngagementReadinessSummary.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittal-workspace/RecordSubmittalDialog.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittal-workspace/SubmittalWorkspaceView.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittals/SubmittalWizard.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/client-submittal-policy/src/lib/client-submittal-policy.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/src/lib/client-talent-restriction.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/engagement/src/lib/domain/engagement-decision.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/engagement/src/lib/engagement-policy.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal-eligibility/src/lib/submittal-consumption.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal-eligibility/src/lib/submittal-eligibility.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal-eligibility/src/lib/submittal-readiness.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/talent-submittal-event.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/communication-call.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/communications.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/email-template.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/general-talent-contact-draft.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/requisition-contact-draft.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/talent-communications.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/talent-response.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/talent-response.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/zoom-webhook.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/zoom-webhook.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-email.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/pipeline-integration/pipeline-provider-observation.orchestrator.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-journey/talent-journey-read.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-journey/talent-journey.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/communications/RecordTalentResponseModal.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/communications/talent-response-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/pipeline/talent-journey-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisitions/TalentJourneySection.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/activity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/activity/src/lib/activity.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/activity/src/lib/activity.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/activity/src/lib/activity.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/calendar/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/calendar/src/lib/calendar.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/aramo-error.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/communications.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/communications.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/domain/communication-enums.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/contact/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/contact/src/lib/contact.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/document-signing/governed-document-signing.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/esign-writeback.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/integrations/esign/esign-events.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/offer-document/offer-document.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-delivery.worker.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/native-aramo-signature.provider.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sns-event-publisher.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/sign-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents-contracts/src/lib/signature-provider.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/pdf-lib-document-rendering.adapter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/documents.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/executed-write-back.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/templates.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/esign.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/execution.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/hash-chain.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/outbox-delivery.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/outbox.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/signing-token.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "openapi/esign.yaml"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/examine.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/conversation-intelligence/ci-processing.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/conversation-intelligence/ci-processing.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/embedding/embedding-processing.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/embedding/embedding.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/examinations/canonical-match-shadow.comparator.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/examinations/canonical-match-shadow.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/jobs/registration.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/search/adapters/talent-search.adapter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/search/enterprise-search.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/search/enterprise-search.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/api/src/skill-governance/skill-governance.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/search/enterprise-search-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittals/submittals-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/skills/skills-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/src/lib/conversation-intelligence-processing.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/src/lib/conversation-intelligence.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/conversation-transcript/src/lib/conversation-transcript.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/examination/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/examination.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/match-list.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/override.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/dto/version-pins.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/engine.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/metering/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/metering/src/lib/record-usage.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/dashboard.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/normalize-skill-name.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/skill-canonicalization.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/skill-canonicalization.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/skills-taxonomy.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/lib/talent-embedding-search.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/lib/talent-embedding-status.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/talent-embedding/src/lib/talent-embedding.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/sourcing.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/requisition-imports/requisition-imports-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/import-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/sourcing/sourcing-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/talent-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/talent-intake-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/attachment/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/attachment/src/lib/attachment.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/cold-ingest-extraction/src/lib/cold-ingest-extraction.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/import/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/import.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/import.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/mapping/mapping-suggestion.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/requisition-import.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/dto/ingestion-payload-request.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/source-class.map.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/source-contract.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/key-convention.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/object-storage.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/object-storage.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/resume-parse/src/lib/heuristics/text-extractor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/resume-parse/src/lib/resume-parser.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/resume-parse/src/lib/source-map.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/src/lib/sourced-talent.repository.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "openapi/ingestion.yaml"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/shell/RecruiterShell.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/talent/talent-intake-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/ui/funnel-css-drift.spec.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/ui/index.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/skills/skills-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/portal-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/sign-api.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/api/client.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/RouteGuard.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/scopes.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/AppShell.tsx"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/portal/src/lib/portal.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/portal/src/lib/portal.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/lazy-eventbridge-outbox-publisher.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/sqs-lambda.adapter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-consumer.handler.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-consumer.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-events.config.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-outbox-drain.worker.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-publisher.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sns-event-publisher.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "infrastructure/modules/talent-intake-events/main.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/audit/src/lib/audit.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/event-envelope.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/events.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/lease-safe-outbox.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/outbox-publisher.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/export/src/lib/export.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/integration/src/lib/secrets/aws-secrets-manager.adapter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/mailer.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/mailer.port.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/ses-mailer.adapter.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/mailer/src/lib/tokens.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/delegated-authorization.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/object-storage.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/object-storage.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/object-storage/src/lib/s3-client.factory.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/eventbridge-outbox-publisher.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/lease-safe-outbox-drain.service.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.queue.constants.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/structured-log-outbox-publisher.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/saved-list/src/lib/saved-list.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/task/src/lib/task.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "libs/task/src/lib/task.module.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/scripts/check-integration-roots.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/scripts/ci-integration.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-env-passthrough.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/doc4-esign.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/compute.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "scripts/audit-check.sh"
+    },
+    {
+      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0003-infrastructure-conventions-prisma7-build-ci.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0020-build-for-tenant-50-governing-principle.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D01-system-context-topology.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0016-RDS-Substrate-Conventions-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D02-database-data-model.md",
+      "status": "unscoped",
+      "to": "libs/company/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0005-consent-revoke-contract-and-audit-semantics.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0006-consent-check-contract-and-resolver-path-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0007-consent-state-read-endpoint-and-read-endpoint-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0008-read-endpoint-maturation-and-handoff-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0013-observability-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D03-backend-api-surface.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/0005-consent-revoke-contract-and-audit-semantics.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/0006-consent-check-contract-and-resolver-path-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/0007-consent-state-read-endpoint-and-read-endpoint-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/0020-build-for-tenant-50-governing-principle.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/0024-business-policy-engine.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/jwt-issuer.service.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/refresh-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/session-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/jwt-auth.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/field-masking/src/lib/compensation-scope.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D04-security-identity-authz.md",
+      "status": "unscoped",
+      "to": "libs/visibility/src/lib/visibility-resolver.service.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "doc/adr/0027-client-talent-restriction-r10-compatibility.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D05-talent-domain.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0018-Background-Jobs-Substrate-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/0024-business-policy-engine.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-Amendment-v1_2-JD-Generation-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0018-Background-Jobs-Substrate-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D06-requisition-job-vms.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/client-selection/src/lib/client-selection-state.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/lifecycle/placement-lifecycle.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "libs/selection/src/lib/selection-state.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D07-pipeline-placement-selection.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/recon/as-designed/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "doc/adr/0024-business-policy-engine.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "doc/adr/0027-client-talent-restriction-r10-compatibility.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D08-submittal-engagement-policy.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "doc/adr/0031-conversation-intelligence-architecture.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D09-communications-activity-evidence.md",
+      "status": "unscoped",
+      "to": "libs/activity/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-designed/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D10-documents-esignature.md",
+      "status": "unscoped",
+      "to": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/0031-conversation-intelligence-architecture.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0018-Background-Jobs-Substrate-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/examination/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/engine.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/metering/src/lib/record-usage.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D11-search-matching-skills-intel.md",
+      "status": "unscoped",
+      "to": "libs/reporting/src/lib/reporting.controller.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/0005-consent-revoke-contract-and-audit-semantics.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0016-RDS-Substrate-Conventions-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0018-Background-Jobs-Substrate-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D12-sourcing-ingestion-import.md",
+      "status": "unscoped",
+      "to": "openapi/ingestion.yaml"
+    },
+    {
+      "from": "doc/recon/as-designed/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/scopes.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D13-frontend-architecture-screens.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "doc/recon/as-designed/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D14-cross-cutting-platform-integrations.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "ci/integration-roots.json"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0001-pr1-precedent-decisions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0012-iac-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0013-observability-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0014-cve-scanning-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0016-rds-substrate-conventions.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0017-rds-disaster-recovery-strategy.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/as-designed/D15-infra-deploy-quality-enforcement.md",
+      "status": "unscoped",
+      "to": "scripts/audit-check.sh"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/client-submittal-policy/client-submittal-policy.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/talent-response.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/zoom-webhook.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/examine.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/jobs/registration.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/main.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-email.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-notice.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-rtbf.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/lazy-eventbridge-outbox-publisher.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/sqs-lambda.adapter.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-events.config.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-journey/talent-journey-read.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/communications/RecordTalentResponseModal.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/import-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittals/submittals-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-delivery.worker.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sns-event-publisher.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/sign-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "ci/scripts/compare-spec-to-openapi.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-Amendment-v1_2-JD-Generation-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/doc4-esign.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/resume-bucket-cors.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/compute.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/main.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/attachment/src/lib/attachment.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/audit/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/audit/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/audit/src/lib/audit.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/session-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/cold-ingest-extraction/src/lib/cold-ingest-extraction.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/communications.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/consent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/outbox.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/events/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/events.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/override.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/src/lib/cluster-purge.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/import.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/dto/ingestion-payload-request.dto.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/external-source-event.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/placement-outbox.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/dto/requisition-status.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/resume-parse/src/lib/resume-parser.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/skill-canonicalization.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/src/lib/sourced-talent.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-create-from-draft.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "libs/visibility/src/lib/visibility-resolver.service.ts"
+    },
+    { "from": "doc/recon/gaps/G1-gap-register.md", "status": "unscoped", "to": "openapi/ats.yaml" },
+    {
+      "from": "doc/recon/gaps/G1-gap-register.md",
+      "status": "unscoped",
+      "to": "openapi/esign.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D01-system-context-topology.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-events.config.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D01-system-context-topology.gaps.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D01-system-context-topology.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0023-frontdoor-nginx-wildcard-tls.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D01-system-context-topology.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D01-system-context-topology.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/main.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/audit/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/consent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/placement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/placement/src/lib/placement-outbox.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D02-database-data-model.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/main.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "ci/scripts/compare-spec-to-openapi.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-api-contract-parity.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/documents.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/esign.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/ingestion.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D03-backend-api-surface.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/portal.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/version.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-notice.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-identity/portal-rtbf.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/session-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "libs/authorization/src/lib/roles.guard.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "libs/identity-index/src/lib/cluster-purge.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D04-security-identity-authz.gaps.md",
+      "status": "unscoped",
+      "to": "libs/visibility/src/lib/visibility-resolver.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/sqs-lambda.adapter.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/talent-intake-events.config.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-create-from-draft.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-intake/talent-intake.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D05-talent-domain.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/requisition-integration/external-lifecycle-reconciler.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0030-external-lifecycle-authority.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-Amendment-v1_2-JD-Generation-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "libs/requisition/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/dto/requisition-status.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "libs/requisition/src/lib/requisition.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D06-requisition-job-vms.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D07-pipeline-placement-selection.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D07-pipeline-placement-selection.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D07-pipeline-placement-selection.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D07-pipeline-placement-selection.gaps.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D07-pipeline-placement-selection.gaps.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/external-source-event.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/client-submittal-policy/client-submittal-policy.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "libs/client-talent-restriction/src/lib/client-talent-restriction.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "libs/submittal/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "libs/submittal/src/lib/submittal.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D08-submittal-engagement-policy.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/talent-response.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/communications/zoom-webhook.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-email.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-journey/talent-journey-read.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/communications/RecordTalentResponseModal.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/communications.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline-state.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D09-communications-activity-evidence.gaps.md",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-delivery.worker.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sns-event-publisher.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/sign-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/outbox.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/tests/esign-flow.integration.spec.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/esign.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/examine.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/jobs/registration.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/submittals/submittals-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "libs/examination/src/lib/override.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "libs/matching/src/lib/matching.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D11-search-matching-skills-intel.gaps.md",
+      "status": "unscoped",
+      "to": "libs/skills-taxonomy/src/lib/skill-canonicalization.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/app.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/webhooks/indeed-apply.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/import-api.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0019-manual-recruiter-rating-r10-boundary.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/Aramo-ADR-0015-AI-Substrate-Posture-v1_0-LOCKED.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/attachment/src/lib/attachment.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/cold-ingest-extraction/src/lib/cold-ingest-extraction.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/import/src/lib/import.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/dto/ingestion-payload-request.dto.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/ingestion/src/lib/ingestion.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/resume-parse/src/lib/resume-parser.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/src/lib/sourced-talent.repository.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-extraction/src/lib/talent-extraction.service.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D12-sourcing-ingestion-import.gaps.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/app.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/main.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/portal-web/src/main.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/App.tsx"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "apps/api/src/talent-intake-consumer/lazy-eventbridge-outbox-publisher.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0018-background-jobs-substrate.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "libs/audit/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "libs/audit/src/lib/audit.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "libs/events/src/index.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "libs/events/src/lib/events.module.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D14-cross-cutting-platform-integrations.gaps.md",
+      "status": "unscoped",
+      "to": "libs/outbox-publisher/src/lib/outbox-publisher.processor.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "ci/scripts/prepush.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-offer-sql.ts"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0017-rds-disaster-recovery-strategy.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/doc4-esign.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/main.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/resume-bucket-cors.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/compute.tf"
+    },
+    {
+      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
+      "status": "unscoped",
+      "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
