@@ -10,6 +10,7 @@ import { SubmittalEligibilityModule } from '@aramo/submittal-eligibility';
 import { RequisitionModule } from '@aramo/requisition';
 import { ClientTalentRestrictionModule } from '@aramo/client-talent-restriction';
 import { CommunicationsModule } from '@aramo/communications';
+import { TalentRecordModule } from '@aramo/talent-record';
 
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
@@ -42,6 +43,7 @@ import { RequisitionTalentBoardReadService } from './requisition-talent-board-re
     ClientTalentRestrictionModule,
     EngagementGateModule,
     CommunicationsModule,
+    TalentRecordModule,
   ],
   controllers: [RequisitionTalentBoardController],
   providers: [

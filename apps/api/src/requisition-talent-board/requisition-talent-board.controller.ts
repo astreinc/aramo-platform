@@ -38,6 +38,9 @@ export class RequisitionTalentBoardController {
       visible_requisition_ids: visibleReqIds,
       now: new Date(),
       requestId,
+      // TB-chips — the TALENT's desired_pay chip is a talent:read attribute (server-gated; the
+      // composer never reads or discloses it without the scope). UI hiding is never the boundary.
+      can_read_pay: authContext.scopes.includes('talent:read'),
     });
   }
 }

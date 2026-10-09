@@ -85,4 +85,51 @@ export class DocumentReadinessGate {
     }
     return out;
   }
+
+  // Requisition Talent Board (TB-chips) — the BATCHED 3-state RTR signing status per talent for
+  // ONE requisition (the recruiting-stage board chip). Same CONDITIONAL gate as assessMany: when
+  // no RTR DocumentRequirement exists the chip is N/A → the per-talent value is `null` (render
+  // nothing). Otherwise the CURRENT document status (same selectCurrent precedence as the drawer's
+  // rtr-orchestrator.current()) is mapped to the board's 3-state so the chip matches the drawer:
+  //   EXECUTED → CONFIRMED · PREPARED/EXECUTION_PENDING → SENT · DRAFT/absent/other → NOT_SENT.
+  // Bounded reads (one requirement lookup + one batched status query); never a per-talent loop.
+  async assessManyRtrStatus(input: {
+    tenant_id: string;
+    requisition_id: string;
+    talent_ids: readonly string[];
+  }): Promise<Map<string, RtrChipState | null>> {
+    const out = new Map<string, RtrChipState | null>();
+    if (input.talent_ids.length === 0) return out;
+    const requirement = await this.documents.findRequirement({
+      tenant_id: input.tenant_id,
+      document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+      resource_type: 'REQUISITION',
+      resource_id: input.requisition_id,
+    });
+    if (requirement === null) {
+      // RTR not required for this requisition → no chip (null), never a fabricated state.
+      for (const t of input.talent_ids) out.set(t, null);
+      return out;
+    }
+    const statusByTalent = await this.documents.findCurrentDocStatusBySubjectTalentIds({
+      tenant_id: input.tenant_id,
+      document_type_key: RIGHT_TO_REPRESENT_KEY,
+      requisition_id: input.requisition_id,
+      talent_ids: input.talent_ids,
+    });
+    for (const t of input.talent_ids) out.set(t, toRtrChipState(statusByTalent.get(t)));
+    return out;
+  }
+}
+
+export type RtrChipState = 'NOT_SENT' | 'SENT' | 'CONFIRMED';
+
+// Map a current RTR Document.status → the board's 3-state chip. Mirrors the drawer's
+// GovernedDocumentSigningService.deriveStatus + the PO ruling: EXECUTED→CONFIRMED,
+// PREPARED/EXECUTION_PENDING→SENT; everything else (DRAFT→REQUESTED, VOIDED, or no document
+// at all → undefined) is NOT_SENT — the mute "nothing has been sent to the talent yet" state.
+function toRtrChipState(docStatus: string | undefined): RtrChipState {
+  if (docStatus === 'EXECUTED') return 'CONFIRMED';
+  if (docStatus === 'PREPARED' || docStatus === 'EXECUTION_PENDING') return 'SENT';
+  return 'NOT_SENT';
 }

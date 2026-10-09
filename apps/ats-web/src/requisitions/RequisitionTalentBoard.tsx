@@ -133,6 +133,19 @@ function ResumeIcon(): JSX.Element {
   );
 }
 
+// TB-chips — the recruiting-stage columns that carry the readiness fact chip row. Post-qualified
+// columns (Submitted onward) keep their prior chips unchanged.
+const RECRUITING_COLUMNS: ReadonlySet<string> = new Set(['pipeline', 'contacted', 'qualified']);
+
+// RTR 3-state chip label + tone (matches the drawer's signing status). null (RTR not required) is
+// handled by the caller — the chip is not rendered at all.
+function rtrChipLabel(status: 'NOT_SENT' | 'SENT' | 'CONFIRMED'): string {
+  return status === 'CONFIRMED' ? 'Confirmed' : status === 'SENT' ? 'Sent' : 'Not sent';
+}
+function rtrChipTone(status: 'NOT_SENT' | 'SENT' | 'CONFIRMED'): 'ok' | 'warn' | 'mute' {
+  return status === 'CONFIRMED' ? 'ok' : status === 'SENT' ? 'warn' : 'mute';
+}
+
 function BoardCard({
   card,
   name,
@@ -177,13 +190,20 @@ function BoardCard({
       ? `Next: ${BOARD_OWNER_LABELS[firstAction.owner]}`
       : '';
 
-  // Authoritative fact pills: RTR (binary — only NOT_EXECUTED is knowable; Sent/Confirmed is not
-  // on the substrate) and the Qualified-band Missing-requirements (readiness.blockers). No
-  // Email/Voice (GAP — no channel signal at board grain) and no pay (comp excluded from the DTO).
+  // TB-chips — readiness fact pills. Recruiting-stage cards (Pipeline/Contacted/Qualified) show the
+  // grounded chip row: RTR 3-state (from the signing substrate; hidden when RTR is not required) →
+  // Email → Voice (per-channel engagement evidence, never hidden — unknown renders a mute "–") →
+  // then Missing (Qualified needs-action) OR, for recruiter-lane actors with no Missing, the
+  // talent's desired pay. Post-qualified/handoff cards keep their prior binary RTR + Missing pills.
+  const isRecruiting = RECRUITING_COLUMNS.has(card.column);
   const missing =
     card.readiness?.band === 'needs_action' && card.readiness.blockers.length > 0
       ? `Missing: ${card.readiness.blockers.map((b) => blockerLabel(b)).join(', ')}`
       : '';
+  // Defensive (?? '') — a version-skewed/malformed card with a missing desired_pay must never
+  // throw and blank the board; an empty desired pay simply yields no pay chip.
+  const wantsRaw = (card.desired_pay ?? '').trim();
+  const wants = wantsRaw.length > 0 ? `Wants ${wantsRaw}` : '';
 
   const recruiterInitials =
     card.assigned_recruiter_user_id !== null && recruiterName !== undefined && recruiterName.trim().length > 0
@@ -218,15 +238,36 @@ function BoardCard({
           <ResumeIcon />
           <span className="rc-tboard__resume-txt">{resumeText(card)}</span>
         </span>
-        {(card.rtr_state === 'NOT_EXECUTED' || missing.length > 0) && (
+        {isRecruiting ? (
           <span className="rc-tboard__facts">
-            {card.rtr_state === 'NOT_EXECUTED' && (
-              <span className="rc-tboard__pill rc-tboard__pill--mute">RTR · Not sent</span>
+            {card.rtr_status != null && (
+              <span className={`rc-tboard__pill rc-tboard__pill--${rtrChipTone(card.rtr_status)}`}>
+                RTR · {rtrChipLabel(card.rtr_status)}
+              </span>
             )}
-            {missing.length > 0 && (
+            <span className={`rc-tboard__pill rc-tboard__pill--${card.email_evidence ? 'ok' : 'mute'}`}>
+              Email {card.email_evidence ? '✓' : '–'}
+            </span>
+            <span className={`rc-tboard__pill rc-tboard__pill--${card.voice_evidence ? 'ok' : 'mute'}`}>
+              Voice {card.voice_evidence ? '✓' : '–'}
+            </span>
+            {missing.length > 0 ? (
               <span className="rc-tboard__pill rc-tboard__pill--bad" title={missing}>{missing}</span>
-            )}
+            ) : wants.length > 0 ? (
+              <span className="rc-tboard__pill rc-tboard__pill--mute">{wants}</span>
+            ) : null}
           </span>
+        ) : (
+          (card.rtr_state === 'NOT_EXECUTED' || missing.length > 0) && (
+            <span className="rc-tboard__facts">
+              {card.rtr_state === 'NOT_EXECUTED' && (
+                <span className="rc-tboard__pill rc-tboard__pill--mute">RTR · Not sent</span>
+              )}
+              {missing.length > 0 && (
+                <span className="rc-tboard__pill rc-tboard__pill--bad" title={missing}>{missing}</span>
+              )}
+            </span>
+          )
         )}
       </Button>
 

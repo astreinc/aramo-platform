@@ -138,6 +138,12 @@ export function WorkspacePanel({
 }: WorkspacePanelProps) {
   const columns = board?.columns ?? [];
   const cards: readonly BoardCardView[] = columns.flatMap((c) => c.cards);
+  // The List view renders the four funnel column labels ONCE in a header row.
+  // Derive them from the first card so the header order matches the per-row
+  // funnelCells() order exactly (Contact · Qualification · RTR · Client).
+  const firstCard = cards[0];
+  const funnelLabels =
+    firstCard !== undefined ? funnelCells(firstCard).map((c) => c.label) : [];
   const [findOpen, setFindOpen] = useState(false);
 
   // The SAME talent action context the Talent tab uses (shared hook) — so the
@@ -449,15 +455,33 @@ export function WorkspacePanel({
               ) : null}
             </div>
           ) : (
-            cards.map((card) => (
-              <TalentInPlayRow
-                key={card.pipeline_id}
-                card={card}
-                name={nameOf(card.talent_record_id)}
-                scopes={scopes}
-                onOpen={() => onNavigate('talent')}
-              />
-            ))
+            // List = a single-header table (prototype parity). The column labels
+            // render ONCE in the header; each data row renders value-only cells
+            // beneath them, sharing the same grid template. Narrow panels scroll
+            // sideways (min-width) rather than wrapping rows into stacked cards
+            // that repeat the labels. Zero rows → empty state above, no header.
+            <div className="rc-tip__list">
+              <div className="rc-tip__ltable">
+                <div className="rc-tip__lhead" role="row">
+                  <span className="rc-tip__lh">Talent</span>
+                  {funnelLabels.map((label) => (
+                    <span key={label} className="rc-tip__lh">
+                      {label}
+                    </span>
+                  ))}
+                  <span className="rc-tip__lh rc-tip__lh--end">Next step</span>
+                </div>
+                {cards.map((card) => (
+                  <TalentInPlayRow
+                    key={card.pipeline_id}
+                    card={card}
+                    name={nameOf(card.talent_record_id)}
+                    scopes={scopes}
+                    onOpen={() => onNavigate('talent')}
+                  />
+                ))}
+              </div>
+            </div>
           )}
           {talentActions.portals}
         </div>
@@ -635,7 +659,7 @@ function TalentInPlayRow({
   const cells = funnelCells(card);
 
   return (
-    <div className="rc-tip__row">
+    <div className="rc-tip__row" role="row">
       <span className="rc-tip__person">
         <span className="rc-avatar" aria-hidden="true">
           {initials(name)}
@@ -652,24 +676,24 @@ function TalentInPlayRow({
           </span>
         </span>
       </span>
-      <span className="rc-tip__grid">
-        {cells.map((c) => (
-          <span key={c.label} className="rc-tip__cell">
-            <span className="rc-caps">{c.label}</span>
-            <span className={`rc-tip__val rc-tip__val--${c.tone}`}>{c.value}</span>
-          </span>
-        ))}
+      {/* Value-only cells — the column labels live once in the header row. */}
+      {cells.map((c) => (
+        <span key={c.label} className="rc-tip__cell">
+          <span className={`rc-tip__val rc-tip__val--${c.tone}`}>{c.value}</span>
+        </span>
+      ))}
+      <span className="rc-tip__next">
+        {action !== undefined ? (
+          <Button
+            unstyled
+            type="button"
+            className="rc-btn-primary rc-tip__cta"
+            onClick={onOpen}
+          >
+            {action.label}
+          </Button>
+        ) : null}
       </span>
-      {action !== undefined ? (
-        <Button
-          unstyled
-          type="button"
-          className="rc-btn-primary rc-tip__cta"
-          onClick={onOpen}
-        >
-          {action.label}
-        </Button>
-      ) : null}
     </div>
   );
 }
