@@ -99,7 +99,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const fakeTalent = {
         findById: async () => ({ first_name: 'Jordan', last_name: 'Lee', email1: 'jordan.lee@example.com' }),
       } as unknown as TalentRecordRepository;
-      binding = new RtrTemplateBindingService(fakeTalent);
+      // T2b: the 4 new resolver repos are unused by the talent.full_name default template.
+      binding = new RtrTemplateBindingService(fakeTalent, {} as never, {} as never, {} as never, {} as never);
       const fakeSignature = {
         createEnvelope: async (input: { documents: Array<{ document_revision_ref: string; source_sha256: string }> }) => {
           captured.documents = input.documents;

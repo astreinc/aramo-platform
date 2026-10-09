@@ -112,6 +112,8 @@ export class RtrOrchestratorService {
       talent_id: input.talent_id,
       requisition_id: input.requisition_id,
       company_id: input.company_id,
+      // §13 ruling — recruiter.display_name resolves to the SENDING recruiter.
+      recruiter_user_id: input.created_by,
       requestId: input.requestId,
     });
 

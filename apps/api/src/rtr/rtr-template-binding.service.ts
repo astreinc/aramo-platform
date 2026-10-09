@@ -2,6 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { type RenderModel } from '@aramo/documents-rendering';
 import { TalentRecordRepository } from '@aramo/talent-record';
+import { RequisitionRepository } from '@aramo/requisition';
+import { CompanyRepository } from '@aramo/company';
+import { IdentityRepository, TenantRepository } from '@aramo/identity';
 
 import { isRtrBindingKey, type RtrBindingKey, type RtrTemplateContentV1 } from './rtr-template-content.js';
 
@@ -23,6 +26,9 @@ export interface RtrBindingInput {
   talent_id: string;
   requisition_id: string;
   company_id: string;
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§13 ruling) — the SENDING recruiter (created_by), the
+  // authority for recruiter.display_name. Not the requisition owner.
+  recruiter_user_id: string;
   requestId: string;
 }
 
@@ -30,7 +36,13 @@ const TOKEN_RE = /\{\{\s*([\w.]+)\s*\}\}/g;
 
 @Injectable()
 export class RtrTemplateBindingService {
-  constructor(private readonly talent: TalentRecordRepository) {}
+  constructor(
+    private readonly talent: TalentRecordRepository,
+    private readonly requisitions: RequisitionRepository,
+    private readonly companies: CompanyRepository,
+    private readonly tenants: TenantRepository,
+    private readonly identity: IdentityRepository,
+  ) {}
 
   async bind(input: RtrBindingInput): Promise<RenderModel> {
     const used = this.collectTokens([input.content.title, ...input.content.blocks.map((b) => b.text)], input.requestId);
@@ -73,6 +85,16 @@ export class RtrTemplateBindingService {
   // configuration error, never a silent empty value.
   private async resolveValues(used: Set<RtrBindingKey>, input: RtrBindingInput): Promise<Map<string, string>> {
     const values = new Map<string, string>();
+    // Memoize the requisition read — title + reference both derive from it (one query).
+    let reqPromise: Promise<{ title: string; requisition_number: number } | null> | undefined;
+    const getReq = (): Promise<{ title: string; requisition_number: number } | null> => {
+      if (reqPromise === undefined) {
+        reqPromise = this.requisitions
+          .findByIdAdmin({ tenant_id: input.tenant_id, id: input.requisition_id })
+          .then((r) => (r === null ? null : { title: r.title, requisition_number: r.requisition_number }));
+      }
+      return reqPromise;
+    };
     for (const key of used) {
       switch (key) {
         case 'talent.full_name': {
@@ -82,10 +104,50 @@ export class RtrTemplateBindingService {
           values.set(key, name);
           break;
         }
+        case 'client.name': {
+          // The CLIENT company associated with the requisition (company_id supplied by the
+          // authorized RTR request). Never an arbitrary Company.
+          const names = await this.companies.findNamesByIds({ tenant_id: input.tenant_id, ids: [input.company_id] });
+          const name = (names.get(input.company_id) ?? '').trim();
+          if (name.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, name);
+          break;
+        }
+        case 'requisition.title': {
+          const req = await getReq();
+          const title = (req?.title ?? '').trim();
+          if (title.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, title);
+          break;
+        }
+        case 'requisition.reference': {
+          // Ruling: requisition_number (REQ-N), never the nullable external_req_id.
+          const req = await getReq();
+          if (req === null) throw this.missing(key, input.requestId);
+          values.set(key, `REQ-${req.requisition_number}`);
+          break;
+        }
+        case 'recruiting_company.name': {
+          const names = await this.tenants.findNamesByIds([input.tenant_id]);
+          const name = (names.get(input.tenant_id) ?? '').trim();
+          if (name.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, name);
+          break;
+        }
+        case 'recruiter.display_name': {
+          // Ruling: the SENDING recruiter (created_by), not the requisition owner.
+          const user = await this.identity.findUserById(input.recruiter_user_id);
+          const name = (user?.display_name ?? '').trim();
+          if (name.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, name);
+          break;
+        }
         default: {
+          // Defense: a catalog key added without a resolver branch fails closed (never a
+          // raw token / empty value in the PDF). Unreachable while the catalog + switch agree.
           throw new AramoError(
             'RTR_TEMPLATE_CONFIGURATION_INVALID',
-            `no resolver is wired for RTR binding {{${key}}}`,
+            `no resolver is wired for RTR binding {{${key as string}}}`,
             422,
             { requestId: input.requestId, details: { reason: 'binding_resolver_missing', binding_key: key } },
           );

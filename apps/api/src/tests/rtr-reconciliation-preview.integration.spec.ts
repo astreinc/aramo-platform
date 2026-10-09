@@ -126,7 +126,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const fakeTalent = {
         findById: async () => ({ first_name: 'Jordan', last_name: 'Lee', email1: 'jordan.lee@example.com' }),
       } as unknown as TalentRecordRepository;
-      const binding = new RtrTemplateBindingService(fakeTalent);
+      const binding = new RtrTemplateBindingService(fakeTalent, {} as never, {} as never, {} as never, {} as never);
       const fakeSignature = {
         createEnvelope: async () => ({ envelope_id: 'env-1' }),
         sendEnvelope: async () => ({ status: 'SENT' }),
