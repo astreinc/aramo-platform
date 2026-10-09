@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -92,6 +93,14 @@ interface CreateVersionBody {
   source_artifact_id?: string;
 }
 
+// DOC-TEMPLATE-ADMIN-RTR-1 (§9) — DRAFT content update. Only the editable content is
+// accepted; version_number/status/tenant_id/template_id/created_by/activated_*/retired_*
+// are NOT accepted here (immutable fields are enforced by the repo, not this DTO).
+interface UpdateVersionBody {
+  field_schema: unknown;
+  render_schema_version?: string;
+}
+
 interface AddFieldBody {
   field_key: string;
   field_type: string;
@@ -176,6 +185,45 @@ export class DocumentTemplatesController {
   async listVersions(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
       return await this.repo.listVersions(auth.tenant_id, templateId);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§36) — single version-detail read (content + provenance +
+  // the preview-gate markers), the admin editor's load. Tenant-scoped; read scope.
+  @Get('versions/:versionId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async getVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
+    try {
+      return await this.repo.getVersion(auth.tenant_id, versionId);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§9) — update a DRAFT version's editable content. DRAFT-only
+  // (ACTIVE/RETIRED -> TEMPLATE_IMMUTABLE); editing re-arms the §18 preview gate. Binding-
+  // catalog validation (§14) is enforced authoritatively at activation (the RTR validator
+  // port, T2); this route owns the generic content write.
+  @Patch('versions/:versionId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:manage')
+  async updateVersion(
+    @AuthContext() auth: AuthContextType,
+    @Param('versionId') versionId: string,
+    @Body() body: UpdateVersionBody,
+    @RequestId() requestId: string,
+  ) {
+    validate(body !== null && body !== undefined && 'field_schema' in body, 'field_schema is required', requestId);
+    try {
+      return await this.repo.updateDraftVersion({
+        tenant_id: auth.tenant_id,
+        version_id: versionId,
+        field_schema: body.field_schema,
+        render_schema_version: body.render_schema_version,
+      });
     } catch (e) {
       throw toHttp(e, requestId);
     }
