@@ -5305,20 +5305,41 @@ button.rc-snapcard:hover {
 .rc-pipe__client b { color: #1B2730; }
 .rc-pipe__client-src { color: #93A0A8; }
 
-/* 2.3 Talent in play — List rows (Phase 1). */
+/* 2.3 Talent in play — List view: a single-header table (prototype parity). */
 .rc-tip__head { display: flex; align-items: center; gap: 10px; padding: 14px 18px 10px; }
 .rc-tip__head h2 { font-size: 13.5px; font-weight: 700; color: #1B2730; }
 .rc-tip__hint { font-size: 11.5px; color: #93A0A8; }
 .rc-tip__empty { padding: 0 0 4px; }
 .rc-tip__empty .rc-mt-8 { padding: 0 18px 14px; }
-.rc-tip__row { display: flex; align-items: center; gap: 12px 18px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid #F2F4F6; }
-.rc-tip__person { display: flex; align-items: center; gap: 10px; flex: 1 1 210px; min-width: 0; }
+/* Horizontal scroll container: narrow panels scroll sideways rather than wrap
+   each row into a stacked card. The inner table carries the min-width floor. */
+.rc-tip__list { overflow-x: auto; }
+.rc-tip__ltable { min-width: 760px; }
+/* Header and data rows SHARE one grid template so values align under labels. */
+.rc-tip__lhead,
+.rc-tip__row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1.6fr) repeat(4, minmax(96px, 1fr)) 150px;
+  column-gap: 16px;
+  align-items: center;
+}
+.rc-tip__lhead { padding: 8px 18px; background: #FAFBFC; border-bottom: 1px solid #EDF0F3; }
+.rc-tip__lh {
+  font-size: 10px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: #93A0A8; min-width: 0;
+}
+.rc-tip__lh--end { text-align: right; }
+.rc-tip__row { padding: 11px 18px; border-top: 1px solid #F2F4F6; }
+.rc-tip__person { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .rc-ws .rc-avatar {
   width: 32px; height: 32px; border-radius: 50%; background: #5C6770; color: #fff;
   display: grid; place-items: center; font-size: 11.5px; font-weight: 700; flex: none;
 }
 .rc-tip__id { min-width: 0; }
-.rc-tip__name { display: block; font-size: 13px; font-weight: 700; color: #1B2730; text-decoration: none; }
+.rc-tip__name {
+  display: block; font-size: 13px; font-weight: 700; color: #1B2730; text-decoration: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 .rc-tip__sub { display: flex; align-items: center; gap: 7px; margin-top: 3px; flex-wrap: wrap; }
 .rc-ws .rc-stage-pill {
   border-radius: 5px; padding: 1.5px 7px; font-size: 10px; font-weight: 700;
@@ -5326,14 +5347,17 @@ button.rc-snapcard:hover {
 }
 .rc-tip__age { font-size: 11.5px; color: #5C6770; font-weight: 600; }
 .rc-tip__age--warn { color: #946011; }
-.rc-tip__grid { display: grid; grid-template-columns: repeat(4, minmax(86px, auto)); gap: 4px 16px; flex: 2 1 380px; }
 .rc-tip__cell { min-width: 0; }
-.rc-tip__val { display: block; font-size: 12px; font-weight: 600; margin-top: 2px; white-space: nowrap; }
+.rc-tip__val {
+  display: block; font-size: 12px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .rc-tip__val--ok { color: #1F7A4D; }
 .rc-tip__val--warn { color: #946011; }
 .rc-tip__val--bad { color: #B3402A; }
 .rc-tip__val--mute { color: #93A0A8; }
-.rc-tip__cta { flex: none; margin-left: auto; }
+.rc-tip__next { display: flex; justify-content: flex-end; min-width: 0; }
+.rc-tip__cta { flex: none; }
 /* List|Board segmented control (shared preference) + embedded compact board. */
 /* Shared List|Board view toggle (TalentViewToggle) — the ONE implementation used by both the
    Talent tab and the Workspace → Talent in play, pixel-matched to the prototype. */
@@ -6388,6 +6412,8 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tboard__pill { border-radius: 10px; padding: 1.5px 7px; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
 .rc-tboard__pill--mute { background: #EEF1F4; color: #5C6770; }
 .rc-tboard__pill--bad { background: #FBE9E4; color: #B3402A; white-space: normal; }
+.rc-tboard__pill--ok { background: #E6F2EA; color: #1F7A4D; }
+.rc-tboard__pill--warn { background: #FAEFD8; color: #946011; }
 .rc-tboard__foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid #F2F4F6; padding-top: 7px; }
 .rc-tboard__act-btn { border: 1px solid #D5DBE1; background: #fff; color: #022AC0; border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .rc-tboard__act-btn:hover { background: #E8EDFB; border-color: #9DB0F5; }

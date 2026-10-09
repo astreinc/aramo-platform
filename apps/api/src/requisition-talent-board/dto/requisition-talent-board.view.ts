@@ -2,9 +2,12 @@
 //
 // A read-only projection of Talent-on-a-Requisition assembled from authoritative
 // owners (Pipeline · Submittal · ClientSelection · Offer · Placement/Pre-Start ·
-// submittal-eligibility). STATE ENUMS ONLY — no compensation/bill field is ever
-// composed here (financials ride their own scoped read boundary, TB-later). The
-// Board owns presentation; it is NEVER a source of truth (directive §1).
+// submittal-eligibility). State enums + readiness facts only — no REQUISITION
+// commercial/bill/margin financial is ever composed here (those ride their own
+// scoped read boundary, TB-later). TB-chips REFINEMENT (PO-authorized, Lead to
+// ratify): the TALENT's desired_pay — a talent:read attribute already surfaced on
+// the enrichment read (PipelineView.desired_rate) — IS carried as a card chip; it
+// is not a requisition commercial figure. The Board is NEVER a source of truth (§1).
 
 // The Board's OWN display-column vocabulary (not an owner ontology). Each column
 // maps to an authoritative domain + persisted state(s) — see TB-0-projection-contract.md.
@@ -73,6 +76,17 @@ export interface BoardCardView {
   readonly owner_state: string;
   readonly resume: BoardResume;
   readonly rtr_state: string | null; // recruiting-lane fact (from the readiness gate substrate)
+  // TB-chips — the recruiting-stage readiness fact chips. ADDED alongside the binary rtr_state
+  // (which the List view still reads — ADD-not-rename). rtr_status is the 3-state signing chip
+  // (null = RTR not required for the requisition → render nothing); email/voice_evidence are the
+  // grounded per-channel engagement facts (provider-verified send / two-way call). desired_pay is
+  // the TALENT's desired rate — a talent:read ATTRIBUTE already surfaced on the enrichment read
+  // (PipelineView.desired_rate), NOT a requisition commercial/bill/margin figure (those remain
+  // excluded; null here when the actor lacks talent:read or the talent has no desired pay).
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+  readonly email_evidence: boolean;
+  readonly voice_evidence: boolean;
+  readonly desired_pay: string | null;
   readonly readiness: BoardReadiness | null; // present on recruiting-lane cards
   // Days in the CURRENT stage, derived from the latest transition timestamp (§22).
   readonly days_in_stage: number | null;

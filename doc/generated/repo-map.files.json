@@ -459,6 +459,7 @@
     "apps/api/src/tests/create-submittal.unit.spec.ts",
     "apps/api/src/tests/derive-matching-input.spec.ts",
     "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+    "apps/api/src/tests/document-readiness-rtr-chip.unit.spec.ts",
     "apps/api/src/tests/documents-http.integration.spec.ts",
     "apps/api/src/tests/documents-storage-adapter.spec.ts",
     "apps/api/src/tests/domain-verification.integration.spec.ts",

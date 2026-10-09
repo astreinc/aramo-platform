@@ -26,6 +26,7 @@ import {
 import { RequisitionAssignmentRepository, RequisitionRepository } from '@aramo/requisition';
 import { ClientTalentRestrictionRepository } from '@aramo/client-talent-restriction';
 import { CommunicationsRepository } from '@aramo/communications';
+import { TalentRecordRepository } from '@aramo/talent-record';
 
 import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
@@ -184,6 +185,8 @@ export class RequisitionTalentBoardReadService {
     private readonly restriction: ClientTalentRestrictionRepository,
     private readonly engagement: EngagementGateService,
     private readonly comms: CommunicationsRepository,
+    // TB-chips — the TALENT's desired_pay (talent:read attribute) for the recruiting-stage pay chip.
+    private readonly talent: TalentRecordRepository,
     @Inject('RequisitionTalentBoardLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -198,6 +201,9 @@ export class RequisitionTalentBoardReadService {
     visible_requisition_ids: ReadonlySet<string> | null;
     now: Date;
     requestId: string;
+    // TB-chips — the actor holds talent:read, so the TALENT's desired_pay chip may be composed.
+    // Default false (fail-closed): absent the scope, desired_pay is never read or disclosed.
+    can_read_pay?: boolean;
   }): Promise<RequisitionTalentBoardView> {
     const { tenant_id, requisition_id, requestId } = args;
     const vis = args.visible_requisition_ids;
@@ -231,7 +237,7 @@ export class RequisitionTalentBoardReadService {
     // Stage 1 — the owner reads, BATCHED + CONCURRENT (never per-card). Offer + Placement are
     // requisition-scoped in one call each; resume + history are SET reads; the TB-4 readiness
     // substrate (raw policy inputs + the batched RTR gate) is read here too.
-    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability, engagedTalentIds] =
+    const [submittals, resumeByTalent, historyByPipeline, offers, placements, readinessMap, assignments, policyInputsMap, rtrByTalent, restrictedTalentIds, engagementApplicability, engagedTalentIds, rtrStatusByTalent, emailEvidenceTalentIds, voiceEvidenceTalentIds, payByTalent] =
       await Promise.all([
         this.submittal.listByRequisitionForBoard({
           tenant_id,
@@ -262,6 +268,16 @@ export class RequisitionTalentBoardReadService {
         // engagement interaction. A no_contact card with engagement is NOT VOID-eligible
         // (the action is hidden; the server also rejects a direct call). One batched read.
         this.comms.findTalentIdsWithRequisitionInteractions({ tenant_id, requisition_id, talent_record_ids: talentIds }),
+        // TB-chips — the recruiting-stage readiness fact chips, each BATCHED over the whole
+        // talent set (never per-card): the 3-state RTR signing status (null when RTR is not
+        // required), provider-verified email evidence, two-way voice evidence, and the TALENT's
+        // desired_pay (read ONLY when the actor holds talent:read — fail-closed otherwise).
+        this.documentReadiness.assessManyRtrStatus({ tenant_id, requisition_id, talent_ids: talentIds }),
+        this.comms.findTalentIdsWithProviderVerifiedEmail({ tenant_id, requisition_id, talent_record_ids: talentIds }),
+        this.comms.findTalentIdsWithVoiceTwoWay({ tenant_id, requisition_id, talent_record_ids: talentIds }),
+        args.can_read_pay === true
+          ? this.talent.findContactByIds(tenant_id, talentIds)
+          : Promise.resolve(new Map<string, { desired_pay: string | null }>()),
       ]);
 
     // Stage 2 — ClientSelection for the whole submittal set, ONE IN-list read.
@@ -341,6 +357,11 @@ export class RequisitionTalentBoardReadService {
           engagement: engagementApplicability,
           engaged: engagedTalentIds.has(row.talent_record_id),
           assigned_recruiter_user_id,
+          // TB-chips — the per-talent readiness facts (every id present in the RTR status map).
+          rtr_status: rtrStatusByTalent.get(row.talent_record_id) ?? null,
+          email_evidence: emailEvidenceTalentIds.has(row.talent_record_id),
+          voice_evidence: voiceEvidenceTalentIds.has(row.talent_record_id),
+          desired_pay: payByTalent.get(row.talent_record_id)?.desired_pay ?? null,
           now: args.now,
         }),
       );
@@ -397,6 +418,11 @@ export class RequisitionTalentBoardReadService {
       engaged: boolean; // Accidental-Add: any requisition-specific interaction on this Talent
 
       assigned_recruiter_user_id: string | null;
+      // TB-chips — the recruiting-stage readiness facts (null rtr_status = RTR not required).
+      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+      email_evidence: boolean;
+      voice_evidence: boolean;
+      desired_pay: string | null;
       now: Date;
     },
   ): BoardCardView {
@@ -435,6 +461,10 @@ export class RequisitionTalentBoardReadService {
       owner_state: winner.owner_state,
       resume,
       rtr_state,
+      rtr_status: ctx.rtr_status,
+      email_evidence: ctx.email_evidence,
+      voice_evidence: ctx.voice_evidence,
+      desired_pay: ctx.desired_pay,
       readiness,
       days_in_stage,
       stage_entered_at,

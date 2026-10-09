@@ -53,6 +53,13 @@ export interface BoardCardView {
   readonly owner_state: string;
   readonly resume: BoardResume;
   readonly rtr_state: string | null;
+  // TB-chips — recruiting-stage readiness facts (mirror the api DTO). rtr_status null = RTR not
+  // required (chip hidden); email/voice_evidence are grounded per-channel facts; desired_pay is the
+  // talent's desired rate (talent:read-gated server-side; null when absent or not permitted).
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+  readonly email_evidence: boolean;
+  readonly voice_evidence: boolean;
+  readonly desired_pay: string | null;
   readonly readiness: BoardReadiness | null;
   readonly days_in_stage: number | null;
   readonly stage_entered_at: string | null;
