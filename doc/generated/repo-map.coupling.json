@@ -13755,6 +13755,11 @@
       "to": "tools/local-run-link.sh"
     },
     {
+      "from": "doc/backlog/Aramo-Documents-Template-Productization-Backlog-Directive-v1_0.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/backlog/Aramo-E-Sign-Product-Experience-V1-Implementation-Directive-v1_0.md",
       "status": "unscoped",
       "to": "apps/esign-service/src/app/document-source-http.adapter.ts"
