@@ -18,6 +18,7 @@ import {
 import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { RequirementInstanceRepository, PrismaService as PreStartPrismaService } from '@aramo/pre-start-requirement';
 import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
 
@@ -116,6 +117,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new PlacementRepository(placementPrisma),
         new RequirementInstanceRepository(preStartPrisma),
         new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
+        new DocumentReadinessGate(
+          new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
+        ),
         NOOP_LOGGER,
       );
     }, 240_000);

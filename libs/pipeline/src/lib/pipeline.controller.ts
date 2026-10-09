@@ -32,6 +32,7 @@ import type { TransitionPipelineRequestDto } from './dto/transition-pipeline-req
 import type { PipelineActionRequestDto } from './dto/pipeline-action-request.dto.js';
 import {
   isRecruiterPipelineAction,
+  RECRUITER_ACTION_TO_STATUS,
   SYSTEM_COMPLETE_ACTION,
 } from './pipeline-state.js';
 import { PipelineRepository } from './pipeline.repository.js';
@@ -41,6 +42,10 @@ import {
   RESUME_EDITION_READER,
   type ResumeEditionReaderPort,
 } from './resume-edition-reader.port.js';
+import {
+  QUALIFIED_TRANSITION_GUARD,
+  type QualifiedTransitionGuardPort,
+} from './qualified-transition-guard.port.js';
 import type { SetPipelineResumeEditionRequestDto } from './dto/set-pipeline-resume-edition-request.dto.js';
 import {
   orderedAvailableEditions,
@@ -85,6 +90,13 @@ export class PipelineController {
     @Optional()
     @Inject(RESUME_EDITION_READER)
     private readonly editionReader?: ResumeEditionReaderPort,
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32) — the RTR precondition guard for the
+    // `qualified` milestone (scope wall: the concrete adapter composing Documents
+    // readiness is bound @Global in apps/api). @Optional so hand-wired controller
+    // test sites boot ungated.
+    @Optional()
+    @Inject(QUALIFIED_TRANSITION_GUARD)
+    private readonly qualifiedGuard?: QualifiedTransitionGuardPort,
   ) {}
 
   @Get()
@@ -458,6 +470,14 @@ export class PipelineController {
         { requestId, details: { field: 'expected_version' } },
       );
     }
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32) — gate the `qualified` milestone on the RTR
+    // precondition (composed at apps/api; ADR-0029 wall). CONDITIONAL: a no-op unless
+    // the client policy requires an RTR for this requisition; `qualifying` is never
+    // gated. Runs BEFORE the write; a missing/invisible row is a no-op here and
+    // conceals as 404 in the repository transition below.
+    if (body.to_status === 'qualified' && this.qualifiedGuard !== undefined) {
+      await this.qualifiedGuard.assertCanQualify({ tenant_id: authContext.tenant_id, pipeline_id: id, requestId });
+    }
     // L2-A — write-visibility parity: a transition on a non-visible pipeline
     // conceals as 404 (same as the read paths).
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
@@ -512,6 +532,11 @@ export class PipelineController {
         422,
         { requestId, details: { field: 'action', value: body.action } },
       );
+    }
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32) — the recruiter QUALIFY action maps to the
+    // `qualified` milestone; gate it on the same RTR precondition as /transition.
+    if (RECRUITER_ACTION_TO_STATUS[body.action] === 'qualified' && this.qualifiedGuard !== undefined) {
+      await this.qualifiedGuard.assertCanQualify({ tenant_id: authContext.tenant_id, pipeline_id: id, requestId });
     }
     // Write-visibility parity: an action on a non-visible pipeline conceals as 404.
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
