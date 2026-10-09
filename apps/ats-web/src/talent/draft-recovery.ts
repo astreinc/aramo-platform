@@ -32,7 +32,10 @@ export interface DraftStateInput {
   processing_status: string;
   review_status: string;
   promoted_talent_record_id: string | null;
-  required: { met: number; total: number };
+  // Optional at the mapper boundary (defensive): a malformed or temporarily
+  // version-skewed draft-list response must degrade gracefully, not throw and
+  // white-screen the whole Talent workspace. The backend contract always sends it.
+  required?: { met: number; total: number } | null;
   admissible: boolean;
   duplicate?: TalentIntakeDuplicate | null;
   failure?: string | null;
@@ -49,7 +52,10 @@ export function presentDraft(d: DraftStateInput): DraftPresentation {
   const dup = d.duplicate ?? null;
   const dupBlocks = dup !== null && dup.continue_anyway === false;
   const canCreate = d.admissible && d.promoted_talent_record_id === null && !dupBlocks;
-  const base = { canCreate, requiredMet: d.required.met, requiredTotal: d.required.total };
+  // Defensive default — a missing `required` yields a NEUTRAL 0/0 (total 0 so no
+  // "complete/ready" is implied downstream), never a crash.
+  const required = d.required ?? { met: 0, total: 0 };
+  const base = { canCreate, requiredMet: required.met, requiredTotal: required.total };
   const make = (
     label: string,
     tone: DraftTone,

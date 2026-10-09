@@ -68,7 +68,8 @@ export function InProgressTable({ items, onChanged }: InProgressTableProps): JSX
               {items.map((d) => {
                 const p = presentDraft(d);
                 const { title, file } = draftTitle(d);
-                const reqComplete = p.requiredMet >= p.requiredTotal;
+                // total > 0 guard: a neutral 0/0 fallback must NOT read as complete (green).
+                const reqComplete = p.requiredTotal > 0 && p.requiredMet >= p.requiredTotal;
                 return (
                   <tr key={d.id} data-testid="in-progress-row">
                     <td>

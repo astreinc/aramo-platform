@@ -82,6 +82,18 @@ describe('presentDraft — locked recruiter vocabulary + tones', () => {
     expect(p.canCreate).toBe(false); // the 409 is preserved
   });
 
+  it('missing `required` degrades gracefully — no throw, NEUTRAL 0/0 (not "complete"), label still correct', () => {
+    // A malformed / version-skewed draft-list item must not white-screen the
+    // workspace (regression: TypeError reading .met crashed <TalentListView>).
+    const p = presentDraft(st({ processing_status: 'FAILED', admissible: false, required: undefined }));
+    expect(p.requiredMet).toBe(0);
+    expect(p.requiredTotal).toBe(0); // total 0 → downstream never renders "complete"/green
+    expect(p.label).toBe('Needs attention'); // state-driven label unaffected
+    expect(p.canCreate).toBe(false);
+    // And it must not crash the cue derivation either.
+    expect(() => addTalentDotTone([st({ required: undefined, processing_status: 'FAILED', admissible: false })])).not.toThrow();
+  });
+
   it('never surfaces raw backend state words', () => {
     const banned = ['FAILED', 'PARTIAL', 'PROCESSING', 'QUEUED', 'UPLOADED'];
     for (const s of ['UPLOADED', 'QUEUED', 'PROCESSING', 'READY', 'PARTIAL', 'FAILED']) {
