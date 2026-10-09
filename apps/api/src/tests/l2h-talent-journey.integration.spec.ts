@@ -18,8 +18,8 @@ import {
 import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaService } from '@aramo/placement';
 import { RequirementInstanceRepository, PrismaService as PreStartPrismaService } from '@aramo/pre-start-requirement';
 import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
-import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
 
 // Lane 2 / L2-H — the Unified Talent Journey composer, end-to-end against real Postgres 17.
