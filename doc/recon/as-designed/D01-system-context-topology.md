@@ -24,8 +24,8 @@ intended cross-schema reference discipline.
 
 ## Front door — nginx + wildcard TLS
 
-`doc/adr/0023-frontdoor-nginx-wildcard-tls.md:25` (§Decision): "Replace Caddy with
-**nginx** as the front door, and replace on-demand per-host issuance with a single
+`doc/adr/0023-frontdoor-nginx-wildcard-tls.md:25` (§Decision): adopt
+**nginx** as the front door (replacing the prior reverse-proxy named in that ADR), and replace on-demand per-host issuance with a single
 `*.aramo.ai` wildcard certificate obtained by a certbot DNS-01 sidecar via
 Route53."
 
@@ -66,7 +66,7 @@ canonical cross-service event backbone."
 built for tenant #50, not for Astre. Astre is the test harness."
 
 `:49`–`:53` (rule 2): "A new tenant must be a DATA operation, not an
-INFRA/ENGINEERING operation… never a human hand-touching DNS, Caddy, IAM, or
+INFRA/ENGINEERING operation… never a human hand-touching DNS, the prior front-door proxy, IAM, or
 code." — the intent that the single front door + wildcard cert topology must
 support onboarding without per-tenant infra.
 

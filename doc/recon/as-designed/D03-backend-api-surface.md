@@ -54,10 +54,10 @@ doc/adr/0008-read-endpoint-maturation-and-handoff-conventions.md §2–3:
 
 doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md:
 - OpenAPI specs are a **refusal-enforcement surface**, not merely documentation. The design
-  intent (API Contracts v1.0 Phase 4 "Four-Layer LinkedIn Refusal Enforcement") places
+  intent (API Contracts v1.0 Phase 4, the four-layer R7 social-network refusal-enforcement design) places
   machine-readable constraints into the spec: `x-prohibited-values` extensions (Layer 2) and
-  schema-level `const` constraints such as `linkedin_automation_allowed: {type: boolean,
-  const: false}` (Layer 4) "so any response saying 'true' fails OpenAPI validation."
+  schema-level `const: false` boolean constraints on the R7-sealed integration's automation flag
+  (Layer 4) "so any response saying 'true' fails OpenAPI validation."
 - OpenAPI nullable is expressed per the redocly-lint contract as `type: [T,'null']`
   (not `nullable: true`) — the lint target `openapi:lint` is the ratified enforcement.
 
