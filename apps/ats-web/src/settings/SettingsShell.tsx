@@ -5,6 +5,7 @@ import {
   IconBrowser,
   IconBuilding,
   IconCard,
+  IconFile,
   IconForm,
   IconGlobe,
   IconHistory,
@@ -165,6 +166,23 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         icon: <IconMail />,
         to: '/admin/settings/email',
         match: '/admin/settings/email',
+        status: 'live',
+      },
+    ],
+  },
+  {
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§5) — tenant document-template governance. LIVE:
+    // Right to Represent is the one tenant-configurable type this increment; the
+    // section itself lists every governed type honestly (others "Not configurable
+    // yet"). document_template:read gates view; :manage gates mutation (server-owned).
+    heading: 'Documents',
+    items: [
+      {
+        key: 'document-templates',
+        label: 'Document templates',
+        icon: <IconFile />,
+        to: '/admin/settings/document-templates',
+        match: '/admin/settings/document-templates',
         status: 'live',
       },
     ],

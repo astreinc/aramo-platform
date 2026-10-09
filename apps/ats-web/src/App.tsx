@@ -58,6 +58,8 @@ import {
 import { AuditSection } from './settings/audit/AuditSection';
 import { DomainVerificationSection } from './settings/sections/DomainVerificationSection';
 import { RolesSection } from './settings/roles/RolesSection';
+import { DocumentTemplatesSection } from './settings/documents/DocumentTemplatesSection';
+import { RtrTemplateDetail } from './settings/documents/RtrTemplateDetail';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
@@ -652,6 +654,19 @@ export function App() {
                                   (Settings → Recruiting). Non-enforcing until a
                                   policy is published; edit/publish self-gate on
                                   engagement:policy:write. */}
+                              {/* DOC-TEMPLATE-ADMIN-RTR-1 (§5-7) — tenant document-
+                                  template governance: the catalog, the RTR detail
+                                  (version history), and the RTR draft editor. Inside
+                                  the tenant:admin:* AdminGate; document_template:*
+                                  scopes are the real boundary (server-enforced). */}
+                              <Route
+                                path="settings/document-templates"
+                                element={<DocumentTemplatesSection />}
+                              />
+                              <Route
+                                path="settings/document-templates/rtr"
+                                element={<RtrTemplateDetail />}
+                              />
                               <Route
                                 path="settings/engagement-policy"
                                 element={<EngagementPolicySection />}
