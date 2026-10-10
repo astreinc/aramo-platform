@@ -22,18 +22,53 @@
 // values fail closed in the resolver.
 export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
 
-// The CLOSED binding catalog for RTR V1 (§9, INV-9). A content block's text may
-// contain ONLY these tokens; the binding service resolves each from an
-// authoritative repository server-side. No arbitrary expressions, no open
-// traversal. V1 needs exactly one binding — the talent's full name, the only
-// dynamic value in the current RTR body. Extend ONLY by adding a key here AND a
-// resolver branch AND a test (§9, §33).
-export const RTR_BINDING_KEYS = ['talent.full_name'] as const;
+// The CLOSED binding catalog for RTR (§9/§12, INV-9). A content block's text may
+// contain ONLY these tokens; the binding service resolves each from an authoritative
+// repository server-side (no arbitrary expressions, no open traversal). Extend ONLY
+// by adding a descriptor here AND a resolver branch AND a test (§12, §53).
+//
+// DOC-TEMPLATE-ADMIN-RTR-1 rulings carried from Gate-0:
+//   - recruiter.display_name resolves to the SENDING recruiter (§13 preferred; no
+//     existing semantics establish the requisition owner as the legal representative).
+//   - requisition.reference resolves to requisition_number (REQ-N; external_req_id is
+//     nullable and not the authoritative reference).
+//   - agreed_pay_rate.* is DELIBERATELY EXCLUDED (§13): no authoritative
+//     Talent × Requisition agreed-pay fact exists (confirmed PRODUCT/DATA GAP). It is
+//     NOT substituted from desired pay / requisition range / bill rate / offer / placement.
+export interface RtrBindingDescriptor {
+  readonly key: string; // canonical token
+  readonly label: string; // human-readable chip label (Insert field + reading mode)
+  readonly group: string; // Insert-field menu group (§15)
+  readonly sample: string; // fixed SAFE sample value for admin preview (§17)
+}
+
+export const RTR_BINDING_CATALOG: readonly RtrBindingDescriptor[] = [
+  { key: 'talent.full_name', label: 'Talent full name', group: 'Talent', sample: 'Ravi Shankar' },
+  { key: 'client.name', label: 'Client name', group: 'Client', sample: 'Mindlance' },
+  { key: 'requisition.title', label: 'Requisition title', group: 'Requisition', sample: 'Business Analyst - Multi-Family' },
+  { key: 'requisition.reference', label: 'Requisition reference', group: 'Requisition', sample: 'REQ-1001' },
+  { key: 'recruiting_company.name', label: 'Recruiting organization name', group: 'Recruiting organization', sample: 'Astre Consulting' },
+  { key: 'recruiter.display_name', label: 'Recruiter name', group: 'Recruiter', sample: 'Deepika Rao' },
+] as const;
+
+export const RTR_BINDING_KEYS = [
+  'talent.full_name',
+  'client.name',
+  'requisition.title',
+  'requisition.reference',
+  'recruiting_company.name',
+  'recruiter.display_name',
+] as const;
 export type RtrBindingKey = (typeof RTR_BINDING_KEYS)[number];
 
 export function isRtrBindingKey(value: string): value is RtrBindingKey {
   return (RTR_BINDING_KEYS as readonly string[]).includes(value);
 }
+
+// Admin preview (§17) — the fixed SAFE sample value for each binding. Keyed lookup
+// derived from the single catalog so sample data can never drift from the keys.
+export const RTR_BINDING_SAMPLE_VALUES: Readonly<Record<RtrBindingKey, string>> =
+  Object.fromEntries(RTR_BINDING_CATALOG.map((d) => [d.key, d.sample])) as Record<RtrBindingKey, string>;
 
 // A content block mirrors the renderer's RenderBlock shape (HEADING | TEXT), but
 // its `text` is a TEMPLATE string that may embed {{binding.key}} tokens. The

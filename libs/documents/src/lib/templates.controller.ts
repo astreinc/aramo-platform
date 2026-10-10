@@ -4,7 +4,10 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  Optional,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -16,12 +19,16 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
+import { TEMPLATE_CAPABILITIES, type TemplateCapabilitiesPort } from './template-capabilities.port.js';
 import {
   DocumentNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
   DocumentRequirementNotFoundError,
+  TemplateBindingUnsupportedError,
+  TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
   TemplateNotFoundError,
+  TemplatePreviewRequiredError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
@@ -59,6 +66,9 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateVersionNotFoundError) return new AramoError('TEMPLATE_VERSION_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof TemplateVersionNotActiveError) return new AramoError('TEMPLATE_VERSION_NOT_ACTIVE', e.message, 409, { requestId });
   if (e instanceof TemplateImmutableError) return new AramoError('TEMPLATE_IMMUTABLE', e.message, 409, { requestId });
+  if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
+  if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
+  if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
   if (e instanceof DocumentRequirementNotFoundError) return new AramoError('DOCUMENT_REQUIREMENT_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof DocumentRequirementAlreadySatisfiedError) return new AramoError('DOCUMENT_REQUIREMENT_ALREADY_SATISFIED', e.message, 409, { requestId });
   if (e instanceof DocumentNotFoundError) return new AramoError('DOCUMENT_NOT_FOUND', e.message, 404, { requestId });
@@ -86,6 +96,14 @@ interface CreateVersionBody {
   source_artifact_id?: string;
 }
 
+// DOC-TEMPLATE-ADMIN-RTR-1 (§9) — DRAFT content update. Only the editable content is
+// accepted; version_number/status/tenant_id/template_id/created_by/activated_*/retired_*
+// are NOT accepted here (immutable fields are enforced by the repo, not this DTO).
+interface UpdateVersionBody {
+  field_schema: unknown;
+  render_schema_version?: string;
+}
+
 interface AddFieldBody {
   field_key: string;
   field_type: string;
@@ -105,7 +123,20 @@ interface AddFieldBody {
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
 export class DocumentTemplatesController {
-  constructor(private readonly repo: TemplatesRepository) {}
+  constructor(
+    private readonly repo: TemplatesRepository,
+    // DOC-TEMPLATE-ADMIN-RTR-1 — document-type content capability (catalog + validation +
+    // sample preview). Provided globally by apps/api (RTR impl); @Optional so the generic
+    // CRUD still works where no capability is wired.
+    @Optional() @Inject(TEMPLATE_CAPABILITIES) private readonly caps?: TemplateCapabilitiesPort,
+  ) {}
+
+  // Load the document type for a version (version -> template -> document_type_id).
+  private async documentTypeForVersion(tenant_id: string, versionId: string): Promise<{ document_type_id: string; field_schema: unknown; render_schema_version: string }> {
+    const v = await this.repo.getVersion(tenant_id, versionId);
+    const t = await this.repo.getTemplate(tenant_id, v.template_id);
+    return { document_type_id: t.document_type_id, field_schema: v.field_schema, render_schema_version: v.render_schema_version };
+  }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -164,6 +195,20 @@ export class DocumentTemplatesController {
     }
   }
 
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§8) — open a new editable DRAFT (vN+1) by COPYING the
+  // template's current ACTIVE content as the starting point (the backend owns the copy).
+  // One-DRAFT guarded (§41): if a DRAFT is already open, 409 TEMPLATE_DRAFT_ALREADY_EXISTS.
+  @Post(':id/draft')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('document_template:manage')
+  async createDraft(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      return await this.repo.createDraftFromActive({ tenant_id: auth.tenant_id, template_id: templateId, created_by: auth.sub });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
   @Get(':id/versions')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document_template:read')
@@ -175,11 +220,89 @@ export class DocumentTemplatesController {
     }
   }
 
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§36) — single version-detail read (content + provenance +
+  // the preview-gate markers), the admin editor's load. Tenant-scoped; read scope.
+  @Get('versions/:versionId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async getVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
+    try {
+      return await this.repo.getVersion(auth.tenant_id, versionId);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§9) — update a DRAFT version's editable content. DRAFT-only
+  // (ACTIVE/RETIRED -> TEMPLATE_IMMUTABLE); editing re-arms the §18 preview gate. Binding-
+  // catalog validation (§14) is enforced authoritatively at activation (the RTR validator
+  // port, T2); this route owns the generic content write.
+  @Patch('versions/:versionId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:manage')
+  async updateVersion(
+    @AuthContext() auth: AuthContextType,
+    @Param('versionId') versionId: string,
+    @Body() body: UpdateVersionBody,
+    @RequestId() requestId: string,
+  ) {
+    validate(body !== null && body !== undefined && 'field_schema' in body, 'field_schema is required', requestId);
+    try {
+      return await this.repo.updateDraftVersion({
+        tenant_id: auth.tenant_id,
+        version_id: versionId,
+        field_schema: body.field_schema,
+        render_schema_version: body.render_schema_version,
+      });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§17) — fixed-sample preview of the CURRENT draft content
+  // (validates + substitutes safe sample values; creates NO business Document/envelope).
+  // Recording the preview arms the §18 activation gate for exactly this content.
+  @Post('versions/:versionId/preview')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:manage')
+  async previewVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
+    try {
+      const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
+      validate(this.caps !== undefined && this.caps.isConfigurable(ctx.document_type_id), 'this document type is not configurable', requestId);
+      const preview = this.caps!.renderSamplePreview({ ...ctx, requestId });
+      await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
+      return preview;
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§15) — the governed Insert-field catalog for a template's
+  // document type (the single source the editor's Insert menu is generated from; §14).
+  @Get(':id/allowed-bindings')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async allowedBindings(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
+    try {
+      const t = await this.repo.getTemplate(auth.tenant_id, templateId);
+      return { bindings: this.caps?.listAllowedBindings(t.document_type_id) ?? [] };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
   @Post('versions/:versionId/activate')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document_template:manage')
   async activate(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
+      // §14/§19 — closed-binding + non-empty content validation (authoritative; backend,
+      // not FE). A non-configurable type is a no-op. Then the repo enforces the §18 preview
+      // gate + §21 actor + the DRAFT->ACTIVE transition.
+      if (this.caps !== undefined) {
+        const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
+        this.caps.validateDraftContent({ ...ctx, requestId });
+      }
       return await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
     } catch (e) {
       throw toHttp(e, requestId);

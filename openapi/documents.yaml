@@ -282,6 +282,110 @@ paths:
                   $ref: '#/components/schemas/TemplateVersion'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/document-templates/{id}/draft:
+    post:
+      operationId: createTemplateDraft
+      summary: Open a new editable DRAFT by copying the current ACTIVE content.
+      description: |
+        Creates a DRAFT vN+1 whose editable content is copied from the template's
+        current ACTIVE version. One DRAFT per template — refused (409) if one is already
+        open. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '201':
+          description: The created DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/{id}/allowed-bindings:
+    get:
+      operationId: listTemplateAllowedBindings
+      summary: The governed Insert-field binding catalog for a template's document type.
+      description: |
+        The closed set of bindings the draft editor may insert (the single source the
+        editor generates its Insert menu from). Empty for a non-configurable document
+        type. Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The allowed bindings.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowedBindingsResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/versions/{versionId}:
+    get:
+      operationId: getTemplateVersion
+      summary: Get a single template version (content + provenance + preview-gate markers).
+      description: Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateTemplateDraftVersion
+      summary: Update a DRAFT version's editable content.
+      description: |
+        DRAFT-only (ACTIVE/RETIRED -> 409 TEMPLATE_IMMUTABLE). Editing re-arms the
+        preview-before-approve gate. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateVersionRequest'
+      responses:
+        '200':
+          description: The updated DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/versions/{versionId}/preview:
+    post:
+      operationId: previewTemplateVersion
+      summary: Fixed-sample preview of the current DRAFT content.
+      description: |
+        Validates the content and substitutes safe sample values, then records the
+        preview to arm the activation gate. Creates NO business document, association,
+        requirement or envelope. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: The resolved sample preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateSamplePreview'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/document-templates/versions/{versionId}/activate:
     post:
       operationId: activateTemplateVersion
@@ -982,6 +1086,59 @@ components:
         activated_at:
           type: [string, 'null']
           format: date-time
+    UpdateVersionRequest:
+      type: object
+      description: DRAFT-only content update (DOC-TEMPLATE-ADMIN-RTR-1 §9). Immutable fields are rejected by the repository, not accepted here.
+      required:
+        - field_schema
+      properties:
+        field_schema:
+          type: object
+          additionalProperties: true
+        render_schema_version:
+          type: string
+    TemplateSamplePreview:
+      type: object
+      description: A fixed-sample preview (§17) — the draft content with every binding substituted by its safe sample value. Structured resolved blocks; no business document is created.
+      required:
+        - title
+        - blocks
+      properties:
+        title:
+          type: string
+        blocks:
+          type: array
+          items:
+            type: object
+            required:
+              - type
+              - text
+            properties:
+              type:
+                type: string
+              text:
+                type: string
+    AllowedBindingsResponse:
+      type: object
+      description: The governed Insert-field binding catalog (§15) for a template's document type.
+      required:
+        - bindings
+      properties:
+        bindings:
+          type: array
+          items:
+            type: object
+            required:
+              - key
+              - label
+              - group
+            properties:
+              key:
+                type: string
+              label:
+                type: string
+              group:
+                type: string
     TemplateFieldDefinition:
       type: object
       description: The canonical field model (a PDF AcroForm field is only one representation).

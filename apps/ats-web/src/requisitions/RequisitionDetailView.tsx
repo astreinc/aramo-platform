@@ -588,6 +588,7 @@ export function RequisitionDetailView({
       content: (
         <TalentJourney
           req={req}
+          companyName={companyName}
           pipelines={pipelines}
           talents={talents}
           offers={offers}
@@ -1250,6 +1251,7 @@ function journeyCellText(
 
 function TalentJourney({
   req,
+  companyName,
   pipelines,
   talents,
   offers,
@@ -1267,6 +1269,7 @@ function TalentJourney({
   userNames,
 }: {
   readonly req: RequisitionView;
+  readonly companyName: string | null;
   readonly pipelines: readonly PipelineView[];
   readonly talents: Record<string, TalentRecordView>;
   readonly offers: readonly OfferView[];
@@ -1544,6 +1547,10 @@ function TalentJourney({
                     canRead={scopes.includes('document:read')}
                     canRequest={scopes.includes('document:create')}
                     canSend={scopes.includes('document:execute')}
+                    talentName={name}
+                    clientName={companyName}
+                    requisitionTitle={req.title}
+                    recipientEmail={email}
                   />
                   {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
                       backend deems this episode VOID-eligible (server-authoritative; never from

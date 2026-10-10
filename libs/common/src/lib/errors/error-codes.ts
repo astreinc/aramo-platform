@@ -386,6 +386,12 @@ export const ERROR_CODES = [
   'TEMPLATE_VERSION_NOT_FOUND',
   'TEMPLATE_VERSION_NOT_ACTIVE',
   'TEMPLATE_IMMUTABLE',
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§44) — tenant template administration refusals.
+  // ALREADY_EXISTS + PREVIEW_REQUIRED are state refusals (409); an unsupported
+  // binding in draft content is unprocessable (422).
+  'TEMPLATE_DRAFT_ALREADY_EXISTS',
+  'TEMPLATE_PREVIEW_REQUIRED',
+  'TEMPLATE_BINDING_UNSUPPORTED',
   'DOCUMENT_REQUIREMENT_NOT_FOUND',
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',
@@ -645,6 +651,13 @@ export const ERROR_CODES = [
   // DOC-5 (R-5-10, 409): the document-readiness gate found no EXECUTED
   // RIGHT_TO_REPRESENT jointly associated to this exact Talent + Requisition.
   'SUBMITTAL_RTR_NOT_EXECUTED',
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32, 422): the Pipeline `qualified` transition was
+  // refused because the client policy requires an RTR for this requisition and no
+  // EXECUTED RIGHT_TO_REPRESENT exists for the exact (talent, requisition). Composed
+  // at apps/api (ADR-0029 wall) via DocumentReadinessGate; reuses the same
+  // same-document predicate as SUBMITTAL_RTR_NOT_EXECUTED but gates the recruiting
+  // `qualified` milestone (not the ATS submit). `qualifying` entry is NEVER gated.
+  'PIPELINE_QUALIFY_REQUIRES_RTR',
   // COMM-C3 — engagement-policy publish/admin refusals (422). SCHEMA_INVALID:
   // typed/structural validation failed. NOT_ACTIVATABLE: a required channel has no
   // evidence producer yet (e.g. email today), so the policy cannot be activated (R7).

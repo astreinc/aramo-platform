@@ -59,6 +59,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: PLATFORM_TENANT_SENTINEL_ID,
         version_id: ver.id,
         actor_id: ACTOR,
+        // DOC-TEMPLATE-ADMIN-RTR-1 — this helper seeds the platform ACTIVE template
+        // directly; it is not exercising the §18 preview gate, so bypass it here.
+        require_preview: false,
       });
       return ver.id;
     }

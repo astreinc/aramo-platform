@@ -46,6 +46,9 @@ export class ExecutedArtifactHashMismatchError extends Error {
 //   TemplateVersionNotFoundError          -> TEMPLATE_VERSION_NOT_FOUND (404)
 //   TemplateVersionNotActiveError         -> TEMPLATE_VERSION_NOT_ACTIVE (409)
 //   TemplateImmutableError                -> TEMPLATE_IMMUTABLE (409)
+//   TemplateDraftAlreadyExistsError       -> TEMPLATE_DRAFT_ALREADY_EXISTS (409)
+//   TemplatePreviewRequiredError          -> TEMPLATE_PREVIEW_REQUIRED (409)
+//   TemplateBindingUnsupportedError       -> TEMPLATE_BINDING_UNSUPPORTED (422)
 //   DocumentRequirementNotFoundError      -> DOCUMENT_REQUIREMENT_NOT_FOUND (404)
 //   DocumentRequirementAlreadySatisfiedError -> DOCUMENT_REQUIREMENT_ALREADY_SATISFIED (409)
 export class TemplateNotFoundError extends Error {
@@ -73,6 +76,34 @@ export class TemplateImmutableError extends Error {
   constructor(public readonly versionId: string) {
     super(`TemplateVersion ${versionId} is ACTIVE and immutable (DOC-2 R-2-3): edits require a new version`);
     this.name = 'TemplateImmutableError';
+  }
+}
+
+// DOC-TEMPLATE-ADMIN-RTR-1 — one-DRAFT invariant (§41): at most one open DRAFT
+// version per template. Creating a second returns the existing draft instead.
+export class TemplateDraftAlreadyExistsError extends Error {
+  constructor(public readonly templateId: string, public readonly draftVersionId: string) {
+    super(`DocumentTemplate ${templateId} already has an open DRAFT version (${draftVersionId}); edit it instead of creating another`);
+    this.name = 'TemplateDraftAlreadyExistsError';
+  }
+}
+
+// DOC-TEMPLATE-ADMIN-RTR-1 — preview-revision gate (§18): activation requires the
+// CURRENT draft content to have been previewed (content fingerprint match).
+export class TemplatePreviewRequiredError extends Error {
+  constructor(public readonly versionId: string) {
+    super(`TemplateVersion ${versionId} must be previewed at its current content before it can be activated`);
+    this.name = 'TemplatePreviewRequiredError';
+  }
+}
+
+// DOC-TEMPLATE-ADMIN-RTR-1 — closed binding validation (§14): draft content may
+// reference only governed bindings in the catalog. An unknown token is rejected at
+// save/activation, never silently stripped or rendered empty.
+export class TemplateBindingUnsupportedError extends Error {
+  constructor(public readonly bindingKey: string) {
+    super(`template content references an unsupported binding: {{${bindingKey}}}`);
+    this.name = 'TemplateBindingUnsupportedError';
   }
 }
 

@@ -68,7 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR, require_preview: false });
       return { templateId: tpl.id, v1: ver.id };
     }
 
@@ -99,7 +99,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const fakeTalent = {
         findById: async () => ({ first_name: 'Jordan', last_name: 'Lee', email1: 'jordan.lee@example.com' }),
       } as unknown as TalentRecordRepository;
-      binding = new RtrTemplateBindingService(fakeTalent);
+      // T2b: the 4 new resolver repos are unused by the talent.full_name default template.
+      binding = new RtrTemplateBindingService(fakeTalent, {} as never, {} as never, {} as never, {} as never);
       const fakeSignature = {
         createEnvelope: async (input: { documents: Array<{ document_revision_ref: string; source_sha256: string }> }) => {
           captured.documents = input.documents;
@@ -154,7 +155,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR, require_preview: false });
       expect(v2.id).not.toBe(v1);
 
       // send → consumes the existing frozen revision only.

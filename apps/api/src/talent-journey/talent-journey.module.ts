@@ -8,6 +8,7 @@ import { ClientSelectionModule } from '@aramo/client-selection';
 import { SubmittalModule } from '@aramo/submittal';
 import { DocumentsModule } from '@aramo/documents';
 
+import { DocumentReadinessModule } from '../rtr/document-readiness.module.js';
 import { OfferModule } from '../offer/offer.module.js';
 import { PlacementModule } from '../placement/placement.module.js';
 import { PreStartRequirementModule } from '../pre-start-requirement/pre-start-requirement.module.js';
@@ -35,6 +36,9 @@ import { TalentJourneyReadService } from './talent-journey-read.service.js';
     // §6.7 — exports DocumentsRepository; the composer reads the offer-letter Document.status
     // (write-back authoritative) for the opt-in offer_document signal. Read-only; no write model.
     DocumentsModule,
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§31-32) — exports DocumentReadinessGate; the composer
+    // reuses it to gate `mark_qualified` availability against the one RTR predicate.
+    DocumentReadinessModule,
   ],
   controllers: [TalentJourneyController],
   providers: [

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // vitest hoists vi.mock above the imports (keeps the import group contiguous).
@@ -85,15 +85,20 @@ describe('RtrPanel', () => {
     openSpy.mockRestore();
   });
 
-  it('E — Send transitions to Awaiting signature', async () => {
+  it('E — Send for signature opens the §2.7 modal; confirming sends and transitions to Awaiting', async () => {
     vi.mocked(getCurrentRtr)
       .mockResolvedValueOnce(current({ status: 'REQUESTED' }))
       .mockResolvedValue(current({ status: 'AWAITING_SIGNATURE' }));
     vi.mocked(sendRtr).mockResolvedValue({ document_id: 'doc-1', envelope_id: 'env-1', status: 'SENT' });
     renderPanel();
+    // The cell action opens the confirmation modal (no direct send).
     fireEvent.click(await screen.findByText('Send for signature'));
+    const modal = await screen.findByTestId('send-rtr-modal');
+    expect(within(modal).getByText('Send Right to Represent')).toBeInTheDocument();
+    // The modal's Send performs the actual send.
+    fireEvent.click(screen.getByTestId('send-rtr-send'));
+    await waitFor(() => expect(sendRtr).toHaveBeenCalledWith('doc-1', 't-1'));
     await waitFor(() => screen.getByText('Awaiting signature'));
-    expect(sendRtr).toHaveBeenCalledWith('doc-1', 't-1');
   });
 
   it('W1-C3 — AWAITING_SIGNATURE shows Send Reminder (document:execute); click reminds the SAME document + shows "Reminder sent"', async () => {
@@ -179,5 +184,37 @@ describe('RtrPanel', () => {
     );
     renderPanel();
     expect(await screen.findByText('Standard Right to Represent · v3')).toBeInTheDocument();
+  });
+
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§26) — template governance makes "no approved template"
+  // a real recruiter state. The panel refuses honestly and does NOT offer a useless
+  // retry (an admin must approve one first).
+  it('M — no approved RTR template is an honest, non-retryable refusal (admin must act)', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(null);
+    vi.mocked(requestRtr).mockRejectedValue(
+      Object.assign(new Error('not configured'), { code: 'RTR_TEMPLATE_NOT_CONFIGURED' }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByText('Request RTR'));
+    await waitFor(() => screen.getByRole('alert'));
+    expect(screen.getByRole('alert').textContent).toContain('has not approved a Right to Represent template');
+    expect(screen.queryByText('Try again')).toBeNull();
+  });
+
+  // §26 — a missing authoritative binding fails CLOSED (never substituted); fixing the
+  // requisition data can help, so this one stays retryable.
+  it('N — a missing binding fails closed INSIDE the send modal (no substitution; send disabled)', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(current({ status: 'REQUESTED' }));
+    vi.mocked(sendRtr).mockRejectedValue(
+      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING' }),
+    );
+    renderPanel();
+    fireEvent.click(await screen.findByText('Send for signature'));
+    const send = await screen.findByTestId('send-rtr-send');
+    fireEvent.click(send);
+    const missing = await screen.findByTestId('send-rtr-missing');
+    expect(missing.textContent).toContain('a required detail');
+    // Fail-closed: the modal stays open and Send is disabled (Aramo never substitutes).
+    expect(screen.getByTestId('send-rtr-send')).toBeDisabled();
   });
 });

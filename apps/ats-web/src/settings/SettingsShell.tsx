@@ -5,6 +5,7 @@ import {
   IconBrowser,
   IconBuilding,
   IconCard,
+  IconFile,
   IconForm,
   IconGlobe,
   IconHistory,
@@ -199,6 +200,24 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
     ],
   },
   {
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§5) — tenant document-template governance. Placed
+    // AFTER Recruiting, before Data (prototype IA). Right to Represent is the one
+    // tenant-configurable type this increment; others listed honestly. The NEW tag
+    // marks the freshly-live section. document_template:read/:manage gate it.
+    heading: 'Documents',
+    items: [
+      {
+        key: 'document-templates',
+        label: 'Document templates',
+        icon: <IconFile />,
+        to: '/admin/settings/document-templates',
+        match: '/admin/settings/document-templates',
+        status: 'live',
+        badge: { text: 'New', soon: false },
+      },
+    ],
+  },
+  {
     heading: 'Data',
     items: [
       {
@@ -208,7 +227,6 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         to: '/admin/settings/import',
         match: '/admin/settings/import',
         status: 'live',
-        badge: { text: 'New', soon: false },
       },
       {
         key: 'compliance',

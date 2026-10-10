@@ -76,6 +76,8 @@ import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-sto
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
 import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-intake-publisher.module.js';
 import { RtrModule } from './rtr/rtr.module.js';
+import { TemplateCapabilitiesModule } from './rtr/rtr-template-capabilities.module.js';
+import { RtrQualifiedTransitionGuardModule } from './rtr/rtr-qualified-transition-guard.module.js';
 import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
@@ -587,6 +589,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // DOC-5 (R-5-5) — the RTR orchestrator (request/prepare/send; first
     // SIGNATURE_PROVIDER_PORT consumer). Self-contained composition module.
     RtrModule,
+    // DOC-TEMPLATE-ADMIN-RTR-1 — @Global RTR template-content capability (catalog +
+    // validation + sample preview) behind the generic TEMPLATE_CAPABILITIES token.
+    TemplateCapabilitiesModule,
+    RtrQualifiedTransitionGuardModule,
     OfferDocumentModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
     // Indeed apply webhook can write the channel dedup-memory arrival. The

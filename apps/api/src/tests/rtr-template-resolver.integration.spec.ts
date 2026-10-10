@@ -72,7 +72,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: opts?.content ?? DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR, require_preview: false });
       return { templateId: tpl.id, versionId: ver.id };
     }
 
@@ -116,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR, require_preview: false });
       const resolved = await resolver.resolveActive({ tenant_id: tenant, requestId: randomUUID() });
       expect(resolved.template_version_id).toBe(v2.id);
       expect(resolved.version_number).toBe(2);
@@ -154,7 +154,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR, require_preview: false });
       await expectCode(
         resolver.resolveActive({ tenant_id: tenant, requestId: randomUUID() }),
         'RTR_TEMPLATE_NOT_CONFIGURED',

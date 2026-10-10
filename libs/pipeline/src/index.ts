@@ -6,6 +6,10 @@ export {
   type TalentRequisitionResumeRow,
 } from './lib/pipeline.repository.js';
 export {
+  QUALIFIED_TRANSITION_GUARD,
+  type QualifiedTransitionGuardPort,
+} from './lib/qualified-transition-guard.port.js';
+export {
   RESUME_EDITION_READER,
   type ResumeEditionReaderPort,
   type ResumeEditionSummary,

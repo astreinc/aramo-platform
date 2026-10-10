@@ -30,6 +30,8 @@ import {
 } from '@aramo/pre-start-requirement';
 import { DocumentsRepository } from '@aramo/documents';
 
+import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+
 import type {
   JourneyStageElement,
   JourneyStageName,
@@ -140,6 +142,9 @@ export class TalentJourneyReadService {
     private readonly placement: PlacementRepository,
     private readonly preStart: RequirementInstanceRepository,
     private readonly documents: DocumentsRepository,
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§31-32) — reuse the ONE RTR readiness predicate so the
+    // drawer's `mark_qualified` availability agrees with the write-path qualify gate.
+    private readonly rtrReadiness: DocumentReadinessGate,
     @Inject('TalentJourneyLogger') private readonly logger: AramoLogger,
   ) {}
 
@@ -333,8 +338,19 @@ export class TalentJourneyReadService {
         placement_state: sub_states.placement_state,
       }),
       actions,
-      // §14 — canonical recruiting next-action availability (domain-owned; FE renders).
-      recruiting_available_actions: deriveRecruitingAvailableActions(episode.status),
+      // §14 + DOC-TEMPLATE-ADMIN-RTR-1 §31-32 — canonical recruiting next-action
+      // availability (domain-owned; FE renders). `mark_qualified` is suppressed when the
+      // client policy requires an RTR for this requisition and no EXECUTED RTR exists for
+      // the exact (talent, requisition) — the SAME verdict the write-path qualify gate
+      // enforces, so the drawer never offers an action the backend would refuse (422).
+      // Computed only for `qualifying` (the one status that offers the action) to keep
+      // the hot read lean (D-ARCH-1).
+      recruiting_available_actions: deriveRecruitingAvailableActions(
+        episode.status,
+        episode.status === 'qualifying'
+          ? (await this.rtrReadiness.assess({ tenant_id: args.tenant_id, talent_id: talent_record_id, requisition_id })).satisfied
+          : true,
+      ),
       offer_document: offerDocument,
       pre_start: preStart,
       placement,
@@ -349,6 +365,10 @@ export class TalentJourneyReadService {
 // Only actions actually supported by the workflow appear (no generic action platform).
 function deriveRecruitingAvailableActions(
   status: PipelineView['status'],
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§31-32) — whether the RTR precondition for `qualified` is
+  // met (true when no RTR is required OR an EXECUTED RTR exists). When false, the
+  // `mark_qualified` action is withheld so the drawer mirrors the write-path gate.
+  rtrReadyForQualify: boolean,
 ): RecruitingAvailableAction[] {
   switch (status) {
     case 'no_contact':
@@ -358,7 +378,7 @@ function deriveRecruitingAvailableActions(
     case 'talent_responded':
       return ['start_qualifying'];
     case 'qualifying':
-      return ['mark_qualified'];
+      return rtrReadyForQualify ? ['mark_qualified'] : [];
     default:
       return [];
   }

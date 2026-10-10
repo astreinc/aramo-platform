@@ -14,6 +14,13 @@ import {
 import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
+// DOC-TEMPLATE-ADMIN-RTR-1 T2b — authoritative sources for the expanded RTR binding
+// catalog (client.name / requisition.* / recruiting_company.name / recruiter.display_name).
+// IdentityCoreModule is the SHARED read surface (exports IdentityRepository +
+// TenantRepository) — NOT forRoot-only IdentityModule (apps/api-root exclusive).
+import { RequisitionModule, RequisitionRepository } from '@aramo/requisition';
+import { CompanyModule, CompanyRepository } from '@aramo/company';
+import { IdentityCoreModule, IdentityRepository, TenantRepository } from '@aramo/identity';
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
@@ -41,7 +48,7 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
-  imports: [ObjectStorageModule, TalentRecordModule],
+  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule],
   controllers: [RtrController],
   providers: [
     { provide: RTR_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
@@ -81,9 +88,15 @@ const RTR_SIGNING = 'RTR_SIGNING';
     },
     {
       provide: RtrTemplateBindingService,
-      useFactory: (talent: TalentRecordRepository): RtrTemplateBindingService =>
-        new RtrTemplateBindingService(talent),
-      inject: [TalentRecordRepository],
+      useFactory: (
+        talent: TalentRecordRepository,
+        requisitions: RequisitionRepository,
+        companies: CompanyRepository,
+        tenants: TenantRepository,
+        identity: IdentityRepository,
+      ): RtrTemplateBindingService =>
+        new RtrTemplateBindingService(talent, requisitions, companies, tenants, identity),
+      inject: [TalentRecordRepository, RequisitionRepository, CompanyRepository, TenantRepository, IdentityRepository],
     },
     {
       provide: RTR_SIGNING,

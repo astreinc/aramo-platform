@@ -90,10 +90,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_by: ACTOR,
       });
       const v1 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
-      const v2 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
       expect(v1.version_number).toBe(1);
+      // DOC-TEMPLATE-ADMIN-RTR-1 — one DRAFT per template (§41): v1 must leave DRAFT
+      // before the next version can be opened. require_preview:false keeps this DOC-2
+      // activation-mechanics test off the new §18 preview gate.
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v1.id, actor_id: ACTOR, require_preview: false });
+      const v2 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
       expect(v2.version_number).toBe(2);
-      const activated = await templates.activateVersion({ tenant_id: TENANT, version_id: v2.id, actor_id: ACTOR });
+      const activated = await templates.activateVersion({ tenant_id: TENANT, version_id: v2.id, actor_id: ACTOR, require_preview: false });
       expect(activated.status).toBe('ACTIVE');
       const tmpl = await templates.getTemplate(TENANT, t.id);
       expect(tmpl.current_version_id).toBe(v2.id);
@@ -106,7 +110,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const v = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
       // DRAFT: field add allowed.
       await templates.addField({ tenant_id: TENANT, template_version_id: v.id, field_key: 'name', field_type: 'TEXT', ordinal: 1 });
-      await templates.activateVersion({ tenant_id: TENANT, version_id: v.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v.id, actor_id: ACTOR, require_preview: false });
       // ACTIVE: field add rejected.
       await expect(
         templates.addField({ tenant_id: TENANT, template_version_id: v.id, field_key: 'sig', field_type: 'SIGNATURE', ordinal: 2 }),
