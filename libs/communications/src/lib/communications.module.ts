@@ -4,6 +4,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { CommunicationsRepository } from './communications.repository.js';
 import { CommunicationsService } from './communications.service.js';
 import { EmailTemplateRepository } from './email-template.repository.js';
+import { MeetingSchedulingRepository } from './meeting-scheduling.repository.js';
 import { VoiceProviderRegistry } from './provider/voice-provider.registry.js';
 
 // CommunicationsModule — COMM-V1 provider-neutral domain substrate (COMM-B1).
@@ -19,8 +20,15 @@ import { VoiceProviderRegistry } from './provider/voice-provider.registry.js';
     CommunicationsRepository,
     CommunicationsService,
     EmailTemplateRepository,
+    MeetingSchedulingRepository,
     VoiceProviderRegistry,
   ],
-  exports: [CommunicationsService, CommunicationsRepository, EmailTemplateRepository, VoiceProviderRegistry],
+  exports: [
+    CommunicationsService,
+    CommunicationsRepository,
+    EmailTemplateRepository,
+    MeetingSchedulingRepository,
+    VoiceProviderRegistry,
+  ],
 })
 export class CommunicationsModule {}

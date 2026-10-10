@@ -11,6 +11,7 @@ import { TalentRecordModule } from '@aramo/talent-record';
 import {
   DELEGATED_TOKEN_STORE,
   DelegatedAuthorizationService,
+  MICROSOFT_CALENDAR_PORT,
   MICROSOFT_GRAPH_PORT,
   MICROSOFT_OAUTH_PORT,
   PROVIDER_IDENTITY_STORE,
@@ -33,6 +34,8 @@ import { MicrosoftCallbackController } from './microsoft-callback.controller.js'
 import { MicrosoftConfigResolver } from './microsoft-config.resolver.js';
 import { MicrosoftEmailService } from './microsoft-email.service.js';
 import { MicrosoftMeetingService } from './microsoft-meeting.service.js';
+import { MicrosoftSchedulingService } from './microsoft-scheduling.service.js';
+import { MicrosoftCalendarHttpAdapter } from './microsoft-calendar-http.adapter.js';
 import { MicrosoftGraphHttpAdapter } from './microsoft-graph-http.adapter.js';
 import { MicrosoftOAuthHttpAdapter } from './microsoft-oauth-http.adapter.js';
 import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.js';
@@ -90,6 +93,10 @@ import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.
     MicrosoftAuthorizationOrchestrator,
     MicrosoftEmailService,
     MicrosoftMeetingService,
+    // A1 (M365-SCHED-1) — Outlook calendar adapter (default retry policy) + the
+    // opt-in scheduling orchestration service.
+    { provide: MICROSOFT_CALENDAR_PORT, useFactory: () => new MicrosoftCalendarHttpAdapter() },
+    MicrosoftSchedulingService,
   ],
 })
 export class MicrosoftModule {}
