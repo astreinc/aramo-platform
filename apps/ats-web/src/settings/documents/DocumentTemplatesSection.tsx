@@ -1,127 +1,157 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { hasScope, IconFile, useSession, type Session } from '@aramo/fe-foundation';
+import { Button, hasScope, useSession, type Session } from '@aramo/fe-foundation';
 
-import { Button, Card } from '../../ui';
-import { SettingsSection, SettingCardHead, StatChip, SettingHint } from '../components';
+import {
+  listDocumentTemplates,
+  listTemplateVersions,
+  DOC_TEMPLATE_READ_SCOPE,
+  RIGHT_TO_REPRESENT_TYPE_ID,
+  type TemplateVersionView,
+} from './document-templates-api';
+import { DocIcon, fmtDate } from './dt-ui';
+import './document-templates.css';
 
-import { DOC_TEMPLATE_READ_SCOPE } from './document-templates-api';
-
-// DOC-TEMPLATE-ADMIN-RTR-1 (§6) — Settings → Documents → Document templates CATALOG.
-// A tenant admin governs the content of the documents the workspace sends. In this
-// increment exactly ONE document type is tenant-configurable: Right to Represent.
-// Every other governed type is listed HONESTLY as "Not configurable yet" — a real
-// product surface, never a dead knob and never a fake control (the no-dead-knobs
-// invariant). The backend is the boundary: RBAC and the lifecycle are server-owned;
-// this page only hides what the viewer cannot do.
+// DOC-TEMPLATE-ADMIN-RTR-1 (§6) — Settings → Documents → Document templates CATALOG,
+// styled to the approved prototype: a single compact table card (not a card stack).
+// Exactly one document type is tenant-configurable this increment — Right to Represent
+// (outline Manage). Every other governed type is listed honestly as "Not configurable
+// yet" (muted row, no action) — no dead knobs. The backend is the boundary.
 
 const READ_SCOPE = DOC_TEMPLATE_READ_SCOPE;
+const DETAIL_ROUTE = '/admin/settings/document-templates/rtr';
 
-interface CatalogEntry {
+interface Row {
   readonly key: string;
-  readonly label: string;
-  readonly summary: string;
+  readonly name: string;
+  readonly sub: string;
   readonly configurable: boolean;
-  /** Detail route (under /admin) for a configurable type. */
-  readonly to?: string;
 }
 
-// The governed document types known to the product (seeded DocumentTypes). Only RTR
-// is tenant-template configurable this increment; the rest are honest placeholders.
-const CATALOG: readonly CatalogEntry[] = [
-  {
-    key: 'RIGHT_TO_REPRESENT',
-    label: 'Right to Represent',
-    summary:
-      'The representation agreement a recruiter sends to talent before submitting them to a client. Tenant-governed content with a safe field catalog.',
-    configurable: true,
-    to: '/admin/settings/document-templates/rtr',
-  },
-  {
-    key: 'OFFER_LETTER',
-    label: 'Offer Letter',
-    summary: 'The offer document issued to talent. Configuration arrives in a later release.',
-    configurable: false,
-  },
-  {
-    key: 'CLIENT_NDA',
-    label: 'Client NDA',
-    summary: 'A non-disclosure agreement bound to a client engagement.',
-    configurable: false,
-  },
-  {
-    key: 'BACKGROUND_AUTHORIZATION',
-    label: 'Background Authorization',
-    summary: 'Talent authorization to run a background check.',
-    configurable: false,
-  },
-  {
-    key: 'I9',
-    label: 'I-9 (Employment Eligibility Verification)',
-    summary: 'Employment eligibility verification paperwork.',
-    configurable: false,
-  },
+const ROWS: readonly Row[] = [
+  { key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', sub: 'Sent from Requisition → Talent before client submittal', configurable: true },
+  { key: 'OFFER_LETTER', name: 'Offer Letter', sub: 'E-sign flow exists · not yet driven by tenant templates', configurable: false },
+  { key: 'CLIENT_NDA', name: 'Client NDA', sub: 'Pre-start requirement exists · template signing not built yet', configurable: false },
+  { key: 'BACKGROUND_AUTHORIZATION', name: 'Background Authorization', sub: 'Pre-start requirement exists · template signing not built yet', configurable: false },
+  { key: 'I9', name: 'I-9', sub: 'Pre-start requirement exists · template signing not built yet', configurable: false },
 ];
+
+interface RtrFacts {
+  readonly version: number | null;
+  readonly approved: string;
+}
 
 export function DocumentTemplatesSection({ sessionOverride }: { readonly sessionOverride?: Session } = {}) {
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const canRead = session != null && hasScope(session, READ_SCOPE);
   const navigate = useNavigate();
+  const [rtr, setRtr] = useState<RtrFacts>({ version: null, approved: '—' });
 
-  const description = (
-    <>
-      Govern the content of the documents your workspace sends. Recruiters never choose a template —
-      they send the current approved version; you decide what that version says here.
-    </>
-  );
+  const load = useCallback(async () => {
+    try {
+      const templates = await listDocumentTemplates();
+      const t = templates.find((x) => x.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
+      if (t == null) return;
+      const versions = await listTemplateVersions(t.id);
+      const active = versions.find((v: TemplateVersionView) => v.id === t.current_version_id) ?? null;
+      if (active != null) setRtr({ version: active.version_number, approved: fmtDate(active.activated_at) });
+    } catch {
+      /* the catalog still renders; the RTR facts are best-effort decoration */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!canRead) return;
+    void load();
+  }, [canRead, load]);
 
   if (!canRead) {
     return (
-      <SettingsSection title="Document templates" description={description}>
-        <Card>
-          <SettingHint>
-            You don’t have permission to manage document templates. Ask a workspace admin for the
-            document-template permission.
-          </SettingHint>
-        </Card>
-      </SettingsSection>
+      <div className="dt-root">
+        <div className="dt-noaccess">
+          <div className="dt-noaccess__t">Document templates are managed by your Tenant Admins</div>
+          <div className="dt-noaccess__b">
+            When you send a Right to Represent, Aramo uses the version your organization approved. You
+            don’t need to pick or edit a template.
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <SettingsSection title="Document templates" description={description}>
-      {CATALOG.map((entry) => (
-        <Card key={entry.key}>
-          <SettingCardHead icon={<IconFile />} title={entry.label} sub={entry.summary} />
-          <div className="set-row">
-            <div className="set-row__l">
-              {entry.configurable ? (
-                <StatChip tone="brand" dot>
-                  Configurable
-                </StatChip>
-              ) : (
-                <StatChip tone="muted" dot>
-                  Not configurable yet
-                </StatChip>
-              )}
+    <div className="dt-root">
+      <div className="dt-wrap">
+        <h1 className="dt-h1">Document templates</h1>
+        <p className="dt-lede">
+          Manage the approved document templates your recruiting and onboarding workflows use.
+          Recruiters never choose a template; workflows always use the active approved version.
+        </p>
+        <div className="dt-tablecard">
+          <div className="dt-table">
+            <div className="dt-grid dt-thead">
+              <span>DOCUMENT</span>
+              <span>STATUS</span>
+              <span>APPROVED</span>
+              <span>SCOPE</span>
+              <span>LAST APPROVED</span>
+              <span className="dt-th-action">ACTION</span>
             </div>
-            <div className="set-row__r">
-              {entry.configurable && entry.to != null ? (
-                <Button
-                  onClick={() => navigate(entry.to as string)}
-                  data-testid={`doc-template-manage-${entry.key}`}
-                >
-                  Manage
-                </Button>
-              ) : (
-                <Button variant="ghost" disabled>
-                  Not configurable yet
-                </Button>
-              )}
-            </div>
+            {ROWS.map((r) => (
+              <div
+                key={r.key}
+                className={`dt-grid dt-row${r.configurable ? '' : ' dt-row--muted'}`}
+                data-testid={`doc-template-row-${r.key}`}
+              >
+                <span className="dt-doc">
+                  <span className={`dt-ic ${r.configurable ? 'dt-ic--rtr' : 'dt-ic--muted'}`}>
+                    <DocIcon />
+                  </span>
+                  <span style={{ minWidth: 0 }}>
+                    <span className={`dt-name${r.configurable ? '' : ' dt-name--muted'}`}>{r.name}</span>
+                    <span className="dt-sub">{r.sub}</span>
+                  </span>
+                </span>
+                <span>
+                  {r.configurable ? (
+                    <span className="dt-pill dt-pill--active"><span className="dt-pill__dot" />Active</span>
+                  ) : (
+                    <span className="dt-pill dt-pill--muted"><span className="dt-pill__dot" />Not configurable yet</span>
+                  )}
+                </span>
+                <span className={`dt-cell dt-cell--v ${r.configurable ? 'dt-cell--on' : 'dt-cell--muted'}`}>
+                  {r.configurable ? (rtr.version != null ? `v${rtr.version}` : '—') : '—'}
+                </span>
+                <span className={`dt-cell ${r.configurable ? 'dt-cell--on' : 'dt-cell--muted'}`}>
+                  {r.configurable ? 'Tenant default' : '—'}
+                </span>
+                <span className={`dt-cell ${r.configurable ? 'dt-cell--on' : 'dt-cell--muted'}`}>
+                  {r.configurable ? rtr.approved : '—'}
+                </span>
+                <span className="dt-action">
+                  {r.configurable ? (
+                    <Button
+                      unstyled
+                      className="dt-btn dt-btn--outline"
+                      onClick={() => navigate(DETAIL_ROUTE)}
+                      data-testid={`doc-template-manage-${r.key}`}
+                    >
+                      Manage
+                    </Button>
+                  ) : (
+                    <span className="dt-dash">—</span>
+                  )}
+                </span>
+              </div>
+            ))}
           </div>
-        </Card>
-      ))}
-    </SettingsSection>
+        </div>
+        <div className="dt-foot">
+          Documents marked “Not configurable yet” can't be edited here until their signing flow uses
+          tenant templates.
+        </div>
+      </div>
+    </div>
   );
 }

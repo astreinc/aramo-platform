@@ -84,10 +84,12 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.3px;
-  color: var(--brand);
-  background: var(--brand-tint);
-  border-radius: 20px;
-  padding: 1px 7px;
+  /* DOC-TEMPLATE-ADMIN-RTR-1 — the live "New" tag is white-on-brand (prototype).
+     The "Soon" variant below overrides to the muted seam styling. */
+  color: #fff;
+  background: var(--brand);
+  border-radius: 10px;
+  padding: 1.5px 7px;
 }
 .set-navbtn__badge--soon {
   color: var(--faint);

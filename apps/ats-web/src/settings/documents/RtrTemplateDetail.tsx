@@ -1,232 +1,306 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { hasScope, IconFile, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Button, hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
-import { Button, Card, EmptyState, ErrorState, LoadingState, safeErrorMessage } from '../../ui';
-import { SettingsSection, SettingCardHead, StatChip, SettingHint } from '../components';
+import { resolveUserNames } from '../../users/users-api';
 
 import {
   createDraftFromActive,
+  listAllowedBindings,
   listDocumentTemplates,
   listTemplateVersions,
   DOC_TEMPLATE_MANAGE_SCOPE,
   DOC_TEMPLATE_READ_SCOPE,
   RIGHT_TO_REPRESENT_TYPE_ID,
   type DocumentTemplateView,
-  type TemplateStatus,
   type TemplateVersionView,
 } from './document-templates-api';
+import {
+  bindingMapFrom,
+  emptyBindingMap,
+  fmtDate,
+  parseContent,
+  CheckIcon,
+  DocIconSmall,
+  LockIcon,
+  Segments,
+  type BindingMap,
+} from './dt-ui';
+import { PreviewModal, type PreviewContent } from './dt-modals';
+import './document-templates.css';
 
-// DOC-TEMPLATE-ADMIN-RTR-1 (§7) — the Right-to-Represent template detail. Shows the
-// template header + lifecycle status, the current approved (ACTIVE) version, the full
-// version history (DRAFT/ACTIVE/RETIRED — historical versions are pinned forever, §34),
-// and the admin actions. One DRAFT at a time (§41): the action is either "Edit draft"
-// (an open DRAFT exists) or "Create new draft" (copies the current ACTIVE content). The
-// draft editor (name/title/blocks + preview + approve) is the child /draft route (§11).
+// DOC-TEMPLATE-ADMIN-RTR-1 (§7) — the Right-to-Represent detail, styled to the approved
+// prototype: breadcrumb, header card with the 4-fact meta grid + actions, and a
+// two-column grid (Versions · Where it's used + Approved content). Status vocabulary is
+// Draft / Active / Retired — never "Approved" as a status. Historical versions are
+// pinned; approved versions are read-only (edits go to a new draft).
 
 const DRAFT_ROUTE = '/admin/settings/document-templates/rtr/draft';
-
-function statusTone(status: TemplateStatus): 'ok' | 'brand' | 'muted' {
-  if (status === 'ACTIVE') return 'ok';
-  if (status === 'DRAFT') return 'brand';
-  return 'muted';
-}
-
-function fmt(iso: string | null): string {
-  if (iso == null) return '—';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
-}
+const LIST_ROUTE = '/admin/settings/document-templates';
 
 type LoadState =
   | { status: 'loading' }
-  | { status: 'ready'; template: DocumentTemplateView; versions: readonly TemplateVersionView[] }
   | { status: 'empty' }
-  | { status: 'error'; message: string };
+  | { status: 'error'; message: string }
+  | {
+      status: 'ready';
+      template: DocumentTemplateView;
+      versions: readonly TemplateVersionView[];
+      map: BindingMap;
+      names: Record<string, string>;
+    };
 
-interface Props {
-  readonly sessionOverride?: Session;
-  readonly listTemplatesFn?: typeof listDocumentTemplates;
-  readonly listVersionsFn?: typeof listTemplateVersions;
-  readonly createDraftFn?: typeof createDraftFromActive;
+function pillClass(status: string): string {
+  if (status === 'ACTIVE') return 'dt-pill--active';
+  if (status === 'DRAFT') return 'dt-pill--draft';
+  return 'dt-pill--retired';
+}
+function pillLabel(status: string): string {
+  return status === 'ACTIVE' ? 'Active' : status === 'DRAFT' ? 'Draft' : 'Retired';
 }
 
 export function RtrTemplateDetail({
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
+  listBindingsFn = listAllowedBindings,
+  resolveNamesFn = resolveUserNames,
   createDraftFn = createDraftFromActive,
-}: Props = {}) {
+}: {
+  readonly sessionOverride?: Session;
+  readonly listTemplatesFn?: typeof listDocumentTemplates;
+  readonly listVersionsFn?: typeof listTemplateVersions;
+  readonly listBindingsFn?: typeof listAllowedBindings;
+  readonly resolveNamesFn?: typeof resolveUserNames;
+  readonly createDraftFn?: typeof createDraftFromActive;
+} = {}) {
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const canRead = session != null && hasScope(session, DOC_TEMPLATE_READ_SCOPE);
   const canManage = session != null && hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
   const toast = useToast();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const justActivated = params.get('activated') != null;
 
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
   const [busy, setBusy] = useState(false);
+  const [allVers, setAllVers] = useState(false);
+  const [preview, setPreview] = useState<PreviewContent | null>(null);
 
   const refetch = useCallback(async () => {
     setLoad({ status: 'loading' });
     try {
       const templates = await listTemplatesFn();
       const rtr = templates.find((t) => t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
-      if (rtr == null) {
-        setLoad({ status: 'empty' });
-        return;
-      }
-      const versions = await listVersionsFn(rtr.id);
-      setLoad({ status: 'ready', template: rtr, versions });
+      if (rtr == null) { setLoad({ status: 'empty' }); return; }
+      const [versions, bindings] = await Promise.all([listVersionsFn(rtr.id), listBindingsFn(rtr.id)]);
+      const ids = [...new Set(versions.flatMap((v) => [v.activated_by, v.created_by]).filter((x): x is string => x != null))];
+      let names: Record<string, string> = {};
+      try { names = await resolveNamesFn(ids); } catch { names = {}; }
+      setLoad({ status: 'ready', template: rtr, versions, map: bindingMapFrom(bindings), names });
     } catch (err) {
-      setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the RTR template.') });
+      setLoad({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load the RTR template.' });
     }
-  }, [listTemplatesFn, listVersionsFn]);
+  }, [listTemplatesFn, listVersionsFn, listBindingsFn, resolveNamesFn]);
 
-  useEffect(() => {
-    if (!canRead) return;
-    void refetch();
-  }, [canRead, refetch]);
-
-  const description = (
-    <>
-      The representation agreement recruiters send before submitting talent to a client. You govern
-      the content; recruiters always send the current approved version.
-    </>
-  );
+  useEffect(() => { if (canRead) void refetch(); }, [canRead, refetch]);
 
   if (!canRead) {
     return (
-      <SettingsSection title="Right to Represent" description={description}>
-        <Card>
-          <SettingHint>
-            You don’t have permission to manage document templates. Ask a workspace admin for the
-            document-template permission.
-          </SettingHint>
-        </Card>
-      </SettingsSection>
+      <div className="dt-root">
+        <div className="dt-noaccess">
+          <div className="dt-noaccess__t">Document templates are managed by your Tenant Admins</div>
+          <div className="dt-noaccess__b">
+            When you send a Right to Represent, Aramo uses the version your organization approved. You
+            don’t need to pick or edit a template.
+          </div>
+        </div>
+      </div>
     );
   }
 
-  const backLink = (
-    <Link to="/admin/settings/document-templates" className="set-navbtn" data-testid="rtr-detail-back">
-      ← All document templates
-    </Link>
+  const crumb = (
+    <div className="dt-crumb">
+      <a onClick={() => navigate(LIST_ROUTE)} data-testid="rtr-detail-back">Document templates</a>
+      <span>/</span>
+      <span className="dt-crumb__cur">Right to Represent</span>
+    </div>
   );
 
-  async function openDraft(template: DocumentTemplateView, existingDraft: TemplateVersionView | undefined) {
-    // An open DRAFT → edit it. Otherwise create vN+1 from the current ACTIVE content
-    // (the backend copies it; the one-DRAFT invariant is server-enforced).
-    if (existingDraft != null) {
-      navigate(DRAFT_ROUTE);
-      return;
-    }
+  async function startDraft(template: DocumentTemplateView, draft: TemplateVersionView | undefined) {
+    if (draft != null) { navigate(DRAFT_ROUTE); return; }
     setBusy(true);
     try {
       await createDraftFn(template.id);
       navigate(DRAFT_ROUTE);
     } catch (err) {
-      toast.show(safeErrorMessage(err, 'Could not start a new draft. Please try again.'));
+      toast.show(err instanceof Error ? err.message : 'Could not start a new draft.');
       setBusy(false);
     }
   }
 
   return (
-    <SettingsSection title="Right to Represent" description={description} actions={backLink}>
-      {load.status === 'loading' ? <LoadingState /> : null}
-      {load.status === 'error' ? <ErrorState message={load.message} onRetry={() => void refetch()} /> : null}
+    <div className="dt-root">
+      {load.status === 'loading' ? <div className="dt-wrap">{crumb}<p className="dt-note" style={{ marginTop: 16 }}>Loading…</p></div> : null}
+      {load.status === 'error' ? <div className="dt-wrap">{crumb}<p className="dt-note" style={{ marginTop: 16, color: '#B3402A' }}>{load.message}</p></div> : null}
       {load.status === 'empty' ? (
-        <Card>
-          <EmptyState message="No Right to Represent template exists for this workspace yet." />
-          <SettingHint>
-            A workspace admin creates the first version from the draft editor. Until an approved
-            version exists, recruiters cannot send an RTR.
-          </SettingHint>
-        </Card>
+        <div className="dt-wrap dt-col">
+          {crumb}
+          <div className="dt-card dt-pad">
+            <div className="dt-cardtitle">No Right to Represent template yet</div>
+            <div className="dt-note">A workspace admin creates the first version from the draft editor. Until an approved version exists, recruiters cannot send an RTR.</div>
+          </div>
+        </div>
       ) : null}
 
       {load.status === 'ready'
         ? (() => {
-            const { template, versions } = load;
+            const { template, versions, map, names } = load;
+            const nameOf = (id: string | null): string => (id != null ? names[id] ?? '' : '');
             const draft = versions.find((v) => v.status === 'DRAFT');
-            const active = versions.find((v) => v.id === template.current_version_id);
-            // Newest first for the history table.
-            const history = [...versions].sort((a, b) => b.version_number - a.version_number);
-            return (
-              <>
-                <Card>
-                  <SettingCardHead
-                    icon={<IconFile />}
-                    title={template.name}
-                    sub="Tenant-governed · recruiters send the current approved version"
-                  />
-                  <div className="set-row">
-                    <div className="set-row__l">
-                      {active != null ? (
-                        <StatChip tone="ok" dot>
-                          Approved · v{active.version_number}
-                        </StatChip>
-                      ) : (
-                        <StatChip tone="muted" dot>
-                          No approved version yet
-                        </StatChip>
-                      )}
-                      {draft != null ? (
-                        <StatChip tone="brand" dot>
-                          Draft in progress · v{draft.version_number}
-                        </StatChip>
-                      ) : null}
-                    </div>
-                    <div className="set-row__r">
-                      {canManage ? (
-                        <Button
-                          onClick={() => void openDraft(template, draft)}
-                          disabled={busy}
-                          data-testid="rtr-detail-draft"
-                        >
-                          {draft != null ? 'Edit draft' : 'Create new draft'}
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                  {!canManage ? (
-                    <SettingHint>You can view the RTR template but not change it.</SettingHint>
-                  ) : null}
-                </Card>
+            const active = versions.find((v) => v.id === template.current_version_id) ?? versions.find((v) => v.status === 'ACTIVE');
+            const nonDraft = versions.filter((v) => v.status !== 'DRAFT').sort((a, b) => b.version_number - a.version_number);
+            const verAll = (draft != null ? [draft] : []).concat(nonDraft);
+            const shown = allVers || verAll.length <= 4 ? verAll : verAll.slice(0, 3);
+            const hasMore = verAll.length > 4;
+            const activeContent = active != null ? parseContent(active.field_schema, map) : { title: '', paras: [] as string[] };
+            const activeLabel = active != null ? `v${active.version_number}` : '—';
+            const topRetired = nonDraft.find((v) => v.status === 'RETIRED');
 
-                <Card>
-                  <SettingCardHead title="Version history" sub="Historical versions are kept exactly as approved" />
-                  <div className="rc-tablewrap">
-                  <table className="rc-table" data-testid="rtr-version-history">
-                    <thead>
-                      <tr>
-                        <th>Version</th>
-                        <th>Status</th>
-                        <th>Created</th>
-                        <th>Approved on</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((v) => (
-                        <tr key={v.id} data-testid={`rtr-version-${v.version_number}`}>
-                          <td>v{v.version_number}</td>
-                          <td>
-                            <StatChip tone={statusTone(v.status)} dot>
-                              {v.status === 'ACTIVE' ? 'Approved' : v.status === 'DRAFT' ? 'Draft' : 'Retired'}
-                            </StatChip>
-                          </td>
-                          <td>{fmt(v.created_at)}</td>
-                          <td>{fmt(v.activated_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            const whenOf = (v: TemplateVersionView): string => {
+              if (v.status === 'DRAFT') return `Draft · based on v${active?.version_number ?? '—'}`;
+              if (v.activated_at != null) {
+                const by = nameOf(v.activated_by);
+                return `Approved ${fmtDate(v.activated_at)}${by !== '' ? ` · ${by}` : ''}`;
+              }
+              return `Initial system version · ${fmtDate(v.created_at)}`;
+            };
+            const openPreview = (v: TemplateVersionView) => {
+              const c = parseContent(v.field_schema, map);
+              setPreview({ label: `${v.status === 'DRAFT' ? 'Draft ' : ''}v${v.version_number} · ${template.name}${v.status !== 'DRAFT' ? ` · ${pillLabel(v.status)}` : ''}`, title: c.title, paras: c.paras });
+            };
+
+            return (
+              <div className="dt-wrap dt-col">
+                {crumb}
+                {justActivated && active != null ? (
+                  <div className="dt-banner" data-testid="rtr-activated-banner">
+                    <CheckIcon stroke="currentColor" />
+                    <span>
+                      <b>{activeLabel} is now active.</b> Every new RTR uses it from now on.{' '}
+                      {topRetired != null ? `v${topRetired.version_number} is retired. ` : ''}
+                      RTRs that were already sent keep the version they were created from.
+                    </span>
                   </div>
-                </Card>
-              </>
+                ) : null}
+
+                <div className="dt-card dt-headcard">
+                  <div className="dt-headcard__main">
+                    <div className="dt-titlerow">
+                      <h1>Right to Represent</h1>
+                      {active != null ? (
+                        <span className="dt-pill dt-pill--active"><span className="dt-pill__dot" />Active</span>
+                      ) : (
+                        <span className="dt-pill dt-pill--muted"><span className="dt-pill__dot" />No approved version</span>
+                      )}
+                    </div>
+                    <div className="dt-subname">{template.name}</div>
+                    <div className="dt-meta">
+                      <div><div className="dt-meta__l">Scope</div><div className="dt-meta__v">Tenant default</div></div>
+                      <div><div className="dt-meta__l">Current approved version</div><div className="dt-meta__v">{activeLabel}</div></div>
+                      <div><div className="dt-meta__l">Approved</div><div className="dt-meta__v">{active != null ? fmtDate(active.activated_at) : '—'}</div></div>
+                      <div><div className="dt-meta__l">Approved by</div><div className="dt-meta__v">{active != null && nameOf(active.activated_by) !== '' ? nameOf(active.activated_by) : '—'}</div></div>
+                    </div>
+                  </div>
+                  <div className="dt-headcard__actions">
+                    {active != null ? (
+                      <Button unstyled className="dt-btn dt-btn--neutral dt-btn--lg" onClick={() => openPreview(active)} data-testid="rtr-preview-active">
+                        Preview approved version
+                      </Button>
+                    ) : null}
+                    {canManage ? (
+                      <Button unstyled className="dt-btn dt-btn--primary dt-btn--lg" onClick={() => void startDraft(template, draft)} disabled={busy} data-testid="rtr-detail-draft">
+                        {draft != null ? `Continue draft v${draft.version_number}` : 'Create new version'}
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="dt-two">
+                  <div className="dt-card dt-card--clip" data-testid="rtr-version-history">
+                    <div className="dt-verhead">
+                      <span className="dt-verhead__t">Versions</span>
+                      <span className="dt-verhead__h">Approved versions can't be edited. Changes go into a new draft.</span>
+                    </div>
+                    {shown.map((v) => (
+                      <div key={v.id} className={`dt-verrow${v.status === 'DRAFT' ? ' dt-verrow--draft' : ''}`} data-testid={`rtr-version-${v.version_number}`}>
+                        <span className={`dt-ver__n${v.status === 'RETIRED' ? ' dt-ver__n--retired' : ''}`}>v{v.version_number}</span>
+                        <span>
+                          <span className={`dt-pill ${pillClass(v.status)}`} style={{ fontSize: '10.5px', padding: '2px 9px' }}>
+                            <span className="dt-pill__dot" />{pillLabel(v.status)}
+                          </span>
+                        </span>
+                        <span className="dt-ver__when">{whenOf(v)}</span>
+                        <span className="dt-ver__acts">
+                          {v.status === 'DRAFT' ? (
+                            <Button unstyled className="dt-link" onClick={() => navigate(DRAFT_ROUTE)}>Continue editing</Button>
+                          ) : (
+                            <Button unstyled className="dt-link" onClick={() => openPreview(v)}>View</Button>
+                          )}
+                          <Button unstyled className="dt-link" onClick={() => openPreview(v)}>Preview</Button>
+                        </span>
+                      </div>
+                    ))}
+                    {hasMore ? (
+                      <Button unstyled className="dt-vermore" onClick={() => setAllVers((s) => !s)}>
+                        {allVers ? 'Show fewer' : `Show all ${verAll.length} versions`}
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <div className="dt-two__right">
+                    <div className="dt-card dt-pad">
+                      <div className="dt-cardtitle">Where it's used</div>
+                      <div className="dt-used__body">
+                        Requisition → Talent → <b>Send RTR</b>. Recruiters see which version is being sent but can't choose or edit it:
+                      </div>
+                      <div className="dt-provbox">
+                        <DocIconSmall />
+                        <span style={{ minWidth: 0 }}>
+                          <span className="dt-prov__name">{template.name} · {activeLabel}</span>
+                          <span className="dt-prov__by">Approved by your organization</span>
+                        </span>
+                        <LockIcon style={{ marginLeft: 'auto' }} />
+                      </div>
+                      <div className="dt-note">Scope: tenant default. Client-specific document templates may be supported later.</div>
+                    </div>
+                    {active != null ? (
+                      <div className="dt-card dt-pad">
+                        <div className="dt-contenthead">
+                          <span className="dt-cardtitle" style={{ marginBottom: 0 }}>Approved content</span>
+                          <span className="dt-verhead__h">{activeLabel} · read-only</span>
+                        </div>
+                        <div className="dt-doctitle">{activeContent.title}</div>
+                        {activeContent.paras.filter((p) => p.trim() !== '').map((p, i) => (
+                          <p className="dt-para" key={i}><Segments text={p} map={map} /></p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             );
           })()
         : null}
-    </SettingsSection>
+
+      {preview != null ? (
+        <PreviewModal
+          content={preview}
+          map={load.status === 'ready' ? load.map : emptyBindingMap()}
+          onClose={() => { setPreview(null); if (justActivated) { params.delete('activated'); setParams(params, { replace: true }); } }}
+        />
+      ) : null}
+    </div>
   );
 }
