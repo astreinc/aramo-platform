@@ -44,7 +44,7 @@ import { TENANT_COGNITO_PORT, AUDIT_FINANCIALS_GATE } from '@aramo/identity';
 // bound-recruiter token resolution so no OAuth/token-store/provider-identity fixture is
 // needed. The config resolver + consent gate + recipient resolver + pipeline + evidence
 // store all stay REAL, exercising the legal send→evidence→no_contact→contacted convergence.
-import { MICROSOFT_GRAPH_PORT, DelegatedAuthorizationService } from '@aramo/microsoft-graph';
+import { MICROSOFT_CALENDAR_PORT, MICROSOFT_GRAPH_PORT, DelegatedAuthorizationService } from '@aramo/microsoft-graph';
 // M5 PR-9 §4.2 — hashCanonicalizedBody imported for idempotency
 // replay/conflict state-handlers. The same hash function the controllers
 // use computes the request_hash that the seeded IdempotencyKey row must
@@ -4088,6 +4088,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'client-selection:interview:schedule',
           'client-selection:interview:transition',
           'communication:meeting:create',
+          // M365-SCHED-1 A1 — Outlook scheduling read + mutation scopes the ats-web
+          // FE consumes for the calendar-meeting endpoints.
+          'communication:meeting:read',
+          'communication:meeting:edit',
+          'communication:meeting:cancel',
           // PC-5d — task + attachment RolesGuard @RequireScopes. task:write
           // gates create/patch/delete; attachment:create gates upload;
           // attachment:delete omitted (DELETE is EXCLUDE-R2). Task/attachment
@@ -4433,6 +4438,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           throw new Error('createOnlineMeeting not used by the email pact');
         },
       };
+      // M365-SCHED-1 A1 — faked Graph CALENDAR port so the real scheduling service
+      // (durable op → persist → audit; reschedule/cancel CAS) runs end-to-end without
+      // touching Microsoft. Deterministic event id + join URL.
+      const mockMicrosoftCalendar = {
+        createCalendarEvent: async () => ({
+          provider_event_id: 'evt-pact-0001',
+          join_url: 'https://teams.microsoft.example/l/meetup-join/pact',
+          web_link: 'https://outlook.office.example/calendar/item/pact',
+          start_date_time: '2026-11-03T15:00:00',
+          end_date_time: '2026-11-03T15:30:00',
+        }),
+        updateCalendarEvent: async () => ({
+          provider_event_id: 'evt-pact-0001',
+          start_date_time: '2026-11-04T16:00:00',
+          end_date_time: '2026-11-04T16:30:00',
+        }),
+        cancelCalendarEvent: async () => undefined,
+        getCalendarEvent: async () => null,
+      };
+      // Calendar-invitation consent gate (string token): allow — the pact exercises
+      // the permitted scheduling path; denial behaviour is proven in the apps/api suite.
+      const mockCalendarInviteConsentGate = {
+        assertInvitationAllowed: async () => undefined,
+      };
       // Fake the bound-recruiter token resolution so no OAuth refresh / token-store /
       // provider-identity binding fixture is needed. The returned access_token is inert
       // (the Graph port is faked); the shape mirrors UsableToken.
@@ -4501,10 +4530,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // convergence path runs without touching Microsoft or the token store.
         .overrideProvider(MICROSOFT_GRAPH_PORT)
         .useValue(mockMicrosoftGraph)
+        .overrideProvider(MICROSOFT_CALENDAR_PORT)
+        .useValue(mockMicrosoftCalendar)
         .overrideProvider(DelegatedAuthorizationService)
         .useValue(mockDelegatedAuthorization)
         .overrideProvider('EMAIL_CONSENT_GATE')
         .useValue(mockEmailConsentGate)
+        .overrideProvider('CALENDAR_INVITE_CONSENT_GATE')
+        .useValue(mockCalendarInviteConsentGate)
         // HF-AUTH-1 — bind the version-keyed configurable resolver (MODE A) so the
         // guard hydrates AuthContext.scopes from the per-token grants above; the
         // provider verifies contract shape, not RBAC derivation.
@@ -7527,6 +7560,94 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
                   'self_signup', 'dana.rivera@example.com', '+1-512-555-0101', NOW(), NOW())
                ON CONFLICT (id) DO NOTHING`,
               [ATSW_PIPE_TALENT_ID, TENANT_ID],
+            );
+          });
+        },
+
+      // M365-SCHED-1 A1 — Outlook scheduling CREATE: a configured microsoft connection,
+      // a LIVE pipeline episode (talent↔requisition) for the recruiting-association
+      // check, and a Talent with a contactable email1 for the invitation. The consent
+      // gate + Graph calendar port are faked (allow / deterministic event), so the real
+      // service runs durable-op → create → persist → audit without touching Microsoft.
+      'an ats-web recruiter with a configured microsoft connection, consent, and a live pipeline episode exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await c.query(
+              `DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`,
+              [TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO integration."IntegrationConnection"
+                 (id, tenant_id, provider_key, status, secret_ref, config, version, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'microsoft_graph', 'configured', 'connector:v1:pact',
+                 '{"client_id":"ms-client-pact","authority_tenant":"common"}'::jsonb, 0, now(), now())
+               ON CONFLICT (id) DO NOTHING`,
+              [ATSW_MS_CONN_ID, TENANT_ID],
+            );
+            await seedAtsWebPipeline(c, {
+              id: ATSW_PIPE_ID,
+              talentRecordId: ATSW_PIPE_TALENT_ID,
+              requisitionId: ATSW_PIPE_REQ_ID,
+              status: 'no_contact',
+            });
+            await c.query(
+              `INSERT INTO talent_record."TalentRecord"
+                 (id, tenant_id, first_name, last_name, tenant_status,
+                  source_channel, email1, phone_cell, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'Dana', 'Rivera', 'active',
+                  'self_signup', 'dana.rivera@example.com', '+1-512-555-0101', NOW(), NOW())
+               ON CONFLICT (id) DO NOTHING`,
+              [ATSW_PIPE_TALENT_ID, TENANT_ID],
+            );
+          });
+        },
+
+      // M365-SCHED-1 A1 — an EXISTING scheduled Outlook meeting organized by the pact
+      // recruiter (for read / reschedule / cancel / list). provider_event_id + version=0
+      // + initiated_by_id=recruiter so the organizer-bound CAS mutation paths run.
+      'an ats-web recruiter with an existing scheduled Outlook meeting exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await c.query(
+              `DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`,
+              [TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO integration."IntegrationConnection"
+                 (id, tenant_id, provider_key, status, secret_ref, config, version, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'microsoft_graph', 'configured', 'connector:v1:pact',
+                 '{"client_id":"ms-client-pact","authority_tenant":"common"}'::jsonb, 0, now(), now())
+               ON CONFLICT (id) DO NOTHING`,
+              [ATSW_MS_CONN_ID, TENANT_ID],
+            );
+            await c.query(
+              `INSERT INTO communications."CommunicationInteraction"
+                 (id, tenant_id, channel, direction, status, integration_connection_id,
+                  initiated_by_id, from_address, to_address, provider_event_id, join_reference,
+                  version, started_at, ended_at, created_at, updated_at)
+               VALUES ($1::uuid, $2::uuid, 'meeting', 'outbound', 'scheduled', $3::uuid,
+                  $4::uuid, 'recruiter@contoso.example', 'dana.rivera@example.com', 'evt-pact-0001',
+                  'https://teams.microsoft.example/l/meetup-join/pact', 0,
+                  '2026-11-03T15:00:00Z', '2026-11-03T15:30:00Z', now(), now())
+               ON CONFLICT (id) DO NOTHING`,
+              ['00000000-0000-7000-8000-ee7100000001', TENANT_ID, ATSW_MS_CONN_ID, RECRUITER_ID],
+            );
+            await c.query(
+              `INSERT INTO communications."CommunicationAssociation"
+                 (id, tenant_id, interaction_id, subject_type, subject_id, relation_type, created_at)
+               VALUES ($1::uuid, $2::uuid, $3::uuid, 'talent_record', $4::uuid, 'subject', now()),
+                 ($5::uuid, $2::uuid, $3::uuid, 'requisition', $6::uuid, 'regarding', now())
+               ON CONFLICT (id) DO NOTHING`,
+              [
+                '00000000-0000-7000-8000-ee7100000a01',
+                TENANT_ID,
+                '00000000-0000-7000-8000-ee7100000001',
+                ATSW_PIPE_TALENT_ID,
+                '00000000-0000-7000-8000-ee7100000a02',
+                ATSW_PIPE_REQ_ID,
+              ],
             );
           });
         },
