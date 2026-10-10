@@ -1,6 +1,7 @@
 import { Button } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { SendRtrModal } from './SendRtrModal';
 import {
   requestRtr,
   sendRtr,
@@ -64,6 +65,13 @@ export interface RtrPanelProps {
   canRead: boolean; // document:read — see status / provenance / preview / evidence
   canRequest: boolean; // document:create — Request RTR
   canSend: boolean; // document:execute — Send for signature
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§2.7) — read-only display context for the Send RTR modal
+  // (host-provided; the backend stays authoritative for the send itself). Optional so
+  // every existing RtrPanel test site keeps working.
+  talentName?: string;
+  clientName?: string | null;
+  requisitionTitle?: string | null;
+  recipientEmail?: string | null;
 }
 
 export function RtrPanel({
@@ -74,11 +82,17 @@ export function RtrPanel({
   canRead,
   canRequest,
   canSend,
+  talentName,
+  clientName = null,
+  requisitionTitle = null,
+  recipientEmail = null,
 }: RtrPanelProps): JSX.Element {
   const [current, setCurrent] = useState<RtrCurrentResponse | null>(null);
   const [loading, setLoading] = useState(canRead);
   const [busy, setBusy] = useState<'' | 'requesting' | 'sending' | 'refreshing' | 'previewing' | 'reminding'>('');
   const [error, setError] = useState<{ text: string; retryable: boolean } | null>(null);
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§2.7) — the Send-for-signature confirmation modal.
+  const [sendOpen, setSendOpen] = useState(false);
   // COMM-RECRUITER-W1 (W1-C3) — transient success note (e.g. "Reminder sent").
   const [notice, setNotice] = useState<string>('');
 
@@ -130,12 +144,27 @@ export function RtrPanel({
       await reconcile();
     });
 
-  const onSend = (): Promise<void> =>
-    run('sending', async () => {
-      if (current === null) return;
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§2.7) — the modal's Send. Returns an outcome so the modal
+  // can surface a missing-binding refusal INLINE (fail-closed; Aramo never substitutes).
+  // Any other error closes the modal and shows the panel's own error block.
+  const modalSend = async (): Promise<{ ok: boolean; missingText?: string }> => {
+    if (current === null) return { ok: false };
+    setNotice('');
+    try {
       await sendRtr(current.document_id, talentId);
       await reconcile();
-    });
+      setSendOpen(false);
+      return { ok: true };
+    } catch (e) {
+      const code = (e as { code?: string } | null)?.code;
+      if (code === 'RTR_TEMPLATE_BINDING_MISSING' || code === 'TEMPLATE_BINDING_UNSUPPORTED') {
+        return { ok: false, missingText: describeError(e).text };
+      }
+      setSendOpen(false);
+      setError(describeError(e));
+      return { ok: false };
+    }
+  };
 
   // COMM-RECRUITER-W1 (W1-C3) — same-envelope reminder. Busy-guarded against a
   // double click; the backend reverse-resolves the envelope (no envelope_id on the
@@ -211,8 +240,8 @@ export function RtrPanel({
             </Button>
           ) : null}
           {requested && canSend ? (
-            <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => void onSend()} disabled={busy !== ''}>
-              {busy === 'sending' ? 'Sending…' : 'Send for signature'}
+            <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => setSendOpen(true)} disabled={busy !== ''}>
+              Send for signature
             </Button>
           ) : null}
           {awaiting && canSend ? (
@@ -257,11 +286,31 @@ export function RtrPanel({
     );
   }
 
+  const templateLine =
+    current?.template != null ? `${current.template.name} · v${current.template.version_number}` : null;
+  const footNote =
+    current?.template != null
+      ? `The document is frozen from v${current.template.version_number} when sent. A signed RTR is required before qualifying.`
+      : 'The document is frozen when sent. A signed RTR is required before qualifying.';
+
   return (
     <section className="rc-tj__rtr-panel" aria-label="Right to Represent">
       {!hideHeading ? <h3>Right to Represent</h3> : null}
       {body}
       {errorBlock}
+      {sendOpen && current !== null ? (
+        <SendRtrModal
+          talentName={talentName ?? 'This talent'}
+          clientName={clientName}
+          requisitionTitle={requisitionTitle}
+          templateLine={templateLine}
+          recipientEmail={recipientEmail}
+          footNote={footNote}
+          onPreview={() => void onPreview()}
+          onSend={modalSend}
+          onClose={() => setSendOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }
