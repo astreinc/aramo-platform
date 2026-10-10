@@ -86,7 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR, require_preview: false });
       return { templateId: tpl.id, v1: ver.id };
     }
 
@@ -187,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
         created_by: ACTOR,
       });
-      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR, require_preview: false });
       expect(v2.id).not.toBe(v1);
 
       await orchestrator.send({

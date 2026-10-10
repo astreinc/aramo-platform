@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, hasScope, Input, TextArea, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
+import { safeErrorMessage } from '../../ui';
+
 import {
   activateTemplateVersion,
   listAllowedBindings,
@@ -105,7 +107,7 @@ export function RtrDraftEditor({
       setPreviewed(d.previewed_fingerprint != null && d.previewed_fingerprint === d.content_fingerprint);
       setLoad({ status: 'ready', bindings, map, activeVersion: active?.version_number ?? null });
     } catch (err) {
-      setLoad({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load the draft.' });
+      setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the draft.') });
     }
   }, [listTemplatesFn, listVersionsFn, listBindingsFn]);
 
@@ -162,7 +164,7 @@ export function RtrDraftEditor({
       toast.show('Draft saved.');
       return true;
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'Could not save the draft.');
+      toast.show(safeErrorMessage(err, 'Could not save the draft.'));
       return false;
     } finally { setBusy(false); }
   }
@@ -176,7 +178,7 @@ export function RtrDraftEditor({
       setPreviewed(true);
       setPreview({ label: `Draft · ${draft.name}`, title: draft.title, paras: draft.paras });
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'Preview failed. Check that every field is a supported one.');
+      toast.show(safeErrorMessage(err, 'Preview failed. Check that every field is a supported one.'));
     } finally { setBusy(false); }
   }
   async function approve() {
@@ -187,7 +189,7 @@ export function RtrDraftEditor({
       setApproveOpen(false);
       navigate(`${DETAIL_ROUTE}?activated=1`);
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'Could not approve this version.');
+      toast.show(safeErrorMessage(err, 'Could not approve this version.'));
       setBusy(false);
     }
   }

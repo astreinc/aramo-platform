@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Button, hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
 import { resolveUserNames } from '../../users/users-api';
+import { safeErrorMessage } from '../../ui';
 
 import {
   createDraftFromActive,
@@ -100,7 +101,7 @@ export function RtrTemplateDetail({
       try { names = await resolveNamesFn(ids); } catch { names = {}; }
       setLoad({ status: 'ready', template: rtr, versions, map: bindingMapFrom(bindings), names });
     } catch (err) {
-      setLoad({ status: 'error', message: err instanceof Error ? err.message : 'Failed to load the RTR template.' });
+      setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the RTR template.') });
     }
   }, [listTemplatesFn, listVersionsFn, listBindingsFn, resolveNamesFn]);
 
@@ -135,7 +136,7 @@ export function RtrTemplateDetail({
       await createDraftFn(template.id);
       navigate(DRAFT_ROUTE);
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'Could not start a new draft.');
+      toast.show(safeErrorMessage(err, 'Could not start a new draft.'));
       setBusy(false);
     }
   }

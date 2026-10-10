@@ -18,8 +18,15 @@ export interface QualifiedTransitionGuardPort {
   // Assert that a pipeline MAY enter `qualified`. CONDITIONAL (§30): a no-op when the
   // client policy does not require an RTR for the requisition; otherwise it requires an
   // EXECUTED RIGHT_TO_REPRESENT for the EXACT (talent, requisition) and THROWS
-  // (PIPELINE_QUALIFY_REQUIRES_RTR, 422) when none exists. `qualifying` entry is never
-  // gated — only the `qualified` target reaches this guard. A missing/invisible pipeline
-  // is a no-op here (the repository transition conceals it as 404 immediately after).
-  assertCanQualify(input: { tenant_id: string; pipeline_id: string; requestId: string }): Promise<void>;
+  // (PIPELINE_QUALIFY_REQUIRES_RTR, 422) when none exists. The repository calls this
+  // AFTER the no-op + state-machine legality checks and only for the `qualified` target,
+  // passing the exact (talent, requisition) from the row it already loaded — so an
+  // illegal / no-op qualified transition never reaches the guard, and the guard needs no
+  // Pipeline read (no DI cycle with the Pipeline repository).
+  assertCanQualify(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+    requestId: string;
+  }): Promise<void>;
 }

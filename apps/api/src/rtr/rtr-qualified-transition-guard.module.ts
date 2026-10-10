@@ -1,6 +1,6 @@
 import { Global, Inject, Injectable, Module } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { PipelineModule, PipelineRepository, QUALIFIED_TRANSITION_GUARD, type QualifiedTransitionGuardPort } from '@aramo/pipeline';
+import { QUALIFIED_TRANSITION_GUARD, type QualifiedTransitionGuardPort } from '@aramo/pipeline';
 
 import { DocumentReadinessGate } from './document-readiness.gate.js';
 import { DocumentReadinessModule } from './document-readiness.module.js';
@@ -11,28 +11,26 @@ import { DocumentReadinessModule } from './document-readiness.module.js';
 // (ADR-0029 Pipeline⊥ATS wall): libs/pipeline depends solely on the port interface.
 // It REUSES DocumentReadinessGate.assess — the same CONDITIONAL same-document executed-
 // RTR predicate that gates the ATS submit path — so the board, the drawer, the submit
-// gate, and the qualify gate all agree on a single source of RTR truth. @Global so the
-// PipelineController (in its own module) can inject the STRING token.
+// gate, and the qualify gate all agree on a single source of RTR truth. The caller
+// (PipelineRepository) passes the exact (talent, requisition) from the row it already
+// loaded, so this adapter needs NO Pipeline read — avoiding a DI cycle. @Global so the
+// PipelineRepository (in its own module) can inject the STRING token.
 @Injectable()
 export class RtrQualifiedTransitionGuard implements QualifiedTransitionGuardPort {
-  constructor(
-    private readonly pipelines: PipelineRepository,
-    @Inject(DocumentReadinessGate) private readonly readiness: DocumentReadinessGate,
-  ) {}
+  constructor(@Inject(DocumentReadinessGate) private readonly readiness: DocumentReadinessGate) {}
 
-  async assertCanQualify(input: { tenant_id: string; pipeline_id: string; requestId: string }): Promise<void> {
-    // Resolve the exact (talent, requisition) for this pipeline. A missing/invisible
-    // row is a no-op here — the repository transition conceals it as 404 immediately
-    // after this guard returns (never leak existence through the gate).
-    const pipeline = await this.pipelines.findById({ tenant_id: input.tenant_id, id: input.pipeline_id });
-    if (pipeline === null) return;
-
+  async assertCanQualify(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+    requestId: string;
+  }): Promise<void> {
     // CONDITIONAL (§30): ungated unless an RTR requirement exists for the requisition;
     // when required, satisfied ONLY by an EXECUTED RTR for the exact (talent, requisition).
     const verdict = await this.readiness.assess({
       tenant_id: input.tenant_id,
-      talent_id: pipeline.talent_record_id,
-      requisition_id: pipeline.requisition_id,
+      talent_id: input.talent_id,
+      requisition_id: input.requisition_id,
     });
     if (verdict.satisfied) return;
 
@@ -42,7 +40,7 @@ export class RtrQualifiedTransitionGuard implements QualifiedTransitionGuardPort
       422,
       {
         requestId: input.requestId,
-        details: { pipeline_id: input.pipeline_id, requisition_id: pipeline.requisition_id },
+        details: { talent_id: input.talent_id, requisition_id: input.requisition_id },
       },
     );
   }
@@ -50,7 +48,7 @@ export class RtrQualifiedTransitionGuard implements QualifiedTransitionGuardPort
 
 @Global()
 @Module({
-  imports: [PipelineModule, DocumentReadinessModule],
+  imports: [DocumentReadinessModule],
   providers: [
     RtrQualifiedTransitionGuard,
     { provide: QUALIFIED_TRANSITION_GUARD, useExisting: RtrQualifiedTransitionGuard },

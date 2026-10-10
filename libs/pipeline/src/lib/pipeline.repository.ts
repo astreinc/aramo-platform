@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { insertActivityInTx } from '@aramo/activity';
 import { recordUsage } from '@aramo/metering';
@@ -30,6 +30,10 @@ import {
   isValidDispositionReason,
   type PipelineDispositionAuthority,
 } from './pipeline-disposition.js';
+import {
+  QUALIFIED_TRANSITION_GUARD,
+  type QualifiedTransitionGuardPort,
+} from './qualified-transition-guard.port.js';
 import {
   isValidInitiatedByKind,
   projectEntryProvenanceForEvent,
@@ -243,7 +247,16 @@ function projectHistoryView(
 export class PipelineRepository {
   private readonly logger = new Logger(PipelineRepository.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32) — the RTR precondition guard for the `qualified`
+    // milestone. @Optional + a STRING token: the concrete adapter is bound @Global at
+    // apps/api (ADR-0029 wall; the guard composes Documents readiness). Absent (every
+    // hand-wired `new PipelineRepository(prisma)` test site) ⇒ ungated.
+    @Optional()
+    @Inject(QUALIFIED_TRANSITION_GUARD)
+    private readonly qualifiedGuard?: QualifiedTransitionGuardPort,
+  ) {}
 
   // TR-2a-B3b (DDR-3 §4) + E6 A4 PRESERVE-ALL — OPERATIONAL re-point.
   //
@@ -673,6 +686,24 @@ export class PipelineRepository {
           },
         },
       );
+    }
+
+    // Step 3c — RTR QUALIFIED GATE (DOC-TEMPLATE-ADMIN-RTR-1 §29-32). Runs AFTER the
+    // no-op + legality + evidence checks and ONLY for the `qualified` target, so an
+    // illegal / no-op qualified transition never reaches it (and specs without the
+    // Documents schema never pay the readiness query). Composed at apps/api via the
+    // @Optional QUALIFIED_TRANSITION_GUARD port (ADR-0029 Pipeline⊥ATS wall): a no-op
+    // when RTR is not required for the requisition; otherwise it requires an EXECUTED
+    // RTR for the exact (talent, requisition) and throws PIPELINE_QUALIFY_REQUIRES_RTR
+    // (422). `qualifying` entry is never gated. The row is already loaded, so the exact
+    // (talent, requisition) is passed in — the guard needs no Pipeline read.
+    if (args.to_status === 'qualified' && this.qualifiedGuard !== undefined) {
+      await this.qualifiedGuard.assertCanQualify({
+        tenant_id: args.tenant_id,
+        talent_id: (current as PipelineRow).talent_record_id,
+        requisition_id: (current as PipelineRow).requisition_id,
+        requestId: args.requestId,
+      });
     }
 
     // Step 4 — atomic interactive transaction (PR-A5b-1 widens the
