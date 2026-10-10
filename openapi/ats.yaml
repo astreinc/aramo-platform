@@ -6091,6 +6091,136 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/integrations/microsoft/calendar-meeting:
+    post:
+      operationId: microsoftScheduleCalendarMeeting
+      summary: Schedule an Outlook calendar meeting with a Talent invitation + Teams (COMM-C2B Amendment A1).
+      description: >-
+        Opt-in Outlook scheduling (SEPARATE from create-link-only). Validates the recruiting association
+        and contacting consent, writes a durable operation before the Graph call (transactionId provider
+        de-dup), and invites the Talent. Guarded by `communication:meeting:create`. An ambiguous provider
+        outcome returns `409 MICROSOFT_SCHEDULING_UNRESOLVED` (reconcile; never blind-recreates).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMicrosoftCalendarMeetingRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledMeetingView' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/calendar-meetings:
+    get:
+      operationId: microsoftListCalendarMeetings
+      summary: List upcoming Outlook scheduling meetings by Talent/Requisition context (COMM-C2B Amendment A1).
+      description: >-
+        Last-known synchronized state — NOT guaranteed-live Outlook. Guarded by `communication:meeting:read`.
+      parameters:
+        - { name: talent_record_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: requisition_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [meetings]
+                properties:
+                  meetings:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScheduledMeetingView' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/calendar-meeting/{id}:
+    get:
+      operationId: microsoftReadCalendarMeeting
+      summary: Read an Outlook scheduling meeting (last-known state) (COMM-C2B Amendment A1).
+      description: Guarded by `communication:meeting:read`. Tenant-scoped.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledMeetingView' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    patch:
+      operationId: microsoftRescheduleCalendarMeeting
+      summary: Reschedule an Outlook scheduling meeting — updates the SAME provider event (COMM-C2B Amendment A1).
+      description: >-
+        Organizer-bound (a scope alone never authorizes mutating another recruiter's meeting) and
+        CAS-guarded via `expected_version`. Guarded by `communication:meeting:edit`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RescheduleMicrosoftCalendarMeetingRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledMeetingView' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+  /v1/integrations/microsoft/calendar-meeting/{id}/cancel:
+    post:
+      operationId: microsoftCancelCalendarMeeting
+      summary: Cancel an Outlook scheduling meeting — targets the SAME provider event (COMM-C2B Amendment A1).
+      description: >-
+        Organizer-bound and idempotent (repeated cancellation is a stable end state). CAS-guarded via
+        `expected_version`. Guarded by `communication:meeting:cancel`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelMicrosoftCalendarMeetingRequest' }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduledMeetingView' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
   /v1/integrations/llm/overview:
     get:
       operationId: getTenantLlmOverview
@@ -10636,6 +10766,52 @@ components:
         scheduled_end: { type: string, format: date-time }
         talent_record_id: { type: string, format: uuid }
         requisition_id: { type: string, format: uuid }
+        idempotent_replay: { type: boolean }
+    CreateMicrosoftCalendarMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [talent_record_id, requisition_id, subject, start_date_time, end_date_time, time_zone, idempotency_key]
+      properties:
+        talent_record_id: { type: string, format: uuid }
+        requisition_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        subject: { type: string, minLength: 1, maxLength: 1024 }
+        start_date_time: { type: string, format: date-time }
+        end_date_time: { type: string, format: date-time }
+        time_zone: { type: string, minLength: 1, maxLength: 100 }
+        idempotency_key: { type: string, minLength: 8, maxLength: 200 }
+    RescheduleMicrosoftCalendarMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, start_date_time, end_date_time, time_zone]
+      properties:
+        connection_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 0 }
+        start_date_time: { type: string, format: date-time }
+        end_date_time: { type: string, format: date-time }
+        time_zone: { type: string, minLength: 1, maxLength: 100 }
+    CancelMicrosoftCalendarMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version]
+      properties:
+        connection_id: { type: string, format: uuid }
+        expected_version: { type: integer, minimum: 0 }
+        comment: { type: string, maxLength: 2000 }
+    ScheduledMeetingView:
+      type: object
+      additionalProperties: false
+      required: [interaction_id, status, version, idempotent_replay]
+      properties:
+        interaction_id: { type: string, format: uuid }
+        operation_id: { type: [string, 'null'], format: uuid }
+        provider_event_id: { type: [string, 'null'] }
+        join_url: { type: [string, 'null'] }
+        status: { type: string }
+        version: { type: integer }
+        scheduled_start: { type: [string, 'null'], format: date-time }
+        scheduled_end: { type: [string, 'null'], format: date-time }
         idempotent_replay: { type: boolean }
     EngagementRequirement:
       type: object

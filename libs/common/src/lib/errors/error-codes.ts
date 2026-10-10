@@ -929,6 +929,25 @@ export const ERROR_CODES = [
   // LAST / never renumber (ordered-parity with openapi/common.yaml + the
   // ERROR_CODE_TO_HTTP_STATUS map).
   'OFFER_TRANSITION_CONFLICT',
+  // COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook scheduling. Appended LAST /
+  // never renumber (ordered-parity with openapi/common.yaml + ERROR_CODE_TO_HTTP_STATUS).
+  // Ambiguous Graph create outcome: durable operation is `unresolved`, reconcile
+  // before retrying — the retry re-uses the same transactionId (no blind duplicate).
+  'MICROSOFT_SCHEDULING_UNRESOLVED',
+  // The referenced scheduling meeting does not exist in the caller's tenant.
+  'MICROSOFT_MEETING_NOT_FOUND',
+  // Organizer-bound: only the organizing recruiter may modify this meeting (R2).
+  'MICROSOFT_MEETING_NOT_ORGANIZER',
+  // Optimistic-concurrency (CAS) conflict on reschedule/cancel — refresh and retry.
+  'MICROSOFT_MEETING_VERSION_CONFLICT',
+  // The meeting is a create-link-only Teams meeting, not an Outlook scheduling event.
+  'MICROSOFT_MEETING_NOT_SCHEDULING',
+  // The Talent/Requisition is not a valid recruiting association for scheduling (C-4).
+  'MICROSOFT_MEETING_ASSOCIATION_INVALID',
+  // Contacting consent does not permit a calendar invitation (R1, fail-closed).
+  'COMMUNICATION_MEETING_CONSENT_DENIED',
+  // A non-recoverable Microsoft Graph provider error (throttle/forbidden/permanent).
+  'MICROSOFT_PROVIDER_ERROR',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
