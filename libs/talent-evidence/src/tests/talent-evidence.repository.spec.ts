@@ -148,6 +148,9 @@ describe('TalentEvidenceRepository — surface', () => {
         // TalentDocument metadata + default marker).
         'findResumeEditionByDocumentId',
         'findResumeEditionsWithDocumentByTalent',
+        // Requisition Talent Board (prototype-fidelity) — the BATCHED-by-ids edition
+        // projection (same With-Document shape as the by-talent read; id IN (...)).
+        'findResumeEditionsByIds',
         // Resume Revision Lifecycle §4/§8 — the exact-artifact dedup lookup
         // (deterministic byte-SHA-256 equality, tenant+talent scoped) and the
         // archive transition (active → archived; archive is not delete). Conscious

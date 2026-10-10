@@ -49,6 +49,17 @@ export interface BoardResume {
   readonly resume_edition_id: string | null;
   readonly source: 'working_selection' | 'submitted_frozen' | 'none';
   readonly locked: boolean; // true once submitted (frozen evidence)
+  // Prototype-fidelity — the edition's human LABEL + its DATE (created_at as an
+  // ISO string), projected from talent-evidence via the RESUME_EDITION_READER port
+  // (the Board is never the source of truth). Null when no edition is linked
+  // (source:'none') or the edition metadata could not be resolved.
+  readonly label: string | null;
+  readonly display_date: string | null;
+  // DERIVED tailored-for-this-requisition marker: true iff the edition was tailored
+  // FOR this requisition (the AUTHORITATIVE edition.requisition_id === the board's
+  // requisition_id) — never inferred from filename/UI text. False for a general
+  // edition, an edition tailored for a different requisition, or no edition.
+  readonly tailored_for_requisition: boolean;
 }
 
 // A single BOUNDED next action (TB-3) — the ONE governed command the card's deepest owner
