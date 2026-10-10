@@ -7,6 +7,7 @@ import {
 } from '@aramo/microsoft-graph';
 
 import { MicrosoftConfigResolver } from './microsoft-config.resolver.js';
+import { MeetingAssociationValidator } from './meeting-association.validator.js';
 
 // COMM-C2B — Teams meeting creation, CREATE-LINK-ONLY (Architect R17 ruling +
 // R15/R16). Uses the bound recruiter's delegated identity (OnlineMeetings.ReadWrite
@@ -49,6 +50,7 @@ export class MicrosoftMeetingService {
     @Inject(MICROSOFT_GRAPH_PORT) private readonly graph: MicrosoftGraphPort,
     private readonly repo: CommunicationsRepository,
     private readonly config: MicrosoftConfigResolver,
+    private readonly associations: MeetingAssociationValidator,
   ) {}
 
   async createRecruiterMeeting(args: CreateRecruiterMeetingArgs): Promise<MeetingResultView> {
@@ -63,6 +65,17 @@ export class MicrosoftMeetingService {
     if (existing !== null) {
       return this.viewFromRow(existing, args, true);
     }
+
+    // A1 (C-4) — close the cross-tenant gap: the body-supplied Talent and
+    // Requisition must each belong to the caller's tenant before ANY Graph
+    // side-effect or association write. Create-link-only keeps its no-association
+    // behavior (tenant-ownership only, not the recruiting-association check) and
+    // its no-invitation semantics. Fail-closed throw → no meeting, no evidence.
+    await this.associations.assertTenantOwnership({
+      tenant_id: args.tenant_id,
+      talent_record_id: args.talent_record_id,
+      requisition_id: args.requisition_id,
+    });
 
     const cfg = await this.config.resolveConfig(args.tenant_id, connectionId, true);
     // Bound recruiter's delegated credential ONLY (throws reauth / not-bound).
