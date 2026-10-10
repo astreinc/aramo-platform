@@ -13,12 +13,15 @@
 | Field | Value |
 |---|---|
 | Evidence baseline (frozen, exclusive) | `12330b0f5049c97f01022df0b190035933345212` |
-| Activation (inclusive upper bound) | `ACTIVATION_PENDING` (governance PR merge SHA) |
-| Snapshot taken at | `origin/main` `964692bf70221240f8aa55fdb66b9bab0141a80d`, 2026-10-10 |
+| Activation (inclusive upper bound) | `0332e210e39eec022733b778b43e5db43906dac3` (PR #914, 2026-10-10T06:07:45Z UTC) |
+| Snapshot refreshed through activation | `origin/main` `0332e210…`, 2026-10-10 |
 
-**Refresh obligation:** this list must be refreshed against `origin/main`
-immediately before governance activation to absorb any PRs merged between this
-snapshot and activation.
+**Refresh satisfied:** the window was refreshed through activation. The only commit
+on `main` between the prior snapshot (`964692bf`) and activation is PR #914 itself
+(the governance/activation event). No additional implementation PRs merged in the
+window, so the inventory below is final: #910, #911, #912, #913. PR #914 is the
+**administrative activation event** (inclusive upper bound), not a transition
+implementation PR and requires no handover.
 
 ## Identified PRs in window (provisional)
 
@@ -47,10 +50,10 @@ File-area signal from the merge diffs; **not** a certification:
 
 | PR | Assessed impact | Affected artifacts / domains | Disposition (update / defer / NO_IMPACT) | Owner · reason · follow-up (if deferred) | Reviewer |
 |---|---|---|---|---|---|
-| #910 | — | — | — | — | — |
-| #911 | — | — | — | — | — |
-| #912 | — | — | — | — | — |
-| #913 | — | — | — | — | — |
+| #910 | **MODIFIED** (FE) — talent in-play board: `RequisitionTalentBoard.tsx`, `WorkspacePanel.tsx`, `requisition-talent-board-api.ts`, `InProgressTable.tsx`, `ui.css` | D13 (frontend/screens) + requisition/talent journey views (D05/D06/D07 journey surfaces) | **DEFER** (artifact update) | synchronization engineer / Claude Design · no Visual Index diagram artifacts exist yet · update on Phase-3 design-package intake | PENDING (Architect/PO) |
+| #911 | **NO_IMPACT** — documentation (template productization backlog) | none | NO_IMPACT (recorded) | — | PENDING (Architect/PO) |
+| #912 | **NO_IMPACT** — documentation (recon baseline publication) | none (publishes `doc/recon/`@`12330b0f`) | NO_IMPACT (recorded) | — | PENDING (Architect/PO) |
+| #913 | **MATERIAL** — migration `…doc_template_admin_rtr_1_version_admin`; 4 new `/v1/document-templates/*` routes (`draft`, `allowed-bindings`, `versions/{versionId}`, `preview`); `apps/api/src/rtr/*` RTR-gated Qualified milestone; platform-admin template provisioning; ats-web settings/documents + RTR screens | D02 (data model) · D03 (API surface) · D06/D07 (requisition/pipeline — RTR-gated Qualified) · D10 (documents/e-sign) · D13 (frontend) · D04/D14 (admin provisioning) | **DEFER** (artifact update) | synchronization engineer / Claude Design · no Visual Index diagram artifacts exist yet · update on Phase-3 design-package intake | PENDING (Architect/PO) — material assessment to confirm |
 
 > #913 requires a **material architecture assessment** (database, API, backend
 > module, frontend) during the initial cycle. Do **not** auto-certify any
