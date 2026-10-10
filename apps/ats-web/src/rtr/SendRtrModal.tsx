@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Button } from '@aramo/fe-foundation';
 
+import type { RtrComposeBlock } from './rtr-api';
+
 // DOC-TEMPLATE-ADMIN-RTR-1 (§2.7) — the recruiter Send Right to Represent modal, styled
 // to the approved prototype (aramo-prototype/platform/Requisition Detail CRM.dc.html,
 // #ws-rtr=modal). A 560px confirmation surface: read-only Talent / Client / Requisition,
@@ -28,6 +30,9 @@ export function SendRtrModal({
   onPreview,
   onSend,
   onClose,
+  composePreview = null,
+  disabledText = null,
+  sendDisabled = false,
 }: {
   readonly talentName: string;
   readonly clientName: string | null;
@@ -38,9 +43,19 @@ export function SendRtrModal({
   readonly onPreview: () => void;
   readonly onSend: () => Promise<{ ok: boolean; missingText?: string }>;
   readonly onClose: () => void;
+  // SEAM 4 — the compose-driven pre-request flow: a real-bound preview rendered for
+  // this (talent, requisition). When present, "Preview document" toggles this inline
+  // preview (no presigned URL exists yet); otherwise it falls back to onPreview.
+  readonly composePreview?: { readonly title: string; readonly blocks: readonly RtrComposeBlock[] } | null;
+  // Fail-closed BEFORE send (e.g. composeRtr refused: no approved template / missing
+  // binding). Shows the honest message and disables Send — Aramo never substitutes.
+  readonly disabledText?: string | null;
+  // Disable Send without a banner (e.g. while the compose read is still loading).
+  readonly sendDisabled?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string | null>(null);
+  const [showPreview, setShowPreview] = useState(false);
 
   const send = async () => {
     setBusy(true);
@@ -52,7 +67,15 @@ export function SendRtrModal({
       setBusy(false);
     }
   };
-  const disabled = busy || missing != null;
+  const previewDoc = () => {
+    if (composePreview != null) {
+      setShowPreview((v) => !v);
+      return;
+    }
+    onPreview();
+  };
+  const banner = missing ?? disabledText;
+  const disabled = busy || banner != null || sendDisabled;
 
   return (
     <>
@@ -91,8 +114,26 @@ export function SendRtrModal({
                 </span>
                 <span style={{ display: 'block', fontSize: '11.5px', color: '#5C6770', marginTop: 1 }}>Approved by your organization</span>
               </span>
-              <Button unstyled onClick={onPreview} style={{ border: '1px solid #022AC0', background: '#fff', color: '#022AC0', borderRadius: 7, padding: '6px 12px', font: "600 12px 'Hanken Grotesk',sans-serif", cursor: 'pointer', whiteSpace: 'nowrap' }} data-testid="send-rtr-preview">Preview document</Button>
+              <Button unstyled onClick={previewDoc} style={{ border: '1px solid #022AC0', background: '#fff', color: '#022AC0', borderRadius: 7, padding: '6px 12px', font: "600 12px 'Hanken Grotesk',sans-serif", cursor: 'pointer', whiteSpace: 'nowrap' }} data-testid="send-rtr-preview">Preview document</Button>
             </div>
+            {composePreview != null && showPreview ? (
+              <div
+                data-testid="send-rtr-compose-preview"
+                style={{ marginTop: 10, border: '1px solid #E5E9ED', background: '#fff', borderRadius: 10, padding: '14px 16px', maxHeight: 280, overflowY: 'auto' }}
+              >
+                <div style={{ fontSize: '11px', fontWeight: 700, letterSpacing: '.04em', color: '#011F8D', marginBottom: 8 }}>
+                  Preview of what {talentName} will receive · nothing has been sent
+                </div>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#1B2730', marginBottom: 6 }}>{composePreview.title}</div>
+                {composePreview.blocks.map((b, i) =>
+                  b.type === 'HEADING' ? (
+                    <div key={i} style={{ fontSize: '13.5px', fontWeight: 700, color: '#1B2730', margin: '10px 0 4px' }}>{b.text}</div>
+                  ) : (
+                    <p key={i} style={{ fontSize: '12.5px', color: '#3A454E', lineHeight: 1.5, margin: '0 0 8px', whiteSpace: 'pre-wrap' }}>{b.text}</p>
+                  ),
+                )}
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -103,9 +144,9 @@ export function SendRtrModal({
             <div style={{ fontSize: '11.5px', color: '#93A0A8', marginTop: 5 }}>From the talent record · locked</div>
           </div>
 
-          {missing != null ? (
+          {banner != null ? (
             <div style={{ border: '1px solid #F2D3CB', background: '#FBE9E4', borderRadius: 9, padding: '9px 12px', fontSize: '12.5px', color: '#8E2F1E' }} role="alert" data-testid="send-rtr-missing">
-              {missing}
+              {banner}
             </div>
           ) : null}
         </div>

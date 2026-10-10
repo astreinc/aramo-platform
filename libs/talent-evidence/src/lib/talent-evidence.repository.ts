@@ -2839,6 +2839,67 @@ export class TalentEvidenceRepository {
     }));
   }
 
+  // Requisition Talent Board (prototype-fidelity) — the BATCHED-by-ids edition
+  // projection: exactly the edition rows whose id ∈ edition_ids (tenant-scoped),
+  // each with its documents.Document metadata + default marker. ONE query
+  // (id = ANY(...)); an empty id set short-circuits to [] (NEVER a per-id loop).
+  // Same select/mapping as findResumeEditionsWithDocumentByTalent above (the Board
+  // reads a page's editions by id, not by talent); read-only.
+  async findResumeEditionsByIds(args: {
+    tenant_id: string;
+    edition_ids: readonly string[];
+  }): Promise<TalentResumeEditionWithDocumentRow[]> {
+    if (args.edition_ids.length === 0) return [];
+    const rows = await this.prisma.$queryRawUnsafe<
+      Array<Record<string, unknown>>
+    >(
+      `SELECT e.id, e.tenant_id, e.talent_id, e.talent_document_id, e.attachment_id,
+              e.content_hash, e.artifact_sha256, e.purpose, e.label, e.requisition_id,
+              e.client_context_id,
+              e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
+              doc.title AS document_filename, rev.mime_type AS document_mime_type,
+              doc.created_at AS document_uploaded_at,
+              COALESCE(df.resume_edition_id = e.id, false) AS is_default,
+              dr.status AS processing_status
+         FROM "talent_evidence"."TalentResumeEdition" e
+         JOIN "talent_evidence"."TalentDocument" td ON td.id = e.talent_document_id
+         JOIN "documents"."Document" doc ON doc.id = td.document_id
+         JOIN "documents"."DocumentRevision" rev
+           ON rev.document_id = doc.id AND rev.revision_number = 1
+         LEFT JOIN "talent_evidence"."TalentResumeDefault" df
+           ON df.tenant_id = e.tenant_id AND df.talent_id = e.talent_id
+         LEFT JOIN "talent_evidence"."ResumeExtractionDraft" dr
+           ON dr.tenant_id = e.tenant_id AND dr.resume_edition_id = e.id
+        WHERE e.tenant_id = $1 AND e.id = ANY($2::uuid[])
+        ORDER BY e.created_at DESC`,
+      args.tenant_id,
+      [...args.edition_ids],
+    );
+    return rows.map((r) => ({
+      id: r['id'] as string,
+      tenant_id: r['tenant_id'] as string,
+      talent_id: r['talent_id'] as string,
+      talent_document_id: r['talent_document_id'] as string,
+      attachment_id: (r['attachment_id'] as string | null) ?? null,
+      content_hash: r['content_hash'] as string,
+      artifact_sha256: (r['artifact_sha256'] as string | null) ?? null,
+      purpose: r['purpose'] as TalentResumeEditionPurposeValue,
+      label: (r['label'] as string | null) ?? null,
+      requisition_id: (r['requisition_id'] as string | null) ?? null,
+      client_context_id: (r['client_context_id'] as string | null) ?? null,
+      derived_from_edition_id: (r['derived_from_edition_id'] as string | null) ?? null,
+      lifecycle_status: r['lifecycle_status'] as TalentResumeEditionLifecycleValue,
+      created_at: r['created_at'] as Date,
+      created_by: r['created_by'] as string,
+      document_filename: r['document_filename'] as string,
+      document_mime_type: r['document_mime_type'] as string,
+      document_uploaded_at: r['document_uploaded_at'] as Date,
+      is_default: r['is_default'] === true,
+      processing_status:
+        (r['processing_status'] as ResumeExtractionDraftStatusValue | null) ?? null,
+    }));
+  }
+
   // ---- TalentDerivedSnapshot -----------------------------------------
 
   async createTalentDerivedSnapshot(

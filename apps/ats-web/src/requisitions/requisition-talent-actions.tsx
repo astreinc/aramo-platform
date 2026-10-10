@@ -5,6 +5,7 @@ import { voidPipelineEpisode } from '../pipeline/pipeline-api';
 import type { PipelineView } from '../pipeline/types';
 import type { PlacementView } from '../placement/types';
 import { getPreStartRequirements } from '../pre-start/pre-start-api';
+import { SendRtrLauncher } from '../rtr/SendRtrLauncher';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import type { TalentRecordView } from '../talent/types';
@@ -24,12 +25,21 @@ import type { RequisitionView } from './types';
 // rides its existing scope; without it the value stays "—" and no fetch issues.
 const SUBMITTAL_READ = 'submittal:create';
 const PRE_START_READ = 'pre_start_requirement:read';
+// The "Send RTR" affordance initiates the governed request→send lifecycle; without
+// document:create the actor cannot start it, so the affordance degrades to a muted
+// status (presentation least-visibility; the server re-authorizes regardless).
+const RTR_INITIATE = 'document:create';
 
 export interface RequisitionTalentActions {
   // Open a talent → the owning side panel + lazy CLIENT/PRE-START hydration.
   readonly openRow: (p: PipelineView) => void;
   // Open the governed "Remove from requisition" (VOID) confirmation.
   readonly requestVoid: (pipelineId: string, talentName: string) => void;
+  // Open the compose-driven Send RTR panel (SEAM 4) for a not-yet-requested RTR.
+  readonly requestSendRtr: (talentId: string, talentName: string) => void;
+  // True when the actor can initiate the RTR lifecycle (document:create). Surfaces
+  // gate the actionable "Send RTR" affordance on this; otherwise a muted status.
+  readonly canSendRtr: boolean;
   // Server-authoritative set of VOID-eligible pipeline ids.
   readonly voidEligibleIds: ReadonlySet<string>;
   // Board display names keyed by talent_record_id (reuses `talents`).
@@ -56,6 +66,7 @@ export interface RequisitionTalentActions {
 // existing governed endpoint and the server re-checks eligibility.
 export function useRequisitionTalentActions({
   req,
+  companyName = null,
   pipelines,
   talents,
   placements,
@@ -68,6 +79,8 @@ export function useRequisitionTalentActions({
   onPipelineRemoved,
 }: {
   readonly req: RequisitionView;
+  /** Client display name — a read-only field on the Send RTR panel. */
+  readonly companyName?: string | null;
   readonly pipelines: readonly PipelineView[];
   readonly talents: Record<string, TalentRecordView>;
   readonly placements: readonly PlacementView[];
@@ -87,9 +100,12 @@ export function useRequisitionTalentActions({
   const [voidError, setVoidError] = useState('');
   const [boardRefresh, setBoardRefresh] = useState(0);
   const [voidEligibleIds, setVoidEligibleIds] = useState<ReadonlySet<string>>(new Set());
+  // SEAM 4 — the compose-driven Send RTR panel target (null when closed).
+  const [sendRtrTarget, setSendRtrTarget] = useState<{ talentId: string; talentName: string } | null>(null);
 
   const canReadClient = scopes.includes(SUBMITTAL_READ);
   const canReadPreStart = scopes.includes(PRE_START_READ);
+  const canSendRtr = scopes.includes(RTR_INITIATE);
 
   // Fetch ONE talent's authoritative CLIENT + PRE-START values. No cross-row
   // fan-out, no speculative values; failures + absences collapse to "—".
@@ -181,6 +197,10 @@ export function useRequisitionTalentActions({
     setVoidTarget({ pipelineId, talentName });
   }, []);
 
+  const requestSendRtr = useCallback((talentId: string, talentName: string) => {
+    setSendRtrTarget({ talentId, talentName });
+  }, []);
+
   // Confirm the correction: read the CAS token from the already-loaded pipeline,
   // call the governed endpoint, and on success remove the card locally + refresh.
   // The server is authoritative — typed refusals are surfaced verbatim.
@@ -255,12 +275,27 @@ export function useRequisitionTalentActions({
           onConfirm={() => void confirmVoid()}
         />
       ) : null}
+      {sendRtrTarget !== null ? (
+        <SendRtrLauncher
+          talentId={sendRtrTarget.talentId}
+          requisitionId={req.id}
+          companyId={req.company_id}
+          talentName={sendRtrTarget.talentName}
+          clientName={companyName}
+          requisitionTitle={req.title}
+          recipientEmail={talents[sendRtrTarget.talentId]?.email1 ?? null}
+          onClose={() => setSendRtrTarget(null)}
+          onSent={() => setBoardRefresh((n) => n + 1)}
+        />
+      ) : null}
     </>
   );
 
   return {
     openRow,
     requestVoid,
+    requestSendRtr,
+    canSendRtr,
     voidEligibleIds,
     boardTalentNames,
     boardTalentSubtitles,

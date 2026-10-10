@@ -628,5 +628,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await repo.findResumeEditionByDocumentId(DOCA))?.id).toBe(EDA);
       expect(await repo.findResumeEditionByDocumentId('4c000000-0000-7000-8000-0000000000ff')).toBeNull();
     });
+
+    it('Requisition Talent Board (prototype-fidelity) — findResumeEditionsByIds selects exactly the requested ids (tenant-scoped), projects label/date/requisition_id; empty id set short-circuits', async () => {
+      const DOCA = '4f000000-0000-7000-8000-000000000001';
+      const DOCB = '4f000000-0000-7000-8000-000000000002';
+      const DOCC = '4f000000-0000-7000-8000-000000000003';
+      const EDA = 'ef000000-0000-7000-8000-00000000000a';
+      const EDB = 'ef000000-0000-7000-8000-00000000000b';
+      const EDC = 'ef000000-0000-7000-8000-00000000000c';
+      const TAL = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaad';
+      const REQ = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbd';
+
+      for (const [doc, name] of [
+        [DOCA, 'a.pdf'],
+        [DOCB, 'b.pdf'],
+        [DOCC, 'c.pdf'],
+      ] as const) {
+        await repo.createTalentDocument({
+          id: doc, talent_id: TAL, tenant_id: TENANT, uploaded_by_actor_id: ACTOR,
+          uploaded_at: new Date('2026-08-01T00:00:00.000Z'), document_type: 'resume',
+          filename: name, file_storage_ref: `k/${name}`, mime_type: 'application/pdf',
+          size_bytes: 1000, parse_status: 'parsed', consent_scope_at_upload: [],
+          retention_policy: 'default', is_active: true,
+        });
+      }
+      // EDA — a GENERAL edition (no requisition). EDB — tailored FOR REQ (label set).
+      await repo.createTalentResumeEdition({
+        id: EDA, tenant_id: TENANT, talent_id: TAL, talent_document_id: DOCA,
+        content_hash: 'h-a', purpose: 'GENERAL',
+        created_at: new Date('2026-08-01T00:00:00.000Z'), created_by: ACTOR,
+      });
+      await repo.createTalentResumeEdition({
+        id: EDB, tenant_id: TENANT, talent_id: TAL, talent_document_id: DOCB,
+        content_hash: 'h-b', purpose: 'CLIENT_SUBMITTAL', label: 'Tailored for Acme',
+        requisition_id: REQ,
+        created_at: new Date('2026-08-05T00:00:00.000Z'), created_by: ACTOR,
+      });
+      // EDC — present in the tenant but NEVER requested (proves exact-id selection).
+      await repo.createTalentResumeEdition({
+        id: EDC, tenant_id: TENANT, talent_id: TAL, talent_document_id: DOCC,
+        content_hash: 'h-c', purpose: 'GENERAL',
+        created_at: new Date('2026-08-10T00:00:00.000Z'), created_by: ACTOR,
+      });
+
+      const rows = await repo.findResumeEditionsByIds({ tenant_id: TENANT, edition_ids: [EDA, EDB] });
+      expect(rows.map((r) => r.id).sort()).toEqual([EDA, EDB].sort());
+      const a = rows.find((r) => r.id === EDA)!;
+      const b = rows.find((r) => r.id === EDB)!;
+      expect(a.requisition_id).toBeNull();
+      expect(a.document_filename).toBe('a.pdf');
+      expect(b.label).toBe('Tailored for Acme');
+      expect(b.requisition_id).toBe(REQ);
+      expect(b.created_at).toEqual(new Date('2026-08-05T00:00:00.000Z'));
+
+      // Tenant isolation — the same ids under a different tenant never leak.
+      expect(await repo.findResumeEditionsByIds({ tenant_id: ACTOR, edition_ids: [EDA, EDB] })).toEqual([]);
+      // Empty id set short-circuits to [] (no query, no per-id loop).
+      expect(await repo.findResumeEditionsByIds({ tenant_id: TENANT, edition_ids: [] })).toEqual([]);
+    });
   },
 );

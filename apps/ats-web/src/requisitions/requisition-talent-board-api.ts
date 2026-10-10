@@ -33,6 +33,14 @@ export interface BoardResume {
   readonly resume_edition_id: string | null;
   readonly source: 'working_selection' | 'submitted_frozen' | 'none';
   readonly locked: boolean;
+  // Prototype-fidelity (hand-mirror of the api DTO) — the edition's human LABEL and
+  // its DATE (created_at ISO). Null when no edition is linked (source:'none') or the
+  // metadata could not be resolved. `tailored_for_requisition` is the DERIVED marker:
+  // true iff the authoritative edition was tailored FOR this requisition (never
+  // inferred from filename/UI text).
+  readonly label: string | null;
+  readonly display_date: string | null;
+  readonly tailored_for_requisition: boolean;
 }
 
 // TB-3 — a bounded governed next action (hand-mirror of the backend BoardNextAction).

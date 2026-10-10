@@ -25,7 +25,37 @@ export class ResumeEditionReaderAdapter implements ResumeEditionReaderPort {
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
     });
-    return rows.map((r) => ({
+    return rows.map((r) => this.toSummary(r));
+  }
+
+  // Requisition Talent Board (prototype-fidelity) — the BATCHED-by-ids read: the
+  // Board collects every résumé edition id on a page (frozen submitted editions +
+  // working selections) and resolves their metadata in ONE call. Empty id set
+  // short-circuits (no query); mapping is shared with listResumeEditions above.
+  async listResumeEditionsByIds(input: {
+    tenant_id: string;
+    edition_ids: readonly string[];
+  }): Promise<ResumeEditionSummary[]> {
+    if (input.edition_ids.length === 0) return [];
+    const rows = await this.evidence.findResumeEditionsByIds({
+      tenant_id: input.tenant_id,
+      edition_ids: input.edition_ids,
+    });
+    return rows.map((r) => this.toSummary(r));
+  }
+
+  private toSummary(r: {
+    id: string;
+    lifecycle_status: string;
+    is_default: boolean;
+    purpose: string;
+    label: string | null;
+    requisition_id: string | null;
+    document_filename: string;
+    document_mime_type: string;
+    created_at: Date;
+  }): ResumeEditionSummary {
+    return {
       edition_id: r.id,
       lifecycle_status: r.lifecycle_status,
       is_default: r.is_default,
@@ -35,7 +65,7 @@ export class ResumeEditionReaderAdapter implements ResumeEditionReaderPort {
       filename: r.document_filename,
       mime_type: r.document_mime_type,
       created_at: r.created_at.toISOString(),
-    }));
+    };
   }
 }
 

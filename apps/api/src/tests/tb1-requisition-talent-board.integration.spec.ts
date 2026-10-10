@@ -108,6 +108,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const emailEvidenceSet = new Set<string>();
     const voiceEvidenceSet = new Set<string>();
     const desiredPayByTalent = new Map<string, string | null>();
+    // Prototype-fidelity — the RESUME_EDITION_READER port stub: edition metadata keyed by
+    // edition id, seeded per test. A vi.fn so the BATCHED-once-per-page invariant is
+    // assertable (one call carrying ALL the page's edition ids, never per card). Returns a
+    // full ResumeEditionSummary for each REQUESTED id present in the map (unknown ids → absent).
+    const editionMetaById = new Map<string, { label: string | null; requisition_id: string | null; created_at: string }>();
+    const resumeEditionReaderStub = {
+      listResumeEditionsByIds: vi.fn(async (input: { tenant_id: string; edition_ids: readonly string[] }) =>
+        input.edition_ids.flatMap((id) => {
+          const m = editionMetaById.get(id);
+          return m === undefined
+            ? []
+            : [{
+                edition_id: id, lifecycle_status: 'active', is_default: false, purpose: 'GENERAL',
+                label: m.label, requisition_id: m.requisition_id,
+                filename: 'resume.pdf', mime_type: 'application/pdf', created_at: m.created_at,
+              }];
+        }),
+      ),
+    };
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -183,6 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         commsStub,
         talentStub,
         NOOP_LOGGER,
+        resumeEditionReaderStub as unknown as ConstructorParameters<typeof RequisitionTalentBoardReadService>[14],
       );
     }, 240_000);
 
@@ -193,6 +213,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       emailEvidenceSet.clear();
       voiceEvidenceSet.clear();
       desiredPayByTalent.clear();
+      editionMetaById.clear();
+      resumeEditionReaderStub.listResumeEditionsByIds.mockClear();
     });
 
     afterAll(async () => {
@@ -555,9 +577,88 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const board = await call(tenant, req);
       const q = cardsIn(board, 'qualified').find((c) => c.talent_record_id === t1)!;
-      expect(q.resume).toEqual({ resume_edition_id: working, source: 'working_selection', locked: false });
+      // No edition metadata seeded in the reader → label/date null, tailored false; the
+      // authoritative edition_id/source/locked linkage is unchanged.
+      expect(q.resume).toEqual({ resume_edition_id: working, source: 'working_selection', locked: false, label: null, display_date: null, tailored_for_requisition: false });
       const s = cardsIn(board, 'submitted').find((c) => c.talent_record_id === t2)!;
-      expect(s.resume).toEqual({ resume_edition_id: frozen, source: 'submitted_frozen', locked: true });
+      expect(s.resume).toEqual({ resume_edition_id: frozen, source: 'submitted_frozen', locked: true, label: null, display_date: null, tailored_for_requisition: false });
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TBRES-1 (prototype-fidelity) — the edition's human LABEL + DATE project onto the card's
+    // résumé from the RESUME_EDITION_READER port (both the working selection and the frozen
+    // submitted edition). The Board is never the source of truth — it reads the port.
+    // ---------------------------------------------------------------------------------------
+    it('TBRES-1: résumé label + display_date project from the edition metadata (working + frozen)', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      const tW = randomUUID(); await seedPipeline(tenant, req, tW, 'qualified');
+      const edW = randomUUID();
+      await seedResume(tenant, tW, req, edW, new Date('2026-01-10T00:00:00Z'));
+      editionMetaById.set(edW, { label: null, requisition_id: null, created_at: '2025-11-02T00:00:00.000Z' });
+      const tF = randomUUID(); const pF = await seedPipeline(tenant, req, tF, 'qualified');
+      const edF = randomUUID();
+      await seedSubmittal(tenant, tF, req, 'submitted_to_client', pF, edF);
+      editionMetaById.set(edF, { label: 'Tailored for Acme', requisition_id: randomUUID(), created_at: '2025-12-15T00:00:00.000Z' });
+
+      const board = await call(tenant, req);
+      const w = cardsIn(board, 'qualified').find((c) => c.talent_record_id === tW)!;
+      expect(w.resume.resume_edition_id).toBe(edW);
+      expect(w.resume.label).toBeNull();
+      expect(w.resume.display_date).toBe('2025-11-02T00:00:00.000Z');
+      const f = cardsIn(board, 'submitted').find((c) => c.talent_record_id === tF)!;
+      expect(f.resume.label).toBe('Tailored for Acme');
+      expect(f.resume.display_date).toBe('2025-12-15T00:00:00.000Z');
+      expect(f.resume.locked).toBe(true); // frozen linkage unaffected
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TBRES-2 (prototype-fidelity) — tailored_for_requisition is true ONLY when the
+    // AUTHORITATIVE edition.requisition_id === the board's requisition_id (never filename/UI
+    // text): a this-req edition is tailored; a different-req edition and a general edition are not.
+    // ---------------------------------------------------------------------------------------
+    it('TBRES-2: tailored_for_requisition true only when edition.requisition_id === the board requisition', async () => {
+      const tenant = randomUUID(); const req = randomUUID(); const otherReq = randomUUID();
+      const tThis = randomUUID(); const pThis = await seedPipeline(tenant, req, tThis, 'qualified');
+      const edThis = randomUUID();
+      await seedSubmittal(tenant, tThis, req, 'submitted_to_client', pThis, edThis);
+      editionMetaById.set(edThis, { label: 'Tailored', requisition_id: req, created_at: '2026-01-01T00:00:00.000Z' });
+      const tOther = randomUUID(); const pOther = await seedPipeline(tenant, req, tOther, 'qualified');
+      const edOther = randomUUID();
+      await seedSubmittal(tenant, tOther, req, 'submitted_to_client', pOther, edOther);
+      editionMetaById.set(edOther, { label: 'Elsewhere', requisition_id: otherReq, created_at: '2026-01-01T00:00:00.000Z' });
+      const tGen = randomUUID(); const pGen = await seedPipeline(tenant, req, tGen, 'qualified');
+      const edGen = randomUUID();
+      await seedSubmittal(tenant, tGen, req, 'submitted_to_client', pGen, edGen);
+      editionMetaById.set(edGen, { label: null, requisition_id: null, created_at: '2026-01-01T00:00:00.000Z' });
+
+      const board = await call(tenant, req);
+      expect(anyCard(board, tThis)!.resume.tailored_for_requisition).toBe(true);
+      expect(anyCard(board, tOther)!.resume.tailored_for_requisition).toBe(false);
+      expect(anyCard(board, tGen)!.resume.tailored_for_requisition).toBe(false);
+    });
+
+    // ---------------------------------------------------------------------------------------
+    // TBRES-3 (prototype-fidelity) — the edition read is BATCHED: the reader is invoked EXACTLY
+    // ONCE per page (one call carrying ALL the page's edition ids), never per card; and the
+    // existing Talent × Requisition résumé linkage (source/locked) is unaffected.
+    // ---------------------------------------------------------------------------------------
+    it('TBRES-3: edition reader called exactly once per page (true batch), linkage unaffected', async () => {
+      const tenant = randomUUID(); const req = randomUUID();
+      for (let i = 0; i < 12; i++) {
+        const t = randomUUID(); const p = await seedPipeline(tenant, req, t, 'qualified');
+        const ed = randomUUID();
+        await seedSubmittal(tenant, t, req, 'submitted_to_client', p, ed);
+        editionMetaById.set(ed, { label: `L${i}`, requisition_id: req, created_at: '2026-01-01T00:00:00.000Z' });
+      }
+      const board = await call(tenant, req);
+      expect(board.total_active).toBe(12);
+      expect(resumeEditionReaderStub.listResumeEditionsByIds).toHaveBeenCalledTimes(1); // one read, not O(cards)
+      expect(resumeEditionReaderStub.listResumeEditionsByIds.mock.calls[0]![0].edition_ids).toHaveLength(12);
+      for (const c of cardsIn(board, 'submitted')) {
+        expect(c.resume.source).toBe('submitted_frozen');
+        expect(c.resume.locked).toBe(true);
+        expect(c.resume.tailored_for_requisition).toBe(true);
+      }
     });
 
     // ---------------------------------------------------------------------------------------

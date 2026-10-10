@@ -41,6 +41,19 @@ export interface ResumeEditionReaderPort {
     tenant_id: string;
     talent_id: string;
   }): Promise<ResumeEditionSummary[]>;
+
+  /**
+   * BATCHED-by-ids read — the editions whose id ∈ edition_ids, tenant-scoped.
+   * ONE query (id IN (...)); an empty edition_ids short-circuits to [] (NEVER a
+   * per-id loop). Any returned row's tenant is the caller's tenant by
+   * construction. Consumed by the Requisition Talent Board to project a whole
+   * page's résumé editions (label / date / tailored-for-requisition marker) in a
+   * single read — never per card.
+   */
+  listResumeEditionsByIds(input: {
+    tenant_id: string;
+    edition_ids: readonly string[];
+  }): Promise<ResumeEditionSummary[]>;
 }
 
 /** Injection token (STRING, not the bare interface — collision-safe). */

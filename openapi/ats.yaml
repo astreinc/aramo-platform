@@ -7279,6 +7279,58 @@ paths:
                           certificate_available: { type: boolean }
       security:
         - BearerAuth: []
+  /v1/rtr/compose:
+    get:
+      operationId: composeRtr
+      summary: Pre-request Send-RTR compose — active-template provenance + real-bound preview.
+      description: "Read-only compose for the recruiter Send-RTR panel BEFORE an RTR document exists (talent_responded / qualifying-not-sent), where getCurrentRtr returns null. Resolves the tenant's ACTIVE Right-to-Represent template (provenance name + version, tenant-correct since nothing is pinned yet) and renders it with the EXACT (talent, requisition) bound values via the same binding resolvers as send. Performs NO mutation — no Document/revision/artifact/envelope is created. Fails closed on an unconfigured template or an unresolvable required binding (never substitutes). Recruiter-only; requires document:read."
+      parameters:
+        - name: talent_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: requisition_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The active-template provenance + the resolved real-bound preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [template, preview]
+                properties:
+                  template:
+                    type: object
+                    additionalProperties: false
+                    required: [name, version_number]
+                    properties:
+                      name: { type: string }
+                      version_number: { type: integer }
+                  preview:
+                    type: object
+                    additionalProperties: false
+                    required: [title, blocks]
+                    properties:
+                      title: { type: string }
+                      blocks:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: false
+                          required: [type, text]
+                          properties:
+                            type: { type: string, enum: [HEADING, TEXT] }
+                            text: { type: string }
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/rtr/{documentId}/preview:
     get:
       operationId: getRtrPreview
@@ -9097,11 +9149,14 @@ components:
       type: object
       additionalProperties: false
       description: The requisition-specific resume linkage — working selection pre-submit, frozen submitted edition post-submit; never the Talent's latest resume.
-      required: [resume_edition_id, source, locked]
+      required: [resume_edition_id, source, locked, label, display_date, tailored_for_requisition]
       properties:
         resume_edition_id: { type: [string, 'null'], format: uuid }
         source: { type: string, enum: [working_selection, submitted_frozen, none] }
         locked: { type: boolean }
+        label: { type: [string, 'null'], description: "The edition's human label (from talent-evidence); null when no edition." }
+        display_date: { type: [string, 'null'], format: date-time, description: "The edition created_at; null when no edition." }
+        tailored_for_requisition: { type: boolean, description: "True iff the authoritative edition.requisition_id equals this requisition (tailored FOR it) — never inferred from filename/UI text." }
     BoardCardView:
       type: object
       additionalProperties: false

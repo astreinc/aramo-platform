@@ -26,7 +26,7 @@ function card(overrides: Partial<BoardCardView> = {}): BoardCardView {
     owner: 'pipeline',
     source_object_id: 'p1',
     owner_state: 'qualified',
-    resume: { resume_edition_id: null, source: 'none', locked: false },
+    resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
     rtr_state: null,
     rtr_status: null,
     email_evidence: false,
@@ -107,7 +107,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(within(col).getByText('Missing: Resume not selected')).toBeInTheDocument();
   });
 
-  it('shows the resume-locked indicator on a submitted (frozen) card', async () => {
+  it('renders the frozen (submitted) edition date in the card resume row', async () => {
     mockGet.mockResolvedValue(
       board({
         total_active: 1,
@@ -116,14 +116,14 @@ describe('RequisitionTalentBoard (TB-2)', () => {
             key: 'submitted',
             owner: 'submittal',
             count: 1,
-            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true } })],
+            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true, label: 'Submitted résumé', display_date: '2026-09-20T00:00:00Z', tailored_for_requisition: false } })],
           },
         ],
       }),
     );
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
-    // The submitted (frozen) resume selection renders in the card's resume row.
-    expect(await screen.findByText('Resume · submitted')).toBeInTheDocument();
+    // The frozen submitted edition surfaces its authoritative date (never a bare "submitted").
+    expect(await screen.findByText('Résumé · Sep 2026')).toBeInTheDocument();
   });
 
   it('renders the collapsed Closed panel with canonical reason labels', async () => {
@@ -332,12 +332,12 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     );
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     const contacted = await screen.findByLabelText('Contacted');
-    expect(within(contacted).getByText('RTR · Sent')).toBeInTheDocument();
+    expect(within(contacted).getByText('RTR · Awaiting signature')).toBeInTheDocument();
     expect(within(contacted).getByText('Email ✓')).toBeInTheDocument();
     expect(within(contacted).getByText('Voice –')).toBeInTheDocument();
     expect(within(contacted).getByText('Wants $62/hr')).toBeInTheDocument(); // recruiter-lane pay, no Missing
     const qualified = await screen.findByLabelText('Qualified');
-    expect(within(qualified).getByText('RTR · Confirmed')).toBeInTheDocument();
+    expect(within(qualified).getByText('RTR · Signed')).toBeInTheDocument();
     expect(within(qualified).getByText('Voice ✓')).toBeInTheDocument();
     expect(within(qualified).getByText('Wants $70/hr')).toBeInTheDocument();
   });
@@ -355,5 +355,101 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['offer:create']} onSelectCard={onSelectCard} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Create offer' }));
     expect(onSelectCard).toHaveBeenCalledWith('pipe-7');
+  });
+
+  // Gap 3 / SEAM 3 — résumé vocabulary from the authoritative edition metadata.
+  it('renders the résumé edition vocabulary (general / tailored-for-REQ / empty)', async () => {
+    const general = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted',
+      resume: { resume_edition_id: 're1', source: 'working_selection', locked: false, label: 'General BA résumé', display_date: '2026-09-15T00:00:00Z', tailored_for_requisition: false },
+    });
+    const tailored = card({
+      talent_record_id: 't2', pipeline_id: 'p2', column: 'qualified', owner_state: 'qualified',
+      resume: { resume_edition_id: 're2', source: 'working_selection', locked: false, label: 'Tailored résumé', display_date: '2026-09-21T00:00:00Z', tailored_for_requisition: true },
+    });
+    const none = card({
+      talent_record_id: 't3', pipeline_id: 'p3', column: 'pipeline', owner_state: 'no_contact',
+      resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
+    });
+    mockGet.mockResolvedValue(
+      board({
+        total_active: 3,
+        columns: [
+          { key: 'pipeline', owner: 'pipeline', count: 1, cards: [none] },
+          { key: 'contacted', owner: 'pipeline', count: 1, cards: [general] },
+          { key: 'qualified', owner: 'pipeline', count: 1, cards: [tailored] },
+        ],
+      }),
+    );
+    render(<RequisitionTalentBoard requisitionId="r1" reqCode="REQ-1001" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.getByText('Résumé · Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('Résumé · tailored for REQ-1001 · Sep 21')).toBeInTheDocument();
+    expect(screen.getByText('No résumé selected')).toBeInTheDocument();
+  });
+
+  // Gaps 2/5/6/7 — the actionable "Send RTR ›" chip (talent_responded / qualifying, required
+  // & not sent) opens the SAME compose panel via onSendRtr; without the handler it degrades to
+  // a muted status (least-visibility).
+  it('renders an actionable "Send RTR ›" chip that calls onSendRtr; degrades to muted without the handler', async () => {
+    const onSendRtr = vi.fn();
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'talent_responded',
+      rtr_status: 'NOT_SENT',
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    const { unmount } = render(
+      <RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} onSendRtr={onSendRtr} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Send RTR ›' }));
+    expect(onSendRtr).toHaveBeenCalledWith('t1', 'Ada Lovelace');
+    unmount();
+
+    // No onSendRtr (actor cannot initiate) → muted status, no actionable chip.
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.queryByRole('button', { name: 'Send RTR ›' })).not.toBeInTheDocument();
+    expect(screen.getByText('RTR · Not sent')).toBeInTheDocument();
+  });
+
+  it('shows "Due before qualifying" (muted) for a pre-responded card with RTR required & not sent', async () => {
+    const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted', rtr_status: 'NOT_SENT' });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} onSendRtr={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.getByText('RTR · Due before qualifying')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Send RTR ›' })).not.toBeInTheDocument();
+  });
+
+  // Rule 5 — the card-level red "Engagement readiness unavailable" chip is removed (it already
+  // shows in Needs attention); other port-grounded blockers still surface.
+  it('drops the engagement_readiness_unavailable blocker from the card Missing chip but keeps others', async () => {
+    const onlyUnavailable = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'qualified', owner_state: 'qualified',
+      readiness: { requisition_state: 'open', requisition_reason: null, blockers: ['engagement_readiness_unavailable'], band: 'needs_action' },
+    });
+    const mixed = card({
+      talent_record_id: 't2', pipeline_id: 'p2', column: 'qualified', owner_state: 'qualified',
+      readiness: { requisition_state: 'open', requisition_reason: null, blockers: ['engagement_readiness_unavailable', 'resume_not_selected'], band: 'needs_action' },
+    });
+    mockGet.mockResolvedValue(board({ total_active: 2, columns: [{ key: 'qualified', owner: 'pipeline', count: 2, cards: [onlyUnavailable, mixed] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    await screen.findByLabelText('Talent board');
+    expect(screen.queryByText(/Engagement readiness unavailable/)).not.toBeInTheDocument();
+    expect(screen.getByText('Missing: Resume not selected')).toBeInTheDocument();
+  });
+
+  // Rule 5 — the no_contact stage action reads "Send email" (presentation copy for the existing
+  // pipeline.contact_talent action).
+  it('labels the pipeline.contact_talent action "Send email"', async () => {
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
+      next_actions: [{ key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: 'POST /x', required_scope: 'pipeline:change-status' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Send email' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Contact Talent' })).not.toBeInTheDocument();
   });
 });
