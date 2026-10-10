@@ -602,6 +602,7 @@
       "RenderService",
       "RequirementsRepository",
       "RevisionSourceService",
+      "TEMPLATE_CAPABILITIES",
       "TemplateImmutableError",
       "TemplateNotFoundError",
       "TemplateVersionNotActiveError",
@@ -1075,6 +1076,7 @@
       "PipelineOutboxRepository",
       "PipelinePrismaService",
       "PipelineRepository",
+      "QUALIFIED_TRANSITION_GUARD",
       "RECRUITER_ACTION_TO_STATUS",
       "RECRUITER_DISPOSITION_AUTHORITIES",
       "REQUISITION_LIFECYCLE_PACKAGE_NAME",
@@ -6434,6 +6436,18 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/SettingsView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/documents/DocumentTemplates.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/documents/RtrDraftEditor.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
