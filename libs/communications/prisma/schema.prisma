@@ -32,7 +32,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["communications"]
+  // COMM-C2B Amendment A1 (M365-SCHED-1, R5) — the durable scheduling audit lives
+  // in the shared `audit` schema (ConsentAuditEvent/IdentityAuditEvent precedent).
+  schemas  = ["communications", "audit"]
 }
 
 // CommunicationChannel — the medium of an interaction. The enum carries the
@@ -98,6 +100,13 @@ enum CommunicationInteractionStatus {
   // callback can never be read as a provider-verified two-way call. Only attested
   // (evidence_authority=recruiter_attested) interactions use it.
   recorded
+  // COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook scheduling meeting-lifecycle
+  // states, used ONLY by channel=meeting scheduling rows (domain-enforced, not a
+  // competing state machine): a scheduled event, a rescheduled (same provider
+  // event, updated) event, and a cancelled event. Voice rows never use them.
+  scheduled
+  rescheduled
+  cancelled
 
   @@schema("communications")
 }
@@ -209,6 +218,17 @@ model CommunicationInteraction {
   // COMM-C2B — provider-neutral join reference/URL for a meeting-channel
   // interaction (e.g. a Teams join URL). Never a token or provider secret.
   join_reference String?
+
+  // COMM-C2B Amendment A1 (M365-SCHED-1) — the Outlook CALENDAR event id for a
+  // scheduling-capability meeting (distinct from provider_interaction_id, which is
+  // the create-link-only onlineMeeting id). Reschedule/cancel target THIS id (R3).
+  // Nullable: create-link-only + non-meeting rows carry none.
+  provider_event_id String?
+
+  // COMM-C2B Amendment A1 (M365-SCHED-1) — optimistic-concurrency version guarding
+  // reschedule/cancel writes (CAS: updateMany WHERE version=expected). Existing and
+  // non-scheduling rows sit at 0; only scheduling mutations advance it.
+  version Int @default(0)
 
   // COMM-C4 (RCE-1) — the FINAL sent subject and body for an email-channel
   // interaction (post-review durable evidence). Nullable: voice/meeting rows
@@ -394,4 +414,78 @@ model EmailTemplate {
   @@unique([tenant_id, template_key])
   @@index([tenant_id, category])
   @@schema("communications")
+}
+
+// ── COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook scheduling persistence ─────
+// MeetingSchedulingOperationStatus — the durable create-operation lifecycle (R3).
+// `unresolved` is the EXPLICIT ambiguous-outcome state: a create whose Graph result
+// was lost/timed-out sits here until reconciled; the service never blindly recreates.
+enum MeetingSchedulingOperationStatus {
+  pending
+  succeeded
+  unresolved
+  failed
+
+  @@schema("communications")
+}
+
+// MeetingSchedulingOperation — durable scheduling-operation ledger written BEFORE
+// the Graph create call (R3). `(tenant_id, idempotency_key)` is the idempotency
+// anchor; `transaction_id` is the Graph transactionId provider dedup guard (NOT
+// relied on as a lookup key). interaction_id/provider_event_id are filled once
+// known; status flips pending → succeeded | unresolved | failed. UUID-only refs,
+// no cross-schema FK (convention). This is a sidecar ledger, not a meeting SoR —
+// the CommunicationInteraction remains the authoritative meeting record.
+model MeetingSchedulingOperation {
+  id        String @id @default(uuid()) @db.Uuid
+  tenant_id String @db.Uuid
+
+  idempotency_key String
+  transaction_id  String
+  operation       String // 'create' (reschedule/cancel mutate the interaction via CAS)
+
+  status MeetingSchedulingOperationStatus @default(pending)
+
+  provider_event_id String?
+  interaction_id    String? @db.Uuid
+
+  organizer_id     String @db.Uuid // identity.User (JWT sub)
+  talent_record_id String @db.Uuid
+  requisition_id   String @db.Uuid
+
+  last_error String?
+
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@unique([tenant_id, idempotency_key])
+  @@index([tenant_id, status])
+  @@schema("communications")
+}
+
+// MeetingSchedulingAuditEvent — forensic scheduling audit (R5), shared `audit`
+// schema (ConsentAuditEvent precedent). Records scheduled/rescheduled/cancelled/
+// provider-failure with actor, tenant, outcome, and correlation. NEVER stores
+// OAuth tokens, secrets, or unnecessary personal information.
+model MeetingSchedulingAuditEvent {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenant_id  String  @db.Uuid
+  actor_id   String? @db.Uuid // recruiter/system actor
+  actor_type String // 'recruiter' | 'system'
+  event_type String // 'meeting.scheduled' | '.rescheduled' | '.cancelled' | '.provider_failed'
+
+  interaction_id    String? @db.Uuid
+  operation_id      String? @db.Uuid
+  provider_event_id String?
+  talent_record_id  String? @db.Uuid
+  requisition_id    String? @db.Uuid
+
+  outcome       String // 'succeeded' | 'failed' | 'unresolved'
+  event_payload Json
+
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, interaction_id])
+  @@index([tenant_id, event_type])
+  @@schema("audit")
 }

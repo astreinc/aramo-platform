@@ -340,6 +340,7 @@ const COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION = resolve(
 const COMMUNICATIONS_ATTESTED_RESPONSE_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
+  'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
 );
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
