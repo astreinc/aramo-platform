@@ -1,6 +1,11 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
-import { MICROSOFT_DELEGATED_SCOPES, assertLeastPrivilegeScopes } from './graph-scopes.js';
+import {
+  MICROSOFT_DELEGATED_SCOPES,
+  MICROSOFT_SCHEDULING_SCOPES,
+  type MicrosoftScopeCapability,
+  assertLeastPrivilegeScopes,
+} from './graph-scopes.js';
 
 // COMM-C2B — delegated OAuth authorization-code + PKCE state (directive R2).
 //
@@ -120,16 +125,26 @@ export interface BuildAuthorizeUrlArgs {
   readonly authorityTenant?: string;
   readonly loginAuthority?: string;
   readonly scopes?: readonly string[];
+  /**
+   * Which delegated capability to request (A1 R4). 'baseline' (default) is the
+   * send-only + create-link-only posture; 'scheduling' additionally requests
+   * Calendars.ReadWrite. The scheduling set can only reach Microsoft when this is
+   * explicitly 'scheduling', so opt-in never widens the baseline.
+   */
+  readonly capability?: MicrosoftScopeCapability;
 }
 
 /**
  * Build the Microsoft authorize URL. R8 fail-closed: the scope list is asserted
- * against the least-privilege set BEFORE the URL is emitted, so a widened scope
- * can never reach Microsoft.
+ * against the capability's least-privilege set BEFORE the URL is emitted, so a
+ * widened scope can never reach Microsoft.
  */
 export function buildMicrosoftAuthorizeUrl(args: BuildAuthorizeUrlArgs): string {
-  const scopes = args.scopes ?? MICROSOFT_DELEGATED_SCOPES;
-  assertLeastPrivilegeScopes(scopes);
+  const capability: MicrosoftScopeCapability = args.capability ?? 'baseline';
+  const scopes =
+    args.scopes ??
+    (capability === 'scheduling' ? MICROSOFT_SCHEDULING_SCOPES : MICROSOFT_DELEGATED_SCOPES);
+  assertLeastPrivilegeScopes(scopes, capability);
   const authority = args.loginAuthority ?? MICROSOFT_LOGIN_AUTHORITY;
   const tenant = args.authorityTenant ?? MICROSOFT_DEFAULT_AUTHORITY_TENANT;
   const url = new URL(`${authority}/${tenant}/oauth2/v2.0/authorize`);
