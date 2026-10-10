@@ -88,6 +88,19 @@ export {
 } from './lib/ports/microsoft-graph.port.js';
 
 export {
+  MICROSOFT_CALENDAR_PORT,
+  GraphCalendarError,
+  type GraphErrorKind,
+  type GraphEventAttendee,
+  type GraphCreateEventArgs,
+  type GraphUpdateEventArgs,
+  type GraphCancelEventArgs,
+  type GraphGetEventArgs,
+  type GraphEventResult,
+  type MicrosoftCalendarPort,
+} from './lib/ports/microsoft-calendar.port.js';
+
+export {
   DelegatedAuthorizationService,
   MicrosoftIdentityNotBoundError,
   MicrosoftReauthRequiredError,
