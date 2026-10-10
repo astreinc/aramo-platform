@@ -1,9 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError, type AramoLogger } from '@aramo/common';
 import {
   PipelineRepository,
   PIPELINE_STATUS_VALUES,
+  RESUME_EDITION_READER,
   type PipelineStatus,
+  type ResumeEditionReaderPort,
+  type ResumeEditionSummary,
 } from '@aramo/pipeline';
 import { SubmittalRepository } from '@aramo/submittal';
 import {
@@ -188,6 +191,14 @@ export class RequisitionTalentBoardReadService {
     // TB-chips — the TALENT's desired_pay (talent:read attribute) for the recruiting-stage pay chip.
     private readonly talent: TalentRecordRepository,
     @Inject('RequisitionTalentBoardLogger') private readonly logger: AramoLogger,
+    // Prototype-fidelity — the ADR-0029 port by which the (scope:ats) Board reads a
+    // page's résumé edition metadata (label / date / tailored-for marker) WITHOUT
+    // importing @aramo/talent-evidence directly. @Optional so hand-wired test sites
+    // (and any composition without the @Global adapter bound) boot; absent it, the
+    // résumé vocabulary falls back to null label/date + tailored=false.
+    @Optional()
+    @Inject(RESUME_EDITION_READER)
+    private readonly resumeEditionReader?: ResumeEditionReaderPort,
   ) {}
 
   // Compose the Board for ONE requisition. `visible_requisition_ids` is the pre-resolved
@@ -316,6 +327,28 @@ export class RequisitionTalentBoardReadService {
     // G-B — the requisition-grain assigned recruiter (listForRequisition is assigned_at desc).
     const assigned_recruiter_user_id = assignments[0]?.user_id ?? null;
 
+    // Prototype-fidelity — collect EVERY résumé edition id present on the page (the
+    // frozen submitted editions + the working selections), then resolve their metadata
+    // (label / date / tailored-for marker) in ONE batched port call (never per card).
+    // The reader is @Optional; absent it (or with no editions), the map stays empty and
+    // deriveResume falls back to null label/date + tailored=false — the existing
+    // resume_edition_id/source/locked projection is unaffected.
+    const editionById = new Map<string, ResumeEditionSummary>();
+    if (this.resumeEditionReader !== undefined) {
+      const editionIds = new Set<string>();
+      for (const s of submittals) {
+        if (s.resume_edition_id !== null) editionIds.add(s.resume_edition_id);
+      }
+      for (const r of resumeByTalent.values()) editionIds.add(r.resume_edition_id);
+      if (editionIds.size > 0) {
+        const summaries = await this.resumeEditionReader.listResumeEditionsByIds({
+          tenant_id,
+          edition_ids: Array.from(editionIds),
+        });
+        for (const e of summaries) editionById.set(e.edition_id, e);
+      }
+    }
+
     // ---- Per-talent projection ----------------------------------------------------------
     const activeCards: BoardCardView[] = [];
     const closedReasons = new Map<string, number>();
@@ -362,6 +395,8 @@ export class RequisitionTalentBoardReadService {
           email_evidence: emailEvidenceTalentIds.has(row.talent_record_id),
           voice_evidence: voiceEvidenceTalentIds.has(row.talent_record_id),
           desired_pay: payByTalent.get(row.talent_record_id)?.desired_pay ?? null,
+          edition_meta: editionById,
+          board_requisition_id: requisition_id,
           now: args.now,
         }),
       );
@@ -423,10 +458,15 @@ export class RequisitionTalentBoardReadService {
       email_evidence: boolean;
       voice_evidence: boolean;
       desired_pay: string | null;
+      // Prototype-fidelity — the page-level edition metadata map (edition_id →
+      // summary) + this board's requisition_id, for the résumé label/date/tailored
+      // projection. Page-level constants threaded per card (no per-card read).
+      edition_meta: ReadonlyMap<string, ResumeEditionSummary>;
+      board_requisition_id: string;
       now: Date;
     },
   ): BoardCardView {
-    const resume = deriveResume(ctx.submittal, ctx.resumeRow);
+    const resume = deriveResume(ctx.submittal, ctx.resumeRow, ctx.edition_meta, ctx.board_requisition_id);
     const { days_in_stage, stage_entered_at } = deriveDwell(ctx.history, ctx.now);
     // rtr_state — the DOC-5 per-talent fact (from the batched RTR gate). Only the ACTIONABLE
     // NOT_EXECUTED state is surfaced; a satisfied verdict (executed OR RTR-not-required) carries
@@ -616,17 +656,50 @@ function decideCard(
 
 // Resume linkage (§13) — the frozen submitted edition once submitted, else the working
 // selection, else none. NEVER the Talent's latest resume (no substitution).
+// Prototype-fidelity — the edition's authoritative metadata (label / date / tailored-for
+// marker) is projected from `editionById` (built from the batched RESUME_EDITION_READER
+// read); a missing/unresolved edition yields null label/date + tailored=false.
 function deriveResume(
   submittal: { resume_edition_id: string | null; state: string } | null,
   resumeRow: { resume_edition_id: string } | null,
+  editionById: ReadonlyMap<string, ResumeEditionSummary>,
+  board_requisition_id: string,
 ): BoardResume {
   if (submittal !== null && submittal.resume_edition_id !== null) {
-    return { resume_edition_id: submittal.resume_edition_id, source: 'submitted_frozen', locked: true };
+    return decorateResume(submittal.resume_edition_id, 'submitted_frozen', true, editionById, board_requisition_id);
   }
   if (resumeRow !== null) {
-    return { resume_edition_id: resumeRow.resume_edition_id, source: 'working_selection', locked: false };
+    return decorateResume(resumeRow.resume_edition_id, 'working_selection', false, editionById, board_requisition_id);
   }
-  return { resume_edition_id: null, source: 'none', locked: false };
+  return {
+    resume_edition_id: null,
+    source: 'none',
+    locked: false,
+    label: null,
+    display_date: null,
+    tailored_for_requisition: false,
+  };
+}
+
+// Decorate a linked edition with its authoritative presentation metadata. `tailored_for_
+// requisition` is the AUTHORITATIVE edition.requisition_id === the board's requisition_id
+// (never filename/UI text); null/unresolved metadata degrades to null label/date + false.
+function decorateResume(
+  edition_id: string,
+  source: 'working_selection' | 'submitted_frozen',
+  locked: boolean,
+  editionById: ReadonlyMap<string, ResumeEditionSummary>,
+  board_requisition_id: string,
+): BoardResume {
+  const meta = editionById.get(edition_id) ?? null;
+  return {
+    resume_edition_id: edition_id,
+    source,
+    locked,
+    label: meta?.label ?? null,
+    display_date: meta?.created_at ?? null,
+    tailored_for_requisition: meta !== null && meta.requisition_id === board_requisition_id,
+  };
 }
 
 // Days-in-stage (§22 / G-A) — derived from the latest PipelineStatusHistory transition

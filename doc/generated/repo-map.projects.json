@@ -3634,6 +3634,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-compose-for-pair.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5644,6 +5650,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-compose-for-pair.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7882,6 +7894,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-compose-for-pair.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8358,6 +8376,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-compose-for-pair.spec.ts",
         "project": "api",
         "status": "excluded"
       },

@@ -16,6 +16,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { governedDropTargets, resolveGovernedMove } from './board-governed-move';
+import { rtrAffordanceKind } from './rtr-affordance';
 
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
@@ -77,13 +78,31 @@ function ageTone(days: number): '' | 'warn' | 'hot' {
   return '';
 }
 
-// Resume-for-this-requisition linkage, from the authoritative selection source. The human
-// edition LABEL is not on the board payload (LIVE-BUT-UNWIRED) — we surface selected / submitted
-// / not-selected from `source`, never a fabricated label.
-function resumeText(card: BoardCardView): string {
-  if (card.resume.source === 'none') return 'Resume · not selected';
-  if (card.resume.locked || card.resume.source === 'submitted_frozen') return 'Resume · submitted';
-  return 'Resume · selected';
+// Prototype-fidelity résumé vocabulary (Gap 3 / SEAM 3). Grounded on the authoritative
+// edition metadata the board now carries — label / display_date / tailored_for_requisition —
+// never a fabricated label and never inferred from filename/UI text. The month/day/year is
+// formatted in UTC so the copy is clock- and timezone-stable (no local-midnight flake).
+const RESUME_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function formatResumeDate(iso: string, withYear: boolean): string | null {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const mon = RESUME_MONTHS[d.getUTCMonth()] ?? '';
+  return withYear ? `${mon} ${d.getUTCFullYear()}` : `${mon} ${d.getUTCDate()}`;
+}
+
+// "Résumé · {Mon YYYY}" for a general edition; "Résumé · tailored for {REQ-code} · {Mon D}"
+// when the authoritative edition was tailored FOR this requisition. When no edition is linked
+// (source:'none') or the metadata is unresolved, the honest empty state — never a bare
+// "selected / submitted / not selected" label once the real metadata is available.
+function resumeText(card: BoardCardView, reqCode?: string): string {
+  const r = card.resume;
+  if (r.source === 'none' || r.label === null || r.display_date === null) return 'No résumé selected';
+  if (r.tailored_for_requisition && reqCode !== undefined && reqCode.length > 0) {
+    const d = formatResumeDate(r.display_date, false);
+    return `Résumé · tailored for ${reqCode}${d !== null ? ` · ${d}` : ''}`;
+  }
+  const d = formatResumeDate(r.display_date, true);
+  return `Résumé · ${d ?? r.label}`;
 }
 
 export interface RequisitionTalentBoardProps {
@@ -103,6 +122,12 @@ export interface RequisitionTalentBoardProps {
    *  The action is projected by the server (pipeline.void in next_actions); this only opens
    *  the confirmation. */
   readonly onRequestVoid?: (pipelineId: string, talentName: string) => void;
+  /** Open the compose-driven Send RTR panel (SEAM 4). Provided only when the actor can
+   *  initiate the RTR lifecycle; its ABSENCE degrades the actionable chip to a muted status
+   *  (least-visibility). The governed request→send stays the mutation authority. */
+  readonly onSendRtr?: (talentId: string, talentName: string) => void;
+  /** The requisition code (REQ-N) — used for the "tailored for {REQ}" résumé label. */
+  readonly reqCode?: string;
   /** Bump to force a re-fetch (e.g. after a successful VOID removes a card). */
   readonly refreshToken?: unknown;
 }
@@ -137,22 +162,15 @@ function ResumeIcon(): JSX.Element {
 // columns (Submitted onward) keep their prior chips unchanged.
 const RECRUITING_COLUMNS: ReadonlySet<string> = new Set(['pipeline', 'contacted', 'qualified']);
 
-// RTR 3-state chip label + tone (matches the drawer's signing status). null (RTR not required) is
-// handled by the caller — the chip is not rendered at all.
-function rtrChipLabel(status: 'NOT_SENT' | 'SENT' | 'CONFIRMED'): string {
-  return status === 'CONFIRMED' ? 'Confirmed' : status === 'SENT' ? 'Sent' : 'Not sent';
-}
-function rtrChipTone(status: 'NOT_SENT' | 'SENT' | 'CONFIRMED'): 'ok' | 'warn' | 'mute' {
-  return status === 'CONFIRMED' ? 'ok' : status === 'SENT' ? 'warn' : 'mute';
-}
-
 function BoardCard({
   card,
   name,
   subtitle,
   recruiterName,
   scopes,
+  reqCode,
   onSelect,
+  onSendRtr,
   onDragStart,
   onDragEnd,
   onRequestVoid,
@@ -162,7 +180,9 @@ function BoardCard({
   subtitle?: string;
   recruiterName?: string;
   scopes: readonly string[];
+  reqCode?: string;
   onSelect: () => void;
+  onSendRtr?: (talentId: string, talentName: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
   onRequestVoid?: (pipelineId: string, talentName: string) => void;
@@ -196,10 +216,17 @@ function BoardCard({
   // then Missing (Qualified needs-action) OR, for recruiter-lane actors with no Missing, the
   // talent's desired pay. Post-qualified/handoff cards keep their prior binary RTR + Missing pills.
   const isRecruiting = RECRUITING_COLUMNS.has(card.column);
-  const missing =
-    card.readiness?.band === 'needs_action' && card.readiness.blockers.length > 0
-      ? `Missing: ${card.readiness.blockers.map((b) => blockerLabel(b)).join(', ')}`
-      : '';
+  // The card-level red "Missing" chip drops `engagement_readiness_unavailable` — that concern
+  // already surfaces in Needs attention (we never duplicate it here, and never change readiness
+  // authority). Other port-grounded blockers still show.
+  const cardBlockers =
+    card.readiness?.band === 'needs_action'
+      ? card.readiness.blockers.filter((b) => b !== 'engagement_readiness_unavailable')
+      : [];
+  const missing = cardBlockers.length > 0 ? `Missing: ${cardBlockers.map((b) => blockerLabel(b)).join(', ')}` : '';
+  // RTR affordance (shared mapping) — actionable only when the actor can initiate (onSendRtr
+  // present). The governed request→send stays the mutation authority.
+  const rtrKind = rtrAffordanceKind(card);
   // Defensive (?? '') — a version-skewed/malformed card with a missing desired_pay must never
   // throw and blank the board; an empty desired pay simply yields no pay chip.
   const wantsRaw = (card.desired_pay ?? '').trim();
@@ -236,13 +263,46 @@ function BoardCard({
         </span>
         <span className="rc-tboard__resume">
           <ResumeIcon />
-          <span className="rc-tboard__resume-txt">{resumeText(card)}</span>
+          <span className="rc-tboard__resume-txt">{resumeText(card, reqCode)}</span>
         </span>
         {isRecruiting ? (
           <span className="rc-tboard__facts">
-            {card.rtr_status != null && (
-              <span className={`rc-tboard__pill rc-tboard__pill--${rtrChipTone(card.rtr_status)}`}>
-                RTR · {rtrChipLabel(card.rtr_status)}
+            {rtrKind === 'send' && onSendRtr !== undefined ? (
+              <Button
+                unstyled
+                type="button"
+                className="rc-tboard__pill rc-tboard__pill--brand rc-tboard__pill-btn"
+                onClick={(e) => { e.stopPropagation(); onSendRtr(card.talent_record_id, name); }}
+              >
+                Send RTR ›
+              </Button>
+            ) : rtrKind === 'awaiting' ? (
+              <Button
+                unstyled
+                type="button"
+                className="rc-tboard__pill rc-tboard__pill--warn rc-tboard__pill-btn"
+                onClick={(e) => { e.stopPropagation(); onSelect(); }}
+                title="Sent — waiting for the talent to sign"
+              >
+                RTR · Awaiting signature
+              </Button>
+            ) : rtrKind === 'signed' ? (
+              <Button
+                unstyled
+                type="button"
+                className="rc-tboard__pill rc-tboard__pill--ok rc-tboard__pill-btn"
+                onClick={(e) => { e.stopPropagation(); onSelect(); }}
+                title="Signed by the talent"
+              >
+                RTR · Signed
+              </Button>
+            ) : (
+              <span className="rc-tboard__pill rc-tboard__pill--mute">
+                {rtrKind === 'none'
+                  ? 'RTR · Not required'
+                  : rtrKind === 'due'
+                    ? 'RTR · Due before qualifying'
+                    : 'RTR · Not sent'}
               </span>
             )}
             <span className={`rc-tboard__pill rc-tboard__pill--${card.email_evidence ? 'ok' : 'mute'}`}>
@@ -276,7 +336,7 @@ function BoardCard({
           // The governed command executes in the owning drawer surface (TB-3 routes there). The
           // Board never re-implements an owner command.
           <Button unstyled type="button" className="rc-tboard__act-btn" onClick={onSelect} title={primary.command_route}>
-            {primary.label}
+            {primary.key === 'pipeline.contact_talent' ? 'Send email' : primary.label}
           </Button>
         ) : waiting.length > 0 ? (
           <span className="rc-tboard__wait">{waiting}</span>
@@ -350,7 +410,9 @@ function BoardColumn({
   talentSubtitles,
   recruiterNames,
   scopes,
+  reqCode,
   onSelectCard,
+  onSendRtr,
   isDropTarget,
   onDragStartCard,
   onDragEndCard,
@@ -362,7 +424,9 @@ function BoardColumn({
   talentSubtitles: RequisitionTalentBoardProps['talentSubtitles'];
   recruiterNames: RequisitionTalentBoardProps['recruiterNames'];
   scopes: readonly string[];
+  reqCode?: string;
   onSelectCard: (pipelineId: string) => void;
+  onSendRtr?: (talentId: string, talentName: string) => void;
   isDropTarget: boolean;
   onDragStartCard: (card: BoardCardView) => void;
   onDragEndCard: () => void;
@@ -381,7 +445,9 @@ function BoardColumn({
       subtitle={talentSubtitles?.[c.talent_record_id]}
       recruiterName={c.assigned_recruiter_user_id !== null ? recruiterNames?.[c.assigned_recruiter_user_id] : undefined}
       scopes={scopes}
+      reqCode={reqCode}
       onSelect={() => onSelectCard(c.pipeline_id)}
+      onSendRtr={onSendRtr}
       onDragStart={() => onDragStartCard(c)}
       onDragEnd={onDragEndCard}
       onRequestVoid={onRequestVoid}
@@ -431,7 +497,7 @@ function BoardColumn({
   );
 }
 
-export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, scopes = [], onRequestVoid, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
+export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, scopes = [], onRequestVoid, onSendRtr, reqCode, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -486,7 +552,9 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubti
             talentSubtitles={talentSubtitles}
             recruiterNames={recruiterNames}
             scopes={scopes}
+            reqCode={reqCode}
             onSelectCard={onSelectCard}
+            onSendRtr={onSendRtr}
             isDropTarget={validTargets?.has(col.key) ?? false}
             onDragStartCard={setDragging}
             onDragEndCard={() => setDragging(null)}
