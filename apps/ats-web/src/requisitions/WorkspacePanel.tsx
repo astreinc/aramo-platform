@@ -768,7 +768,13 @@ function RtrCell({
       </span>
     );
   }
-  // none / due / (send without initiate capability) → muted status.
+  // 'hidden' (UNGOVERNED — RTR requirement unspecified) makes NO affirmative claim: the
+  // view's neutral absence marker, never "Not required".
+  if (kind === 'hidden') {
+    return <span className="rc-tip__val rc-tip__val--mute">—</span>;
+  }
+  // none / due / (send without initiate capability) → muted status. Only an EXPLICIT
+  // NOT_REQUIRED ('none') renders "Not required".
   const text = kind === 'none' ? 'Not required' : kind === 'due' ? 'Due before qualifying' : 'Not sent';
   return <span className="rc-tip__val rc-tip__val--mute">{text}</span>;
 }

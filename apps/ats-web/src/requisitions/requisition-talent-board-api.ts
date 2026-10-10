@@ -61,10 +61,13 @@ export interface BoardCardView {
   readonly owner_state: string;
   readonly resume: BoardResume;
   readonly rtr_state: string | null;
-  // TB-chips — recruiting-stage readiness facts (mirror the api DTO). rtr_status null = RTR not
-  // required (chip hidden); email/voice_evidence are grounded per-channel facts; desired_pay is the
-  // talent's desired rate (talent:read-gated server-side; null when absent or not permitted).
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+  // TB-chips — recruiting-stage readiness facts (mirror the api DTO). rtr_status carries the
+  // canonical three-way effective requirement (UNGOVERNED ≠ NOT_REQUIRED): NOT_SENT/SENT/CONFIRMED
+  // is the signing status when RTR is REQUIRED; 'NOT_REQUIRED' is the affirmative "RTR · Not required"
+  // label (policy EXPLICITLY relaxed it); null is UNGOVERNED/unspecified → chip hidden (no affirmative
+  // claim). email/voice_evidence are grounded per-channel facts; desired_pay is the talent's desired
+  // rate (talent:read-gated server-side; null when absent or not permitted).
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;

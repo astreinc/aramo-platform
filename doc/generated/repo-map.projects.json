@@ -2962,6 +2962,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/helpers/rtr-readiness-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5638,6 +5644,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/helpers/rtr-readiness-harness.ts",
         "project": "api",
         "status": "excluded"
       },

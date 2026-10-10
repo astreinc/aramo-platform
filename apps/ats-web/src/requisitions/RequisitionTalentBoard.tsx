@@ -267,7 +267,7 @@ function BoardCard({
         </span>
         {isRecruiting ? (
           <span className="rc-tboard__facts">
-            {rtrKind === 'send' && onSendRtr !== undefined ? (
+            {rtrKind === 'hidden' ? null : rtrKind === 'send' && onSendRtr !== undefined ? (
               <Button
                 unstyled
                 type="button"

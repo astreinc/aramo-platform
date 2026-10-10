@@ -88,13 +88,16 @@ export interface BoardCardView {
   readonly resume: BoardResume;
   readonly rtr_state: string | null; // recruiting-lane fact (from the readiness gate substrate)
   // TB-chips — the recruiting-stage readiness fact chips. ADDED alongside the binary rtr_state
-  // (which the List view still reads — ADD-not-rename). rtr_status is the 3-state signing chip
-  // (null = RTR not required for the requisition → render nothing); email/voice_evidence are the
-  // grounded per-channel engagement facts (provider-verified send / two-way call). desired_pay is
-  // the TALENT's desired rate — a talent:read ATTRIBUTE already surfaced on the enrichment read
-  // (PipelineView.desired_rate), NOT a requisition commercial/bill/margin figure (those remain
-  // excluded; null here when the actor lacks talent:read or the talent has no desired pay).
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+  // (which the List view still reads — ADD-not-rename). rtr_status is the RTR board chip, carrying
+  // the canonical three-way effective requirement (UNGOVERNED ≠ NOT_REQUIRED): NOT_SENT/SENT/
+  // CONFIRMED is the signing status when RTR is REQUIRED; 'NOT_REQUIRED' is the affirmative
+  // "RTR · Not required" label (policy EXPLICITLY relaxed it); null is UNGOVERNED/unspecified →
+  // render nothing (no affirmative claim). email/voice_evidence are the grounded per-channel
+  // engagement facts (provider-verified send / two-way call). desired_pay is the TALENT's desired
+  // rate — a talent:read ATTRIBUTE already surfaced on the enrichment read (PipelineView.desired_rate),
+  // NOT a requisition commercial/bill/margin figure (those remain excluded; null here when the actor
+  // lacks talent:read or the talent has no desired pay).
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;
