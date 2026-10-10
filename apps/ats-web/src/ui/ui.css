@@ -5366,8 +5366,22 @@ button.rc-snapcard:hover {
 .rc-vtog__opt--on { background: #fff; color: #011F8D; font-weight: 700; box-shadow: 0 1px 2px rgba(15,25,40,.14); }
 .rc-vtog__ic { flex: none; }
 .rc-tip__head .rc-vtog { margin-left: auto; }
-.rc-tj__viewbar { margin-bottom: 12px; }
+/* Talent tab toolbar row — the shared toggle sits far right (prototype parity). */
+.rc-tj__toolbar { display: flex; align-items: center; justify-content: flex-end; padding: 12px 14px 0; }
 .rc-tip__board { border-top: 1px solid #F2F4F6; padding: 12px 14px 14px; overflow-x: auto; }
+/* Talent-in-play List — RTR column affordance (Send RTR control / status + links). */
+.rc-tip__rtrcell { min-width: 0; }
+.rc-tip__rtrstack { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.rc-tip__rtrbtn {
+  display: inline-flex; align-items: center; border: 1px solid #022AC0; background: #fff; color: #022AC0;
+  border-radius: 7px; padding: 5px 11px; font: 600 12px 'Hanken Grotesk', sans-serif; cursor: pointer; white-space: nowrap;
+}
+.rc-tip__rtrbtn:hover { background: #E8EDFB; }
+.rc-tip__rtrlink {
+  border: none; background: none; padding: 0; color: #022AC0; font: 600 12px 'Hanken Grotesk', sans-serif;
+  cursor: pointer; white-space: nowrap;
+}
+.rc-tip__rtrlink:hover { text-decoration: underline; }
 
 /* 2.4 Requisition context. */
 .rc-ctx { padding: 14px 16px; }
@@ -6414,6 +6428,13 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tboard__pill--bad { background: #FBE9E4; color: #B3402A; white-space: normal; }
 .rc-tboard__pill--ok { background: #E6F2EA; color: #1F7A4D; }
 .rc-tboard__pill--warn { background: #FAEFD8; color: #946011; }
+/* Actionable "Send RTR ›" chip — brand ink on the brand tint (prototype TONE.blue),
+   weight 700 to read as the one actionable chip in the row. */
+.rc-tboard__pill--brand { background: #E8EDFB; color: #022AC0; font-weight: 700; }
+/* A chip rendered as a button (Send RTR / clickable status) — reset chrome, keep the
+   pill metrics from .rc-tboard__pill. */
+.rc-tboard__pill-btn { border: none; cursor: pointer; font-family: 'Hanken Grotesk', sans-serif; }
+.rc-tboard__pill-btn:hover { filter: brightness(0.97); }
 .rc-tboard__foot { display: flex; align-items: center; gap: 8px; border-top: 1px solid #F2F4F6; padding-top: 7px; }
 .rc-tboard__act-btn { border: 1px solid #D5DBE1; background: #fff; color: #022AC0; border-radius: 6px; padding: 4px 9px; font-size: 11.5px; font-weight: 600; cursor: pointer; white-space: nowrap; }
 .rc-tboard__act-btn:hover { background: #E8EDFB; border-color: #9DB0F5; }

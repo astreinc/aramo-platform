@@ -85,3 +85,24 @@ export async function getCurrentRtr(
 export async function getRtrPreview(documentId: string): Promise<RtrPreviewResponse> {
   return apiClient.get<RtrPreviewResponse>(`/v1/rtr/${documentId}/preview`);
 }
+
+// SEAM 4 — read-only "Send RTR" compose view, served BEFORE any RTR document exists
+// (talent_responded / qualifying-not-sent). Returns the tenant's ACTIVE RTR template
+// provenance (name · v{n}) + a real-bound preview rendered for this (talent,
+// requisition). No mutation; the recipient email stays FE-provided at send time.
+export interface RtrComposeBlock {
+  type: 'HEADING' | 'TEXT';
+  text: string;
+}
+export interface RtrComposeResponse {
+  template: RtrTemplateProvenance;
+  preview: { title: string; blocks: RtrComposeBlock[] };
+}
+export async function composeRtr(
+  talentId: string,
+  requisitionId: string,
+): Promise<RtrComposeResponse> {
+  return apiClient.get<RtrComposeResponse>(
+    `/v1/rtr/compose?talent_id=${encodeURIComponent(talentId)}&requisition_id=${encodeURIComponent(requisitionId)}`,
+  );
+}
