@@ -17,8 +17,10 @@ import { DocumentsRepository, DocumentIdempotencyService, PrismaService as Docum
 import { ClientTalentRestrictionRepository, PrismaService as CtrPrismaService } from '@aramo/client-talent-restriction';
 
 import { RequisitionTalentBoardReadService } from '../requisition-talent-board/requisition-talent-board-read.service.js';
-import { DocumentReadinessGate, RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/document-readiness.gate.js';
+import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/document-readiness.gate.js';
 import type { EngagementGateService } from '../engagement/engagement-gate.service.js';
+
+import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
 
 // Requisition Talent Board (TB-1) — the Board read-composer, end-to-end against real
 // Postgres 17. The composer is constructed with the REAL owner read repositories over the
@@ -90,7 +92,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let placementRepo: PlacementRepository;
     let readinessReader: RequisitionSubmittalEligibilityReader;
     let assignmentRepo: RequisitionAssignmentRepository;
-    let documentReadiness: DocumentReadinessGate;
+    let documentReadiness: ReturnType<typeof makeDocumentReadinessGate>;
+    // RTR applicability is now a client-submittal-policy fact (rtr_present REQUIRED), not a
+    // DocumentRequirement row. The board's "required" precondition is the set of requisitions
+    // for which the (stubbed) effective policy requires RTR; seedRtrRequirement populates it.
+    // A SEPARATE set holds requisitions whose policy EXPLICITLY declares RTR NOT_REQUIRED —
+    // the canonical UNGOVERNED ≠ NOT_REQUIRED distinction (only the latter earns a chip).
+    const rtrRequiredReqs = new Set<string>();
+    const rtrNotRequiredReqs = new Set<string>();
     let restrictionRepo: ClientTalentRestrictionRepository;
     const prismas: Array<{ $disconnect: () => Promise<void> }> = [];
     // TB-4 harness controls: the requisition→company_id map (a trivial select, stubbed for
@@ -140,7 +149,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       readinessReader = new RequisitionSubmittalEligibilityReader(eligibilityPrisma as never);
       assignmentRepo = new RequisitionAssignmentRepository(requisitionPrisma as never);
       const docsRepo = new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma) as never);
-      documentReadiness = new DocumentReadinessGate(docsRepo);
+      documentReadiness = makeDocumentReadinessGate({
+        documents: docsRepo,
+        policy: rtrPolicyStub(rtrRequiredReqs, rtrNotRequiredReqs),
+      });
       restrictionRepo = new ClientTalentRestrictionRepository(ctrPrisma as never, NOOP_LOGGER);
       // Trivial company_id select — stubbed (the restriction READER + seeded rows are real).
       const requisitionsStub = {
@@ -188,6 +200,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     beforeEach(() => {
       companyIdByReq.clear();
+      rtrRequiredReqs.clear();
+      rtrNotRequiredReqs.clear();
       engagementMode = 'dormant';
       engagedTalentSet.clear();
       emailEvidenceSet.clear();
@@ -282,14 +296,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [randomUUID(), tenant, req, userId],
       );
     }
-    // TB-4 — an RTR DocumentRequirement makes the DOC-5 gate CONDITIONALLY apply to a requisition.
-    async function seedRtrRequirement(tenant: string, req: string): Promise<void> {
-      await db.query(
-        `INSERT INTO documents."DocumentRequirement"
-           (id, tenant_id, document_type_id, resource_type, resource_id, relationship, status, created_by)
-         VALUES ($1,$2,$3,'REQUISITION',$4,'REGARDING','UNSATISFIED',$5)`,
-        [randomUUID(), tenant, RIGHT_TO_REPRESENT_TYPE_ID, req, randomUUID()],
-      );
+    // TB-4 — RTR is made required for a requisition by the effective client-submittal-policy
+    // (rtr_present REQUIRED), NOT by a DocumentRequirement row. The policy stub reads this set.
+     
+    async function seedRtrRequirement(_tenant: string, req: string): Promise<void> {
+      rtrRequiredReqs.add(req);
+    }
+    // TB-chips — RTR is EXPLICITLY relaxed for a requisition (effective policy declares
+    // rtr_present NOT_REQUIRED) — distinct from an ungoverned requisition with no policy.
+    // eslint-disable-next-line @typescript-eslint/require-await -- awaited by callers; kept async for call-site parity
+    async function seedRtrNotRequired(_tenant: string, req: string): Promise<void> {
+      rtrNotRequiredReqs.add(req);
     }
     // TB-4 — an ACTIVE client-talent restriction (the requisition's company_id must be wired via
     // companyIdByReq so the composer resolves the same client company).
@@ -760,12 +777,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(anyCard(noPay, tConfirmed)!.email_evidence).toBe(true);
     });
 
-    // TB-chips — RTR NOT required for the requisition → rtr_status is null (the chip renders nothing).
-    it('TB-chips: no RTR requirement → rtr_status null (chip N/A)', async () => {
+    // TB-chips — UNGOVERNED: no published RTR policy for the requisition → rtr_status is null
+    // (the chip renders nothing — requirement unspecified, NOT an affirmative "Not required").
+    it('TB-chips: ungoverned (no RTR policy) → rtr_status null (chip N/A, no affirmative label)', async () => {
       const tenant = randomUUID(); const req = randomUUID(); const talent = randomUUID();
       await seedPipeline(tenant, req, talent, 'qualified');
       const board = await call(tenant, req);
       expect(anyCard(board, talent)!.rtr_status).toBeNull();
+    });
+
+    // TB-chips — NOT_REQUIRED: policy EXPLICITLY relaxes RTR → rtr_status 'NOT_REQUIRED' (the
+    // affirmative "RTR · Not required" chip). This is the state UNGOVERNED must NOT be confused with.
+    it("TB-chips: explicit NOT_REQUIRED policy → rtr_status 'NOT_REQUIRED' (affirmative, not null)", async () => {
+      const tenant = randomUUID(); const req = randomUUID(); const talent = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualified');
+      await seedRtrNotRequired(tenant, req);
+      const board = await call(tenant, req);
+      expect(anyCard(board, talent)!.rtr_status).toBe('NOT_REQUIRED');
     });
 
     // ---------------------------------------------------------------------------------------

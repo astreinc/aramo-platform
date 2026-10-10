@@ -137,8 +137,9 @@ function ResumeIcon(): JSX.Element {
 // columns (Submitted onward) keep their prior chips unchanged.
 const RECRUITING_COLUMNS: ReadonlySet<string> = new Set(['pipeline', 'contacted', 'qualified']);
 
-// RTR 3-state chip label + tone (matches the drawer's signing status). null (RTR not required) is
-// handled by the caller — the chip is not rendered at all.
+// RTR 3-state chip label + tone (matches the drawer's signing status), for a REQUIRED requisition.
+// 'NOT_REQUIRED' (explicit policy relaxation → the affirmative "Not required" label) and null
+// (UNGOVERNED → no chip at all) are handled by the caller — see the render below.
 function rtrChipLabel(status: 'NOT_SENT' | 'SENT' | 'CONFIRMED'): string {
   return status === 'CONFIRMED' ? 'Confirmed' : status === 'SENT' ? 'Sent' : 'Not sent';
 }
@@ -240,11 +241,15 @@ function BoardCard({
         </span>
         {isRecruiting ? (
           <span className="rc-tboard__facts">
-            {card.rtr_status != null && (
+            {card.rtr_status === 'NOT_REQUIRED' ? (
+              // Policy EXPLICITLY relaxed RTR → the affirmative "Not required" label. UNGOVERNED
+              // (rtr_status null) renders no chip — never an affirmative "Not required" claim.
+              <span className="rc-tboard__pill rc-tboard__pill--mute">RTR · Not required</span>
+            ) : card.rtr_status != null ? (
               <span className={`rc-tboard__pill rc-tboard__pill--${rtrChipTone(card.rtr_status)}`}>
                 RTR · {rtrChipLabel(card.rtr_status)}
               </span>
-            )}
+            ) : null}
             <span className={`rc-tboard__pill rc-tboard__pill--${card.email_evidence ? 'ok' : 'mute'}`}>
               Email {card.email_evidence ? '✓' : '–'}
             </span>

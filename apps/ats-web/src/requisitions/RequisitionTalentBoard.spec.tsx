@@ -311,6 +311,35 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(within(col).getByText('Missing: Right to represent not executed')).toBeInTheDocument();
   });
 
+  // TB-chips — the canonical UNGOVERNED ≠ NOT_REQUIRED distinction at the board chip.
+  // Only an EXPLICIT NOT_REQUIRED earns the affirmative "RTR · Not required" label; an ungoverned
+  // requisition (rtr_status null) renders NO RTR chip — never an affirmative "Not required" claim.
+  it('renders "RTR · Not required" only for explicit NOT_REQUIRED; ungoverned (null) shows no RTR chip', async () => {
+    const notRequired = card({
+      talent_record_id: 't1', pipeline_id: 'p1', column: 'qualified', owner_state: 'qualified',
+      rtr_status: 'NOT_REQUIRED',
+    });
+    const ungoverned = card({
+      talent_record_id: 't2', pipeline_id: 'p2', column: 'contacted', owner_state: 'contacted',
+      rtr_status: null,
+    });
+    mockGet.mockResolvedValue(
+      board({
+        total_active: 2,
+        columns: [
+          { key: 'qualified', owner: 'pipeline', count: 1, cards: [notRequired] },
+          { key: 'contacted', owner: 'pipeline', count: 1, cards: [ungoverned] },
+        ],
+      }),
+    );
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
+    const qualified = await screen.findByLabelText('Qualified');
+    expect(within(qualified).getByText('RTR · Not required')).toBeInTheDocument();
+    // Ungoverned card: no RTR chip of any kind (no affirmative "Not required").
+    const contacted = within(await screen.findByLabelText('Contacted'));
+    expect(contacted.queryByText(/^RTR ·/)).not.toBeInTheDocument();
+  });
+
   // TB-chips — the 3-state RTR tones + Email/Voice ✓ + the recruiter-lane pay chip.
   it('renders RTR Sent/Confirmed tones, Email/Voice ✓, and the Wants pay chip when no Missing', async () => {
     const sent = card({

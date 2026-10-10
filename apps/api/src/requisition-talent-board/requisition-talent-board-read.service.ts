@@ -418,8 +418,10 @@ export class RequisitionTalentBoardReadService {
       engaged: boolean; // Accidental-Add: any requisition-specific interaction on this Talent
 
       assigned_recruiter_user_id: string | null;
-      // TB-chips — the recruiting-stage readiness facts (null rtr_status = RTR not required).
-      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+      // TB-chips — the recruiting-stage readiness facts. rtr_status carries the canonical
+      // three-way effective requirement: NOT_SENT/SENT/CONFIRMED (REQUIRED signing status) |
+      // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | null (UNGOVERNED → nothing).
+      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
       email_evidence: boolean;
       voice_evidence: boolean;
       desired_pay: string | null;
