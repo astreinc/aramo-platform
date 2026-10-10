@@ -446,6 +446,12 @@ export const SEED_SCOPE_KEYS = [
   // execution scopes, mirroring the communication:voice:call precedent.
   'communication:email:send',
   'communication:meeting:create',
+  // COMM-C2B Amendment A1 (M365-SCHED-1, R2) — Outlook scheduling meeting mutation
+  // + read scopes. Mutation (edit/cancel) is additionally organizer-bound at the
+  // service layer; a scope alone never authorizes mutating another recruiter's meeting.
+  'communication:meeting:read',
+  'communication:meeting:edit',
+  'communication:meeting:cancel',
   // D-EMAIL-TPL-1 (ET-4) — reusable email-template management. `read` gates
   // list/get/preview; `manage` gates create/update/deactivate (admin tier).
   // GRANTED read → recruiter/account_manager/tenant_admin/tenant_owner; manage →
