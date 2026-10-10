@@ -44,6 +44,21 @@
       "status": "unscoped",
       "to": "scripts/audit-check.sh"
     },
+    {
+      "from": ".github/pull_request_template.md",
+      "status": "unscoped",
+      "to": "doc/06-lead-review-checklist.md"
+    },
+    {
+      "from": ".github/pull_request_template.md",
+      "status": "unscoped",
+      "to": "doc/architecture/handovers/TEMPLATE.md"
+    },
+    {
+      "from": ".github/pull_request_template.md",
+      "status": "unscoped",
+      "to": "doc/architecture/visual-architecture-synchronization-governance.md"
+    },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "ci/integration-roots.json" },
     {
       "from": ".github/workflows/ci.yml",
@@ -13724,6 +13739,36 @@
       "to": "doc/01-locked-baselines.md"
     },
     { "from": "doc/aramo-handoff-m5-close.md", "status": "unscoped", "to": "openapi/ats.yaml" },
+    {
+      "from": "doc/architecture/handovers/README.md",
+      "status": "unscoped",
+      "to": "doc/governance/history/Aramo-Architecture-Change-History.md"
+    },
+    {
+      "from": "doc/architecture/visual-architecture-synchronization-governance.md",
+      "status": "unscoped",
+      "to": "doc/06-lead-review-checklist.md"
+    },
+    {
+      "from": "doc/architecture/visual-architecture-synchronization-governance.md",
+      "status": "unscoped",
+      "to": "doc/architecture/visual-index/SYNC-REGISTER.md"
+    },
+    {
+      "from": "doc/architecture/visual-architecture-synchronization-governance.md",
+      "status": "unscoped",
+      "to": "doc/architecture/visual-index/TRANSITION-RECONCILIATION.md"
+    },
+    {
+      "from": "doc/architecture/visual-architecture-synchronization-governance.md",
+      "status": "unscoped",
+      "to": "doc/governance/history/Aramo-Architecture-Change-History.md"
+    },
+    {
+      "from": "doc/architecture/visual-index/SYNC-REGISTER.md",
+      "status": "unscoped",
+      "to": "doc/governance/history/Aramo-Architecture-Change-History.md"
+    },
     {
       "from": "doc/auth-reconcile-spine-recon.md",
       "status": "unscoped",
