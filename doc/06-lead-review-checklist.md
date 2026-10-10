@@ -65,6 +65,19 @@ Not every PR needs the same depth of review. Triage as follows:
 
 ---
 
+## Architecture-Impact Handover (all implementation PRs)
+
+Per [Visual Architecture Synchronization Governance v1.0](architecture/visual-architecture-synchronization-governance.md), every **implementation** PR merged on/after the governance activation SHA must carry an architecture-impact handover **before merge** — even when the impact is `NO_IMPACT`. This is a review gate, not a CI check. Apply by tier (no new review depth introduced):
+
+- [ ] Handover present at `doc/architecture/handovers/PR-<number>.md` (canonical numbered file exists before merge), **or** the PR is documentation-only / test-only / non-major-dependency with a one-line `NO_IMPACT` handover, **or** the PR predates activation (covered by the transition reconciliation).
+- [ ] Impact classification stated (`NO_IMPACT` / `ADDITIVE` / `MODIFIED` / `RETIRED/SUPERSEDED` / `MATERIAL`) and consistent with the actual diff.
+- [ ] Handover records the pre-merge implementation **head** SHA (no invented merge SHA).
+- [ ] `MATERIAL` or `RETIRED/SUPERSEDED` → Architect review; retirements/supersessions also recorded in [`Aramo-Architecture-Change-History.md`](governance/history/Aramo-Architecture-Change-History.md).
+
+The handover is input to synchronization; it confers no lifecycle authority and must not modify `doc/recon/` evidence.
+
+---
+
 ## Refusal-Layer Specific Checks
 
 When a PR touches any of the following surfaces, it is **automatically Tier 3** and requires explicit refusal verification:
