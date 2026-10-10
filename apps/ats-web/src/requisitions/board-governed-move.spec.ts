@@ -17,7 +17,7 @@ function action(key: string, scope: string): BoardNextAction {
 function card(column: BoardColumnKey, next: BoardNextAction[]): BoardCardView {
   return {
     talent_record_id: 't', pipeline_id: 'p', column, owner: 'pipeline', source_object_id: 'p', owner_state: 's',
-    resume: { resume_edition_id: null, source: 'none', locked: false },
+    resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
     rtr_state: null, readiness: null, days_in_stage: null, stage_entered_at: null, assigned_recruiter_user_id: null,
     next_actions: next,
   };

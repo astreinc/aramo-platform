@@ -18,9 +18,10 @@ import {
   type DocumentStoragePort,
 } from '@aramo/documents';
 
-import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
 import { EsignWriteBackOrchestrator, EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
+
+import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
 
 // OC-6 — the RTR readiness END-TO-END proof through the REAL signed-webhook path.
 //
@@ -61,7 +62,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let docsPrisma: DocumentsPrismaService;
     let app: INestApplication;
     let baseUrl: string;
-    let readiness: DocumentReadinessGate;
+    let readiness: ReturnType<typeof makeDocumentReadinessGate>;
 
     const TENANT = randomUUID();
     const ACTOR = randomUUID();
@@ -92,8 +93,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await docsPrisma.$connect();
 
       // Seed the RTR canonical Document (PREPARED) + a FROZEN revision + the joint
-      // associations + an RTR requirement for BOTH requisitions (so the gate is
-      // CONDITIONAL-active for each; the executed doc is associated to REQUISITION only).
+      // associations. RTR is made required for BOTH requisitions via the effective
+      // client-submittal-policy (the gate's rtrPolicyStub below), NOT a DocumentRequirement
+      // row; the executed doc is associated to REQUISITION only.
       await sql.query(
         `INSERT INTO documents."Document" (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by, prepared_at)
          VALUES ($1,$2,$3,'Right to Represent','PREPARED','SINGLE_SIGNATURE','TEMPLATE_GENERATED',$4, now())`,
@@ -109,12 +111,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1,$2,$3,'TALENT',$4,'SUBJECT',$5), ($6,$2,$3,'REQUISITION',$7,'REGARDING',$5)`,
         [randomUUID(), TENANT, DOC_ID, TALENT, ACTOR, randomUUID(), REQUISITION],
       );
-      await sql.query(
-        `INSERT INTO documents."DocumentRequirement" (id, tenant_id, document_type_id, resource_type, resource_id, status, created_by)
-         VALUES ($1,$2,$3,'REQUISITION',$4,'UNSATISFIED',$5), ($6,$2,$3,'REQUISITION',$7,'UNSATISFIED',$5)`,
-        [randomUUID(), TENANT, RTR_TYPE_ID, REQUISITION, ACTOR, randomUUID(), WRONG_REQUISITION],
-      );
-
       // Stub ONLY the contract-covered executed-artifact pull + the storage port.
       const stubClient = {
         fetchExecuted: async () => ({
@@ -174,9 +170,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = WEBHOOK_SECRET;
 
-      readiness = new DocumentReadinessGate(
-        new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
-      );
+      // RTR required for both requisitions via the effective policy (stub); satisfaction
+      // is still the REAL same-document executed-RTR predicate over the documents schema.
+      readiness = makeDocumentReadinessGate({
+        documents: new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
+        policy: rtrPolicyStub(new Set([REQUISITION, WRONG_REQUISITION])),
+      });
     }, 180_000);
 
     afterAll(async () => {

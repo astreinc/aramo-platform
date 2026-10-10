@@ -19,8 +19,9 @@ import { OfferRepository, PlacementRepository, PrismaService as PlacementPrismaS
 import { RequirementInstanceRepository, PrismaService as PreStartPrismaService } from '@aramo/pre-start-requirement';
 import { DocumentsRepository, DocumentIdempotencyService, PrismaService as DocumentsPrismaService } from '@aramo/documents';
 
-import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
+
+import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
 
 // Lane 2 / L2-H — the Unified Talent Journey composer, end-to-end against real Postgres 17.
 // The composer is constructed with the REAL owner read repositories over the REAL owner
@@ -117,9 +118,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new PlacementRepository(placementPrisma),
         new RequirementInstanceRepository(preStartPrisma),
         new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
-        new DocumentReadinessGate(
-          new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
-        ),
+        // RTR applicability is a client-submittal-policy fact; this journey spec publishes no
+        // RTR requirement (empty set → not required), so mark_qualified stays available (§14).
+        makeDocumentReadinessGate({
+          documents: new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
+          policy: rtrPolicyStub(new Set<string>()),
+        }),
         NOOP_LOGGER,
       );
     }, 240_000);

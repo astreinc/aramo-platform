@@ -33,6 +33,14 @@ export interface BoardResume {
   readonly resume_edition_id: string | null;
   readonly source: 'working_selection' | 'submitted_frozen' | 'none';
   readonly locked: boolean;
+  // Prototype-fidelity (hand-mirror of the api DTO) — the edition's human LABEL and
+  // its DATE (created_at ISO). Null when no edition is linked (source:'none') or the
+  // metadata could not be resolved. `tailored_for_requisition` is the DERIVED marker:
+  // true iff the authoritative edition was tailored FOR this requisition (never
+  // inferred from filename/UI text).
+  readonly label: string | null;
+  readonly display_date: string | null;
+  readonly tailored_for_requisition: boolean;
 }
 
 // TB-3 — a bounded governed next action (hand-mirror of the backend BoardNextAction).
@@ -53,10 +61,13 @@ export interface BoardCardView {
   readonly owner_state: string;
   readonly resume: BoardResume;
   readonly rtr_state: string | null;
-  // TB-chips — recruiting-stage readiness facts (mirror the api DTO). rtr_status null = RTR not
-  // required (chip hidden); email/voice_evidence are grounded per-channel facts; desired_pay is the
-  // talent's desired rate (talent:read-gated server-side; null when absent or not permitted).
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | null;
+  // TB-chips — recruiting-stage readiness facts (mirror the api DTO). rtr_status carries the
+  // canonical three-way effective requirement (UNGOVERNED ≠ NOT_REQUIRED): NOT_SENT/SENT/CONFIRMED
+  // is the signing status when RTR is REQUIRED; 'NOT_REQUIRED' is the affirmative "RTR · Not required"
+  // label (policy EXPLICITLY relaxed it); null is UNGOVERNED/unspecified → chip hidden (no affirmative
+  // claim). email/voice_evidence are grounded per-channel facts; desired_pay is the talent's desired
+  // rate (talent:read-gated server-side; null when absent or not permitted).
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;

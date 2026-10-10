@@ -7,6 +7,8 @@ import {
   type DocumentStoragePort,
 } from '@aramo/documents';
 import { TalentRecordRepository } from '@aramo/talent-record';
+import { RequisitionRepository } from '@aramo/requisition';
+import { type RenderBlock } from '@aramo/documents-rendering';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
@@ -74,6 +76,16 @@ export interface RtrPreviewView {
   content_sha256: string;
 }
 
+// SEAM 4 — the read-only "Send RTR" compose view, served BEFORE any RTR Document
+// exists. Provenance is the tenant's ACTIVE template (name · v{n}) — intentionally
+// today's active version, since no document has pinned a version yet. The preview
+// is the active version's content REAL-BOUND to THIS (talent, requisition) via the
+// same closed binding catalog the send path uses (resolved blocks, in-memory only).
+export interface RtrComposeView {
+  template: RtrProvenanceView;
+  preview: { title: string; blocks: RenderBlock[] };
+}
+
 @Injectable()
 export class RtrOrchestratorService {
   constructor(
@@ -87,6 +99,11 @@ export class RtrOrchestratorService {
     private readonly templates: TemplatesRepository,
     // Supplied positionally by the RtrModule factory (RTR_DOCS_STORAGE token).
     private readonly storage: DocumentStoragePort,
+    // SEAM 4 — authoritative source for the requisition's CLIENT company (client.name
+    // binding). A compose has no request body, so company is derived from the
+    // requisition rather than supplied by the caller. The binding service already
+    // reads it for request(); the orchestrator reads only the id here.
+    private readonly requisitions: RequisitionRepository,
   ) {}
 
   // request → the PREPARE boundary (RTR-TEMPLATE-1 §11). Resolve the governed
@@ -261,6 +278,62 @@ export class RtrOrchestratorService {
       preview_available: state.preview_available,
       executed_available: state.executed_available,
       certificate_available: state.certificate_available,
+    };
+  }
+
+  // SEAM 4 — READ-ONLY composition of the recruiter "Send RTR" panel BEFORE an RTR
+  // Document exists (talent_responded / qualifying-not-sent, where current() is null
+  // and the frozen-revision preview requires a document_id that does not yet exist).
+  //
+  // It resolves the tenant's ACTIVE RTR template (provenance name · v{n}) and produces
+  // a REAL-BOUND preview by resolving the closed binding catalog for THIS (talent,
+  // requisition, actor) and substituting into the active version's content. It REUSES
+  // the exact send-path primitives (resolveActive + RtrTemplateBindingService.bind) and
+  // performs ZERO writes: no Document, no revision, no artifact, no envelope — pure
+  // reads + an in-memory render. Every precondition fails CLOSED on the SAME typed
+  // codes the request/send path uses (RTR_TEMPLATE_NOT_CONFIGURED /
+  // RTR_TEMPLATE_CONFIGURATION_INVALID / RTR_TEMPLATE_BINDING_MISSING) — it NEVER
+  // fabricates a preview and NEVER emits a raw {{token}}.
+  async composeForPair(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+    actor_id: string;
+    requestId: string;
+  }): Promise<RtrComposeView> {
+    // 1. Resolve the tenant's ACTIVE RTR template + pin its current version. Throws
+    //    RTR_TEMPLATE_NOT_CONFIGURED when none is active, _CONFIGURATION_INVALID when
+    //    the active template/version is unusable. No fallback (INV-12).
+    const template = await this.resolver.resolveActive({
+      tenant_id: input.tenant_id,
+      requestId: input.requestId,
+    });
+
+    // 2. Derive the requisition's CLIENT company (the authoritative client.name source).
+    //    Tenant-scoped read; null ⇒ empty, which fails closed in bind() IFF the active
+    //    template actually references {{client.name}} (RTR_TEMPLATE_BINDING_MISSING).
+    const company_id =
+      (await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id })) ?? '';
+
+    // 3. REAL-BIND the active version's content for THIS (talent, requisition, actor) and
+    //    render in memory. Reuses the exact send-path binding/substitution; a missing
+    //    required binding throws RTR_TEMPLATE_BINDING_MISSING (fail closed — no raw token,
+    //    no empty substitution). NO persistence happens anywhere in this path.
+    const model = await this.binding.bind({
+      content: template.content,
+      template_version_id: template.template_version_id,
+      tenant_id: input.tenant_id,
+      talent_id: input.talent_id,
+      requisition_id: input.requisition_id,
+      company_id,
+      // §13 ruling — recruiter.display_name resolves to the acting recruiter.
+      recruiter_user_id: input.actor_id,
+      requestId: input.requestId,
+    });
+
+    return {
+      template: { name: template.template_name, version_number: template.version_number },
+      preview: { title: model.title, blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })) },
     };
   }
 

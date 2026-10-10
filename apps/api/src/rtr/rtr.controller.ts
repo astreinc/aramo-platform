@@ -5,6 +5,7 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 
 import {
   RtrOrchestratorService,
+  type RtrComposeView,
   type RtrCurrentView,
   type RtrPreviewView,
   type RtrRemindResult,
@@ -112,6 +113,34 @@ export class RtrController {
       requestId,
     });
     return { current };
+  }
+
+  // SEAM 4 — read-only composition of the "Send RTR" panel BEFORE an RTR document
+  // exists (talent_responded / qualifying-not-sent). Returns the tenant's ACTIVE RTR
+  // template provenance { name, version_number } + a REAL-BOUND preview { title,
+  // blocks } rendered for THIS (talent, requisition). No body, no mutation. Fails
+  // closed on the same typed template/binding codes as the request/send path.
+  // Recruiter-only; document:read (same authority as GET current). Tenant from auth.
+  @Get('compose')
+  @RequireScopes('document:read')
+  @HttpCode(HttpStatus.OK)
+  async compose(
+    @Query('talent_id') talentId: string,
+    @Query('requisition_id') requisitionId: string,
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<RtrComposeView> {
+    this.assertRecruiter(authContext, requestId);
+    if (typeof talentId !== 'string' || typeof requisitionId !== 'string') {
+      throw new AramoError('VALIDATION_ERROR', 'talent_id and requisition_id query params are required', 400, { requestId });
+    }
+    return this.orchestrator.composeForPair({
+      tenant_id: authContext.tenant_id,
+      talent_id: talentId,
+      requisition_id: requisitionId,
+      actor_id: authContext.sub,
+      requestId,
+    });
   }
 
   // RTR-TEMPLATE-1 (§16) — presigned read access to the EXACT frozen unsigned

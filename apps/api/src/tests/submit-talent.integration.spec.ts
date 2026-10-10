@@ -28,15 +28,18 @@ import { VoiceEvidenceReaderAdapter } from '../engagement/voice-evidence.adapter
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
 // DOC-5 (R-5-7, PL-1) — the document-readiness gate is composed into the
 // orchestrator. Constructed here against the SAME test DB (documents schema
-// applied below). CONDITIONAL: with NO RTR requirement declared for a
-// requisition it returns satisfied (ungated), so these pre-RTR proofs — none of
-// which declare an RTR requirement — stay unchanged. This is the load-bearing
-// proof that existing submits remain ungated with the REAL gate wired.
-import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+// applied below) + the REAL client-submittal-policy service. CONDITIONAL on the
+// effective policy: with NO rtr_present REQUIRED declared for a requisition it
+// returns satisfied (ungated), so these proofs — the CSP cases govern
+// work_authorization_present, never RTR — stay ungated on the RTR axis. This is
+// the load-bearing proof that existing submits remain ungated with the REAL gate wired.
+import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/client-submittal-policy-gateway.adapter.js';
+import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
+
+import { makeDocumentReadinessGate, nullCompanyIdResolver, publishRtrRequired } from './helpers/rtr-readiness-harness.js';
 // CSP PR-3 — the REAL client-submittal-policy service over the same policy_store
 // DB. Ungoverned tenants (no published client-submittal-policy) resolve null, so
 // the decision step is a no-op and the pre-CSP proofs stay unchanged.
-import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/client-submittal-policy-gateway.adapter.js';
 
 // Lane L8-B1 (v1.2) — the load-bearing atomicity + authority proofs for the
 // "Submit Talent to Client" orchestrator (real Postgres 17, 7 schemas). These
@@ -141,10 +144,11 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
   'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
-  // DOC-5 — the documents schema, so the REAL DocumentReadinessGate resolves
-  // against a real DocumentRequirement table. init + DOC-2 (requirements) + the
-  // DOC-5 RTR SYSTEM-type seed. None of these pre-RTR tenants declare an RTR
-  // requirement, so findRequirement returns null ⇒ ungated (proof preserved).
+  // DOC-5 — the documents schema, so the REAL DocumentReadinessGate resolves the
+  // same-document executed-RTR satisfaction against a real documents table. init +
+  // DOC-2 (requirements) + the DOC-5 RTR SYSTEM-type seed. RTR applicability is a
+  // client-submittal-policy fact (rtr_present REQUIRED); none of these proofs declare
+  // it, so the RTR axis stays ungated (proof preserved).
   'libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql',
   'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
   'libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql',
@@ -189,12 +193,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // DOC-5 — the REAL readiness gate over the documents schema on the same DB.
       docsPrisma = new DocumentsPrismaService(url);
       await docsPrisma.$connect();
-      const documentReadiness = new DocumentReadinessGate(
-        new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
-      );
       clientSubmittalPolicy = new ClientSubmittalPolicyService(
         new ClientSubmittalPolicyGatewayAdapter(db as never),
       );
+      const documentReadiness = makeDocumentReadinessGate({
+        documents: new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma)),
+        policy: clientSubmittalPolicy,
+        companyId: nullCompanyIdResolver,
+      });
       // CSP PR-3 — the submit's governed path reads talent_record.TalentRecord.
       // work_authorization. The curated migration set omits the talent_record
       // schema (ungoverned tenants never touch it), so create the minimal shape the
@@ -999,14 +1005,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function setupGovernedSubmit(
       t: string,
       workAuth: string | null,
-    ): Promise<{ req: string; sub: string }> {
+    ): Promise<{ req: string; sub: string; talent: string }> {
       const talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
       await seedRequisition(t, req, 'open');
       await seedPipeline(t, pipe, talent, req);
       await seedSubmittal(t, sub, talent, req, pipe);
       await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
       await seedTalentRecord(t, talent, workAuth);
-      return { req, sub };
+      return { req, sub, talent };
+    }
+    // An EXECUTED RTR Document jointly associated to the EXACT (talent SUBJECT, requisition
+    // REGARDING) — the same-document satisfaction the gate reads (unchanged by this fix).
+    async function seedExecutedRtr(t: string, req: string, talent: string): Promise<void> {
+      const docId = randomUUID();
+      await sql.query(
+        `INSERT INTO documents."Document"
+           (id, tenant_id, document_type_id, title, status, execution_mode, source_kind, created_by, executed_at)
+         VALUES ($1,$2,$3,'RTR','EXECUTED','SINGLE_SIGNATURE','TEMPLATE_GENERATED',$4,now())`,
+        [docId, t, RIGHT_TO_REPRESENT_TYPE_ID, randomUUID()],
+      );
+      for (const [rtype, rid, rel] of [['REQUISITION', req, 'REGARDING'], ['TALENT', talent, 'SUBJECT']] as const) {
+        await sql.query(
+          `INSERT INTO documents."DocumentAssociation" (id, tenant_id, document_id, resource_type, resource_id, relationship, created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [randomUUID(), t, docId, rtype, rid, rel, randomUUID()],
+        );
+      }
     }
 
     it('CSP-1: governed client REQUIRES work-authorization (HARD_DENY); work_auth ABSENT → DENY, NO slot, NO provenance', async () => {
@@ -1056,6 +1080,62 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows.rows[0].reason_code).toBe('CLIENT_SUBMITTAL_ALLOWED_DEFAULT');
       // The PII-free facts ride `derived`; work_authorization_present is now true.
       expect(rows.rows[0].inputs.derived.work_authorization_present).toBe(true);
+    });
+
+    // ---- CSP PR-3 + RTR effective-policy: the SUBMIT HOLE is closed -------------
+    // Before this fix the submit's RTR readiness came from a DocumentReadinessGate
+    // keyed off a DocumentRequirement row; with none materialized the gate returned
+    // satisfied=true, so a policy that REQUIRES RTR let a submit through with NO
+    // executed RTR (the hole). Now applicability IS the effective policy: rtr_present
+    // REQUIRED + no executed RTR → the gate's satisfied=false. That same-authority
+    // verdict is the submit's hard document-eligibility gate, so the submit is DENIED
+    // (SUBMITTAL_RTR_NOT_EXECUTED) BEFORE slot consumption — the hole is closed at the
+    // canonical authority, not patched downstream. Satisfaction (the same-document
+    // executed-RTR predicate) is unchanged.
+    it('CSP-RTR-1: governed client REQUIRES rtr_present; NO executed RTR → DENY (hole closed), NO slot, NO provenance', async () => {
+      const t = randomUUID();
+      await publishRtrRequired(clientSubmittalPolicy, { tenant_id: t });
+      const { req, sub } = await setupGovernedSubmit(t, 'US_CITIZEN'); // no executed RTR seeded
+      await expect(
+        svc.submitToClient({
+          tenant_id: t,
+          submittal_id: sub,
+          event_id: randomUUID(),
+          actor_id: randomUUID(),
+          requestId: 'csp-rtr-deny',
+        }),
+      ).rejects.toMatchObject({
+        code: 'SUBMITTAL_RTR_NOT_EXECUTED',
+        statusCode: 409,
+      });
+      // AFTER (non-vacuous): the DENY rolled the tx back — NO slot, NO CLIENT_SUBMITTAL record.
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      expect(
+        await count('policy_store."PolicyDecisionRecord"', "tenant_id=$1 AND resource='CLIENT_SUBMITTAL'", [t]),
+      ).toBe('0');
+    });
+
+    it('CSP-RTR-2: SAME governed client, EXECUTED RTR present for the exact (talent, requisition) → ALLOW, slot consumed', async () => {
+      const t = randomUUID();
+      await publishRtrRequired(clientSubmittalPolicy, { tenant_id: t });
+      const { req, sub, talent } = await setupGovernedSubmit(t, 'US_CITIZEN');
+      await seedExecutedRtr(t, req, talent);
+      const res = await svc.submitToClient({
+        tenant_id: t,
+        submittal_id: sub,
+        event_id: randomUUID(),
+        actor_id: randomUUID(),
+        requestId: 'csp-rtr-allow',
+      });
+      expect(res.state).toBe('submitted_to_client');
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
+      const rows = await sql.query(
+        `SELECT decision, inputs FROM policy_store."PolicyDecisionRecord"
+          WHERE tenant_id=$1 AND resource='CLIENT_SUBMITTAL' ORDER BY occurred_at DESC LIMIT 1`,
+        [t],
+      );
+      expect(rows.rows[0].decision).toBe('ALLOW');
+      expect(rows.rows[0].inputs.derived.rtr_present).toBe(true);
     });
   },
 );

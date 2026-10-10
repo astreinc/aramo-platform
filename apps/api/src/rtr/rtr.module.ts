@@ -117,8 +117,9 @@ const RTR_SIGNING = 'RTR_SIGNING';
         binding: RtrTemplateBindingService,
         templates: TemplatesRepository,
         storage: DocumentStoragePort,
+        requisitions: RequisitionRepository,
       ): RtrOrchestratorService =>
-        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage),
+        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage, requisitions),
       inject: [
         RTR_DOCS_REPO,
         RTR_SIGNING,
@@ -127,6 +128,7 @@ const RTR_SIGNING = 'RTR_SIGNING';
         RtrTemplateBindingService,
         RTR_TEMPLATES_REPO,
         RTR_DOCS_STORAGE,
+        RequisitionRepository,
       ],
     },
   ],
