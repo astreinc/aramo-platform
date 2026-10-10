@@ -21,6 +21,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
+import { rtrAffordanceKind, type RtrAffordanceKind } from './rtr-affordance';
 import type { TalentView } from './useTalentViewPreference';
 import type { RequisitionView } from './types';
 import type { AttentionItem, TabId } from './RequisitionDetailView';
@@ -151,6 +152,7 @@ export function WorkspacePanel({
   // identically, with no duplicated handlers and no second board.
   const talentActions = useRequisitionTalentActions({
     req,
+    companyName,
     pipelines,
     talents,
     placements,
@@ -429,6 +431,7 @@ export function WorkspacePanel({
             <div className="rc-tip__board">
               <RequisitionTalentBoard
                 requisitionId={req.id}
+                reqCode={`REQ-${req.requisition_number}`}
                 talentNames={talentActions.boardTalentNames}
                 talentSubtitles={talentActions.boardTalentSubtitles}
                 recruiterNames={talentActions.boardRecruiterNames}
@@ -438,6 +441,7 @@ export function WorkspacePanel({
                   if (p !== undefined) talentActions.openRow(p);
                 }}
                 onRequestVoid={talentActions.requestVoid}
+                onSendRtr={talentActions.canSendRtr ? talentActions.requestSendRtr : undefined}
                 refreshToken={talentActions.boardRefresh}
               />
             </div>
@@ -478,6 +482,11 @@ export function WorkspacePanel({
                     name={nameOf(card.talent_record_id)}
                     scopes={scopes}
                     onOpen={() => onNavigate('talent')}
+                    onSendRtr={
+                      talentActions.canSendRtr
+                        ? () => talentActions.requestSendRtr(card.talent_record_id, nameOf(card.talent_record_id))
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -642,21 +651,32 @@ function TalentInPlayRow({
   name,
   scopes,
   onOpen,
+  onSendRtr,
 }: {
   readonly card: BoardCardView;
   readonly name: string;
   readonly scopes: readonly string[];
   readonly onOpen: () => void;
+  /** Open the compose-driven Send RTR panel; absent when the actor cannot initiate. */
+  readonly onSendRtr?: () => void;
 }) {
   const action = card.next_actions.find(
     (a) => a.key !== 'pipeline.void' && scopes.includes(a.required_scope),
   );
+  // Presentation copy for the existing email/contact action (never a new action).
+  const actionLabel =
+    action !== undefined
+      ? action.key === 'pipeline.contact_talent'
+        ? 'Send email'
+        : action.label
+      : '';
   const stageLabel =
     card.owner === 'pipeline'
       ? (PIPELINE_STAGES.find((s) => s.key === card.owner_state)?.label ??
         BOARD_COLUMN_LABELS[card.column])
       : BOARD_COLUMN_LABELS[card.column];
   const cells = funnelCells(card);
+  const rtrKind = rtrAffordanceKind(card);
 
   return (
     <div className="rc-tip__row" role="row">
@@ -676,12 +696,22 @@ function TalentInPlayRow({
           </span>
         </span>
       </span>
-      {/* Value-only cells — the column labels live once in the header row. */}
-      {cells.map((c) => (
-        <span key={c.label} className="rc-tip__cell">
-          <span className={`rc-tip__val rc-tip__val--${c.tone}`}>{c.value}</span>
-        </span>
-      ))}
+      {/* Value-only cells — the column labels live once in the header row. The RTR
+          cell carries the shared Send-RTR affordance (status / actionable control);
+          every other cell is a value-only read projection. */}
+      {cells.map((c) =>
+        c.label === 'RTR' ? (
+          <span key={c.label} className="rc-tip__cell rc-tip__rtrcell">
+            <RtrCell kind={rtrKind} onSendRtr={onSendRtr} onOpen={onOpen} />
+          </span>
+        ) : (
+          <span key={c.label} className="rc-tip__cell">
+            <span className={`rc-tip__val rc-tip__val--${c.tone}`}>{c.value}</span>
+          </span>
+        ),
+      )}
+      {/* Far-right ACTION column — the stage action ONLY (never Send RTR, which
+          lives in the RTR column). */}
       <span className="rc-tip__next">
         {action !== undefined ? (
           <Button
@@ -690,12 +720,57 @@ function TalentInPlayRow({
             className="rc-btn-primary rc-tip__cta"
             onClick={onOpen}
           >
-            {action.label}
+            {actionLabel}
           </Button>
         ) : null}
       </span>
     </div>
   );
+}
+
+// The RTR column cell — the shared Send-RTR affordance (Gaps 2/5/6/7) composed from
+// the pipeline stage + rtr_status. "Send RTR" opens the governed compose panel; the
+// Awaiting/Signed links route to the governed RtrPanel surface (reminder / view),
+// which remains the mutation + evidence authority. Never a second Send-RTR control.
+function RtrCell({
+  kind,
+  onSendRtr,
+  onOpen,
+}: {
+  readonly kind: RtrAffordanceKind;
+  readonly onSendRtr?: () => void;
+  readonly onOpen: () => void;
+}) {
+  if (kind === 'send' && onSendRtr !== undefined) {
+    return (
+      <Button unstyled type="button" className="rc-tip__rtrbtn" onClick={onSendRtr}>
+        Send RTR
+      </Button>
+    );
+  }
+  if (kind === 'awaiting') {
+    return (
+      <span className="rc-tip__rtrstack">
+        <span className="rc-tip__val rc-tip__val--warn">Awaiting signature</span>
+        <Button unstyled type="button" className="rc-tip__rtrlink" onClick={onOpen}>
+          Send reminder
+        </Button>
+      </span>
+    );
+  }
+  if (kind === 'signed') {
+    return (
+      <span className="rc-tip__rtrstack">
+        <span className="rc-tip__val rc-tip__val--ok">✓ Signed</span>
+        <Button unstyled type="button" className="rc-tip__rtrlink" onClick={onOpen}>
+          View
+        </Button>
+      </span>
+    );
+  }
+  // none / due / (send without initiate capability) → muted status.
+  const text = kind === 'none' ? 'Not required' : kind === 'due' ? 'Due before qualifying' : 'Not sent';
+  return <span className="rc-tip__val rc-tip__val--mute">{text}</span>;
 }
 
 type CellTone = 'ok' | 'warn' | 'bad' | 'mute';

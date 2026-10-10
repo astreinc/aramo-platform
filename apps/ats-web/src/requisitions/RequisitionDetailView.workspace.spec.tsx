@@ -467,7 +467,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
             {
               talent_record_id: 'tal-9', pipeline_id: 'pp-9', column: 'selected',
               owner: 'client_selection', source_object_id: 'cs-9', owner_state: 'selected',
-              resume: { resume_edition_id: null, source: 'none', locked: false },
+              resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
               rtr_state: null, readiness: null, days_in_stage: null, stage_entered_at: null,
               assigned_recruiter_user_id: null, next_actions: [], handoff: false,
             },
@@ -580,8 +580,9 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     return {
       talent_record_id: 'tal-1', pipeline_id: 'pp-1', column: 'qualified',
       owner: 'pipeline', source_object_id: 'pp-1', owner_state: 'qualified',
-      resume: { resume_edition_id: null, source: 'none', locked: false },
+      resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
       rtr_state: 'NOT_EXECUTED',
+      rtr_status: 'NOT_SENT',
       readiness: {
         requisition_state: 'open', requisition_reason: null,
         blockers: ['rtr_not_executed'], band: 'needs_action',
@@ -663,10 +664,62 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     if (row === null) throw new Error('no talent-in-play row');
     expect(within(row).getByText('Qualified')).toBeInTheDocument(); // authoritative stage pill
     expect(row.textContent).toContain('4 days'); // days_in_stage, humanised
-    // Funnel milestones are read projections of the single authoritative stage +
-    // rtr_state; RTR is 'Required' only because the backend flagged NOT_EXECUTED.
-    expect(within(row).getByText('Required')).toBeInTheDocument();
+    // Funnel milestones are read projections of the single authoritative stage. The RTR
+    // column now carries the shared Send-RTR affordance from rtr_status: this actor cannot
+    // initiate (no document:create), so it degrades to the muted "Not sent" status — never
+    // a naked "Required" verdict.
+    expect(within(row).getByText('Not sent')).toBeInTheDocument();
     expect(within(row).getAllByText('✓ Complete').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('List — the Send-RTR control lives in the RTR column; the action column holds the stage action ONLY', async () => {
+    const c = card({
+      column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT',
+      next_actions: [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: '/x', required_scope: 'pipeline:change-status' }],
+    });
+    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status', 'document:create'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    const row = (await screen.findByText('Marcus Adeyemi')).closest('.rc-tip__row');
+    if (row === null) throw new Error('no talent-in-play row');
+    // RTR column carries the actionable Send-RTR control.
+    const rtrCell = row.querySelector('.rc-tip__rtrcell');
+    expect(rtrCell).not.toBeNull();
+    expect(within(rtrCell as HTMLElement).getByRole('button', { name: 'Send RTR' })).toBeInTheDocument();
+    // Action column holds the stage action only — never a second Send RTR.
+    const actionCell = row.querySelector('.rc-tip__next');
+    expect(within(actionCell as HTMLElement).getByRole('button', { name: 'Start qualifying' })).toBeInTheDocument();
+    expect(within(actionCell as HTMLElement).queryByRole('button', { name: /Send RTR/ })).toBeNull();
+  });
+
+  it('List — RTR status states: Awaiting signature + reminder, ✓ Signed + view', async () => {
+    const sent = card({ pipeline_id: 'pp-1', talent_record_id: 'tal-1', column: 'qualified', owner_state: 'qualified', rtr_status: 'SENT' });
+    mount(['requisition:read', 'pipeline:read'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'qualified', owner: 'pipeline', count: 1, cards: [sent] }]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    const row = (await screen.findByText('Marcus Adeyemi')).closest('.rc-tip__row') as HTMLElement;
+    expect(within(row).getByText('Awaiting signature')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Send reminder' })).toBeInTheDocument();
+  });
+
+  it('List — the no_contact stage action reads "Send email" (not "Contact Talent")', async () => {
+    const c = card({
+      column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact', rtr_status: 'NOT_SENT',
+      readiness: null,
+      next_actions: [{ key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: '/x', required_scope: 'pipeline:change-status' }],
+    });
+    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }]),
+    });
+    await screen.findByRole('heading', { name: /Staff Platform Engineer/ });
+    const row = (await screen.findByText('Marcus Adeyemi')).closest('.rc-tip__row') as HTMLElement;
+    expect(within(row).getByRole('button', { name: 'Send email' })).toBeInTheDocument();
+    expect(within(row).queryByRole('button', { name: 'Contact Talent' })).toBeNull();
   });
 
   it('a next-action CTA is hidden from an actor lacking its required scope, shown to one who holds it', async () => {

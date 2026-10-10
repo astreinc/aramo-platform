@@ -11,7 +11,7 @@ function card(column: BoardColumnKey, pipeline_id: string, talent_record_id = `t
     owner: 'pipeline',
     source_object_id: pipeline_id,
     owner_state: column,
-    resume: { resume_edition_id: null, source: 'none', locked: false },
+    resume: { resume_edition_id: null, source: 'none', locked: false, label: null, display_date: null, tailored_for_requisition: false },
     rtr_state: null,
     readiness: null,
     days_in_stage: null,

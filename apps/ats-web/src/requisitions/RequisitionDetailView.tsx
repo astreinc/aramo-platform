@@ -1300,6 +1300,7 @@ function TalentJourney({
   // handlers, no second board. Backend/action authority is unchanged.
   const actions = useRequisitionTalentActions({
     req,
+    companyName,
     pipelines,
     talents,
     placements,
@@ -1314,10 +1315,14 @@ function TalentJourney({
 
   return (
     <div className="rc-tj">
-      <TalentViewToggle value={talentView} onChange={onTalentView} className="rc-tj__viewbar" />
+      {/* Toolbar row — the shared List|Board toggle lives far right (prototype parity). */}
+      <div className="rc-tj__toolbar">
+        <TalentViewToggle value={talentView} onChange={onTalentView} />
+      </div>
       {talentView === 'board' ? (
         <RequisitionTalentBoard
           requisitionId={req.id}
+          reqCode={`REQ-${req.requisition_number}`}
           talentNames={actions.boardTalentNames}
           talentSubtitles={actions.boardTalentSubtitles}
           recruiterNames={actions.boardRecruiterNames}
@@ -1327,6 +1332,7 @@ function TalentJourney({
             if (p !== undefined) actions.openRow(p);
           }}
           onRequestVoid={actions.requestVoid}
+          onSendRtr={actions.canSendRtr ? actions.requestSendRtr : undefined}
           refreshToken={actions.boardRefresh}
         />
       ) : (
