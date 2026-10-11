@@ -7,6 +7,7 @@ import {
 import {
   DelegatedAuthorizationService,
   GraphCalendarError,
+  type GraphEventResult,
   MICROSOFT_CALENDAR_PORT,
   MICROSOFT_GRAPH_PORT,
   type MicrosoftCalendarPort,
@@ -322,6 +323,11 @@ export class MicrosoftSchedulingService {
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
       now: new Date(),
+      // Durable intent (PR#918 reconciliation pass): the intended target window, so a
+      // later reconcile can verify the provider actually moved to it (not merely exists).
+      mutation: 'reschedule',
+      target_start: new Date(args.start_date_time),
+      target_end: new Date(args.end_date_time),
     });
     if (reserve.conflict) {
       throw new MeetingVersionConflictError();
@@ -388,6 +394,9 @@ export class MicrosoftSchedulingService {
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
       now: new Date(),
+      // Durable intent (PR#918 reconciliation pass): a cancel is confirmed only when the
+      // provider event is absent/cancelled — no target window to match.
+      mutation: 'cancel',
     });
     if (reserve.conflict) {
       throw new MeetingVersionConflictError();
@@ -463,12 +472,17 @@ export class MicrosoftSchedulingService {
   }
 
   /**
-   * Bounded, EXPLICIT recovery (FIX-4) for a mutation whose fence is held but whose
-   * provider outcome was uncertain (Graph failure after reservation, or an abandoned
-   * mutation). Reads the provider event (Outlook is source of truth) and releases the
-   * fence to the reconciled state. Organizer-bound; never an automatic provider re-issue.
-   * (A create-side `unresolved`/abandoned-`pending` op carries no event id and is
-   * reconciled operationally, not here.)
+   * Bounded, EXPLICIT recovery (FIX-4 + PR#918 reconciliation pass) for a mutation whose
+   * fence is held but whose provider outcome was uncertain (Graph failure after
+   * reservation, or an abandoned mutation). Reads the provider event (Outlook is source
+   * of truth) and releases the fence ONLY to the outcome the provider actually confirms
+   * against the RECORDED intent: a reschedule requires a present event at the intended
+   * window; a cancel requires an absent/cancelled event. An inconclusive lookup, an
+   * unconfirmed provider state, or a finalize that did not land all keep the fence +
+   * unresolved — a missing/uncertain response is never read as a confirmed cancellation.
+   * Organizer-bound (R2), tenant-scoped; never an automatic provider re-issue. (A
+   * create-side `unresolved`/abandoned-`pending` op carries no event id and is reconciled
+   * operationally, not here.)
    */
   async reconcileMeeting(args: {
     tenant_id: string;
@@ -490,15 +504,42 @@ export class MicrosoftSchedulingService {
       throw new MeetingNotSchedulingError();
     }
     const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
-    const ev = await this.calendar.getCalendarEvent({ accessToken: token, providerEventId: row.provider_event_id });
-    // Provider is authoritative: an absent/cancelled event resolves to cancelled, a
-    // present event to rescheduled (the intended mutation landed on Outlook).
-    const resolved: 'rescheduled' | 'cancelled' = ev === null || ev.status === 'cancelled' ? 'cancelled' : 'rescheduled';
-    await this.repo.reconcileLockedMutation({
+
+    // Read provider truth. `getCalendarEvent` returns null ONLY on an authoritative 404
+    // (event absent); every inconclusive case (reauth/forbidden/throttled-exhausted/
+    // transient/network) THROWS. An inconclusive lookup means the provider outcome
+    // CANNOT be established — preserve the fence + unresolved; never guess (R3/R6).
+    let ev: GraphEventResult | null;
+    try {
+      ev = await this.calendar.getCalendarEvent({ accessToken: token, providerEventId: row.provider_event_id });
+    } catch (err) {
+      await this.writeReconcileUnresolved(args.tenant_id, args.recruiter_id, row, 'lookup_inconclusive', err);
+      throw new MeetingScheduleUnresolvedError(row.id);
+    }
+
+    // Verify the ACTUAL provider state against the RECORDED mutation intent before
+    // releasing the fence. null = the intended mutation is NOT confirmed (a reschedule
+    // whose window did not land, a cancel whose event is still active, or an absent/
+    // cancelled event for a reschedule). A missing/inconclusive response is NEVER read
+    // as a confirmed cancellation.
+    const resolved = this.resolveProviderOutcome(row, ev);
+    if (resolved === null) {
+      await this.writeReconcileUnresolved(args.tenant_id, args.recruiter_id, row, 'provider_state_unconfirmed');
+      throw new MeetingScheduleUnresolvedError(row.id);
+    }
+
+    // CHECKED release (FIX-2 parity): only emit a success audit if the reconcile write
+    // actually landed on the row we still hold; otherwise the state is uncertain — keep
+    // the fence + unresolved, no success audit.
+    const rec = await this.repo.reconcileLockedMutation({
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       resolved_status: resolved,
     });
+    if (!rec.ok) {
+      await this.writeReconcileUnresolved(args.tenant_id, args.recruiter_id, row, 'finalize_did_not_land');
+      throw new MeetingScheduleUnresolvedError(row.id);
+    }
     await this.repo.writeAudit({
       tenant_id: args.tenant_id,
       actor_id: args.recruiter_id,
@@ -511,6 +552,72 @@ export class MicrosoftSchedulingService {
     });
     const updated = await this.repo.findScheduledMeeting(args.tenant_id, args.interaction_id);
     return this.view(updated ?? row, null, false);
+  }
+
+  /**
+   * Map the RECORDED mutation intent + the AUTHORITATIVE provider event to a confirmed
+   * terminal outcome, or null when the provider does NOT confirm the intended mutation.
+   * `ev === null` is an authoritative 404 (absent); inconclusive lookups never reach
+   * here (they throw in the caller). A cancellation is never inferred from uncertainty.
+   */
+  private resolveProviderOutcome(
+    row: ScheduledMeetingRow,
+    ev: GraphEventResult | null,
+  ): 'rescheduled' | 'cancelled' | null {
+    if (row.pending_mutation === 'cancel') {
+      // Confirmed ONLY when the provider event is absent or marked cancelled.
+      return ev === null || ev.status === 'cancelled' ? 'cancelled' : null;
+    }
+    if (row.pending_mutation === 'reschedule') {
+      // Confirmed ONLY by a present, non-cancelled event whose window matches the
+      // intended target. Absent/cancelled, or a different window, is NOT a reschedule.
+      if (ev === null || ev.status === 'cancelled') {
+        return null;
+      }
+      return this.providerWindowMatches(row, ev) ? 'rescheduled' : null;
+    }
+    // No recorded intent (a pre-intent abandoned fence): only an authoritative
+    // absence/cancellation is a safe terminal resolution.
+    return ev === null || ev.status === 'cancelled' ? 'cancelled' : null;
+  }
+
+  /** True iff the provider event's window equals the intended reschedule target. */
+  private providerWindowMatches(row: ScheduledMeetingRow, ev: GraphEventResult): boolean {
+    if (row.pending_start === null || row.pending_end === null) {
+      return false; // a reschedule intent with no recorded window cannot be verified
+    }
+    const evStart = Date.parse(ev.start_date_time);
+    const evEnd = Date.parse(ev.end_date_time);
+    if (Number.isNaN(evStart) || Number.isNaN(evEnd)) {
+      return false; // provider window unparseable → cannot confirm
+    }
+    return evStart === row.pending_start.getTime() && evEnd === row.pending_end.getTime();
+  }
+
+  /** Durable unresolved audit for a reconcile that could not confirm provider truth. */
+  private async writeReconcileUnresolved(
+    tenant_id: string,
+    recruiter_id: string,
+    row: ScheduledMeetingRow,
+    reason: 'lookup_inconclusive' | 'provider_state_unconfirmed' | 'finalize_did_not_land',
+    err?: unknown,
+  ): Promise<void> {
+    await this.repo.writeAudit({
+      tenant_id,
+      actor_id: recruiter_id,
+      actor_type: 'recruiter',
+      event_type: 'meeting.provider_failed',
+      interaction_id: row.id,
+      provider_event_id: row.provider_event_id,
+      outcome: 'unresolved',
+      event_payload: {
+        operation: 'reconcile',
+        reason,
+        intent: row.pending_mutation,
+        kind: err instanceof GraphCalendarError ? err.kind : undefined,
+        status: err instanceof GraphCalendarError ? err.status : undefined,
+      },
+    });
   }
 
   private requestFingerprint(args: ScheduleMeetingArgs, effectiveConnectionId: string): string {

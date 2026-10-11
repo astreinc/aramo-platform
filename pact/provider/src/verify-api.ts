@@ -354,6 +354,13 @@ const COMMUNICATIONS_MUTATION_FENCE_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql',
 );
+// M365-SCHED-1 A1 PR#918 reconciliation pass — durable mutation intent (pending
+// operation + target window) so recovery verifies provider truth. SEPARATE const
+// (single resolve() arg — a 2nd arg concatenates → ENOTDIR).
+const COMMUNICATIONS_RECONCILIATION_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3701,6 +3708,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // audit schema) for the calendar-meeting provider interactions.
         COMMUNICATIONS_SCHEDULING_MIGRATION,
         COMMUNICATIONS_MUTATION_FENCE_MIGRATION,
+        COMMUNICATIONS_RECONCILIATION_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,

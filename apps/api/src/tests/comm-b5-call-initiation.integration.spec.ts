@@ -53,6 +53,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
   'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql',
+  'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',

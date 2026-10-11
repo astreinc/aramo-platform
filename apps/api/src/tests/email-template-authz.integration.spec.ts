@@ -42,6 +42,7 @@ const MIGRATIONS = [
   resolve(ROOT, 'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql'),
   resolve(ROOT, 'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql'),
   resolve(ROOT, 'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql'),
+  resolve(ROOT, 'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql'),
   resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql'),
   // Provision the conversation_intelligence schema so the background CI-processing
   // reconciler's poll succeeds during the booted-AppModule window (else it logs a

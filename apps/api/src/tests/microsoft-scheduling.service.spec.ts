@@ -201,3 +201,49 @@ describe('reschedule/cancel — RESERVE before Graph (A1 R2/R3, FIX_NOW-1)', () 
     expect(auditTypes).toContain('meeting.provider_failed');
   });
 });
+
+describe('reconcileMeeting — provider-verified release (A1 R3/R6, PR#918 reconciliation pass)', () => {
+  const fencedReschedule = {
+    id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 3, provider_event_id: 'evt-1',
+    join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date(),
+    mutation_locked_at: new Date(), pending_mutation: 'reschedule',
+    pending_start: new Date('2026-11-20T10:00:00.000Z'), pending_end: new Date('2026-11-20T10:30:00.000Z'),
+  };
+  const reconcileArgs = { tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: 'int-1' };
+  const presentAtIntent = vi.fn().mockResolvedValue({
+    provider_event_id: 'evt-1', start_date_time: '2026-11-20T10:00:00.000Z', end_date_time: '2026-11-20T10:30:00.000Z',
+  });
+
+  it('releases the fence to rescheduled ONLY when the provider window matches — reconcileLockedMutation(rescheduled) + reconciled audit', async () => {
+    const { svc, repo } = build({ findScheduledMeeting: fencedReschedule, calendar: { getCalendarEvent: presentAtIntent } });
+    await svc.reconcileMeeting(reconcileArgs);
+    expect(repo.reconcileLockedMutation).toHaveBeenCalledWith(expect.objectContaining({ resolved_status: 'rescheduled' }));
+    const auditTypes = repo.writeAudit.mock.calls.map((c) => (c[0] as { event_type: string }).event_type);
+    expect(auditTypes).toContain('meeting.reconciled');
+  });
+
+  it('a reconcile whose finalize does NOT land stays unresolved — reconcileLockedMutation called but NO reconciled audit (PR#918 FIX-2 parity)', async () => {
+    const { svc, repo } = build({ findScheduledMeeting: fencedReschedule, calendar: { getCalendarEvent: presentAtIntent } });
+    repo.reconcileLockedMutation.mockResolvedValue({ ok: false });
+    await expect(svc.reconcileMeeting(reconcileArgs)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+    expect(repo.reconcileLockedMutation).toHaveBeenCalledOnce();
+    const auditTypes = repo.writeAudit.mock.calls.map((c) => (c[0] as { event_type: string }).event_type);
+    expect(auditTypes).not.toContain('meeting.reconciled');
+    expect(auditTypes).toContain('meeting.provider_failed');
+  });
+
+  it('an inconclusive provider lookup never releases the fence — no reconcile write, no reconciled audit', async () => {
+    const throwing = vi.fn().mockRejectedValue(new GraphCalendarError('transient', 503, 'get timeout'));
+    const { svc, repo } = build({ findScheduledMeeting: fencedReschedule, calendar: { getCalendarEvent: throwing } });
+    await expect(svc.reconcileMeeting(reconcileArgs)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+    expect(repo.reconcileLockedMutation).not.toHaveBeenCalled();
+    const auditTypes = repo.writeAudit.mock.calls.map((c) => (c[0] as { event_type: string }).event_type);
+    expect(auditTypes).not.toContain('meeting.reconciled');
+  });
+
+  it('a non-organizer cannot reconcile another recruiter’s meeting (R2)', async () => {
+    const { svc, repo } = build({ findScheduledMeeting: { ...fencedReschedule, initiated_by_id: 'other' } });
+    await expect(svc.reconcileMeeting(reconcileArgs)).rejects.toBeInstanceOf(MeetingOrganizerMismatchError);
+    expect(repo.reconcileLockedMutation).not.toHaveBeenCalled();
+  });
+});

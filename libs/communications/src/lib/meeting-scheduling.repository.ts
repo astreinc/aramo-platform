@@ -45,6 +45,11 @@ export interface ScheduledMeetingRow {
   started_at: Date | null;
   ended_at: Date | null;
   mutation_locked_at: Date | null;
+  // Durable intent of the fenced mutation (PR#918 reconciliation pass): what the
+  // reservation was trying to do, so recovery can verify provider truth against it.
+  pending_mutation: string | null;
+  pending_start: Date | null;
+  pending_end: Date | null;
 }
 
 export interface MeetingAuditInput {
@@ -284,6 +289,12 @@ export class MeetingSchedulingRepository {
     interaction_id: string;
     expected_version: number;
     now: Date;
+    // Durable intent stamped WITH the fence (PR#918 reconciliation pass): a reschedule
+    // carries the intended target window so recovery can verify the provider actually
+    // moved to it; a cancel carries no window.
+    mutation: 'reschedule' | 'cancel';
+    target_start?: Date | null;
+    target_end?: Date | null;
   }): Promise<{ conflict: boolean; reserved_version: number }> {
     const res = await this.prisma.communicationInteraction.updateMany({
       where: {
@@ -294,7 +305,13 @@ export class MeetingSchedulingRepository {
         status: { in: ['scheduled', 'rescheduled'] },
         mutation_locked_at: null,
       },
-      data: { version: { increment: 1 }, mutation_locked_at: args.now },
+      data: {
+        version: { increment: 1 },
+        mutation_locked_at: args.now,
+        pending_mutation: args.mutation,
+        pending_start: args.mutation === 'reschedule' ? (args.target_start ?? null) : null,
+        pending_end: args.mutation === 'reschedule' ? (args.target_end ?? null) : null,
+      },
     });
     return { conflict: res.count === 0, reserved_version: args.expected_version + 1 };
   }
@@ -326,6 +343,9 @@ export class MeetingSchedulingRepository {
         started_at: args.started_at,
         ended_at: args.ended_at,
         mutation_locked_at: null,
+        pending_mutation: null,
+        pending_start: null,
+        pending_end: null,
       },
     });
     return { ok: res.count === 1 };
@@ -345,7 +365,13 @@ export class MeetingSchedulingRepository {
         version: args.reserved_version,
         mutation_locked_at: { not: null },
       },
-      data: { status: 'cancelled', mutation_locked_at: null },
+      data: {
+        status: 'cancelled',
+        mutation_locked_at: null,
+        pending_mutation: null,
+        pending_start: null,
+        pending_end: null,
+      },
     });
     return { ok: res.count === 1 };
   }
@@ -369,7 +395,13 @@ export class MeetingSchedulingRepository {
         channel: 'meeting',
         mutation_locked_at: { not: null },
       },
-      data: { status: args.resolved_status, mutation_locked_at: null },
+      data: {
+        status: args.resolved_status,
+        mutation_locked_at: null,
+        pending_mutation: null,
+        pending_start: null,
+        pending_end: null,
+      },
     });
     return { ok: res.count === 1 };
   }

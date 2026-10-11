@@ -43,11 +43,20 @@ class FakeCalendar {
   createCount = 0;
   updateCount = 0;
   cancelCount = 0;
+  getCount = 0;
   lastCreate: GraphCreateEventArgs | null = null;
   lastUpdate: GraphUpdateEventArgs | null = null;
   mode: 'ok' | 'ambiguous' = 'ok';
   failUpdate = false;
+  failCancel = false;
   providerEventId = 'evt-real-0001';
+  // Reconciliation read control (PR#918 reconciliation pass). Default: the provider
+  // reflects the LAST attempted update window — i.e. a reschedule that actually landed
+  // on Outlook despite the client seeing a transient error (the classic ambiguous case).
+  //   'absent'  — authoritative 404 (event no longer exists)
+  //   'throw'   — inconclusive lookup (provider state cannot be established)
+  //   {start,end,status?} — provider is at exactly this window / lifecycle state
+  getOverride: { start_date_time: string; end_date_time: string; status?: string } | 'absent' | 'throw' | null = null;
   async createCalendarEvent(args: GraphCreateEventArgs) {
     this.createCount += 1;
     this.lastCreate = args;
@@ -66,10 +75,27 @@ class FakeCalendar {
   }
   async cancelCalendarEvent() {
     this.cancelCount += 1;
+    if (this.failCancel) {
+      throw new GraphCalendarError('transient', 503, 'cancel timeout', undefined, true);
+    }
   }
   async getCalendarEvent() {
-    // Provider is reachable and the event is present (reconciliation resolves to rescheduled).
-    return { provider_event_id: this.providerEventId, start_date_time: 's', end_date_time: 'e' };
+    this.getCount += 1;
+    if (this.getOverride === 'throw') {
+      throw new GraphCalendarError('transient', 503, 'get timeout');
+    }
+    if (this.getOverride === 'absent') {
+      return null;
+    }
+    if (this.getOverride !== null) {
+      return { provider_event_id: this.providerEventId, ...this.getOverride };
+    }
+    // Default: provider holds the last attempted update window (reschedule landed).
+    return {
+      provider_event_id: this.providerEventId,
+      start_date_time: this.lastUpdate?.startDateTime ?? '',
+      end_date_time: this.lastUpdate?.endDateTime ?? '',
+    };
   }
 }
 
@@ -133,6 +159,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT],
       );
       return r.rows.map((x) => x.event_type as string);
+    }
+    async function fenceState(id: string): Promise<{ locked: boolean; pending: string | null }> {
+      const r = await db.query(
+        `SELECT mutation_locked_at, pending_mutation FROM communications."CommunicationInteraction" WHERE tenant_id=$1 AND id=$2`,
+        [TENANT, id],
+      );
+      return { locked: r.rows[0]?.mutation_locked_at !== null, pending: (r.rows[0]?.pending_mutation as string | null) ?? null };
+    }
+    // Fence a reschedule: reserve lands, the Graph update fails ambiguously → the row
+    // stays scheduled with the mutation fence + the recorded reschedule intent held.
+    async function fenceReschedule(
+      interaction_id: string,
+      version: number,
+      start: string,
+      end: string,
+    ): Promise<void> {
+      calendar.failUpdate = true;
+      await expect(
+        svc.rescheduleMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id,
+          expected_version: version, start_date_time: start, end_date_time: end,
+          time_zone: 'UTC', requestId: 'rq',
+        }),
+      ).rejects.toThrow();
+      calendar.failUpdate = false;
     }
 
     beforeAll(async () => {
@@ -294,6 +345,73 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         end_date_time: '2026-11-08T10:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
       });
       expect(ok.status).toBe('rescheduled');
+    });
+
+    it('reconcile/confirmed-reschedule. a fenced reschedule whose provider window MATCHES the intent releases the fence to rescheduled', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      const target = { s: '2026-11-20T10:00:00.000Z', e: '2026-11-20T10:30:00.000Z' };
+      await fenceReschedule(created.interaction_id, created.version, target.s, target.e);
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: true, pending: 'reschedule' });
+      // Provider actually holds the intended window → the reschedule is confirmed.
+      calendar.getOverride = { start_date_time: target.s, end_date_time: target.e };
+      await svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id });
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('rescheduled');
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: false, pending: null });
+      expect(await auditEventTypes()).toContain('meeting.reconciled');
+    });
+
+    it('reconcile/confirmed-cancellation. a fenced cancel whose provider event is ABSENT (404) releases the fence to cancelled', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      calendar.failCancel = true;
+      await expect(
+        svc.cancelMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+          expected_version: created.version, requestId: 'rq',
+        }),
+      ).rejects.toThrow();
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: true, pending: 'cancel' });
+      calendar.failCancel = false;
+      calendar.getOverride = 'absent'; // authoritative 404 — event no longer exists
+      await svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id });
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('cancelled');
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: false, pending: null });
+      expect(await auditEventTypes()).toContain('meeting.reconciled');
+    });
+
+    it('reconcile/unchanged-provider-state. a fenced reschedule whose provider window is UNCHANGED stays fenced + unresolved (no false success)', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      await fenceReschedule(created.interaction_id, created.version, '2026-11-21T10:00:00.000Z', '2026-11-21T10:30:00.000Z');
+      // Provider still holds the ORIGINAL window → the reschedule did NOT land.
+      calendar.getOverride = { start_date_time: '2026-11-03T15:00:00.000Z', end_date_time: '2026-11-03T15:30:00.000Z' };
+      await expect(
+        svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id }),
+      ).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('scheduled');
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: true, pending: 'reschedule' });
+      expect(await auditEventTypes()).not.toContain('meeting.reconciled');
+    });
+
+    it('reconcile/reschedule-missing-is-not-cancelled. a fenced reschedule whose provider event is ABSENT is NOT read as cancelled — stays fenced + unresolved', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      await fenceReschedule(created.interaction_id, created.version, '2026-11-22T10:00:00.000Z', '2026-11-22T10:30:00.000Z');
+      calendar.getOverride = 'absent';
+      await expect(
+        svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id }),
+      ).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('scheduled'); // NOT cancelled
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: true, pending: 'reschedule' });
+    });
+
+    it('reconcile/inconclusive-lookup. an inconclusive provider read keeps the fence + unresolved (never guesses)', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      await fenceReschedule(created.interaction_id, created.version, '2026-11-23T10:00:00.000Z', '2026-11-23T10:30:00.000Z');
+      calendar.getOverride = 'throw'; // provider state cannot be established
+      await expect(
+        svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id }),
+      ).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('scheduled');
+      expect(await fenceState(created.interaction_id)).toEqual({ locked: true, pending: 'reschedule' });
+      expect(await auditEventTypes()).not.toContain('meeting.reconciled');
     });
 
     it('FIX-3. a same-key create with a CHANGED time is refused (full request-identity binding)', async () => {

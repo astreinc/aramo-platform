@@ -236,6 +236,19 @@ model CommunicationInteraction {
   // the lock is held, so two mutations can never reach Microsoft Graph concurrently.
   mutation_locked_at DateTime? @db.Timestamptz
 
+  // COMM-C2B Amendment A1 (M365-SCHED-1, PR#918 reconciliation pass) — the DURABLE
+  // intent of the fenced mutation, stamped atomically with the fence and cleared when
+  // it is finalized or reconciled. Reconciliation needs this to verify the provider's
+  // ACTUAL state against what was intended: `pending_mutation` is 'reschedule'|'cancel',
+  // and for a reschedule `pending_start`/`pending_end` are the intended window the
+  // provider event MUST match before the outcome is accepted as rescheduled. Without
+  // it a fenced row still holds the OLD window, so a reconcile could not tell "the
+  // reschedule landed" from "the provider is unchanged". All nullable: non-scheduling
+  // and non-fenced rows carry none.
+  pending_mutation String?
+  pending_start    DateTime? @db.Timestamptz
+  pending_end      DateTime? @db.Timestamptz
+
   // COMM-C4 (RCE-1) — the FINAL sent subject and body for an email-channel
   // interaction (post-review durable evidence). Nullable: voice/meeting rows
   // carry neither. Plain text; never a token or provider secret.
