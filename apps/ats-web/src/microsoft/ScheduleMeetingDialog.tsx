@@ -1,5 +1,5 @@
 import { Button, Dialog, InlineAlert, Input, Select } from '@aramo/fe-foundation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { describeCalendarMeetingError } from './calendar-meeting-errors';
@@ -105,6 +105,38 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
   const [errState, setErrState] = useState<ReturnType<typeof describeCalendarMeetingError> | null>(null);
   const [refreshedNotice, setRefreshedNotice] = useState(false);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  // Per-session idempotency nonce: a genuinely new scheduling session gets a fresh key
+  // even if its field values coincide with a prior session's. Bumped on every (re)open.
+  const [sessionNonce, setSessionNonce] = useState(0);
+
+  // Lifecycle isolation: this dialog instance may be reused across scheduling sessions
+  // (create→close→create, reschedule A→close→reschedule B, reschedule→close→create,
+  // conflict-refresh→close→reopen). useState initializers only run once, so every
+  // (re)open re-seeds ALL state from the ACTIVE intent and discards prior session state —
+  // preventing a stale interaction_id / version / form / review / error / key from
+  // leaking into the next session and modifying the wrong meeting.
+  useEffect(() => {
+    if (!props.open) return;
+    const active = props.editing ?? null;
+    const zone = resolvedZone();
+    const s = active != null ? seedFromView(active, zone) : { date: '', time: '', duration: 30 };
+    setCurrent(active);
+    setPurpose('Recruiter screen');
+    setDate(s.date);
+    setTime(s.time);
+    setDuration(s.duration);
+    setTimeZone(zone);
+    setSubject('Recruiter screen');
+    setPhase('form');
+    setSubmitting(false);
+    setErrState(null);
+    setRefreshedNotice(false);
+    setRefreshFailed(false);
+    setSessionNonce((n) => n + 1);
+    // Re-seed when the dialog opens or the targeted meeting changes. Intra-session
+    // updates (version-conflict refresh) mutate `current`/fields directly and do NOT
+    // change these deps, so they are never clobbered.
+  }, [props.open, props.editing]);
 
   const composed = useMemo(
     () => (date.length > 0 && time.length > 0 ? composeInstants(date, time, duration, timeZone) : null),
@@ -116,8 +148,10 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
 
   const idempotencyKey = useMemo(
     () => newIdempotencyKey(),
-    // stable per unchanged intent; changes when any identity-bearing field changes
-    [props.talentId, props.requisitionId, subject, startIso, endIso, timeZone],
+    // Stable per unchanged intent within a session (retries reuse it); changes when any
+    // identity-bearing field changes, and `sessionNonce` forces a fresh key for a new
+    // scheduling session even if the field values coincide with a prior one.
+    [sessionNonce, props.talentId, props.requisitionId, subject, startIso, endIso, timeZone],
   );
 
   const formValid =

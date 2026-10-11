@@ -173,6 +173,66 @@ describe('ScheduleMeetingDialog', () => {
     expect(screen.queryByTestId('schedule-confirm')).toBeNull(); // no blind retry
   });
 
+  // ── Residual FIX_NOW: state isolation across a REUSED dialog instance ──
+  const A: ScheduledMeetingView = { ...VIEW, interaction_id: 'A', version: 3, scheduled_start: '2026-11-03T15:00:00.000Z', scheduled_end: '2026-11-03T15:30:00.000Z' };
+  const B: ScheduledMeetingView = { ...VIEW, interaction_id: 'B', version: 9, scheduled_start: '2026-12-01T18:00:00.000Z', scheduled_end: '2026-12-01T18:45:00.000Z' };
+
+  it('reschedule A → close → reschedule B targets B (fresh id + version, no leak)', async () => {
+    const rescheduleFn = vi.fn().mockResolvedValue(B);
+    const { rerender } = render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open={false} onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={B} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(rescheduleFn).toHaveBeenCalledTimes(1));
+    expect(rescheduleFn.mock.calls[0][0]).toBe('B');
+    expect(rescheduleFn.mock.calls[0][1].expected_version).toBe(9);
+  });
+
+  it('reschedule A → close → create does NOT carry A\'s id (create path, form reset)', async () => {
+    const scheduleFn = vi.fn().mockResolvedValue(VIEW);
+    const rescheduleFn = vi.fn();
+    const { rerender } = render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open={false} onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={null} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    expect((screen.getByTestId('schedule-date') as HTMLInputElement).value).toBe(''); // A's date did not leak
+    fillValidForm();
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(scheduleFn).toHaveBeenCalledTimes(1));
+    expect(rescheduleFn).not.toHaveBeenCalled();
+  });
+
+  it('create → close → create issues a FRESH idempotency key for the new session (same inputs)', async () => {
+    const scheduleFn = vi.fn().mockResolvedValue(VIEW);
+    const { rerender } = render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" scheduleFn={scheduleFn} onDone={vi.fn()} />);
+    fillValidForm();
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(scheduleFn).toHaveBeenCalledTimes(1));
+    rerender(<ScheduleMeetingDialog open={false} onOpenChange={vi.fn()} talentId="t" requisitionId="r" scheduleFn={scheduleFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" scheduleFn={scheduleFn} onDone={vi.fn()} />);
+    fillValidForm(); // identical inputs, new session
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(scheduleFn).toHaveBeenCalledTimes(2));
+    expect(scheduleFn.mock.calls[0][0].idempotency_key).not.toBe(scheduleFn.mock.calls[1][0].idempotency_key);
+  });
+
+  it('a refreshed-notice from a prior session does not persist after close → reopen', async () => {
+    const rescheduleFn = vi.fn().mockRejectedValue(new ApiError(409, 'x', 'MICROSOFT_MEETING_VERSION_CONFLICT'));
+    const getFn = vi.fn().mockResolvedValue({ ...A, version: 4 });
+    const { rerender } = render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} rescheduleFn={rescheduleFn} getFn={getFn} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '09:00' } });
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    expect(await screen.findByTestId('schedule-refreshed-notice')).toBeInTheDocument();
+    rerender(<ScheduleMeetingDialog open={false} onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} rescheduleFn={rescheduleFn} getFn={getFn} onDone={vi.fn()} />);
+    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={B} rescheduleFn={rescheduleFn} getFn={getFn} onDone={vi.fn()} />);
+    expect(screen.queryByTestId('schedule-refreshed-notice')).toBeNull();
+  });
+
   it('an UNRESOLVED error shows the uncertain-outcome message and offers NO retry', async () => {
     const scheduleFn = vi
       .fn()
