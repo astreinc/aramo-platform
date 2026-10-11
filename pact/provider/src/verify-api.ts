@@ -340,6 +340,12 @@ const COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION = resolve(
 const COMMUNICATIONS_ATTESTED_RESPONSE_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
+);
+// M365-SCHED-1 A1 — Outlook scheduling persistence. SEPARATE const (single resolve()
+// arg — a 2nd arg concatenates the two relative paths into one nested path → ENOTDIR,
+// which crashed the whole apps/api provider verification before any interaction ran).
+const COMMUNICATIONS_SCHEDULING_MIGRATION = resolve(
+  ROOT,
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
 );
 // PR-A1c §4 sweep — metering schema applied because every selection +
@@ -1496,6 +1502,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await c.query('TRUNCATE TABLE consent."IdempotencyKey" CASCADE');
       await c.query('TRUNCATE TABLE consent."OutboxEvent" CASCADE');
       await c.query('TRUNCATE TABLE audit."ConsentAuditEvent" CASCADE');
+      // M365-SCHED-1 A1 — scheduling evidence/ledger/audit, so a prior interaction's
+      // reschedule/cancel mutation never leaks into the next (the seeded-meeting state
+      // uses ON CONFLICT DO NOTHING; without this a cancelled row would 409 a later
+      // reschedule). CommunicationInteraction CASCADE clears its associations.
+      await c.query('TRUNCATE TABLE communications."CommunicationInteraction" CASCADE');
+      await c.query('TRUNCATE TABLE communications."MeetingSchedulingOperation" CASCADE');
+      await c.query('TRUNCATE TABLE audit."MeetingSchedulingAuditEvent" CASCADE');
       // M3 PR-8 — match-list state handlers seed rows into these tables;
       // truncate them at the start of every interaction so a prior
       // interaction's data doesn't leak forward.
@@ -3678,6 +3691,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_EMAIL_TEMPLATE_MIGRATION,
         COMMUNICATIONS_TEMPLATE_PROVENANCE_MIGRATION,
         COMMUNICATIONS_ATTESTED_RESPONSE_MIGRATION,
+        // M365-SCHED-1 A1 — Outlook scheduling persistence (op ledger + CAS cols +
+        // audit schema) for the calendar-meeting provider interactions.
+        COMMUNICATIONS_SCHEDULING_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -7573,6 +7589,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
+            // The REAL MeetingAssociationValidator (not overridden) requires the
+            // Requisition to exist in-tenant (findStatusById) alongside the live
+            // pipeline episode (findLiveEpisode) — seed it so the create verifies.
+            await seedAtsWebRequisition(c, {
+              id: ATSW_PIPE_REQ_ID,
+              title: 'Senior Engineer',
+              companyId: '00000000-0000-7000-8000-c0a000000001',
+            });
             await c.query(
               `DELETE FROM integration."IntegrationConnection" WHERE tenant_id = $1::uuid`,
               [TENANT_ID],
