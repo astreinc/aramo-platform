@@ -4,16 +4,23 @@ import { Button } from '@aramo/fe-foundation';
 
 
 import { RequisitionContactEmailComposer } from './RequisitionContactEmailComposer';
+import { ScheduleMeetingDialog } from './ScheduleMeetingDialog';
+import { UpcomingMeetings } from './UpcomingMeetings';
 import {
   createMicrosoftMeeting as defaultCreateMeeting,
   getMicrosoftBindingStatus as defaultLoadStatus,
   sendMicrosoftEmail as defaultSendEmail,
+  type CancelCalendarMeetingInput,
   type CreateMeetingInput,
+  type ListCalendarMeetingsQuery,
   type MicrosoftBindingStatus,
   type MicrosoftEmailSendResult,
   type MicrosoftMeetingResult,
   type RequisitionContactDraft,
   type RequisitionContactDraftInput,
+  type RescheduleCalendarMeetingInput,
+  type ScheduleCalendarMeetingInput,
+  type ScheduledMeetingView,
   type SendEmailInput,
 } from './microsoft-api';
 
@@ -36,10 +43,22 @@ export interface MicrosoftRecruiterActionsProps {
   // a caller that forgets to pass the capability hides the action rather than
   // accidentally exposing it; the server still enforces authorization too.
   readonly canSendEmail: boolean;
+  // M365-SCHED-1 PR 1B — Outlook scheduling scopes, independently gated (fail-closed,
+  // default hidden). communication:meeting:create/read/edit/cancel. The backend
+  // remains authoritative; these only control affordance visibility.
+  readonly canScheduleMeeting?: boolean;
+  readonly canReadMeetings?: boolean;
+  readonly canEditMeeting?: boolean;
+  readonly canCancelMeeting?: boolean;
+  readonly talentName?: string;
   readonly loadStatusFn?: () => Promise<MicrosoftBindingStatus>;
   readonly draftFn?: (input: RequisitionContactDraftInput) => Promise<RequisitionContactDraft>;
   readonly sendEmailFn?: (input: SendEmailInput) => Promise<MicrosoftEmailSendResult>;
   readonly createMeetingFn?: (input: CreateMeetingInput) => Promise<MicrosoftMeetingResult>;
+  readonly scheduleFn?: (input: ScheduleCalendarMeetingInput) => Promise<ScheduledMeetingView>;
+  readonly rescheduleFn?: (id: string, input: RescheduleCalendarMeetingInput) => Promise<ScheduledMeetingView>;
+  readonly listMeetingsFn?: (q: ListCalendarMeetingsQuery) => Promise<{ meetings: readonly ScheduledMeetingView[] }>;
+  readonly cancelMeetingFn?: (id: string, input: CancelCalendarMeetingInput) => Promise<ScheduledMeetingView>;
 }
 
 function newKey(prefix: string): string {
@@ -52,11 +71,22 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
   const createMeeting = props.createMeetingFn ?? defaultCreateMeeting;
   const canSendEmail = props.canSendEmail;
 
+  const canScheduleMeeting = props.canScheduleMeeting ?? false;
+  const canReadMeetings = props.canReadMeetings ?? false;
+  const canEditMeeting = props.canEditMeeting ?? false;
+  const canCancelMeeting = props.canCancelMeeting ?? false;
+
   const [status, setStatus] = useState<MicrosoftBindingStatus | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [emailResult, setEmailResult] = useState<MicrosoftEmailSendResult | null>(null);
   const [meetingResult, setMeetingResult] = useState<MicrosoftMeetingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Outlook scheduling (PR 1B): one dialog serves create (editingMeeting === null)
+  // and reschedule (editingMeeting set from the Upcoming block). reloadToken forces
+  // the Upcoming list to refresh after a completed schedule/reschedule.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState<ScheduledMeetingView | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     let live = true;
@@ -142,8 +172,28 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
           <span className="rc-m365__btn-ic" aria-hidden="true">
             <CalendarGlyph />
           </span>
-          Create Teams meeting
+          Create Teams link
         </Button>
+        {/* M365-SCHED-1 PR 1B — DISTINCT from the link-only action above (G-2): this
+            opens the scheduling dialog that creates an Outlook event and sends
+            invitations. Independently scope-gated. */}
+        {canScheduleMeeting && (
+          <Button
+            unstyled
+            type="button"
+            className="rc-m365__btn rc-m365__btn--secondary"
+            data-testid="microsoft-schedule-meeting"
+            onClick={() => {
+              setEditingMeeting(null);
+              setScheduleOpen(true);
+            }}
+          >
+            <span className="rc-m365__btn-ic" aria-hidden="true">
+              <CalendarGlyph />
+            </span>
+            Schedule meeting
+          </Button>
+        )}
       </div>
       <p className="rc-m365__helper">
         Sent as you from your connected Microsoft 365 mailbox · logged to this
@@ -173,6 +223,41 @@ export function MicrosoftRecruiterActions(props: MicrosoftRecruiterActionsProps)
         </p>
       )}
       {error !== null && <p data-testid="microsoft-action-error">{error}</p>}
+
+      {canReadMeetings && (
+        <UpcomingMeetings
+          talentId={props.talentId}
+          talentName={props.talentName}
+          requisitionId={props.requisitionId}
+          canEdit={canEditMeeting}
+          canCancel={canCancelMeeting}
+          listFn={props.listMeetingsFn}
+          cancelFn={props.cancelMeetingFn}
+          reloadToken={reloadToken}
+          onReschedule={(m) => {
+            setEditingMeeting(m);
+            setScheduleOpen(true);
+          }}
+        />
+      )}
+
+      {(canScheduleMeeting || editingMeeting !== null) && scheduleOpen && (
+        <ScheduleMeetingDialog
+          open={scheduleOpen}
+          onOpenChange={setScheduleOpen}
+          talentId={props.talentId}
+          talentName={props.talentName}
+          requisitionId={props.requisitionId}
+          pipelineId={props.pipelineId}
+          editing={editingMeeting}
+          scheduleFn={props.scheduleFn}
+          rescheduleFn={props.rescheduleFn}
+          onDone={() => {
+            setEditingMeeting(null);
+            setReloadToken((t) => t + 1);
+          }}
+        />
+      )}
     </div>
   );
 }

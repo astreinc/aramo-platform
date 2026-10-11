@@ -6249,6 +6249,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/microsoft/ScheduleMeetingDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/microsoft/calendar-meeting-errors.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/offer-start/OfferStartWorklistView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
