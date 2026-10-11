@@ -113,6 +113,66 @@ describe('MicrosoftRecruiterActions', () => {
     expect(screen.queryByTestId('microsoft-send-email')).toBeNull();
   });
 
+  // ── M365-SCHED-1 PR 1B — Outlook scheduling, a DISTINCT capability (G-2) ──
+  it('both Microsoft meeting actions coexist and are distinctly labeled (create-link-only vs schedule)', async () => {
+    renderR(
+      <MicrosoftRecruiterActions
+        talentId="t1"
+        requisitionId="r1"
+        canSendEmail={false}
+        canScheduleMeeting
+        loadStatusFn={vi.fn().mockResolvedValue(status({}))}
+      />,
+    );
+    const link = await screen.findByTestId('microsoft-create-meeting');
+    const schedule = await screen.findByTestId('microsoft-schedule-meeting');
+    expect(link.textContent).toMatch(/link/i);
+    expect(link.textContent).not.toMatch(/schedule/i);
+    expect(schedule.textContent).toMatch(/schedule meeting/i);
+  });
+
+  it('the Schedule meeting action is hidden without communication:meeting:create', async () => {
+    renderR(
+      <MicrosoftRecruiterActions talentId="t1" requisitionId="r1" canSendEmail={false} loadStatusFn={vi.fn().mockResolvedValue(status({}))} />,
+    );
+    await screen.findByTestId('microsoft-create-meeting');
+    expect(screen.queryByTestId('microsoft-schedule-meeting')).toBeNull();
+  });
+
+  it('clicking Schedule meeting opens the scheduling dialog (does not transmit)', async () => {
+    const scheduleFn = vi.fn();
+    renderR(
+      <MicrosoftRecruiterActions
+        talentId="t1"
+        requisitionId="r1"
+        canSendEmail={false}
+        canScheduleMeeting
+        scheduleFn={scheduleFn}
+        loadStatusFn={vi.fn().mockResolvedValue(status({}))}
+      />,
+    );
+    fireEvent.click(await screen.findByTestId('microsoft-schedule-meeting'));
+    expect(await screen.findByTestId('schedule-form')).toBeInTheDocument();
+    expect(scheduleFn).not.toHaveBeenCalled();
+  });
+
+  it('with read scope, the Upcoming block mounts and lists meetings', async () => {
+    const listFn = vi.fn().mockResolvedValue({
+      meetings: [{ interaction_id: 'm1', operation_id: null, provider_event_id: 'e1', join_url: 'https://t/j', status: 'scheduled', version: 1, scheduled_start: '2026-11-03T15:00:00.000Z', scheduled_end: '2026-11-03T15:30:00.000Z', idempotent_replay: false }],
+    });
+    renderR(
+      <MicrosoftRecruiterActions
+        talentId="t1"
+        requisitionId="r1"
+        canSendEmail={false}
+        canReadMeetings
+        listMeetingsFn={listFn}
+        loadStatusFn={vi.fn().mockResolvedValue(status({}))}
+      />,
+    );
+    expect(await screen.findByTestId('upcoming-meeting-m1')).toBeInTheDocument();
+  });
+
   it('creates a Teams meeting and surfaces the join link (create-link-only, not attendance)', async () => {
     const createMeetingFn = vi.fn().mockResolvedValue({
       interaction_id: 'i2',

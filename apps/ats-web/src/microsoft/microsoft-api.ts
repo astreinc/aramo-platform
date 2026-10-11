@@ -126,6 +126,105 @@ export async function createMicrosoftMeeting(input: CreateMeetingInput): Promise
   return apiClient.post<MicrosoftMeetingResult>('/v1/integrations/microsoft/meeting', input);
 }
 
+// ─── M365-SCHED-1 PR 1B — Outlook/Teams CALENDAR scheduling (COMM-C2B Amendment A1) ───
+// A DISTINCT capability from the create-link-only `/meeting` above (G-2): this creates
+// a real Outlook calendar event and SENDS invitations. The legacy link-only client
+// (`createMicrosoftMeeting`) and its result type are preserved untouched.
+
+// The backend's ScheduledMeetingView (apps/api/src/microsoft/microsoft-scheduling.service.ts).
+// `status` is intentionally a plain string: the UI handles the known lifecycle
+// {scheduled, rescheduled, cancelled} and treats any other value conservatively.
+export interface ScheduledMeetingView {
+  readonly interaction_id: string;
+  readonly operation_id: string | null;
+  readonly provider_event_id: string | null;
+  readonly join_url: string | null;
+  readonly status: string;
+  readonly version: number;
+  readonly scheduled_start: string | null;
+  readonly scheduled_end: string | null;
+  readonly idempotent_replay: boolean;
+}
+
+export interface ScheduleCalendarMeetingInput {
+  readonly talent_record_id: string;
+  readonly requisition_id: string;
+  readonly pipeline_id?: string;
+  readonly connection_id?: string;
+  readonly subject: string;
+  readonly start_date_time: string; // ISO-8601
+  readonly end_date_time: string; // ISO-8601
+  readonly time_zone: string; // validated IANA zone
+  readonly idempotency_key: string;
+}
+
+export interface RescheduleCalendarMeetingInput {
+  readonly connection_id?: string;
+  readonly expected_version: number; // CAS guard
+  readonly start_date_time: string;
+  readonly end_date_time: string;
+  readonly time_zone: string;
+}
+
+export interface CancelCalendarMeetingInput {
+  readonly connection_id?: string;
+  readonly expected_version: number;
+  readonly comment?: string;
+}
+
+export interface ListCalendarMeetingsQuery {
+  readonly talent_record_id?: string;
+  readonly requisition_id?: string;
+  readonly from?: string;
+  readonly to?: string;
+}
+
+const CALENDAR_BASE = '/v1/integrations/microsoft/calendar-meeting';
+
+export async function scheduleCalendarMeeting(
+  input: ScheduleCalendarMeetingInput,
+): Promise<ScheduledMeetingView> {
+  return apiClient.post<ScheduledMeetingView>(CALENDAR_BASE, input);
+}
+
+export async function getCalendarMeeting(interactionId: string): Promise<ScheduledMeetingView> {
+  return apiClient.get<ScheduledMeetingView>(`${CALENDAR_BASE}/${encodeURIComponent(interactionId)}`);
+}
+
+export async function listCalendarMeetings(
+  query: ListCalendarMeetingsQuery = {},
+): Promise<{ meetings: readonly ScheduledMeetingView[] }> {
+  const params = new URLSearchParams();
+  if (query.talent_record_id !== undefined) params.set('talent_record_id', query.talent_record_id);
+  if (query.requisition_id !== undefined) params.set('requisition_id', query.requisition_id);
+  if (query.from !== undefined) params.set('from', query.from);
+  if (query.to !== undefined) params.set('to', query.to);
+  const qs = params.toString();
+  return apiClient.get<{ meetings: readonly ScheduledMeetingView[] }>(
+    `/v1/integrations/microsoft/calendar-meetings${qs.length > 0 ? `?${qs}` : ''}`,
+  );
+}
+
+export async function rescheduleCalendarMeeting(
+  interactionId: string,
+  input: RescheduleCalendarMeetingInput,
+): Promise<ScheduledMeetingView> {
+  return apiClient.patch<ScheduledMeetingView>(
+    `${CALENDAR_BASE}/${encodeURIComponent(interactionId)}`,
+    input,
+  );
+}
+
+export async function cancelCalendarMeeting(
+  interactionId: string,
+  input: CancelCalendarMeetingInput,
+): Promise<ScheduledMeetingView> {
+  return apiClient.post<ScheduledMeetingView>(
+    `${CALENDAR_BASE}/${encodeURIComponent(interactionId)}/cancel`,
+    input,
+  );
+}
+
 export async function generateRequisitionContactDraft(
   input: RequisitionContactDraftInput,
 ): Promise<RequisitionContactDraft> {

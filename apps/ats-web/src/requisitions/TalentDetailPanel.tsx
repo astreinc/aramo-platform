@@ -395,6 +395,10 @@ export function TalentDetailPanel({
               requisitionId={entry.requisition_id}
               pipelineId={entry.id}
               canSendEmail={scopes.includes('communication:email:send')}
+              canScheduleMeeting={scopes.includes('communication:meeting:create')}
+              canReadMeetings={scopes.includes('communication:meeting:read')}
+              canEditMeeting={scopes.includes('communication:meeting:edit')}
+              canCancelMeeting={scopes.includes('communication:meeting:cancel')}
             />
           </section>
 

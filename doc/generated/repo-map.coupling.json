@@ -11866,6 +11866,11 @@
       "to": "apps/api/src/my-desk/dto/my-desk.view.ts"
     },
     {
+      "from": "apps/ats-web/src/microsoft/microsoft-api.ts",
+      "status": "production",
+      "to": "apps/api/src/microsoft/microsoft-scheduling.service.ts"
+    },
+    {
       "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/offer-start/offer-start-steps.spec.ts",
       "status": "excluded",
