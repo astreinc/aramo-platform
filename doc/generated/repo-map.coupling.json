@@ -13866,6 +13866,61 @@
     },
     { "from": "doc/aramo-handoff-m5-close.md", "status": "unscoped", "to": "openapi/ats.yaml" },
     {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-calendar-http.adapter.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "apps/api/src/microsoft/microsoft-scheduling.service.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/communications/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/communications/src/lib/meeting-scheduling.repository.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/domain/graph-scopes.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "libs/microsoft-graph/src/lib/ports/microsoft-calendar.port.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "openapi/ats.yaml"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/microsoft.consumer.test.ts"
+    },
+    {
+      "from": "doc/architecture/handovers/PR-918.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
       "from": "doc/architecture/handovers/README.md",
       "status": "unscoped",
       "to": "doc/governance/history/Aramo-Architecture-Change-History.md"

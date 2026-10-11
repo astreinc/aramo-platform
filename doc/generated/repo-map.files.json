@@ -1671,6 +1671,7 @@
     "doc/architecture/Aramo-E-Sign-Standalone-Service-Architecture-Intent-v1_0.md",
     "doc/architecture/aramo-enterprise-context-v2_1.md",
     "doc/architecture/aramo-platform-console-enterprise-architecture.md",
+    "doc/architecture/handovers/PR-918.md",
     "doc/architecture/handovers/README.md",
     "doc/architecture/handovers/TEMPLATE.md",
     "doc/architecture/visual-architecture-synchronization-governance.md",
