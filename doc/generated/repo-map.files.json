@@ -2267,6 +2267,7 @@
     "libs/communications/prisma/migrations/20261004170000_comm_recruiter_w1_general_talent_contact_category/migration.sql",
     "libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql",
     "libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql",
+    "libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql",
     "libs/communications/prisma/migrations/migration_lock.toml",
     "libs/communications/prisma/schema.prisma",
     "libs/communications/project.json",
