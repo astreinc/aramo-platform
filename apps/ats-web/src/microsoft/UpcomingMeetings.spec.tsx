@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { ToastProvider } from '@aramo/fe-foundation';
 import { describe, expect, it, vi } from 'vitest';
 
 import { UpcomingMeetings } from './UpcomingMeetings';
@@ -16,7 +17,7 @@ function view(over: Partial<ScheduledMeetingView> = {}): ScheduledMeetingView {
 
 function renderList(props: Partial<React.ComponentProps<typeof UpcomingMeetings>> = {}) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter><ToastProvider>
       <UpcomingMeetings
         talentId="tal-1"
         talentName="Dana Lee"
@@ -27,7 +28,7 @@ function renderList(props: Partial<React.ComponentProps<typeof UpcomingMeetings>
         onReschedule={vi.fn()}
         {...props}
       />
-    </MemoryRouter>,
+    </ToastProvider></MemoryRouter>,
   );
 }
 
@@ -76,9 +77,13 @@ describe('UpcomingMeetings', () => {
     expect(screen.getByTestId('upcoming-meeting-int-1').textContent).not.toMatch(/\bscheduled\b/i);
   });
 
-  it('empty state when there are no upcoming meetings', async () => {
-    renderList({ listFn: vi.fn().mockResolvedValue({ meetings: [] }) });
-    expect(await screen.findByTestId('upcoming-empty')).toBeInTheDocument();
+  it('renders NOTHING when there are no upcoming meetings (zero-state is silent, not an empty block)', async () => {
+    const { container } = renderList({ listFn: vi.fn().mockResolvedValue({ meetings: [] }) });
+    // allow the load microtask to settle, then assert no block and no empty placeholder
+    await Promise.resolve();
+    expect(screen.queryByTestId('upcoming-meetings')).toBeNull();
+    expect(screen.queryByTestId('upcoming-empty')).toBeNull();
+    expect(container.querySelector('[data-testid="upcoming-load-error"]')).toBeNull();
   });
 
   it('FIX_NOW-4: a failed read shows a distinct error state (NOT empty), with retry that recovers', async () => {

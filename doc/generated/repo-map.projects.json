@@ -756,6 +756,7 @@
       "hasScope",
       "logout",
       "redirectToLogin",
+      "useOptionalToast",
       "useSession",
       "useToast"
     ],
@@ -6249,7 +6250,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/microsoft/MicrosoftRecruiterActions.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/microsoft/ScheduleMeetingDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/microsoft/UpcomingMeetings.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -6686,6 +6699,11 @@
         "status": "excluded"
       },
       { "project": "aramo-ats-web", "status": "production" },
+      {
+        "from": "apps/ats-web/visual/harness/harness.tsx",
+        "project": "aramo-ats-web",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",

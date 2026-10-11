@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { ToastProvider } from '@aramo/fe-foundation';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MicrosoftRecruiterActions } from './MicrosoftRecruiterActions';
@@ -29,7 +30,7 @@ function draft(over: Partial<RequisitionContactDraft> = {}): RequisitionContactD
   };
 }
 function renderR(ui: React.ReactNode) {
-  return render(<MemoryRouter>{ui}</MemoryRouter>);
+  return render(<MemoryRouter><ToastProvider>{ui}</ToastProvider></MemoryRouter>);
 }
 
 describe('MicrosoftRecruiterActions', () => {
@@ -108,13 +109,15 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
       />,
     );
-    // The panel still renders (meeting remains), but no email send button.
-    await screen.findByTestId('microsoft-create-meeting');
+    // The card still renders, but no email send button.
+    await screen.findByTestId('microsoft-actions');
     expect(screen.queryByTestId('microsoft-send-email')).toBeNull();
   });
 
-  // ── M365-SCHED-1 PR 1B — Outlook scheduling, a DISTINCT capability (G-2) ──
-  it('both Microsoft meeting actions coexist and are distinctly labeled (create-link-only vs schedule)', async () => {
+  // ── M365-SCHED-1 UX fidelity (R1) — the legacy create-link-only button is REMOVED
+  // from this card; the only meeting action here is Schedule meeting. The link-only
+  // capability remains in the Interviews workflow (InterviewDetailView). ──
+  it('the card shows Schedule meeting and NO "Create Teams link" button', async () => {
     renderR(
       <MicrosoftRecruiterActions
         talentId="t1"
@@ -124,18 +127,16 @@ describe('MicrosoftRecruiterActions', () => {
         loadStatusFn={vi.fn().mockResolvedValue(status({}))}
       />,
     );
-    const link = await screen.findByTestId('microsoft-create-meeting');
     const schedule = await screen.findByTestId('microsoft-schedule-meeting');
-    expect(link.textContent).toMatch(/link/i);
-    expect(link.textContent).not.toMatch(/schedule/i);
     expect(schedule.textContent).toMatch(/schedule meeting/i);
+    expect(screen.queryByTestId('microsoft-create-meeting')).toBeNull();
   });
 
   it('the Schedule meeting action is hidden without communication:meeting:create', async () => {
     renderR(
       <MicrosoftRecruiterActions talentId="t1" requisitionId="r1" canSendEmail={false} loadStatusFn={vi.fn().mockResolvedValue(status({}))} />,
     );
-    await screen.findByTestId('microsoft-create-meeting');
+    await screen.findByTestId('microsoft-actions');
     expect(screen.queryByTestId('microsoft-schedule-meeting')).toBeNull();
   });
 
@@ -173,32 +174,4 @@ describe('MicrosoftRecruiterActions', () => {
     expect(await screen.findByTestId('upcoming-meeting-m1')).toBeInTheDocument();
   });
 
-  it('creates a Teams meeting and surfaces the join link (create-link-only, not attendance)', async () => {
-    const createMeetingFn = vi.fn().mockResolvedValue({
-      interaction_id: 'i2',
-      join_url: 'https://teams.microsoft.example/l/join',
-      scheduled_start: '2026-09-10T15:00:00.000Z',
-      scheduled_end: '2026-09-10T15:30:00.000Z',
-      talent_record_id: 't1',
-      requisition_id: 'r1',
-      idempotent_replay: false,
-    });
-    renderR(
-      <MicrosoftRecruiterActions
-        talentId="t1"
-        requisitionId="r1"
-        canSendEmail
-        loadStatusFn={vi.fn().mockResolvedValue(status({}))}
-        createMeetingFn={createMeetingFn}
-      />,
-    );
-    fireEvent.click(await screen.findByTestId('microsoft-create-meeting'));
-    const created = await screen.findByTestId('microsoft-meeting-created');
-    expect(created.textContent).toMatch(/link created/i);
-    expect(created.textContent).not.toMatch(/attended|completed/i);
-    expect(await screen.findByTestId('microsoft-meeting-join-url')).toHaveAttribute(
-      'href',
-      'https://teams.microsoft.example/l/join',
-    );
-  });
 });

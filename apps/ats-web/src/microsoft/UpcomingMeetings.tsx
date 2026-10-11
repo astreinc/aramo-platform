@@ -1,4 +1,4 @@
-import { Button, Dialog, InlineAlert } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, useOptionalToast } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { describeCalendarMeetingError } from './calendar-meeting-errors';
@@ -27,10 +27,21 @@ function statusLabel(status: string): string {
   return 'Status unavailable'; // conservative — never present an unknown status as scheduled
 }
 
-function when(v: ScheduledMeetingView): string {
-  if (v.scheduled_start === null) return '—';
+function startDate(v: ScheduledMeetingView): Date | null {
+  if (v.scheduled_start === null) return null;
   const d = new Date(v.scheduled_start);
-  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString();
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+function dayLabel(d: Date | null): string {
+  return d === null ? '—' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+function timeLabel(d: Date | null): string {
+  return d === null ? '' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function durationLabel(v: ScheduledMeetingView): string {
+  if (v.scheduled_start === null || v.scheduled_end === null) return 'Outlook meeting';
+  const mins = Math.round((new Date(v.scheduled_end).getTime() - new Date(v.scheduled_start).getTime()) / 60000);
+  return Number.isFinite(mins) && mins > 0 ? `${mins} min · organized by you · on your Outlook calendar` : 'organized by you · on your Outlook calendar';
 }
 
 export interface UpcomingMeetingsProps {
@@ -46,9 +57,10 @@ export interface UpcomingMeetingsProps {
   readonly reloadToken?: number;
 }
 
-export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element {
+export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element | null {
   const list = props.listFn ?? defaultList;
   const cancel = props.cancelFn ?? defaultCancel;
+  const toast = useOptionalToast();
 
   const [meetings, setMeetings] = useState<readonly ScheduledMeetingView[] | null>(null);
   const [loadError, setLoadError] = useState(false);
@@ -86,6 +98,7 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element {
         setBusy(false);
         setConfirmId(null);
         load();
+        toast.show('Meeting cancelled · cancellation sent from your Outlook calendar');
       })
       .catch((e) => {
         setBusy(false);
@@ -105,42 +118,51 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element {
       </div>
     );
   }
-  if (meetings === null) {
-    return <div data-testid="upcoming-loading">Loading meetings…</div>;
+  // Zero-state (and the brief pre-load) render NOTHING — the block appears below the
+  // card only once a non-cancelled meeting exists (prototype). A failed read is the
+  // distinct `loadError` state above, never collapsed into "no meetings" (FIX-4).
+  if (meetings === null || meetings.length === 0) {
+    return null;
   }
 
   return (
     <div className="rc-upcoming" data-testid="upcoming-meetings">
       <div className="rc-upcoming__head">Upcoming with {props.talentName ?? 'this Talent'}</div>
-      {meetings.length === 0 ? (
-        <div data-testid="upcoming-empty" className="rc-upcoming__empty">No scheduled meetings yet.</div>
-      ) : (
-        <ul className="rc-upcoming__list">
-          {meetings.map((m) => {
-            const active = ACTIVE.has(m.status);
-            return (
-              <li key={m.interaction_id} data-testid={`upcoming-meeting-${m.interaction_id}`} className="rc-upcoming__row">
-                <span className="rc-upcoming__when">{when(m)}</span>
-                <span className="rc-upcoming__status">{statusLabel(m.status)}</span>
-                <span className="rc-upcoming__actions">
-                  {active && m.join_url !== null && (
-                    <a data-testid={`upcoming-join-${m.interaction_id}`} href={m.join_url} target="_blank" rel="noreferrer">Join</a>
-                  )}
-                  {active && props.canEdit && (
-                    <Button unstyled className="rc-link-action" data-testid={`upcoming-reschedule-${m.interaction_id}`} onClick={() => props.onReschedule(m)}>Reschedule</Button>
-                  )}
-                  {active && props.canCancel && (
-                    <Button unstyled className="rc-link-action" data-testid={`upcoming-cancel-${m.interaction_id}`} onClick={() => setConfirmId(m.interaction_id)}>Cancel</Button>
-                  )}
+      <ul className="rc-upcoming__list">
+        {meetings.map((m) => {
+          const active = ACTIVE.has(m.status);
+          const d = startDate(m);
+          const statusTone = active ? 'rc-upcoming__pill--status' : 'rc-upcoming__pill--prov';
+          return (
+            <li key={m.interaction_id} data-testid={`upcoming-meeting-${m.interaction_id}`} className="rc-upcoming__row">
+              <span className="rc-upcoming__when">{dayLabel(d)}<small>{timeLabel(d)}</small></span>
+              <span className="rc-upcoming__mid">
+                <span className="rc-upcoming__title">Outlook meeting · Teams</span>
+                <span className="rc-upcoming__sub">{durationLabel(m)}</span>
+                <span className="rc-upcoming__pills">
+                  <span className="rc-upcoming__pill rc-upcoming__pill--prov">Outlook · Teams</span>
+                  <span className={`rc-upcoming__pill ${statusTone}`}>{statusLabel(m.status)}</span>
                 </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <p className="rc-upcoming__foot">
-        Last-known scheduling state from your Outlook calendar. A scheduled meeting isn&apos;t evidence the call happened.
-      </p>
+              </span>
+              <span className="rc-upcoming__actions">
+                {active && m.join_url !== null && (
+                  <a className="rc-upcoming__join" data-testid={`upcoming-join-${m.interaction_id}`} href={m.join_url} target="_blank" rel="noreferrer">Join</a>
+                )}
+                {active && props.canEdit && (
+                  <Button unstyled className="rc-upcoming__resched" data-testid={`upcoming-reschedule-${m.interaction_id}`} onClick={() => props.onReschedule(m)}>Reschedule</Button>
+                )}
+                {active && props.canCancel && (
+                  <Button unstyled className="rc-upcoming__cancel" data-testid={`upcoming-cancel-${m.interaction_id}`} onClick={() => setConfirmId(m.interaction_id)}>Cancel</Button>
+                )}
+              </span>
+            </li>
+          );
+        })}
+        <li className="rc-upcoming__foot" aria-hidden="false">
+          Invitations and the Teams link live on your Outlook calendar. This is Aramo&apos;s last-known scheduling
+          state; a scheduled meeting isn&apos;t evidence the call happened.
+        </li>
+      </ul>
       {err !== null && <div data-testid="upcoming-error"><InlineAlert variant="error">{err}</InlineAlert></div>}
 
       <Dialog
