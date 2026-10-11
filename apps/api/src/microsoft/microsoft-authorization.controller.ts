@@ -21,8 +21,10 @@ import {
 import { CalendarInviteConsentDeniedError } from './calendar-invite-consent-gate.port.js';
 import { MeetingAssociationError } from './meeting-association.validator.js';
 import {
+  MeetingIdempotencyConflictError,
   MeetingNotFoundError,
   MeetingNotSchedulingError,
+  MeetingOperationInProgressError,
   MeetingOrganizerMismatchError,
   MeetingScheduleUnresolvedError,
   MeetingVersionConflictError,
@@ -364,6 +366,12 @@ export class MicrosoftAuthorizationController {
     }
     if (err instanceof MeetingVersionConflictError) {
       return new AramoError('MICROSOFT_MEETING_VERSION_CONFLICT', 'meeting was modified concurrently; refresh and retry', 409, { requestId });
+    }
+    if (err instanceof MeetingIdempotencyConflictError) {
+      return new AramoError('MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT', 'idempotency key is bound to a different scheduling request', 409, { requestId });
+    }
+    if (err instanceof MeetingOperationInProgressError) {
+      return new AramoError('MICROSOFT_SCHEDULING_IN_PROGRESS', 'a concurrent scheduling attempt is in progress', 409, { requestId });
     }
     if (err instanceof MeetingNotSchedulingError) {
       return new AramoError('MICROSOFT_MEETING_NOT_SCHEDULING', 'meeting is not an Outlook scheduling meeting', 409, { requestId });

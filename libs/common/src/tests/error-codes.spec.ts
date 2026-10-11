@@ -313,6 +313,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MICROSOFT_MEETING_ASSOCIATION_INVALID',
       'COMMUNICATION_MEETING_CONSENT_DENIED',
       'MICROSOFT_PROVIDER_ERROR',
+      'MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT',
+      'MICROSOFT_SCHEDULING_IN_PROGRESS',
     ]);
   });
 });

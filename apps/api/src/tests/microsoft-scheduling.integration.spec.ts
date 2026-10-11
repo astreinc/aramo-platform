@@ -10,6 +10,7 @@ import { CommunicationsPrismaService, MeetingSchedulingRepository } from '@aramo
 import { GraphCalendarError, type GraphCreateEventArgs, type GraphUpdateEventArgs } from '@aramo/microsoft-graph';
 
 import {
+  MeetingIdempotencyConflictError,
   MeetingOrganizerMismatchError,
   MeetingScheduleUnresolvedError,
   MeetingVersionConflictError,
@@ -201,22 +202,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(calendar.lastCreate?.attendees).toEqual([{ email: 'tal@x.com', type: 'required' }]);
     });
 
-    it('2. missing/denied consent fails closed — no operation, no meeting, no provider call', async () => {
+    it('2. missing/denied consent fails closed — no meeting, no provider call; op recorded failed (reclaimable)', async () => {
       consentThrows = new Error('consent denied');
       const args = scheduleArgs();
       await expect(svc.scheduleMeeting(args)).rejects.toThrow();
       expect(calendar.createCount).toBe(0);
       expect(await countMeetings()).toBe(0);
-      expect((await countOps(args.idempotency_key)).count).toBe(0);
+      // Durable, inspectable failure state (FIX_NOW-2): the op exists, marked failed —
+      // a corrected retry can reclaim it; it is never left stuck pending.
+      expect(await countOps(args.idempotency_key)).toEqual({ count: 1, status: 'failed' });
     });
 
-    it('3. a cross-tenant / invalid recruiting association fails closed — no operation, no meeting', async () => {
+    it('3. a cross-tenant / invalid recruiting association fails closed — no meeting, no provider call; op failed', async () => {
       associationThrows = new MeetingAssociationError('talent_not_in_tenant', 'x');
       const args = scheduleArgs();
       await expect(svc.scheduleMeeting(args)).rejects.toBeInstanceOf(MeetingAssociationError);
       expect(calendar.createCount).toBe(0);
       expect(await countMeetings()).toBe(0);
-      expect((await countOps(args.idempotency_key)).count).toBe(0);
+      expect(await countOps(args.idempotency_key)).toEqual({ count: 1, status: 'failed' });
     });
 
     it('4+5. an ambiguous Graph outcome → operation UNRESOLVED, NO meeting, provider-failure audit; retry recovers without a duplicate', async () => {
@@ -252,8 +255,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await auditEventTypes()).toEqual(['meeting.scheduled', 'meeting.rescheduled']);
     });
 
-    it('6b. a stale expected_version loses the CAS race (409-class conflict)', async () => {
+    it('6b/FIX_NOW-1. a stale-version reschedule conflicts and issues ZERO Graph update calls', async () => {
       const created = await svc.scheduleMeeting(scheduleArgs());
+      const updatesBefore = calendar.updateCount;
       await expect(
         svc.rescheduleMeeting({
           tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
@@ -261,6 +265,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           end_date_time: '2026-11-04T16:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
         }),
       ).rejects.toBeInstanceOf(MeetingVersionConflictError);
+      // The reservation gated the side effect — Outlook was NOT touched for a stale request.
+      expect(calendar.updateCount).toBe(updatesBefore);
+      // Aramo authoritative state is unchanged (still scheduled at the original version).
+      const row = await svc.readMeeting(TENANT, created.interaction_id);
+      expect(row?.status).toBe('scheduled');
+      expect(row?.version).toBe(created.version);
+    });
+
+    it('7b/FIX_NOW-1. a stale-version cancel conflicts and issues ZERO Graph cancel calls', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      await expect(
+        svc.cancelMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+          expected_version: created.version + 5, requestId: 'rq',
+        }),
+      ).rejects.toBeInstanceOf(MeetingVersionConflictError);
+      expect(calendar.cancelCount).toBe(0);
+      const row = await svc.readMeeting(TENANT, created.interaction_id);
+      expect(row?.status).toBe('scheduled');
+    });
+
+    it('FIX_NOW-2. concurrent same-key creates cannot diverge — exactly one meeting, one Graph create', async () => {
+      const args = scheduleArgs();
+      const results = await Promise.allSettled([
+        svc.scheduleMeeting({ ...args }),
+        svc.scheduleMeeting({ ...args }),
+      ]);
+      const fulfilled = results.filter((r) => r.status === 'fulfilled').length;
+      // The claim/unique gate serializes: at most one create proceeds; the loser is
+      // refused (in_progress) or replays — never a second meeting or a second Graph call.
+      expect(await countMeetings()).toBe(1);
+      expect(calendar.createCount).toBe(1);
+      expect(fulfilled).toBeGreaterThanOrEqual(1);
+    });
+
+    it('FIX_NOW-2. an idempotency key reused with a different Talent is refused (no second meeting)', async () => {
+      const args = scheduleArgs();
+      await svc.scheduleMeeting({ ...args });
+      await expect(
+        svc.scheduleMeeting({ ...args, talent_record_id: randomUUID() }),
+      ).rejects.toBeInstanceOf(MeetingIdempotencyConflictError);
+      expect(await countMeetings()).toBe(1);
     });
 
     it('7. cancellation is idempotent — a repeated cancel issues NO second provider operation', async () => {

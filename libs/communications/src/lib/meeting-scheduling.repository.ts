@@ -64,18 +64,28 @@ export class MeetingSchedulingRepository {
    * `created` flag lets the caller distinguish a first attempt from a retry.
    * transaction_id is stable across retries (the Graph provider-dedup guard).
    */
-  async createOrGetOperation(args: {
+  /**
+   * Atomically claim the durable scheduling operation (FIX_NOW-2). The unique
+   * (tenant, idempotency_key) index + a status-CAS reclaim make this the single
+   * serialization point for a create: exactly one caller may hold a live (pending)
+   * operation at a time, and the idempotency key is bound to its ORIGINAL tenant,
+   * organizer, and request identity. Outcomes:
+   *   - `created`      — we own a fresh pending op (or re-claimed an unresolved/failed
+   *                      one for a safe retry; transaction_id is stable across retries).
+   *   - `replay`       — a prior attempt already succeeded; return its meeting.
+   *   - `in_progress`  — a concurrent attempt holds the op; the caller must NOT
+   *                      independently proceed (prevents a duplicate provider call).
+   *   - `identity_conflict` — the key was reused with a different tenant/organizer/
+   *                      Talent/Requisition; reject (no unauthorized success replay).
+   */
+  async claimSchedulingOperation(args: {
     tenant_id: string;
     idempotency_key: string;
     transaction_id: string;
     organizer_id: string;
     talent_record_id: string;
     requisition_id: string;
-  }): Promise<{ op: MeetingOperationRow; created: boolean }> {
-    const existing = await this.findOperation(args.tenant_id, args.idempotency_key);
-    if (existing !== null) {
-      return { op: existing, created: false };
-    }
+  }): Promise<{ outcome: 'created' | 'replay' | 'in_progress' | 'identity_conflict'; op: MeetingOperationRow | null }> {
     try {
       const op = (await this.prisma.meetingSchedulingOperation.create({
         data: {
@@ -89,15 +99,37 @@ export class MeetingSchedulingRepository {
           requisition_id: args.requisition_id,
         },
       })) as MeetingOperationRow;
-      return { op, created: true };
+      return { outcome: 'created', op };
     } catch {
-      // Concurrent creator won the unique (tenant, idempotency_key) race.
-      const raced = await this.findOperation(args.tenant_id, args.idempotency_key);
-      if (raced !== null) {
-        return { op: raced, created: false };
-      }
-      throw new Error('scheduling operation write failed');
+      // Unique (tenant, idempotency_key) conflict — an operation already exists.
     }
+    const existing = await this.findOperation(args.tenant_id, args.idempotency_key);
+    if (existing === null) {
+      throw new Error('scheduling operation claim failed');
+    }
+    // The idempotency key is bound to its original identity + request (FIX_NOW-2):
+    // reusing it with different input is NEVER an authorized success replay.
+    if (
+      existing.organizer_id !== args.organizer_id ||
+      existing.talent_record_id !== args.talent_record_id ||
+      existing.requisition_id !== args.requisition_id
+    ) {
+      return { outcome: 'identity_conflict', op: existing };
+    }
+    if (existing.status === 'succeeded' && existing.interaction_id !== null) {
+      return { outcome: 'replay', op: existing };
+    }
+    if (existing.status === 'pending') {
+      return { outcome: 'in_progress', op: existing };
+    }
+    // unresolved | failed → atomically reclaim for a safe retry; exactly one winner.
+    const reclaimed = await this.prisma.meetingSchedulingOperation.updateMany({
+      where: { id: existing.id, status: { in: ['unresolved', 'failed'] } },
+      data: { status: 'pending', last_error: null },
+    });
+    return reclaimed.count === 1
+      ? { outcome: 'created', op: existing }
+      : { outcome: 'in_progress', op: existing };
   }
 
   async findOperation(
@@ -208,18 +240,21 @@ export class MeetingSchedulingRepository {
   }
 
   /**
-   * CAS reschedule (R3): advance only the row still matching `expected_version` and
-   * still in an active (scheduled|rescheduled) state. count===0 → conflict (a
-   * concurrent writer advanced it, or it was cancelled). The provider event identity
-   * is UNCHANGED — reschedule updates the same Outlook event.
+   * CAS RESERVATION (FIX_NOW-1): the eligibility gate that runs BEFORE any Graph
+   * side effect. Atomically advance the version iff the row still matches
+   * `expected_version` and is active (scheduled|rescheduled). count===0 → conflict
+   * (stale version, a concurrent writer won, or already cancelled) → the caller must
+   * NOT touch Outlook. count===1 → reserved: this caller exclusively owns the
+   * transition at `expected_version + 1`; only then is the provider mutated. The
+   * reservation advances `version` only — the user-visible status/times are applied
+   * by `finalizeReschedule`/`finalizeCancel` AFTER the provider confirms, so a Graph
+   * failure never leaves a premature success claim.
    */
-  async rescheduleMeetingCas(args: {
+  async reserveMutationCas(args: {
     tenant_id: string;
     interaction_id: string;
     expected_version: number;
-    started_at: Date;
-    ended_at: Date;
-  }): Promise<{ conflict: boolean }> {
+  }): Promise<{ conflict: boolean; reserved_version: number }> {
     const res = await this.prisma.communicationInteraction.updateMany({
       where: {
         id: args.interaction_id,
@@ -228,42 +263,45 @@ export class MeetingSchedulingRepository {
         version: args.expected_version,
         status: { in: ['scheduled', 'rescheduled'] },
       },
-      data: {
-        status: 'rescheduled',
-        version: { increment: 1 },
-        started_at: args.started_at,
-        ended_at: args.ended_at,
-      },
+      data: { version: { increment: 1 } },
     });
-    return { conflict: res.count === 0 };
+    return { conflict: res.count === 0, reserved_version: args.expected_version + 1 };
   }
 
-  /**
-   * CAS cancel (R3), idempotent: if already cancelled, report alreadyCancelled
-   * (no error — repeated cancellation is a stable end state). Otherwise advance only
-   * the row matching `expected_version` in an active state; count===0 with a row NOT
-   * already cancelled → conflict.
-   */
-  async cancelMeetingCas(args: {
+  /** Finalize a reserved reschedule AFTER Graph confirms (same provider event, R3). */
+  async finalizeReschedule(args: {
     tenant_id: string;
     interaction_id: string;
-    expected_version: number;
-  }): Promise<{ conflict: boolean; alreadyCancelled: boolean }> {
-    const current = await this.findScheduledMeeting(args.tenant_id, args.interaction_id);
-    if (current !== null && current.status === 'cancelled') {
-      return { conflict: false, alreadyCancelled: true };
-    }
-    const res = await this.prisma.communicationInteraction.updateMany({
+    reserved_version: number;
+    started_at: Date;
+    ended_at: Date;
+  }): Promise<void> {
+    await this.prisma.communicationInteraction.updateMany({
       where: {
         id: args.interaction_id,
         tenant_id: args.tenant_id,
         channel: 'meeting',
-        version: args.expected_version,
-        status: { in: ['scheduled', 'rescheduled'] },
+        version: args.reserved_version,
       },
-      data: { status: 'cancelled', version: { increment: 1 } },
+      data: { status: 'rescheduled', started_at: args.started_at, ended_at: args.ended_at },
     });
-    return { conflict: res.count === 0, alreadyCancelled: false };
+  }
+
+  /** Finalize a reserved cancel AFTER Graph confirms (same provider event, R3). */
+  async finalizeCancel(args: {
+    tenant_id: string;
+    interaction_id: string;
+    reserved_version: number;
+  }): Promise<void> {
+    await this.prisma.communicationInteraction.updateMany({
+      where: {
+        id: args.interaction_id,
+        tenant_id: args.tenant_id,
+        channel: 'meeting',
+        version: args.reserved_version,
+      },
+      data: { status: 'cancelled' },
+    });
   }
 
   /**

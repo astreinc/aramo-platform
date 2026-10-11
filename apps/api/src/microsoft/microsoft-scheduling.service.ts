@@ -54,6 +54,22 @@ export class MeetingVersionConflictError extends Error {
     this.name = 'MeetingVersionConflictError';
   }
 }
+// FIX_NOW-2 — the idempotency key was reused with a different tenant/organizer/
+// Talent/Requisition than the operation it is bound to; never an authorized replay.
+export class MeetingIdempotencyConflictError extends Error {
+  constructor() {
+    super('idempotency key is bound to a different scheduling request');
+    this.name = 'MeetingIdempotencyConflictError';
+  }
+}
+// FIX_NOW-2 — a concurrent attempt already holds this scheduling operation; the
+// caller must not independently proceed (prevents a duplicate provider call).
+export class MeetingOperationInProgressError extends Error {
+  constructor() {
+    super('a concurrent scheduling attempt is in progress for this key');
+    this.name = 'MeetingOperationInProgressError';
+  }
+}
 export class MeetingNotSchedulingError extends Error {
   constructor() {
     super('meeting is not an Outlook scheduling meeting');
@@ -131,53 +147,11 @@ export class MicrosoftSchedulingService {
   ) {}
 
   async scheduleMeeting(args: ScheduleMeetingArgs): Promise<ScheduledMeetingView> {
-    // Idempotent replay: a succeeded operation returns its existing meeting WITHOUT
-    // re-validating, re-contacting, or re-creating a provider event.
-    const prior = await this.repo.findOperation(args.tenant_id, args.idempotency_key);
-    if (prior !== null && prior.status === 'succeeded' && prior.interaction_id !== null) {
-      const row = await this.repo.findScheduledMeeting(args.tenant_id, prior.interaction_id);
-      if (row !== null) {
-        return this.view(row, prior.id, true);
-      }
-    }
-
-    // Authorization + association (C-4) THEN consent (R1) — both fail closed, both
-    // BEFORE any durable intent or provider side-effect.
-    await this.associations.assertRecruitingAssociation({
-      tenant_id: args.tenant_id,
-      talent_record_id: args.talent_record_id,
-      requisition_id: args.requisition_id,
-    });
-    await this.consent.assertInvitationAllowed({
-      tenant_id: args.tenant_id,
-      talent_record_id: args.talent_record_id,
-      authContext: args.authContext,
-      requestId: args.requestId,
-    });
-
-    const connectionId = await this.config.resolveConnectionId(args.tenant_id, args.connection_id);
-    const cfg = await this.config.resolveConfig(args.tenant_id, connectionId, true);
-    const token = await this.delegated.getUsableAccessToken({
-      tenant_id: args.tenant_id,
-      connection_id: connectionId,
-      recruiter_id: args.recruiter_id,
-      clientId: cfg.clientId,
-      clientSecret: cfg.clientSecret,
-      authorityTenant: cfg.authorityTenant,
-      nowEpochSeconds: this.config.nowSeconds(),
-    });
-    const me = await this.graph.getMe(token.access_token);
-
-    const contacts = await this.talents.findContactByIds(args.tenant_id, [args.talent_record_id]);
-    const attendeeEmail = contacts.get(args.talent_record_id)?.email ?? null;
-    if (attendeeEmail === null || attendeeEmail.length === 0) {
-      throw new TalentContactUnavailableError(args.talent_record_id);
-    }
-
-    // Durable intent BEFORE the Graph call (R3). transaction_id = the client
-    // idempotency key: stable across retries, so a retried create carries the SAME
-    // Graph transactionId and the provider de-dups rather than creating a twin.
-    const { op } = await this.repo.createOrGetOperation({
+    // 1. Atomically CLAIM the durable operation — the single serialization +
+    // idempotency + ownership gate (FIX_NOW-2). transaction_id = the client key:
+    // stable across retries so a retried create carries the SAME Graph transactionId
+    // and the provider de-dups rather than creating a twin.
+    const claim = await this.repo.claimSchedulingOperation({
       tenant_id: args.tenant_id,
       idempotency_key: args.idempotency_key,
       transaction_id: args.idempotency_key,
@@ -185,10 +159,64 @@ export class MicrosoftSchedulingService {
       talent_record_id: args.talent_record_id,
       requisition_id: args.requisition_id,
     });
+    if (claim.outcome === 'identity_conflict') {
+      throw new MeetingIdempotencyConflictError();
+    }
+    if (claim.outcome === 'in_progress') {
+      throw new MeetingOperationInProgressError();
+    }
+    if (claim.outcome === 'replay') {
+      const existing =
+        claim.op?.interaction_id != null
+          ? await this.repo.findScheduledMeeting(args.tenant_id, claim.op.interaction_id)
+          : null;
+      if (existing !== null) {
+        return this.view(existing, claim.op?.id ?? null, true);
+      }
+      throw new MeetingScheduleUnresolvedError(claim.op?.id ?? '');
+    }
+    // claim.outcome === 'created' → we exclusively own the pending operation.
+    const op = claim.op;
+    if (op === null) {
+      throw new Error('scheduling claim returned created with no operation');
+    }
 
-    let event;
     try {
-      event = await this.calendar.createCalendarEvent({
+      // Authorization + association (C-4) THEN consent (R1) — fail closed, BEFORE any
+      // provider side-effect. Validation runs AFTER the claim so a stuck pending op
+      // never results: any throw below marks the op failed/unresolved (reclaimable).
+      await this.associations.assertRecruitingAssociation({
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+      });
+      await this.consent.assertInvitationAllowed({
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        authContext: args.authContext,
+        requestId: args.requestId,
+      });
+
+      const connectionId = await this.config.resolveConnectionId(args.tenant_id, args.connection_id);
+      const cfg = await this.config.resolveConfig(args.tenant_id, connectionId, true);
+      const token = await this.delegated.getUsableAccessToken({
+        tenant_id: args.tenant_id,
+        connection_id: connectionId,
+        recruiter_id: args.recruiter_id,
+        clientId: cfg.clientId,
+        clientSecret: cfg.clientSecret,
+        authorityTenant: cfg.authorityTenant,
+        nowEpochSeconds: this.config.nowSeconds(),
+      });
+      const me = await this.graph.getMe(token.access_token);
+
+      const contacts = await this.talents.findContactByIds(args.tenant_id, [args.talent_record_id]);
+      const attendeeEmail = contacts.get(args.talent_record_id)?.email ?? null;
+      if (attendeeEmail === null || attendeeEmail.length === 0) {
+        throw new TalentContactUnavailableError(args.talent_record_id);
+      }
+
+      const event = await this.calendar.createCalendarEvent({
         accessToken: token.access_token,
         subject: args.subject,
         startDateTime: args.start_date_time,
@@ -198,10 +226,45 @@ export class MicrosoftSchedulingService {
         isOnlineMeeting: true,
         transactionId: op.transaction_id,
       });
+
+      const row = await this.repo.createScheduledMeeting({
+        tenant_id: args.tenant_id,
+        integration_connection_id: connectionId,
+        organizer_id: args.recruiter_id,
+        from_address: me.user_principal_name,
+        to_address: attendeeEmail,
+        provider_event_id: event.provider_event_id,
+        join_reference: event.join_url ?? null,
+        started_at: new Date(args.start_date_time),
+        ended_at: new Date(args.end_date_time),
+        subject: args.subject,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        pipeline_id: args.pipeline_id,
+      });
+      await this.repo.markOperation(op.id, {
+        status: 'succeeded',
+        provider_event_id: event.provider_event_id,
+        interaction_id: row.id,
+      });
+      await this.repo.writeAudit({
+        tenant_id: args.tenant_id,
+        actor_id: args.recruiter_id,
+        actor_type: 'recruiter',
+        event_type: 'meeting.scheduled',
+        interaction_id: row.id,
+        operation_id: op.id,
+        provider_event_id: event.provider_event_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        outcome: 'succeeded',
+        event_payload: { start: args.start_date_time, end: args.end_date_time, time_zone: args.time_zone },
+      });
+      return this.view(row, op.id, false);
     } catch (err) {
       if (err instanceof GraphCalendarError && err.ambiguous) {
-        // Outcome UNKNOWN — record the explicit unresolved state and STOP. A retry
-        // re-attempts with the SAME transactionId (provider de-dup); never blind-recreate.
+        // Outcome UNKNOWN — durable unresolved state; a retry RECLAIMS it and
+        // re-attempts with the SAME transactionId (provider de-dup). Never blind-recreate.
         await this.repo.markOperation(op.id, { status: 'unresolved', last_error: err.message });
         await this.repo.writeAudit({
           tenant_id: args.tenant_id,
@@ -216,87 +279,68 @@ export class MicrosoftSchedulingService {
         });
         throw new MeetingScheduleUnresolvedError(op.id);
       }
-      // Deterministic failure (reauth / forbidden / throttled / permanent): no
-      // provider event was created. Mark failed, audit, rethrow (controller maps).
+      // Any other failure (association / consent / token / email / deterministic
+      // provider): mark the operation FAILED so a corrected retry can RECLAIM it —
+      // never a stuck pending op. Provider errors also leave a forensic audit.
       await this.repo.markOperation(op.id, {
         status: 'failed',
-        last_error: err instanceof Error ? err.message : 'graph error',
+        last_error: err instanceof Error ? err.message : 'scheduling failed',
       });
-      await this.repo.writeAudit({
-        tenant_id: args.tenant_id,
-        actor_id: args.recruiter_id,
-        actor_type: 'recruiter',
-        event_type: 'meeting.provider_failed',
-        operation_id: op.id,
-        talent_record_id: args.talent_record_id,
-        requisition_id: args.requisition_id,
-        outcome: 'failed',
-        event_payload: {
-          kind: err instanceof GraphCalendarError ? err.kind : 'error',
-          status: err instanceof GraphCalendarError ? err.status : 0,
-        },
-      });
+      if (err instanceof GraphCalendarError) {
+        await this.repo.writeAudit({
+          tenant_id: args.tenant_id,
+          actor_id: args.recruiter_id,
+          actor_type: 'recruiter',
+          event_type: 'meeting.provider_failed',
+          operation_id: op.id,
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+          outcome: 'failed',
+          event_payload: { kind: err.kind, status: err.status },
+        });
+      }
       throw err;
     }
-
-    const row = await this.repo.createScheduledMeeting({
-      tenant_id: args.tenant_id,
-      integration_connection_id: connectionId,
-      organizer_id: args.recruiter_id,
-      from_address: me.user_principal_name,
-      to_address: attendeeEmail,
-      provider_event_id: event.provider_event_id,
-      join_reference: event.join_url ?? null,
-      started_at: new Date(args.start_date_time),
-      ended_at: new Date(args.end_date_time),
-      subject: args.subject,
-      talent_record_id: args.talent_record_id,
-      requisition_id: args.requisition_id,
-      pipeline_id: args.pipeline_id,
-    });
-    await this.repo.markOperation(op.id, {
-      status: 'succeeded',
-      provider_event_id: event.provider_event_id,
-      interaction_id: row.id,
-    });
-    await this.repo.writeAudit({
-      tenant_id: args.tenant_id,
-      actor_id: args.recruiter_id,
-      actor_type: 'recruiter',
-      event_type: 'meeting.scheduled',
-      interaction_id: row.id,
-      operation_id: op.id,
-      provider_event_id: event.provider_event_id,
-      talent_record_id: args.talent_record_id,
-      requisition_id: args.requisition_id,
-      outcome: 'succeeded',
-      event_payload: { start: args.start_date_time, end: args.end_date_time, time_zone: args.time_zone },
-    });
-    return this.view(row, op.id, false);
   }
 
   async rescheduleMeeting(args: RescheduleMeetingArgs): Promise<ScheduledMeetingView> {
     const row = await this.loadMutableMeeting(args.tenant_id, args.interaction_id, args.recruiter_id);
-    const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
-
-    await this.calendar.updateCalendarEvent({
-      accessToken: token,
-      providerEventId: row.provider_event_id as string,
-      startDateTime: args.start_date_time,
-      endDateTime: args.end_date_time,
-      timeZone: args.time_zone,
-    });
-
-    const cas = await this.repo.rescheduleMeetingCas({
+    // FIX_NOW-1 — RESERVE (atomic version CAS) BEFORE any Graph side effect. A stale
+    // or concurrent request loses the version race here and NEVER touches Outlook.
+    const reserve = await this.repo.reserveMutationCas({
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
+    });
+    if (reserve.conflict) {
+      throw new MeetingVersionConflictError();
+    }
+    const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
+    try {
+      await this.calendar.updateCalendarEvent({
+        accessToken: token,
+        providerEventId: row.provider_event_id as string,
+        startDateTime: args.start_date_time,
+        endDateTime: args.end_date_time,
+        timeZone: args.time_zone,
+      });
+    } catch (err) {
+      // Graph failed AFTER the reservation — do NOT claim success. Leave a durable,
+      // inspectable failure/unresolved state (row sits at reserved_version, status
+      // unchanged) for reconciliation; no automatic retry.
+      await this.recordMutationProviderFailure(args.tenant_id, args.recruiter_id, row, 'reschedule', err);
+      if (err instanceof GraphCalendarError && err.ambiguous) {
+        throw new MeetingScheduleUnresolvedError(row.id);
+      }
+      throw err;
+    }
+    await this.repo.finalizeReschedule({
+      tenant_id: args.tenant_id,
+      interaction_id: args.interaction_id,
+      reserved_version: reserve.reserved_version,
       started_at: new Date(args.start_date_time),
       ended_at: new Date(args.end_date_time),
     });
-    if (cas.conflict) {
-      throw new MeetingVersionConflictError();
-    }
     await this.repo.writeAudit({
       tenant_id: args.tenant_id,
       actor_id: args.recruiter_id,
@@ -313,28 +357,39 @@ export class MicrosoftSchedulingService {
 
   async cancelMeeting(args: CancelMeetingArgs): Promise<ScheduledMeetingView> {
     const row = await this.loadMutableMeeting(args.tenant_id, args.interaction_id, args.recruiter_id, true);
-    // Idempotent: an already-cancelled meeting is a stable end state — no provider
-    // call, no duplicate audit.
+    // Idempotent: an already-cancelled meeting is a stable end state — no reservation,
+    // no provider call, no duplicate audit (regardless of expected_version).
     if (row.status === 'cancelled') {
       return this.view(row, null, true);
     }
-    const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
-    await this.calendar.cancelCalendarEvent({
-      accessToken: token,
-      providerEventId: row.provider_event_id as string,
-      comment: args.comment,
-    });
-    const cas = await this.repo.cancelMeetingCas({
+    // FIX_NOW-1 — RESERVE before the Graph cancel. Stale/concurrent → conflict, NO Graph.
+    const reserve = await this.repo.reserveMutationCas({
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
     });
-    if (cas.alreadyCancelled) {
-      return this.view(row, null, true);
-    }
-    if (cas.conflict) {
+    if (reserve.conflict) {
       throw new MeetingVersionConflictError();
     }
+    const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
+    try {
+      await this.calendar.cancelCalendarEvent({
+        accessToken: token,
+        providerEventId: row.provider_event_id as string,
+        comment: args.comment,
+      });
+    } catch (err) {
+      await this.recordMutationProviderFailure(args.tenant_id, args.recruiter_id, row, 'cancel', err);
+      if (err instanceof GraphCalendarError && err.ambiguous) {
+        throw new MeetingScheduleUnresolvedError(row.id);
+      }
+      throw err;
+    }
+    await this.repo.finalizeCancel({
+      tenant_id: args.tenant_id,
+      interaction_id: args.interaction_id,
+      reserved_version: reserve.reserved_version,
+    });
     await this.repo.writeAudit({
       tenant_id: args.tenant_id,
       actor_id: args.recruiter_id,
@@ -347,6 +402,30 @@ export class MicrosoftSchedulingService {
     });
     const updated = await this.repo.findScheduledMeeting(args.tenant_id, args.interaction_id);
     return this.view(updated ?? row, null, false);
+  }
+
+  /** Durable forensic record of a post-reservation provider failure (reschedule/cancel). */
+  private async recordMutationProviderFailure(
+    tenant_id: string,
+    recruiter_id: string,
+    row: ScheduledMeetingRow,
+    operation: 'reschedule' | 'cancel',
+    err: unknown,
+  ): Promise<void> {
+    await this.repo.writeAudit({
+      tenant_id,
+      actor_id: recruiter_id,
+      actor_type: 'recruiter',
+      event_type: 'meeting.provider_failed',
+      interaction_id: row.id,
+      provider_event_id: row.provider_event_id,
+      outcome: err instanceof GraphCalendarError && err.ambiguous ? 'unresolved' : 'failed',
+      event_payload: {
+        operation,
+        kind: err instanceof GraphCalendarError ? err.kind : 'error',
+        status: err instanceof GraphCalendarError ? err.status : 0,
+      },
+    });
   }
 
   async readMeeting(tenant_id: string, interaction_id: string): Promise<ScheduledMeetingView | null> {

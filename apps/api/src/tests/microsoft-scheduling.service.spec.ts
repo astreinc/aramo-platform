@@ -2,6 +2,8 @@ import { GraphCalendarError } from '@aramo/microsoft-graph';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  MeetingIdempotencyConflictError,
+  MeetingOperationInProgressError,
   MeetingOrganizerMismatchError,
   MeetingScheduleUnresolvedError,
   MeetingVersionConflictError,
@@ -10,196 +12,176 @@ import {
   type RescheduleMeetingArgs,
   type ScheduleMeetingArgs,
 } from '../microsoft/microsoft-scheduling.service.js';
+import { MeetingAssociationError } from '../microsoft/meeting-association.validator.js';
 
-// COMM-C2B Amendment A1 (M365-SCHED-1) — service orchestration proofs (fakes, no DB):
-// durable intent BEFORE Graph, transactionId provider-dedup, ambiguous→unresolved with
-// NO duplicate creation (R3), consent+association gating BEFORE side-effects (R1/C-4),
-// organizer-bound mutation (R2), CAS conflict (R3), idempotent replay + cancel.
+// COMM-C2B Amendment A1 (M365-SCHED-1) — service orchestration proofs (fakes, no DB).
+// Post-review (FIX_NOW-1/2): claim-based idempotency/ownership/concurrency gate, and
+// RESERVE-before-Graph for reschedule/cancel so a stale/concurrent request never
+// mutates Outlook. Consent + association still gate BEFORE any provider side-effect.
 
 const TENANT = 't-1';
 const RECRUITER = 'r-1';
 const TALENT = 'tal-1';
 const REQ = 'req-1';
 
+const activeMeeting = {
+  id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 2, provider_event_id: 'evt-1',
+  join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date(),
+};
+
 function build(overrides: {
+  claim?: unknown;
+  reserve?: unknown;
   calendar?: Record<string, unknown>;
-  repo?: Record<string, unknown>;
   validator?: Record<string, unknown>;
   consent?: Record<string, unknown>;
-  findOperation?: unknown;
   findScheduledMeeting?: unknown;
 }) {
-  const calls = {
-    createCalendarEvent: vi.fn().mockResolvedValue({
-      provider_event_id: 'evt-1',
-      join_url: 'https://teams/join',
-      start_date_time: 's',
-      end_date_time: 'e',
-    }),
+  const calendar = {
+    createCalendarEvent: vi.fn().mockResolvedValue({ provider_event_id: 'evt-1', join_url: 'https://teams/join', start_date_time: 's', end_date_time: 'e' }),
     updateCalendarEvent: vi.fn().mockResolvedValue({ provider_event_id: 'evt-1', start_date_time: 's', end_date_time: 'e' }),
     cancelCalendarEvent: vi.fn().mockResolvedValue(undefined),
     getCalendarEvent: vi.fn().mockResolvedValue(null),
     ...overrides.calendar,
   };
-  const repoCalls = {
-    findOperation: vi.fn().mockResolvedValue(overrides.findOperation ?? null),
-    createOrGetOperation: vi.fn().mockResolvedValue({ op: { id: 'op-1', transaction_id: 'idem-1' }, created: true }),
+  const repo = {
+    claimSchedulingOperation: vi.fn().mockResolvedValue(overrides.claim ?? { outcome: 'created', op: { id: 'op-1', transaction_id: 'idem-1', interaction_id: null } }),
     markOperation: vi.fn().mockResolvedValue(undefined),
-    createScheduledMeeting: vi.fn().mockResolvedValue({
-      id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 0,
-      provider_event_id: 'evt-1', join_reference: 'https://teams/join', initiated_by_id: RECRUITER,
-      started_at: new Date('2026-11-01T10:00:00Z'), ended_at: new Date('2026-11-01T10:30:00Z'),
-    }),
+    createScheduledMeeting: vi.fn().mockResolvedValue({ id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 0, provider_event_id: 'evt-1', join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date() }),
     findScheduledMeeting: vi.fn().mockResolvedValue(overrides.findScheduledMeeting ?? null),
-    rescheduleMeetingCas: vi.fn().mockResolvedValue({ conflict: false }),
-    cancelMeetingCas: vi.fn().mockResolvedValue({ conflict: false, alreadyCancelled: false }),
+    reserveMutationCas: vi.fn().mockResolvedValue(overrides.reserve ?? { conflict: false, reserved_version: 3 }),
+    finalizeReschedule: vi.fn().mockResolvedValue(undefined),
+    finalizeCancel: vi.fn().mockResolvedValue(undefined),
     listUpcomingMeetings: vi.fn().mockResolvedValue([]),
     writeAudit: vi.fn().mockResolvedValue(undefined),
-    ...overrides.repo,
   };
   const validator = {
     assertTenantOwnership: vi.fn().mockResolvedValue(undefined),
     assertRecruitingAssociation: vi.fn().mockResolvedValue(undefined),
     ...overrides.validator,
   };
-  const consent = {
-    assertInvitationAllowed: vi.fn().mockResolvedValue(undefined),
-    ...overrides.consent,
-  };
+  const consent = { assertInvitationAllowed: vi.fn().mockResolvedValue(undefined), ...overrides.consent };
   const delegated = { getUsableAccessToken: vi.fn().mockResolvedValue({ access_token: 'tok' }) };
   const graph = { getMe: vi.fn().mockResolvedValue({ user_principal_name: 'r@x.com' }) };
-  const config = {
-    resolveConnectionId: vi.fn().mockResolvedValue('conn-1'),
-    resolveConfig: vi.fn().mockResolvedValue({ clientId: 'c', clientSecret: 's' }),
-    nowSeconds: () => 1_000_000,
-  };
-  const talents = {
-    findContactByIds: vi.fn().mockResolvedValue(new Map([[TALENT, { email: 'tal@x.com' }]])),
-  };
-  const svc = new MicrosoftSchedulingService(
-    delegated as never,
-    calls as never,
-    graph as never,
-    repoCalls as never,
-    config as never,
-    validator as never,
-    consent as never,
-    talents as never,
-  );
-  return { svc, calls, repoCalls, validator, consent, delegated, graph, talents };
+  const config = { resolveConnectionId: vi.fn().mockResolvedValue('conn-1'), resolveConfig: vi.fn().mockResolvedValue({ clientId: 'c', clientSecret: 's' }), nowSeconds: () => 1_000_000 };
+  const talents = { findContactByIds: vi.fn().mockResolvedValue(new Map([[TALENT, { email: 'tal@x.com' }]])) };
+  const svc = new MicrosoftSchedulingService(delegated as never, calendar as never, graph as never, repo as never, config as never, validator as never, consent as never, talents as never);
+  return { svc, calendar, repo, validator, consent };
 }
 
 const scheduleArgs: ScheduleMeetingArgs = {
   tenant_id: TENANT, recruiter_id: RECRUITER, talent_record_id: TALENT, requisition_id: REQ,
   subject: 'Screen', start_date_time: '2026-11-01T10:00:00', end_date_time: '2026-11-01T10:30:00',
-  time_zone: 'America/New_York', idempotency_key: 'idem-1',
-  authContext: {} as never, requestId: 'rq-1',
+  time_zone: 'America/New_York', idempotency_key: 'idem-1', authContext: {} as never, requestId: 'rq-1',
 };
 
 afterEach(() => vi.restoreAllMocks());
 
-describe('MicrosoftSchedulingService.scheduleMeeting (A1 R1/R3/C-4)', () => {
-  it('validates association, enforces consent, writes durable intent, then creates with transactionId', async () => {
-    const { svc, calls, repoCalls, validator, consent } = build({});
+describe('scheduleMeeting — claim/validate/consent/intent/create (A1 R1/R3/C-4, FIX_NOW-2)', () => {
+  it('claims the op, validates, enforces consent, then creates with the stable transactionId', async () => {
+    const { svc, calendar, repo, validator, consent } = build({});
     const view = await svc.scheduleMeeting(scheduleArgs);
-
+    expect(repo.claimSchedulingOperation).toHaveBeenCalledOnce();
     expect(validator.assertRecruitingAssociation).toHaveBeenCalledOnce();
     expect(consent.assertInvitationAllowed).toHaveBeenCalledOnce();
-    // Durable op created BEFORE the Graph call.
-    expect(repoCalls.createOrGetOperation).toHaveBeenCalledOnce();
-    const createArg = calls.createCalendarEvent.mock.calls[0][0] as { transactionId: string; attendees: unknown[]; isOnlineMeeting: boolean };
-    expect(createArg.transactionId).toBe('idem-1'); // stable provider-dedup guard
+    const createArg = calendar.createCalendarEvent.mock.calls[0][0] as { transactionId: string; isOnlineMeeting: boolean; attendees: unknown[] };
+    expect(createArg.transactionId).toBe('idem-1');
     expect(createArg.isOnlineMeeting).toBe(true);
     expect(createArg.attendees).toEqual([{ email: 'tal@x.com', type: 'required' }]);
-    expect(repoCalls.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'succeeded' }));
+    expect(repo.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'succeeded' }));
     expect(view.status).toBe('scheduled');
-    expect(view.idempotent_replay).toBe(false);
   });
 
-  it('on an AMBIGUOUS Graph outcome marks the operation unresolved and creates NO meeting (R3)', async () => {
+  it('an ambiguous Graph outcome marks the op unresolved and creates NO meeting (R3)', async () => {
     const ambiguous = new GraphCalendarError('transient', 503, 'timeout', undefined, true);
-    const { svc, repoCalls } = build({ calendar: { createCalendarEvent: vi.fn().mockRejectedValue(ambiguous) } });
-
+    const { svc, repo } = build({ calendar: { createCalendarEvent: vi.fn().mockRejectedValue(ambiguous) } });
     await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
-    expect(repoCalls.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'unresolved' }));
-    // NO blind duplicate: the meeting evidence row is never written on ambiguity.
-    expect(repoCalls.createScheduledMeeting).not.toHaveBeenCalled();
+    expect(repo.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'unresolved' }));
+    expect(repo.createScheduledMeeting).not.toHaveBeenCalled();
   });
 
-  it('fails closed on an invalid recruiting association BEFORE consent / intent / Graph', async () => {
-    const { svc, consent, repoCalls, calls } = build({
-      validator: { assertRecruitingAssociation: vi.fn().mockRejectedValue(new Error('assoc')) },
-    });
+  it('an invalid association marks the op failed (reclaimable) and never contacts/creates', async () => {
+    const { svc, consent, calendar, repo } = build({ validator: { assertRecruitingAssociation: vi.fn().mockRejectedValue(new Error('assoc')) } });
     await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toThrow();
     expect(consent.assertInvitationAllowed).not.toHaveBeenCalled();
-    expect(repoCalls.createOrGetOperation).not.toHaveBeenCalled();
-    expect(calls.createCalendarEvent).not.toHaveBeenCalled();
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
+    expect(repo.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'failed' }));
   });
 
-  it('fails closed on missing/stale consent BEFORE intent / Graph', async () => {
-    const { svc, repoCalls, calls } = build({
-      consent: { assertInvitationAllowed: vi.fn().mockRejectedValue(new Error('consent')) },
-    });
+  it('missing/stale consent marks the op failed and never creates', async () => {
+    const { svc, calendar, repo } = build({ consent: { assertInvitationAllowed: vi.fn().mockRejectedValue(new Error('consent')) } });
     await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toThrow();
-    expect(repoCalls.createOrGetOperation).not.toHaveBeenCalled();
-    expect(calls.createCalendarEvent).not.toHaveBeenCalled();
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
+    expect(repo.markOperation).toHaveBeenCalledWith('op-1', expect.objectContaining({ status: 'failed' }));
   });
 
-  it('idempotent replay of a succeeded operation returns the existing meeting without re-contacting', async () => {
-    const { svc, calls, validator, consent } = build({
-      findOperation: { id: 'op-1', status: 'succeeded', interaction_id: 'int-1', transaction_id: 'idem-1' },
-      findScheduledMeeting: {
-        id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 0, provider_event_id: 'evt-1',
-        join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date(),
-      },
+  it('a succeeded operation replays its existing meeting without re-contacting (ownership enforced in claim)', async () => {
+    const { svc, calendar, validator, consent } = build({
+      claim: { outcome: 'replay', op: { id: 'op-1', transaction_id: 'idem-1', interaction_id: 'int-1' } },
+      findScheduledMeeting: { ...activeMeeting },
     });
     const view = await svc.scheduleMeeting(scheduleArgs);
     expect(view.idempotent_replay).toBe(true);
     expect(validator.assertRecruitingAssociation).not.toHaveBeenCalled();
     expect(consent.assertInvitationAllowed).not.toHaveBeenCalled();
-    expect(calls.createCalendarEvent).not.toHaveBeenCalled();
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('a key reused with different identity/input is refused — no create (FIX_NOW-2)', async () => {
+    const { svc, calendar } = build({ claim: { outcome: 'identity_conflict', op: { id: 'op-x', transaction_id: 'idem-1' } } });
+    await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toBeInstanceOf(MeetingIdempotencyConflictError);
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('a concurrent in-flight attempt is refused — no independent create (FIX_NOW-2)', async () => {
+    const { svc, calendar } = build({ claim: { outcome: 'in_progress', op: { id: 'op-1', transaction_id: 'idem-1' } } });
+    await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toBeInstanceOf(MeetingOperationInProgressError);
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
   });
 });
 
-describe('MicrosoftSchedulingService reschedule/cancel (A1 R2/R3)', () => {
-  const activeMeeting = {
-    id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 2, provider_event_id: 'evt-1',
-    join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date(),
-  };
+describe('reschedule/cancel — RESERVE before Graph (A1 R2/R3, FIX_NOW-1)', () => {
   const reArgs: RescheduleMeetingArgs = {
     tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: 'int-1', expected_version: 2,
     start_date_time: '2026-11-02T10:00:00', end_date_time: '2026-11-02T10:30:00', time_zone: 'UTC', requestId: 'rq',
   };
+  const cancelArgs: CancelMeetingArgs = {
+    tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: 'int-1', expected_version: 2, requestId: 'rq',
+  };
 
-  it('reschedule updates the SAME provider event then CAS-advances; audits', async () => {
-    const { svc, calls, repoCalls } = build({ findScheduledMeeting: activeMeeting });
+  it('reschedule reserves, then updates the SAME provider event, then finalizes + audits', async () => {
+    const { svc, calendar, repo } = build({ findScheduledMeeting: activeMeeting });
     await svc.rescheduleMeeting(reArgs);
-    expect(calls.updateCalendarEvent.mock.calls[0][0]).toMatchObject({ providerEventId: 'evt-1' });
-    expect(repoCalls.rescheduleMeetingCas).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 2 }));
-    expect(repoCalls.writeAudit).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'meeting.rescheduled' }));
+    expect(repo.reserveMutationCas).toHaveBeenCalledWith(expect.objectContaining({ expected_version: 2 }));
+    expect(calendar.updateCalendarEvent.mock.calls[0][0]).toMatchObject({ providerEventId: 'evt-1' });
+    expect(repo.finalizeReschedule).toHaveBeenCalledWith(expect.objectContaining({ reserved_version: 3 }));
+    expect(repo.writeAudit).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'meeting.rescheduled' }));
   });
 
-  it('refuses reschedule by a non-organizer (R2) before any Graph call', async () => {
-    const { svc, calls } = build({ findScheduledMeeting: { ...activeMeeting, initiated_by_id: 'other' } });
-    await expect(svc.rescheduleMeeting(reArgs)).rejects.toBeInstanceOf(MeetingOrganizerMismatchError);
-    expect(calls.updateCalendarEvent).not.toHaveBeenCalled();
-  });
-
-  it('propagates a CAS version conflict as a 409-class error', async () => {
-    const { svc } = build({
-      findScheduledMeeting: activeMeeting,
-      repo: { rescheduleMeetingCas: vi.fn().mockResolvedValue({ conflict: true }) },
-    });
+  it('a stale-version reschedule conflicts at the reservation and issues ZERO Graph update calls (FIX_NOW-1)', async () => {
+    const { svc, calendar } = build({ findScheduledMeeting: activeMeeting, reserve: { conflict: true, reserved_version: 3 } });
     await expect(svc.rescheduleMeeting(reArgs)).rejects.toBeInstanceOf(MeetingVersionConflictError);
+    expect(calendar.updateCalendarEvent).not.toHaveBeenCalled();
   });
 
-  it('cancel of an already-cancelled meeting is an idempotent no-op (no provider call)', async () => {
-    const { svc, calls } = build({ findScheduledMeeting: { ...activeMeeting, status: 'cancelled' } });
-    const cancelArgs: CancelMeetingArgs = {
-      tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: 'int-1', expected_version: 2, requestId: 'rq',
-    };
+  it('a non-organizer cannot reschedule — refused before the reservation and before Graph (R2)', async () => {
+    const { svc, calendar, repo } = build({ findScheduledMeeting: { ...activeMeeting, initiated_by_id: 'other' } });
+    await expect(svc.rescheduleMeeting(reArgs)).rejects.toBeInstanceOf(MeetingOrganizerMismatchError);
+    expect(repo.reserveMutationCas).not.toHaveBeenCalled();
+    expect(calendar.updateCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('a stale-version cancel conflicts at the reservation and issues ZERO Graph cancel calls (FIX_NOW-1)', async () => {
+    const { svc, calendar } = build({ findScheduledMeeting: activeMeeting, reserve: { conflict: true, reserved_version: 3 } });
+    await expect(svc.cancelMeeting(cancelArgs)).rejects.toBeInstanceOf(MeetingVersionConflictError);
+    expect(calendar.cancelCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('cancel of an already-cancelled meeting is idempotent — no reservation, no provider call', async () => {
+    const { svc, calendar, repo } = build({ findScheduledMeeting: { ...activeMeeting, status: 'cancelled' } });
     const view = await svc.cancelMeeting(cancelArgs);
     expect(view.idempotent_replay).toBe(true);
-    expect(calls.cancelCalendarEvent).not.toHaveBeenCalled();
+    expect(repo.reserveMutationCas).not.toHaveBeenCalled();
+    expect(calendar.cancelCalendarEvent).not.toHaveBeenCalled();
   });
 });

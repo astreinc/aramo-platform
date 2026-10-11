@@ -948,6 +948,12 @@ export const ERROR_CODES = [
   'COMMUNICATION_MEETING_CONSENT_DENIED',
   // A non-recoverable Microsoft Graph provider error (throttle/forbidden/permanent).
   'MICROSOFT_PROVIDER_ERROR',
+  // The idempotency key was reused with a different tenant/organizer/Talent/Requisition
+  // than the operation it is bound to; never an authorized replay (FIX_NOW-2).
+  'MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT',
+  // A concurrent scheduling attempt already holds the operation for this key; the
+  // caller must not independently proceed (FIX_NOW-2).
+  'MICROSOFT_SCHEDULING_IN_PROGRESS',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
