@@ -1,4 +1,5 @@
-import { Button, Dialog, InlineAlert, useOptionalToast } from '@aramo/fe-foundation';
+import * as RadixDialog from '@radix-ui/react-dialog';
+import { Button, InlineAlert, useOptionalToast } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 
 import { describeCalendarMeetingError } from './calendar-meeting-errors';
@@ -37,6 +38,12 @@ function dayLabel(d: Date | null): string {
 }
 function timeLabel(d: Date | null): string {
   return d === null ? '' : d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function cancelDesc(v: ScheduledMeetingView | null, talentName: string | undefined): string {
+  if (v === null) return '';
+  const d = startDate(v);
+  const who = talentName ?? 'this Talent';
+  return d !== null ? `Meeting with ${who} on ${dayLabel(d)} at ${timeLabel(d)}.` : `Meeting with ${who}.`;
 }
 function durationLabel(v: ScheduledMeetingView): string {
   if (v.scheduled_start === null || v.scheduled_end === null) return 'Outlook meeting';
@@ -165,20 +172,24 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element | nu
       </ul>
       {err !== null && <div data-testid="upcoming-error"><InlineAlert variant="error">{err}</InlineAlert></div>}
 
-      <Dialog
-        open={confirmId !== null}
-        onOpenChange={(o) => { if (!o) setConfirmId(null); }}
-        title="Cancel this meeting?"
-        size="sm"
-        footer={
-          <>
-            <Button unstyled className="rc-link-action" onClick={() => setConfirmId(null)} disabled={busy}>Keep meeting</Button>
-            <Button data-testid="upcoming-cancel-confirm" onClick={doCancel} disabled={busy}>Cancel meeting</Button>
-          </>
-        }
-      >
-        <p>A cancellation goes to everyone invited from your Outlook calendar. Activity keeps a record that it was scheduled and cancelled.</p>
-      </Dialog>
+      <RadixDialog.Root open={confirmId !== null} onOpenChange={(o) => { if (!o) setConfirmId(null); }}>
+        <RadixDialog.Portal>
+          <RadixDialog.Overlay className="rc-sched__overlay" />
+          <RadixDialog.Content className="rc-sched__content rc-sched__content--sm" aria-describedby={undefined}>
+            <div className="rc-sched__confirm-body">
+              <RadixDialog.Title className="rc-sched__confirm-title">Cancel this meeting?</RadixDialog.Title>
+              <p className="rc-sched__confirm-desc">
+                {cancelDesc(confirmTarget, props.talentName)} A cancellation goes to everyone invited from your
+                Outlook calendar. Activity keeps a record that it was scheduled and cancelled.
+              </p>
+            </div>
+            <div className="rc-sched__ft rc-sched__ft--confirm">
+              <Button unstyled className="rc-sched__btn-cancel" onClick={() => setConfirmId(null)} disabled={busy}>Keep meeting</Button>
+              <Button unstyled className="rc-sched__btn-danger" data-testid="upcoming-cancel-confirm" onClick={doCancel} disabled={busy}>Cancel meeting</Button>
+            </div>
+          </RadixDialog.Content>
+        </RadixDialog.Portal>
+      </RadixDialog.Root>
     </div>
   );
 }

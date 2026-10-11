@@ -1,119 +1,117 @@
 // M365-SCHED-1 visual-regression harness — CANONICAL fragment renderer.
 //
-// Reads the authoritative design-compiler source (Requisitions CRM.dc.html), extracts
-// the Schedule-meeting dialog block, and resolves ONLY the template directives
-// ({{ expr }} interpolation, <sc-for>, <sc-if>) with deterministic fixtures. The
-// authored inline CSS/DOM is preserved verbatim — this renderer never redesigns or
-// approximates the source (Architect ruling: permitted transformations are limited to
-// resolving directives + inserting data).
-//
-// Documented transformations (and only these):
-//   1. Strip the <sc-if value="{{ mtOpen }}"> wrapper (dialog is always shown here).
-//   2. Expand <sc-for list="{{ mtKinds }}"> → 4 purpose buttons; <sc-for mtPeople> → 2 rows.
-//   3. Drop <sc-if mtErr> (no error) and <sc-if mtIsClient> (not a client interview).
-//   4. Resolve scalar {{ }} to fixtures (names, labels, note, CTA).
-//   5. Remove prototype-only directive attributes: onClick / style-hover / style-focus /
-//      hint-placeholder-* / disabled="{{ }}" → a real `disabled` attr when the fixture says so.
-//   6. <input value="{{ }}"> → value="..."; <select value="{{ mtDur }}"> → `selected` on the match.
-//   7. Wrap in a minimal HTML doc loading the same Google-Fonts Hanken Grotesk the app uses,
-//      on a neutral page backdrop, with a CSS reset box-sizing:border-box (as the app has).
+// Reads the authoritative design-compiler source (Requisitions CRM.dc.html) and
+// resolves ONLY the template directives ({{ expr }}, <sc-for>, <sc-if>) with
+// deterministic fixtures, preserving the authored inline CSS/DOM verbatim. Emits one
+// standalone HTML per surface: schedule dialog, M365 card, Upcoming block, cancel
+// confirm. Permitted transformations (only these): resolve directives + insert data;
+// strip prototype-only directive attributes (on*/style-hover/style-focus/
+// hint-placeholder-*/disabled="{{…}}"); mark the matching <option> selected; load the
+// same Google-Fonts Hanken Grotesk the app uses.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const SRC = '/Users/purushpurushothaman/Library/CloudStorage/OneDrive-AstreConsultingServicesInc/Aramo/design/aramo-Prototype/platform/Requisitions CRM.dc.html';
-const OUT = new URL('./canonical/schedule-dialog.html', import.meta.url);
-
-const lines = readFileSync(SRC, 'utf8').split('\n');
-// mtOpen dialog block: line 435 (<sc-if mtOpen>) .. 477 (</sc-if>), 1-indexed.
-let block = lines.slice(434, 477).join('\n');
-
+const OUTDIR = new URL('./canonical/', import.meta.url);
+mkdirSync(OUTDIR, { recursive: true });
+const ALL = readFileSync(SRC, 'utf8').split('\n');
 const TALENT = 'Divya Vasudevan';
-const scalars = {
-  'pc.n': TALENT,
-  'pc.reqCode': 'REQ-1000',
-  'pc.role': 'Senior Engineer',
-  mtTitle: 'Schedule meeting',
-  mtKindNote: 'A recruiter-owned call. Logged to activity; it does not change the pipeline stage on its own.',
-  mtDate: '2026-10-14',
-  mtDateBd: '#D5DBE1',
-  mtTime: '10:30',
-  mtDur: '30',
-  mtSubject: `Recruiter screen · ${TALENT} · Senior Engineer`,
-  mtFooterNote: 'Idempotent — confirming twice never creates two events.',
-  mtBtnBg: '#022AC0',
-  mtBtn: 'Schedule & send invitation',
-};
-
-const kinds = [
-  { label: 'Recruiter screen', w: '700', bg: '#fff', col: '#011F8D', sh: '0 1px 2px rgba(15,25,40,.12)', cur: 'pointer', op: '1', off: false, tip: '' },
-  { label: 'Qualification call', w: '500', bg: 'transparent', col: '#5C6770', sh: 'none', cur: 'pointer', op: '1', off: false, tip: '' },
-  { label: 'Client interview', w: '500', bg: 'transparent', col: '#93A0A8', sh: 'none', cur: 'not-allowed', op: '.6', off: true, tip: `Client interviews can be scheduled once ${TALENT} is submitted to the client` },
-  { label: 'Follow-up', w: '500', bg: 'transparent', col: '#5C6770', sh: 'none', cur: 'pointer', op: '1', off: false, tip: '' },
-];
-const people = [
-  { top: 'none', bg: '#022AC0', i: 'PP', n: 'Purush Pichaimuthu', email: 'purush@astreconsulting.com', role: 'Organizer · you' },
-  { top: '1px solid #EDF0F3', bg: '#6B7A52', i: 'DV', n: TALENT, email: 'divya@example.com', role: 'Talent' },
-];
 
 function expandScFor(src, listName, as, items) {
   const re = new RegExp(`<sc-for list="\\{\\{ ${listName} \\}\\}"[^>]*>([\\s\\S]*?)</sc-for>`);
   const m = src.match(re);
   if (!m) return src;
-  const inner = m[1];
   const out = items.map((it) => {
-    let frag = inner;
-    for (const [k, v] of Object.entries(it)) {
-      frag = frag.replaceAll(`{{ ${as}.${k} }}`, String(v));
-    }
-    // resolve disabled="{{ k.off }}" → real disabled attr or removed
-    frag = frag.replace(/disabled="(true|false)"/g, (_, b) => (b === 'true' ? 'disabled' : ''));
-    return frag;
+    let frag = m[1];
+    for (const [k, v] of Object.entries(it)) frag = frag.replaceAll(`{{ ${as}.${k} }}`, String(v));
+    return frag.replace(/disabled="(true|false)"/g, (_, b) => (b === 'true' ? 'disabled' : ''));
   }).join('\n');
   return src.replace(re, out);
 }
-
-function dropScIf(src, valName) {
-  const re = new RegExp(`<sc-if value="\\{\\{ ${valName} \\}\\}"[^>]*>([\\s\\S]*?)</sc-if>`, 'g');
-  return src.replace(re, '');
+function keepScIf(src, valName) {
+  return src.replace(new RegExp(`<sc-if value="\\{\\{ ${valName} \\}\\}"[^>]*>([\\s\\S]*?)</sc-if>`, 'g'), '$1');
 }
-
-// 1. strip the mtOpen wrapper (keep scrim + container children)
-block = block.replace(/^<sc-if value="\{\{ mtOpen \}\}"[^>]*>\n/, '').replace(/\n<\/sc-if>\s*$/, '');
-// 2. expand loops
-block = expandScFor(block, 'mtKinds', 'k', kinds);
-block = expandScFor(block, 'mtPeople', 'p', people);
-// 3. drop error + client-only blocks
-block = dropScIf(block, 'mtErr');
-block = dropScIf(block, 'mtIsClient');
-// 4. scalars
-for (const [k, v] of Object.entries(scalars)) block = block.replaceAll(`{{ ${k} }}`, v);
-// 5. strip prototype-only directive attributes
-block = block
-  .replace(/\son[A-Za-z]+="\{\{[^}]*\}\}"/g, '')
-  .replace(/\sstyle-hover="[^"]*"/g, '')
-  .replace(/\sstyle-focus="[^"]*"/g, '')
-  .replace(/\shint-placeholder-[a-z]+="[^"]*"/g, '')
-  .replace(/\sdisabled="\{\{[^}]*\}\}"/g, '');
-// 6. duration select: mark the 30-min option selected (static render of value="30")
-block = block.replace('<option value="30">', '<option value="30" selected>');
-
-const html = `<!doctype html>
+function dropScIf(src, valName) {
+  return src.replace(new RegExp(`<sc-if value="\\{\\{ ${valName} \\}\\}"[^>]*>([\\s\\S]*?)</sc-if>`, 'g'), '');
+}
+function stripDirectives(src) {
+  return src
+    .replace(/\son[A-Za-z]+="\{\{[^}]*\}\}"/g, '')
+    .replace(/\sstyle-hover="[^"]*"/g, '')
+    .replace(/\sstyle-focus="[^"]*"/g, '')
+    .replace(/\shint-placeholder-[a-z]+="[^"]*"/g, '')
+    .replace(/\sdisabled="\{\{[^}]*\}\}"/g, '');
+}
+function doc(title, body) {
+  return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
-<style>
-  *, *::before, *::after { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; font-family: 'Hanken Grotesk', sans-serif; }
-  /* Neutral page backdrop so the fixed dialog composes exactly as authored. */
-  body { background: #EEF1F4; min-height: 100vh; }
-  label { display: block; }
-  input, select, button { font-family: 'Hanken Grotesk', sans-serif; }
-</style>
-<title>Canonical — Schedule meeting</title></head>
-<body>
-${block}
-</body></html>`;
+<style>*,*::before,*::after{box-sizing:border-box}html,body{margin:0;font-family:'Hanken Grotesk',sans-serif}body{background:#EEF1F4;min-height:100vh}label{display:block}input,select,button{font-family:'Hanken Grotesk',sans-serif}.wrap{max-width:520px;margin:40px auto;padding:16px}</style>
+<title>Canonical — ${title}</title></head><body>${body}</body></html>`;
+}
+function write(name, html) { writeFileSync(new URL(`./${name}`, OUTDIR), html); console.log(`wrote canonical/${name} (${html.length}b)`); }
 
-writeFileSync(OUT, html);
-console.log(`wrote ${OUT.pathname} (${html.length} bytes)`);
+// ── 1) Schedule dialog (mtOpen 435..477) ──
+{
+  let b = ALL.slice(434, 477).join('\n');
+  const scalars = {
+    'pc.n': TALENT, 'pc.reqCode': 'REQ-1000', 'pc.role': 'Business Analyst - Multi-Family',
+    mtTitle: 'Schedule meeting',
+    mtKindNote: 'A recruiter-owned call. Logged to activity; it does not change the pipeline stage on its own.',
+    mtDate: '2026-10-14', mtDateBd: '#D5DBE1', mtTime: '10:30', mtDur: '30',
+    mtSubject: `Recruiter screen · ${TALENT} · Business Analyst - Multi-Family`,
+    mtFooterNote: 'Idempotent — confirming twice never creates two events.',
+    mtBtnBg: '#022AC0', mtBtn: 'Schedule & send invitation',
+  };
+  const kinds = [
+    { label: 'Recruiter screen', w: '700', bg: '#fff', col: '#011F8D', sh: '0 1px 2px rgba(15,25,40,.12)', cur: 'pointer', op: '1', off: false, tip: '' },
+    { label: 'Qualification call', w: '500', bg: 'transparent', col: '#5C6770', sh: 'none', cur: 'pointer', op: '1', off: false, tip: '' },
+    { label: 'Client interview', w: '500', bg: 'transparent', col: '#93A0A8', sh: 'none', cur: 'not-allowed', op: '.6', off: true, tip: '' },
+    { label: 'Follow-up', w: '500', bg: 'transparent', col: '#5C6770', sh: 'none', cur: 'pointer', op: '1', off: false, tip: '' },
+  ];
+  const people = [
+    { top: 'none', bg: '#022AC0', i: 'PP', n: 'Purush Pichaimuthu', email: 'purush@astreconsulting.com', role: 'Organizer · you' },
+    { top: '1px solid #EDF0F3', bg: '#6B7A52', i: 'DV', n: TALENT, email: 'vasudevandivya@gmail.com', role: 'Talent' },
+  ];
+  b = b.replace(/^<sc-if value="\{\{ mtOpen \}\}"[^>]*>\n/, '').replace(/\n<\/sc-if>\s*$/, '');
+  b = expandScFor(b, 'mtKinds', 'k', kinds);
+  b = expandScFor(b, 'mtPeople', 'p', people);
+  b = dropScIf(b, 'mtErr'); b = dropScIf(b, 'mtIsClient');
+  for (const [k, v] of Object.entries(scalars)) b = b.replaceAll(`{{ ${k} }}`, v);
+  b = stripDirectives(b).replace('<option value="30">', '<option value="30" selected>');
+  write('schedule-dialog.html', doc('Schedule meeting', b));
+}
+
+// ── 2) M365 card (257..263) ──
+{
+  let b = ALL.slice(256, 263).join('\n');
+  b = stripDirectives(b);
+  const body = `<div class="wrap"><div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#93A0A8;margin-bottom:9px">Microsoft 365</div>${b}</div>`;
+  write('card.html', doc('Microsoft 365 card', body));
+}
+
+// ── 3) Upcoming block (mtHas 264..283) ──
+{
+  let b = ALL.slice(263, 284).join('\n');
+  const rows = [{
+    top: 'none', day: 'Oct 14', time: '10:30 AM', title: 'Recruiter screen · Teams',
+    sub: '30 min · organized by you · on your Outlook calendar', prov: 'Outlook · Teams',
+    st: 'Invited', stBg: '#E6F2EA', stCol: '#1F7A4D', joinLabel: 'Join',
+  }];
+  b = keepScIf(b, 'mtHas');
+  b = expandScFor(b, 'mtRows', 'm', rows);
+  b = b.replaceAll('{{ pc.n }}', TALENT);
+  b = stripDirectives(b);
+  write('upcoming.html', doc('Upcoming', `<div class="wrap">${b}</div>`));
+}
+
+// ── 4) Cancel confirm (mtCancelOpen 478..487) ──
+{
+  let b = ALL.slice(477, 487).join('\n');
+  b = b.replace(/^<sc-if value="\{\{ mtCancelOpen \}\}"[^>]*>\n/, '').replace(/\n<\/sc-if>\s*$/, '');
+  b = b.replaceAll('{{ mtCancelDesc }}', `Recruiter screen with ${TALENT} on Oct 14 at 10:30 AM.`);
+  b = stripDirectives(b);
+  write('cancel.html', doc('Cancel this meeting?', b));
+}
