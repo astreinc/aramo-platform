@@ -80,4 +80,18 @@ describe('UpcomingMeetings', () => {
     renderList({ listFn: vi.fn().mockResolvedValue({ meetings: [] }) });
     expect(await screen.findByTestId('upcoming-empty')).toBeInTheDocument();
   });
+
+  it('FIX_NOW-4: a failed read shows a distinct error state (NOT empty), with retry that recovers', async () => {
+    const listFn = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ meetings: [view()] });
+    renderList({ listFn });
+    expect(await screen.findByTestId('upcoming-load-error')).toBeInTheDocument();
+    // a read failure must never be presented as "no meetings"
+    expect(screen.queryByTestId('upcoming-empty')).toBeNull();
+    fireEvent.click(screen.getByTestId('upcoming-retry'));
+    expect(await screen.findByTestId('upcoming-meeting-int-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('upcoming-load-error')).toBeNull();
+  });
 });

@@ -3,7 +3,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScheduleMeetingDialog } from './ScheduleMeetingDialog';
+import { instantToZonedWallClock } from './calendar-meeting-tz';
 import type { ScheduledMeetingView } from './microsoft-api';
+
+const MACHINE_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 const VIEW: ScheduledMeetingView = {
   interaction_id: 'int-1',
@@ -103,6 +106,71 @@ describe('ScheduleMeetingDialog', () => {
     await waitFor(() => expect(rescheduleFn).toHaveBeenCalledTimes(1));
     expect(rescheduleFn.mock.calls[0][0]).toBe('int-1');
     expect(rescheduleFn.mock.calls[0][1].expected_version).toBe(0);
+  });
+
+  it('FIX_NOW-1: start/end are OFFSET-BEARING ISO-8601 instants, not bare local strings', async () => {
+    const scheduleFn = vi.fn().mockResolvedValue(VIEW);
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" scheduleFn={scheduleFn} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-date'), { target: { value: '2026-11-03' } });
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '10:00' } });
+    fireEvent.change(screen.getByTestId('schedule-subject'), { target: { value: 'Recruiter screen' } });
+    // force a known zone so the offset is deterministic
+    fireEvent.change(screen.getByTestId('schedule-timezone'), { target: { value: 'America/New_York' } });
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(scheduleFn).toHaveBeenCalledTimes(1));
+    expect(scheduleFn.mock.calls[0][0].start_date_time).toBe('2026-11-03T10:00:00-05:00');
+    expect(scheduleFn.mock.calls[0][0].end_date_time).toBe('2026-11-03T10:30:00-05:00');
+  });
+
+  it('FIX_NOW-1: a DST-nonexistent local time blocks review (not silently shifted)', () => {
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" scheduleFn={vi.fn()} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-timezone'), { target: { value: 'America/New_York' } });
+    fireEvent.change(screen.getByTestId('schedule-date'), { target: { value: '2026-03-08' } });
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '02:30' } });
+    fireEvent.change(screen.getByTestId('schedule-subject'), { target: { value: 'Recruiter screen' } });
+    expect(screen.getByTestId('schedule-dst-error')).toBeInTheDocument();
+    expect((screen.getByTestId('schedule-review') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('FIX_NOW-2: reschedule initializes date/time in the selected zone (not UTC)', () => {
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" editing={VIEW} rescheduleFn={vi.fn()} getFn={vi.fn()} onDone={vi.fn()} />);
+    // VIEW.scheduled_start = 2026-11-03T15:00Z. If the machine's zone is UTC the field
+    // reads 15:00; the point is it is the zoned wall clock, never a raw slice mismatch.
+    const w = instantToZonedWallClock('2026-11-03T15:00:00.000Z', MACHINE_ZONE);
+    expect((screen.getByTestId('schedule-time') as HTMLInputElement).value).toBe(w.time);
+  });
+
+  it('FIX_NOW-3: a version conflict refreshes authoritative state and resubmits with the FRESH version', async () => {
+    const rescheduleFn = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError(409, 'x', 'MICROSOFT_MEETING_VERSION_CONFLICT'))
+      .mockResolvedValueOnce({ ...VIEW, status: 'rescheduled', version: 8 });
+    const getFn = vi.fn().mockResolvedValue({ ...VIEW, version: 7 });
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" editing={VIEW} rescheduleFn={rescheduleFn} getFn={getFn} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '12:00' } });
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    // conflict → refresh fetched, dialog returns to the form with a notice
+    await waitFor(() => expect(getFn).toHaveBeenCalledTimes(1));
+    expect(await screen.findByTestId('schedule-refreshed-notice')).toBeInTheDocument();
+    // fresh review + confirm → resubmits with the refreshed version (7), not the stale 0
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    await waitFor(() => expect(rescheduleFn).toHaveBeenCalledTimes(2));
+    expect(rescheduleFn.mock.calls[0][1].expected_version).toBe(0);
+    expect(rescheduleFn.mock.calls[1][1].expected_version).toBe(7);
+  });
+
+  it('FIX_NOW-3: if the refresh itself fails, an explicit error is shown and no blind retry is offered', async () => {
+    const rescheduleFn = vi.fn().mockRejectedValue(new ApiError(409, 'x', 'MICROSOFT_MEETING_VERSION_CONFLICT'));
+    const getFn = vi.fn().mockRejectedValue(new ApiError(404, 'x', 'MICROSOFT_MEETING_NOT_FOUND'));
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" editing={VIEW} rescheduleFn={rescheduleFn} getFn={getFn} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '12:00' } });
+    fireEvent.click(screen.getByTestId('schedule-review'));
+    fireEvent.click(await screen.findByTestId('schedule-confirm'));
+    expect(await screen.findByTestId('schedule-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('schedule-confirm')).toBeNull(); // no blind retry
   });
 
   it('an UNRESOLVED error shows the uncertain-outcome message and offers NO retry', async () => {

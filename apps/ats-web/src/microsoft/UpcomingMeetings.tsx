@@ -51,14 +51,24 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element {
   const cancel = props.cancelFn ?? defaultCancel;
 
   const [meetings, setMeetings] = useState<readonly ScheduledMeetingView[] | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // FIX_NOW-4 — a failed read is a distinct error state; it is NEVER collapsed into an
+  // empty list (that would falsely assert "no meetings exist").
   const load = useCallback(() => {
+    setLoadError(false);
     list({ talent_record_id: props.talentId, requisition_id: props.requisitionId })
-      .then((r) => setMeetings(r.meetings))
-      .catch(() => setMeetings([]));
+      .then((r) => {
+        setMeetings(r.meetings);
+        setLoadError(false);
+      })
+      .catch(() => {
+        setMeetings(null);
+        setLoadError(true);
+      });
   }, [list, props.talentId, props.requisitionId]);
 
   useEffect(() => {
@@ -84,6 +94,17 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element {
       });
   };
 
+  if (loadError) {
+    return (
+      <div className="rc-upcoming" data-testid="upcoming-meetings">
+        <div className="rc-upcoming__head">Upcoming with {props.talentName ?? 'this Talent'}</div>
+        <div data-testid="upcoming-load-error" className="rc-upcoming__error">
+          <InlineAlert variant="error">Could not load scheduled meetings right now.</InlineAlert>
+          <Button unstyled className="rc-link-action" data-testid="upcoming-retry" onClick={load}>Retry</Button>
+        </div>
+      </div>
+    );
+  }
   if (meetings === null) {
     return <div data-testid="upcoming-loading">Loading meetings…</div>;
   }
