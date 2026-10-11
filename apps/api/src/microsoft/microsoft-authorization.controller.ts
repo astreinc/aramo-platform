@@ -1,19 +1,37 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Logger, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
+  GraphCalendarError,
   MicrosoftIdentityNotBoundError,
   MicrosoftReauthRequiredError,
 } from '@aramo/microsoft-graph';
 
 import {
+  CancelMicrosoftCalendarMeetingRequestDto,
   ConfigureMicrosoftConnectionRequestDto,
+  CreateMicrosoftCalendarMeetingRequestDto,
   CreateMicrosoftMeetingRequestDto,
+  RescheduleMicrosoftCalendarMeetingRequestDto,
   SendMicrosoftEmailRequestDto,
 } from './dto/microsoft.dto.js';
+import { CalendarInviteConsentDeniedError } from './calendar-invite-consent-gate.port.js';
+import { MeetingAssociationError } from './meeting-association.validator.js';
+import {
+  MeetingIdempotencyConflictError,
+  MeetingNotFoundError,
+  MeetingNotSchedulingError,
+  MeetingOperationInProgressError,
+  MeetingOrganizerMismatchError,
+  MeetingScheduleUnresolvedError,
+  MeetingVersionConflictError,
+  MicrosoftSchedulingService,
+  TalentContactUnavailableError,
+  type ScheduledMeetingView,
+} from './microsoft-scheduling.service.js';
 import { EmailConsentDeniedError } from './email-consent-gate.port.js';
 import { TalentEmailUnavailableError } from './email-recipient-resolver.port.js';
 import { MicrosoftProviderNotConfiguredError } from './microsoft-provider-not-configured.error.js';
@@ -42,6 +60,7 @@ export class MicrosoftAuthorizationController {
     private readonly orchestrator: MicrosoftAuthorizationOrchestrator,
     private readonly email: MicrosoftEmailService,
     private readonly meeting: MicrosoftMeetingService,
+    private readonly scheduling: MicrosoftSchedulingService,
   ) {}
 
   /** Begin delegated authorization — returns the Microsoft authorize URL. */
@@ -186,12 +205,185 @@ export class MicrosoftAuthorizationController {
     }
   }
 
+  // ── COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook calendar scheduling ──────
+  // SEPARATE from create-link-only /meeting. The recruiter organizer comes from the
+  // JWT (never the body); mutation routes are organizer-bound at the service layer.
+
+  /** Schedule an Outlook calendar meeting (attendee invitation + Teams). */
+  @Post('calendar-meeting')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:meeting:create')
+  async scheduleCalendarMeeting(
+    @AuthContext() auth: AuthContextType,
+    @Body() body: CreateMicrosoftCalendarMeetingRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<ScheduledMeetingView> {
+    try {
+      return await this.scheduling.scheduleMeeting({
+        tenant_id: auth.tenant_id,
+        recruiter_id: auth.sub,
+        connection_id: body.connection_id,
+        talent_record_id: body.talent_record_id,
+        requisition_id: body.requisition_id,
+        pipeline_id: body.pipeline_id,
+        subject: body.subject,
+        start_date_time: body.start_date_time,
+        end_date_time: body.end_date_time,
+        time_zone: body.time_zone,
+        idempotency_key: body.idempotency_key,
+        authContext: auth,
+        requestId,
+      });
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
+  /** Read a scheduling meeting (last-known synchronized state, never guaranteed-live). */
+  @Get('calendar-meeting/:id')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:meeting:read')
+  async readCalendarMeeting(
+    @AuthContext() auth: AuthContextType,
+    @Param('id') id: string,
+    @RequestId() requestId: string,
+  ): Promise<ScheduledMeetingView> {
+    try {
+      const view = await this.scheduling.readMeeting(auth.tenant_id, id);
+      if (view === null) {
+        throw new MeetingNotFoundError();
+      }
+      return view;
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
+  /** List upcoming scheduling meetings by Talent/Requisition context. */
+  @Get('calendar-meetings')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:meeting:read')
+  async listCalendarMeetings(
+    @AuthContext() auth: AuthContextType,
+    @Query('talent_record_id') talentRecordId: string | undefined,
+    @Query('requisition_id') requisitionId: string | undefined,
+    @Query('from') from: string | undefined,
+    @Query('to') to: string | undefined,
+    @RequestId() requestId: string,
+  ): Promise<{ meetings: ScheduledMeetingView[] }> {
+    try {
+      const now = new Date();
+      const fromDate = from !== undefined ? new Date(from) : now;
+      const toDate = to !== undefined ? new Date(to) : new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+      const meetings = await this.scheduling.listUpcoming({
+        tenant_id: auth.tenant_id,
+        talent_record_id: talentRecordId,
+        requisition_id: requisitionId,
+        from: fromDate,
+        to: toDate,
+      });
+      return { meetings };
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
+  /** Reschedule a scheduling meeting — updates the SAME Outlook event (organizer-bound, CAS). */
+  @Patch('calendar-meeting/:id')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:meeting:edit')
+  async rescheduleCalendarMeeting(
+    @AuthContext() auth: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: RescheduleMicrosoftCalendarMeetingRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<ScheduledMeetingView> {
+    try {
+      return await this.scheduling.rescheduleMeeting({
+        tenant_id: auth.tenant_id,
+        recruiter_id: auth.sub,
+        connection_id: body.connection_id,
+        interaction_id: id,
+        expected_version: body.expected_version,
+        start_date_time: body.start_date_time,
+        end_date_time: body.end_date_time,
+        time_zone: body.time_zone,
+        requestId,
+      });
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
+  /** Cancel a scheduling meeting — targets the SAME Outlook event (organizer-bound, idempotent). */
+  @Post('calendar-meeting/:id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('communication:meeting:cancel')
+  async cancelCalendarMeeting(
+    @AuthContext() auth: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: CancelMicrosoftCalendarMeetingRequestDto,
+    @RequestId() requestId: string,
+  ): Promise<ScheduledMeetingView> {
+    try {
+      return await this.scheduling.cancelMeeting({
+        tenant_id: auth.tenant_id,
+        recruiter_id: auth.sub,
+        connection_id: body.connection_id,
+        interaction_id: id,
+        expected_version: body.expected_version,
+        comment: body.comment,
+        requestId,
+      });
+    } catch (err) {
+      throw this.mapError(err, requestId);
+    }
+  }
+
   private mapError(err: unknown, requestId: string): AramoError {
     if (err instanceof EmailConsentDeniedError) {
       return new AramoError('COMMUNICATION_EMAIL_CONSENT_DENIED', 'contacting consent does not permit email', 409, { requestId });
     }
     if (err instanceof MicrosoftReauthRequiredError || err instanceof MicrosoftIdentityNotBoundError) {
       return new AramoError('MICROSOFT_REAUTHORIZATION_REQUIRED', 'microsoft identity requires (re)authorization', 409, { requestId });
+    }
+    // A1 (M365-SCHED-1) — Outlook scheduling refusals → typed, token-free codes.
+    if (err instanceof CalendarInviteConsentDeniedError) {
+      return new AramoError('COMMUNICATION_MEETING_CONSENT_DENIED', 'contacting consent does not permit a calendar invitation', 409, { requestId });
+    }
+    if (err instanceof MeetingAssociationError) {
+      // Cross-tenant or invalid recruiting association — generic message (no leak).
+      return new AramoError('MICROSOFT_MEETING_ASSOCIATION_INVALID', 'the Talent and Requisition are not a valid recruiting association', 422, { requestId });
+    }
+    if (err instanceof MeetingScheduleUnresolvedError) {
+      return new AramoError('MICROSOFT_SCHEDULING_UNRESOLVED', 'scheduling outcome is unresolved; reconcile before retrying', 409, { requestId, details: { operation_id: err.operation_id } });
+    }
+    if (err instanceof MeetingNotFoundError) {
+      return new AramoError('MICROSOFT_MEETING_NOT_FOUND', 'scheduling meeting not found', 404, { requestId });
+    }
+    if (err instanceof MeetingOrganizerMismatchError) {
+      return new AramoError('MICROSOFT_MEETING_NOT_ORGANIZER', 'only the organizing recruiter may modify this meeting', 403, { requestId });
+    }
+    if (err instanceof MeetingVersionConflictError) {
+      return new AramoError('MICROSOFT_MEETING_VERSION_CONFLICT', 'meeting was modified concurrently; refresh and retry', 409, { requestId });
+    }
+    if (err instanceof MeetingIdempotencyConflictError) {
+      return new AramoError('MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT', 'idempotency key is bound to a different scheduling request', 409, { requestId });
+    }
+    if (err instanceof MeetingOperationInProgressError) {
+      return new AramoError('MICROSOFT_SCHEDULING_IN_PROGRESS', 'a concurrent scheduling attempt is in progress', 409, { requestId });
+    }
+    if (err instanceof MeetingNotSchedulingError) {
+      return new AramoError('MICROSOFT_MEETING_NOT_SCHEDULING', 'meeting is not an Outlook scheduling meeting', 409, { requestId });
+    }
+    if (err instanceof TalentContactUnavailableError) {
+      return new AramoError('COMMUNICATION_EMAIL_RECIPIENT_UNAVAILABLE', 'the Talent has no authoritative email for an invitation', 422, { requestId });
+    }
+    if (err instanceof GraphCalendarError) {
+      if (err.kind === 'reauth_required') {
+        return new AramoError('MICROSOFT_REAUTHORIZATION_REQUIRED', 'microsoft identity requires (re)authorization', 409, { requestId });
+      }
+      return new AramoError('MICROSOFT_PROVIDER_ERROR', 'microsoft calendar provider error', 502, { requestId });
     }
     if (err instanceof MicrosoftProviderNotConfiguredError) {
       // The tenant genuinely has no usable connection — an expected 409, not a failure.

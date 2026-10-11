@@ -14,6 +14,15 @@ export {
 } from './lib/communications.repository.js';
 export { PrismaService as CommunicationsPrismaService } from './lib/prisma/prisma.service.js';
 
+// COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook scheduling persistence.
+export {
+  MeetingSchedulingRepository,
+  type MeetingOperationRow,
+  type MeetingOperationStatus,
+  type ScheduledMeetingRow,
+  type MeetingAuditInput,
+} from './lib/meeting-scheduling.repository.js';
+
 // D-EMAIL-TPL-1 — reusable tenant email-template store.
 export {
   EmailTemplateRepository,

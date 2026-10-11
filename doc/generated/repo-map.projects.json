@@ -400,6 +400,7 @@
       "FAKE_VOICE_PROVIDER_KEY",
       "FakeVoiceProvider",
       "GENERAL_TALENT_CONTACT_TOKENS",
+      "MeetingSchedulingRepository",
       "REQUISITION_EXISTENCE_PORT",
       "TERMINAL_CALL_STATES",
       "TemplateValidationError",
@@ -1001,6 +1002,8 @@
       "DELEGATED_TOKEN_STORE",
       "DelegatedAuthorizationService",
       "FORBIDDEN_SCOPE_PATTERNS",
+      "GraphCalendarError",
+      "MICROSOFT_CALENDAR_PORT",
       "MICROSOFT_CAPABILITIES",
       "MICROSOFT_DEFAULT_AUTHORITY_TENANT",
       "MICROSOFT_DELEGATED_SCOPES",
@@ -1009,6 +1012,8 @@
       "MICROSOFT_OAUTH_PORT",
       "MICROSOFT_OAUTH_STATE_TTL_SECONDS",
       "MICROSOFT_PROVIDER_KEY",
+      "MICROSOFT_SCHEDULING_SCOPES",
+      "MS_SCOPE_CALENDARS_RW",
       "MS_SCOPE_MAIL_SEND",
       "MS_SCOPE_OFFLINE_ACCESS",
       "MS_SCOPE_ONLINE_MEETINGS_RW",
@@ -1030,6 +1035,7 @@
       "encryptMicrosoftOAuthState",
       "generateMicrosoftPkce",
       "isMicrosoftOAuthStateExpired",
+      "microsoftSchedulingScopeParam",
       "microsoftScopeParam",
       "redactTokenBundle",
       "tokenNeedsRefresh"
@@ -1965,6 +1971,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/meeting-association-and-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3437,6 +3449,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-scheduling.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5424,6 +5442,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-scheduling.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5504,6 +5528,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/meeting-association-and-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7195,6 +7225,12 @@
     "@aramo/microsoft-graph": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-calendar-http.adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7214,6 +7250,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-meeting-create.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-scheduling.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-scheduling.service.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7327,6 +7375,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2i-d1-inbound-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/meeting-association-and-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7847,6 +7901,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l1d3a-mapping-allowlist-drift.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/meeting-association-and-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8382,6 +8442,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/general-talent-contact-draft.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/meeting-association-and-consent.spec.ts",
         "project": "api",
         "status": "excluded"
       },

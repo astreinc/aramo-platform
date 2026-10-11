@@ -1,9 +1,11 @@
 import {
   IsISO8601,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -106,4 +108,83 @@ export class CreateMicrosoftMeetingRequestDto {
   @MinLength(8)
   @MaxLength(200)
   idempotency_key!: string;
+}
+
+// COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook calendar scheduling (SEPARATE from
+// create-link-only). The recruiter is the organizer (from the JWT, never the body);
+// the Talent is the attendee (resolved server-side). No union-typed arrays, so the
+// global forbidNonWhitelisted pipe stays satisfied.
+export class CreateMicrosoftCalendarMeetingRequestDto {
+  @IsUUID()
+  talent_record_id!: string;
+
+  @IsUUID()
+  requisition_id!: string;
+
+  @IsOptional()
+  @IsUUID()
+  pipeline_id?: string;
+
+  @IsOptional()
+  @IsUUID()
+  connection_id?: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1024)
+  subject!: string;
+
+  @IsISO8601()
+  start_date_time!: string;
+
+  @IsISO8601()
+  end_date_time!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  time_zone!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(200)
+  idempotency_key!: string;
+}
+
+export class RescheduleMicrosoftCalendarMeetingRequestDto {
+  @IsOptional()
+  @IsUUID()
+  connection_id?: string;
+
+  // Optimistic-concurrency guard (CAS). The caller echoes the version it last read;
+  // a stale value loses the race with 409 MICROSOFT_MEETING_VERSION_CONFLICT.
+  @IsInt()
+  @Min(0)
+  expected_version!: number;
+
+  @IsISO8601()
+  start_date_time!: string;
+
+  @IsISO8601()
+  end_date_time!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  time_zone!: string;
+}
+
+export class CancelMicrosoftCalendarMeetingRequestDto {
+  @IsOptional()
+  @IsUUID()
+  connection_id?: string;
+
+  @IsInt()
+  @Min(0)
+  expected_version!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  comment?: string;
 }

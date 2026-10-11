@@ -16,6 +16,7 @@ import {
 } from '@aramo/microsoft-graph';
 
 import { MicrosoftMeetingService } from '../microsoft/microsoft-meeting.service.js';
+import { MeetingAssociationError } from '../microsoft/meeting-association.validator.js';
 import type { MicrosoftConfigResolver } from '../microsoft/microsoft-config.resolver.js';
 import { VoiceEvidenceReaderAdapter } from '../engagement/voice-evidence.adapter.js';
 
@@ -140,11 +141,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         nowSeconds: (): number => 1_000_000,
         redirectUri: (): string => 'https://app/cb',
       };
+      // A1 (C-4): create-link-only validates tenant-ownership only. Default stub
+      // resolves so the existing create-link-only mechanics proofs are unchanged;
+      // the cross-tenant-refusal proof below swaps in a throwing validator.
+      const okValidator = {
+        assertTenantOwnership(): Promise<void> {
+          return Promise.resolve();
+        },
+        assertRecruitingAssociation(): Promise<void> {
+          return Promise.resolve();
+        },
+      };
       svc = new MicrosoftMeetingService(
         delegated as unknown as ConstructorParameters<typeof MicrosoftMeetingService>[0],
         graph,
         repo,
         config as unknown as MicrosoftConfigResolver,
+        okValidator as unknown as ConstructorParameters<typeof MicrosoftMeetingService>[4],
       );
     });
 
@@ -163,6 +176,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).rejects.toBeInstanceOf(MicrosoftReauthRequiredError);
       expect(await countMeetings(TENANT)).toBe(before);
       expect(graph.createCount).toBe(0);
+    });
+
+    it('refuses a cross-tenant / invalid Talent-Requisition association before any Graph side-effect (A1 C-4)', async () => {
+      const before = await countMeetings(TENANT);
+      const throwingValidator = {
+        assertTenantOwnership(): Promise<void> {
+          throw new MeetingAssociationError('talent_not_in_tenant', 'cross-tenant');
+        },
+        assertRecruitingAssociation(): Promise<void> {
+          return Promise.resolve();
+        },
+      };
+      const inlineConfig = {
+        async resolveConnectionId(): Promise<string> {
+          return CONN;
+        },
+        async resolveConfig(): Promise<{ clientId: string; clientSecret?: string }> {
+          return { clientId: 'client-1', clientSecret: 'secret' };
+        },
+        nowSeconds: (): number => 1_000_000,
+        redirectUri: (): string => 'https://app/cb',
+      };
+      const guarded = new MicrosoftMeetingService(
+        {} as unknown as ConstructorParameters<typeof MicrosoftMeetingService>[0],
+        graph,
+        repo,
+        inlineConfig as unknown as MicrosoftConfigResolver,
+        throwingValidator as unknown as ConstructorParameters<typeof MicrosoftMeetingService>[4],
+      );
+      await expect(guarded.createRecruiterMeeting(baseArgs())).rejects.toBeInstanceOf(
+        MeetingAssociationError,
+      );
+      // No provider side-effect and no evidence row on refusal (fail-closed).
+      expect(graph.createCount).toBe(0);
+      expect(await countMeetings(TENANT)).toBe(before);
     });
 
     it('reauthorization-required identity cannot create a meeting (R7)', async () => {

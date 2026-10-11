@@ -43,8 +43,11 @@ const COMMUNICATIONS_C4 = resolve(ROOT, 'libs/communications/prisma/migrations/2
 const COMMUNICATIONS_EMAIL_TEMPLATE = resolve(ROOT, 'libs/communications/prisma/migrations/20260928140000_email_template/migration.sql');
 const COMMUNICATIONS_TEMPLATE_PROVENANCE = resolve(ROOT, 'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql');
 const COMMUNICATIONS_ATTESTED_RESPONSE = resolve(ROOT, 'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql');
+const COMMUNICATIONS_SCHEDULING = resolve(ROOT, 'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql');
+const COMMUNICATIONS_MUTATION_FENCE = resolve(ROOT, 'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql');
+const COMMUNICATIONS_RECONCILIATION = resolve(ROOT, 'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql');
 const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, COMMUNICATIONS_EMAIL_TEMPLATE, COMMUNICATIONS_TEMPLATE_PROVENANCE, COMMUNICATIONS_ATTESTED_RESPONSE, INTEGRATION_INIT];
+const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, COMMUNICATIONS_EMAIL_TEMPLATE, COMMUNICATIONS_TEMPLATE_PROVENANCE, COMMUNICATIONS_ATTESTED_RESPONSE, COMMUNICATIONS_SCHEDULING, COMMUNICATIONS_MUTATION_FENCE, COMMUNICATIONS_RECONCILIATION, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';

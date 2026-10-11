@@ -8,6 +8,8 @@
 export {
   FORBIDDEN_SCOPE_PATTERNS,
   MICROSOFT_DELEGATED_SCOPES,
+  MICROSOFT_SCHEDULING_SCOPES,
+  MS_SCOPE_CALENDARS_RW,
   MS_SCOPE_MAIL_SEND,
   MS_SCOPE_OFFLINE_ACCESS,
   MS_SCOPE_ONLINE_MEETINGS_RW,
@@ -16,8 +18,10 @@ export {
   MS_SCOPE_USER_READ,
   MicrosoftScopeViolationError,
   assertLeastPrivilegeScopes,
+  microsoftSchedulingScopeParam,
   microsoftScopeParam,
   type MicrosoftDelegatedScope,
+  type MicrosoftScopeCapability,
 } from './lib/domain/graph-scopes.js';
 
 export {
@@ -82,6 +86,19 @@ export {
   type GraphUserProfile,
   type MicrosoftGraphPort,
 } from './lib/ports/microsoft-graph.port.js';
+
+export {
+  MICROSOFT_CALENDAR_PORT,
+  GraphCalendarError,
+  type GraphErrorKind,
+  type GraphEventAttendee,
+  type GraphCreateEventArgs,
+  type GraphUpdateEventArgs,
+  type GraphCancelEventArgs,
+  type GraphGetEventArgs,
+  type GraphEventResult,
+  type MicrosoftCalendarPort,
+} from './lib/ports/microsoft-calendar.port.js';
 
 export {
   DelegatedAuthorizationService,

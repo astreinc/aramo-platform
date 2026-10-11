@@ -417,6 +417,9 @@ export const SEED_IDS = {
     // COMM-C2B — recruiter Microsoft 365 execution scopes.
     'communication:email:send': '01900000-0000-7000-8000-0000000000e8',
     'communication:meeting:create': '01900000-0000-7000-8000-0000000000e9',
+    'communication:meeting:read': '01900000-0000-7000-8000-0000000000ea',
+    'communication:meeting:edit': '01900000-0000-7000-8000-0000000000eb',
+    'communication:meeting:cancel': '01900000-0000-7000-8000-0000000000ec',
     // WL-B2 (R6/R14) — DEDICATED address-lookup scope. Next free scope suffix
     // after the 0xfc engagement:policy:override max (append-don't-renumber): 0xfd.
     'address:lookup': '01900000-0000-7000-8000-0000000000fd',
@@ -2243,6 +2246,33 @@ const COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() =>
   return map;
 })();
 
+// COMM-C2B Amendment A1 (M365-SCHED-1, R2) — Outlook scheduling meeting mutation +
+// read grants. communication:meeting:{read,edit,cancel} -> recruiter + account_manager
+// + tenant_admin + tenant_owner (mirrors communication:meeting:create). Mutation is
+// additionally organizer-bound at the service layer. Fresh disjoint RoleScope id
+// range 0x1500+ (append-don't-renumber: the C2B bundle's 0xf30+ ids never shift).
+// 12 grants (3 scopes x 4 roles).
+export const COMMUNICATION_A1_MEETING_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
+  ['account_manager', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
+  ['tenant_admin', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
+  ['tenant_owner', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
+];
+const COMMUNICATION_A1_MEETING_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1500;
+  for (const [role, scopes] of COMMUNICATION_A1_MEETING_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // D-EMAIL-TPL-1 (ET-4) — reusable email-template management grants. read →
 // recruiter/account_manager/tenant_admin/tenant_owner; manage → tenant_admin/
 // tenant_owner. Fresh disjoint RoleScope id range 0x1360+ (R-SYNC: E-Sign PX-V1
@@ -3130,6 +3160,9 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['client-submittal-policy:override'], 'client-submittal-policy:override', 'CSP PR-2 — proceed past an OVERRIDABLE Client Submittal Policy requirement at Submit to client WITH a recorded reason, captured in authoritative decision provenance. Scope-based authority (never a role-name check); HARD_DENY requirements are never overridable. GRANTED to tenant_admin, tenant_owner only. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:email:send'], 'communication:email:send', 'COMM-C2B — send recruiter email through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/email). Server-side contacting-consent gate precedes any provider execution; provider-neutral email evidence is recorded on success. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:create'], 'communication:meeting:create', 'COMM-C2B — create a Teams meeting through the bound delegated Microsoft identity (POST /v1/integrations/microsoft/meeting; create-link-only, no Talent invite). Records provider-neutral meeting evidence (join reference + Talent x Requisition association). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner (mirrors communication:voice:call). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:read'], 'communication:meeting:read', 'COMM-C2B Amendment A1 (M365-SCHED-1) — read a recruiter-owned Outlook scheduling meeting / list upcoming meetings by Talent-Requisition context (last-known synchronized state, never guaranteed-live Outlook). GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:edit'], 'communication:meeting:edit', 'COMM-C2B Amendment A1 (M365-SCHED-1) — reschedule a recruiter-owned Outlook scheduling meeting (updates the SAME provider event). Organizer-bound at the service layer: a scope alone never authorizes mutating another recruiter meeting. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['communication:meeting:cancel'], 'communication:meeting:cancel', 'COMM-C2B Amendment A1 (M365-SCHED-1) — cancel a recruiter-owned Outlook scheduling meeting (targets the SAME provider event; idempotent). Organizer-bound at the service layer. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:template:read'], 'communication:template:read', 'D-EMAIL-TPL-1 — read reusable email templates (list/get/preview) under Settings. GRANTED to recruiter, account_manager, tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['communication:template:manage'], 'communication:template:manage', 'D-EMAIL-TPL-1 — manage reusable email templates (create/update/deactivate the tenant override; the code-owned default is never mutated). GRANTED to tenant_admin, tenant_owner. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['saved-list:read'], 'saved-list:read', 'CRM-1 — read saved lists (GET /v1/saved-lists + /:id). The repository enforces PRIVATE/TENANT visibility (a PRIVATE list of another actor is absent). GRANTED to the 9 operational roles. NO scope.created (scope-seed precedent).');
@@ -3758,6 +3791,25 @@ export async function runIdentitySeed(
       const rsId = COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`COMM-C2B Communication-Execution-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook scheduling meeting mutation + read
+  // grants (12 rows; range 0x1500+). communication:meeting:{read,edit,cancel} ->
+  // recruiter + account_manager + tenant_admin + tenant_owner.
+  for (const [roleKey, scopeKeys] of COMMUNICATION_A1_MEETING_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = COMMUNICATION_A1_MEETING_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`M365-SCHED-1 A1 Meeting-Scope-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

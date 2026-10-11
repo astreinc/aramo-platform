@@ -19,10 +19,17 @@ export const MS_SCOPE_USER_READ = 'User.Read';
 export const MS_SCOPE_MAIL_SEND = 'Mail.Send';
 /** Create/manage the signed-in organizer's OWN online (Teams) meeting. No calendar/mailbox (R8). */
 export const MS_SCOPE_ONLINE_MEETINGS_RW = 'OnlineMeetings.ReadWrite';
+/**
+ * Read/write the signed-in user's OWN Outlook calendar — ONLY for the separately
+ * enabled scheduling capability (COMM-C2B Amendment A1, R4/R8). NOT part of the
+ * baseline set; a recruiter who has not enabled scheduling never requests it.
+ */
+export const MS_SCOPE_CALENDARS_RW = 'Calendars.ReadWrite';
 
 /**
- * The COMPLETE authorized delegated scope set for COMM-C2B — the only set Aramo
- * may request from Microsoft. Array order is the request order.
+ * The COMPLETE authorized BASELINE delegated scope set for COMM-C2B — the only set
+ * Aramo may request from Microsoft for the send-only + create-link-only
+ * capabilities. Array order is the request order. Calendar access is NOT here.
  */
 export const MICROSOFT_DELEGATED_SCOPES = Object.freeze([
   MS_SCOPE_OPENID,
@@ -33,9 +40,32 @@ export const MICROSOFT_DELEGATED_SCOPES = Object.freeze([
   MS_SCOPE_ONLINE_MEETINGS_RW,
 ] as const);
 
+/**
+ * The authorized scope set for the separately enabled Outlook scheduling
+ * capability (COMM-C2B Amendment A1, R4): the baseline set PLUS exactly
+ * Calendars.ReadWrite. Requested only when a recruiter explicitly enables and
+ * consents to scheduling; this never widens the baseline posture.
+ */
+export const MICROSOFT_SCHEDULING_SCOPES = Object.freeze([
+  ...MICROSOFT_DELEGATED_SCOPES,
+  MS_SCOPE_CALENDARS_RW,
+] as const);
+
 export type MicrosoftDelegatedScope = (typeof MICROSOFT_DELEGATED_SCOPES)[number];
 
-const AUTHORIZED = new Set<string>(MICROSOFT_DELEGATED_SCOPES);
+/**
+ * Which delegated capability a scope request belongs to. 'baseline' is the
+ * send-only + create-link-only posture (default); 'scheduling' additionally
+ * authorizes Calendars.ReadWrite (Amendment A1, R4).
+ */
+export type MicrosoftScopeCapability = 'baseline' | 'scheduling';
+
+const AUTHORIZED_BASELINE = new Set<string>(MICROSOFT_DELEGATED_SCOPES);
+const AUTHORIZED_SCHEDULING = new Set<string>(MICROSOFT_SCHEDULING_SCOPES);
+
+function authorizedSetFor(capability: MicrosoftScopeCapability): ReadonlySet<string> {
+  return capability === 'scheduling' ? AUTHORIZED_SCHEDULING : AUTHORIZED_BASELINE;
+}
 
 /**
  * Forbidden delegated/application scope shapes that would exceed the locked
@@ -64,13 +94,28 @@ export class MicrosoftScopeViolationError extends Error {
 }
 
 /**
- * Fail-closed guard (R8): every requested scope MUST be a member of the
- * authorized least-privilege set AND must not match a forbidden pattern. Throws
+ * Fail-closed guard (R8, Amendment A1 R4): every requested scope MUST be a member
+ * of the capability's authorized least-privilege set; any scope outside it must
+ * also clear the forbidden-pattern defense-in-depth. Throws
  * MicrosoftScopeViolationError on the first violation. The authorize-URL builder
  * MUST pass its scope list through this guard before contacting Microsoft.
+ *
+ * Capability gating (A1 R4): the 'scheduling' capability admits EXACTLY the
+ * baseline set plus the Calendars.ReadWrite literal; the default 'baseline'
+ * capability still fails closed on all Calendars.* — so an opt-in scheduling
+ * request widens nothing for recruiters who have not enabled scheduling.
  */
-export function assertLeastPrivilegeScopes(requested: readonly string[]): void {
+export function assertLeastPrivilegeScopes(
+  requested: readonly string[],
+  capability: MicrosoftScopeCapability = 'baseline',
+): void {
+  const authorized = authorizedSetFor(capability);
   for (const scope of requested) {
+    // Explicitly authorized for this capability — bypasses the broad forbidden
+    // patterns (which exist to catch anything NOT in the authorized set).
+    if (authorized.has(scope)) {
+      continue;
+    }
     for (const pattern of FORBIDDEN_SCOPE_PATTERNS) {
       if (pattern.test(scope)) {
         throw new MicrosoftScopeViolationError(
@@ -79,16 +124,19 @@ export function assertLeastPrivilegeScopes(requested: readonly string[]): void {
         );
       }
     }
-    if (!AUTHORIZED.has(scope)) {
-      throw new MicrosoftScopeViolationError(
-        scope,
-        `Microsoft scope '${scope}' is not in the authorized COMM-C2B delegated set (R8)`,
-      );
-    }
+    throw new MicrosoftScopeViolationError(
+      scope,
+      `Microsoft scope '${scope}' is not in the authorized COMM-C2B '${capability}' delegated set (R8)`,
+    );
   }
 }
 
-/** The authorized scope set as the space-delimited string for an OAuth request. */
+/** The baseline authorized scope set as the space-delimited string for an OAuth request. */
 export function microsoftScopeParam(): string {
   return MICROSOFT_DELEGATED_SCOPES.join(' ');
+}
+
+/** The scheduling-capability scope set as the space-delimited string (A1 R4). */
+export function microsoftSchedulingScopeParam(): string {
+  return MICROSOFT_SCHEDULING_SCOPES.join(' ');
 }
