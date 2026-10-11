@@ -3437,6 +3437,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/microsoft-authorize-capability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"

@@ -17,7 +17,9 @@ import {
 
 export interface MicrosoftAccountConnectionProps {
   readonly loadStatusFn?: () => Promise<MicrosoftBindingStatus>;
-  readonly startAuthorizeFn?: () => Promise<{ authorize_url: string }>;
+  // A1 R4 — optional capability: omitted = baseline connect (unchanged); 'scheduling'
+  // starts the incremental Calendars.ReadWrite consent for Outlook scheduling.
+  readonly startAuthorizeFn?: (capability?: 'scheduling') => Promise<{ authorize_url: string }>;
   /** Redirect to the Microsoft authorize URL. Injectable for tests. */
   readonly onNavigate?: (url: string) => void;
 }
@@ -62,6 +64,20 @@ export function MicrosoftAccountConnection(
       });
   }, [startAuthorize, navigate]);
 
+  // A1 R4 — opt-in: start the incremental Calendars.ReadWrite consent for the already-
+  // connected account. Does NOT disconnect the existing connection; Microsoft adds the
+  // calendar scope on top of the baseline grant and the server-side callback re-binds.
+  const onEnableScheduling = useCallback(() => {
+    setBusy(true);
+    setError(null);
+    startAuthorize('scheduling')
+      .then(({ authorize_url }) => navigate(authorize_url))
+      .catch(() => {
+        setError('We couldn’t start Outlook scheduling authorization. Please try again.');
+        setBusy(false);
+      });
+  }, [startAuthorize, navigate]);
+
   const connected = status !== null && status.bound && !status.needs_reauthorization;
   const reconnect = status !== null && status.bound && status.needs_reauthorization;
   const label =
@@ -92,6 +108,20 @@ export function MicrosoftAccountConnection(
           onClick={onConnect}
         >
           {reconnect ? 'Reconnect' : 'Connect account'}
+        </Button>
+      ) : null}
+      {/* A1 R4 — opt-in Outlook scheduling consent, offered only on a connected account.
+          The grant is NOT inferred from a redirect; the recruiter completes Microsoft
+          consent and the server-side callback binds the elevated token. */}
+      {connected ? (
+        <Button unstyled
+          type="button"
+          className="rc-hbtn"
+          data-testid="microsoft-enable-scheduling"
+          disabled={busy}
+          onClick={onEnableScheduling}
+        >
+          Enable Outlook scheduling
         </Button>
       ) : null}
       {error !== null ? (

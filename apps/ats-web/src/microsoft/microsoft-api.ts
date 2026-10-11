@@ -114,8 +114,14 @@ export async function getMicrosoftBindingStatus(): Promise<MicrosoftBindingStatu
   return apiClient.get<MicrosoftBindingStatus>('/v1/integrations/microsoft/me');
 }
 
-export async function startMicrosoftAuthorize(): Promise<{ authorize_url: string }> {
-  return apiClient.get<{ authorize_url: string }>('/v1/integrations/microsoft/authorize/start');
+// A1 R4 — opt-in scheduling consent. Omitting `capability` keeps the baseline
+// authorize (send-only + create-link-only scopes, unchanged). `'scheduling'` requests
+// the incremental Calendars.ReadWrite consent for Outlook calendar scheduling.
+export async function startMicrosoftAuthorize(
+  capability?: 'scheduling',
+): Promise<{ authorize_url: string }> {
+  const qs = capability !== undefined ? `?capability=${encodeURIComponent(capability)}` : '';
+  return apiClient.get<{ authorize_url: string }>(`/v1/integrations/microsoft/authorize/start${qs}`);
 }
 
 export async function sendMicrosoftEmail(input: SendEmailInput): Promise<MicrosoftEmailSendResult> {

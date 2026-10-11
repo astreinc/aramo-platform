@@ -518,6 +518,7 @@
     "apps/api/src/tests/manual-capture.service.spec.ts",
     "apps/api/src/tests/match-list.negative-shape.spec.ts",
     "apps/api/src/tests/meeting-association-and-consent.spec.ts",
+    "apps/api/src/tests/microsoft-authorize-capability.spec.ts",
     "apps/api/src/tests/microsoft-calendar-http.adapter.spec.ts",
     "apps/api/src/tests/microsoft-delegated-auth.integration.spec.ts",
     "apps/api/src/tests/microsoft-email-send.integration.spec.ts",

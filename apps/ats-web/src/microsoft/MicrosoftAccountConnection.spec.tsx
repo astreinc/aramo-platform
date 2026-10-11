@@ -47,4 +47,32 @@ describe('MicrosoftAccountConnection', () => {
     expect(await screen.findByTestId('microsoft-account-status')).toHaveTextContent(/reconnect needed/i);
     expect(screen.getByTestId('microsoft-account-connect')).toHaveTextContent(/reconnect/i);
   });
+
+  // A1 R4 — opt-in Outlook scheduling consent (incremental Calendars.ReadWrite).
+  it('connected → "Enable Outlook scheduling" starts the scheduling-capability authorize and redirects', async () => {
+    const onNavigate = vi.fn();
+    const startAuthorizeFn = vi.fn().mockResolvedValue({ authorize_url: 'https://login.microsoftonline.example/sched' });
+    render(
+      <MicrosoftAccountConnection loadStatusFn={vi.fn().mockResolvedValue(bind({}))} startAuthorizeFn={startAuthorizeFn} onNavigate={onNavigate} />,
+    );
+    fireEvent.click(await screen.findByTestId('microsoft-enable-scheduling'));
+    await waitFor(() => expect(startAuthorizeFn).toHaveBeenCalledWith('scheduling'));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith('https://login.microsoftonline.example/sched'));
+  });
+
+  it('a NOT-connected account offers Connect (baseline, no scheduling capability) and no Enable-scheduling action', async () => {
+    const startAuthorizeFn = vi.fn().mockResolvedValue({ authorize_url: 'https://login.microsoftonline.example/base' });
+    render(
+      <MicrosoftAccountConnection
+        loadStatusFn={vi.fn().mockResolvedValue(bind({ bound: false, status: 'unconfigured', needs_reauthorization: true }))}
+        startAuthorizeFn={startAuthorizeFn}
+        onNavigate={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('microsoft-account-connect');
+    expect(screen.queryByTestId('microsoft-enable-scheduling')).toBeNull();
+    fireEvent.click(screen.getByTestId('microsoft-account-connect'));
+    await waitFor(() => expect(startAuthorizeFn).toHaveBeenCalledTimes(1));
+    expect(startAuthorizeFn.mock.calls[0][0]).toBeUndefined(); // baseline — never 'scheduling'
+  });
 });

@@ -12,6 +12,7 @@ import {
   isMicrosoftOAuthStateExpired,
   MicrosoftOAuthStateError,
 } from './domain/oauth-state.js';
+import type { MicrosoftScopeCapability } from './domain/graph-scopes.js';
 import {
   MicrosoftConsentRevokedError,
   type MicrosoftOAuthPort,
@@ -55,6 +56,10 @@ export interface StartAuthorizationArgs {
   readonly redirectUri: string;
   readonly authorityTenant?: string;
   readonly nowEpochSeconds: number;
+  // A1 R4 — the delegated capability to request. Omitted/`baseline` keeps the
+  // established send-only + create-link-only permission set; `scheduling` additionally
+  // requests Calendars.ReadWrite (opt-in incremental consent). Never widens baseline.
+  readonly capability?: MicrosoftScopeCapability;
 }
 
 export interface StartAuthorizationResult {
@@ -123,6 +128,9 @@ export class DelegatedAuthorizationService {
       encryptedState,
       codeChallenge: pkce.challenge,
       authorityTenant: args.authorityTenant,
+      // Opt-in: only an explicit 'scheduling' capability requests Calendars.ReadWrite;
+      // omitted/baseline keeps the established least-privilege set (R4/R8 fail-closed).
+      capability: args.capability,
     });
     return { authorizeUrl, encryptedState };
   }
