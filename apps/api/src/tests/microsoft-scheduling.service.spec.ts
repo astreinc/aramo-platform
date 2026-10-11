@@ -32,6 +32,7 @@ const activeMeeting = {
 function build(overrides: {
   claim?: unknown;
   reserve?: unknown;
+  finalize?: unknown;
   calendar?: Record<string, unknown>;
   validator?: Record<string, unknown>;
   consent?: Record<string, unknown>;
@@ -50,8 +51,9 @@ function build(overrides: {
     createScheduledMeeting: vi.fn().mockResolvedValue({ id: 'int-1', tenant_id: TENANT, status: 'scheduled', version: 0, provider_event_id: 'evt-1', join_reference: 'j', initiated_by_id: RECRUITER, started_at: new Date(), ended_at: new Date() }),
     findScheduledMeeting: vi.fn().mockResolvedValue(overrides.findScheduledMeeting ?? null),
     reserveMutationCas: vi.fn().mockResolvedValue(overrides.reserve ?? { conflict: false, reserved_version: 3 }),
-    finalizeReschedule: vi.fn().mockResolvedValue(undefined),
-    finalizeCancel: vi.fn().mockResolvedValue(undefined),
+    finalizeReschedule: vi.fn().mockResolvedValue((overrides as { finalize?: unknown }).finalize ?? { ok: true }),
+    finalizeCancel: vi.fn().mockResolvedValue((overrides as { finalize?: unknown }).finalize ?? { ok: true }),
+    reconcileLockedMutation: vi.fn().mockResolvedValue({ ok: true }),
     listUpcomingMeetings: vi.fn().mockResolvedValue([]),
     writeAudit: vi.fn().mockResolvedValue(undefined),
   };
@@ -138,6 +140,12 @@ describe('scheduleMeeting — claim/validate/consent/intent/create (A1 R1/R3/C-4
     await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toBeInstanceOf(MeetingOperationInProgressError);
     expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
   });
+
+  it('an uncertain prior op (needs_reconciliation) surfaces and NEVER auto-recreates (PR#918 FIX-4)', async () => {
+    const { svc, calendar } = build({ claim: { outcome: 'needs_reconciliation', op: { id: 'op-1', transaction_id: 'idem-1' } } });
+    await expect(svc.scheduleMeeting(scheduleArgs)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+    expect(calendar.createCalendarEvent).not.toHaveBeenCalled();
+  });
 });
 
 describe('reschedule/cancel — RESERVE before Graph (A1 R2/R3, FIX_NOW-1)', () => {
@@ -183,5 +191,13 @@ describe('reschedule/cancel — RESERVE before Graph (A1 R2/R3, FIX_NOW-1)', () 
     expect(view.idempotent_replay).toBe(true);
     expect(repo.reserveMutationCas).not.toHaveBeenCalled();
     expect(calendar.cancelCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it('a finalize that lands ZERO rows never emits a success audit — surfaces unresolved (PR#918 FIX-2)', async () => {
+    const { svc, repo } = build({ findScheduledMeeting: activeMeeting, finalize: { ok: false } });
+    await expect(svc.rescheduleMeeting(reArgs)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+    const auditTypes = repo.writeAudit.mock.calls.map((c) => (c[0] as { event_type: string }).event_type);
+    expect(auditTypes).not.toContain('meeting.rescheduled');
+    expect(auditTypes).toContain('meeting.provider_failed');
   });
 });

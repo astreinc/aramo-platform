@@ -230,6 +230,12 @@ model CommunicationInteraction {
   // non-scheduling rows sit at 0; only scheduling mutations advance it.
   version Int @default(0)
 
+  // COMM-C2B Amendment A1 (M365-SCHED-1, PR#918 final pass) — exclusive mutation
+  // fence. A reschedule/cancel reservation sets this lock and holds it until finalize
+  // (success) or reconcile (recovery) clears it; a second reservation is refused while
+  // the lock is held, so two mutations can never reach Microsoft Graph concurrently.
+  mutation_locked_at DateTime? @db.Timestamptz
+
   // COMM-C4 (RCE-1) — the FINAL sent subject and body for an email-channel
   // interaction (post-review durable evidence). Nullable: voice/meeting rows
   // carry neither. Plain text; never a token or provider secret.
@@ -443,6 +449,11 @@ model MeetingSchedulingOperation {
   idempotency_key String
   transaction_id  String
   operation       String // 'create' (reschedule/cancel mutate the interaction via CAS)
+
+  // PR#918 final pass (FIX-3) — the immutable request identity the key is bound to
+  // (organizer|talent|requisition|subject|start|end|timezone|connection). Reuse with
+  // any changed field is rejected; never a stale successful-operation replay.
+  request_fingerprint String?
 
   status MeetingSchedulingOperationStatus @default(pending)
 

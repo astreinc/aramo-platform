@@ -46,6 +46,7 @@ class FakeCalendar {
   lastCreate: GraphCreateEventArgs | null = null;
   lastUpdate: GraphUpdateEventArgs | null = null;
   mode: 'ok' | 'ambiguous' = 'ok';
+  failUpdate = false;
   providerEventId = 'evt-real-0001';
   async createCalendarEvent(args: GraphCreateEventArgs) {
     this.createCount += 1;
@@ -58,13 +59,17 @@ class FakeCalendar {
   async updateCalendarEvent(args: GraphUpdateEventArgs) {
     this.updateCount += 1;
     this.lastUpdate = args;
+    if (this.failUpdate) {
+      throw new GraphCalendarError('transient', 503, 'update timeout', undefined, true);
+    }
     return { provider_event_id: args.providerEventId, start_date_time: args.startDateTime ?? '', end_date_time: args.endDateTime ?? '' };
   }
   async cancelCalendarEvent() {
     this.cancelCount += 1;
   }
   async getCalendarEvent() {
-    return null;
+    // Provider is reachable and the event is present (reconciliation resolves to rescheduled).
+    return { provider_event_id: this.providerEventId, start_date_time: 's', end_date_time: 'e' };
   }
 }
 
@@ -87,6 +92,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const OTHER_RECRUITER = randomUUID();
     const TALENT = randomUUID();
     const REQ = randomUUID();
+    // The effective connection is part of the request fingerprint — DETERMINISTIC per
+    // tenant (as in real usage), so a same-key retry produces the same fingerprint.
+    const CONN = randomUUID();
 
     function scheduleArgs(over: Partial<ScheduleMeetingArgs> = {}): ScheduleMeetingArgs {
       return {
@@ -158,7 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const delegated = { getUsableAccessToken: async () => ({ access_token: 'tok', provider_identity_id: 'pi', ms_object_id: 'oid' }) };
       const graph = { getMe: async () => ({ ms_object_id: 'oid', ms_tenant_id: 'tid', user_principal_name: 'r@x.com', display_name: 'R' }) };
       const config = {
-        resolveConnectionId: async () => randomUUID(),
+        resolveConnectionId: async () => CONN,
         resolveConfig: async () => ({ clientId: 'c', clientSecret: 's' }),
         nowSeconds: () => 1_000_000,
       } as unknown as MicrosoftConfigResolver;
@@ -230,14 +238,87 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await countOps(args.idempotency_key)).toEqual({ count: 1, status: 'unresolved' });
       expect(await auditEventTypes()).toEqual(['meeting.provider_failed']);
 
-      // Retry with the SAME idempotency key: the durable op (same transactionId) is
-      // re-used; the provider now succeeds; exactly ONE meeting results (no duplicate).
+      const createsAfterFirst = calendar.createCount;
+      // A same-key retry of an UNCERTAIN (unresolved) op surfaces for reconciliation —
+      // it does NOT silently issue another Graph create (PR#918 FIX-4).
       calendar.mode = 'ok';
-      const view = await svc.scheduleMeeting({ ...args });
-      expect(view.status).toBe('scheduled');
+      await expect(svc.scheduleMeeting({ ...args })).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+      expect(calendar.createCount).toBe(createsAfterFirst);
+      expect(await countMeetings()).toBe(0);
+    });
+
+    it('FIX-1/exclusive. two concurrent reschedules cannot both reach Graph (mutation fence)', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      const re = () =>
+        svc.rescheduleMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+          expected_version: created.version, start_date_time: '2026-11-05T10:00:00.000Z',
+          end_date_time: '2026-11-05T10:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
+        });
+      const results = await Promise.allSettled([re(), re()]);
+      expect(results.filter((r) => r.status === 'fulfilled').length).toBe(1); // one wins the reservation
+      expect(calendar.updateCount).toBe(1); // the fence prevented a second Graph update
+    });
+
+    it('FIX-1/no-false-success. a Graph failure after reservation never exposes success; the fence holds + recovery releases it', async () => {
+      const created = await svc.scheduleMeeting(scheduleArgs());
+      calendar.failUpdate = true;
+      await expect(
+        svc.rescheduleMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+          expected_version: created.version, start_date_time: '2026-11-06T10:00:00.000Z',
+          end_date_time: '2026-11-06T10:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
+        }),
+      ).rejects.toThrow();
+      // No false success: status unchanged, no rescheduled audit, provider_failed recorded.
+      expect((await svc.readMeeting(TENANT, created.interaction_id))?.status).toBe('scheduled');
+      expect(await auditEventTypes()).toContain('meeting.provider_failed');
+      expect(await auditEventTypes()).not.toContain('meeting.rescheduled');
+      // The fence is HELD → a subsequent reschedule is blocked until reconciliation.
+      calendar.failUpdate = false;
+      await expect(
+        svc.rescheduleMeeting({
+          tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+          expected_version: created.version + 1, start_date_time: '2026-11-07T10:00:00.000Z',
+          end_date_time: '2026-11-07T10:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
+        }),
+      ).rejects.toBeInstanceOf(MeetingVersionConflictError);
+      // Bounded recovery releases the fence (provider is source of truth) → mutable again.
+      await svc.reconcileMeeting({ tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id });
+      const afterReconcile = await svc.readMeeting(TENANT, created.interaction_id);
+      expect(afterReconcile?.status).toBe('rescheduled'); // resolved to provider truth
+      // Fence released: a follow-up reschedule at the current version now succeeds.
+      const ok = await svc.rescheduleMeeting({
+        tenant_id: TENANT, recruiter_id: RECRUITER, interaction_id: created.interaction_id,
+        expected_version: afterReconcile?.version ?? 0, start_date_time: '2026-11-08T10:00:00.000Z',
+        end_date_time: '2026-11-08T10:30:00.000Z', time_zone: 'UTC', requestId: 'rq',
+      });
+      expect(ok.status).toBe('rescheduled');
+    });
+
+    it('FIX-3. a same-key create with a CHANGED time is refused (full request-identity binding)', async () => {
+      const args = scheduleArgs();
+      await svc.scheduleMeeting({ ...args });
+      await expect(
+        svc.scheduleMeeting({ ...args, start_date_time: '2026-12-01T09:00:00.000Z' }),
+      ).rejects.toBeInstanceOf(MeetingIdempotencyConflictError);
       expect(await countMeetings()).toBe(1);
-      expect((await countOps(args.idempotency_key)).status).toBe('succeeded');
-      expect(calendar.lastCreate?.transactionId).toBe(args.idempotency_key);
+    });
+
+    it('FIX-4. an abandoned stale pending op surfaces for reconciliation (never auto-recreated)', async () => {
+      const args = scheduleArgs();
+      const fp = [RECRUITER, TALENT, REQ, args.subject, args.start_date_time, args.end_date_time, args.time_zone, CONN].join('|');
+      // Seed a pending op created over the abandon-TTL ago (simulates a crash mid-flight).
+      await db.query(
+        `INSERT INTO communications."MeetingSchedulingOperation"
+           (id, tenant_id, idempotency_key, transaction_id, operation, status, organizer_id,
+            talent_record_id, requisition_id, request_fingerprint, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $2, 'create', 'pending', $3, $4, $5, $6, now() - interval '1 hour', now())`,
+        [TENANT, args.idempotency_key, RECRUITER, TALENT, REQ, fp],
+      );
+      await expect(svc.scheduleMeeting(args)).rejects.toBeInstanceOf(MeetingScheduleUnresolvedError);
+      expect(calendar.createCount).toBe(0); // never auto-recreated
+      expect(await countMeetings()).toBe(0);
     });
 
     it('6. reschedule preserves the original Outlook event identity and CAS-advances the version', async () => {

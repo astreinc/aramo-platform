@@ -147,6 +147,11 @@ export class MicrosoftSchedulingService {
   ) {}
 
   async scheduleMeeting(args: ScheduleMeetingArgs): Promise<ScheduledMeetingView> {
+    // Resolve the EFFECTIVE connection up front — it is part of the immutable request
+    // identity the idempotency key is bound to (FIX-3).
+    const connectionId = await this.config.resolveConnectionId(args.tenant_id, args.connection_id);
+    const fingerprint = this.requestFingerprint(args, connectionId);
+
     // 1. Atomically CLAIM the durable operation — the single serialization +
     // idempotency + ownership gate (FIX_NOW-2). transaction_id = the client key:
     // stable across retries so a retried create carries the SAME Graph transactionId
@@ -158,12 +163,18 @@ export class MicrosoftSchedulingService {
       organizer_id: args.recruiter_id,
       talent_record_id: args.talent_record_id,
       requisition_id: args.requisition_id,
+      request_fingerprint: fingerprint,
     });
     if (claim.outcome === 'identity_conflict') {
       throw new MeetingIdempotencyConflictError();
     }
     if (claim.outcome === 'in_progress') {
       throw new MeetingOperationInProgressError();
+    }
+    if (claim.outcome === 'needs_reconciliation') {
+      // UNCERTAIN prior outcome (unresolved, or an abandoned pending): the provider
+      // event may exist. NEVER auto-recreate — surface for bounded reconciliation (R3/FIX-4).
+      throw new MeetingScheduleUnresolvedError(claim.op?.id ?? '');
     }
     if (claim.outcome === 'replay') {
       const existing =
@@ -197,7 +208,6 @@ export class MicrosoftSchedulingService {
         requestId: args.requestId,
       });
 
-      const connectionId = await this.config.resolveConnectionId(args.tenant_id, args.connection_id);
       const cfg = await this.config.resolveConfig(args.tenant_id, connectionId, true);
       const token = await this.delegated.getUsableAccessToken({
         tenant_id: args.tenant_id,
@@ -311,6 +321,7 @@ export class MicrosoftSchedulingService {
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
+      now: new Date(),
     });
     if (reserve.conflict) {
       throw new MeetingVersionConflictError();
@@ -325,22 +336,31 @@ export class MicrosoftSchedulingService {
         timeZone: args.time_zone,
       });
     } catch (err) {
-      // Graph failed AFTER the reservation — do NOT claim success. Leave a durable,
-      // inspectable failure/unresolved state (row sits at reserved_version, status
-      // unchanged) for reconciliation; no automatic retry.
+      // Graph failed AFTER the reservation — do NOT claim success. The fence stays
+      // held (row at reserved_version, status unchanged) as a durable, inspectable
+      // state for bounded reconciliation; no automatic retry.
       await this.recordMutationProviderFailure(args.tenant_id, args.recruiter_id, row, 'reschedule', err);
       if (err instanceof GraphCalendarError && err.ambiguous) {
         throw new MeetingScheduleUnresolvedError(row.id);
       }
       throw err;
     }
-    await this.repo.finalizeReschedule({
+    // CHECKED finalize (FIX-2): if persistence did not land, the outcome is uncertain —
+    // the fence stays held, NO success audit is emitted, and we surface for reconciliation.
+    const fin = await this.repo.finalizeReschedule({
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       reserved_version: reserve.reserved_version,
       started_at: new Date(args.start_date_time),
       ended_at: new Date(args.end_date_time),
     });
+    if (!fin.ok) {
+      await this.recordMutationProviderFailure(
+        args.tenant_id, args.recruiter_id, row, 'reschedule',
+        new GraphCalendarError('transient', 0, 'finalize did not land', undefined, true),
+      );
+      throw new MeetingScheduleUnresolvedError(row.id);
+    }
     await this.repo.writeAudit({
       tenant_id: args.tenant_id,
       actor_id: args.recruiter_id,
@@ -367,6 +387,7 @@ export class MicrosoftSchedulingService {
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       expected_version: args.expected_version,
+      now: new Date(),
     });
     if (reserve.conflict) {
       throw new MeetingVersionConflictError();
@@ -385,11 +406,19 @@ export class MicrosoftSchedulingService {
       }
       throw err;
     }
-    await this.repo.finalizeCancel({
+    // CHECKED finalize (FIX-2): never emit a success audit on a zero-row finalize.
+    const fin = await this.repo.finalizeCancel({
       tenant_id: args.tenant_id,
       interaction_id: args.interaction_id,
       reserved_version: reserve.reserved_version,
     });
+    if (!fin.ok) {
+      await this.recordMutationProviderFailure(
+        args.tenant_id, args.recruiter_id, row, 'cancel',
+        new GraphCalendarError('transient', 0, 'finalize did not land', undefined, true),
+      );
+      throw new MeetingScheduleUnresolvedError(row.id);
+    }
     await this.repo.writeAudit({
       tenant_id: args.tenant_id,
       actor_id: args.recruiter_id,
@@ -431,6 +460,71 @@ export class MicrosoftSchedulingService {
   async readMeeting(tenant_id: string, interaction_id: string): Promise<ScheduledMeetingView | null> {
     const row = await this.repo.findScheduledMeeting(tenant_id, interaction_id);
     return row === null ? null : this.view(row, null, false);
+  }
+
+  /**
+   * Bounded, EXPLICIT recovery (FIX-4) for a mutation whose fence is held but whose
+   * provider outcome was uncertain (Graph failure after reservation, or an abandoned
+   * mutation). Reads the provider event (Outlook is source of truth) and releases the
+   * fence to the reconciled state. Organizer-bound; never an automatic provider re-issue.
+   * (A create-side `unresolved`/abandoned-`pending` op carries no event id and is
+   * reconciled operationally, not here.)
+   */
+  async reconcileMeeting(args: {
+    tenant_id: string;
+    recruiter_id: string;
+    interaction_id: string;
+    connection_id?: string;
+  }): Promise<ScheduledMeetingView> {
+    const row = await this.repo.findScheduledMeeting(args.tenant_id, args.interaction_id);
+    if (row === null) {
+      throw new MeetingNotFoundError();
+    }
+    if (row.initiated_by_id !== args.recruiter_id) {
+      throw new MeetingOrganizerMismatchError();
+    }
+    if (row.mutation_locked_at === null) {
+      return this.view(row, null, false); // not fenced — nothing to reconcile
+    }
+    if (row.provider_event_id === null || row.provider_event_id.length === 0) {
+      throw new MeetingNotSchedulingError();
+    }
+    const token = await this.organizerToken(args.tenant_id, args.recruiter_id, args.connection_id);
+    const ev = await this.calendar.getCalendarEvent({ accessToken: token, providerEventId: row.provider_event_id });
+    // Provider is authoritative: an absent/cancelled event resolves to cancelled, a
+    // present event to rescheduled (the intended mutation landed on Outlook).
+    const resolved: 'rescheduled' | 'cancelled' = ev === null || ev.status === 'cancelled' ? 'cancelled' : 'rescheduled';
+    await this.repo.reconcileLockedMutation({
+      tenant_id: args.tenant_id,
+      interaction_id: args.interaction_id,
+      resolved_status: resolved,
+    });
+    await this.repo.writeAudit({
+      tenant_id: args.tenant_id,
+      actor_id: args.recruiter_id,
+      actor_type: 'recruiter',
+      event_type: 'meeting.reconciled',
+      interaction_id: row.id,
+      provider_event_id: row.provider_event_id,
+      outcome: 'succeeded',
+      event_payload: { resolved },
+    });
+    const updated = await this.repo.findScheduledMeeting(args.tenant_id, args.interaction_id);
+    return this.view(updated ?? row, null, false);
+  }
+
+  private requestFingerprint(args: ScheduleMeetingArgs, effectiveConnectionId: string): string {
+    // Pipe-joined immutable request identity (FIX-3). '|' (never a space → NUL trap).
+    return [
+      args.recruiter_id,
+      args.talent_record_id,
+      args.requisition_id,
+      args.subject,
+      args.start_date_time,
+      args.end_date_time,
+      args.time_zone,
+      effectiveConnectionId,
+    ].join('|');
   }
 
   async listUpcoming(args: {

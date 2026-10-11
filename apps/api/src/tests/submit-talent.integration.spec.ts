@@ -144,6 +144,7 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20260929120000_comm_interaction_template_provenance/migration.sql',
   'libs/communications/prisma/migrations/20261006160000_recruiting_journey_attested_response_evidence/migration.sql',
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
+  'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql',
   // DOC-5 — the documents schema, so the REAL DocumentReadinessGate resolves the
   // same-document executed-RTR satisfaction against a real documents table. init +
   // DOC-2 (requirements) + the DOC-5 RTR SYSTEM-type seed. RTR applicability is a

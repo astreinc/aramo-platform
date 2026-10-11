@@ -9,6 +9,12 @@ import { PrismaService } from './prisma/prisma.service.js';
 // projection, and the forensic scheduling audit. Tenant-first throughout: a
 // cross-tenant id is NOT FOUND, never an info leak.
 
+// A pending create older than this is treated as ABANDONED (process crash mid-flight):
+// its provider outcome is uncertain, so it surfaces for reconciliation rather than
+// blocking the key forever or being silently recreated (FIX-4). A Graph create never
+// legitimately takes this long, so a fresh pending is a genuine concurrent attempt.
+export const PENDING_ABANDON_TTL_MS = 10 * 60 * 1000;
+
 export type MeetingOperationStatus = 'pending' | 'succeeded' | 'unresolved' | 'failed';
 
 export interface MeetingOperationRow {
@@ -23,7 +29,9 @@ export interface MeetingOperationRow {
   organizer_id: string;
   talent_record_id: string;
   requisition_id: string;
+  request_fingerprint: string | null;
   last_error: string | null;
+  created_at: Date;
 }
 
 export interface ScheduledMeetingRow {
@@ -36,6 +44,7 @@ export interface ScheduledMeetingRow {
   initiated_by_id: string | null;
   started_at: Date | null;
   ended_at: Date | null;
+  mutation_locked_at: Date | null;
 }
 
 export interface MeetingAuditInput {
@@ -65,18 +74,23 @@ export class MeetingSchedulingRepository {
    * transaction_id is stable across retries (the Graph provider-dedup guard).
    */
   /**
-   * Atomically claim the durable scheduling operation (FIX_NOW-2). The unique
-   * (tenant, idempotency_key) index + a status-CAS reclaim make this the single
-   * serialization point for a create: exactly one caller may hold a live (pending)
-   * operation at a time, and the idempotency key is bound to its ORIGINAL tenant,
-   * organizer, and request identity. Outcomes:
-   *   - `created`      — we own a fresh pending op (or re-claimed an unresolved/failed
-   *                      one for a safe retry; transaction_id is stable across retries).
-   *   - `replay`       — a prior attempt already succeeded; return its meeting.
-   *   - `in_progress`  — a concurrent attempt holds the op; the caller must NOT
-   *                      independently proceed (prevents a duplicate provider call).
-   *   - `identity_conflict` — the key was reused with a different tenant/organizer/
-   *                      Talent/Requisition; reject (no unauthorized success replay).
+   * Atomically claim the durable scheduling operation (FIX_NOW-2, PR#918 final pass).
+   * The unique (tenant, idempotency_key) index + a status-CAS reclaim make this the
+   * single serialization point for a create: exactly one caller may hold a live
+   * (pending) operation at a time, and the key is bound to the FULL immutable request
+   * identity via `request_fingerprint`. Outcomes:
+   *   - `created`              — we own a fresh pending op, OR re-claimed a `failed`
+   *                              op (definitively no provider event was created → safe
+   *                              retry; transaction_id is stable across retries).
+   *   - `replay`               — a prior attempt already succeeded; return its meeting.
+   *   - `in_progress`          — a FRESH concurrent attempt holds the op; the caller
+   *                              must NOT independently proceed (no duplicate provider call).
+   *   - `needs_reconciliation` — the op is in an UNCERTAIN state (`unresolved`, or an
+   *                              abandoned stale `pending`): the provider outcome may
+   *                              have landed. NEVER auto-recreate — surface for bounded
+   *                              operational reconciliation.
+   *   - `identity_conflict`    — the key was reused with ANY changed request field
+   *                              (fingerprint mismatch); reject, including success replay.
    */
   async claimSchedulingOperation(args: {
     tenant_id: string;
@@ -85,7 +99,11 @@ export class MeetingSchedulingRepository {
     organizer_id: string;
     talent_record_id: string;
     requisition_id: string;
-  }): Promise<{ outcome: 'created' | 'replay' | 'in_progress' | 'identity_conflict'; op: MeetingOperationRow | null }> {
+    request_fingerprint: string;
+  }): Promise<{
+    outcome: 'created' | 'replay' | 'in_progress' | 'needs_reconciliation' | 'identity_conflict';
+    op: MeetingOperationRow | null;
+  }> {
     try {
       const op = (await this.prisma.meetingSchedulingOperation.create({
         data: {
@@ -97,6 +115,7 @@ export class MeetingSchedulingRepository {
           organizer_id: args.organizer_id,
           talent_record_id: args.talent_record_id,
           requisition_id: args.requisition_id,
+          request_fingerprint: args.request_fingerprint,
         },
       })) as MeetingOperationRow;
       return { outcome: 'created', op };
@@ -107,28 +126,36 @@ export class MeetingSchedulingRepository {
     if (existing === null) {
       throw new Error('scheduling operation claim failed');
     }
-    // The idempotency key is bound to its original identity + request (FIX_NOW-2):
-    // reusing it with different input is NEVER an authorized success replay.
-    if (
-      existing.organizer_id !== args.organizer_id ||
-      existing.talent_record_id !== args.talent_record_id ||
-      existing.requisition_id !== args.requisition_id
-    ) {
+    // FIX-3: the key is bound to the FULL immutable request. Any changed field (subject,
+    // window, timezone, connection, organizer, Talent, Requisition) → NEVER a replay.
+    if (existing.request_fingerprint !== args.request_fingerprint) {
       return { outcome: 'identity_conflict', op: existing };
     }
     if (existing.status === 'succeeded' && existing.interaction_id !== null) {
       return { outcome: 'replay', op: existing };
     }
-    if (existing.status === 'pending') {
-      return { outcome: 'in_progress', op: existing };
+    if (existing.status === 'failed') {
+      // A `failed` op created NO provider event (pre-provider error or a deterministic
+      // provider rejection) → safe to reclaim for a retry; exactly one winner.
+      const reclaimed = await this.prisma.meetingSchedulingOperation.updateMany({
+        where: { id: existing.id, status: 'failed' },
+        data: { status: 'pending', last_error: null },
+      });
+      return reclaimed.count === 1
+        ? { outcome: 'created', op: existing }
+        : { outcome: 'in_progress', op: existing };
     }
-    // unresolved | failed → atomically reclaim for a safe retry; exactly one winner.
-    const reclaimed = await this.prisma.meetingSchedulingOperation.updateMany({
-      where: { id: existing.id, status: { in: ['unresolved', 'failed'] } },
-      data: { status: 'pending', last_error: null },
-    });
-    return reclaimed.count === 1
-      ? { outcome: 'created', op: existing }
+    if (existing.status === 'unresolved') {
+      // Provider outcome UNCERTAIN — a Graph event may have been created. NEVER
+      // auto-recreate; surface for bounded operational reconciliation.
+      return { outcome: 'needs_reconciliation', op: existing };
+    }
+    // pending: a FRESH pending op is a genuine concurrent attempt (in_progress); a stale
+    // one is abandoned (process crash mid-flight) and, like `unresolved`, its provider
+    // outcome is uncertain → reconcile, never silently recreate.
+    const abandoned = existing.created_at.getTime() < Date.now() - PENDING_ABANDON_TTL_MS;
+    return abandoned
+      ? { outcome: 'needs_reconciliation', op: existing }
       : { outcome: 'in_progress', op: existing };
   }
 
@@ -240,20 +267,23 @@ export class MeetingSchedulingRepository {
   }
 
   /**
-   * CAS RESERVATION (FIX_NOW-1): the eligibility gate that runs BEFORE any Graph
-   * side effect. Atomically advance the version iff the row still matches
-   * `expected_version` and is active (scheduled|rescheduled). count===0 → conflict
-   * (stale version, a concurrent writer won, or already cancelled) → the caller must
-   * NOT touch Outlook. count===1 → reserved: this caller exclusively owns the
-   * transition at `expected_version + 1`; only then is the provider mutated. The
-   * reservation advances `version` only — the user-visible status/times are applied
-   * by `finalizeReschedule`/`finalizeCancel` AFTER the provider confirms, so a Graph
-   * failure never leaves a premature success claim.
+   * CAS RESERVATION + EXCLUSIVE FENCE (FIX_NOW-1 + PR#918 FIX-1): the eligibility gate
+   * BEFORE any Graph side effect. Atomically, iff the row matches `expected_version`,
+   * is active (scheduled|rescheduled), AND is NOT already mutation-locked: advance the
+   * version AND acquire the mutation lock (`mutation_locked_at`). count===0 → conflict
+   * (stale version, a concurrent writer won, already cancelled, OR another mutation
+   * holds the lock) → the caller must NOT touch Outlook. count===1 → reserved: this
+   * caller EXCLUSIVELY owns the transition until `finalize*` (success) or
+   * `reconcileLockedMutation` (recovery) releases the lock. A second reservation is
+   * refused even at the post-reservation version, so two mutations can never reach
+   * Graph concurrently. The user-visible status/times are applied by `finalize*` AFTER
+   * the provider confirms, so a Graph failure never leaves a premature success claim.
    */
   async reserveMutationCas(args: {
     tenant_id: string;
     interaction_id: string;
     expected_version: number;
+    now: Date;
   }): Promise<{ conflict: boolean; reserved_version: number }> {
     const res = await this.prisma.communicationInteraction.updateMany({
       where: {
@@ -262,46 +292,86 @@ export class MeetingSchedulingRepository {
         channel: 'meeting',
         version: args.expected_version,
         status: { in: ['scheduled', 'rescheduled'] },
+        mutation_locked_at: null,
       },
-      data: { version: { increment: 1 } },
+      data: { version: { increment: 1 }, mutation_locked_at: args.now },
     });
     return { conflict: res.count === 0, reserved_version: args.expected_version + 1 };
   }
 
-  /** Finalize a reserved reschedule AFTER Graph confirms (same provider event, R3). */
+  /**
+   * Finalize a reserved reschedule AFTER Graph confirms (same provider event, R3).
+   * CHECKED (PR#918 FIX-2): applies ONLY to the row we still exclusively hold
+   * (reserved_version + lock held) and RELEASES the lock; returns whether exactly one
+   * row changed. count!==1 → the finalize did NOT land → the caller must NOT emit a
+   * success audit (the state is uncertain and stays locked for reconciliation).
+   */
   async finalizeReschedule(args: {
     tenant_id: string;
     interaction_id: string;
     reserved_version: number;
     started_at: Date;
     ended_at: Date;
-  }): Promise<void> {
-    await this.prisma.communicationInteraction.updateMany({
+  }): Promise<{ ok: boolean }> {
+    const res = await this.prisma.communicationInteraction.updateMany({
       where: {
         id: args.interaction_id,
         tenant_id: args.tenant_id,
         channel: 'meeting',
         version: args.reserved_version,
+        mutation_locked_at: { not: null },
       },
-      data: { status: 'rescheduled', started_at: args.started_at, ended_at: args.ended_at },
+      data: {
+        status: 'rescheduled',
+        started_at: args.started_at,
+        ended_at: args.ended_at,
+        mutation_locked_at: null,
+      },
     });
+    return { ok: res.count === 1 };
   }
 
-  /** Finalize a reserved cancel AFTER Graph confirms (same provider event, R3). */
+  /** Finalize a reserved cancel AFTER Graph confirms (same provider event, R3). CHECKED. */
   async finalizeCancel(args: {
     tenant_id: string;
     interaction_id: string;
     reserved_version: number;
-  }): Promise<void> {
-    await this.prisma.communicationInteraction.updateMany({
+  }): Promise<{ ok: boolean }> {
+    const res = await this.prisma.communicationInteraction.updateMany({
       where: {
         id: args.interaction_id,
         tenant_id: args.tenant_id,
         channel: 'meeting',
         version: args.reserved_version,
+        mutation_locked_at: { not: null },
       },
-      data: { status: 'cancelled' },
+      data: { status: 'cancelled', mutation_locked_at: null },
     });
+    return { ok: res.count === 1 };
+  }
+
+  /**
+   * Recovery (PR#918 FIX-4): reconcile a meeting whose mutation lock is held but whose
+   * provider outcome could not be confirmed (a Graph failure after reservation, or an
+   * abandoned mutation). The caller supplies the reconciled terminal state after
+   * reading the provider event; this releases the fence so the meeting is mutable
+   * again. Bounded + explicit — never an automatic provider re-issue.
+   */
+  async reconcileLockedMutation(args: {
+    tenant_id: string;
+    interaction_id: string;
+    resolved_status: 'scheduled' | 'rescheduled' | 'cancelled';
+  }): Promise<{ ok: boolean }> {
+    const res = await this.prisma.communicationInteraction.updateMany({
+      where: {
+        id: args.interaction_id,
+        tenant_id: args.tenant_id,
+        channel: 'meeting',
+        mutation_locked_at: { not: null },
+      },
+      data: { status: args.resolved_status, mutation_locked_at: null },
+    });
+    return { ok: res.count === 1 };
   }
 
   /**
