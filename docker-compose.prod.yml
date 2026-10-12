@@ -240,6 +240,46 @@ services:
       - ARAMO_INDEED_CLIENT_SECRET
       - ARAMO_INDEED_OAUTH_SCOPE
       - ARAMO_INDEED_GRAPHQL_BASE
+      # ADR-0033 Talent Intake transport. `singlebox` = the lease-safe outbox drain
+      # delivers directly to the in-process TalentIntakeMessageHandler (single-box
+      # topology; no EventBridge/SQS/Lambda). The API itself does NOT drain — the
+      # dedicated talent-intake-worker does — so DRAIN is disabled here; the API only
+      # WRITES the outbox on upload. Safe-default form (exempt from the
+      # env-passthrough assertion). Flip TRANSPORT to `eventbridge` only once the AWS
+      # plane is applied; it stays fail-closed when its bus is unconfigured.
+      - TALENT_INTAKE_TRANSPORT=${TALENT_INTAKE_TRANSPORT:-singlebox}
+      - TALENT_INTAKE_DRAIN_ENABLED=0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ADR-0033 / single-box — the Talent Intake ASYNC WORKER. Same production image as
+  # the API (ARAMO_API_IMAGE), different command: it runs ONLY the lease-safe outbox
+  # drain + in-process extraction (TALENT_INTAKE_TRANSPORT=singlebox), NOT the HTTP
+  # API and NOT the other background workers. This is where résumé extraction
+  # executes — OFF the API request path — on the single box. No HTTP port.
+  talent-intake-worker:
+    image: ${ARAMO_API_IMAGE:-aramo/api:local}
+    container_name: aramo-prod-talent-intake-worker
+    restart: unless-stopped
+    command: ["node", "dist/apps/api/src/talent-intake-worker.main.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      - REDIS_URL=redis://redis:6379
+      # This worker IS the single-box drainer (DRAIN enabled by default; no AWS).
+      - TALENT_INTAKE_TRANSPORT=${TALENT_INTAKE_TRANSPORT:-singlebox}
+      # Extraction reads the résumé from S3 and the tenant-LLM key from Secrets
+      # Manager — the SAME credentials/config the API uses.
+      - S3_RESUME_BUCKET
+      - S3_ENDPOINT
+      - ARAMO_ENV
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - *identity_pepper
     depends_on:
       postgres:
         condition: service_healthy

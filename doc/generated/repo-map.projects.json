@@ -3755,6 +3755,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/singlebox-talent-intake-publisher.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3864,6 +3870,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-outbox-publisher.factory.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5969,6 +5987,12 @@
     "@aramo/events": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/singlebox-talent-intake-publisher.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5976,6 +6000,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-event-foundation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7375,6 +7405,18 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-outbox-publisher.factory.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/pipeline": [
@@ -8365,6 +8407,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8519,6 +8567,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/singlebox-talent-intake-publisher.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8544,6 +8598,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-outbox-publisher.factory.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
