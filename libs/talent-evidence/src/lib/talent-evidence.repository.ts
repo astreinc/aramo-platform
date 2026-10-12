@@ -1978,6 +1978,14 @@ export class TalentEvidenceRepository {
             tenant_id: input.tenant_id,
             event_type: input.event_type,
             event_payload: input.event_payload as never,
+            // Canonical envelope subject (forward-fix): the drain already derives
+            // the subject from event_payload.draft_id, but persisting subject_id
+            // here makes the row self-describing and keeps the governed redrive
+            // able to key on subject_id for rows written from now on. The draft id
+            // IS the subject. (Existing PROD rows lack this → the redrive also
+            // matches event_payload.draft_id for backward compatibility.)
+            subject_type: 'talent_intake_draft',
+            subject_id: input.id,
           },
         });
       }
@@ -2030,6 +2038,9 @@ export class TalentEvidenceRepository {
             tenant_id: input.tenant_id,
             event_type: input.event_type,
             event_payload: input.event_payload as never,
+            // Canonical envelope subject (forward-fix) — see completeUploadWithOutbox.
+            subject_type: 'talent_intake_draft',
+            subject_id: input.id,
           },
         });
       }
@@ -2345,7 +2356,18 @@ export class TalentEvidenceRepository {
   // exhausted — NOT manual SQL. NEVER touches already-published rows (an already
   // delivered event stays delivered; the draft's own CAS processing is idempotent,
   // so even a re-delivery is a safe no-op). Idempotent: re-running re-clears the
-  // same fields. Tenant-scoped; keyed on the outbox subject_id = draft id.
+  // same fields. Tenant-scoped.
+  //
+  // Draft identity matching must mirror how the drain itself derives the
+  // envelope subject (buildEventEnvelope → event_payload.draft_id ?? subject_id):
+  //   • canonical rows (createOrRecoverSourceIntakeWithOutbox) carry subject_id;
+  //   • the recruiter UPLOAD and RETRY paths (completeUploadWithOutbox /
+  //     requeueTalentIntakeDraftWithOutbox) historically wrote NO subject_id and
+  //     carry the draft id ONLY inside event_payload.draft_id — and this is
+  //     exactly the path a stuck PROD upload took.
+  // So a redrive that matched subject_id alone would MISS the very rows it exists
+  // to recover. Match EITHER, so both legacy PROD rows and newly-canonical rows
+  // are recovered.
   async redriveTalentIntakeOutboxByDraft(input: {
     tenant_id: string;
     draft_id: string;
@@ -2353,8 +2375,11 @@ export class TalentEvidenceRepository {
     const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
       where: {
         tenant_id: input.tenant_id,
-        subject_id: input.draft_id,
         published_at: null,
+        OR: [
+          { subject_id: input.draft_id },
+          { event_payload: { path: ['draft_id'], equals: input.draft_id } },
+        ],
       },
       data: {
         publish_attempts: 0,

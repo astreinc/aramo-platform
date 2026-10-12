@@ -318,5 +318,92 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(reset).toBe(0); // published row is left delivered
       expect((await outboxRows())[0].published_at).not.toBeNull();
     });
+
+    // REGRESSION — the recruiter UPLOAD path (completeUploadWithOutbox) historically
+    // wrote NO subject_id; the draft id lived ONLY in event_payload.draft_id. This
+    // is the EXACT shape of the stuck PROD draft this PR must recover. A redrive
+    // keyed on subject_id alone would match zero rows → fail to recover it. Here we
+    // seed that precise legacy shape (subject_id NULL) directly and prove redrive
+    // still finds it via event_payload.draft_id.
+    it('§redrive recovers a LEGACY upload row (subject_id NULL, draft id only in event_payload) — the stuck PROD shape', async () => {
+      const draftId = uuidv7();
+      await prisma.talentIntakeOutboxEvent.create({
+        data: {
+          tenant_id: TENANT_A,
+          event_type: 'talent_intake.resume_extraction_requested.v1',
+          event_payload: { draft_id: draftId, correlation_id: `corr-legacy-${draftId}` },
+          // subject_id intentionally omitted (NULL) — the pre-fix upload shape.
+        },
+      });
+      expect((await outboxRows())[0].subject_id).toBeNull(); // sanity: truly legacy
+
+      const failing = handlerWith(async () => {
+        throw new Error('persistent');
+      });
+      for (let i = 0; i < 8; i++) {
+        const o = await singleboxDrain(failing, { lease_seconds: 0, max_attempts: 5 }).drainOnce();
+        if (o.claimed === 0) break;
+      }
+      expect(
+        (await singleboxDrain(failing, { lease_seconds: 0, max_attempts: 5 }).drainOnce()).claimed,
+      ).toBe(0);
+
+      const reset = await repo.redriveTalentIntakeOutboxByDraft({
+        tenant_id: TENANT_A,
+        draft_id: draftId,
+      });
+      expect(reset).toBe(1); // matched via event_payload.draft_id, NOT subject_id
+
+      const delivered = await singleboxDrain(handlerWith(async () => true), {
+        max_attempts: 5,
+      }).drainOnce();
+      expect(delivered.claimed).toBe(1);
+      expect(delivered.published).toBe(1);
+    });
+
+    // The same recovery seeded through the REAL completeUploadWithOutbox() path
+    // (not a hand-built row). Post-fix, that path now persists subject_id too —
+    // asserted here — so the row is self-describing AND redrivable.
+    it('§redrive recovers a draft enqueued through the REAL completeUploadWithOutbox() path', async () => {
+      const draftId = uuidv7();
+      await prisma.talentIntakeDraft.create({
+        data: {
+          id: draftId,
+          tenant_id: TENANT_A,
+          created_by: ACTOR_A,
+          source_type: 'RESUME_UPLOAD',
+          processing_status: 'UPLOADED', // the precondition completeUploadWithOutbox guards on
+        },
+      });
+      const res = await repo.completeUploadWithOutbox({
+        tenant_id: TENANT_A,
+        id: draftId,
+        created_by: ACTOR_A,
+        artifact_sha256: 'a'.repeat(64),
+        mime_type: 'application/pdf',
+        size_bytes: 1234,
+        event_type: 'talent_intake.resume_extraction_requested.v1',
+        event_payload: { draft_id: draftId, correlation_id: `corr-upload-${draftId}` },
+      });
+      expect(res.enqueued).toBe(true);
+      expect((await outboxRows())[0].subject_id).toBe(draftId); // forward-fix persists it
+
+      const failing = handlerWith(async () => {
+        throw new Error('persistent');
+      });
+      for (let i = 0; i < 8; i++) {
+        const o = await singleboxDrain(failing, { lease_seconds: 0, max_attempts: 5 }).drainOnce();
+        if (o.claimed === 0) break;
+      }
+      const reset = await repo.redriveTalentIntakeOutboxByDraft({
+        tenant_id: TENANT_A,
+        draft_id: draftId,
+      });
+      expect(reset).toBe(1);
+      const delivered = await singleboxDrain(handlerWith(async () => true), {
+        max_attempts: 5,
+      }).drainOnce();
+      expect(delivered.published).toBe(1);
+    });
   },
 );
