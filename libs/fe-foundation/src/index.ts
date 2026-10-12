@@ -58,6 +58,7 @@ export {
   Tabs,
   ToastProvider,
   useToast,
+  useOptionalToast,
 } from './components';
 export type {
   CheckboxProps,

@@ -167,6 +167,24 @@ describe('COMM-C2B delegated authorization (R2/R4/R6/R7)', () => {
     expect(state.verifier.length).toBeGreaterThan(0);
   });
 
+  // A1 R4 — opt-in scheduling consent. Omitted/baseline keeps the established scope set;
+  // only an explicit 'scheduling' capability requests Calendars.ReadWrite.
+  function scopeParam(url: string): string {
+    return new URL(url).searchParams.get('scope') ?? '';
+  }
+  it('baseline authorize URL does NOT request Calendars.ReadWrite', () => {
+    const scope = scopeParam(svc.startAuthorization(startArgs).authorizeUrl);
+    expect(scope).toContain('Mail.Send');
+    expect(scope).toContain('OnlineMeetings.ReadWrite');
+    expect(scope).not.toContain('Calendars.ReadWrite');
+  });
+  it('scheduling authorize URL requests Calendars.ReadWrite ON TOP of the baseline scopes', () => {
+    const scope = scopeParam(svc.startAuthorization({ ...startArgs, capability: 'scheduling' }).authorizeUrl);
+    expect(scope).toContain('Mail.Send');
+    expect(scope).toContain('OnlineMeetings.ReadWrite');
+    expect(scope).toContain('Calendars.ReadWrite');
+  });
+
   async function authorize(recruiter: string, over: Partial<MicrosoftTokenExchangeResult> = {}): Promise<string> {
     const { encryptedState } = svc.startAuthorization({ ...startArgs, recruiter_id: recruiter });
     oauth.next = exchangeResult(over);

@@ -5947,12 +5947,22 @@ paths:
     get:
       operationId: microsoftAuthorizeStart
       summary: Begin Microsoft delegated authorization (COMM-C2B).
-      description: Returns the Microsoft authorize URL for the signed-in recruiter. Guarded by `communication:read`.
+      description: >
+        Returns the Microsoft authorize URL for the signed-in recruiter. Guarded by
+        `communication:read`. `capability` is the opt-in scope posture (COMM-C2B Amendment
+        A1, R4): omitted/`baseline` requests the established send-only + create-link-only
+        permissions; `scheduling` additionally requests `Calendars.ReadWrite` for Outlook
+        calendar scheduling. Any other value is rejected (422/400, fail-closed).
       parameters:
         - in: query
           name: connection_id
           required: false
           schema: { type: string, format: uuid }
+        - in: query
+          name: capability
+          required: false
+          description: Opt-in scope posture. Omitted = baseline (unchanged).
+          schema: { type: string, enum: [baseline, scheduling] }
       responses:
         '200':
           description: OK.

@@ -8,6 +8,7 @@ import {
   type ProviderIdentityStatus,
   type ProviderIdentityStorePort,
   type StartAuthorizationResult,
+  type MicrosoftScopeCapability,
 } from '@aramo/microsoft-graph';
 
 import { MicrosoftConfigResolver } from './microsoft-config.resolver.js';
@@ -141,6 +142,7 @@ export class MicrosoftAuthorizationOrchestrator {
     tenantId: string,
     recruiterId: string,
     connectionId?: string,
+    capability?: MicrosoftScopeCapability,
   ): Promise<StartAuthorizationResult> {
     const resolvedConnectionId = await this.config.resolveConnectionId(tenantId, connectionId);
     const { clientId, authorityTenant } = await this.config.resolveConfig(
@@ -156,6 +158,8 @@ export class MicrosoftAuthorizationOrchestrator {
       redirectUri: this.config.redirectUri(),
       authorityTenant,
       nowEpochSeconds: this.config.nowSeconds(),
+      // A1 R4 — opt-in scheduling consent; undefined/baseline unchanged.
+      capability,
     });
   }
 

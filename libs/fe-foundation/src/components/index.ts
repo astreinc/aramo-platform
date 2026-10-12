@@ -20,4 +20,4 @@ export { SignedOut } from './SignedOut';
 export { Switch } from './Switch';
 export { Table, type TableColumn } from './Table';
 export { Tabs, type TabItem } from './Tabs';
-export { ToastProvider, useToast } from './Toast';
+export { ToastProvider, useToast, useOptionalToast } from './Toast';

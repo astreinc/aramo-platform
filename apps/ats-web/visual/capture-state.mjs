@@ -1,0 +1,15 @@
+import { chromium } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+const HERE = dirname(fileURLToPath(import.meta.url));
+const state = process.argv[2] || 'upcoming';
+const b = await chromium.launch();
+const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+const p = await ctx.newPage();
+await p.goto(`http://localhost:4201/visual/harness/index.html?state=${state}`, { waitUntil: 'networkidle' });
+await p.evaluate(async () => { if (document.fonts?.ready) await document.fonts.ready; });
+await p.waitForTimeout(500);
+const path = join(HERE, '__screens', `${state}-impl-1440.png`);
+await p.screenshot({ path });
+console.log('wrote', path);
+await b.close();

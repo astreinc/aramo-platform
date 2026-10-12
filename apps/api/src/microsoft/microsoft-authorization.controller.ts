@@ -8,6 +8,7 @@ import {
   GraphCalendarError,
   MicrosoftIdentityNotBoundError,
   MicrosoftReauthRequiredError,
+  type MicrosoftScopeCapability,
 } from '@aramo/microsoft-graph';
 
 import {
@@ -45,6 +46,22 @@ import { MicrosoftEmailService } from './microsoft-email.service.js';
 import type { MeetingResultView } from './microsoft-meeting.service.js';
 import { MicrosoftMeetingService } from './microsoft-meeting.service.js';
 
+// A1 R4 — closed-enum resolver for the opt-in scheduling capability on authorize/start.
+// Omitted/empty/'baseline' → undefined (the established baseline permission set, unchanged).
+// 'scheduling' → the opt-in set that adds Calendars.ReadWrite. Any other value FAILS CLOSED
+// with a validation error — never silently coerced to baseline or elevated.
+export function resolveAuthorizeCapability(
+  raw: string | undefined,
+  requestId: string,
+): MicrosoftScopeCapability | undefined {
+  if (raw === undefined || raw === '' || raw === 'baseline') return undefined;
+  if (raw === 'scheduling') return 'scheduling';
+  throw new AramoError('VALIDATION_ERROR', `unsupported authorize capability '${raw}'`, 400, {
+    requestId,
+    details: { field: 'capability' },
+  });
+}
+
 // COMM-C2B — recruiter + tenant-admin Microsoft surface (R2/R5/R7/R11/R15). Three-
 // axis authorization (JwtAuthGuard + EntitlementGuard + RolesGuard); the recruiter
 // identity comes from the JWT (never the body). Service refusals map to typed,
@@ -70,10 +87,15 @@ export class MicrosoftAuthorizationController {
   async start(
     @AuthContext() auth: AuthContextType,
     @Query('connection_id') connectionId: string | undefined,
+    @Query('capability') capability: string | undefined,
     @RequestId() requestId: string,
   ): Promise<{ authorize_url: string }> {
+    // A1 R4 — opt-in scheduling consent. Closed enum, FAIL-CLOSED: omitted keeps the
+    // baseline permission set; only an explicit 'scheduling' widens to Calendars.ReadWrite;
+    // any other value is rejected (never silently treated as baseline or elevated).
+    const resolvedCapability = resolveAuthorizeCapability(capability, requestId);
     try {
-      const { authorizeUrl } = await this.orchestrator.start(auth.tenant_id, auth.sub, connectionId);
+      const { authorizeUrl } = await this.orchestrator.start(auth.tenant_id, auth.sub, connectionId, resolvedCapability);
       return { authorize_url: authorizeUrl };
     } catch (err) {
       throw this.mapError(err, requestId);

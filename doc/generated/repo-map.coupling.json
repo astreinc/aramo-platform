@@ -12245,6 +12245,11 @@
       "to": "libs/identity/src/lib/identity.repository.ts"
     },
     {
+      "from": "apps/ats-web/visual/harness/index.html",
+      "status": "unscoped",
+      "to": "apps/ats-web/index.html"
+    },
+    {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"

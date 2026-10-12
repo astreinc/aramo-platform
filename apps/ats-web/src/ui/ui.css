@@ -5968,6 +5968,96 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
   margin: 9px 0 0; font-size: 0.7rem; color: var(--muted, #93A0A8); line-height: 1.5;
 }
 
+/* ─── M365-SCHED-1 — Schedule meeting dialog (prototype-fidelity rebuild). Geometry
+   + tokens extracted verbatim from design/aramo-Prototype/platform/Requisitions
+   CRM.dc.html. Rendered via Radix dialog primitives for exact geometry control
+   (no change to the shared fe-foundation Dialog). ─── */
+.rc-sched__overlay { position: fixed; inset: 0; background: rgba(15,25,40,.45); z-index: 70; }
+.rc-sched__content {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  width: min(640px, 96vw); max-height: 94vh; overflow-y: auto;
+  background: #fff; border-radius: 14px; z-index: 71;
+  box-shadow: 0 24px 64px rgba(11,16,34,.32);
+  display: flex; flex-direction: column;
+  font-family: 'Hanken Grotesk', sans-serif; color: #1B2730;
+}
+.rc-sched__hd { flex: none; padding: 18px 24px 14px; border-bottom: 1px solid #E5E9ED; display: flex; align-items: center; gap: 11px; }
+.rc-sched__hd-ic { width: 34px; height: 34px; border-radius: 9px; background: #E8EDFB; color: #011F8D; display: grid; place-items: center; flex: none; }
+.rc-sched__hd-tx { min-width: 0; flex: 1; }
+.rc-sched__title { display: block; font-size: 16px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.rc-sched__subtitle { display: block; font-size: 12px; color: #5C6770; margin-top: 1px; }
+.rc-sched__close { width: 30px; height: 30px; border: none; border-radius: 6px; background: transparent; color: #5C6770; cursor: pointer; display: grid; place-items: center; flex: none; }
+.rc-sched__close:hover { background: #F4F6FA; color: #1B2730; }
+.rc-sched__body { padding: 16px 24px 6px; }
+.rc-sched__flabel { font-size: 12px; font-weight: 600; color: #3A454E; margin-bottom: 6px; }
+.rc-sched__seg { display: inline-flex; background: #EEF1F4; border-radius: 8px; padding: 2px; gap: 2px; margin-bottom: 4px; }
+.rc-sched__seg-btn { border: none; border-radius: 6px; padding: 6px 12px; font: 500 12px 'Hanken Grotesk', sans-serif; background: transparent; color: #5C6770; cursor: pointer; }
+.rc-sched__seg-btn--on { background: #fff; font-weight: 700; color: #011F8D; box-shadow: 0 1px 2px rgba(15,25,40,.12); }
+.rc-sched__seg-btn:disabled { color: #93A0A8; cursor: not-allowed; opacity: .6; }
+.rc-sched__note { font-size: 11.5px; color: #5C6770; line-height: 1.5; margin-bottom: 14px; }
+.rc-sched__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.rc-sched__fld { display: block; }
+.rc-sched__fld > span:first-child, .rc-sched__fld-lbl { display: block; font-size: 12px; font-weight: 600; color: #3A454E; margin-bottom: 5px; }
+.rc-sched__full { grid-column: 1 / -1; }
+.rc-sched__in { width: 100%; box-sizing: border-box; border: 1px solid #D5DBE1; border-radius: 8px; padding: 8px 11px; font: 500 13px 'Hanken Grotesk', sans-serif; color: #1B2730; outline: none; background: #fff; }
+.rc-sched__in:focus { border-color: #022AC0; box-shadow: 0 0 0 3px #022AC01f; }
+.rc-sched__timerow { display: flex; gap: 6px; }
+.rc-sched__timerow .rc-sched__in { flex: 1; min-width: 0; }
+.rc-sched__dur { width: 88px; flex: none; }
+.rc-sched__tz { width: 100%; box-sizing: border-box; border: 1px solid #D5DBE1; border-radius: 8px; padding: 8px 11px; font: 500 13px 'Hanken Grotesk', sans-serif; background: #FAFBFC; color: #1B2730; outline: none; }
+.rc-sched__subject { font-weight: 600; }
+.rc-sched__err { font-size: 12px; color: #B3402A; margin-top: 8px; }
+.rc-sched__plabel { font-size: 12px; font-weight: 600; color: #3A454E; margin: 14px 0 6px; }
+.rc-sched__people { border: 1px solid #E5E9ED; border-radius: 10px; overflow: hidden; }
+.rc-sched__person { display: flex; align-items: center; gap: 10px; padding: 9px 12px; font-size: 12.5px; }
+.rc-sched__person + .rc-sched__person { border-top: 1px solid #EDF0F3; }
+.rc-sched__avatar { width: 24px; height: 24px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 9px; font-weight: 700; flex: none; }
+.rc-sched__pname { flex: 1; min-width: 0; }
+.rc-sched__pmuted { color: #5C6770; }
+.rc-sched__pchip { font-size: 10.5px; font-weight: 700; border-radius: 10px; padding: 1.5px 8px; background: #EEF1F4; color: #5C6770; flex: none; }
+.rc-sched__callout { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding: 10px 12px; border: 1px solid #C9D4F2; background: #E8EDFB55; border-radius: 10px; font-size: 12px; color: #3A454E; line-height: 1.5; }
+.rc-sched__callout svg { flex: none; }
+.rc-sched__ft { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 24px 18px; border-top: 1px solid #E5E9ED; flex-wrap: wrap; }
+.rc-sched__ft-note { font-size: 12px; color: #93A0A8; }
+.rc-sched__ft-actions { margin-left: auto; display: flex; gap: 8px; }
+.rc-sched__btn-cancel { border: 1px solid #D5DBE1; background: #fff; color: #1B2730; border-radius: 8px; padding: 9px 16px; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer; }
+.rc-sched__btn-cancel:hover { background: #FAFBFC; }
+.rc-sched__btn-primary { display: inline-flex; align-items: center; gap: 7px; min-width: 170px; justify-content: center; border: 1px solid #022AC0; background: #022AC0; color: #fff; border-radius: 8px; padding: 9px 18px; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer; }
+.rc-sched__btn-primary:hover { background: #3355E0; }
+.rc-sched__btn-primary:disabled { opacity: .7; cursor: default; }
+.rc-sched__content--sm { width: min(440px, 94vw); }
+.rc-sched__confirm-body { padding: 22px 24px 6px; }
+.rc-sched__confirm-title { font-size: 16px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.rc-sched__confirm-desc { font-size: 12.5px; color: #5C6770; margin-top: 6px; line-height: 1.55; }
+.rc-sched__ft--confirm { border-top: none; padding-top: 18px; justify-content: flex-end; }
+.rc-sched__btn-danger { border: 1px solid #B3402A; background: #B3402A; color: #fff; border-radius: 8px; padding: 9px 16px; font: 600 13px 'Hanken Grotesk', sans-serif; cursor: pointer; }
+.rc-sched__btn-danger:hover { background: #9A3522; }
+.rc-sched__btn-danger:disabled { opacity: .7; cursor: default; }
+
+/* ─── M365-SCHED-1 — "Upcoming with {Talent}" block (prototype-fidelity). Tokens
+   extracted from the canonical Upcoming fragment. ─── */
+.rc-upcoming { font-family: 'Hanken Grotesk', sans-serif; margin-top: 14px; }
+.rc-upcoming__head { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: #93A0A8; margin-bottom: 9px; }
+.rc-upcoming__list { list-style: none; margin: 0; padding: 0; border: 1px solid #E5E9ED; border-radius: 11px; overflow: hidden; }
+.rc-upcoming__row { display: grid; grid-template-columns: 56px minmax(0,1fr) auto; gap: 12px; padding: 11px 14px; align-items: start; }
+.rc-upcoming__row + .rc-upcoming__row { border-top: 1px solid #EDF0F3; }
+.rc-upcoming__when { font-size: 13px; font-weight: 700; color: #022AC0; line-height: 1.3; }
+.rc-upcoming__when small { display: block; font-size: 11.5px; font-weight: 500; color: #5C6770; }
+.rc-upcoming__mid { min-width: 0; }
+.rc-upcoming__title { display: block; font-size: 13px; font-weight: 700; color: #1B2730; }
+.rc-upcoming__sub { display: block; font-size: 11.5px; color: #5C6770; margin-top: 2px; }
+.rc-upcoming__pills { display: inline-flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.rc-upcoming__pill { font-size: 10.5px; font-weight: 700; border-radius: 10px; padding: 1.5px 8px; }
+.rc-upcoming__pill--prov { background: #EEF1F4; color: #5C6770; }
+.rc-upcoming__pill--status { background: #E6F2EA; color: #1F7A4D; }
+.rc-upcoming__actions { display: flex; flex-direction: column; gap: 5px; align-items: flex-end; }
+.rc-upcoming__actions a, .rc-upcoming__actions button { font-size: 12px; font-weight: 600; white-space: nowrap; color: #5C6770; background: none; border: none; cursor: pointer; padding: 0; font-family: 'Hanken Grotesk', sans-serif; text-decoration: none; }
+.rc-upcoming__join { color: #022AC0 !important; }
+.rc-upcoming__resched:hover { color: #1B2730 !important; }
+.rc-upcoming__cancel:hover { color: #B3402A !important; }
+.rc-upcoming__foot { padding: 8px 14px; border-top: 1px solid #EDF0F3; background: #FAFBFC; font-size: 11px; color: #93A0A8; line-height: 1.5; margin: 0; }
+.rc-upcoming__error { padding: 11px 14px; display: flex; flex-direction: column; gap: 8px; border: 1px solid #E5E9ED; border-radius: 11px; }
+
 /* ─── G2.3 — Review email draft modal (renders inside a fe-foundation
    Dialog size="xl"; the rc-eml classes style only the modal's own content) ─── */
 .rc-eml__hd { display: flex; align-items: center; gap: 11px; min-width: 0; }

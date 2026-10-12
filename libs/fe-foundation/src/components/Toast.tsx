@@ -61,3 +61,12 @@ export function useToast(): ToastApi {
   }
   return ctx;
 }
+
+// A non-throwing accessor: returns the toast API when a ToastProvider is present,
+// else a no-op. For components that MAY be mounted outside a provider (e.g. in
+// isolated test renders or embedded surfaces) and treat a toast as an optional
+// enhancement rather than a hard dependency. Never throws.
+const NOOP_TOAST: ToastApi = { show: () => undefined };
+export function useOptionalToast(): ToastApi {
+  return useContext(ToastContext) ?? NOOP_TOAST;
+}

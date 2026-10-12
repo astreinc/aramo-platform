@@ -195,8 +195,9 @@ describe('ScheduleMeetingDialog', () => {
     const rescheduleFn = vi.fn();
     const { rerender } = render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
     rerender(<ScheduleMeetingDialog open={false} onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={A} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
-    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={null} scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
-    expect((screen.getByTestId('schedule-date') as HTMLInputElement).value).toBe(''); // A's date did not leak
+    rerender(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="t" requisitionId="r" editing={null} defaultDate="2026-10-20" scheduleFn={scheduleFn} rescheduleFn={rescheduleFn} onDone={vi.fn()} />);
+    // Create mode prefills (tomorrow / supplied default) — A's edit date must NOT leak.
+    expect((screen.getByTestId('schedule-date') as HTMLInputElement).value).toBe('2026-10-20');
     fillValidForm();
     fireEvent.click(screen.getByTestId('schedule-review'));
     fireEvent.click(await screen.findByTestId('schedule-confirm'));

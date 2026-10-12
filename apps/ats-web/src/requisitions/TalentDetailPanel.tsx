@@ -392,7 +392,11 @@ export function TalentDetailPanel({
             <div className="rc-cdp__seclabel">Microsoft 365</div>
             <MicrosoftRecruiterActions
               talentId={entry.talent_record_id}
+              talentName={talentName}
+              talentEmail={emailValue ?? undefined}
               requisitionId={entry.requisition_id}
+              requisitionReference={reqCode}
+              requisitionTitle={reqTitle}
               pipelineId={entry.id}
               canSendEmail={scopes.includes('communication:email:send')}
               canScheduleMeeting={scopes.includes('communication:meeting:create')}
