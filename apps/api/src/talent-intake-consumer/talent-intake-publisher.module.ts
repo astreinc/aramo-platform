@@ -10,16 +10,15 @@ import {
   type LeaseSafeOutboxRepository,
   type OutboxPublisherPort,
 } from '@aramo/events';
-import {
-  LeaseSafeOutboxDrainService,
-  StructuredLogOutboxPublisher,
-} from '@aramo/outbox-publisher';
+import { LeaseSafeOutboxDrainService } from '@aramo/outbox-publisher';
+import { TalentIntakeMessageHandler } from '@aramo/talent-record';
 
 import {
   loadTalentIntakeEventsConfig,
   type TalentIntakeEventsConfig,
 } from './talent-intake-events.config.js';
-import { LazyEventBridgeOutboxPublisher } from './lazy-eventbridge-outbox-publisher.js';
+import { selectTalentIntakeOutboxPublisher } from './talent-intake-outbox-publisher.factory.js';
+import { TalentIntakeConsumerModule } from './talent-intake-consumer.module.js';
 import { TalentIntakeOutboxDrainWorker } from './talent-intake-outbox-drain.worker.js';
 
 // ADR-0033 — the Talent Intake PUBLISHER composition (runs in apps/api). The SOLE
@@ -48,22 +47,32 @@ const ENVELOPE_DEFAULTS: EnvelopeDefaults = {
 };
 
 @Module({
-  imports: [CommonModule, TalentEvidenceModule],
+  // TalentIntakeConsumerModule supplies TalentIntakeMessageHandler (+ the
+  // runtime-neutral processing port → extraction). It is imported so the
+  // singlebox transport can deliver outbox envelopes to the SAME handler the
+  // Lambda consumer uses — reusing extraction, never duplicating it. In
+  // eventbridge/structured-log mode the handler is constructed but unused.
+  imports: [CommonModule, TalentEvidenceModule, TalentIntakeConsumerModule],
   providers: [
     // Transport config (fail-closed is enforced lazily on first publish).
     { provide: CONFIG_TOKEN, useFactory: (): TalentIntakeEventsConfig => loadTalentIntakeEventsConfig() },
 
-    // OUTBOX_PUBLISHER_PORT — EventBridge (lazy, fail-closed) in production;
-    // structured-log ONLY on an explicit non-prod selection. No implicit / BullMQ
-    // fallback.
+    // OUTBOX_PUBLISHER_PORT — selected by TALENT_INTAKE_TRANSPORT:
+    //   eventbridge   → EventBridge (lazy, fail-closed) — the distributed AWS path.
+    //   singlebox     → in-process delivery to TalentIntakeMessageHandler (single
+    //                   box; no AWS). An EXPLICIT production transport, never an
+    //                   automatic fallback from a broken EventBridge config.
+    //   structured-log→ explicit non-prod/test selection only.
+    // No implicit / BullMQ fallback on any transport.
     { provide: 'OutboxPublisherPortLogger', useFactory: () => createAramoLogger('TalentIntakeOutboxPublisher') },
     {
       provide: OUTBOX_PUBLISHER_PORT,
-      useFactory: (config: TalentIntakeEventsConfig, logger: AramoLogger): OutboxPublisherPort =>
-        config.transport === 'eventbridge'
-          ? new LazyEventBridgeOutboxPublisher(config, logger)
-          : new StructuredLogOutboxPublisher(logger),
-      inject: [CONFIG_TOKEN, 'OutboxPublisherPortLogger'],
+      useFactory: (
+        config: TalentIntakeEventsConfig,
+        logger: AramoLogger,
+        handler: TalentIntakeMessageHandler,
+      ): OutboxPublisherPort => selectTalentIntakeOutboxPublisher(config, logger, handler),
+      inject: [CONFIG_TOKEN, 'OutboxPublisherPortLogger', TalentIntakeMessageHandler],
     },
 
     // Lease-safe outbox repository — the ONLY intake outbox source.

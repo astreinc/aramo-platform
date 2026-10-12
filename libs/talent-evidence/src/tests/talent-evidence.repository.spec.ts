@@ -77,6 +77,9 @@ describe('TalentEvidenceRepository — surface', () => {
     'markTalentIntakeOutboxPublished',
     'releaseTalentIntakeOutboxLease',
     'quarantineTalentIntakeOutboxEvents',
+    // ADR-0033 / single-box — governed operational redrive of a stuck draft's
+    // unpublished outbox events (reset attempts/quarantine so the drain re-delivers).
+    'redriveTalentIntakeOutboxByDraft',
   ];
 
   it('exposes the 14 create/find methods + the Gate-1 by-talent reads + the TR-4 B2 ledger reads + the SKILL-TAX-1G reconciliation methods + the TI-1A/TI-1D-C resume-edition methods', () => {

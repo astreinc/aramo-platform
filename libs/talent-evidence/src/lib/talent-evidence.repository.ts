@@ -2337,6 +2337,37 @@ export class TalentEvidenceRepository {
     return updated.count;
   }
 
+  // ADR-0033 / single-box — GOVERNED operational REDRIVE. Resets the delivery
+  // state of a draft's UNPUBLISHED outbox events (exhausted publish_attempts
+  // and/or quarantined) so the lease-safe drain re-claims and re-delivers them
+  // (publish_attempts → 0, lease + quarantine cleared). This is the supported
+  // recovery for a draft stuck at QUEUED because earlier delivery attempts were
+  // exhausted — NOT manual SQL. NEVER touches already-published rows (an already
+  // delivered event stays delivered; the draft's own CAS processing is idempotent,
+  // so even a re-delivery is a safe no-op). Idempotent: re-running re-clears the
+  // same fields. Tenant-scoped; keyed on the outbox subject_id = draft id.
+  async redriveTalentIntakeOutboxByDraft(input: {
+    tenant_id: string;
+    draft_id: string;
+  }): Promise<number> {
+    const updated = await this.prisma.talentIntakeOutboxEvent.updateMany({
+      where: {
+        tenant_id: input.tenant_id,
+        subject_id: input.draft_id,
+        published_at: null,
+      },
+      data: {
+        publish_attempts: 0,
+        claimed_at: null,
+        lease_expires_at: null,
+        quarantined_at: null,
+        quarantine_reason: null,
+        last_publish_error: null,
+      },
+    });
+    return updated.count;
+  }
+
   // TI-1F-B — the ATOMIC promotion on CONFIRM (directive §4-E): in ONE
   // transaction, persist ALL accepted typed facts (work-history + per-role skill
   // usage + projects + declared skills + education + certifications, every row

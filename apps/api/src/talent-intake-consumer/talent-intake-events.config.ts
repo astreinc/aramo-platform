@@ -6,8 +6,16 @@
 // (TALENT_INTAKE_TRANSPORT=structured-log) — it can never be an implicit
 // production fallback, and there is no fallback to BullMQ or structured-log on
 // an EventBridge runtime failure.
+//
+// singlebox — an EXPLICIT production transport for the single-box (Lightsail)
+// topology where no EventBridge/SQS/Lambda plane exists. The lease-safe outbox
+// drain delivers the canonical envelope DIRECTLY to the in-process
+// TalentIntakeMessageHandler (same handler the Lambda consumer uses), reusing the
+// existing CAS/idempotent processing path. It is NEVER an automatic fallback from
+// a broken EventBridge configuration: eventbridge stays fail-closed; singlebox is
+// selected only when TALENT_INTAKE_TRANSPORT=singlebox is set explicitly.
 
-export type TalentIntakeTransport = 'eventbridge' | 'structured-log';
+export type TalentIntakeTransport = 'eventbridge' | 'structured-log' | 'singlebox';
 
 export interface TalentIntakeEventsConfig {
   readonly transport: TalentIntakeTransport;
@@ -29,9 +37,13 @@ export function loadTalentIntakeEventsConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): TalentIntakeEventsConfig {
   const transportRaw = (env['TALENT_INTAKE_TRANSPORT'] ?? 'eventbridge').trim();
-  if (transportRaw !== 'eventbridge' && transportRaw !== 'structured-log') {
+  if (
+    transportRaw !== 'eventbridge' &&
+    transportRaw !== 'structured-log' &&
+    transportRaw !== 'singlebox'
+  ) {
     throw new Error(
-      `TALENT_INTAKE_TRANSPORT must be 'eventbridge' or 'structured-log' (got '${transportRaw}').`,
+      `TALENT_INTAKE_TRANSPORT must be 'eventbridge', 'singlebox', or 'structured-log' (got '${transportRaw}').`,
     );
   }
   const transport: TalentIntakeTransport = transportRaw;
