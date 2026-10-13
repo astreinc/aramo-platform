@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Optional,
   Param,
   Post,
   Query,
@@ -97,8 +98,15 @@ export class SubmittalController {
     // over the Pipeline domain; libs/submittal stays decoupled). Resolves the
     // authoritative tenant-scoped site + requisition context for lifecycle-mutation
     // authorization (confirm / mark-ready / confirm-ats / revoke).
+    // @Optional so SubmittalModule remains importable in isolation (e.g. the
+    // outbox-publisher drains the submittal outbox via SubmittalModule without the
+    // apps/api @Global adapter). In apps/api the @Global PipelineSiteReaderModule
+    // supplies the real adapter; where it is absent the injection is undefined and
+    // the lifecycle-authz guard below FAILS CLOSED (a lifecycle mutation can never
+    // proceed without the authoritative site/requisition reader).
+    @Optional()
     @Inject(PIPELINE_SITE_READER)
-    private readonly pipelineSiteReader: PipelineSiteReader,
+    private readonly pipelineSiteReader?: PipelineSiteReader,
   ) {}
 
   // INC-1b (TIP-E2E) — lifecycle-mutation authorization, enforced BEFORE any state
@@ -117,6 +125,17 @@ export class SubmittalController {
     submittal_id: string,
     requestId: string,
   ): Promise<void> {
+    // Fail CLOSED when the authoritative site/requisition reader is not wired (only
+    // possible in a misconfigured / isolated context — never apps/api, where it is
+    // @Global). A lifecycle mutation must not proceed without site/visibility checks.
+    if (this.pipelineSiteReader === undefined || this.pipelineSiteReader === null) {
+      throw new AramoError(
+        'SUBMITTAL_AUTHORIZATION_UNAVAILABLE',
+        'Submittal lifecycle authorization dependency is not available',
+        500,
+        { requestId, details: { submittal_id } },
+      );
+    }
     const sub = await this.submittalRepository.findAuthContextById({
       tenant_id: authContext.tenant_id,
       id: submittal_id,
