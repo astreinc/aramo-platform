@@ -27,6 +27,7 @@ import { AppModule } from '../app.module.js';
 import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureAtsEntitlement } from './ats-entitlement.js';
 
 // M4 PR-6 §4.7 — F23 negative-shape integration test for GET
 // /v1/submittals/{submittal_id}. Standing F23 pattern: boot the
@@ -283,6 +284,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+      // INC-1b — grant the ats capability now required by the examine/submittal guards.
+      await ensureAtsEntitlement((s, p) => setup.query(s, p), TENANT_ID, ROOT);
 
       // SW-1 remediation — provision the Pipeline schema + a live episode so the
       // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
@@ -300,7 +303,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
          VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
         [
-          '22221111-0000-7000-8000-0000000000a6',
+          JOB_ID,
           TENANT_ID,
           JOB_ID,
           RECRUITER_ID,

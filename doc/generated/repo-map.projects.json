@@ -1437,6 +1437,7 @@
     "@aramo/sourced-talent": ["PrismaService", "SourcedTalentModule", "SourcedTalentRepository"],
     "@aramo/submittal": [
       "ConfirmSubmittalRequestDto",
+      "PIPELINE_SITE_READER",
       "PrismaService",
       "RecruiterAttestationsDto",
       "RevokeSubmittalRequestDto",
@@ -2163,6 +2164,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/submit-talent-handoff.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submittal-confirm.negative-shape.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2795,6 +2802,18 @@
     ],
     "@aramo/authorization": [
       { "project": "activity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/examine.controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-http.integration.spec.ts",
@@ -5878,7 +5897,19 @@
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/examine.controller.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5923,6 +5954,7 @@
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
     ],
@@ -7954,6 +7986,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-requisition.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8289,6 +8327,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-void-orchestrator.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-journey-audit.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },

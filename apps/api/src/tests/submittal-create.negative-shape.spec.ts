@@ -27,6 +27,7 @@ import { AppModule } from '../app.module.js';
 import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureAtsEntitlement } from './ats-entitlement.js';
 
 // M4 PR-3 §4.7 — Companion negative-shape integration test for the new
 // POST /v1/submittals endpoint. F23 standing pattern: a Vitest end-to-end
@@ -290,6 +291,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+      // INC-1b — grant the ats capability now required by the examine/submittal guards.
+      await ensureAtsEntitlement((s, p) => setup.query(s, p), TENANT_ID, ROOT);
 
       // SW-1 remediation — provision the Pipeline schema + a live episode so the
       // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
@@ -306,7 +309,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setup.query(
         `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
          VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
-        ['22221111-0000-7000-8000-0000000000aa', TENANT_ID, JOB_ID, RECRUITER_ID],
+        [JOB_ID, TENANT_ID, JOB_ID, RECRUITER_ID],
+      );
+      // INC-1b — a SECOND visible requisition with NO live pipeline episode so the
+      // 409 SUBMITTAL_NO_LIVE_PIPELINE_EPISODE case exercises an EXISTING, visible
+      // requisition (the create authz gate resolves it) that merely lacks a live
+      // pipeline — not a non-existent job, which now 404s at the gate (concealment).
+      await setup.query(
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+         VALUES ($1, $2, $3::text, $4, 'open'::requisition."RecruitingStatus")`,
+        ['00000000-0000-7000-8000-00000000dead', TENANT_ID, 'No-Pipeline Req', RECRUITER_ID],
       );
       await setup.query(
         `INSERT INTO examination."TalentJobExamination"
@@ -375,7 +387,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['submittal:create']),
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['submittal:create', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

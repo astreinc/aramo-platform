@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
+import { EntitlementModule } from '@aramo/entitlement';
 import { EvidenceModule } from '@aramo/evidence';
 import { ExaminationModule } from '@aramo/examination';
 
@@ -32,6 +33,9 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //   - ExaminationModule (M4 PR-4 §4.5) — ExaminationRepository.findByIdFull
 //     + findLatestByTenantTalentJob, both consumed by confirmSubmittal's
 //     pinned-examination re-validation.
+//   - EntitlementModule (INC-1b) — provides EntitlementGuard + EntitlementRepository
+//     for the class-level @UseGuards(...EntitlementGuard...) + @RequireCapability('ats')
+//     on the lifecycle routes (confirm / mark-ready / confirm-ats / revoke).
 // M4 PR-9 §4.5 — two AramoLogger providers (substrate-natural choice
 // per directive's primary option): one keyed by 'SubmittalControllerLogger'
 // with factory context SubmittalController.name, one keyed by
@@ -45,7 +49,7 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 // selection-event substrate). Exported so PR-8b2+ wire-in consumers
 // can inject it into the existing SubmittalRepository write methods.
 @Module({
-  imports: [AuthModule, EvidenceModule, ConsentModule, ExaminationModule],
+  imports: [AuthModule, EvidenceModule, ConsentModule, ExaminationModule, EntitlementModule],
   controllers: [SubmittalController],
   providers: [
     PrismaService,

@@ -47,3 +47,13 @@ export type {
 // surfaces in two libs and the rename guards consumers that import
 // from `@aramo/submittal` against shadowing).
 export { SUBMITTAL_STATE_VALUES, canTransition as canTransitionSubmittal } from './lib/submittal-state.js';
+
+// INC-1b (TIP-E2E) — PipelineSiteReader port: the domain-owned contract libs/
+// submittal depends on for server-resolved site + requisition context on the
+// lifecycle mutations (adapter bound in apps/api over the Pipeline domain; no
+// cross-schema SQL in libs/submittal).
+export {
+  PIPELINE_SITE_READER,
+  type PipelineSiteReader,
+  type PipelineAuthorizationContext,
+} from './lib/ports/pipeline-site-reader.port.js';

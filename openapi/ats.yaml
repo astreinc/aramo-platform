@@ -1141,22 +1141,42 @@ paths:
         `submitted_to_client` is the authoritative business fact; delivery_channel and
         the external reference are provenance OF that fact.
 
+        INC-1d (manual-handoff integrity): the platform performs NO transmission. The
+        recruiter MUST attest `handoff_performed: true` — they attest that the manual
+        client handoff ACTUALLY occurred. This records an ATTESTED + RECORDED handoff;
+        it is NOT an independently-verified client RECEIPT (no such workflow exists —
+        the API never represents this as "verified received"). `delivery_channel` is
+        REQUIRED (how the handoff happened). `submitted_by_actor_id` and `submitted_at`
+        are set server-side from the authenticated actor / server clock — never
+        client-supplied; the caller cannot impersonate the actor or fabricate the
+        server timestamp.
+
         delivery_channel records HOW the client handoff ACTUALLY happened — a DISTINCT
         axis from the requisition's SubmittalAuthority EXPECTATION. V1 has no outbound
         connector, so `aramo_connector` is refused; a CLIENT_VMS requisition requires
         `manual_vms`.
 
+        INC-1c (provisional, activation-gated): when the interim Mandatory-RTR
+        disclosure policy is ACTIVE, a valid executed Right-to-Represent (DOC-5) for the
+        exact (tenant, talent, requisition) is required before a new submitted_to_client;
+        absent → 409 SUBMITTAL_RTR_NOT_EXECUTED. Inactive by default.
+
         Response wraps { submittal, event }.
 
         Refusal codes (closed list):
+          - 422 ATTESTATION_MISSING — handoff_performed:true attestation absent.
           - 422 SUBMITTAL_STATE_INVALID — submittal not in state='ready_for_review'.
-          - 422 SUBMITTAL_DELIVERY_CHANNEL_INVALID — unknown / not-executable /
-            authority-mismatched delivery_channel.
+          - 422 SUBMITTAL_DELIVERY_CHANNEL_INVALID — missing (required) / unknown /
+            not-executable / authority-mismatched delivery_channel.
           - 409 SUBMITTAL_PIPELINE_LINK_INVALID / REQUISITION_NOT_OPEN /
             SUBMITTAL_LIMIT_REACHED.
+          - 409 SUBMITTAL_RTR_NOT_EXECUTED — provisional Mandatory-RTR policy active +
+            no valid executed RTR (INC-1c; inactive by default).
           - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key, different body.
-          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant.
-          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 404 NOT_FOUND — submittal_id not found for the JWT's tenant, or
+            requisition not in the actor's visible set.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer, or a site-scoped
+            actor whose site does not match the submittal's pipeline site.
           - 400 VALIDATION_ERROR — submittal_id not a UUID, or Idempotency-Key missing/malformed.
       parameters:
         - name: submittal_id
@@ -1172,26 +1192,35 @@ paths:
             type: string
             format: uuid
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required:
+                - handoff_performed
+                - delivery_channel
               properties:
+                handoff_performed:
+                  type: boolean
+                  const: true
+                  description: >-
+                    INC-1d MANDATORY attestation: the recruiter attests the manual
+                    client handoff ACTUALLY occurred (the platform transmits nothing).
+                    Must be the literal `true`; absent/false → 422 ATTESTATION_MISSING.
+                    Records an ATTESTED + RECORDED handoff — NOT a verified client receipt.
                 delivery_channel:
-                  type:
-                    - string
-                    - 'null'
+                  type: string
                   enum:
                     - manual_vms
                     - manual_client_portal
                     - manual_email
                     - manual_other
                     - aramo_connector
-                    - null
                   description: >-
-                    How the client handoff ACTUALLY happened (provenance). aramo_connector
-                    is forward-compat only and is refused in V1 (no outbound connector).
+                    REQUIRED (INC-1d). How the client handoff ACTUALLY happened
+                    (provenance). aramo_connector is forward-compat only and is refused
+                    in V1 (no outbound connector) → 422 SUBMITTAL_DELIVERY_CHANNEL_INVALID.
                 external_reference:
                   type:
                     - string
@@ -1203,7 +1232,7 @@ paths:
                   format: date-time
       responses:
         '200':
-          description: Talent submitted to client; state transitioned to `submitted_to_client`; provenance frozen.
+          description: Talent submitted to client; state transitioned to `submitted_to_client`; manual handoff attested + recorded (not a verified client receipt); provenance frozen.
           content:
             application/json:
               schema:
@@ -1396,6 +1425,83 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/TalentSubmittalRecord'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
+  /v1/submittals/{submittal_id}/journey-audit:
+    get:
+      operationId: getTalentJourneyAudit
+      summary: INC-1e correlated journey audit for a submittal (read-only).
+      description: |
+        Minimally-sufficient, tenant-authorized, READ-ONLY journey trace over the
+        EXISTING immutable submittal-transition events for one submittal, keyed by the
+        durable domain IDs (talent_id, requisition_id=job_id, examination_id,
+        evidence_package_id, submittal_id) for cross-request correlation (no per-request
+        id). Resolved under the actor's requisition-visibility; a cross-tenant /
+        out-of-visibility submittal -> 404 (existence not disclosed). Actor provenance is
+        surfaced from the immutable event payload where recorded (null when absent; never
+        fabricated). No new event authority; no migration.
+
+        Refusal codes (closed list):
+          - 404 NOT_FOUND — submittal_id not found for the tenant, or not in the actor's visible set.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 INVALID_REQUEST — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Correlated journey-audit trace for the submittal.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [spine, record_provenance, entries]
+                properties:
+                  spine:
+                    type: object
+                    additionalProperties: false
+                    required: [submittal_id, talent_id, requisition_id, examination_id, evidence_package_id]
+                    properties:
+                      submittal_id: { type: string, format: uuid }
+                      talent_id: { type: string, format: uuid }
+                      requisition_id: { type: string, format: uuid }
+                      examination_id: { type: string, format: uuid }
+                      evidence_package_id: { type: string, format: uuid }
+                  record_provenance:
+                    type: object
+                    additionalProperties: false
+                    required: [created_by]
+                    properties:
+                      created_by: { type: string }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [source, kind, occurred_at, actor_id, submittal_event_id]
+                      properties:
+                        source: { type: string, enum: [submittal] }
+                        kind: { type: string }
+                        occurred_at: { type: string, format: date-time }
+                        actor_id:
+                          type:
+                            - string
+                            - 'null'
+                        submittal_event_id: { type: string, format: uuid }
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':

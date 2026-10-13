@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
+import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
+import { RequisitionModule } from '@aramo/requisition';
 import { SubmittalModule } from '@aramo/submittal';
 
 import { CreateSubmittalController } from './create-submittal.controller.js';
@@ -14,10 +16,21 @@ import { CreateSubmittalOrchestrator } from './create-submittal.service.js';
 //   - SubmittalModule → SubmittalRepository.createSubmittal (persistence authority)
 //   - ConsentModule   → IdempotencyService (shared Idempotency-Key table)
 //   - AuthModule      → JwtAuthGuard / AuthContext (+ RolesGuard metadata)
+//   - RequisitionModule → RequisitionRepository.findByIdForActor (INC-1b: the
+//     authoritative requisition read used for server-resolved site + actor
+//     requisition-visibility BEFORE the create mutation; job_id IS the requisition
+//     id — same read the examine path uses, no new cross-schema SQL).
 // This is the ONLY place the two domains meet for create; neither lib imports the
 // other (the Pipeline⊥ domain boundary is composed, not hard-linked).
 @Module({
-  imports: [AuthModule, ConsentModule, PipelineModule, SubmittalModule],
+  imports: [
+    AuthModule,
+    ConsentModule,
+    EntitlementModule,
+    PipelineModule,
+    RequisitionModule,
+    SubmittalModule,
+  ],
   controllers: [CreateSubmittalController],
   providers: [CreateSubmittalOrchestrator],
 })

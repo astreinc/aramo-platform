@@ -46,10 +46,28 @@ describe('RecordSubmittalDialog', () => {
     expect(screen.queryByText(/Beeline/i)).not.toBeInTheDocument();
   });
 
-  it('the copy makes clear Aramo records (not sends) the handoff', () => {
+  it('the copy makes clear Aramo records (not sends) the handoff and does not confirm receipt', () => {
     renderDialog();
     expect(screen.getByText(/does not send anything to the client/i)).toBeInTheDocument();
+    expect(screen.getByText(/does not confirm the client received it/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Record submittal' })).toBeInTheDocument();
+  });
+
+  it('INC-1d: Record is disabled until the handoff attestation is checked (no unattested send)', async () => {
+    const { onRecorded } = renderDialog();
+    const recordBtn = screen.getByRole('button', { name: 'Record submittal' });
+    // Gated until attested.
+    expect(recordBtn).toBeDisabled();
+    fireEvent.click(recordBtn);
+    expect(submitMock).not.toHaveBeenCalled();
+    // Attest → enabled → sends.
+    fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
+    expect(recordBtn).not.toBeDisabled();
+    submitMock.mockResolvedValue({ submittal: { state: 'submitted_to_client' } } as never);
+    fireEvent.click(recordBtn);
+    await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(1));
+    expect(submitMock.mock.calls[0][1].handoff_performed).toBe(true);
+    await waitFor(() => expect(onRecorded).toHaveBeenCalledTimes(1));
   });
 
   it('records with the SW-2 provenance DTO (delivery_channel + external_reference + ISO submitted_at) then refetches', async () => {
@@ -57,11 +75,14 @@ describe('RecordSubmittalDialog', () => {
     const { onRecorded, onRaceConflict } = renderDialog();
 
     fireEvent.change(screen.getByPlaceholderText('e.g. FG-938273'), { target: { value: 'FG-1' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Record submittal' }));
 
     await waitFor(() => expect(submitMock).toHaveBeenCalledTimes(1));
     const [id, provenance, key] = submitMock.mock.calls[0];
     expect(id).toBe('sub1');
+    // INC-1d — the mandatory handoff attestation rides in the provenance payload.
+    expect(provenance.handoff_performed).toBe(true);
     expect(provenance.delivery_channel).toBe('manual_vms');
     expect(provenance.external_reference).toBe('FG-1');
     expect(typeof provenance.external_submitted_at).toBe('string');
@@ -75,6 +96,7 @@ describe('RecordSubmittalDialog', () => {
     submitMock.mockRejectedValue(new ApiError(409, 'limit reached', 'SUBMITTAL_LIMIT_REACHED'));
     const { onRecorded, onRaceConflict } = renderDialog();
 
+    fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Record submittal' }));
 
     await waitFor(() => expect(onRaceConflict).toHaveBeenCalledTimes(1));

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { ApiError, DialogClose, Input } from '@aramo/fe-foundation';
 
-import { Button, Dialog, InlineAlert, RadioGroup, safeErrorMessage } from '../ui';
+import { AttestCheckbox, Button, Dialog, InlineAlert, RadioGroup, safeErrorMessage } from '../ui';
 import { submitToClient } from '../submittals/submittals-api';
 
 import { deliveryLabel } from './present';
@@ -57,6 +57,9 @@ export function RecordSubmittalDialog({
   const [method, setMethod] = useState<V1ManualDeliveryChannel>('manual_vms');
   const [externalRef, setExternalRef] = useState('');
   const [submittedAt, setSubmittedAt] = useState(localNowValue);
+  // INC-1d — the recruiter's manual-handoff attestation. The server REQUIRES it
+  // (handoff_performed:true); the Record action stays disabled until it is checked.
+  const [handoffPerformed, setHandoffPerformed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -64,6 +67,11 @@ export function RecordSubmittalDialog({
 
   const handleRecord = async () => {
     if (submitting) return;
+    // INC-1d — never send an unattested handoff; the server would fail closed anyway.
+    if (!handoffPerformed) {
+      setError('Please confirm you performed this handoff before recording it.');
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
@@ -73,7 +81,7 @@ export function RecordSubmittalDialog({
       const external_reference = externalRef.trim().length > 0 ? externalRef.trim() : undefined;
       await submitToClient(
         submittalId,
-        { delivery_channel: method, external_reference, external_submitted_at },
+        { handoff_performed: true, delivery_channel: method, external_reference, external_submitted_at },
         uuidv4(),
       );
       onOpenChange(false);
@@ -106,7 +114,7 @@ export function RecordSubmittalDialog({
               Cancel
             </Button>
           </DialogClose>
-          <Button type="button" onClick={handleRecord} disabled={submitting}>
+          <Button type="button" onClick={handleRecord} disabled={submitting || !handoffPerformed}>
             {submitting ? 'Recording…' : 'Record submittal'}
           </Button>
         </div>
@@ -154,9 +162,14 @@ export function RecordSubmittalDialog({
         </label>
       </div>
 
+      <AttestCheckbox checked={handoffPerformed} onChange={setHandoffPerformed}>
+        I confirm I performed this handoff to the client.
+      </AttestCheckbox>
+
       <p className="sw-modal__note">
-        Aramo records this handoff; it does not send anything to the client. The
-        resume and client rate above are frozen once recorded.
+        Aramo records your attestation that this handoff happened; it does not send
+        anything to the client and does not confirm the client received it. The resume
+        and client rate above are frozen once recorded.
       </p>
 
       {error !== null ? (

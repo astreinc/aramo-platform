@@ -85,6 +85,12 @@ const CREATE_BODY = {
   },
 };
 const EMPTY_BODY = {};
+
+// INC-1d (TIP-E2E) — the manual-handoff attestation body the send path now REQUIRES
+// (handoff_performed:true + a manual delivery_channel). The deprecated submit-to-ats
+// alias routes through the same command, so it enforces the same policy (directive
+// §6); its historical empty-body contract is superseded for the happy path.
+const HANDOFF_BODY = { handoff_performed: true, delivery_channel: 'manual_email' };
 const ATTESTATIONS_OK = {
   attestations: {
     talent_evidence_reviewed: true,
@@ -420,7 +426,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
       .given('an ats-web recruiter and a ready_for_review submittal exist')
       .uponReceiving('a submit-to-ats on a ready_for_review submittal')
       .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-ats`, (b) => {
-        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000301')).jsonBody(EMPTY_BODY);
+        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000301')).jsonBody(HANDOFF_BODY);
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_client', { confirmedAt: true }) });
@@ -429,7 +435,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
           method: 'POST',
           headers: jsonHeaders('00000000-0000-7000-8000-5f0000000301'),
-          body: JSON.stringify(EMPTY_BODY),
+          body: JSON.stringify(HANDOFF_BODY),
         });
         expect(res.status).toBe(200);
         const body = (await res.json()) as { submittal: { state: string } };
@@ -442,8 +448,11 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
       .addInteraction()
       .given('an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist')
       .uponReceiving('a submit-to-ats on a created submittal')
+      // INC-1d — send the attested handoff body so the request clears the mandatory
+      // attestation gate and reaches the state-machine check (the point of this test);
+      // an unattested body would short-circuit at ATTESTATION_MISSING instead.
       .withRequest('POST', `/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, (b) => {
-        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000302')).jsonBody(EMPTY_BODY);
+        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000302')).jsonBody(HANDOFF_BODY);
       })
       .willRespondWith(422, (b) => {
         b.jsonBody(errorBody('SUBMITTAL_STATE_INVALID', 'Illegal submittal state transition'));
@@ -452,7 +461,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         const res = await fetch(`${mock.url}/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, {
           method: 'POST',
           headers: jsonHeaders('00000000-0000-7000-8000-5f0000000302'),
-          body: JSON.stringify(EMPTY_BODY),
+          body: JSON.stringify(HANDOFF_BODY),
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };

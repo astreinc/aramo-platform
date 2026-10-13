@@ -282,6 +282,22 @@ export class SubmittalRepository {
     return row === null ? null : projectView(row as TalentSubmittalRecordRow);
   }
 
+  // INC-1b (TIP-E2E) — minimal tenant-scoped read for lifecycle-mutation
+  // authorization: the pipeline link + requisition id, both needed to resolve the
+  // authoritative site/requisition context via the PipelineSiteReader BEFORE any
+  // state transition. `projectView` omits pipeline_id, so this is a dedicated
+  // explicit projection. Null = not found in tenant (the caller fails closed).
+  async findAuthContextById(input: {
+    tenant_id: string;
+    id: string;
+  }): Promise<{ pipeline_id: string | null; job_id: string } | null> {
+    const row = await this.prisma.talentSubmittalRecord.findFirst({
+      where: { tenant_id: input.tenant_id, id: input.id },
+      select: { pipeline_id: true, job_id: true },
+    });
+    return row === null ? null : { pipeline_id: row.pipeline_id, job_id: row.job_id };
+  }
+
   // AUTHZ-D4b — visibility-scoped findById. Submittal inherits its
   // requisition's visibility — the cascade filters on
   // `job_id IN visible_requisition_ids` (job_id is the cross-schema UUID

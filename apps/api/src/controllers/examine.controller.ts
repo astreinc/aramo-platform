@@ -4,10 +4,18 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import {
+  RequireScopes,
+  RequireSiteMatch,
+  RolesGuard,
+} from '@aramo/authorization';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { JobDomainRepository } from '@aramo/job-domain';
 import { MatchingService } from '@aramo/matching';
 import { RequisitionRepository } from '@aramo/requisition';
@@ -59,8 +67,17 @@ interface ExamineResponseDto {
   live_list_visible: true;
 }
 
+// INC-1a (TIP-E2E) — authorization parity with the canonical ATS stack
+// (RequisitionController A2 pattern): JwtAuthGuard -> EntitlementGuard (tenant
+// capability) -> RolesGuard (scope + site). @RequireCapability('ats') is the
+// tenant axis; @RequireScopes('examination:create') the user/role axis;
+// @RequireSiteMatch() opts the route into the site axis. examine is a body-only
+// POST (no path/query site_id), so RolesGuard's site comparison is a no-op here
+// and the handler ALSO performs a server-resolved site assertion against the
+// authoritative requisition.site_id (see examine()).
 @Controller('v1/examinations')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('ats')
 export class ExamineController {
   constructor(
     private readonly talentRecordRepository: TalentRecordRepository,
@@ -76,10 +93,13 @@ export class ExamineController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('examination:create')
+  @RequireSiteMatch()
   async examine(
     @Body() body: ExamineRequestDto,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ExamineResponseDto> {
     this.assertConsumerIsRecruiter(authContext, requestId);
     const talent_id = this.assertUuid(body?.talent_id, 'talent_id', requestId);
@@ -90,17 +110,45 @@ export class ExamineController {
     );
     const tenant_id = authContext.tenant_id;
 
-    // Step 1 — resolve the requisition (tenant-scoped floor; per-recruiter
-    // requisition-visibility scoping is a follow-up) → golden_profile_id.
-    const requisition = await this.requisitionRepository.findByIdAdmin({
+    // Step 1 — resolve the requisition under the ACTOR's requisition-visibility
+    // (INC-1a): findByIdForActor applies the A3 visibility predicate
+    // (requisition:read:all -> unfiltered; else the assigned/visible-client
+    // union), returning the SAME RequisitionView projection as the prior admin
+    // read (golden_profile_id + site_id preserved — no bypass, no extra query).
+    // An out-of-visibility requisition yields null -> 404 (not in the visible
+    // set), NEVER 403 (the scope passed) — Ruling 2 parity with the requisition
+    // detail read.
+    const visibility = await req.resolveVisibility!();
+    const requisition = await this.requisitionRepository.findByIdForActor({
       tenant_id,
       id: requisition_id,
+      visibility,
     });
     if (requisition === null) {
       throw new AramoError('NOT_FOUND', 'Requisition not found in tenant', 404, {
         requestId,
         details: { requisition_id },
       });
+    }
+    // INC-1a — EFFECTIVE site authorization for this body-only route.
+    // @RequireSiteMatch() cannot compare here (no path/query site_id), so assert
+    // server-side against the AUTHORITATIVE requisition.site_id: a site-scoped
+    // principal (site_id claim present) may examine only within its own site; a
+    // tenant-wide principal (null claim) is admitted on any site (A1a §5). The
+    // issuer omits the claim only for null-site memberships, so a site-scoped
+    // user cannot strip their own claim to forge tenant-wide reach.
+    if (
+      authContext.site_id !== null &&
+      authContext.site_id !== undefined &&
+      requisition.site_id !== null &&
+      requisition.site_id !== authContext.site_id
+    ) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Requisition belongs to a different site',
+        403,
+        { requestId, details: { reason: 'site_mismatch', requisition_id } },
+      );
     }
     if (requisition.golden_profile_id === null) {
       throw new AramoError(

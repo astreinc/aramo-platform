@@ -67,6 +67,23 @@ export interface SubmitTalentToClientInput {
   /** Deterministic id for the submittal state_transition event (idempotency). */
   readonly event_id: string;
   readonly actor_id: string;
+  // INC-1b (TIP-E2E) — actor authorization context, enforced BEFORE any state
+  // mutation / slot consumption / outbox write. actor_site_id: the actor's site
+  // claim (null = tenant-wide, admitted on any site). visible_requisition_ids: the
+  // actor's visible-requisition set from the global VisibilityInterceptor's
+  // authorized read (null = see_all, no filter).
+  readonly actor_site_id?: string | null;
+  // The actor's visible-requisition set from the global VisibilityInterceptor's
+  // authorized read — a ReadonlySet (null = see_all, no filter), matching
+  // req.resolveVisibleRequisitionIds() and the requisition/journey read contracts.
+  readonly visible_requisition_ids?: ReadonlySet<string> | null;
+  // INC-1c (TIP-E2E) — provisional interim product policy: when true, a valid
+  // executed RTR (DOC-5) is MANDATORY before recording a new submitted_to_client,
+  // regardless of the per-client policy disposition (fail-closed). Default/absent =
+  // INACTIVE (the existing policy-CONDITIONAL RTR behavior stands). Activation is
+  // gated on Legal/PO; the controller resolves this from provisional config so the
+  // control ships DEPLOYED-DARK until explicitly enabled.
+  readonly rtr_disclosure_mandatory?: boolean;
   readonly note?: string | null;
   readonly requestId: string;
   /**
@@ -80,9 +97,16 @@ export interface SubmitTalentToClientInput {
   // scope membership; never a role name), and the recorded override reason.
   readonly submittal_actor_can_override?: boolean;
   readonly submittal_override_reason?: string | null;
+  // INC-1d (TIP-E2E) — manual-handoff integrity attestation. The recruiter attests
+  // the manual client handoff ACTUALLY occurred (the platform transmits nothing).
+  // MANDATORY true at send; absent/false → ATTESTATION_MISSING (422). This records an
+  // ATTESTED + RECORDED handoff; it is NOT an independently-verified client RECEIPT
+  // (no such workflow exists — never labelled "verified received").
+  readonly handoff_performed?: boolean;
   // SW-2 (R4-A/R4-B) — V1 submittal delivery provenance (how the client handoff
-  // ACTUALLY happened). All optional: captured when the caller provides them;
-  // submitted_at / submitted_by_actor_id are always set from NOW()/actor_id, and the
+  // ACTUALLY happened). INC-1d: delivery_channel is now REQUIRED at send (the manual
+  // channel actually used); submitted_at / submitted_by_actor_id are always set
+  // server-side from NOW()/the authenticated actor (never client-supplied), and the
   // client-facing rate is frozen from the requisition when present.
   readonly delivery_channel?: string | null;
   readonly external_reference?: string | null;
@@ -241,6 +265,68 @@ export class SubmitTalentToClientService {
       const requisition_id = submittal.job_id;
       const talent_record_id = submittal.talent_id;
 
+      // INC-1b (TIP-E2E) — actor authorization on the VALIDATED chain, enforced
+      // BEFORE any state mutation / slot consumption / outbox write. linkVerdict.ok
+      // above guarantees a live, identity-matched episode (tenant + requisition +
+      // talent), so pipeline.site_id and requisition_id are authoritative here.
+      //   - Site: a site-scoped actor (non-null claim) may submit only within the
+      //     pipeline's site; a tenant-wide actor (null claim) is admitted anywhere.
+      //   - Requisition visibility: a non-see_all actor may submit only for a
+      //     requisition in their visible set (404 "not in visible set", never 403 —
+      //     Ruling 2 parity with the requisition reads).
+      if (
+        input.actor_site_id !== null &&
+        input.actor_site_id !== undefined &&
+        pipeline.site_id !== null &&
+        pipeline.site_id !== input.actor_site_id
+      ) {
+        throw err('INSUFFICIENT_PERMISSIONS', 'Submittal pipeline belongs to a different site', 403, {
+          submittal_id,
+          reason: 'site_mismatch',
+        });
+      }
+      if (
+        input.visible_requisition_ids !== null &&
+        input.visible_requisition_ids !== undefined &&
+        !input.visible_requisition_ids.has(requisition_id)
+      ) {
+        throw err('NOT_FOUND', 'Requisition not found in tenant', 404, {
+          submittal_id,
+          requisition_id,
+          reason: 'requisition_not_visible',
+        });
+      }
+
+      // INC-1d (TIP-E2E) — manual-handoff integrity, AUTHORITATIVELY enforced here on
+      // the authorized chain and BEFORE any state mutation / slot consumption / outbox
+      // write (a denial consumes no slot). This is the fail-closed floor: the submit
+      // command cannot be driven to submitted_to_client WITHOUT the attestation even by a
+      // DIRECT invocation that bypasses the controller. The controller (submitImpl) also
+      // validates presence at the HTTP boundary for a fast, pre-transaction rejection —
+      // defense in depth; neither relies on the other. handoff_performed:true is the
+      // recruiter's attestation that the manual client handoff actually occurred (the
+      // platform transmits nothing — an ATTESTED + RECORDED handoff, never an
+      // independently-verified client receipt). delivery_channel is REQUIRED here; its
+      // enum / authority / not-executable SEMANTIC validity is checked at the write gate
+      // below. submitted_at + submitted_by_actor_id are set server-side (NOW() / the
+      // authenticated actor), never client-supplied.
+      if (input.handoff_performed !== true) {
+        throw err(
+          'ATTESTATION_MISSING',
+          'A handoff_performed:true attestation is required to record a client handoff',
+          422,
+          { submittal_id, missing_field: 'handoff_performed' },
+        );
+      }
+      if (input.delivery_channel === null || input.delivery_channel === undefined) {
+        throw err(
+          'SUBMITTAL_DELIVERY_CHANNEL_INVALID',
+          'delivery_channel is required to record the manual client handoff',
+          422,
+          { submittal_id, reason: 'required' },
+        );
+      }
+
       // 3b — L1-C (Rule 1) SUBMIT gate: a new client submittal is allowed only
       // when the requisition's RecruitingStatus is `open`. Read in-tx via the
       // same raw-SQL route isRestrictedAtClient uses (no CIP RequisitionStateReader
@@ -383,6 +469,27 @@ export class SubmitTalentToClientService {
         talent_id: talent_record_id,
         requisition_id,
       });
+      // INC-1c (TIP-E2E) — provisional MANDATORY-RTR interim product policy,
+      // fail-closed BEFORE slot consumption / state mutation / outbox. Enforced only
+      // when explicitly activated (input.rtr_disclosure_mandatory); INACTIVE by
+      // default so existing valid flows are unchanged. Reuses the DOC-5 authority's
+      // same-document executed-RTR predicate (no fabricated verification); the
+      // client/company binding is transitive via this requisition's single owner.
+      if (input.rtr_disclosure_mandatory === true) {
+        const mandatoryRtr = await this.documentReadiness.assessMandatory({
+          tenant_id,
+          talent_id: talent_record_id,
+          requisition_id,
+        });
+        if (!mandatoryRtr.satisfied) {
+          throw err(
+            mandatoryRtr.deny ?? 'SUBMITTAL_RTR_NOT_EXECUTED',
+            'A valid executed Right-to-Represent (RTR) is required before client disclosure',
+            409,
+            { submittal_id, requisition_id, reason: 'rtr_mandatory_not_executed' },
+          );
+        }
+      }
       const decision = evaluateEligibility(inputs, {
         now: new Date(),
         consumed_count: consumedRows[0]?.n ?? 0,
@@ -484,11 +591,12 @@ export class SubmitTalentToClientService {
         );
       }
 
-      // SW-2 (R4-B) — validate the ACTUAL delivery channel (when provided) against the
-      // requisition's SubmittalAuthority EXPECTATION. V1 has no outbound connector, so
+      // SW-2 (R4-B) — validate the ACTUAL delivery channel against the requisition's
+      // SubmittalAuthority EXPECTATION. V1 has no outbound connector, so
       // `aramo_connector` is refused; CLIENT_VMS expects `manual_vms`; CLIENT_MANUAL /
-      // ARAMO accept any manual channel (manual recording is the V1 reality). Channel
-      // is OPTIONAL (legacy callers omit it); only a PROVIDED channel is validated.
+      // ARAMO accept any manual channel (manual recording is the V1 reality). INC-1d:
+      // presence is now REQUIRED (enforced above, before slot consumption); the guard
+      // below stays as a defensive narrow — a non-null channel always validates here.
       const deliveryChannel = input.delivery_channel ?? null;
       if (deliveryChannel !== null) {
         const invalid = (reason: string, message: string) =>

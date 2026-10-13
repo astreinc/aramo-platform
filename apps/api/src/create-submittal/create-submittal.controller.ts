@@ -5,16 +5,20 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import {
   AramoError,
   hashCanonicalizedBody,
   RequestId,
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
-import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { RequireScopes, RequireSiteMatch, RolesGuard } from '@aramo/authorization';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { IdempotencyService } from '@aramo/consent';
+import { RequisitionRepository } from '@aramo/requisition';
 import type {
   CreateSubmittalRequestDto,
   CreateSubmittalResponseDto,
@@ -38,22 +42,39 @@ const UUID_REGEX =
 // Refusal codes flow up from the orchestrator/repository and are re-bound to the
 // controller's request_id, including SUBMITTAL_NO_LIVE_PIPELINE_EPISODE (409) when
 // there is no live pipeline episode to derive the link from.
+// INC-1b (TIP-E2E) — tenant-capability parity with the canonical ATS stack:
+// EntitlementGuard + @RequireCapability('ats'). The create mutation is further
+// guarded by server-resolved requisition actor-visibility + site authorization
+// (createSubmittal Step 1b): job_id IS the requisition id, resolved under the
+// actor's visibility via RequisitionRepository.findVisibilityMetaById — a
+// lightweight visibility/site read (NOT the detail-enriched findByIdForActor,
+// which would drag capacity/placement reads into a pure authz gate). This runs
+// BEFORE idempotency replay and before the
+// orchestrator mutation, so neither a replayed key nor the create itself can
+// bypass a site/visibility denial. @RequireSiteMatch() opts the route into the
+// RolesGuard site axis; create is body-only (no path/query site_id) so that
+// comparison is a no-op and the authoritative server-side assertion below is the
+// effective site control.
 @Controller('v1/submittals')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('ats')
 export class CreateSubmittalController {
   constructor(
     private readonly orchestrator: CreateSubmittalOrchestrator,
     private readonly idempotencyService: IdempotencyService,
+    private readonly requisitionRepository: RequisitionRepository,
   ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @RequireScopes('submittal:create')
+  @RequireSiteMatch()
   async createSubmittal(
     @Body() body: CreateSubmittalRequestDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<CreateSubmittalResponseDto> {
     // Step 1 — auth posture (recruiter-only).
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -74,6 +95,41 @@ export class CreateSubmittalController {
     });
     if (lookup.kind === 'replay') {
       return lookup.response_body as CreateSubmittalResponseDto;
+    }
+
+    // Step 4b — INC-1b server-resolved requisition visibility + site authorization,
+    // AFTER the idempotency replay/conflict short-circuit (a replay of a prior-authorized
+    // create returns the cached response) and BEFORE the create mutation. job_id IS the
+    // requisition id. findByIdForActor applies the A3 visibility predicate
+    // (requisition:read:all -> unfiltered; else the assigned/visible-client union); an
+    // out-of-visibility requisition yields null -> 404 (Ruling 2 parity), NEVER 403. The
+    // site assertion compares the AUTHORITATIVE requisition.site_id to a site-scoped
+    // principal's claim (null claim = tenant-wide, admitted on any site).
+    const job_id = this.assertSubmittalJobIsUuid(body?.job_id, requestId);
+    const visibility = await req.resolveVisibility!();
+    const requisition = await this.requisitionRepository.findVisibilityMetaById({
+      tenant_id: authContext.tenant_id,
+      id: job_id,
+      visibility,
+    });
+    if (requisition === null) {
+      throw new AramoError('NOT_FOUND', 'Requisition not found in tenant', 404, {
+        requestId,
+        details: { requisition_id: job_id },
+      });
+    }
+    if (
+      authContext.site_id !== null &&
+      authContext.site_id !== undefined &&
+      requisition.site_id !== null &&
+      requisition.site_id !== authContext.site_id
+    ) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Requisition belongs to a different site',
+        403,
+        { requestId, details: { reason: 'site_mismatch', requisition_id: job_id } },
+      );
     }
 
     // Step 5 — actor identity (the recruiter's UUID sub claim).
@@ -149,6 +205,19 @@ export class CreateSubmittalController {
         { requestId, details: { consumer_type: authContext.consumer_type } },
       );
     }
+  }
+
+  private assertSubmittalJobIsUuid(
+    value: string | undefined,
+    requestId: string,
+  ): string {
+    if (typeof value !== 'string' || !UUID_REGEX.test(value)) {
+      throw new AramoError('VALIDATION_ERROR', 'job_id must be a UUID', 400, {
+        requestId,
+        details: { invalid_field: 'job_id' },
+      });
+    }
+    return value;
   }
 
   private assertIdempotencyKeyRequired(

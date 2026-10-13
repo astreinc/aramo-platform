@@ -70,3 +70,50 @@ describe('DocumentReadinessGate — effective-policy applicability (the one cano
     expect(policy.resolveEffective).toHaveBeenCalledWith('t1', { company_id: 'co-9', requisition_id: 'req-1' });
   });
 });
+
+// =============================================================================
+// INC-1c (TIP-E2E) — assessMandatory: the provisional "RTR mandatory before client
+// disclosure" interim product policy. UNCONDITIONAL — fails closed for a missing
+// executed RTR EVEN when the effective client-submittal policy would not require it
+// (the key difference from the policy-conditional `assess`), using the SAME
+// same-document executed-RTR predicate (no fabricated verification).
+// =============================================================================
+describe('DocumentReadinessGate — INC-1c assessMandatory (unconditional RTR)', () => {
+  it('executed RTR exists → satisfied (and the policy is NEVER consulted)', async () => {
+    const { g, policy } = gate({ policy: notRequired, executed: true });
+    expect(await g.assessMandatory(INPUT)).toEqual({ satisfied: true, deny: null });
+    expect(policy.resolveEffective).not.toHaveBeenCalled();
+  });
+
+  it('no executed RTR → fail-closed deny SUBMITTAL_RTR_NOT_EXECUTED (policy never consulted)', async () => {
+    const { g, policy, companyId } = gate({ policy: notRequired, executed: false });
+    const v = await g.assessMandatory(INPUT);
+    expect(v.satisfied).toBe(false);
+    expect(v.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
+    expect(policy.resolveEffective).not.toHaveBeenCalled();
+    expect(companyId.findCompanyId).not.toHaveBeenCalled();
+  });
+
+  it('UNGOVERNED tenant (policy null) + no executed RTR → STILL denied (stricter than assess)', async () => {
+    const { g } = gate({ policy: null, executed: false });
+    // assess() would return satisfied:true here (ungated); assessMandatory fails closed.
+    expect(await g.assess(INPUT)).toEqual({ satisfied: true, deny: null });
+    const v = await g.assessMandatory(INPUT);
+    expect(v.satisfied).toBe(false);
+    expect(v.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
+  });
+
+  it('issues the same-document executed-RTR query bound to EXACT talent + requisition', async () => {
+    const { g, documents } = gate({ policy: null, executed: true });
+    await g.assessMandatory(INPUT);
+    expect(documents.findExecutedByTypeAndAssociations).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 't1',
+        associations: [
+          { resource_type: 'TALENT', resource_id: 'tal-1', relationship: 'SUBJECT' },
+          { resource_type: 'REQUISITION', resource_id: 'req-1', relationship: 'REGARDING' },
+        ],
+      }),
+    );
+  });
+});

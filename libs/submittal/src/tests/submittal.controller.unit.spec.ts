@@ -5,6 +5,7 @@ import { EvidenceRepository } from '@aramo/evidence';
 import type { AuthContextType } from '@aramo/auth';
 
 import { SubmittalController } from '../lib/submittal.controller.js';
+import type { PipelineSiteReader } from '../lib/ports/pipeline-site-reader.port.js';
 import { SubmittalRepository } from '../lib/submittal.repository.js';
 
 // M4 PR-3 §4.11 — controller unit spec.
@@ -33,10 +34,44 @@ function makeAuth(overrides: Partial<AuthContextType> = {}): AuthContextType {
     actor_kind: 'user',
     tenant_id: TENANT_A,
     scopes: [],
+    site_id: null,
     iat: 0,
     exp: 0,
     ...overrides,
   };
+}
+
+// INC-1b (TIP-E2E) — the global VisibilityInterceptor's resolver; null = see_all
+// (no filter → visibility check passes by default).
+function reqFake() {
+  return {
+    resolveVisibleRequisitionIds: vi.fn().mockResolvedValue(null),
+  } as unknown as never;
+}
+
+// INC-1b (TIP-E2E) — PipelineSiteReader fake. Resolves an authoritative pipeline
+// context matched to JOB_ID so the chain-consistency + site + visibility
+// assertions pass by default; override per-test for the negative cases.
+function mockPipelineSiteReader(
+  over: Partial<{ site_id: string | null; requisition_id: string; talent_record_id: string }> = {},
+): PipelineSiteReader {
+  return {
+    resolveForAuthorization: vi.fn().mockResolvedValue({
+      site_id: null,
+      requisition_id: JOB_ID,
+      talent_record_id: TALENT_A,
+      ...over,
+    }),
+  } as unknown as PipelineSiteReader;
+}
+
+// INC-1b (TIP-E2E) — the submittal auth-context read the lifecycle authz helper
+// calls (pipeline link + requisition id) before any mutation.
+function authCtxRead() {
+  return vi.fn().mockResolvedValue({
+    pipeline_id: '77770000-0000-7000-8000-000000000001',
+    job_id: JOB_ID,
+  });
 }
 
 
@@ -113,10 +148,11 @@ function buildConfirm(): ConfirmMockSetup {
   const mockRepo = {
     createSubmittal: vi.fn(),
     confirmSubmittal,
+    findAuthContextById: authCtxRead(),
   } as unknown as SubmittalRepository;
   const mockIdempotency = { lookup, persist } as unknown as IdempotencyService;
   const mockEvidence = { findById: vi.fn() } as unknown as EvidenceRepository;
-  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger());
+  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger(), mockPipelineSiteReader());
   return { controller, confirmSubmittal, lookup, persist };
 }
 
@@ -195,6 +231,7 @@ describe('SubmittalController.confirmSubmittal (unit)', () => {
           IDEMPOTENCY_KEY,
           makeAuth(),
           REQUEST_ID,
+          reqFake(),
         );
         throw new Error('expected throw');
       } catch (err) {
@@ -203,6 +240,88 @@ describe('SubmittalController.confirmSubmittal (unit)', () => {
       }
       expect(local.confirmSubmittal).not.toHaveBeenCalled();
     }
+  });
+});
+
+// =============================================================================
+// INC-1b (TIP-E2E) — lifecycle-mutation authorization negative controls.
+// Proves site + requisition-visibility + pipeline-linkage are enforced BEFORE any
+// mutation (confirmSubmittal mock NEVER called on denial = no side effects).
+// =============================================================================
+describe('SubmittalController lifecycle authorization (INC-1b negative controls)', () => {
+  function buildAuthz(reader: PipelineSiteReader) {
+    const confirmSubmittal = vi.fn().mockResolvedValue({ submittal: {}, event: {} });
+    const mockRepo = {
+      confirmSubmittal,
+      findAuthContextById: authCtxRead(),
+    } as unknown as SubmittalRepository;
+    const mockIdempotency = {
+      lookup: vi.fn().mockResolvedValue({ kind: 'proceed' }),
+      persist: vi.fn(),
+    } as unknown as IdempotencyService;
+    const mockEvidence = { findById: vi.fn() } as unknown as EvidenceRepository;
+    const controller = new SubmittalController(
+      mockRepo,
+      mockIdempotency,
+      mockEvidence,
+      makeMockLogger(),
+      reader,
+    );
+    return { controller, confirmSubmittal };
+  }
+  // resolveVisibleRequisitionIds resolves a ReadonlySet (null = see_all), matching the
+  // VisibilityInterceptor contract the controller consumes (`.has`, not `.includes`).
+  const reqWithVisible = (ids: string[] | null) =>
+    ({
+      resolveVisibleRequisitionIds: vi.fn().mockResolvedValue(ids === null ? null : new Set(ids)),
+    }) as unknown as never;
+
+  it('cross-site: site-scoped actor + pipeline in a different site → 403, no mutation', async () => {
+    const { controller, confirmSubmittal } = buildAuthz(mockPipelineSiteReader({ site_id: 'site-B' }));
+    await expect(
+      controller.confirmSubmittal(
+        SUBMITTAL_ID,
+        { attestations: makeAttestations() },
+        IDEMPOTENCY_KEY,
+        makeAuth({ site_id: 'site-A' }),
+        REQUEST_ID,
+        reqWithVisible(null),
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(confirmSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('hidden requisition: actor visible set excludes the job → 404, no mutation', async () => {
+    const { controller, confirmSubmittal } = buildAuthz(mockPipelineSiteReader());
+    await expect(
+      controller.confirmSubmittal(
+        SUBMITTAL_ID,
+        { attestations: makeAttestations() },
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+        reqWithVisible(['99999999-9999-7999-8999-999999999999']),
+      ),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(confirmSubmittal).not.toHaveBeenCalled();
+  });
+
+  it('invalid pipeline linkage: null pipeline context → 409, no mutation (fail-closed)', async () => {
+    const reader = {
+      resolveForAuthorization: vi.fn().mockResolvedValue(null),
+    } as unknown as PipelineSiteReader;
+    const { controller, confirmSubmittal } = buildAuthz(reader);
+    await expect(
+      controller.confirmSubmittal(
+        SUBMITTAL_ID,
+        { attestations: makeAttestations() },
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+        reqWithVisible(null),
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(confirmSubmittal).not.toHaveBeenCalled();
   });
 });
 
@@ -318,7 +437,7 @@ function buildGet(): GetMockSetup {
   const mockEvidence = {
     findById: evidenceFindById,
   } as unknown as EvidenceRepository;
-  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger());
+  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger(), mockPipelineSiteReader());
   return { controller, findById, findByIdForActor, evidenceFindById };
 }
 
@@ -540,10 +659,11 @@ function buildRevoke(): RevokeMockSetup {
     createSubmittal: vi.fn(),
     confirmSubmittal: vi.fn(),
     revokeSubmittal,
+    findAuthContextById: authCtxRead(),
   } as unknown as SubmittalRepository;
   const mockIdempotency = { lookup, persist } as unknown as IdempotencyService;
   const mockEvidence = { findById: vi.fn() } as unknown as EvidenceRepository;
-  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger());
+  const controller = new SubmittalController(mockRepo, mockIdempotency, mockEvidence, makeMockLogger(), mockPipelineSiteReader());
   return { controller, revokeSubmittal, lookup, persist };
 }
 
@@ -614,6 +734,7 @@ describe('SubmittalController.revokeSubmittal (unit)', () => {
       IDEMPOTENCY_KEY,
       makeAuth(),
       REQUEST_ID,
+      reqFake(),
     );
     expect(result.submittal.state).toBe('revoked');
     expect(result.evidence_package_mutated).toBe(false);
@@ -674,6 +795,7 @@ function buildLookup(): LookupSetup {
     mockIdempotency,
     mockEvidence,
     makeMockLogger(),
+    mockPipelineSiteReader(),
   );
   return { controller, findByTenantTalentJobForActor };
 }

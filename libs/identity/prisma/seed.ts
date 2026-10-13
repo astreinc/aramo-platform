@@ -433,6 +433,10 @@ export const SEED_IDS = {
     'saved-list:create': '01900000-0000-7000-8000-000000001401',
     'saved-list:edit': '01900000-0000-7000-8000-000000001402',
     'saved-list:delete': '01900000-0000-7000-8000-000000001403',
+    // INC-1a (TIP-E2E) — examination:create mint scope (recruiter-gated
+    // examine endpoint). Dedicated clear node 0x1404 (append-don't-renumber;
+    // all prior scope-node ranges untouched). Order mirrors SEED_SCOPE_KEYS.
+    'examination:create': '01900000-0000-7000-8000-000000001404',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2334,6 +2338,40 @@ const SAVED_LIST_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// INC-1a (TIP-E2E) — examination:create mint-scope grants. Authorized role set
+// derived (least-privilege) = roles holding BOTH examination:read AND
+// submittal:create (the recruiter-gated examine endpoint's mint tier):
+// tenant_owner, tenant_admin, account_manager, recruiting_manager, recruiter,
+// lead_recruiter. back_office + delivery_manager hold examination:read but NO
+// submittal:create -> DENIED (they cannot mint). super_admin receives it via its
+// all-scopes bundle. 6 explicit grants.
+export const EXAMINATION_CREATE_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['tenant_owner', ['examination:create']],
+  ['tenant_admin', ['examination:create']],
+  ['account_manager', ['examination:create']],
+  ['recruiting_manager', ['examination:create']],
+  ['recruiter', ['examination:create']],
+  ['lead_recruiter', ['examination:create']],
+];
+
+// Deterministic RoleScope row ids for the 6 examination:create grants. Disjoint
+// range 0x1410+ (next clear range after saved-list's 0x1370..0x138c; all prior
+// ranges untouched — append-don't-renumber). Iteration order pins the assignment.
+const EXAMINATION_CREATE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1410;
+  for (const [role, scopes] of EXAMINATION_CREATE_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // COMM PART A — Engagement Policy OVERRIDE grants. engagement:policy:override ->
 // tenant_admin + tenant_owner (the authorized-user/manager tier; recruiter/
 // account_manager excluded). A DEDICATED, DISJOINT bundle (range 0xf40+,
@@ -2983,6 +3021,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['calendar:event-delete'], 'calendar:event-delete', 'Delete a calendar event (tenant_admin only — Ruling 1)');
   await upsertScope(prisma, SEED_IDS.scopes['activity:read'], 'activity:read', 'Read the activity log');
   await upsertScope(prisma, SEED_IDS.scopes['examination:read'], 'examination:read', 'Read examination output (read-only Core output)');
+  await upsertScope(prisma, SEED_IDS.scopes['examination:create'], 'examination:create', 'Create (mint) a talent-job examination (INC-1a; recruiter-gated examine endpoint).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create'], 'requisition:create', 'Create a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:edit'], 'requisition:edit', 'Edit a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:delete'], 'requisition:delete', 'Delete a requisition (tenant_admin only — Ruling 1)');
@@ -3754,6 +3793,26 @@ export async function runIdentitySeed(
       const rsId = SAVED_LIST_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`CRM-1 SavedList-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // INC-1a (TIP-E2E) — examination:create RoleScope assignments — 6 rows
+  // (examination:create × the derived mint tier) per
+  // EXAMINATION_CREATE_SEED_BUNDLES. UUID range 0x1410+ (append-don't-renumber).
+  // super_admin receives examination:create via its all-scopes bundle (not here).
+  for (const [roleKey, scopeKeys] of EXAMINATION_CREATE_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = EXAMINATION_CREATE_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`INC-1a Examination-Create-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
