@@ -27,6 +27,7 @@ import { AppModule } from '../app.module.js';
 import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipeline.fixture.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureAtsEntitlement } from './ats-entitlement.js';
 
 // M4 PR-3 §4.7 — Companion negative-shape integration test for the new
 // POST /v1/submittals endpoint. F23 standing pattern: a Vitest end-to-end
@@ -290,6 +291,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Inc-3 PR-3.7 — the global write-freeze interceptor reads identity.Tenant
       // status on every mutation; seed an ACTIVE tenant for each forged tenant_id.
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+      // INC-1b — grant the ats capability now required by the examine/submittal guards.
+      await ensureAtsEntitlement((s, p) => setup.query(s, p), TENANT_ID, ROOT);
 
       // SW-1 remediation — provision the Pipeline schema + a live episode so the
       // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
@@ -375,7 +378,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['submittal:create']),
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['submittal:create', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()

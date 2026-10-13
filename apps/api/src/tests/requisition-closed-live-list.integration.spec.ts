@@ -25,6 +25,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { ensureAtsEntitlement } from './ats-entitlement.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
@@ -174,6 +175,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
 
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
+      // INC-1b — grant the ats capability now required by the examine/submittal guards.
+      await ensureAtsEntitlement((s, p) => setup.query(s, p), TENANT_ID, ROOT);
 
       // job_domain.Job(id = R)
       await setup.query(
@@ -254,7 +257,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consumer_type: 'recruiter',
         actor_kind: 'user',
         tenant_id: TENANT_ID,
-        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, []),
+        authz_version: __authzTestResolver.grant(TENANT_ID, RECRUITER_ID, ['examination:create', 'requisition:read:all']),
       })
         .setProtectedHeader({ alg: ALG })
         .setIssuedAt()
