@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 79 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 80 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -73,6 +73,7 @@
     "@aramo/talent-embedding": "./libs/talent-embedding/src/index.ts",
     "@aramo/talent-evidence": "./libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "./libs/talent-extraction/src/index.ts",
+    "@aramo/talent-intelligence": "./libs/talent-intelligence/src/index.ts",
     "@aramo/talent-reconcile": "./libs/talent-reconcile/src/index.ts",
     "@aramo/talent-reconcile-signal": "./libs/talent-reconcile-signal/src/index.ts",
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
@@ -1499,6 +1500,11 @@
       "mapSkillToClaim",
       "mapWorkHistoryToClaim",
       "normalizeSkillSurfaceForm"
+    ],
+    "@aramo/talent-intelligence": [
+      "AUTHORIZED_TALENT_RETRIEVAL_READ_PORT",
+      "REQUISITION_CONTEXT_READ_PORT",
+      "TALENT_DOSSIER_READ_PORT"
     ],
     "@aramo/talent-reconcile": [
       "CONTRADICTION_DETECTION_BATCH_SIZE",
@@ -3906,6 +3912,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-requisition-context.adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-requisition-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5291,6 +5309,7 @@
         "project": "talent-evidence",
         "status": "excluded"
       },
+      { "project": "talent-intelligence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
@@ -5602,6 +5621,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-embedding-consent.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-authorized-talent.adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8106,6 +8131,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-requisition-context.adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-requisition-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8536,6 +8573,7 @@
       },
       { "project": "talent-record", "status": "production" }
     ],
+    "@aramo/talent-intelligence": [{ "project": "api", "status": "production" }],
     "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
     "@aramo/talent-reconcile-signal": [
       { "project": "talent-reconcile", "status": "production" },
@@ -8654,6 +8692,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-singlebox.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-intelligence-authorized-talent.adapter.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9466,6 +9510,13 @@
       "root": "libs/talent-extraction",
       "sourceRoot": "libs/talent-extraction/src",
       "tags": ["scope:cip"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "talent-intelligence",
+      "root": "libs/talent-intelligence",
+      "sourceRoot": "libs/talent-intelligence/src",
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {
