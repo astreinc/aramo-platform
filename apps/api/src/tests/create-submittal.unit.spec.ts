@@ -307,7 +307,10 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
       ),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     expect(local.create).not.toHaveBeenCalled();
-    expect(local.lookup).not.toHaveBeenCalled();
+    // Authz runs AFTER the idempotency lookup (so a replay of a prior-authorized create
+    // short-circuits before re-authorizing); the read-only lookup therefore ran, but the
+    // mutation (orchestrator.create) did not — the no-side-effect invariant on denial.
+    expect(local.lookup).toHaveBeenCalledTimes(1);
   });
 
   it('hidden requisition: job_id not in actor visible set → NOT_FOUND (404), no orchestration', async () => {
@@ -323,7 +326,8 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
       ),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     expect(local.create).not.toHaveBeenCalled();
-    expect(local.lookup).not.toHaveBeenCalled();
+    // Authz runs AFTER the idempotency lookup; the read-only lookup ran, the mutation did not.
+    expect(local.lookup).toHaveBeenCalledTimes(1);
   });
 
   it('valid access: site-scoped actor + requisition in the SAME site → orchestration proceeds', async () => {

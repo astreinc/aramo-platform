@@ -448,8 +448,11 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
       .addInteraction()
       .given('an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist')
       .uponReceiving('a submit-to-ats on a created submittal')
+      // INC-1d — send the attested handoff body so the request clears the mandatory
+      // attestation gate and reaches the state-machine check (the point of this test);
+      // an unattested body would short-circuit at ATTESTATION_MISSING instead.
       .withRequest('POST', `/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, (b) => {
-        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000302')).jsonBody(EMPTY_BODY);
+        b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000302')).jsonBody(HANDOFF_BODY);
       })
       .willRespondWith(422, (b) => {
         b.jsonBody(errorBody('SUBMITTAL_STATE_INVALID', 'Illegal submittal state transition'));
@@ -458,7 +461,7 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
         const res = await fetch(`${mock.url}/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, {
           method: 'POST',
           headers: jsonHeaders('00000000-0000-7000-8000-5f0000000302'),
-          body: JSON.stringify(EMPTY_BODY),
+          body: JSON.stringify(HANDOFF_BODY),
         });
         expect(res.status).toBe(422);
         const body = (await res.json()) as { error: { code: string } };

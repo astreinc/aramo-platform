@@ -315,12 +315,6 @@ export class SubmittalController {
       );
     }
 
-    // INC-1b (TIP-E2E) — site + requisition-visibility authorization on the
-    // authoritative submittal->pipeline->requisition chain, enforced BEFORE the
-    // confirm transition / attestation gate / event write (fail-closed; a denied
-    // request makes no transition and writes no event).
-    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
-
     // Step 4 — attestations manual check. The DTO documents the locked
     // `true` values via TS type literals + OpenAPI const; runtime
     // enforcement happens here so we can throw the directive-mandated
@@ -360,6 +354,14 @@ export class SubmittalController {
     if (lookup.kind === 'replay') {
       return lookup.response_body as ConfirmSubmittalResponseDto;
     }
+
+    // INC-1b (TIP-E2E) — site + requisition-visibility authorization on the
+    // authoritative submittal->pipeline->requisition chain, enforced AFTER the
+    // idempotency replay/conflict short-circuit and BEFORE the confirm transition /
+    // event write (fail-closed; a denied request makes no transition, writes no event).
+    // Placed after idempotency (matching revoke / mark-ready / confirm-ats) so a replay
+    // of a prior-authorized confirm returns the cached response instead of re-authorizing.
+    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
 
     // Step 6 — repository confirm. AramoErrors raised by the 8-step
     // flow already carry the correct requestId (threaded via the input

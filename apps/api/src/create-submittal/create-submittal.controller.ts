@@ -77,14 +77,32 @@ export class CreateSubmittalController {
     // Step 1 — auth posture (recruiter-only).
     this.assertConsumerIsRecruiter(authContext, requestId);
 
-    // Step 1b — INC-1b server-resolved requisition visibility + site authorization,
-    // BEFORE idempotency replay and the create mutation (fail-closed: a replay
-    // cannot bypass a denial). job_id IS the requisition id. findByIdForActor
-    // applies the A3 visibility predicate (requisition:read:all -> unfiltered;
-    // else the assigned/visible-client union); an out-of-visibility requisition
-    // yields null -> 404 (Ruling 2 parity), NEVER 403. The site assertion then
-    // compares the AUTHORITATIVE requisition.site_id to a site-scoped principal's
-    // claim (null claim = tenant-wide, admitted on any site).
+    // Step 2 — Idempotency-Key required (consent grant/revoke precedent).
+    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
+
+    // Step 3 — request body hash for replay-vs-conflict detection.
+    const requestHash = hashCanonicalizedBody(body as unknown);
+
+    // Step 4 — idempotency lookup (replay if matching, conflict if hash differs,
+    // otherwise proceed).
+    const lookup = await this.idempotencyService.lookup({
+      tenant_id: authContext.tenant_id,
+      key,
+      request_hash: requestHash,
+      requestId,
+    });
+    if (lookup.kind === 'replay') {
+      return lookup.response_body as CreateSubmittalResponseDto;
+    }
+
+    // Step 4b — INC-1b server-resolved requisition visibility + site authorization,
+    // AFTER the idempotency replay/conflict short-circuit (a replay of a prior-authorized
+    // create returns the cached response) and BEFORE the create mutation. job_id IS the
+    // requisition id. findByIdForActor applies the A3 visibility predicate
+    // (requisition:read:all -> unfiltered; else the assigned/visible-client union); an
+    // out-of-visibility requisition yields null -> 404 (Ruling 2 parity), NEVER 403. The
+    // site assertion compares the AUTHORITATIVE requisition.site_id to a site-scoped
+    // principal's claim (null claim = tenant-wide, admitted on any site).
     const job_id = this.assertSubmittalJobIsUuid(body?.job_id, requestId);
     const visibility = await req.resolveVisibility!();
     const requisition = await this.requisitionRepository.findByIdForActor({
@@ -110,24 +128,6 @@ export class CreateSubmittalController {
         403,
         { requestId, details: { reason: 'site_mismatch', requisition_id: job_id } },
       );
-    }
-
-    // Step 2 — Idempotency-Key required (consent grant/revoke precedent).
-    const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
-
-    // Step 3 — request body hash for replay-vs-conflict detection.
-    const requestHash = hashCanonicalizedBody(body as unknown);
-
-    // Step 4 — idempotency lookup (replay if matching, conflict if hash differs,
-    // otherwise proceed).
-    const lookup = await this.idempotencyService.lookup({
-      tenant_id: authContext.tenant_id,
-      key,
-      request_hash: requestHash,
-      requestId,
-    });
-    if (lookup.kind === 'replay') {
-      return lookup.response_body as CreateSubmittalResponseDto;
     }
 
     // Step 5 — actor identity (the recruiter's UUID sub claim).
