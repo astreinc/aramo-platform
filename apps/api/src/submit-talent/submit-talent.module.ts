@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { createAramoLogger } from '@aramo/common';
 import { ConsentModule } from '@aramo/consent';
+import { EntitlementModule } from '@aramo/entitlement';
 import { SubmittalModule } from '@aramo/submittal';
 import {
   SubmittalEligibilityModule,
@@ -22,7 +23,7 @@ import { SubmitTalentToClientService } from './submit-talent.service.js';
 // transaction on the submittal-eligibility connection (bound as 'SubmitTalentDb')
 // and issues cross-schema parameterized raw SQL confined to that boundary.
 @Module({
-  imports: [AuthModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule, DocumentReadinessModule, ClientSubmittalPolicyModule],
+  imports: [AuthModule, EntitlementModule, SubmittalEligibilityModule, SubmittalModule, ConsentModule, EngagementGateModule, DocumentReadinessModule, ClientSubmittalPolicyModule],
   controllers: [SubmitTalentController],
   providers: [
     SubmitTalentToClientService,

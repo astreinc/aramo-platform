@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
+import { EntitlementModule } from '@aramo/entitlement';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { SubmittalModule } from '@aramo/submittal';
@@ -25,6 +26,7 @@ import { CreateSubmittalOrchestrator } from './create-submittal.service.js';
   imports: [
     AuthModule,
     ConsentModule,
+    EntitlementModule,
     PipelineModule,
     RequisitionModule,
     SubmittalModule,
