@@ -468,6 +468,9 @@ export const SEED_SCOPE_KEYS = [
   'saved-list:create',
   'saved-list:edit',
   'saved-list:delete',
+  // INC-1a (TIP-E2E) — examination mint scope (id-map node 0x1404). Order
+  // mirrors the SEED_IDS.scopes id-map (append-last).
+  'examination:create',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 
