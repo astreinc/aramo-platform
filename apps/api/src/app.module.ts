@@ -83,6 +83,7 @@ import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attac
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
 import { PipelineSiteReaderModule } from './pipeline-site-reader/pipeline-site-reader.module.js';
+import { TalentIntelligenceReadModule } from './talent-intelligence/talent-intelligence-read.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
@@ -270,6 +271,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // requisition controller wherever it resolves.
     CompanyClientCheckModule,
     PipelineSiteReaderModule,
+    TalentIntelligenceReadModule,
     // PR-A4 Gate 5 — third ATS-domain batch: talent-record + attachment.
     // TalentRecordModule is imported BEFORE AttachmentModule because
     // AttachmentModule depends on it (attachment -> talent-record edge;

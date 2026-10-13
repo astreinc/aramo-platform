@@ -99,6 +99,7 @@
       "@aramo/talent-reconcile": ["./libs/talent-reconcile/src/index.ts"],
       "@aramo/talent-reconcile-signal": ["./libs/talent-reconcile-signal/src/index.ts"],
       "@aramo/talent-record": ["./libs/talent-record/src/index.ts"],
+      "@aramo/talent-intelligence": ["./libs/talent-intelligence/src/index.ts"],
       "@aramo/talent-trust": ["./libs/talent-trust/src/index.ts"],
       "@aramo/task": ["./libs/task/src/index.ts"],
       "@aramo/visibility": ["./libs/visibility/src/index.ts"]
