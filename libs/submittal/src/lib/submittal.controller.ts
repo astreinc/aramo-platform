@@ -130,10 +130,10 @@ export class SubmittalController {
     // @Global). A lifecycle mutation must not proceed without site/visibility checks.
     if (this.pipelineSiteReader === undefined || this.pipelineSiteReader === null) {
       throw new AramoError(
-        'SUBMITTAL_AUTHORIZATION_UNAVAILABLE',
+        'INTERNAL_ERROR',
         'Submittal lifecycle authorization dependency is not available',
         500,
-        { requestId, details: { submittal_id } },
+        { requestId, details: { submittal_id, reason: 'pipeline_site_reader_unavailable' } },
       );
     }
     const sub = await this.submittalRepository.findAuthContextById({
