@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
+import { EntitlementModule } from '@aramo/entitlement';
 import { SubmittalModule } from '@aramo/submittal';
 
 import { TalentJourneyAuditController } from './talent-journey-audit.controller.js';
@@ -11,7 +12,7 @@ import { TalentJourneyAuditService } from './talent-journey-audit.service.js';
 //                       TalentSubmittalEventRepository (immutable transition timeline)
 // Read-only: no new repository, no new event authority, no migration.
 @Module({
-  imports: [AuthModule, SubmittalModule],
+  imports: [AuthModule, EntitlementModule, SubmittalModule],
   controllers: [TalentJourneyAuditController],
   providers: [TalentJourneyAuditService],
 })
