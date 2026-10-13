@@ -3893,7 +3893,6 @@
     "libs/submittal/src/lib/dto/mark-ready-request.dto.ts",
     "libs/submittal/src/lib/dto/revoke-submittal-request.dto.ts",
     "libs/submittal/src/lib/dto/revoke-submittal-response.dto.ts",
-    "libs/submittal/src/lib/dto/submit-to-ats-request.dto.ts",
     "libs/submittal/src/lib/dto/talent-submittal-event.view.ts",
     "libs/submittal/src/lib/dto/talent-submittal-record.view.ts",
     "libs/submittal/src/lib/ports/pipeline-site-reader.port.ts",

@@ -32,7 +32,7 @@ const UUID_REGEX =
 
 // SW-1 (Submittal Workspace, R1-A) — the re-pointed authoritative "create submittal"
 // route. POST /v1/submittals now lives in apps/api (the composition-root pattern,
-// mirroring the submit-to-ats re-point) so the authoritative pipeline_id is derived
+// mirroring the submit-to-client re-point) so the authoritative pipeline_id is derived
 // SERVER-SIDE from the sole live Pipeline episode; the HTTP caller never supplies
 // it. The legacy @Post() handler was removed from the libs/submittal
 // SubmittalController (no parallel create path). Public contract preserved verbatim:

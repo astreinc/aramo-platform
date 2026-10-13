@@ -87,7 +87,7 @@ export function SubmittalWizard() {
   // of the SAME logical action reuses its key (silent-replay), while a
   // distinct action (e.g. mark-ready vs revoke) gets its own key.
   // SW-5/D-1 — the Submittal Workspace now owns the MarkReady → Submit journey, so
-  // the wizard no longer mints markReady/submitToAts keys: a handoff_draft /
+  // the wizard no longer mints markReady/submitToClient keys: a handoff_draft /
   // ready_for_review submittal is redirected into the Workspace below. The wizard
   // retains Create (+ the create-time attestations) and confirm/placement.
   const keys = useMemo(

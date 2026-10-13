@@ -498,7 +498,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // M5 PR-8b2 Ruling 12: M4 /confirm endpoint semantic post-rename
       // fires created -> handoff_draft (NOT 'submitted'). confirmed_at
       // stays null at this transition; populates at the new
-      // /submit-to-ats transition per Ruling 6.
+      // /submit-to-client transition per Ruling 6.
       const talentH = 'aaaaaaaa-0000-7000-8000-0000000a1001';
       const jobH = 'cccccccc-0000-7000-8000-0000000c1001';
       const examH = '11110000-0000-7000-8000-0000000e1001';

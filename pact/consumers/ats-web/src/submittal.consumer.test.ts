@@ -25,7 +25,7 @@ import {
 //   - illegal-state — SUBMITTAL_STATE_INVALID 422 (fresh-read literal from
 //     libs/submittal/src/lib/submittal.repository.ts; NOT the selection
 //     literal) on the 4 transitioning POSTs (confirm, mark-ready,
-//     submit-to-ats, confirm-ats);
+//     submit-to-client, confirm-ats);
 //   - idempotency — replay + conflict for every POST requiring an
 //     Idempotency-Key (6 POSTs);
 //   - refusal (Lead Gate-5 ruling, ship 7): EXAMINATION_PINNED_OUTDATED
@@ -86,10 +86,9 @@ const CREATE_BODY = {
 };
 const EMPTY_BODY = {};
 
-// INC-1d (TIP-E2E) — the manual-handoff attestation body the send path now REQUIRES
-// (handoff_performed:true + a manual delivery_channel). The deprecated submit-to-ats
-// alias routes through the same command, so it enforces the same policy (directive
-// §6); its historical empty-body contract is superseded for the happy path.
+// INC-1d (TIP-E2E) — the manual-handoff attestation body the submit-to-client send
+// path REQUIRES (handoff_performed:true + a manual delivery_channel). The mandatory
+// attestation supersedes the historical empty-body contract for the happy path.
 const HANDOFF_BODY = { handoff_performed: true, delivery_channel: 'manual_email' };
 const ATTESTATIONS_OK = {
   attestations: {
@@ -417,22 +416,22 @@ describe('ats-web → POST /v1/submittals/:id/mark-ready', () => {
 });
 
 // ======================================================================
-// POST /v1/submittals/:id/submit-to-ats — happy + illegal-state + idempotency
+// POST /v1/submittals/:id/submit-to-client — happy + illegal-state + idempotency
 // ======================================================================
-describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
+describe('ats-web → POST /v1/submittals/:id/submit-to-client', () => {
   it('returns 200 advancing ready_for_review -> submitted_to_client', async () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a ready_for_review submittal exist')
-      .uponReceiving('a submit-to-ats on a ready_for_review submittal')
-      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-ats`, (b) => {
+      .uponReceiving('a submit-to-client on a ready_for_review submittal')
+      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-client`, (b) => {
         b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000301')).jsonBody(HANDOFF_BODY);
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_client', { confirmedAt: true }) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
+        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-client`, {
           method: 'POST',
           headers: jsonHeaders('00000000-0000-7000-8000-5f0000000301'),
           body: JSON.stringify(HANDOFF_BODY),
@@ -447,18 +446,18 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist')
-      .uponReceiving('a submit-to-ats on a created submittal')
+      .uponReceiving('a submit-to-client on a created submittal')
       // INC-1d — send the attested handoff body so the request clears the mandatory
       // attestation gate and reaches the state-machine check (the point of this test);
       // an unattested body would short-circuit at ATTESTATION_MISSING instead.
-      .withRequest('POST', `/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, (b) => {
+      .withRequest('POST', `/v1/submittals/${SUB_CREATED_ID}/submit-to-client`, (b) => {
         b.headers(jsonHeaders('00000000-0000-7000-8000-5f0000000302')).jsonBody(HANDOFF_BODY);
       })
       .willRespondWith(422, (b) => {
         b.jsonBody(errorBody('SUBMITTAL_STATE_INVALID', 'Illegal submittal state transition'));
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/submittals/${SUB_CREATED_ID}/submit-to-ats`, {
+        const res = await fetch(`${mock.url}/v1/submittals/${SUB_CREATED_ID}/submit-to-client`, {
           method: 'POST',
           headers: jsonHeaders('00000000-0000-7000-8000-5f0000000302'),
           body: JSON.stringify(HANDOFF_BODY),
@@ -469,19 +468,19 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
       });
   });
 
-  it('submit-to-ats returns the cached response on Idempotency-Key replay', async () => {
+  it('submit-to-client returns the cached response on Idempotency-Key replay', async () => {
     await provider
       .addInteraction()
-      .given('a prior submittal-submit-to-ats response is cached under an Idempotency-Key')
-      .uponReceiving('a submit-to-ats replay with the same Idempotency-Key and body')
-      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-ats`, (b) => {
+      .given('a prior submittal-submit-to-client response is cached under an Idempotency-Key')
+      .uponReceiving('a submit-to-client replay with the same Idempotency-Key and body')
+      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-client`, (b) => {
         b.headers(jsonHeaders(K_SUBMIT_REPLAY)).jsonBody(EMPTY_BODY);
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ submittal: submittalView(SUB_READY_ID, 'submitted_to_client', { confirmedAt: true }) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
+        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-client`, {
           method: 'POST',
           headers: jsonHeaders(K_SUBMIT_REPLAY),
           body: JSON.stringify(EMPTY_BODY),
@@ -490,19 +489,19 @@ describe('ats-web → POST /v1/submittals/:id/submit-to-ats', () => {
       });
   });
 
-  it('submit-to-ats returns 409 IDEMPOTENCY_KEY_CONFLICT on a key reused with a different body', async () => {
+  it('submit-to-client returns 409 IDEMPOTENCY_KEY_CONFLICT on a key reused with a different body', async () => {
     await provider
       .addInteraction()
-      .given('an Idempotency-Key was used with a different submittal-submit-to-ats body')
-      .uponReceiving('a submit-to-ats with a conflicting Idempotency-Key')
-      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-ats`, (b) => {
+      .given('an Idempotency-Key was used with a different submittal-submit-to-client body')
+      .uponReceiving('a submit-to-client with a conflicting Idempotency-Key')
+      .withRequest('POST', `/v1/submittals/${SUB_READY_ID}/submit-to-client`, (b) => {
         b.headers(jsonHeaders(K_SUBMIT_CONFLICT)).jsonBody(EMPTY_BODY);
       })
       .willRespondWith(409, (b) => {
         b.jsonBody(errorBody('IDEMPOTENCY_KEY_CONFLICT', 'Idempotency-Key conflict'));
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-ats`, {
+        const res = await fetch(`${mock.url}/v1/submittals/${SUB_READY_ID}/submit-to-client`, {
           method: 'POST',
           headers: jsonHeaders(K_SUBMIT_CONFLICT),
           body: JSON.stringify(EMPTY_BODY),

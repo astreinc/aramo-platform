@@ -768,7 +768,7 @@ const PIPELINE_TI1DD_REQUISITION_RESUME_MIGRATION = resolve(
   ROOT,
   'libs/pipeline/prisma/migrations/20260920120000_talent_intel_1d_d_requisition_resume/migration.sql',
 );
-// L8-B1 — the submit-to-ats orchestrator touches the submittal_policy schema
+// L8-B1 — the submit-to-client orchestrator touches the submittal_policy schema
 // (RequisitionSubmittalPolicy / SubmittalConsumption / SubmittalPolicyEvent) and
 // reads client_talent_restriction; both schemas must exist in the provider DB.
 const SUBMITTAL_POLICY_INIT_MIGRATION = resolve(
@@ -1565,7 +1565,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // yet (substrate-only PR).
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalEvent" CASCADE');
       await c.query('TRUNCATE TABLE submittal."TalentSubmittalRecord" CASCADE');
-      // L8-B1 — the submit-to-ats orchestrator writes the pipeline mirror + the
+      // L8-B1 — the submit-to-client orchestrator writes the pipeline mirror + the
       // submittal_policy consumption/provenance; truncate so a prior interaction's
       // pipeline episode or consumption fact never leaks into the next.
       await c.query('TRUNCATE TABLE pipeline."PipelineStatusHistory" CASCADE');
@@ -3221,7 +3221,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         examinationId: ATSW_SUB_EXAM_ID,
         submittalId: params.submittalId,
       });
-      // Ruling 6: submit-to-ats populates confirmed_at (NULL -> non-NULL);
+      // Ruling 6: submit-to-client populates confirmed_at (NULL -> non-NULL);
       // it persists through 'confirmed'. A legitimately submitted_to_client /
       // confirmed row therefore ALWAYS carries confirmed_at — seed it so
       // the confirm-ats happy-path response projects a real timestamp
@@ -3476,7 +3476,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // byte-identity post-interaction, mirroring the
     // overrideStateIsolation pattern from M4 PR-5.
     // M5 PR-8b2 recovery — fast direct INSERT for state-handler seeding
-    // of the 3 new endpoints (mark-ready / submit-to-ats / confirm-ats).
+    // of the 3 new endpoints (mark-ready / submit-to-client / confirm-ats).
     // Unlike seedSubmittalRevokeFixture (which walks the full chain
     // including Requisition + Examination + EvidencePackage seeds), this
     // helper only INSERTs the TalentSubmittalRecord row directly at the
@@ -4008,7 +4008,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
-      // confirm/revoke/mark-ready/submit-to-ats/confirm-ats routes that
+      // confirm/revoke/mark-ready/submit-to-client/confirm-ats routes that
       // the retired thin-consumer pacts exercised. The 'ingestion:write'
       // entry is preserved for the legacy ingestion-typed interactions
       // that still assert this scope shape. Recruiter role in the
@@ -6112,8 +6112,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // --- POST /v1/submittals/:id/submit-to-ats ---
-      'an idempotency key has been recorded with a prior submittal-submit-to-ats response':
+      // --- POST /v1/submittals/:id/submit-to-client ---
+      'an idempotency key has been recorded with a prior submittal-submit-to-client response':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -6126,14 +6126,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      'an idempotency key has been recorded with a different submittal-submit-to-ats body':
+      'an idempotency key has been recorded with a different submittal-submit-to-client body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedIdempotencyKey(c, {
               id: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f89',
               key: '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b8211',
-              requestHash: 'pact-pr9-conflict-hash-submittal-submit-to-ats',
+              requestHash: 'pact-pr9-conflict-hash-submittal-submit-to-client',
             });
           });
         },
@@ -6496,13 +6496,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient((c) => resetAllRows(c));
       },
       // ===== M5 PR-8b2 §4.12 + recovery (3 new endpoints × 3 interactions = 9) =====
-      // Pact consumer interactions for /mark-ready, /submit-to-ats, /confirm-ats
+      // Pact consumer interactions for /mark-ready, /submit-to-client, /confirm-ats
       // use these `given(...)` strings. Each handler does a fast direct
       // INSERT of TalentSubmittalRecord rows in the requested pre-state
       // (no chain walks, no Requisition/Examination/EvidencePackage
       // seeds — these endpoints don't traverse cross-schema FKs).
       // The "in created state" key is shared across 3 invalid-state
-      // interactions (mark-ready/submit-to-ats/confirm-ats invalid-
+      // interactions (mark-ready/submit-to-client/confirm-ats invalid-
       // state tests); the handler seeds all 3 expected submittal_ids.
       'a recruiter has authenticated and a TalentSubmittalRecord in created state exists for the tenant':
         async () => {
@@ -6568,7 +6568,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      'a recruiter has authenticated and the submittal-submit-to-ats target does not exist for the tenant':
+      'a recruiter has authenticated and the submittal-submit-to-client target does not exist for the tenant':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -6948,7 +6948,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
       // -- the created-state fixture (entrustable, latest, with evidence).
       // Serves: find, get, evidence-package, confirm-happy, revoke-happy,
-      // attestation-missing, and the mark-ready/submit-to-ats/confirm-ats
+      // attestation-missing, and the mark-ready/submit-to-client/confirm-ats
       // illegal-state cases (all 422 from 'created').
       'an ats-web recruiter and a created submittal with a current entrustable examination and evidence package exist':
         async () => {
@@ -6978,11 +6978,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // -- ready_for_review fixture (submit-to-ats-happy + confirm-illegal).
+      // -- ready_for_review fixture (submit-to-client-happy + confirm-illegal).
       'an ats-web recruiter and a ready_for_review submittal exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          // L8-B1 (v1.2 + Amendment A2) — submit-to-ats now REQUIRES a linked LIVE
+          // L8-B1 (v1.2 + Amendment A2) — submit-to-client now REQUIRES a linked LIVE
           // pipeline (R-REFUSAL: pipeline-less submittals are refused). Seed a live
           // pipeline for the same (tenant, requisition, talent) and associate it AT
           // INSERT (the submittal state-machine trigger rejects a post-insert
@@ -7149,7 +7149,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      'a prior submittal-submit-to-ats response is cached under an Idempotency-Key':
+      'a prior submittal-submit-to-client response is cached under an Idempotency-Key':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
@@ -7166,14 +7166,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             });
           });
         },
-      'an Idempotency-Key was used with a different submittal-submit-to-ats body':
+      'an Idempotency-Key was used with a different submittal-submit-to-client body':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebIdempotencyKey(c, {
               id: '00000000-0000-7000-8000-c1000000c302',
               key: ATSW_SUB_K_SUBMIT_CONFLICT,
-              requestHash: 'pact-pc2-conflict-hash-submit-to-ats',
+              requestHash: 'pact-pc2-conflict-hash-submit-to-client',
             });
           });
         },

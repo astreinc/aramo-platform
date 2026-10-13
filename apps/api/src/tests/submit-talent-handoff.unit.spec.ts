@@ -6,9 +6,9 @@ import { SubmitTalentController } from '../submit-talent/submit-talent.controlle
 // INC-1d (TIP-E2E) — manual-handoff integrity at the HTTP send boundary. The
 // recruiter MUST attest handoff_performed:true (the manual client handoff actually
 // occurred — the platform transmits nothing) and MUST supply a delivery_channel.
-// Both are enforced in submitImpl BEFORE the mutation command runs, for the
-// submit-to-client route AND its submit-to-ats alias (they share submitImpl), so a
-// non-attested / channel-less send never enters the transaction. This is an ATTESTED
+// Both are enforced in submitImpl BEFORE the mutation command runs on the
+// submit-to-client send, so a non-attested / channel-less send never enters the
+// transaction. This is an ATTESTED
 // + RECORDED handoff — never represented as an independently-verified client receipt.
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
@@ -121,20 +121,5 @@ describe('SubmitTalentController — INC-1d manual-handoff attestation (send bou
     };
     expect(arg.handoff_performed).toBe(true);
     expect(arg.delivery_channel).toBe('manual_vms');
-  });
-
-  it('the submit-to-ats ALIAS enforces the SAME attestation policy (equivalent mutation)', async () => {
-    const { controller, submitToClient } = build();
-    await expect(
-      controller.submitToAts(
-        SUBMITTAL_ID,
-        { delivery_channel: 'manual_email' },
-        IDEMPOTENCY_KEY,
-        makeAuth(),
-        REQUEST_ID,
-        reqFake(),
-      ),
-    ).rejects.toMatchObject({ code: 'ATTESTATION_MISSING', statusCode: 422 });
-    expect(submitToClient).not.toHaveBeenCalled();
   });
 });

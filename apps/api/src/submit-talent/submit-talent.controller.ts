@@ -43,22 +43,22 @@ function parseEngagementOverride(body: Record<string, unknown>): { reason: strin
   return { reason };
 }
 
-// Lane L8-B1 (v1.2 + Amendment A2) — the re-pointed authoritative client-submittal
-// route. The ONLY way a Talent is submitted to a client (the submittal is the
-// authoritative fact; the Pipeline is not written). A thin adapter: it preserves the existing public
+// Lane L8-B1 (v1.2 + Amendment A2) — the authoritative client-submittal route. The
+// ONLY way a Talent is submitted to a client (the submittal is the authoritative
+// fact; the Pipeline is not written). A thin adapter: it preserves the public
 // contract (Idempotency-Key replay/conflict + the `{ submittal }` response envelope)
-// and delegates the whole atomic write to SubmitTalentToClientService. The legacy
-// submittal-repository submit-to-ats write path is removed (no parallel path); a
-// pipeline-less submittal is refused (SUBMITTAL_PIPELINE_LINK_INVALID, R-REFUSAL).
-export interface SubmitToAtsResponse {
+// and delegates the whole atomic write to SubmitTalentToClientService. There is no
+// parallel client-submittal write path; a pipeline-less submittal is refused
+// (SUBMITTAL_PIPELINE_LINK_INVALID, R-REFUSAL).
+export interface SubmitToClientResponse {
   readonly submittal: TalentSubmittalRecordView;
   readonly event: TalentSubmittalEventView;
 }
 
 // INC-1b (TIP-E2E) — tenant-capability parity: EntitlementGuard +
 // @RequireCapability('ats') added (was JwtAuthGuard+RolesGuard only). Applies to
-// submit-to-client + the submit-to-ats alias. Server-resolved site + requisition
-// actor-visibility on the send are the follow-on INC-1b step.
+// the submit-to-client send. Server-resolved site + requisition actor-visibility
+// on the send are the follow-on INC-1b step.
 @Controller('v1/submittals')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
@@ -83,24 +83,7 @@ export class SubmitTalentController {
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<SubmitToAtsResponse> {
-    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId, req);
-  }
-
-  // SW-2 (R2-A) — COMPATIBILITY ALIAS. The legacy /submit-to-ats path delegates to
-  // the SAME implementation (no duplicated logic) so existing clients keep working
-  // during the transition. Deprecated; prefer /submit-to-client.
-  @Post(':submittal_id/submit-to-ats')
-  @RequireScopes('submittal:approve')
-  @HttpCode(HttpStatus.OK)
-  async submitToAts(
-    @Param('submittal_id') submittal_id: string,
-    @Body() body: Record<string, unknown>,
-    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
-    @AuthContext() authContext: AuthContextType,
-    @RequestId() requestId: string,
-    @Req() req: Request,
-  ): Promise<SubmitToAtsResponse> {
+  ): Promise<SubmitToClientResponse> {
     return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId, req);
   }
 
@@ -111,11 +94,11 @@ export class SubmitTalentController {
     authContext: AuthContextType,
     requestId: string,
     req: Request,
-  ): Promise<SubmitToAtsResponse> {
+  ): Promise<SubmitToClientResponse> {
     if (authContext.consumer_type !== 'recruiter') {
       throw new AramoError(
         'INSUFFICIENT_PERMISSIONS',
-        'submit-to-ats endpoint is recruiter-only',
+        'submit-to-client endpoint is recruiter-only',
         403,
         { requestId, details: { consumer_type: authContext.consumer_type } },
       );
@@ -131,7 +114,7 @@ export class SubmitTalentController {
       requestId,
     });
     if (lookup.kind === 'replay') {
-      return lookup.response_body as SubmitToAtsResponse;
+      return lookup.response_body as SubmitToClientResponse;
     }
 
     // COMM PART A — an optional engagement-policy override. Authority is
@@ -154,8 +137,7 @@ export class SubmitTalentController {
 
     // INC-1d (TIP-E2E) — manual-handoff integrity enforced at the HTTP send boundary,
     // BEFORE the mutation command runs (a non-attested / channel-less send never enters
-    // the transaction). This covers BOTH the submit-to-client route AND the submit-to-ats
-    // alias — they share submitImpl, so the equivalent mutation enforces the same policy.
+    // the transaction) on the submit-to-client send.
     // handoff_performed:true is the recruiter attesting the manual client handoff actually
     // occurred (the platform transmits nothing — an ATTESTED + RECORDED handoff, never an
     // independently-verified client receipt). delivery_channel is REQUIRED (how it
@@ -237,7 +219,7 @@ export class SubmitTalentController {
         details: { submittal_id },
       });
     }
-    const response: SubmitToAtsResponse = { submittal, event };
+    const response: SubmitToClientResponse = { submittal, event };
 
     await this.idempotencyService.persist({
       tenant_id: authContext.tenant_id,

@@ -331,7 +331,7 @@ describe('SubmittalRepository.confirmSubmittal (unit)', () => {
     };
     expect(updateArg.data.state).toBe('handoff_draft');
     // M5 PR-8b2 Ruling 6: confirmed_at NOT populated at this transition;
-    // moves to /submit-to-ats (ready_for_review -> submitted_to_client).
+    // moves to /submit-to-client (ready_for_review -> submitted_to_client).
     expect(updateArg.data).not.toHaveProperty('confirmed_at');
     expect(updateArg.where.id).toBe(SUBMITTAL_ID);
     expect(updateArg.where.tenant_id).toBe(TENANT_A);

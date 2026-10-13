@@ -93,34 +93,14 @@ export async function submitToClient(
     readonly external_submitted_at?: string;
   },
   idempotencyKey: string,
-): Promise<SubmittalResponse> {
-  return apiClient.post<SubmittalResponse>(
-    `/v1/submittals/${encodeURIComponent(submittalId)}/submit-to-client`,
-    provenance,
-    { headers: { 'Idempotency-Key': idempotencyKey } },
-  );
-}
-
-// @deprecated SW-5/D-3 — the legacy /submit-to-ats alias. Retained for the wizard's
-// existing path only; new call sites (the Submittal Workspace) use submitToClient.
-export async function submitToAts(
-  submittalId: string,
-  idempotencyKey: string,
-  // INC-1d — the deprecated submit-to-ats alias enforces the SAME manual-handoff
-  // policy as submit-to-client (it routes through the same command): the recruiter's
-  // mandatory handoff_performed:true attestation + a required delivery_channel.
-  provenance: {
-    readonly handoff_performed: true;
-    readonly delivery_channel: string;
-  },
   // PART A — an optional engagement-policy override (authorized user + reason).
   // The server honours it only under ENFORCING_WITH_OVERRIDE with real missing
   // evidence + the engagement:policy:override scope; audit is authoritative.
   engagementOverride?: { reason: string },
 ): Promise<SubmittalResponse> {
   return apiClient.post<SubmittalResponse>(
-    `/v1/submittals/${submittalId}/submit-to-ats`,
-    engagementOverride ? { ...provenance, engagement_override: engagementOverride } : { ...provenance },
+    `/v1/submittals/${encodeURIComponent(submittalId)}/submit-to-client`,
+    engagementOverride ? { ...provenance, engagement_override: engagementOverride } : provenance,
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
 }

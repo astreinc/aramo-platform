@@ -36,7 +36,7 @@ export function EngagementReadinessSummary({
   readonly loadFn?: typeof getEngagementReadiness;
   /** PART A — the actor holds engagement:policy:override (from session scopes). */
   readonly canOverride?: boolean;
-  /** PART A — submit with an override reason (wires to submitToAts). */
+  /** PART A — submit with an override reason (wires to submitToClient). */
   readonly onOverride?: (reason: string) => void | Promise<void>;
 }): JSX.Element {
   const [state, setState] = useState<State>({ kind: 'loading' });

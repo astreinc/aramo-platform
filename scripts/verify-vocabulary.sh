@@ -209,13 +209,12 @@ TIER2_EXCLUDES=(
   # of its leakage-detection logic. Same structural pattern as the M4
   # PR-3 / PR-4 / PR-5 / PR-6 entries above.
   "apps/api/src/tests/submittal-revoke.negative-shape.spec.ts"
-  # M5 PR-8b2: 3 new submittal mainline-transition endpoint negative-
-  # shape specs (F23 standing pattern) legitimately enumerate the
-  # forbidden Match-Class vocabulary as part of their leakage-detection
-  # logic. Same structural pattern as the M3 PR-9 / M4 PR-3 through
-  # PR-7 entries above.
+  # M5 PR-8b2: submittal mainline-transition endpoint negative-shape
+  # specs (F23 standing pattern) legitimately enumerate the forbidden
+  # Match-Class vocabulary as part of their leakage-detection logic. Same
+  # structural pattern as the M3 PR-9 / M4 PR-3 through PR-7 entries above.
+  # (The submit-to-ats alias spec was removed with the retired alias.)
   "apps/api/src/tests/submittal-mark-ready.negative-shape.spec.ts"
-  "apps/api/src/tests/submittal-submit-to-ats.negative-shape.spec.ts"
   "apps/api/src/tests/submittal-confirm-ats.negative-shape.spec.ts"
   # M5 PR-2: selection event-log substrate carries the canonical product
   # vocabulary `outreach_sent` (an SelectionEventType enum value per

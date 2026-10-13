@@ -79,8 +79,8 @@ enum SubmittalState {
   ready_for_review
   // SW-2 (R2-A) — canonical send state. Renamed in place from the former
   // `submitted_to_ats` via ALTER TYPE ... RENAME VALUE (20261002120000); the HTTP
-  // /submit-to-ats route is retained as a compatibility alias, but the domain fact
-  // is `submitted_to_client`.
+  // send is the canonical /submit-to-client route, and the domain fact is
+  // `submitted_to_client`.
   submitted_to_client
   confirmed
   revoked
@@ -146,7 +146,7 @@ model TalentSubmittalRecord {
   // association. Nullable cross-schema ref (UUID-only, no FK, §7.3) to
   // pipeline.Pipeline.id. MANY submittals → ONE pipeline episode (NOT unique).
   // The authoritative correspondence for the client-submittal command's atomic
-  // pipeline mirror; null ⇒ submit-to-ats returns SUBMITTAL_PIPELINE_LINK_INVALID
+  // pipeline mirror; null ⇒ submit-to-client returns SUBMITTAL_PIPELINE_LINK_INVALID
   // (no heuristic, no auto-create).
   pipeline_id String? @db.Uuid
 

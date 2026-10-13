@@ -78,7 +78,7 @@ export interface CreateSubmittalInput {
 
   // L8-B1 Amendment A1 (R-LINK) — the pipeline episode this submittal is
   // associated with (many submittals → one pipeline episode). Nullable; when
-  // absent, submit-to-ats returns SUBMITTAL_PIPELINE_LINK_INVALID.
+  // absent, submit-to-client returns SUBMITTAL_PIPELINE_LINK_INVALID.
   pipeline_id?: string | null;
 
   // Evidence-package recruiter-authored payloads (forwarded to
