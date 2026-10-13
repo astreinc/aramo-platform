@@ -81,7 +81,37 @@ export class DocumentReadinessGate {
     if (!(await this.isRtrRequired(input.tenant_id, input.requisition_id))) {
       return { satisfied: true, deny: null }; // RTR not required by policy → ungated
     }
+    return this.verifyExecutedRtr(input);
+  }
 
+  // INC-1c (TIP-E2E) — the UNCONDITIONAL DOC-5 RTR verdict for the provisional
+  // "RTR mandatory before client disclosure" interim product policy. Identical
+  // same-document executed-RTR predicate as `assess` (no new validity model is
+  // fabricated — the governing authority is the executed RIGHT_TO_REPRESENT
+  // Document jointly associated to the EXACT talent + requisition, tenant-scoped;
+  // the client/company binding is transitive via the requisition's single owner),
+  // but WITHOUT the policy-disposition short-circuit: it fails closed even when the
+  // effective client-submittal policy is NOT_REQUIRED or UNGOVERNED. The CONDITIONAL
+  // `assess` remains the default; this is invoked only when the interim policy is
+  // explicitly activated (Legal/PO gate), so existing valid flows are unchanged.
+  async assessMandatory(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+  }): Promise<DocumentEligibilityInput> {
+    return this.verifyExecutedRtr(input);
+  }
+
+  // The shared PL-1 same-document executed-RTR predicate (tenant-scoped; EXACT
+  // talent SUBJECT + requisition REGARDING). A non-null result is the established
+  // RTR validity fact (current, executed); absence fails closed. Reused by both the
+  // conditional `assess` and the mandatory `assessMandatory` so neither reinterprets
+  // RTR validity independently.
+  private async verifyExecutedRtr(input: {
+    tenant_id: string;
+    talent_id: string;
+    requisition_id: string;
+  }): Promise<DocumentEligibilityInput> {
     const executed = await this.documents.findExecutedByTypeAndAssociations({
       tenant_id: input.tenant_id,
       document_type_key: RIGHT_TO_REPRESENT_KEY,
