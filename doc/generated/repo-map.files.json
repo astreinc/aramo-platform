@@ -660,6 +660,7 @@
     "apps/api/src/tests/talent-response-capture.integration.spec.ts",
     "apps/api/src/tests/talent-search-adapter.spec.ts",
     "apps/api/src/tests/talent-semantic-document.spec.ts",
+    "apps/api/src/tests/talent-trust-schema.ts",
     "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
     "apps/api/src/tests/tenant-llm-controller.spec.ts",
     "apps/api/src/tests/tenant-llm-key.service.spec.ts",
