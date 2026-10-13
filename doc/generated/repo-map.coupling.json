@@ -21783,6 +21783,21 @@
       "to": "libs/identity/tsconfig.lib.json"
     },
     {
+      "from": "libs/identity/scripts/scope-catalog-consistency.mjs",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "libs/identity/scripts/scope-catalog-consistency.mjs",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "libs/identity/scripts/scope-catalog-consistency.mjs",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
+    },
+    {
       "from": "libs/identity/src/lib/dto/role.dto.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"
