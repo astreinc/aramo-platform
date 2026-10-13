@@ -2122,6 +2122,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // TRUNCATE lines.
     // ===================================================================
     const ATSW_SUB_JOB_ID = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+    // INC-1b — the pipeline the lifecycle-authz chain (confirm / mark-ready /
+    // confirm-ats / revoke) resolves for ATSW submittals (requisition_id = job_id).
+    const ATSW_SUB_PIPELINE_ID = 'dddd9999-0000-7000-8000-0000000000dd';
     const ATSW_SUB_REQ_ID = '22222222-0000-7000-8000-0000000000dd';
     const ATSW_SUB_GOLDEN_ID = '22221111-0000-7000-8000-0000000000dd';
     const ATSW_SUB_EXAM_ID = '00000000-0000-7000-8000-5e0000000001';
@@ -3227,6 +3230,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         params.state === 'submitted_to_client' || params.state === 'confirmed'
           ? '2026-05-25T00:00:00.000Z'
           : null;
+      // INC-1b — lifecycle authorization (confirm / mark-ready / confirm-ats / revoke)
+      // resolves submittal → pipeline → requisition and fails closed on a missing link.
+      // Default to a seeded pipeline (requisition_id = the submittal's job_id) so the
+      // authorized chain resolves; an explicit `null` is preserved for a link-invalid
+      // provider state, and an explicit id is honored + seeded.
+      const effectivePipelineId =
+        params.pipelineId === undefined ? ATSW_SUB_PIPELINE_ID : params.pipelineId;
+      if (effectivePipelineId !== null) {
+        await seedAtsWebPipeline(c, {
+          id: effectivePipelineId,
+          talentRecordId: PACT_TALENT_ID,
+          requisitionId: ATSW_SUB_JOB_ID,
+        });
+      }
       await seedAtsWebSubmittal(c, {
         submittalId: params.submittalId,
         evidencePackageId: ATSW_SUB_EVIDENCE_ID,
@@ -3234,7 +3251,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         state: params.state,
         justification: params.justification ?? null,
         confirmedAt,
-        pipelineId: params.pipelineId ?? null,
+        pipelineId: effectivePipelineId,
       });
     }
 
