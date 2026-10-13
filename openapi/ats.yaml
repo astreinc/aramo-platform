@@ -1436,6 +1436,79 @@ paths:
       security:
         - BearerAuth: []
 
+  /v1/submittals/{submittal_id}/journey-audit:
+    get:
+      operationId: getTalentJourneyAudit
+      summary: INC-1e correlated journey audit for a submittal (read-only).
+      description: |
+        Minimally-sufficient, tenant-authorized, READ-ONLY journey trace over the
+        EXISTING immutable submittal-transition events for one submittal, keyed by the
+        durable domain IDs (talent_id, requisition_id=job_id, examination_id,
+        evidence_package_id, submittal_id) for cross-request correlation (no per-request
+        id). Resolved under the actor's requisition-visibility; a cross-tenant /
+        out-of-visibility submittal -> 404 (existence not disclosed). Actor provenance is
+        surfaced from the immutable event payload where recorded (null when absent; never
+        fabricated). No new event authority; no migration.
+
+        Refusal codes (closed list):
+          - 404 NOT_FOUND — submittal_id not found for the tenant, or not in the actor's visible set.
+          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
+          - 400 INVALID_REQUEST — submittal_id is not a UUID.
+      parameters:
+        - name: submittal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Correlated journey-audit trace for the submittal.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [spine, record_provenance, entries]
+                properties:
+                  spine:
+                    type: object
+                    required: [submittal_id, talent_id, requisition_id, examination_id, evidence_package_id]
+                    properties:
+                      submittal_id: { type: string, format: uuid }
+                      talent_id: { type: string, format: uuid }
+                      requisition_id: { type: string, format: uuid }
+                      examination_id: { type: string, format: uuid }
+                      evidence_package_id: { type: string, format: uuid }
+                  record_provenance:
+                    type: object
+                    required: [created_by]
+                    properties:
+                      created_by: { type: string }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      required: [source, kind, occurred_at, actor_id, submittal_event_id]
+                      properties:
+                        source: { type: string, enum: [submittal] }
+                        kind: { type: string }
+                        occurred_at: { type: string, format: date-time }
+                        actor_id:
+                          type:
+                            - string
+                            - 'null'
+                        submittal_event_id: { type: string, format: uuid }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+
   /v1/submittals/{submittal_id}/workspace:
     get:
       operationId: getSubmittalWorkspace
