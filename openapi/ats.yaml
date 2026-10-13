@@ -1468,10 +1468,12 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [spine, record_provenance, entries]
                 properties:
                   spine:
                     type: object
+                    additionalProperties: false
                     required: [submittal_id, talent_id, requisition_id, examination_id, evidence_package_id]
                     properties:
                       submittal_id: { type: string, format: uuid }
@@ -1481,6 +1483,7 @@ paths:
                       evidence_package_id: { type: string, format: uuid }
                   record_provenance:
                     type: object
+                    additionalProperties: false
                     required: [created_by]
                     properties:
                       created_by: { type: string }
@@ -1488,6 +1491,7 @@ paths:
                     type: array
                     items:
                       type: object
+                      additionalProperties: false
                       required: [source, kind, occurred_at, actor_id, submittal_event_id]
                       properties:
                         source: { type: string, enum: [submittal] }
