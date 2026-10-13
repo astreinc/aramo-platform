@@ -23,6 +23,7 @@ import { RequisitionController } from './requisition.controller.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
 import { RequisitionProfileService } from './requisition-profile.service.js';
 import { RequisitionRepository } from './requisition.repository.js';
+import { RequisitionSkillRequirementRepository } from './requisition-skill-requirement.repository.js';
 import { RequisitionEmbeddingRepository } from './requisition-embedding.repository.js';
 
 // RequisitionModule — PR-A3 Gate 5 ATS Batch 2.
@@ -80,7 +81,15 @@ import { RequisitionEmbeddingRepository } from './requisition-embedding.reposito
     RequisitionIntakeService,
     // GS-2B — the pgvector Requisition embedding repository (lifecycle + OR-union semantic retrieval).
     RequisitionEmbeddingRepository,
+    // TIP-E2E INC-2 — expose the requisition-keyed skill-requirement read for the
+    // Talent Intelligence requisition-context read-seam adapter (apps/api).
+    RequisitionSkillRequirementRepository,
   ],
-  exports: [RequisitionRepository, RequisitionAssignmentRepository, RequisitionEmbeddingRepository],
+  exports: [
+    RequisitionRepository,
+    RequisitionAssignmentRepository,
+    RequisitionEmbeddingRepository,
+    RequisitionSkillRequirementRepository,
+  ],
 })
 export class RequisitionModule {}
