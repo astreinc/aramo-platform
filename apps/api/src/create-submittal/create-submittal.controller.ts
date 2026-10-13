@@ -46,8 +46,10 @@ const UUID_REGEX =
 // EntitlementGuard + @RequireCapability('ats'). The create mutation is further
 // guarded by server-resolved requisition actor-visibility + site authorization
 // (createSubmittal Step 1b): job_id IS the requisition id, resolved under the
-// actor's visibility via RequisitionRepository.findByIdForActor (identical read
-// to the examine path). This runs BEFORE idempotency replay and before the
+// actor's visibility via RequisitionRepository.findVisibilityMetaById — a
+// lightweight visibility/site read (NOT the detail-enriched findByIdForActor,
+// which would drag capacity/placement reads into a pure authz gate). This runs
+// BEFORE idempotency replay and before the
 // orchestrator mutation, so neither a replayed key nor the create itself can
 // bypass a site/visibility denial. @RequireSiteMatch() opts the route into the
 // RolesGuard site axis; create is body-only (no path/query site_id) so that
@@ -105,7 +107,7 @@ export class CreateSubmittalController {
     // principal's claim (null claim = tenant-wide, admitted on any site).
     const job_id = this.assertSubmittalJobIsUuid(body?.job_id, requestId);
     const visibility = await req.resolveVisibility!();
-    const requisition = await this.requisitionRepository.findByIdForActor({
+    const requisition = await this.requisitionRepository.findVisibilityMetaById({
       tenant_id: authContext.tenant_id,
       id: job_id,
       visibility,

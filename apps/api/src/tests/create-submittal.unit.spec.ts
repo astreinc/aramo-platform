@@ -204,12 +204,13 @@ interface ControllerCtx {
   create: ReturnType<typeof vi.fn>;
   lookup: ReturnType<typeof vi.fn>;
   persist: ReturnType<typeof vi.fn>;
-  findByIdForActor: ReturnType<typeof vi.fn>;
+  findVisibilityMetaById: ReturnType<typeof vi.fn>;
 }
 
 // INC-1b — the actor-visibility probe the handler invokes via req.resolveVisibility.
-// findByIdForActor is mocked directly, so the resolved shape is opaque here (the
-// repository, not the interceptor, applies the predicate under real wiring).
+// findVisibilityMetaById (the lightweight authz read) is mocked directly, so the
+// resolved shape is opaque here (the repository, not the interceptor, applies the
+// predicate under real wiring).
 function reqFake(): unknown {
   return { resolveVisibility: vi.fn().mockResolvedValue({}) };
 }
@@ -219,15 +220,15 @@ function buildController(over: { requisitionSiteId?: string | null } = {}): Cont
   const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
   const persist = vi.fn().mockResolvedValue(undefined);
   // Default: requisition visible to the actor, null site (tenant-wide requisition).
-  const findByIdForActor = vi
+  const findVisibilityMetaById = vi
     .fn()
-    .mockResolvedValue({ site_id: over.requisitionSiteId ?? null });
+    .mockResolvedValue({ id: 'req-1', site_id: over.requisitionSiteId ?? null });
   const controller = new CreateSubmittalController(
     { create } as unknown as CreateSubmittalOrchestrator,
     { lookup, persist } as unknown as IdempotencyService,
-    { findByIdForActor } as unknown as RequisitionRepository,
+    { findVisibilityMetaById } as unknown as RequisitionRepository,
   );
-  return { controller, create, lookup, persist, findByIdForActor };
+  return { controller, create, lookup, persist, findVisibilityMetaById };
 }
 
 describe('CreateSubmittalController (unit) — auth + idempotency', () => {
@@ -291,7 +292,7 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
 
   // ---------------------------------------------------------------------------
   // INC-1b (TIP-E2E) — create-path server-resolved site + requisition visibility.
-  // job_id IS the requisition id; findByIdForActor applies the actor-visibility
+  // job_id IS the requisition id; findVisibilityMetaById applies the actor-visibility
   // predicate. Enforced BEFORE idempotency + orchestration (no side effects on
   // denial: ctx.create NEVER called).
   // ---------------------------------------------------------------------------
@@ -315,7 +316,7 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
 
   it('hidden requisition: job_id not in actor visible set → NOT_FOUND (404), no orchestration', async () => {
     const local = buildController();
-    local.findByIdForActor.mockResolvedValue(null);
+    local.findVisibilityMetaById.mockResolvedValue(null);
     await expect(
       local.controller.createSubmittal(
         makeBody(),
@@ -355,7 +356,7 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
       ),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
     expect(local.create).not.toHaveBeenCalled();
-    expect(local.findByIdForActor).not.toHaveBeenCalled();
+    expect(local.findVisibilityMetaById).not.toHaveBeenCalled();
   });
 });
 

@@ -2056,6 +2056,33 @@ export class RequisitionRepository {
     return view;
   }
 
+  // INC-1b (TIP-E2E) — lightweight AUTHORIZATION read for the submittal create
+  // gate. Resolves a requisition's existence + site_id under the actor's
+  // visibility predicate, WITHOUT the detail enrichment that findByIdForActor
+  // performs (capacity projection, personal bookmark, SoD submitter). The create
+  // authz gate needs only the visibility/site decision, so it must not drag in
+  // placement/capacity reads. Same 404-concealment contract: null when absent
+  // OR out-of-visibility (never a 403 for an unseen requisition).
+  async findVisibilityMetaById(args: {
+    tenant_id: string;
+    id: string;
+    visibility: VisibilityContextShape;
+  }): Promise<{ id: string; site_id: string | null } | null> {
+    const row = await this.prisma.requisition.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        id: args.id,
+        ...buildVisibilityWhere(args.visibility),
+      },
+      select: { id: true, site_id: true },
+    });
+    if (row === null) return null;
+    return {
+      id: row.id as string,
+      site_id: (row.site_id as string | null) ?? null,
+    };
+  }
+
   // -------------------------------------------------------------------------
   // PR-14 (Track C) — personal bookmark state
   // -------------------------------------------------------------------------
