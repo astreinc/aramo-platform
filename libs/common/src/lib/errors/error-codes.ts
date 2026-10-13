@@ -151,7 +151,7 @@
 // Total: 24 codes.
 //
 // M5 PR-8b2 adds SUBMITTAL_STATE_INVALID (HTTP 422) for
-// SubmittalRepository.{markReady,submitToAts,confirmAts} +
+// SubmittalRepository.{markReady,confirmAts} +
 // confirmSubmittal + revokeSubmittal canTransition guard. Application-
 // layer guard atop the canonical 5-state DB trigger (defense-in-depth:
 // the trigger would also reject, but the application-layer guard

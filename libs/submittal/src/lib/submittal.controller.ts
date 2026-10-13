@@ -39,7 +39,6 @@ import type {
 import type { MarkReadyResponseDto } from './dto/mark-ready-request.dto.js';
 import { RevokeSubmittalRequestDto } from './dto/revoke-submittal-request.dto.js';
 import type { RevokeSubmittalResponseDto } from './dto/revoke-submittal-response.dto.js';
-import type { SubmitToAtsResponseDto } from './dto/submit-to-ats-request.dto.js';
 import type { TalentSubmittalRecordView } from './dto/talent-submittal-record.view.js';
 import {
   PIPELINE_SITE_READER,
@@ -201,8 +200,8 @@ export class SubmittalController {
   // SW-1 (Submittal Workspace, R1-A) — POST /v1/submittals (createSubmittal) was
   // RE-POINTED to the apps/api CreateSubmittalController. The create command now
   // derives the authoritative pipeline_id SERVER-SIDE from the sole live Pipeline
-  // episode (the composition-root pattern; the submit-to-ats precedent). This
-  // legacy write path is removed so no parallel path can create a pipeline-less
+  // episode (the composition-root pattern; the submit-to-client re-point precedent).
+  // This legacy write path is removed so no parallel path can create a pipeline-less
   // submittal. SubmittalRepository.createSubmittal remains the write surface,
   // invoked by that orchestrator (and by lib-local integration specs). The private
   // helpers below are retained — they are shared by the confirm / mark-ready /
@@ -777,21 +776,6 @@ export class SubmittalController {
 
     return response;
   }
-
-  // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/submit-to-ats.
-  //
-  // Fires the canonical mainline transition ready_for_review ->
-  // submitted_to_client (mainline transition 3). Per Ruling 6 this is the
-  // transition that populates confirmed_at NULL -> non-NULL (preserving
-  // M4 confirmed_at column semantic post-rename).
-  //
-  // 9-step idempotency flow per markReady precedent.
-  // L8-B1 Amendment A1 — the submit-to-ats route was RE-POINTED to the
-  // apps/api SubmitTalentController (the "Submit Talent to Client" atomic
-  // command: submitted_to_client is the authoritative fact; the Pipeline is not
-  // written). This legacy write path is removed so no parallel path can
-  // create the client-submittal fact. `submitToAts` on the repository remains for
-  // its lib-local integration spec only; it is no longer reachable via any route.
 
   // M5 PR-8b2 §4.5 — POST /v1/submittals/{submittal_id}/confirm-ats.
   //

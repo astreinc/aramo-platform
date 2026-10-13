@@ -10,7 +10,7 @@ import { transitionErrorMessage } from './error-messages';
 import {
   confirmAts,
   markReady,
-  submitToAts,
+  submitToClient,
 } from './submittals-api';
 import { nextMainlineState } from './submittal-state';
 import {
@@ -44,14 +44,15 @@ interface AdvanceStepProps {
 
 // AdvanceStep — the three plain-button mainline transitions:
 //   handoff_draft -> ready_for_review  via /mark-ready
-//   ready_for_review -> submitted_to_client  via /submit-to-ats
+//   ready_for_review -> submitted_to_client  via /submit-to-client
 //   submitted_to_client -> confirmed  via /confirm-ats  (terminal)
 //
-// COMM PART A (A9) — when Submit to ATS is blocked by an ENFORCING_WITH_OVERRIDE
-// engagement policy (CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE), the readiness is
+// COMM PART A (A9) — when the client-handoff send is blocked by an
+// ENFORCING_WITH_OVERRIDE engagement policy
+// (CLIENT_SUBMITTAL_ENGAGEMENT_INCOMPLETE), the readiness is
 // loaded to decide whether an override is available. If the session holds
 // `engagement:policy:override`, the SAME EngagementOverridePrompt is surfaced in
-// this (the only) submit flow; the override re-runs `submitToAts` with a recorded
+// this (the only) submit flow; the override re-runs `submitToClient` with a recorded
 // reason (a fresh Idempotency-Key, since the body changed). Read-error/unavailable
 // evidence is fail-closed and non-overridable; a user without the scope never sees
 // the override control. No second submit flow, no fabricated evidence.
@@ -65,7 +66,7 @@ export function AdvanceStep({
   const [overrideReadiness, setOverrideReadiness] = useState<EngagementReadiness | null>(null);
   // INC-1d — the send step (ready_for_review -> submitted_to_client) collects the
   // manual delivery channel + the mandatory handoff attestation; both are required
-  // by the server (the submit-to-ats alias enforces the same policy as submit-to-client).
+  // by the server on the submit-to-client send.
   const [method, setMethod] = useState<WizardDeliveryChannel>('manual_vms');
   const [handoffPerformed, setHandoffPerformed] = useState(false);
 
@@ -87,8 +88,8 @@ export function AdvanceStep({
         };
       case 'ready_for_review':
         return {
-          label: 'Submit to ATS',
-          run: () => submitToAts(submittal.id, idempotencyKey, handoffProvenance),
+          label: 'Record client handoff',
+          run: () => submitToClient(submittal.id, handoffProvenance, idempotencyKey),
         };
       case 'submitted_to_client':
         return {
@@ -106,7 +107,7 @@ export function AdvanceStep({
     return null;
   }
 
-  // On an engagement block from Submit to ATS, load readiness so the override
+  // On an engagement block from the client-handoff send, load readiness so the override
   // affordance can decide availability (mode + missing + unavailable). Best-effort:
   // a readiness-load failure just leaves the plain error message.
   const maybeLoadOverride = async (err: unknown): Promise<void> => {
@@ -153,7 +154,7 @@ export function AdvanceStep({
     try {
       // Fresh Idempotency-Key: the body now carries the override (changed body).
       // INC-1d — the override re-send still carries the mandatory handoff provenance.
-      const res = await submitToAts(submittal.id, uuidv4(), handoffProvenance, { reason });
+      const res = await submitToClient(submittal.id, handoffProvenance, uuidv4(), { reason });
       setOverrideReadiness(null);
       onAdvanced(res.submittal);
     } catch (err) {

@@ -555,7 +555,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Exactly one durable commit across the board.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
       expect(await count('submittal."TalentSubmittalRecord"', "job_id=$1 AND state='submitted_to_client'", [req])).toBe('1');
-      // Legacy-Pipeline-Canonicalization — submit-to-ats writes NO Pipeline status; the
+      // Legacy-Pipeline-Canonicalization — submit-to-client writes NO Pipeline status; the
       // `submitted` mirror no longer exists (the value cannot be represented by
       // PipelineStatus), so there is no mirror-count invariant to assert.
     });

@@ -28,13 +28,14 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //
 // M5 PR-8b2 surface extensions (canonical 5-state machine rename +
 // cutover; F37 closure):
-//   - 3 new write methods (markReady, submitToAts, confirmAts) covering
-//     the 3 net-new mainline transitions per Q5 PATTERN-b.
+//   - 2 new write methods (markReady, confirmAts); the third net-new
+//     mainline transition (ready_for_review -> submitted_to_client) is
+//     written by the apps/api SubmitTalentToClientService, not a repo method.
 //   - confirmSubmittal semantic update per Ruling 12: M4's 'draft to
 //     submitted' becomes canonical 'created to handoff_draft'.
-//     confirmed_at NO LONGER populated here (moved to submitToAts per
-//     Ruling 6 — preserves M4 confirmed_at column semantic at the
-//     ready_for_review to submitted_to_client transition).
+//     confirmed_at NO LONGER populated here (populated at the
+//     ready_for_review -> submitted_to_client send per Ruling 6 —
+//     preserves M4 confirmed_at column semantic).
 //   - revokeSubmittal semantic expansion per Q3 ruling: revocable from
 //     any non-confirmed non-revoked state (Ruling 5 — `confirmed` is
 //     terminal). Now spans created / handoff_draft / ready_for_review /
@@ -48,8 +49,8 @@ import { TalentSubmittalEventRepository } from './talent-submittal-event.reposit
 //   - createSubmittal (M4 PR-3 — UNCHANGED per Ruling 15; no event)
 //   - confirmSubmittal (M4 PR-4 + rename; state created -> handoff_draft)
 //   - markReady (M5 PR-8b2; state handoff_draft -> ready_for_review)
-//   - submitToAts (M5 PR-8b2; state ready_for_review -> submitted_to_client
-//     + confirmed_at populated)
+//   - (ready_for_review -> submitted_to_client send: re-pointed to the
+//     apps/api SubmitTalentToClientService; confirmed_at populated there)
 //   - confirmAts (M5 PR-8b2; state submitted_to_client -> confirmed)
 //   - revokeSubmittal (M4 PR-7 + Q3 expansion; any non-terminal -> revoked)
 //   - findById / findByTenantAndEvidencePackage (READ; tenant-scoped)
@@ -407,9 +408,9 @@ export class SubmittalRepository {
   // pinning reaffirmation): the recruiter MUST still re-affirm pin
   // validity at confirm-time.
   //
-  // Per Ruling 6: confirmed_at NO LONGER populated here (moved to
-  // submitToAts at the ready_for_review -> submitted_to_client transition).
-  // Preserves M4 confirmed_at column semantic + name.
+  // Per Ruling 6: confirmed_at NO LONGER populated here (populated at the
+  // ready_for_review -> submitted_to_client send, written by the apps/api
+  // SubmitTalentToClientService). Preserves M4 confirmed_at column semantic + name.
   //
   // M5 PR-8b2 §4.7 additions:
   //   - canTransition guard before the SQL UPDATE (defense-in-depth atop
@@ -654,7 +655,8 @@ export class SubmittalRepository {
     // Step 8 — atomic 3-write transaction (update + event.create + outbox)
     // per selection-side precedent. Per Ruling 12 the transition is
     // 'created' -> 'handoff_draft'; per Ruling 6 confirmed_at is NOT
-    // touched here (moves to submitToAts). M6 PR-2 §3 adds the in-tx
+    // touched here (populated at the submitted_to_client send in the
+    // apps/api SubmitTalentToClientService). M6 PR-2 §3 adds the in-tx
     // outbox emission; rollback leaves no orphan outbox row (Cat 5 proof).
     const [updatedRow, eventRow] = await this.prisma.$transaction([
       this.prisma.talentSubmittalRecord.update({

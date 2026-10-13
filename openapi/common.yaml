@@ -2952,7 +2952,7 @@ components:
     # add distinct new endpoints for the 3 new mainline transitions):
     #   - POST /v1/submittals/{id}/mark-ready
     #       (handoff_draft -> ready_for_review)
-    #   - POST /v1/submittals/{id}/submit-to-ats
+    #   - POST /v1/submittals/{id}/submit-to-client
     #       (ready_for_review -> submitted_to_client; populates confirmed_at)
     #   - POST /v1/submittals/{id}/confirm-ats
     #       (submitted_to_client -> confirmed; lifecycle terminal)
@@ -3028,28 +3028,7 @@ components:
         event:
           $ref: '#/components/schemas/TalentSubmittalEventView'
 
-    SubmitToAtsRequest:
-      type: object
-      additionalProperties: false
-      description: |
-        Optionally carries an engagement-policy override (COMM PART A). Absent =
-        no override. An override is inert unless the effective policy is
-        ENFORCING_WITH_OVERRIDE and required evidence is missing; it is honoured
-        only when the actor holds `engagement:policy:override` and supplies a
-        non-empty reason (validated server-side; authoritative audit provenance).
-      properties:
-        engagement_override:
-          type: object
-          additionalProperties: false
-          required: [reason]
-          properties:
-            reason:
-              type: string
-              minLength: 1
-              maxLength: 1000
-              description: Human-entered override reason (recorded in append-only decision provenance).
-
-    SubmitToAtsResponse:
+    SubmitToClientResponse:
       type: object
       additionalProperties: false
       required:

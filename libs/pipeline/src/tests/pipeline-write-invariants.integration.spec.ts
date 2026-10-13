@@ -379,7 +379,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cs!.requisition_id).toBe(reqLow); // lowest requisition_id wins the tie
     });
     // ---- P5 — the state-machine guard refuses any illegal target (422) and writes
-    // nothing, and a subsequent legal transition still works. Client submit-to-ats is
+    // nothing, and a subsequent legal transition still works. Client submit-to-client is
     // Submittal-owned and is NOT a Pipeline transition; there is no special-case guard —
     // every non-adjacent target falls through to the ordinary legality check.
     it('P5: an illegal transition is refused with INVALID_PIPELINE_TRANSITION (422); other transitions unaffected', async () => {

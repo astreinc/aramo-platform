@@ -900,7 +900,7 @@ paths:
         stamp' semantic becomes canonical 'created -> handoff_draft'
         (no confirmed_at change here per Ruling 6 — confirmed_at moves
         to the ready_for_review -> submitted_to_client transition via
-        the new /submit-to-ats endpoint).
+        the /submit-to-client endpoint).
 
         Refusal codes (closed list at PR-4 + M5 PR-8b2):
           - 422 ATTESTATION_MISSING — any of the three recruiter
@@ -1230,13 +1230,27 @@ paths:
                     - string
                     - 'null'
                   format: date-time
+                engagement_override:
+                  type: object
+                  additionalProperties: false
+                  required: [reason]
+                  properties:
+                    reason:
+                      type: string
+                      minLength: 1
+                      maxLength: 1000
+                      description: >-
+                        COMM PART A — OPTIONAL engagement-policy override. Inert unless the
+                        effective policy is ENFORCING_WITH_OVERRIDE and required evidence is
+                        missing; honoured only when the actor holds engagement:policy:override
+                        and supplies a non-empty reason (authoritative server-side audit).
       responses:
         '200':
           description: Talent submitted to client; state transitioned to `submitted_to_client`; manual handoff attested + recorded (not a verified client receipt); provenance frozen.
           content:
             application/json:
               schema:
-                $ref: 'common.yaml#/components/schemas/SubmitToAtsResponse'
+                $ref: 'common.yaml#/components/schemas/SubmitToClientResponse'
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
         '401':
@@ -1247,77 +1261,6 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
         '409':
           description: Pipeline-link / requisition-state / slot / idempotency conflict.
-          content:
-            application/json:
-              schema:
-                $ref: 'common.yaml#/components/schemas/ErrorResponse'
-        '422':
-          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
-      security:
-        - BearerAuth: []
-
-  /v1/submittals/{submittal_id}/submit-to-ats:
-    post:
-      operationId: submitToAts
-      deprecated: true
-      summary: '[DEPRECATED alias of submit-to-client] ready_for_review -> submitted_to_client; populates confirmed_at.'
-      description: |
-        Fires the canonical mainline transition ready_for_review ->
-        submitted_to_client (M5 PR-8b2 F37 closure; transition 3 of 4).
-        Per Ruling 6 this transition populates `confirmed_at`
-        NULL -> non-NULL (preserves M4 confirmed_at column semantic
-        post-rename; M4's 'draft -> submitted with confirmed_at'
-        becomes canonical 'ready_for_review -> submitted_to_client with
-        confirmed_at'). Per Ruling 13 request body is empty.
-
-        Response wraps { submittal, event } per Ruling 14.
-
-        Refusal codes (closed list):
-          - 422 SUBMITTAL_STATE_INVALID — submittal is not in
-            state='ready_for_review' (canTransition guard refusal).
-          - 409 IDEMPOTENCY_KEY_CONFLICT — same Idempotency-Key,
-            different request body.
-          - 404 NOT_FOUND — submittal_id not found for the JWT's
-            tenant.
-          - 403 INSUFFICIENT_PERMISSIONS — non-recruiter consumer.
-          - 400 VALIDATION_ERROR — submittal_id is not a UUID, or
-            Idempotency-Key is missing / malformed.
-      parameters:
-        - name: submittal_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: Idempotency-Key
-          in: header
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: 'common.yaml#/components/schemas/SubmitToAtsRequest'
-      responses:
-        '200':
-          description: Submittal submitted to ATS; state transitioned to `submitted_to_client`; confirmed_at populated.
-          content:
-            application/json:
-              schema:
-                $ref: 'common.yaml#/components/schemas/SubmitToAtsResponse'
-        '400':
-          $ref: 'common.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: 'common.yaml#/components/responses/Unauthorized'
-        '403':
-          $ref: 'common.yaml#/components/responses/Forbidden'
-        '404':
-          $ref: 'common.yaml#/components/responses/NotFound'
-        '409':
-          description: Idempotency-Key collision (same key, different body).
           content:
             application/json:
               schema:

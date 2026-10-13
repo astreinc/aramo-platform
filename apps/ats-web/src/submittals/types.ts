@@ -123,7 +123,7 @@ export interface SubmittalLookupResponse {
   readonly submittal: TalentSubmittalRecordView | null;
 }
 
-// Create/confirm/mark-ready/submit-to-ats/confirm-ats/revoke response
+// Create/confirm/mark-ready/submit-to-client/confirm-ats/revoke response
 // shapes — all wrap the submittal view.
 export interface SubmittalResponse {
   readonly submittal: TalentSubmittalRecordView;

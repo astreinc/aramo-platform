@@ -677,7 +677,7 @@ export class SubmitTalentToClientService {
       );
       await recordUsage(tx, { tenant_id, event_type: 'submittal.state_transition' });
 
-      // Lane 2 / L2-E (SB-5 / D-4) — submit-to-ats does NOT write Pipeline. The
+      // Lane 2 / L2-E (SB-5 / D-4) — submit-to-client does NOT write Pipeline. The
       // authoritative fact is `Submittal.submitted_to_client` + its immutable
       // state_transition event (written above); the retired Pipeline mirror is gone.
       // The episode stays LIVE (D-2) at its recruiter stage; the submit-to-client

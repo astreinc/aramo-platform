@@ -15,7 +15,7 @@ export interface EngagementOverridePromptProps {
   readonly readiness: EngagementReadiness;
   /** The actor holds engagement:policy:override (resolved from session scopes). */
   readonly canOverride: boolean;
-  /** Submit with the override reason (wires to submitToAts's engagement_override). */
+  /** Submit with the override reason (wires to submitToClient's engagement_override). */
   readonly onOverride: (reason: string) => void | Promise<void>;
   readonly busy?: boolean;
 }

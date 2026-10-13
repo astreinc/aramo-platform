@@ -8,15 +8,15 @@ import { AdvanceStep } from './AdvanceStep';
 import type { TalentSubmittalRecordView } from './types';
 
 // COMM PART A (A9) — the override affordance is surfaced in the REAL submit flow
-// (AdvanceStep) when Submit to ATS is engagement-blocked, reusing the existing
-// EngagementOverridePrompt + submitToAts(engagement_override).
+// (AdvanceStep) when the client-handoff send is engagement-blocked, reusing the
+// existing EngagementOverridePrompt + submitToClient(engagement_override).
 
-const submitToAts = vi.fn();
+const submitToClient = vi.fn();
 const getEngagementReadiness = vi.fn();
 const useSession = vi.fn();
 
 vi.mock('./submittals-api', () => ({
-  submitToAts: (...a: unknown[]) => submitToAts(...a),
+  submitToClient: (...a: unknown[]) => submitToClient(...a),
   markReady: vi.fn(),
   confirmAts: vi.fn(),
 }));
@@ -70,12 +70,12 @@ describe('AdvanceStep — engagement override (PART A / A9)', () => {
   it('authorized override: block → prompt → reason → re-submits with engagement_override → advances', async () => {
     withScopes(['engagement:policy:override']);
     getEngagementReadiness.mockResolvedValue(OVERRIDE_READINESS);
-    submitToAts.mockRejectedValueOnce(blockErr).mockResolvedValueOnce({ submittal: { ...SUBMITTAL, state: 'submitted_to_client' } });
+    submitToClient.mockRejectedValueOnce(blockErr).mockResolvedValueOnce({ submittal: { ...SUBMITTAL, state: 'submitted_to_client' } });
     const onAdvanced = vi.fn();
     render(<AdvanceStep submittal={SUBMITTAL} idempotencyKey="k1" onAdvanced={onAdvanced} />);
 
     fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
-    fireEvent.click(screen.getByRole('button', { name: /submit to ats/i }));
+    fireEvent.click(screen.getByRole('button', { name: /record client handoff/i }));
     await waitFor(() => expect(screen.getByTestId('engagement-override-prompt')).toBeInTheDocument());
 
     // Missing reason → Override disabled.
@@ -84,21 +84,22 @@ describe('AdvanceStep — engagement override (PART A / A9)', () => {
     fireEvent.click(screen.getByTestId('engagement-override-submit'));
 
     await waitFor(() => expect(onAdvanced).toHaveBeenCalled());
-    // Second submit carried the override reason (fresh idempotency key). INC-1d: the
-    // mandatory handoff provenance rides at arg index 2; the engagement override at 3.
-    const overrideCall = submitToAts.mock.calls[1];
-    expect(overrideCall[2]).toEqual({ handoff_performed: true, delivery_channel: 'manual_vms' });
+    // Second submit carried the override reason (fresh idempotency key). INC-1d: on
+    // submitToClient(id, provenance, idempotencyKey, override) the mandatory handoff
+    // provenance rides at arg index 1; the idempotency key at 2; the override at 3.
+    const overrideCall = submitToClient.mock.calls[1];
+    expect(overrideCall[1]).toEqual({ handoff_performed: true, delivery_channel: 'manual_vms' });
     expect(overrideCall[3]).toEqual({ reason: 'Phone-screened; evidence pending.' });
-    expect(overrideCall[1]).not.toBe('k1'); // fresh key (changed body)
+    expect(overrideCall[2]).not.toBe('k1'); // fresh key (changed body)
   });
 
   it('unauthorized user cannot override: block → informational message, NO reason control', async () => {
     withScopes(['pipeline:read']); // no override scope
     getEngagementReadiness.mockResolvedValue(OVERRIDE_READINESS);
-    submitToAts.mockRejectedValueOnce(blockErr);
+    submitToClient.mockRejectedValueOnce(blockErr);
     render(<AdvanceStep submittal={SUBMITTAL} idempotencyKey="k1" onAdvanced={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
-    fireEvent.click(screen.getByRole('button', { name: /submit to ats/i }));
+    fireEvent.click(screen.getByRole('button', { name: /record client handoff/i }));
     await waitFor(() => expect(screen.getByTestId('engagement-override-blocked')).toBeInTheDocument());
     expect(screen.queryByTestId('engagement-override-reason')).toBeNull();
   });
@@ -106,20 +107,20 @@ describe('AdvanceStep — engagement override (PART A / A9)', () => {
   it('read-error (unavailable) remains fail-closed and non-overridable', async () => {
     withScopes(['engagement:policy:override']);
     getEngagementReadiness.mockResolvedValue({ ...OVERRIDE_READINESS, unavailable: true });
-    submitToAts.mockRejectedValueOnce(blockErr);
+    submitToClient.mockRejectedValueOnce(blockErr);
     render(<AdvanceStep submittal={SUBMITTAL} idempotencyKey="k1" onAdvanced={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
-    fireEvent.click(screen.getByRole('button', { name: /submit to ats/i }));
+    fireEvent.click(screen.getByRole('button', { name: /record client handoff/i }));
     await waitFor(() => expect(screen.getByTestId('engagement-override-unavailable')).toBeInTheDocument());
     expect(screen.queryByTestId('engagement-override-submit')).toBeNull();
   });
 
   it('a normal (non-engagement) error does NOT surface the override prompt', async () => {
     withScopes(['engagement:policy:override']);
-    submitToAts.mockRejectedValueOnce(new ApiError(409, 'state invalid', 'SUBMITTAL_STATE_INVALID'));
+    submitToClient.mockRejectedValueOnce(new ApiError(409, 'state invalid', 'SUBMITTAL_STATE_INVALID'));
     render(<AdvanceStep submittal={SUBMITTAL} idempotencyKey="k1" onAdvanced={vi.fn()} />);
     fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
-    fireEvent.click(screen.getByRole('button', { name: /submit to ats/i }));
+    fireEvent.click(screen.getByRole('button', { name: /record client handoff/i }));
     await waitFor(() => expect(screen.getByText(/state invalid|cannot|not/i)).toBeInTheDocument());
     expect(screen.queryByTestId('advance-engagement-override')).toBeNull();
     expect(getEngagementReadiness).not.toHaveBeenCalled();

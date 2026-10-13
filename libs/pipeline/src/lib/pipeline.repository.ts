@@ -625,7 +625,7 @@ export class PipelineRepository {
       return projectView(current as PipelineRow);
     }
 
-    // Client submit-to-ats is Submittal-owned and is NOT a Pipeline transition; there
+    // Client submit-to-client is Submittal-owned and is NOT a Pipeline transition; there
     // is no special submit-guard. Every illegal target is refused by the ordinary
     // state-machine legality check below as INVALID_PIPELINE_TRANSITION (422).
 
