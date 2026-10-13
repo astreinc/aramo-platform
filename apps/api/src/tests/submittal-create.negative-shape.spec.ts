@@ -28,6 +28,7 @@ import { applyPipelineSchema, seedLivePipelineEpisode } from './sw1-live-pipelin
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { ensureAtsEntitlement } from './ats-entitlement.js';
+import { applyTalentTrustSchema } from './talent-trust-schema.js';
 
 // M4 PR-3 §4.7 — Companion negative-shape integration test for the new
 // POST /v1/submittals endpoint. F23 standing pattern: a Vitest end-to-end
@@ -293,6 +294,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await ensureWriteFreezeTenant((s) => setup.query(s), TENANT_ID);
       // INC-1b — grant the ats capability now required by the examine/submittal guards.
       await ensureAtsEntitlement((s, p) => setup.query(s, p), TENANT_ID, ROOT);
+      // ADR-0033 TalentAnchorInterceptor (merged from main) writes talent_trust on
+      // submittal create; apply the talent_trust schema so setup POSTs do not 500.
+      await applyTalentTrustSchema((s) => setup.query(s), ROOT);
 
       // SW-1 remediation — provision the Pipeline schema + a live episode so the
       // SW-1 server-side pipeline derivation resolves and create returns 201 (fixture
