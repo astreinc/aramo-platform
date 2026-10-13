@@ -1,9 +1,13 @@
+import 'reflect-metadata';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AramoError } from '@aramo/common';
+import { REQUIRED_SCOPES_KEY, REQUIRES_SITE_MATCH_KEY } from '@aramo/authorization';
+import { REQUIRED_CAPABILITIES_KEY } from '@aramo/entitlement';
 import type { IdempotencyService } from '@aramo/consent';
 import type { PipelineRepository } from '@aramo/pipeline';
 import type { SubmittalRepository, CreateSubmittalRequestDto } from '@aramo/submittal';
 import type { AuthContextType } from '@aramo/auth';
+import type { RequisitionRepository } from '@aramo/requisition';
 
 import { CreateSubmittalOrchestrator } from '../create-submittal/create-submittal.service.js';
 import { CreateSubmittalController } from '../create-submittal/create-submittal.controller.js';
@@ -200,17 +204,30 @@ interface ControllerCtx {
   create: ReturnType<typeof vi.fn>;
   lookup: ReturnType<typeof vi.fn>;
   persist: ReturnType<typeof vi.fn>;
+  findByIdForActor: ReturnType<typeof vi.fn>;
 }
 
-function buildController(): ControllerCtx {
+// INC-1b — the actor-visibility probe the handler invokes via req.resolveVisibility.
+// findByIdForActor is mocked directly, so the resolved shape is opaque here (the
+// repository, not the interceptor, applies the predicate under real wiring).
+function reqFake(): unknown {
+  return { resolveVisibility: vi.fn().mockResolvedValue({}) };
+}
+
+function buildController(over: { requisitionSiteId?: string | null } = {}): ControllerCtx {
   const create = vi.fn().mockResolvedValue(createdSubmittal(PIPELINE_ID));
   const lookup = vi.fn().mockResolvedValue({ kind: 'proceed' });
   const persist = vi.fn().mockResolvedValue(undefined);
+  // Default: requisition visible to the actor, null site (tenant-wide requisition).
+  const findByIdForActor = vi
+    .fn()
+    .mockResolvedValue({ site_id: over.requisitionSiteId ?? null });
   const controller = new CreateSubmittalController(
     { create } as unknown as CreateSubmittalOrchestrator,
     { lookup, persist } as unknown as IdempotencyService,
+    { findByIdForActor } as unknown as RequisitionRepository,
   );
-  return { controller, create, lookup, persist };
+  return { controller, create, lookup, persist, findByIdForActor };
 }
 
 describe('CreateSubmittalController (unit) — auth + idempotency', () => {
@@ -221,34 +238,34 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
 
   it('consumer_type !== "recruiter" → INSUFFICIENT_PERMISSIONS (403), no orchestration', async () => {
     await expect(
-      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth({ consumer_type: 'portal' }), REQUEST_ID),
+      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth({ consumer_type: 'portal' }), REQUEST_ID, reqFake()),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     expect(ctx.create).not.toHaveBeenCalled();
   });
 
   it('Idempotency-Key missing → VALIDATION_ERROR (400)', async () => {
     await expect(
-      ctx.controller.createSubmittal(makeBody(), undefined, makeAuth(), REQUEST_ID),
+      ctx.controller.createSubmittal(makeBody(), undefined, makeAuth(), REQUEST_ID, reqFake()),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
   it('Idempotency-Key non-UUID → VALIDATION_ERROR (400)', async () => {
     await expect(
-      ctx.controller.createSubmittal(makeBody(), 'not-a-uuid', makeAuth(), REQUEST_ID),
+      ctx.controller.createSubmittal(makeBody(), 'not-a-uuid', makeAuth(), REQUEST_ID, reqFake()),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
   it('replay path: returns prior response, orchestrator NOT called', async () => {
     const priorResponse = { submittal: { id: 'prior' } } as unknown;
     ctx.lookup.mockResolvedValue({ kind: 'replay', response_status: 201, response_body: priorResponse });
-    const result = await ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID);
+    const result = await ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID, reqFake());
     expect(result).toBe(priorResponse);
     expect(ctx.create).not.toHaveBeenCalled();
     expect(ctx.persist).not.toHaveBeenCalled();
   });
 
   it('happy path: returns { submittal } then persists idempotency (201)', async () => {
-    const result = await ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID);
+    const result = await ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID, reqFake());
     expect(result.submittal.state).toBe('created');
     expect(ctx.create).toHaveBeenCalledTimes(1);
     expect(ctx.persist).toHaveBeenCalledTimes(1);
@@ -261,14 +278,101 @@ describe('CreateSubmittalController (unit) — auth + idempotency', () => {
       new AramoError('SUBMITTAL_NO_LIVE_PIPELINE_EPISODE', 'no live episode', 409, { requestId: 'builder' }),
     );
     await expect(
-      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID),
+      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth(), REQUEST_ID, reqFake()),
     ).rejects.toMatchObject({ code: 'SUBMITTAL_NO_LIVE_PIPELINE_EPISODE', statusCode: 409 });
     expect(ctx.persist).not.toHaveBeenCalled();
   });
 
   it('malformed sub → INVALID_REQUEST (400)', async () => {
     await expect(
-      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth({ sub: 'not-a-uuid' }), REQUEST_ID),
+      ctx.controller.createSubmittal(makeBody(), IDEMPOTENCY_KEY, makeAuth({ sub: 'not-a-uuid' }), REQUEST_ID, reqFake()),
     ).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  // ---------------------------------------------------------------------------
+  // INC-1b (TIP-E2E) — create-path server-resolved site + requisition visibility.
+  // job_id IS the requisition id; findByIdForActor applies the actor-visibility
+  // predicate. Enforced BEFORE idempotency + orchestration (no side effects on
+  // denial: ctx.create NEVER called).
+  // ---------------------------------------------------------------------------
+  it('cross-site: site-scoped actor + requisition in a different site → 403, no orchestration', async () => {
+    const local = buildController({ requisitionSiteId: 'site-B' });
+    await expect(
+      local.controller.createSubmittal(
+        makeBody(),
+        IDEMPOTENCY_KEY,
+        makeAuth({ site_id: 'site-A' }),
+        REQUEST_ID,
+        reqFake(),
+      ),
+    ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    expect(local.create).not.toHaveBeenCalled();
+    expect(local.lookup).not.toHaveBeenCalled();
+  });
+
+  it('hidden requisition: job_id not in actor visible set → NOT_FOUND (404), no orchestration', async () => {
+    const local = buildController();
+    local.findByIdForActor.mockResolvedValue(null);
+    await expect(
+      local.controller.createSubmittal(
+        makeBody(),
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+        reqFake(),
+      ),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(local.create).not.toHaveBeenCalled();
+    expect(local.lookup).not.toHaveBeenCalled();
+  });
+
+  it('valid access: site-scoped actor + requisition in the SAME site → orchestration proceeds', async () => {
+    const local = buildController({ requisitionSiteId: 'site-A' });
+    const result = await local.controller.createSubmittal(
+      makeBody(),
+      IDEMPOTENCY_KEY,
+      makeAuth({ site_id: 'site-A' }),
+      REQUEST_ID,
+      reqFake(),
+    );
+    expect(result.submittal.state).toBe('created');
+    expect(local.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('non-UUID job_id → VALIDATION_ERROR (400) before orchestration', async () => {
+    const local = buildController();
+    await expect(
+      local.controller.createSubmittal(
+        makeBody({ job_id: 'not-a-uuid' }),
+        IDEMPOTENCY_KEY,
+        makeAuth(),
+        REQUEST_ID,
+        reqFake(),
+      ),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(local.create).not.toHaveBeenCalled();
+    expect(local.findByIdForActor).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INC-1b (TIP-E2E) — guard-metadata controls for POST /v1/submittals. The guard
+// chain (EntitlementGuard -> RolesGuard) reads these decorator values; a missing
+// capability or widened/absent scope would silently open the create route.
+// ---------------------------------------------------------------------------
+describe('CreateSubmittalController — INC-1b guard metadata', () => {
+  it('class requires the ATS tenant capability (@RequireCapability("ats"))', () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_CAPABILITIES_KEY, CreateSubmittalController),
+    ).toEqual(['ats']);
+  });
+
+  it('createSubmittal requires EXACTLY the submittal:create scope + site match', () => {
+    expect(
+      Reflect.getMetadata(REQUIRED_SCOPES_KEY, CreateSubmittalController.prototype.createSubmittal),
+    ).toEqual(['submittal:create']);
+    expect(
+      Reflect.getMetadata(REQUIRES_SITE_MATCH_KEY, CreateSubmittalController.prototype.createSubmittal),
+    ).toBe(true);
   });
 });

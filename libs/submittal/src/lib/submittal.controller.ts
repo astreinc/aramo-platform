@@ -23,6 +23,7 @@ import {
 } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { IdempotencyService } from '@aramo/consent';
 import {
   EvidenceRepository,
@@ -39,6 +40,10 @@ import { RevokeSubmittalRequestDto } from './dto/revoke-submittal-request.dto.js
 import type { RevokeSubmittalResponseDto } from './dto/revoke-submittal-response.dto.js';
 import type { SubmitToAtsResponseDto } from './dto/submit-to-ats-request.dto.js';
 import type { TalentSubmittalRecordView } from './dto/talent-submittal-record.view.js';
+import {
+  PIPELINE_SITE_READER,
+  type PipelineSiteReader,
+} from './ports/pipeline-site-reader.port.js';
 import { SubmittalRepository } from './submittal.repository.js';
 
 // libs/submittal — the submittal lifecycle controller: confirm / mark-ready /
@@ -65,8 +70,14 @@ const UUID_REGEX =
 // PR-A1a §6 — route enforcement wired here. JwtAuthGuard runs first
 // (AuthN); RolesGuard runs second (AuthZ) and is a no-op on any handler
 // that does not carry @RequireScopes metadata.
+// INC-1b (TIP-E2E) — tenant-capability parity: EntitlementGuard +
+// @RequireCapability('ats') added at the class level (applies to confirm /
+// mark-ready / confirm-ats / revoke + the GET reads), matching the canonical ATS
+// stack. Server-resolved site + requisition actor-visibility on the mutations are
+// the follow-on INC-1b step.
 @Controller('v1/submittals')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('ats')
 export class SubmittalController {
   constructor(
     private readonly submittalRepository: SubmittalRepository,
@@ -82,7 +93,91 @@ export class SubmittalController {
     // no controller emit sites in this PR per single-change discipline).
     @Inject('SubmittalControllerLogger')
     private readonly logger: AramoLogger,
+    // INC-1b (TIP-E2E) — PipelineSiteReader port (adapter bound @Global in apps/api
+    // over the Pipeline domain; libs/submittal stays decoupled). Resolves the
+    // authoritative tenant-scoped site + requisition context for lifecycle-mutation
+    // authorization (confirm / mark-ready / confirm-ats / revoke).
+    @Inject(PIPELINE_SITE_READER)
+    private readonly pipelineSiteReader: PipelineSiteReader,
   ) {}
+
+  // INC-1b (TIP-E2E) — lifecycle-mutation authorization, enforced BEFORE any state
+  // transition or event write (read-only → no side effects on denial). Resolves the
+  // authoritative, tenant-scoped submittal→pipeline→requisition chain and fails
+  // CLOSED on any missing/mismatched relationship:
+  //   - submittal not in tenant / no pipeline link / pipeline not resolvable → refuse;
+  //   - pipeline.requisition_id must equal submittal.job_id (chain consistency);
+  //   - site: a site-scoped actor (non-null claim) may act only within the pipeline's
+  //     site; a tenant-wide actor (null claim) is admitted on any site;
+  //   - requisition visibility: a non-see_all actor may act only for a requisition in
+  //     its visible set (404 "not in visible set", never 403 — Ruling 2 parity).
+  private async assertLifecycleMutationAuthorized(
+    req: Request,
+    authContext: AuthContextType,
+    submittal_id: string,
+    requestId: string,
+  ): Promise<void> {
+    const sub = await this.submittalRepository.findAuthContextById({
+      tenant_id: authContext.tenant_id,
+      id: submittal_id,
+    });
+    if (sub === null) {
+      throw new AramoError('NOT_FOUND', 'TalentSubmittalRecord not found', 404, {
+        requestId,
+        details: { submittal_id },
+      });
+    }
+    if (sub.pipeline_id === null) {
+      throw new AramoError(
+        'SUBMITTAL_PIPELINE_LINK_INVALID',
+        'Submittal has no linked pipeline episode',
+        409,
+        { requestId, details: { submittal_id } },
+      );
+    }
+    const ctx = await this.pipelineSiteReader.resolveForAuthorization({
+      tenant_id: authContext.tenant_id,
+      pipeline_id: sub.pipeline_id,
+    });
+    if (ctx === null || ctx.requisition_id !== sub.job_id) {
+      throw new AramoError(
+        'SUBMITTAL_PIPELINE_LINK_INVALID',
+        'Submittal pipeline relationship is not valid',
+        409,
+        {
+          requestId,
+          details: {
+            submittal_id,
+            reason: ctx === null ? 'pipeline_not_found' : 'requisition_mismatch',
+          },
+        },
+      );
+    }
+    if (
+      authContext.site_id !== null &&
+      authContext.site_id !== undefined &&
+      ctx.site_id !== null &&
+      ctx.site_id !== authContext.site_id
+    ) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Submittal pipeline belongs to a different site',
+        403,
+        { requestId, details: { submittal_id, reason: 'site_mismatch' } },
+      );
+    }
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    if (visibleReqIds !== null && !visibleReqIds.has(sub.job_id)) {
+      throw new AramoError('NOT_FOUND', 'Requisition not found in tenant', 404, {
+        requestId,
+        details: {
+          submittal_id,
+          requisition_id: sub.job_id,
+          reason: 'requisition_not_visible',
+        },
+      });
+    }
+  }
 
   // SW-1 (Submittal Workspace, R1-A) — POST /v1/submittals (createSubmittal) was
   // RE-POINTED to the apps/api CreateSubmittalController. The create command now
@@ -183,6 +278,7 @@ export class SubmittalController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ConfirmSubmittalResponseDto> {
     // Step 1 — auth posture (recruiter-only).
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -199,6 +295,12 @@ export class SubmittalController {
         { requestId, details: { invalid_field: 'submittal_id' } },
       );
     }
+
+    // INC-1b (TIP-E2E) — site + requisition-visibility authorization on the
+    // authoritative submittal->pipeline->requisition chain, enforced BEFORE the
+    // confirm transition / attestation gate / event write (fail-closed; a denied
+    // request makes no transition and writes no event).
+    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
 
     // Step 4 — attestations manual check. The DTO documents the locked
     // `true` values via TS type literals + OpenAPI const; runtime
@@ -500,6 +602,7 @@ export class SubmittalController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<RevokeSubmittalResponseDto> {
     // Step 1 — auth posture (recruiter-only).
     this.assertConsumerIsRecruiter(authContext, requestId);
@@ -541,6 +644,10 @@ export class SubmittalController {
     // client contract preserves the { submittal, evidence_package_
     // mutated: false } response shape so the `event` field is dropped
     // at the HTTP boundary.
+    // INC-1b (TIP-E2E) — site + requisition-visibility authorization before the
+    // revoke transition / event write (fail-closed; no side effects on denial).
+    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
+
     const revoke_event_id = randomUUID();
     let submittal: TalentSubmittalRecordView;
     try {
@@ -608,6 +715,7 @@ export class SubmittalController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<MarkReadyResponseDto> {
     this.assertConsumerIsRecruiter(authContext, requestId);
     const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
@@ -623,6 +731,10 @@ export class SubmittalController {
     if (lookup.kind === 'replay') {
       return lookup.response_body as MarkReadyResponseDto;
     }
+
+    // INC-1b (TIP-E2E) — site + requisition-visibility authorization before the
+    // mark-ready transition / event write (fail-closed; no side effects on denial).
+    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
 
     const event_id = randomUUID();
     const { submittal, event } = await this.submittalRepository.markReady({
@@ -676,6 +788,7 @@ export class SubmittalController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ConfirmAtsResponseDto> {
     this.assertConsumerIsRecruiter(authContext, requestId);
     const key = this.assertIdempotencyKeyRequired(idempotencyKey, requestId);
@@ -691,6 +804,10 @@ export class SubmittalController {
     if (lookup.kind === 'replay') {
       return lookup.response_body as ConfirmAtsResponseDto;
     }
+
+    // INC-1b (TIP-E2E) — site + requisition-visibility authorization before the
+    // confirm-ats transition / event write (fail-closed; no side effects on denial).
+    await this.assertLifecycleMutationAuthorized(req, authContext, submittal_id, requestId);
 
     const event_id = randomUUID();
     const { submittal, event } = await this.submittalRepository.confirmAts({

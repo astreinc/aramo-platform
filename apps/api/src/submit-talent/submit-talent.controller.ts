@@ -8,11 +8,14 @@ import {
   HttpStatus,
   Param,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, hashCanonicalizedBody, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { IdempotencyService } from '@aramo/consent';
 import {
   SubmittalRepository,
@@ -52,8 +55,13 @@ export interface SubmitToAtsResponse {
   readonly event: TalentSubmittalEventView;
 }
 
+// INC-1b (TIP-E2E) — tenant-capability parity: EntitlementGuard +
+// @RequireCapability('ats') added (was JwtAuthGuard+RolesGuard only). Applies to
+// submit-to-client + the submit-to-ats alias. Server-resolved site + requisition
+// actor-visibility on the send are the follow-on INC-1b step.
 @Controller('v1/submittals')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('ats')
 export class SubmitTalentController {
   constructor(
     private readonly command: SubmitTalentToClientService,
@@ -74,8 +82,9 @@ export class SubmitTalentController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<SubmitToAtsResponse> {
-    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId);
+    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId, req);
   }
 
   // SW-2 (R2-A) — COMPATIBILITY ALIAS. The legacy /submit-to-ats path delegates to
@@ -90,8 +99,9 @@ export class SubmitTalentController {
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<SubmitToAtsResponse> {
-    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId);
+    return this.submitImpl(submittal_id, body, idempotencyKey, authContext, requestId, req);
   }
 
   private async submitImpl(
@@ -100,6 +110,7 @@ export class SubmitTalentController {
     idempotencyKey: string | undefined,
     authContext: AuthContextType,
     requestId: string,
+    req: Request,
   ): Promise<SubmitToAtsResponse> {
     if (authContext.consumer_type !== 'recruiter') {
       throw new AramoError(
@@ -129,23 +140,72 @@ export class SubmitTalentController {
     // policy is ENFORCING_WITH_OVERRIDE and a required evidence item is missing.
     const engagementOverride = parseEngagementOverride(body);
 
-    // SW-2 (R4-A/R4-B) — optional submittal delivery provenance from the body. The
-    // channel's validity (enum membership + executability + authority consistency) is
-    // enforced authoritatively in the command; here we only extract well-typed values.
+    // SW-2 (R4-A/R4-B) — submittal delivery provenance from the body. The channel's
+    // enum / executability / authority-consistency SEMANTIC validity is enforced
+    // authoritatively in the command; here we extract well-typed values and enforce
+    // INC-1d PRESENCE below.
     const deliveryChannel = typeof body['delivery_channel'] === 'string' ? body['delivery_channel'] : null;
     const externalReference = typeof body['external_reference'] === 'string' ? body['external_reference'] : null;
     const externalSubmittedAt = typeof body['external_submitted_at'] === 'string' ? body['external_submitted_at'] : null;
+    // INC-1d (TIP-E2E) — the mandatory manual-handoff attestation. Only the literal
+    // boolean true satisfies it; anything else (absent / false / non-boolean) is
+    // not-attested.
+    const handoffPerformed = body['handoff_performed'] === true;
+
+    // INC-1d (TIP-E2E) — manual-handoff integrity enforced at the HTTP send boundary,
+    // BEFORE the mutation command runs (a non-attested / channel-less send never enters
+    // the transaction). This covers BOTH the submit-to-client route AND the submit-to-ats
+    // alias — they share submitImpl, so the equivalent mutation enforces the same policy.
+    // handoff_performed:true is the recruiter attesting the manual client handoff actually
+    // occurred (the platform transmits nothing — an ATTESTED + RECORDED handoff, never an
+    // independently-verified client receipt). delivery_channel is REQUIRED (how it
+    // happened); its enum/authority validity is checked authoritatively in the command.
+    if (!handoffPerformed) {
+      throw new AramoError(
+        'ATTESTATION_MISSING',
+        'A handoff_performed:true attestation is required to record a client handoff',
+        422,
+        { requestId, details: { missing_field: 'handoff_performed' } },
+      );
+    }
+    if (deliveryChannel === null) {
+      throw new AramoError(
+        'SUBMITTAL_DELIVERY_CHANNEL_INVALID',
+        'delivery_channel is required to record the manual client handoff',
+        422,
+        { requestId, details: { reason: 'required' } },
+      );
+    }
 
     // The single atomic operation: submitted_to_client (authoritative) + serialized
     // slot consumption + provenance, all-or-nothing. L2-E (SB-5) retired the
     // Pipeline mirror — this command does NOT write Pipeline; the episode stays
     // LIVE and readers derive the submit-to-client signal from the event.
+    // INC-1b (TIP-E2E) — actor-site + requisition-visibility are enforced INSIDE
+    // the command's transaction, BEFORE any state mutation / slot consumption /
+    // outbox write, reusing the already-validated submittal->pipeline->requisition
+    // chain. Tenant-wide principals carry a null site claim; see_all actors get a
+    // null visible-id set (no filter). resolveVisibleRequisitionIds is the global
+    // VisibilityInterceptor's authorized read.
+    const actor_site_id = authContext.site_id ?? null;
+    const visible_requisition_ids = await req.resolveVisibleRequisitionIds!();
+
+    // INC-1c (TIP-E2E) — provisional MANDATORY-RTR interim product policy flag.
+    // Default OFF (DEPLOYED-DARK): the fail-closed RTR control inside the command
+    // ships inert until Legal/PO activation flips this env, so existing valid flows
+    // are unchanged. Build + full test authorized now; activation is separately gated.
+    const rtr_disclosure_mandatory =
+      process.env['ARAMO_TIP_E2E_RTR_DISCLOSURE_MANDATORY'] === '1';
+
     const eventId = randomUUID();
     await this.command.submitToClient({
       tenant_id: authContext.tenant_id,
       submittal_id,
       event_id: eventId,
       actor_id: authContext.sub,
+      actor_site_id,
+      visible_requisition_ids,
+      rtr_disclosure_mandatory,
       actor_can_override: authContext.scopes.includes('engagement:policy:override'),
       engagement_override: engagementOverride,
       // CSP PR-3 — the client-submittal-policy override authority is a DISTINCT scope
@@ -153,6 +213,7 @@ export class SubmitTalentController {
       // override input and recorded in the decision provenance.
       submittal_actor_can_override: authContext.scopes.includes('client-submittal-policy:override'),
       submittal_override_reason: engagementOverride?.reason ?? null,
+      handoff_performed: handoffPerformed,
       delivery_channel: deliveryChannel,
       external_reference: externalReference,
       external_submitted_at: externalSubmittedAt,

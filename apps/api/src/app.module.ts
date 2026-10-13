@@ -82,6 +82,7 @@ import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
+import { PipelineSiteReaderModule } from './pipeline-site-reader/pipeline-site-reader.module.js';
 import { SubmittedHistoryModule } from './reporting-adapters/submitted-history.module.js';
 import { InterviewHistoryModule } from './reporting-adapters/interview-history.module.js';
 import { SubmitTalentModule } from './submit-talent/submit-talent.module.js';
@@ -96,6 +97,7 @@ import { PreStartRequirementModule } from './pre-start-requirement/pre-start-req
 import { PlacementModule } from './placement/placement.module.js';
 import { OfferModule } from './offer/offer.module.js';
 import { TalentJourneyModule } from './talent-journey/talent-journey.module.js';
+import { TalentJourneyAuditModule } from './talent-journey-audit/talent-journey-audit.module.js';
 import { OfferStartWorklistModule } from './offer-start-worklist/offer-start-worklist.module.js';
 import { RequisitionTalentBoardModule } from './requisition-talent-board/requisition-talent-board.module.js';
 import { EnterpriseSearchModule } from './search/enterprise-search.module.js';
@@ -267,6 +269,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // both CompanyModule and RequisitionModule so the token is available to the
     // requisition controller wherever it resolves.
     CompanyClientCheckModule,
+    PipelineSiteReaderModule,
     // PR-A4 Gate 5 — third ATS-domain batch: talent-record + attachment.
     // TalentRecordModule is imported BEFORE AttachmentModule because
     // AttachmentModule depends on it (attachment -> talent-record edge;
@@ -499,6 +502,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // L2-H — the Unified Talent Journey read-composer (GET /v1/pipelines/:id/journey);
     // composes the 8 owner aggregates, 404-conceals a non-visible episode, reads only.
     TalentJourneyModule,
+    TalentJourneyAuditModule,
     OfferStartWorklistModule,
     // TB-1 — the Requisition Talent Board read-composer (GET
     // /v1/requisitions/:requisition_id/talent-board); a per-requisition BATCHED
