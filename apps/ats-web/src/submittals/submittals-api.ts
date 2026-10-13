@@ -83,6 +83,11 @@ export async function markReady(
 export async function submitToClient(
   submittalId: string,
   provenance: {
+    // INC-1d — the recruiter's MANDATORY attestation that the manual client handoff
+    // actually occurred (the platform transmits nothing). The server fails closed with
+    // ATTESTATION_MISSING (422) if this is not the literal true.
+    readonly handoff_performed: true;
+    // INC-1d — REQUIRED: how the handoff happened.
     readonly delivery_channel: string;
     readonly external_reference?: string;
     readonly external_submitted_at?: string;
@@ -101,6 +106,13 @@ export async function submitToClient(
 export async function submitToAts(
   submittalId: string,
   idempotencyKey: string,
+  // INC-1d — the deprecated submit-to-ats alias enforces the SAME manual-handoff
+  // policy as submit-to-client (it routes through the same command): the recruiter's
+  // mandatory handoff_performed:true attestation + a required delivery_channel.
+  provenance: {
+    readonly handoff_performed: true;
+    readonly delivery_channel: string;
+  },
   // PART A — an optional engagement-policy override (authorized user + reason).
   // The server honours it only under ENFORCING_WITH_OVERRIDE with real missing
   // evidence + the engagement:policy:override scope; audit is authoritative.
@@ -108,7 +120,7 @@ export async function submitToAts(
 ): Promise<SubmittalResponse> {
   return apiClient.post<SubmittalResponse>(
     `/v1/submittals/${submittalId}/submit-to-ats`,
-    engagementOverride ? { engagement_override: engagementOverride } : {},
+    engagementOverride ? { ...provenance, engagement_override: engagementOverride } : { ...provenance },
     { headers: { 'Idempotency-Key': idempotencyKey } },
   );
 }

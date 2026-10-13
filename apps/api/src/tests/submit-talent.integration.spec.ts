@@ -353,7 +353,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
       await svc.submitToClient({
-        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-prov',
+        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, handoff_performed: true, requestId: 'sw2-prov',
         delivery_channel: 'manual_vms', external_reference: 'FG-938273',
         external_submitted_at: '2026-10-01T15:42:00.000Z',
       });
@@ -378,7 +378,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       await expect(
         svc.submitToClient({
-          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-ac',
+          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, handoff_performed: true, requestId: 'sw2-ac',
           delivery_channel: 'aramo_connector',
         }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_DELIVERY_CHANNEL_INVALID', statusCode: 422 });
@@ -400,14 +400,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       await expect(
         svc.submitToClient({
-          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-vms-no',
+          tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, handoff_performed: true, requestId: 'sw2-vms-no',
           delivery_channel: 'manual_email',
         }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_DELIVERY_CHANNEL_INVALID' });
 
       // manual_vms is accepted under CLIENT_VMS authority.
       await svc.submitToClient({
-        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, requestId: 'sw2-vms-ok',
+        tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: ACTOR_SW2, handoff_performed: true, requestId: 'sw2-vms-ok',
         delivery_channel: 'manual_vms',
       });
       expect(await submittalState(sub)).toBe('submitted_to_client|true');
@@ -427,7 +427,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await pipelineStatus(pipe)).toBe('qualifying');
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
 
-      const res = await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p1' });
+      const res = await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p1' });
       // Lane 2 / L2-E (SB-5) — the result no longer carries a pipeline_status (the
       // mirror is retired). The submittal is the single authoritative fact.
       expect(res).toEqual({ submittal_id: sub, pipeline_id: pipe, state: 'submitted_to_client' });
@@ -461,7 +461,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedSubmittal(t, sub, talent, req, pipe);
       // Deliberately NO seedRequisitionResume — the default is never an authoritative fallback.
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'ti1dd-noselect' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'ti1dd-noselect' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_REQUIRED', statusCode: 422 });
       // The submittal stays ready_for_review, unsent; no side-effects.
       expect(await submittalState(sub)).toBe('ready_for_review|false');
@@ -483,7 +483,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 3–5) submit attempted without replacement → the AUTHORITATIVE backend refuses;
       //      no freeze, no send, no side-effects (the UI banner is not the only guard).
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'rrl-arch' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'rrl-arch' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_INELIGIBLE', statusCode: 422 });
       expect(await submittalState(sub)).toBe('ready_for_review|false');
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(null);
@@ -492,7 +492,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // 6–7) recruiter selects an ACTIVE Revision 4 → readiness valid again → submit succeeds,
       //      freezing the ACTIVE replacement (never the archived one).
       await seedRequisitionResume(t, talent, req, edActive4, '2026-07-02T00:00:00.000Z');
-      await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'rrl-ok' });
+      await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'rrl-ok' });
       expect(await submittalState(sub)).toBe('submitted_to_client|true');
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub])).toBe(edActive4);
     });
@@ -508,7 +508,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedSubmittal(t, sub1, talent, req1, pipe1);
       // Submit sub1 while edX is ACTIVE → the exact edition is FROZEN onto the submittal.
       await seedRequisitionResume(t, talent, req1, edX);
-      await svc.submitToClient({ tenant_id: t, submittal_id: sub1, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'inv-submit' });
+      await svc.submitToClient({ tenant_id: t, submittal_id: sub1, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'inv-submit' });
       expect(await submittalState(sub1)).toBe('submitted_to_client|true');
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub1])).toBe(edX);
       // A second requisition selects edX, then the recruiter archives edX.
@@ -523,7 +523,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await one(`SELECT resume_edition_id::text AS c FROM submittal."TalentSubmittalRecord" WHERE id=$1`, [sub1])).toBe(edX);
       // INELIGIBLE — a NEW submit whose selection is the now-archived edX is refused.
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub2, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'inv-refuse' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub2, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'inv-refuse' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_RESUME_SELECTION_INELIGIBLE', statusCode: 422 });
       expect(await submittalState(sub2)).toBe('ready_for_review|false');
     });
@@ -543,8 +543,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisitionResume(t, tB, req, TI1DD_EDITION);
 
       const results = await Promise.allSettled([
-        svc.submitToClient({ tenant_id: t, submittal_id: sA, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p2a' }),
-        svc.submitToClient({ tenant_id: t, submittal_id: sB, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p2b' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sA, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p2a' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sB, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p2b' }),
       ]);
       const fulfilled = results.filter((r) => r.status === 'fulfilled');
       const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
@@ -571,7 +571,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       failFlag.fail = true;
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p3' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p3' }),
       ).rejects.toThrow(/INJECTED/);
 
       // EVERY participating schema shows zero effect — the whole tx rolled back.
@@ -592,7 +592,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisition(t, req, 'open'); // L1-C — the null-link refusal fires at step 3, BEFORE the gate; seeded for consistency.
       await seedSubmittal(t, sub, talent, req, null);
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p4a' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p4a' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_PIPELINE_LINK_INVALID' });
       expect(await submittalState(sub)).toBe('ready_for_review|false');
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
@@ -606,7 +606,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedPipeline(t, pipe, talent, reqPipe);
       await seedSubmittal(t, sub, talent, reqSub, pipe);
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p4b' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p4b' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_PIPELINE_LINK_INVALID' });
       expect(await submittalState(sub)).toBe('ready_for_review|false');
       expect(await pipelineStatus(pipe)).toBe('qualifying');
@@ -621,10 +621,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedSubmittal(t, sub, talent, req, pipe);
       await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
-      await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p6-1' });
+      await svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p6-1' });
       // Re-submit the now-submitted_to_client submittal — the state machine refuses it.
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'p6-2' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'p6-2' }),
       ).rejects.toMatchObject({ code: 'SUBMITTAL_STATE_INVALID' });
       // Consumed exactly once — no double consumption.
       expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('1');
@@ -645,7 +645,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
 
         await expect(
-          svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: `l1c-${status}` }),
+          svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: `l1c-${status}` }),
         ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN', statusCode: 409, context: { details: { status } } });
 
         // No mutation anywhere: submittal + pipeline untouched, nothing consumed.
@@ -670,7 +670,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await requisitionStatus(req)).toBe('submittals_closed');
 
       await expect(
-        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: 'l1c-rule3' }),
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 'l1c-rule3' }),
       ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN' });
 
       // AFTER — unchanged. The gate is one-way (read-only); it wrote nothing.
@@ -738,7 +738,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { talent, req, sub };
     }
     const submit = (t: string, sub: string, tag: string) =>
-      svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), requestId: tag });
+      svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: tag });
 
     it('C3 dormant: a never-governed tenant submits under the existing gates (no engagement enforcement)', async () => {
       const t = randomUUID();
@@ -942,6 +942,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           submittal_id: sub,
           event_id: randomUUID(),
           actor_id: randomUUID(),
+          handoff_performed: true,
+          delivery_channel: 'manual_vms',
           actor_can_override: false,
           engagement_override: { reason: 'let me through' },
           requestId: 'partA-noscope',
@@ -958,6 +960,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittal_id: sub,
         event_id: randomUUID(),
         actor_id: randomUUID(),
+        handoff_performed: true,
+        delivery_channel: 'manual_vms',
         actor_can_override: true,
         engagement_override: { reason: 'Client phone-screened; evidence sync pending.' },
         requestId: 'partA-override',
@@ -1047,6 +1051,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           submittal_id: sub,
           event_id: randomUUID(),
           actor_id: randomUUID(),
+          handoff_performed: true,
+          delivery_channel: 'manual_vms',
           requestId: 'csp-deny',
         }),
       ).rejects.toMatchObject({
@@ -1069,6 +1075,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittal_id: sub,
         event_id: randomUUID(),
         actor_id: randomUUID(),
+        handoff_performed: true,
+        delivery_channel: 'manual_vms',
         requestId: 'csp-allow',
       });
       expect(res.state).toBe('submitted_to_client');
@@ -1104,6 +1112,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           submittal_id: sub,
           event_id: randomUUID(),
           actor_id: randomUUID(),
+          handoff_performed: true,
+          delivery_channel: 'manual_vms',
           requestId: 'csp-rtr-deny',
         }),
       ).rejects.toMatchObject({
@@ -1127,6 +1137,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         submittal_id: sub,
         event_id: randomUUID(),
         actor_id: randomUUID(),
+        handoff_performed: true,
+        delivery_channel: 'manual_vms',
         requestId: 'csp-rtr-allow',
       });
       expect(res.state).toBe('submitted_to_client');

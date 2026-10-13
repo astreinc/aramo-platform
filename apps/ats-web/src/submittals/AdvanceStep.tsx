@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { ApiError, Button, Card, InlineAlert, hasScope, useSession } from '@aramo/fe-foundation';
+import { ApiError, Button, Card, InlineAlert, Select, hasScope, useSession } from '@aramo/fe-foundation';
 
+import { AttestCheckbox } from '../ui';
 import { EngagementOverridePrompt } from '../engagement/EngagementOverridePrompt';
 import { getEngagementReadiness, type EngagementReadiness } from '../engagement/engagement-api';
 
@@ -17,6 +18,23 @@ import {
   type SubmittalStateValue,
   type TalentSubmittalRecordView,
 } from './types';
+
+// INC-1d — the manual delivery channels the send accepts (aramo_connector is NOT
+// offered: V1 has no outbound connector). Kept local to the wizard step so it does
+// not couple to the Submittal Workspace module.
+const WIZARD_DELIVERY_CHANNELS = [
+  'manual_vms',
+  'manual_client_portal',
+  'manual_email',
+  'manual_other',
+] as const;
+type WizardDeliveryChannel = (typeof WIZARD_DELIVERY_CHANNELS)[number];
+const WIZARD_DELIVERY_LABELS: Record<WizardDeliveryChannel, string> = {
+  manual_vms: 'Client VMS (manual)',
+  manual_client_portal: 'Client portal (manual)',
+  manual_email: 'Email (manual)',
+  manual_other: 'Other (manual)',
+};
 
 interface AdvanceStepProps {
   readonly submittal: TalentSubmittalRecordView;
@@ -45,12 +63,20 @@ export function AdvanceStep({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [overrideReadiness, setOverrideReadiness] = useState<EngagementReadiness | null>(null);
+  // INC-1d — the send step (ready_for_review -> submitted_to_client) collects the
+  // manual delivery channel + the mandatory handoff attestation; both are required
+  // by the server (the submit-to-ats alias enforces the same policy as submit-to-client).
+  const [method, setMethod] = useState<WizardDeliveryChannel>('manual_vms');
+  const [handoffPerformed, setHandoffPerformed] = useState(false);
 
   const sessionState = useSession();
   const canOverride =
     sessionState.status === 'authenticated' && hasScope(sessionState.session, 'engagement:policy:override');
 
   const next = nextMainlineState(submittal.state);
+  const isSend = submittal.state === 'ready_for_review';
+  // INC-1d — the provenance the send (and any override re-send) must carry.
+  const handoffProvenance = { handoff_performed: true as const, delivery_channel: method };
 
   const action = (() => {
     switch (submittal.state) {
@@ -62,7 +88,7 @@ export function AdvanceStep({
       case 'ready_for_review':
         return {
           label: 'Submit to ATS',
-          run: () => submitToAts(submittal.id, idempotencyKey),
+          run: () => submitToAts(submittal.id, idempotencyKey, handoffProvenance),
         };
       case 'submitted_to_client':
         return {
@@ -101,6 +127,11 @@ export function AdvanceStep({
 
   const handleClick = async () => {
     if (submitting) return;
+    // INC-1d — never fire an unattested send; the server would fail closed anyway.
+    if (isSend && !handoffPerformed) {
+      setError('Please confirm you performed this handoff before submitting.');
+      return;
+    }
     setError(null);
     setOverrideReadiness(null);
     setSubmitting(true);
@@ -121,7 +152,8 @@ export function AdvanceStep({
     setError(null);
     try {
       // Fresh Idempotency-Key: the body now carries the override (changed body).
-      const res = await submitToAts(submittal.id, uuidv4(), { reason });
+      // INC-1d — the override re-send still carries the mandatory handoff provenance.
+      const res = await submitToAts(submittal.id, uuidv4(), handoffProvenance, { reason });
       setOverrideReadiness(null);
       onAdvanced(res.submittal);
     } catch (err) {
@@ -151,7 +183,34 @@ export function AdvanceStep({
           />
         </div>
       )}
-      <Button onClick={handleClick} disabled={submitting}>
+      {isSend && (
+        <div style={{ marginBottom: '1rem' }} data-testid="advance-handoff-provenance">
+          <label style={{ display: 'block', marginBottom: '0.5rem' }}>
+            <span style={{ display: 'block', marginBottom: '0.25rem' }}>How was it delivered?</span>
+            <Select
+              unstyled
+              className="rc-input"
+              value={method}
+              onChange={(e) => setMethod(e.target.value as WizardDeliveryChannel)}
+              aria-label="Delivery channel"
+            >
+              {WIZARD_DELIVERY_CHANNELS.map((c) => (
+                <option key={c} value={c}>
+                  {WIZARD_DELIVERY_LABELS[c]}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <AttestCheckbox checked={handoffPerformed} onChange={setHandoffPerformed}>
+            I confirm I performed this handoff to the client.
+          </AttestCheckbox>
+          <p style={{ marginTop: '0.5rem', opacity: 0.8 }}>
+            Aramo records your attestation that this handoff happened; it does not send
+            anything to the client and does not confirm the client received it.
+          </p>
+        </div>
+      )}
+      <Button onClick={handleClick} disabled={submitting || (isSend && !handoffPerformed)}>
         {submitting ? 'Advancing…' : action.label}
       </Button>
     </Card>
