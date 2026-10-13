@@ -12685,6 +12685,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/talent-journey-audit/talent-journey-audit.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/talent-journey/talent-journey.controller.ts"
     },
     {
