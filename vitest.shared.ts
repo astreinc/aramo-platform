@@ -234,6 +234,7 @@ export default defineConfig({
       // talent record; renamed from `talent` to avoid collision with
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
+      '@aramo/talent-intelligence': resolve(root, 'libs/talent-intelligence/src/index.ts'),
       // Promotion Gate Slice-B1 — the reconcile poll (scope:ats). Mirrors
       // tsconfig.base.json @aramo/talent-reconcile so vitest resolves the apps/api
       // AppModule import + the lib's unit/integration specs.

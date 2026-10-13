@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { CompanyRepository } from '@aramo/company';
 import { InterviewSessionRepository } from '@aramo/client-selection';
 import { CommunicationsRepository } from '@aramo/communications';
@@ -7,12 +7,17 @@ import { ConsentRepository } from '@aramo/consent';
 import { DocumentsRepository } from '@aramo/documents';
 import { IdentityService } from '@aramo/identity';
 import { PipelineRepository } from '@aramo/pipeline';
-import { RequisitionRepository } from '@aramo/requisition';
 import { TalentExtractionService } from '@aramo/talent-extraction';
-import { TalentRecordRepository } from '@aramo/talent-record';
 import { TaskRepository } from '@aramo/task';
+import {
+  AUTHORIZED_TALENT_RETRIEVAL_READ_PORT,
+  REQUISITION_CONTEXT_READ_PORT,
+  TALENT_DOSSIER_READ_PORT,
+  type AuthorizedTalentRetrievalReadPort,
+  type RequisitionContextReadPort,
+  type TalentDossierReadPort,
+} from '@aramo/talent-intelligence';
 
-import { DossierService } from '../talent-identity/dossier.service.js';
 import { TalentJourneyReadService } from '../talent-journey/talent-journey-read.service.js';
 import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-journey.view.js';
 
@@ -49,10 +54,12 @@ const DUPLICATE_ADVISORY_LABEL = 'Possible duplicate needs review';
 @Injectable()
 export class Talent360ReadAdapter implements Talent360ReadPort {
   constructor(
-    private readonly talent: TalentRecordRepository,
+    @Inject(AUTHORIZED_TALENT_RETRIEVAL_READ_PORT)
+    private readonly talentPort: AuthorizedTalentRetrievalReadPort,
     private readonly pipelines: PipelineRepository,
     private readonly journey: TalentJourneyReadService,
-    private readonly requisitions: RequisitionRepository,
+    @Inject(REQUISITION_CONTEXT_READ_PORT)
+    private readonly requisitionContextPort: RequisitionContextReadPort,
     private readonly companies: CompanyRepository,
     private readonly identity: IdentityService,
     private readonly interviews: InterviewSessionRepository,
@@ -61,7 +68,8 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     private readonly tasks: TaskRepository,
     private readonly documents: DocumentsRepository,
     private readonly consent: ConsentRepository,
-    private readonly dossier: DossierService,
+    @Inject(TALENT_DOSSIER_READ_PORT)
+    private readonly dossierPort: TalentDossierReadPort,
     private readonly extraction: TalentExtractionService,
   ) {}
 
@@ -69,30 +77,33 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     ctx: Talent360ActorContext,
     talent_id: string,
   ): Promise<TalentCoreRow | null> {
-    const v = await this.talent.findById({ tenant_id: ctx.tenant_id, id: talent_id });
-    if (v === null) return null;
+    // INC-2 — re-pointed onto the AuthorizedTalentRetrieval read port, which applies
+    // adapter-enforced do_not_contact suppression (contact channels null iff
+    // do_not_contact). Non-contact fields + missing-record (null) behavior preserved.
+    const r = await this.talentPort.getTalent({ tenant_id: ctx.tenant_id, talent_id });
+    if (r === null) return null;
     return {
-      id: v.id,
-      first_name: v.first_name,
-      last_name: v.last_name,
-      title: v.title,
-      city: v.city,
-      state: v.state,
-      email1: v.email1,
-      phone_cell: v.phone_cell,
-      work_authorization: v.work_authorization ?? null,
-      desired_pay: v.desired_pay,
-      current_pay: v.current_pay,
-      engagement_type: v.engagement_type ?? null,
-      availability_status: v.availability_status ?? null,
-      date_available: v.date_available,
-      key_skills: v.key_skills,
-      source: v.source,
-      owner_id: v.owner_id,
-      created_at: v.created_at,
-      recruiting_ready: v.recruiting_ready ?? false,
-      record_status: v.record_status === 'superseded' ? 'superseded' : 'live',
-      superseded_by_record_id: v.superseded_by_record_id ?? null,
+      id: r.id,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      title: r.title,
+      city: r.city,
+      state: r.state,
+      email1: r.email1,
+      phone_cell: r.phone_cell,
+      work_authorization: r.work_authorization,
+      desired_pay: r.desired_pay,
+      current_pay: r.current_pay,
+      engagement_type: r.engagement_type,
+      availability_status: r.availability_status,
+      date_available: r.date_available,
+      key_skills: r.key_skills,
+      source: r.source,
+      owner_id: r.owner_id,
+      created_at: r.created_at,
+      recruiting_ready: r.recruiting_ready,
+      record_status: r.record_status,
+      superseded_by_record_id: r.superseded_by_record_id,
     };
   }
 
@@ -132,11 +143,30 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     requisition_ids: readonly string[],
   ): Promise<ReadonlyMap<string, RequisitionSummaryRow>> {
     if (requisition_ids.length === 0) return new Map();
-    const rows = await this.requisitions.findSummariesByIds({
+    // INC-2 — re-pointed onto the RequisitionContext read port's batch method,
+    // which applies the AUTHORITATIVE requisition visibility predicate itself
+    // (Option-A ruling): hidden / cross-tenant / nonexistent ids are dropped; a
+    // different-site-but-actor-visible requisition is included. The port does NOT
+    // assume these pipeline-derived ids are pre-authorized.
+    const map = await this.requisitionContextPort.resolveContexts({
       tenant_id: ctx.tenant_id,
-      ids: requisition_ids,
+      actor: ctx.visibility,
+      requisition_ids,
     });
-    return new Map(rows.map((r) => [r.id, r]));
+    const out = new Map<string, RequisitionSummaryRow>();
+    for (const [id, s] of map) {
+      out.set(id, {
+        id: s.id,
+        requisition_number: s.requisition_number,
+        title: s.title,
+        company_id: s.company_id,
+        status: s.status,
+        is_hot: s.is_hot,
+        owner_id: s.owner_id,
+        recruiter_id: s.recruiter_id,
+      });
+    }
+    return out;
   }
 
   async resolveCompanyNames(
@@ -312,7 +342,12 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     ctx: Talent360ActorContext,
     talent_id: string,
   ): Promise<IdentityOutcomeRow> {
-    const head = await this.dossier.getDossier(ctx.tenant_id, talent_id);
+    // INC-2 — re-pointed onto the TalentDossier read port (delegates to the existing
+    // DossierService; presents recruiter-facing outcomes, never the trust machinery).
+    const head = await this.dossierPort.getDossierHead({
+      tenant_id: ctx.tenant_id,
+      talent_record_id: talent_id,
+    });
     const confirmed = (kind: string): boolean =>
       head.verifications.some((v) => v.anchor_kind === kind && v.status === 'CONFIRMED');
     const advisoryId = head.advisory_pointers[0] ?? null;

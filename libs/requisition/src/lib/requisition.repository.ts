@@ -2364,6 +2364,34 @@ export class RequisitionRepository {
     return rows.map((r) => r.id);
   }
 
+  // TIP-E2E INC-2 — batch actor-visibility filter for the Talent Intelligence
+  // requisition-context read seam (ARAMO-TIP-E2E-INC-2-v1.0-LOCKED §3.1 + the
+  // Option-A visibility reconciliation). Given a set of requested requisition ids,
+  // return the subset the actor may see under the AUTHORITATIVE Requisition
+  // visibility predicate (`buildVisibilityWhere`: see-all / client-visibility /
+  // direct-assignment axes), ANDed with tenant_id. Cross-tenant, actor-invisible and
+  // nonexistent ids are OMITTED (404-conceal). This keeps the visibility predicate
+  // inside the requisition domain — the read-seam adapter never re-implements
+  // authorization or reaches the schema directly. NO site filter here: requisition
+  // visibility and TalentRecord site authorization are distinct policies
+  // (reconciliation addendum).
+  async filterVisibleRequisitionIds(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    requisition_ids: readonly string[];
+  }): Promise<string[]> {
+    if (args.requisition_ids.length === 0) return [];
+    const rows = await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        id: { in: Array.from(args.requisition_ids) },
+        ...buildVisibilityWhere(args.visibility),
+      },
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
   // T9-B5 / AV-1 — resolve EVERY requisition id in a tenant's site, unbounded and
   // set-based (single SELECT id over the existing requisition.site_id column; NO
   // schema change, NO limit cap, NO N+1). Used by the reporting service to narrow

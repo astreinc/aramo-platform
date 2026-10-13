@@ -72,6 +72,7 @@
       "@aramo/talent-extraction": ["../../dist/libs/talent-extraction/src/index.d.ts"],
       "@aramo/talent-reconcile": ["../../dist/libs/talent-reconcile/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
+      "@aramo/talent-intelligence": ["../../dist/libs/talent-intelligence/src/index.d.ts"],
       "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"],
       "@aramo/identity-index": ["../../dist/libs/identity-index/src/index.d.ts"],
       "@aramo/auth-storage": ["../../dist/libs/auth-storage/src/index.d.ts"],

@@ -88,6 +88,25 @@ export class RequisitionSkillRequirementRepository {
     return rows as RequisitionSkillRequirementRow[];
   }
 
+  // TIP-E2E INC-2 (R5) — the AUTHORITATIVE requisition-keyed requirement read for the
+  // Talent Intelligence requisition-context read seam. Keyed by (tenant_id,
+  // requisition_id) over the existing index — NOT by golden_profile_id. A requisition
+  // whose Requisition.golden_profile_id is currently null STILL returns its recorded
+  // requirement rows here (the rows carry requisition_id directly), so a missing
+  // Golden Profile never silently erases available raw requirements. Raw
+  // raw_surface_form + honest canonicalization_status are preserved as stored. An
+  // empty result means the authoritative read found no recorded requirements.
+  async listByRequisitionId(
+    tenantId: string,
+    requisitionId: string,
+  ): Promise<RequisitionSkillRequirementRow[]> {
+    const rows = await this.prisma.requisitionSkillRequirement.findMany({
+      where: { tenant_id: tenantId, requisition_id: requisitionId },
+      orderBy: [{ requirement_type: 'asc' }, { raw_surface_form: 'asc' }],
+    });
+    return rows as RequisitionSkillRequirementRow[];
+  }
+
   async create(input: CreateRequirementInput): Promise<RequisitionSkillRequirementRow> {
     const created = await this.prisma.requisitionSkillRequirement.create({
       data: { id: uuidv7(), ...input },
