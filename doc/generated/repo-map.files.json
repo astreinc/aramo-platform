@@ -434,6 +434,7 @@
     "apps/api/src/tests/ats-batch6-reporting-dashboard.integration.spec.ts",
     "apps/api/src/tests/ats-batch7-import-engine.integration.spec.ts",
     "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+    "apps/api/src/tests/ats-entitlement.ts",
     "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
     "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
     "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",

@@ -2140,6 +2140,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-entitlement.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
