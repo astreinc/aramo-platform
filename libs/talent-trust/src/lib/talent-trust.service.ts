@@ -29,7 +29,6 @@ import {
 import {
   deriveTrustState,
   VERIFICATION_STALE_DAYS,
-  type EvidenceForDerivation,
 } from './band-derivation.js';
 import { namesFlatlyConflict } from './name-guard.js';
 import {
@@ -282,15 +281,7 @@ export class TalentTrustService {
       // below is that event. VALID = recorded & active.
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: input.created_by,
-    });
-
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: subjectRef.tenant_id,
-      event_type: 'CREATED',
-      actor: input.created_by,
-      occurred_at: now,
-    });
+    }, { actor: input.created_by, occurred_at: now });
 
     await this.recompute(subjectId, subjectRef.tenant_id, now);
     return evidence;
@@ -458,14 +449,7 @@ export class TalentTrustService {
         ai_derived: false,
         current_status: EVENT_TO_STATUS.CREATED,
         created_by: 'verification',
-      });
-      await this.repo.appendEvent({
-        evidence_id: fresh.id,
-        tenant_id: claimed.tenant_id,
-        event_type: 'CREATED',
-        actor: 'verification',
-        occurred_at: now,
-      });
+      }, { actor: 'verification', occurred_at: now });
       if (priorId !== null) await this.supersede(claimed.tenant_id, priorId, fresh.id);
     }
 
@@ -756,14 +740,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: input.created_by,
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: input.tenant_id,
-      event_type: 'CREATED',
-      actor: input.created_by,
-      occurred_at: now,
-    });
+    }, { actor: input.created_by, occurred_at: now });
   }
 
   // Cold-Ingest Extraction — write declared evidence to an ALREADY-RESOLVED
@@ -801,14 +778,7 @@ export class TalentTrustService {
         ai_derived: false,
         current_status: EVENT_TO_STATUS.CREATED,
         created_by: input.created_by,
-      });
-      await this.repo.appendEvent({
-        evidence_id: evidence.id,
-        tenant_id: input.tenant_id,
-        event_type: 'CREATED',
-        actor: input.created_by,
-        occurred_at: now,
-      });
+      }, { actor: input.created_by, occurred_at: now });
       evidence_ids.push(evidence.id);
     }
     if (evidence_ids.length > 0) {
@@ -1320,14 +1290,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: 'consistency',
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: input.tenant_id,
-      event_type: 'CREATED',
-      actor: 'consistency',
-      occurred_at: now,
-    });
+    }, { actor: 'consistency', occurred_at: now });
     return { written: true, evidence_id: evidence.id };
   }
 
@@ -1567,14 +1530,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: 'consistency',
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: tenantId,
-      event_type: 'CREATED',
-      actor: 'consistency',
-      occurred_at: now,
-    });
+    }, { actor: 'consistency', occurred_at: now });
     return evidence.id;
   }
 
@@ -1587,7 +1543,12 @@ export class TalentTrustService {
     actor: string,
   ): Promise<ResolutionSubjectRow> {
     const surviving = await this.requireSubject(survivingSubjectId);
-    await this.requireSubject(mergedSubjectId);
+    const merged = await this.requireSubject(mergedSubjectId);
+    // G1 (directive §3.5) — a merge never crosses tenants: refused before ANY write
+    // (no merge-operation audit row, no topology change).
+    if (merged.tenant_id !== surviving.tenant_id) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
     // TR-6 B1 (DDR §5) — the TR-1 merge-audit debt closes here: the merge persists
     // to SubjectMergeOperation (the void reason dies). A minimal PENDING DIRECT_MERGE
     // row carrying actor + reason + the subject pair (record fields null). If a
@@ -1611,7 +1572,9 @@ export class TalentTrustService {
         superseded_record_id: null,
       });
     }
-    return this.repo.setSubjectMergeState(mergedSubjectId, 'MERGED', survivingSubjectId);
+    // G1-2 — the topology write takes both clusters' advisory locks (sorted) in one
+    // transaction, so a concurrent recompute never sees the survivor change unnoticed.
+    return this.lockedMergeState(mergedSubjectId, 'MERGED', survivingSubjectId, [survivingSubjectId, mergedSubjectId]);
   }
 
   async unmergeSubjects(
@@ -1656,7 +1619,10 @@ export class TalentTrustService {
         completed_at: now,
       });
     }
-    return this.repo.setSubjectMergeState(mergedSubjectId, 'ACTIVE', null);
+    return this.lockedMergeState(mergedSubjectId, 'ACTIVE', null, [
+      ...(survivingSubjectId !== null ? [survivingSubjectId] : []),
+      mergedSubjectId,
+    ]);
   }
 
   // ---- Reads: state out (§8) -----------------------------------------
@@ -2061,28 +2027,52 @@ export class TalentTrustService {
   // read-time projection. The TrustState row is stored keyed to subjectId (the
   // survivor); a loser's frozen row persists as-is (reads follow to the survivor).
   private async recompute(subjectId: string, tenantId: string, now: Date): Promise<void> {
-    const members = await this.repo.clusterMembers(subjectId);
-    const evidence = await this.repo.listEvidenceBySubjects(members);
-    const projection: EvidenceForDerivation[] = evidence.map((e) => ({
-      dimension: e.dimension,
-      source_class: e.source_class,
-      method: e.method,
-      // TR-3 (OPEN-6) — the assertion_type feeds the top-band registry gate.
-      assertion_type: e.assertion_type,
-      strength: e.strength,
-      current_status: e.current_status,
-      decay_profile: e.decay_profile,
-      collected_at: e.collected_at,
-      source_ref: e.source_ref,
-    }));
-
-    const derived = deriveTrustState(projection, now);
-    await this.repo.upsertTrustState({
-      subject_id: subjectId,
-      tenant_id: tenantId,
-      ...derived,
-      last_recomputed_at: now,
-    });
+    // G1 (Aramo-G1-TrustState-Recompute-Ordering-and-Recovery-Directive-v1_0-LOCKED)
+    // — resolves the ACTIVE SURVIVOR of subjectId (G1-1) and derives its cluster's
+    // TrustState under the per-cluster advisory lock, from a tenant-bound snapshot
+    // read inside the same transaction (G1-2), clearing the covered recomputation
+    // requests (G1-3). Every existing caller inherits this with no signature change.
+    let outcome;
+    try {
+      outcome = await this.repo.recomputeUnderLock({
+        subject_id: subjectId,
+        tenant_id: tenantId,
+        now,
+        derive: (evidence) =>
+          deriveTrustState(
+            evidence.map((e) => ({
+              dimension: e.dimension,
+              source_class: e.source_class,
+              method: e.method,
+              // TR-3 (OPEN-6) — the assertion_type feeds the top-band registry gate.
+              assertion_type: e.assertion_type,
+              strength: e.strength,
+              current_status: e.current_status,
+              decay_profile: e.decay_profile,
+              collected_at: e.collected_at,
+              source_ref: e.source_ref,
+            })),
+            now,
+          ),
+      });
+    } catch (err) {
+      // A failed recompute is never reported as completed: the caller sees the
+      // error, and the durable request (set with the evidence write) stays pending
+      // for the repair job.
+      this.logger.error({
+        event: 'trust_recompute_failed',
+        subject_id: subjectId,
+        tenant_id: tenantId,
+        error_message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    if (outcome.kind !== 'RECOMPUTED') {
+      // Tenant authority (directive §3.5): a subject of another tenant, or one that
+      // does not resolve, is never recomputed — refused, logged, nothing written.
+      this.logger.warn({ event: 'trust_recompute_refused', subject_id: subjectId, tenant_id: tenantId, reason: outcome.kind });
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
   }
 
   // TR-2a-B3a (DDR-3 §5) — resolve a ref to the ACTIVE FIXPOINT of its subject's
@@ -2142,6 +2132,26 @@ export class TalentTrustService {
   // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: existence/identity
   // guard on a SPECIFIC subject id (merge/un-merge operands). It must see the
   // subject AS-IS (ACTIVE or MERGED), never its fixpoint — do NOT follow.
+  // G1-2 — the cluster-locked, single-tenant merge-state write (refuses cross-tenant
+  // or missing subjects: nothing written).
+  private async lockedMergeState(
+    subjectId: string,
+    status: 'MERGED' | 'ACTIVE',
+    mergedIntoSubjectId: string | null,
+    involved: string[],
+  ): Promise<ResolutionSubjectRow> {
+    const row = await this.repo.setSubjectMergeStateLocked({
+      subject_id: subjectId,
+      status,
+      merged_into_subject_id: mergedIntoSubjectId,
+      involved_subject_ids: involved,
+    });
+    if (row === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
+    return row;
+  }
+
   private async requireSubject(subjectId: string): Promise<ResolutionSubjectRow> {
     const subject = await this.repo.findSubjectById(subjectId);
     if (subject === null) {
