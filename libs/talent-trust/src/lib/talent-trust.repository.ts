@@ -76,7 +76,8 @@ export interface EvidenceRecordRow {
 }
 
 // TR-14 B1 (DDR §2.2) — the EvidenceLink graph, made readable for the dossier
-// (its first reader — previously only appendLink + the existence guard). One
+// (its first reader — previously only the link writer + the existence guard; the
+// writer is now applyTenantBoundTransition's in-transaction link, Security S1b). One
 // row per (from, to, relation) semantic fact: CONTRADICTS pairs, SUPERSEDES chains.
 export interface EvidenceLinkRow {
   id: string;
@@ -747,6 +748,11 @@ export class TalentTrustRepository {
   // is appended with the SAME acting tenant. No match → nothing is written and
   // false is returned (the caller re-reads to classify a concurrent change); an
   // error after the update rolls the update back (no status change, no event).
+  // Security S1b — relational transitions (contradict / supersede) pass `link`:
+  // the EvidenceLink is inserted in the SAME transaction, with the same acting
+  // tenant, so a link never exists without its status flip + event (and vice
+  // versa). A concurrent duplicate link violates @@unique(from, to, relation) and
+  // rolls the whole transaction back.
   async applyTenantBoundTransition(input: {
     evidence_id: string;
     tenant_id: string;
@@ -756,6 +762,8 @@ export class TalentTrustRepository {
     reason?: string | null;
     actor?: string | null;
     occurred_at?: Date;
+    linked_evidence_id?: string | null;
+    link?: { from_evidence_id: string; to_evidence_id: string; relation: EvidenceLinkRelation };
   }): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       const flipped = await tx.evidenceRecord.updateMany({
@@ -763,6 +771,17 @@ export class TalentTrustRepository {
         data: { current_status: input.next_status },
       });
       if (flipped.count !== 1) return false;
+      if (input.link) {
+        await tx.evidenceLink.create({
+          data: {
+            id: uuidv7(),
+            from_evidence_id: input.link.from_evidence_id,
+            to_evidence_id: input.link.to_evidence_id,
+            relation: input.link.relation,
+            tenant_id: input.tenant_id,
+          },
+        });
+      }
       await tx.evidenceEvent.create({
         data: {
           id: uuidv7(),
@@ -770,7 +789,7 @@ export class TalentTrustRepository {
           tenant_id: input.tenant_id,
           event_type: input.event_type,
           reason: input.reason ?? null,
-          linked_evidence_id: null,
+          linked_evidence_id: input.linked_evidence_id ?? null,
           actor: input.actor ?? null,
           ...(input.occurred_at ? { occurred_at: input.occurred_at } : {}),
         },
@@ -813,16 +832,6 @@ export class TalentTrustRepository {
       orderBy: { created_at: 'asc' },
     });
     return rows as EvidenceRecordRow[];
-  }
-
-  // The ONLY mutable column on EvidenceRecord (the immutability trigger
-  // rejects any other change). Set exclusively by applying an EvidenceEvent.
-  async updateEvidenceStatus(id: string, status: EvidenceStatus): Promise<EvidenceRecordRow> {
-    const updated = await this.prisma.evidenceRecord.update({
-      where: { id },
-      data: { current_status: status },
-    });
-    return updated as EvidenceRecordRow;
   }
 
   // ---- EvidenceEvent (append-only) -----------------------------------
@@ -901,23 +910,6 @@ export class TalentTrustRepository {
   }
 
   // ---- EvidenceLink (append-only) ------------------------------------
-
-  async appendLink(input: {
-    from_evidence_id: string;
-    to_evidence_id: string;
-    relation: EvidenceLinkRelation;
-    tenant_id: string;
-  }): Promise<void> {
-    await this.prisma.evidenceLink.create({
-      data: {
-        id: uuidv7(),
-        from_evidence_id: input.from_evidence_id,
-        to_evidence_id: input.to_evidence_id,
-        relation: input.relation,
-        tenant_id: input.tenant_id,
-      },
-    });
-  }
 
   // TR-4 B1 (DDR §2.4) — existence check backing the service-side no-op: is this
   // exact semantic link (from, to, relation) already recorded? Keyed on the new
