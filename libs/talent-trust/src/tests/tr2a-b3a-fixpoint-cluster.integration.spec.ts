@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -26,22 +26,7 @@ import { TalentTrustService, type SubjectRef } from '../lib/talent-trust.service
 //       undo — the sets were never merged, only read-time unioned).
 
 const MIGRATIONS = [
-  '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
-  '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
+  ...resolveTalentTrustMigrations(resolve(__dirname, '../../../..')),  // G1 — the shared, complete talent-trust set
 ].map((p) => resolve(__dirname, p));
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
@@ -134,14 +119,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ai_derived: false,
         current_status: 'VALID',
         created_by: ACTOR,
-      });
-      await repo.appendEvent({
-        evidence_id: ev.id,
-        tenant_id: TENANT,
-        event_type: 'CREATED',
-        actor: ACTOR,
-        occurred_at: new Date(),
-      });
+      }, { actor: ACTOR, occurred_at: new Date() }); // G1-4: record + CREATED event + request, atomically
       return ev.id;
     }
 
@@ -172,8 +150,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const y = await mintSubjectWithRef();
       // Force a pointer cycle X→Y→X directly (a corrupt state the reconcile would
       // never create; the read-resolver must refuse it, not loop or mis-resolve).
-      await repo.setSubjectMergeState(x.subjectId, 'MERGED', y.subjectId);
-      await repo.setSubjectMergeState(y.subjectId, 'MERGED', x.subjectId);
+      // (Direct row writes: the corrupt cycle cannot be produced through the G1
+      // cluster-locked merge path, which is the point.)
+      await prisma.resolutionSubject.update({ where: { id: x.subjectId }, data: { status: 'MERGED', merged_into_subject_id: y.subjectId } });
+      await prisma.resolutionSubject.update({ where: { id: y.subjectId }, data: { status: 'MERGED', merged_into_subject_id: x.subjectId } });
 
       await expect(service.resolveSubjectRef(refFor(x.refId))).rejects.toThrow(/CYCLE/i);
     });

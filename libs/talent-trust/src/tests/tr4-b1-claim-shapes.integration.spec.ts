@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -17,22 +17,8 @@ import { TalentTrustService, type SubjectRef } from '../lib/talent-trust.service
 // still reads, the EvidenceLink uniqueness (DB reject + service no-op), and the
 // closure arm lifting the CORROBORATED cap.
 
-const MIGRATIONS = [
-  '20260628000000_init_talent_trust',
-  '20260703120000_tr2a1_subject_anchor',
-  '20260705120000_add_reconcile_watermark_to_resolution_subject',
-  '20260706120000_ats_ref_partial_unique',
-  '20260706170000_tr2a_b1_subject_anchor_source_class',
-  '20260706180000_tr2a_b1_subject_anchor_source_class_unique',
-  '20260706230000_tr2a_b3b_subject_merge_operation',
-  '20260707120000_tr6_b1_last_matched_at',
-  '20260707130000_tr6_b1_merge_operation_kind',
-  '20260709120000_tr4_b1_evidence_link_unique',
-  '20260710120000_tr4_b3_last_consistency_at',
-  '20260711120000_tr5_b2_thinness_flags',
-  '20260712120000_tr8_b1_verified_control_stale',
-  '20260713120000_tr12_b1_verification_proposal',
-].map((d) => resolve(__dirname, `../../prisma/migrations/${d}/migration.sql`));
+// G1 — the shared, complete talent-trust set (@aramo/common).
+const MIGRATIONS = resolveTalentTrustMigrations(resolve(__dirname, '../../../..'));
 
 // $$-aware DDL splitter (trigger bodies carry semicolons inside $$ … $$).
 function splitDdl(sql: string): string[] {
@@ -241,9 +227,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });
 
-      await service.contradict(incumbent.id, challenger.id, 'first raise');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'first raise');
       // Repeat — must NOT throw and must NOT duplicate.
-      await service.contradict(incumbent.id, challenger.id, 'second raise (no-op)');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'second raise (no-op)');
 
       const links = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
         `SELECT COUNT(*)::bigint AS count FROM talent_trust."EvidenceLink"
@@ -278,18 +264,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       expect((await service.getTrustState(ref))?.eligibility_band).toBe('INDEPENDENTLY_VERIFIED');
 
-      await service.contradict(incumbent.id, challenger.id, 'conflict');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'conflict');
       const capped = await service.getTrustState(ref);
       expect(capped?.eligibility_band).toBe('CORROBORATED');
       expect(capped?.open_contradiction_count).toBe(1);
 
       // Resolving a NON-contradicted record refuses.
       await expect(
-        service.resolveContradiction(challenger.id, 'reviewer', 'not contradicted'),
+        service.resolveContradiction(TENANT, challenger.id, 'reviewer', 'not contradicted'),
       ).rejects.toThrow(/CONTRADICTED/);
 
       // Resolve the actual contradiction → VALID, event carries actor+reason.
-      await service.resolveContradiction(incumbent.id, 'reviewer-1', 'registry re-confirmed');
+      await service.resolveContradiction(TENANT, incumbent.id, 'reviewer-1', 'registry re-confirmed');
       const resolvedRow = await repo.findEvidenceById(incumbent.id);
       expect(resolvedRow?.current_status).toBe('VALID');
 

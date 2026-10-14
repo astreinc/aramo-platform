@@ -83,7 +83,7 @@ describe('disposition + withdraw wire to the mapped TR-15 outcome', () => {
       tenantId: TENANT, disputeId: DISPUTE, outcome: 'RESOLVED_CORRECTED',
       note: 'corrected', actor: 'reviewer', requestId: 'req-1',
     });
-    expect(resolveSpy).toHaveBeenCalledWith(EVIDENCE, 'reviewer', 'upheld', 'corrected', 'req-1');
+    expect(resolveSpy).toHaveBeenCalledWith(TENANT, EVIDENCE, 'reviewer', 'upheld', 'corrected', 'req-1');
   });
 
   it('uphold (RESOLVED_UPHELD) → resolveDispute(evidence, actor, "rejected", note)', async () => {
@@ -92,7 +92,7 @@ describe('disposition + withdraw wire to the mapped TR-15 outcome', () => {
       tenantId: TENANT, disputeId: DISPUTE, outcome: 'RESOLVED_UPHELD',
       note: 'stands', actor: 'reviewer', requestId: 'req-1',
     });
-    expect(resolveSpy).toHaveBeenCalledWith(EVIDENCE, 'reviewer', 'rejected', 'stands', 'req-1');
+    expect(resolveSpy).toHaveBeenCalledWith(TENANT, EVIDENCE, 'reviewer', 'rejected', 'stands', 'req-1');
   });
 
   it('withdraw of a DISPUTED item → resolveDispute("rejected") with the portal principal + withdrawal justification (Pin A)', async () => {
@@ -102,7 +102,8 @@ describe('disposition + withdraw wire to the mapped TR-15 outcome', () => {
       disputeId: DISPUTE, actor: 'portal-user-123', now: new Date(), requestId: 'req-1',
     });
     expect(resolveSpy).toHaveBeenCalledWith(
-      EVIDENCE, 'portal-user-123', 'rejected', PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION, 'req-1',
+      // Security S1 (C6) — the acting tenant is the work item's own tenant.
+      TENANT, EVIDENCE, 'portal-user-123', 'rejected', PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION, 'req-1',
     );
   });
 });

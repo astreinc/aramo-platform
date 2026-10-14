@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type AramoLogger } from '@aramo/common';
+import { AramoError, type AramoLogger } from '@aramo/common';
 import {
   TalentRecordReconcileRepository,
   type PendingContradictionForResolution,
@@ -22,6 +22,7 @@ import { TalentTrustService } from '@aramo/talent-trust';
 export type ContradictionOutcome =
   | 'contradicted'
   | 'no_incumbent'
+  | 'refused'
   | 'transient_retry';
 
 export interface ContradictionResult {
@@ -59,7 +60,9 @@ export class ContradictionDetectionService {
       // Raise the L2 contradiction — the incumbent (current L3 value's evidence)
       // is CONTRADICTED by the newer differing arrival. Reason is PII-free (no
       // field values — only the field name + the pending-row id).
+      // Security S1b — the acting tenant is the pending row's own tenant.
       await this.trust.contradict(
+        row.tenant_id,
         row.incumbent_evidence_id,
         row.new_evidence_id,
         `promotion-reconcile: field '${row.field_name}' occupied by newer differing evidence (pending ${row.id})`,
@@ -75,6 +78,19 @@ export class ContradictionDetectionService {
       });
       return { pending_id: row.id, outcome: 'contradicted' };
     } catch (err) {
+      // Security S1b (D-S1b-3) — a REFUSAL (either evidence id is not this row's
+      // tenant's → NOT_FOUND, or an invalid relationship → INVALID_REQUEST) is NOT
+      // transient and is NEVER marked resolved: the row stays pending and the
+      // refusal is logged distinctly for follow-up.
+      if (err instanceof AramoError && (err.code === 'NOT_FOUND' || err.code === 'INVALID_REQUEST')) {
+        this.logger.warn({
+          event: 'contradiction_detection_refused',
+          pending_id: row.id,
+          tenant_id: row.tenant_id,
+          reason_code: err.code,
+        });
+        return { pending_id: row.id, outcome: 'refused' };
+      }
       // Transient (DB) failure — leave the row pending; the next tick re-picks.
       this.logger.warn({
         event: 'contradiction_detection_transient_failure',

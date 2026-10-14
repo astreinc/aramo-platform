@@ -5,7 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
@@ -21,25 +21,7 @@ const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
+  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
 ].map(M);
 
 const TENANT = '01900000-0000-7000-8000-0000000000e1';
@@ -150,7 +132,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // don't touch — pre-2016 so it never affects the gap coverage).
       const cA = await seedEmployment(R1, 'confco', '2010-01-01', '2011-01-01', 'c1');
       const cB = await seedEmployment(R1, 'rivalco', '2010-01-01', '2011-01-01', 'c2');
-      await trust.contradict(cA, cB, 'Overlapping roles at different employers');
+      await trust.contradict(TENANT, cA, cB, 'Overlapping roles at different employers');
 
       // the verified anchor's CONFIRMED verification request
       await db.query(
@@ -225,7 +207,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const R = uuidv7();
       const a = await seedEmployment(R, 'acme', '2020-01-01', '2020-12-31', 'a');
       const b = await seedEmployment(R, 'globex', '2020-01-01', '2020-12-31', 'b');
-      await trust.contradict(a, b, 'conflict');
+      await trust.contradict(TENANT, a, b, 'conflict');
       const sid = await subjectIdFor(R);
 
       const before = await dossier.getDossier(TENANT, R);
@@ -233,7 +215,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const capped = before.contradictions[0]!;
 
       // the tab's dialog calls the TR-4 resolve endpoint (exercised directly here).
-      await trust.resolveContradiction(capped.evidence_id, 'tester', 'reviewed — not a conflict');
+      await trust.resolveContradiction(TENANT, capped.evidence_id, 'tester', 'reviewed — not a conflict');
 
       const after = await dossier.getDossier(TENANT, R);
       expect(after.contradictions.find((c) => c.evidence_id === capped.evidence_id)).toBeUndefined();

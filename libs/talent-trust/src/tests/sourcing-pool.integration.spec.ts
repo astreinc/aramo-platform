@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -20,16 +20,7 @@ import { TalentTrustService, type SubjectRef } from '../lib/talent-trust.service
 // batched VALID FULL_NAME/EMAIL for a page of subjects (no N+1). Tenant-scoped.
 
 const MIGRATIONS = [
-  '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
-  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  '../../prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
-  // Slice B-api — the keyset index the list reader scans.
-  '../../prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
+  ...resolveTalentTrustMigrations(resolve(__dirname, '../../../..')),  // G1 — the shared, complete talent-trust set
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'sourcing-pool-integration';

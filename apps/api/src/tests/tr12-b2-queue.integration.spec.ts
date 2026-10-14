@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -68,24 +68,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260919120000_talent_intel_1d_c_resume_text_edition/migration.sql',
   'libs/talent-record/prisma/migrations/20260920160000_talent_intel_1h_resume_text_edition_history/migration.sql',
   // talent_trust chain.
-  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
+  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
 ].map(M);
 
 const ISSUER = 'Aramo Core Auth';
@@ -161,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'MODERATE',
         created_by: 'test',
       });
-      await trust.contradictRecord(ev.id, 'seeded');
+      await trust.contradictRecord(TENANT, ev.id, 'seeded');
       const subjectId = (await trust.resolveSubjectRef(refOf(recordId)))!.id;
       return { subjectId, evidenceId: ev.id };
     }
@@ -279,14 +262,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         assertion_payload: { value_raw: 'Rust' }, source_class: 'SELF', method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY', decay_profile: 'MODERATE', created_by: 'test',
       });
-      await trust.contradictRecord(ev2.id, 'still holds');
+      await trust.contradictRecord(TENANT, ev2.id, 'still holds');
 
       await consistency.drainBatch({ batchSize: 100 });
       let rows = await proposals(subjectId);
       expect(rows.filter((r) => r.kind === 'RESOLVE_CONTRADICTION' && r.status === 'OPEN')).toHaveLength(2);
 
       // Resolve ONE contradiction — its trigger clears; the other still holds.
-      await trust.resolveContradiction(evidenceId, ACTOR, 'resolved', 'req');
+      await trust.resolveContradiction(TENANT, evidenceId, ACTOR, 'resolved', 'req');
       // Re-arm the watermark so the consistency host re-visits the subject (the
       // opportunistic drift-heal fires whenever a subject is next examined; a
       // resolve writes no new EvidenceRecord, so the gate needs re-arming here —
@@ -339,7 +322,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await proposals(subjectId))[0]!.status).toBe('OPEN');
 
       // The human resolves it (the ACT) but never marks the proposal acted.
-      await trust.resolveContradiction(evidenceId, ACTOR, 'resolved', 'req');
+      await trust.resolveContradiction(TENANT, evidenceId, ACTOR, 'resolved', 'req');
       await trust.generateProposalsForSubject(subjectId, TENANT, new Date(), 'consistency');
 
       const row = (await proposals(subjectId))[0]!;

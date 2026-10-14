@@ -29,7 +29,6 @@ import {
 import {
   deriveTrustState,
   VERIFICATION_STALE_DAYS,
-  type EvidenceForDerivation,
 } from './band-derivation.js';
 import { namesFlatlyConflict } from './name-guard.js';
 import {
@@ -43,6 +42,7 @@ import {
   type CorroboratorConflictsByTarget,
 } from './subject-matcher.service.js';
 import {
+  StaleEvidenceTransitionError,
   TalentTrustRepository,
   type EvidenceRecordRow,
   type EvidenceLinkRow,
@@ -75,6 +75,7 @@ import {
   type PortalDisputeItemType,
   type DecayProfile,
   type EvidenceEventType,
+  type EvidenceLinkRelation,
   type EvidenceStatus,
   type Method,
   type PortabilityClass,
@@ -221,6 +222,11 @@ export interface DeclaredEvidenceEntry {
 // precedent); a real controller in a later slice would pass its own.
 const CLAIM_SHAPE_REQUEST_ID = 'talent-trust-claim-shape';
 
+// Security S1b — a Prisma unique-constraint violation (P2002): for a relational
+// lifecycle op it means the same link was committed concurrently (a no-op).
+const isUniqueViolation = (err: unknown): boolean =>
+  typeof err === 'object' && err !== null && (err as { code?: unknown }).code === 'P2002';
+
 @Injectable()
 export class TalentTrustService {
   private readonly logger = new Logger(TalentTrustService.name);
@@ -275,15 +281,7 @@ export class TalentTrustService {
       // below is that event. VALID = recorded & active.
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: input.created_by,
-    });
-
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: subjectRef.tenant_id,
-      event_type: 'CREATED',
-      actor: input.created_by,
-      occurred_at: now,
-    });
+    }, { actor: input.created_by, occurred_at: now });
 
     await this.recompute(subjectId, subjectRef.tenant_id, now);
     return evidence;
@@ -451,15 +449,8 @@ export class TalentTrustService {
         ai_derived: false,
         current_status: EVENT_TO_STATUS.CREATED,
         created_by: 'verification',
-      });
-      await this.repo.appendEvent({
-        evidence_id: fresh.id,
-        tenant_id: claimed.tenant_id,
-        event_type: 'CREATED',
-        actor: 'verification',
-        occurred_at: now,
-      });
-      if (priorId !== null) await this.supersede(priorId, fresh.id);
+      }, { actor: 'verification', occurred_at: now });
+      if (priorId !== null) await this.supersede(claimed.tenant_id, priorId, fresh.id);
     }
 
     await this.recompute(claimed.subject_id, claimed.tenant_id, now);
@@ -749,14 +740,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: input.created_by,
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: input.tenant_id,
-      event_type: 'CREATED',
-      actor: input.created_by,
-      occurred_at: now,
-    });
+    }, { actor: input.created_by, occurred_at: now });
   }
 
   // Cold-Ingest Extraction — write declared evidence to an ALREADY-RESOLVED
@@ -794,14 +778,7 @@ export class TalentTrustService {
         ai_derived: false,
         current_status: EVENT_TO_STATUS.CREATED,
         created_by: input.created_by,
-      });
-      await this.repo.appendEvent({
-        evidence_id: evidence.id,
-        tenant_id: input.tenant_id,
-        event_type: 'CREATED',
-        actor: input.created_by,
-        occurred_at: now,
-      });
+      }, { actor: input.created_by, occurred_at: now });
       evidence_ids.push(evidence.id);
     }
     if (evidence_ids.length > 0) {
@@ -916,17 +893,33 @@ export class TalentTrustService {
   // ---- Writes: lifecycle ops (§8) ------------------------------------
   // Each appends an EvidenceEvent (+ EvidenceLink where relational), projects
   // the new current_status, and recomputes TrustState.
+  // Security S1b — every op takes the ACTING tenant first (from a trusted,
+  // already-authorized source — never the evidence row), loads tenant-bound
+  // (another tenant's id ≡ a missing one: 404 NOT_FOUND), and writes the status
+  // flip + event (+ link) in ONE tenant-keyed transaction (transitionBound).
 
-  async markStale(evidenceId: string): Promise<void> {
-    await this.applyLifecycle(evidenceId, 'MARKED_STALE', {});
+  async markStale(tenantId: string, evidenceId: string, requestId: string = CLAIM_SHAPE_REQUEST_ID): Promise<void> {
+    await this.transitionBound(tenantId, evidenceId, 'MARKED_STALE', {}, requestId);
   }
 
-  async revoke(evidenceId: string, reason: string): Promise<void> {
-    await this.applyLifecycle(evidenceId, 'REVOKED', { reason });
+  async revoke(
+    tenantId: string,
+    evidenceId: string,
+    reason: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<void> {
+    await this.transitionBound(tenantId, evidenceId, 'REVOKED', { reason }, requestId);
   }
 
-  async contradict(evidenceId: string, byEvidenceId: string, reason: string): Promise<void> {
-    const ev = await this.requireEvidence(evidenceId);
+  async contradict(
+    tenantId: string,
+    evidenceId: string,
+    byEvidenceId: string,
+    reason: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<void> {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    await this.requireRelatedEvidence(tenantId, ev, byEvidenceId, 'CONTRADICTS', requestId);
     // TR-4 B1 (DDR §2.4) — a repeat raise of the SAME contradiction is a NO-OP,
     // not an error (and not a duplicate row): the semantic fact already stands.
     // The link @@unique backs this at the DB; this check keeps it a clean no-op
@@ -934,17 +927,17 @@ export class TalentTrustService {
     if (await this.repo.evidenceLinkExists(byEvidenceId, evidenceId, 'CONTRADICTS')) {
       return;
     }
-    await this.repo.appendLink({
-      from_evidence_id: byEvidenceId,
-      to_evidence_id: evidenceId,
-      relation: 'CONTRADICTS',
-      tenant_id: ev.tenant_id,
-    });
-    await this.applyLifecycle(evidenceId, 'CONTRADICTED', {
-      reason,
-      linked_evidence_id: byEvidenceId,
-      evidence: ev,
-    });
+    await this.transitionBound(
+      tenantId,
+      evidenceId,
+      'CONTRADICTED',
+      {
+        reason,
+        linked_evidence_id: byEvidenceId,
+        link: { from_evidence_id: byEvidenceId, to_evidence_id: evidenceId, relation: 'CONTRADICTS' },
+      },
+      requestId,
+    );
   }
 
   // TR-4 B3 (§3.2.1, the §2.2 finding) — LINKLESS single-record contradiction. The
@@ -954,25 +947,125 @@ export class TalentTrustService {
   // already-CONTRADICTED record is a no-op (re-runs are idempotent). Only the status
   // drives the band cap (band derivation never reads links), so the linkless variant
   // caps the dimension exactly as the paired one does.
-  async contradictRecord(evidenceId: string, reason: string): Promise<void> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status === 'CONTRADICTED') return;
-    await this.applyLifecycle(evidenceId, 'CONTRADICTED', { reason, evidence: ev });
+  async contradictRecord(
+    tenantId: string,
+    evidenceId: string,
+    reason: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<void> {
+    await this.transitionBound(tenantId, evidenceId, 'CONTRADICTED', {
+      reason,
+      // Already CONTRADICTED → no-op (re-runs are idempotent), re-checked on every
+      // tenant-bound read so a concurrent flip never yields a duplicate event.
+      noopIf: (status) => status === 'CONTRADICTED',
+    }, requestId);
   }
 
-  async supersede(oldId: string, newId: string): Promise<void> {
-    const ev = await this.requireEvidence(oldId);
+  async supersede(
+    tenantId: string,
+    oldId: string,
+    newId: string,
+    requestId: string = CLAIM_SHAPE_REQUEST_ID,
+  ): Promise<void> {
+    const ev = await this.requireEvidenceForTenant(tenantId, oldId, requestId);
+    await this.requireRelatedEvidence(tenantId, ev, newId, 'SUPERSEDES', requestId);
     // TR-4 B1 (DDR §2.4) — repeat supersession of the same pair is a no-op.
     if (await this.repo.evidenceLinkExists(newId, oldId, 'SUPERSEDES')) {
       return;
     }
-    await this.repo.appendLink({
-      from_evidence_id: newId,
-      to_evidence_id: oldId,
-      relation: 'SUPERSEDES',
-      tenant_id: ev.tenant_id,
-    });
-    await this.applyLifecycle(oldId, 'SUPERSEDED', { linked_evidence_id: newId, evidence: ev });
+    await this.transitionBound(
+      tenantId,
+      oldId,
+      'SUPERSEDED',
+      {
+        linked_evidence_id: newId,
+        link: { from_evidence_id: newId, to_evidence_id: oldId, relation: 'SUPERSEDES' },
+      },
+      requestId,
+    );
+  }
+
+  // Security S1b — validates the SECOND record of a relational op. Mandatory:
+  // it is not the same record, and it belongs to the ACTING tenant (another
+  // tenant's id ≡ a missing one → 404 NOT_FOUND; no cross-tenant link is ever
+  // written). Advisory (Architect exception D-S1b-1 to the LOCKED directive's
+  // same-cluster rule, pending proof of legitimate merged-record cases): a pair
+  // outside one subject cluster is LOGGED, not refused.
+  private async requireRelatedEvidence(
+    tenantId: string,
+    primary: EvidenceRecordRow,
+    otherId: string,
+    relation: EvidenceLinkRelation,
+    requestId: string,
+  ): Promise<void> {
+    if (otherId === primary.id) {
+      throw new AramoError('INVALID_REQUEST', 'an evidence record cannot be related to itself', 400, { requestId });
+    }
+    const other = await this.requireEvidenceForTenant(tenantId, otherId, requestId);
+    if (other.subject_id === primary.subject_id) return;
+    const members = await this.repo.clusterMembers(primary.subject_id);
+    if (!members.includes(other.subject_id)) {
+      this.logger.warn({
+        event: 'trust_relationship_cluster_mismatch',
+        relation,
+        tenant_id: tenantId,
+        evidence_id: primary.id,
+        related_evidence_id: other.id,
+        evidence_subject_id: primary.subject_id,
+        related_subject_id: other.subject_id,
+      });
+    }
+  }
+
+  // Security S1b — the tenant-bound lifecycle transition shared by every
+  // evidence-id op. Reads the row tenant-bound, then flips current_status from
+  // the status JUST READ (optimistic, tenant-keyed) and appends the event (+ the
+  // link) in one transaction. These ops are not status-guarded (any current
+  // status may transition, as before), so a lost race re-reads and retries once;
+  // a second loss throws StaleEvidenceTransitionError (nothing written). A
+  // concurrent duplicate link (P2002) is the same semantic fact → no-op.
+  // Recompute runs only after a commit, for the acting tenant.
+  private async transitionBound(
+    tenantId: string,
+    evidenceId: string,
+    eventType: EvidenceEventType,
+    opts: {
+      reason?: string;
+      actor?: string;
+      linked_evidence_id?: string;
+      link?: { from_evidence_id: string; to_evidence_id: string; relation: EvidenceLinkRelation };
+      noopIf?: (status: EvidenceStatus) => boolean;
+    },
+    requestId: string,
+  ): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      if (opts.noopIf?.(ev.current_status)) return;
+      const now = new Date();
+      let written: boolean;
+      try {
+        written = await this.repo.applyTenantBoundTransition({
+          evidence_id: evidenceId,
+          tenant_id: tenantId,
+          expected_status: ev.current_status,
+          next_status: EVENT_TO_STATUS[eventType],
+          event_type: eventType,
+          reason: opts.reason ?? null,
+          actor: opts.actor ?? null,
+          linked_evidence_id: opts.linked_evidence_id ?? null,
+          occurred_at: now,
+          ...(opts.link ? { link: opts.link } : {}),
+        });
+      } catch (err) {
+        if (opts.link && isUniqueViolation(err)) return;
+        throw err;
+      }
+      if (written) {
+        await this.recompute(ev.subject_id, tenantId, now);
+        return;
+      }
+    }
+    throw new StaleEvidenceTransitionError(evidenceId);
   }
 
   // TR-15 B1 (DDR §2) — dispute completed to the resolveContradiction standard.
@@ -982,32 +1075,49 @@ export class TalentTrustService {
   // (idempotent re-raise); any other status refuses with a domain code. Full
   // actor + grounds audit event. requestId threads into the refusal envelope
   // (defaults to the lib sentinel off-HTTP).
+  // Security S1 (R1/R2) — `tenantId` is the ACTING tenant (the caller's trusted,
+  // already-authorized tenant — never the evidence row). A row owned by another
+  // tenant is indistinguishable from a missing one (404 NOT_FOUND, no status), and
+  // the write is tenant- and expected-status-keyed in one transaction.
   async dispute(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     grounds: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<{ status: EvidenceStatus }> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status === 'DISPUTED') {
-      // Repeat raise on an already-open dispute → no-op returning current state.
-      return { status: ev.current_status };
-    }
-    if (ev.current_status !== 'VALID') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const refuseOrEcho = (current: EvidenceStatus): { status: EvidenceStatus } => {
+      if (current === 'DISPUTED') {
+        // Repeat raise on an already-open dispute → no-op returning current state.
+        return { status: current };
+      }
       // Only a live (VALID) record can be disputed — a dispute against a STALE/
       // CONTRADICTED/REVOKED/SUPERSEDED row is meaningless. Domain-coded 422.
       throw new AramoError(
         'EVIDENCE_NOT_DISPUTABLE',
-        `dispute requires a VALID record (evidence ${evidenceId} is ${ev.current_status})`,
+        `dispute requires a VALID record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
-    await this.applyLifecycle(evidenceId, 'DISPUTED', {
+    };
+    if (ev.current_status !== 'VALID') return refuseOrEcho(ev.current_status);
+    const written = await this.repo.applyTenantBoundTransition({
+      evidence_id: evidenceId,
+      tenant_id: tenantId,
+      expected_status: 'VALID',
+      next_status: EVENT_TO_STATUS['DISPUTED'],
+      event_type: 'DISPUTED',
       reason: grounds,
       actor,
-      evidence: ev,
     });
+    if (!written) {
+      // The status moved between read and write (a concurrent transition): nothing
+      // was written; classify against a fresh tenant-bound read, never re-write.
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      return refuseOrEcho(now.current_status);
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
     return { status: 'DISPUTED' };
   }
 
@@ -1018,24 +1128,27 @@ export class TalentTrustService {
   // tx — the honest trail: the dispute resolved, and the evidence retired because
   // it was wrong). Recompute rides both. The DTO is lenient (IsString), so the
   // outcome is validated HERE → DISPUTE_OUTCOME_INVALID for anything else.
+  // Security S1 (R1/R2) — `tenantId` is the acting tenant; both outcome paths are
+  // tenant- and expected-status-keyed (the upheld pair included).
   async resolveDispute(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     outcome: string,
     justification: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<{ status: EvidenceStatus }> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status !== 'DISPUTED') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const notDisputed = (current: EvidenceStatus): AramoError =>
       // A resolve is meaningful only against a standing dispute (mirrors the
       // contradiction template's not-CONTRADICTED refusal). Domain-coded 422.
-      throw new AramoError(
+      new AramoError(
         'EVIDENCE_NOT_DISPUTED',
-        `resolveDispute requires a DISPUTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        `resolveDispute requires a DISPUTED record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
+    if (ev.current_status !== 'DISPUTED') throw notDisputed(ev.current_status);
     if (outcome !== 'upheld' && outcome !== 'rejected') {
       throw new AramoError(
         'DISPUTE_OUTCOME_INVALID',
@@ -1044,26 +1157,43 @@ export class TalentTrustService {
         { requestId, details: { evidence_id: evidenceId, outcome } },
       );
     }
+    // A concurrent transition moved the status between read and write: nothing
+    // was written; classify against a fresh tenant-bound read, never re-write.
+    const classifyStale = async (): Promise<never> => {
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      throw notDisputed(now.current_status);
+    };
     if (outcome === 'rejected') {
       // The dispute did not hold → the record returns to VALID and re-accrues.
-      await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', {
+      const written = await this.repo.applyTenantBoundTransition({
+        evidence_id: evidenceId,
+        tenant_id: tenantId,
+        expected_status: 'DISPUTED',
+        next_status: EVENT_TO_STATUS['DISPUTE_RESOLVED'],
+        event_type: 'DISPUTE_RESOLVED',
         reason: justification,
         actor,
-        evidence: ev,
       });
+      if (!written) return classifyStale();
+      await this.recompute(ev.subject_id, tenantId, new Date());
       return { status: 'VALID' };
     }
     // upheld → the evidence was wrong: resolve the dispute AND retire the
     // evidence, atomically (DISPUTE_RESOLVED then REVOKED in one transaction —
     // a mid-tx failure leaves neither event and no status change). REVOKED is
     // excluded from accrual, so the retirement is permanent for this row.
-    await this.repo.appendResolvedThenRevoked({
-      evidence_id: evidenceId,
-      tenant_id: ev.tenant_id,
-      actor,
-      justification,
-    });
-    await this.recompute(ev.subject_id, ev.tenant_id, new Date());
+    try {
+      await this.repo.appendResolvedThenRevoked({
+        evidence_id: evidenceId,
+        tenant_id: tenantId,
+        actor,
+        justification,
+      });
+    } catch (err) {
+      if (err instanceof StaleEvidenceTransitionError) return classifyStale();
+      throw err;
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
     return { status: 'REVOKED' };
   }
 
@@ -1074,29 +1204,42 @@ export class TalentTrustService {
   // CONTRADICTED record resolves; anything else refuses (a resolve is meaningful
   // only against a standing contradiction). Distinct from resolveDispute (the
   // DISPUTED axis). Does NOT touch the CONTRADICTS link (append-only history stays).
+  // Security S1 (R1/R2) — `tenantId` is the acting tenant; tenant- and
+  // expected-status-keyed in one transaction.
   async resolveContradiction(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     reason: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<void> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status !== 'CONTRADICTED') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const notContradicted = (current: EvidenceStatus): AramoError =>
       // TR-4 B3 (§3.3) — the resolve API's not-CONTRADICTED refusal. A resolve is
       // meaningful only against a standing contradiction. Domain-coded 422; the
       // controller passes its requestId (defaults to the lib sentinel off-HTTP).
-      throw new AramoError(
+      new AramoError(
         'EVIDENCE_NOT_CONTRADICTED',
-        `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
-    await this.applyLifecycle(evidenceId, 'CONTRADICTION_RESOLVED', {
+    if (ev.current_status !== 'CONTRADICTED') throw notContradicted(ev.current_status);
+    const written = await this.repo.applyTenantBoundTransition({
+      evidence_id: evidenceId,
+      tenant_id: tenantId,
+      expected_status: 'CONTRADICTED',
+      next_status: EVENT_TO_STATUS['CONTRADICTION_RESOLVED'],
+      event_type: 'CONTRADICTION_RESOLVED',
       reason,
       actor,
-      evidence: ev,
     });
+    if (!written) {
+      // Concurrent transition: nothing was written; classify, never re-write.
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      throw notContradicted(now.current_status);
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
   }
 
   // TR-4 B3 (§3.2.3) — record an interior TIMELINE_GAP as CONTINUITY evidence,
@@ -1147,14 +1290,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: 'consistency',
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: input.tenant_id,
-      event_type: 'CREATED',
-      actor: 'consistency',
-      occurred_at: now,
-    });
+    }, { actor: 'consistency', occurred_at: now });
     return { written: true, evidence_id: evidence.id };
   }
 
@@ -1211,10 +1347,10 @@ export class TalentTrustService {
     const plan = computeConsistencyPlan(claims, existingGaps);
 
     for (const id of plan.impossibleRangeIds) {
-      await this.contradictRecord(id, REASON_IMPOSSIBLE_RANGE);
+      await this.contradictRecord(tenantId, id, REASON_IMPOSSIBLE_RANGE);
     }
     for (const c of plan.employerConflicts) {
-      await this.contradict(c.a_id, c.b_id, REASON_EMPLOYER_CONFLICT_SAME_WINDOW);
+      await this.contradict(tenantId, c.a_id, c.b_id, REASON_EMPLOYER_CONFLICT_SAME_WINDOW);
     }
 
     // TR-9 B1 (D4) — the ring's cheapest tell, in the same pass. Reduce the
@@ -1243,7 +1379,7 @@ export class TalentTrustService {
     }
     const attesterOverlapIds = detectAttesterIdentityOverlap(attestations, overlappingEmails);
     for (const id of attesterOverlapIds) {
-      await this.contradictRecord(id, REASON_ATTESTER_IDENTITY_OVERLAP);
+      await this.contradictRecord(tenantId, id, REASON_ATTESTER_IDENTITY_OVERLAP);
     }
     let gaps_opened = 0;
     for (const g of plan.gapsToOpen) {
@@ -1258,7 +1394,7 @@ export class TalentTrustService {
       if (r.written) gaps_opened += 1;
     }
     for (const h of plan.gapsToHeal) {
-      await this.supersede(h.gap_evidence_id, h.filler_evidence_id);
+      await this.supersede(tenantId, h.gap_evidence_id, h.filler_evidence_id);
     }
 
     // TR-5 B2 (DDR §3) — the two positive CONTINUITY derivers, beside the
@@ -1356,12 +1492,12 @@ export class TalentTrustService {
     if (action.kind === 'retire') {
       // Supersession WITHOUT replacement — the basis broke (e.g. a new gap opened
       // under a HISTORY_SPAN). SUPERSEDED clears the flag; no from-link exists.
-      await this.applyLifecycle(action.supersede_id, 'SUPERSEDED', {});
+      await this.transitionBound(tenantId, action.supersede_id, 'SUPERSEDED', {}, CLAIM_SHAPE_REQUEST_ID);
       return;
     }
     const newId = await this.writeDerivedContinuity(tenantId, subjectId, assertionType, action.payload, action.source_class);
     if (action.kind === 'replace') {
-      await this.supersede(action.supersede_id, newId);
+      await this.supersede(tenantId, action.supersede_id, newId);
     }
   }
 
@@ -1394,14 +1530,7 @@ export class TalentTrustService {
       ai_derived: false,
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: 'consistency',
-    });
-    await this.repo.appendEvent({
-      evidence_id: evidence.id,
-      tenant_id: tenantId,
-      event_type: 'CREATED',
-      actor: 'consistency',
-      occurred_at: now,
-    });
+    }, { actor: 'consistency', occurred_at: now });
     return evidence.id;
   }
 
@@ -1414,7 +1543,12 @@ export class TalentTrustService {
     actor: string,
   ): Promise<ResolutionSubjectRow> {
     const surviving = await this.requireSubject(survivingSubjectId);
-    await this.requireSubject(mergedSubjectId);
+    const merged = await this.requireSubject(mergedSubjectId);
+    // G1 (directive §3.5) — a merge never crosses tenants: refused before ANY write
+    // (no merge-operation audit row, no topology change).
+    if (merged.tenant_id !== surviving.tenant_id) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
     // TR-6 B1 (DDR §5) — the TR-1 merge-audit debt closes here: the merge persists
     // to SubjectMergeOperation (the void reason dies). A minimal PENDING DIRECT_MERGE
     // row carrying actor + reason + the subject pair (record fields null). If a
@@ -1438,7 +1572,9 @@ export class TalentTrustService {
         superseded_record_id: null,
       });
     }
-    return this.repo.setSubjectMergeState(mergedSubjectId, 'MERGED', survivingSubjectId);
+    // G1-2 — the topology write takes both clusters' advisory locks (sorted) in one
+    // transaction, so a concurrent recompute never sees the survivor change unnoticed.
+    return this.lockedMergeState(mergedSubjectId, 'MERGED', survivingSubjectId, [survivingSubjectId, mergedSubjectId]);
   }
 
   async unmergeSubjects(
@@ -1483,7 +1619,10 @@ export class TalentTrustService {
         completed_at: now,
       });
     }
-    return this.repo.setSubjectMergeState(mergedSubjectId, 'ACTIVE', null);
+    return this.lockedMergeState(mergedSubjectId, 'ACTIVE', null, [
+      ...(survivingSubjectId !== null ? [survivingSubjectId] : []),
+      mergedSubjectId,
+    ]);
   }
 
   // ---- Reads: state out (§8) -----------------------------------------
@@ -1655,37 +1794,6 @@ export class TalentTrustService {
       );
     }
     return result.canonical ?? {};
-  }
-
-  private async applyLifecycle(
-    evidenceId: string,
-    eventType: EvidenceEventType,
-    opts: {
-      reason?: string;
-      linked_evidence_id?: string;
-      actor?: string;
-      // Pre-fetched record (callers that already loaded it pass it through).
-      evidence?: EvidenceRecordRow;
-    },
-  ): Promise<void> {
-    const ev = opts.evidence ?? (await this.requireEvidence(evidenceId));
-    const now = new Date();
-
-    await this.repo.appendEvent({
-      evidence_id: evidenceId,
-      tenant_id: ev.tenant_id,
-      event_type: eventType,
-      reason: opts.reason ?? null,
-      linked_evidence_id: opts.linked_evidence_id ?? null,
-      actor: opts.actor ?? null,
-      occurred_at: now,
-    });
-
-    // current_status is set ONLY by applying an event (§5.5) — this is the
-    // projection of the latest event.
-    await this.repo.updateEvidenceStatus(evidenceId, EVENT_TO_STATUS[eventType]);
-
-    await this.recompute(ev.subject_id, ev.tenant_id, now);
   }
 
   // TR-2a-B3a (DDR-3 §5) — public cluster-union recompute entry point. The
@@ -1919,28 +2027,52 @@ export class TalentTrustService {
   // read-time projection. The TrustState row is stored keyed to subjectId (the
   // survivor); a loser's frozen row persists as-is (reads follow to the survivor).
   private async recompute(subjectId: string, tenantId: string, now: Date): Promise<void> {
-    const members = await this.repo.clusterMembers(subjectId);
-    const evidence = await this.repo.listEvidenceBySubjects(members);
-    const projection: EvidenceForDerivation[] = evidence.map((e) => ({
-      dimension: e.dimension,
-      source_class: e.source_class,
-      method: e.method,
-      // TR-3 (OPEN-6) — the assertion_type feeds the top-band registry gate.
-      assertion_type: e.assertion_type,
-      strength: e.strength,
-      current_status: e.current_status,
-      decay_profile: e.decay_profile,
-      collected_at: e.collected_at,
-      source_ref: e.source_ref,
-    }));
-
-    const derived = deriveTrustState(projection, now);
-    await this.repo.upsertTrustState({
-      subject_id: subjectId,
-      tenant_id: tenantId,
-      ...derived,
-      last_recomputed_at: now,
-    });
+    // G1 (Aramo-G1-TrustState-Recompute-Ordering-and-Recovery-Directive-v1_0-LOCKED)
+    // — resolves the ACTIVE SURVIVOR of subjectId (G1-1) and derives its cluster's
+    // TrustState under the per-cluster advisory lock, from a tenant-bound snapshot
+    // read inside the same transaction (G1-2), clearing the covered recomputation
+    // requests (G1-3). Every existing caller inherits this with no signature change.
+    let outcome;
+    try {
+      outcome = await this.repo.recomputeUnderLock({
+        subject_id: subjectId,
+        tenant_id: tenantId,
+        now,
+        derive: (evidence) =>
+          deriveTrustState(
+            evidence.map((e) => ({
+              dimension: e.dimension,
+              source_class: e.source_class,
+              method: e.method,
+              // TR-3 (OPEN-6) — the assertion_type feeds the top-band registry gate.
+              assertion_type: e.assertion_type,
+              strength: e.strength,
+              current_status: e.current_status,
+              decay_profile: e.decay_profile,
+              collected_at: e.collected_at,
+              source_ref: e.source_ref,
+            })),
+            now,
+          ),
+      });
+    } catch (err) {
+      // A failed recompute is never reported as completed: the caller sees the
+      // error, and the durable request (set with the evidence write) stays pending
+      // for the repair job.
+      this.logger.error({
+        event: 'trust_recompute_failed',
+        subject_id: subjectId,
+        tenant_id: tenantId,
+        error_message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+    if (outcome.kind !== 'RECOMPUTED') {
+      // Tenant authority (directive §3.5): a subject of another tenant, or one that
+      // does not resolve, is never recomputed — refused, logged, nothing written.
+      this.logger.warn({ event: 'trust_recompute_refused', subject_id: subjectId, tenant_id: tenantId, reason: outcome.kind });
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
   }
 
   // TR-2a-B3a (DDR-3 §5) — resolve a ref to the ACTIVE FIXPOINT of its subject's
@@ -1981,10 +2113,18 @@ export class TalentTrustService {
     return null;
   }
 
-  private async requireEvidence(evidenceId: string): Promise<EvidenceRecordRow> {
-    const ev = await this.repo.findEvidenceById(evidenceId);
+  // Security S1 (R1/R4) — the tenant-bound evidence guard. Another tenant's row
+  // and a non-existent id are indistinguishable: both throw the same 404
+  // NOT_FOUND, with no status and no id-bearing message (the markProposalActed /
+  // dismissProposal load-then-guard precedent).
+  private async requireEvidenceForTenant(
+    tenantId: string,
+    evidenceId: string,
+    requestId: string,
+  ): Promise<EvidenceRecordRow> {
+    const ev = await this.repo.findEvidenceByIdForTenant(tenantId, evidenceId);
     if (ev === null) {
-      throw new NotFoundException(`EvidenceRecord ${evidenceId} not found`);
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
     }
     return ev;
   }
@@ -1992,6 +2132,26 @@ export class TalentTrustService {
   // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: existence/identity
   // guard on a SPECIFIC subject id (merge/un-merge operands). It must see the
   // subject AS-IS (ACTIVE or MERGED), never its fixpoint — do NOT follow.
+  // G1-2 — the cluster-locked, single-tenant merge-state write (refuses cross-tenant
+  // or missing subjects: nothing written).
+  private async lockedMergeState(
+    subjectId: string,
+    status: 'MERGED' | 'ACTIVE',
+    mergedIntoSubjectId: string | null,
+    involved: string[],
+  ): Promise<ResolutionSubjectRow> {
+    const row = await this.repo.setSubjectMergeStateLocked({
+      subject_id: subjectId,
+      status,
+      merged_into_subject_id: mergedIntoSubjectId,
+      involved_subject_ids: involved,
+    });
+    if (row === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId: CLAIM_SHAPE_REQUEST_ID });
+    }
+    return row;
+  }
+
   private async requireSubject(subjectId: string): Promise<ResolutionSubjectRow> {
     const subject = await this.repo.findSubjectById(subjectId);
     if (subject === null) {
@@ -2146,7 +2306,11 @@ export class TalentTrustService {
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) continue;
       try {
+        // Security S1 (C6) — the acting tenant is the work item's own tenant (the
+        // authorized unit of a cluster-scoped withdrawal; items may span tenants),
+        // never the evidence row.
         await this.resolveDispute(
+          wi.tenant_id,
           evidenceId,
           input.actor,
           'rejected',
@@ -2178,7 +2342,9 @@ export class TalentTrustService {
     }
     // VERIFICATION: VR.id → the PLATFORM_VERIFIED anchor for its (subject,kind,value).
     const vr = await this.repo.findVerificationRequestById(wi.underlying_ref_id);
-    if (vr === null) return null;
+    // Security S1 (C7) — the verification request must belong to the work item's
+    // tenant; otherwise it is not resolvable for this item (no foreign evidence).
+    if (vr === null || vr.tenant_id !== wi.tenant_id) return null;
     const anchor = await this.repo.findSubjectAnchor(
       vr.tenant_id,
       vr.subject_id,
@@ -2204,17 +2370,24 @@ export class TalentTrustService {
     }
     for (const wi of items) {
       if (wi.status !== 'OPEN') continue;
+      // Security S1 (C4) — items come from the tenant-bound query; the acting
+      // tenant is the authorized input tenant, and an item of any other tenant is
+      // never acted on.
+      if (wi.tenant_id !== input.tenantId) continue;
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) {
         await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         continue;
       }
       try {
-        await this.dispute(evidenceId, input.actor, 'talent dispute — triaged for review', input.requestId);
+        await this.dispute(input.tenantId, evidenceId, input.actor, 'talent dispute — triaged for review', input.requestId);
         await this.repo.advancePortalWorkItemStatus(wi.id, 'UNDER_REVIEW');
       } catch (err) {
         if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTABLE') {
           await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not disputable');
+        } else if (err instanceof AramoError && err.code === 'NOT_FOUND') {
+          // Backing evidence not visible to the acting tenant → not resolvable.
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         } else {
           throw err;
         }
@@ -2263,17 +2436,22 @@ export class TalentTrustService {
     const tr15Outcome = PORTAL_DISPUTE_OUTCOME_MAP[input.outcome].tr15Outcome;
     for (const wi of items) {
       if (wi.status !== 'UNDER_REVIEW') continue; // only triaged items are disposable
+      // Security S1 (C5) — act only on the authorized tenant's items.
+      if (wi.tenant_id !== input.tenantId) continue;
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) {
         await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         continue;
       }
       try {
-        await this.resolveDispute(evidenceId, input.actor, tr15Outcome, input.note, input.requestId);
+        await this.resolveDispute(input.tenantId, evidenceId, input.actor, tr15Outcome, input.note, input.requestId);
         await this.repo.advancePortalWorkItemStatus(wi.id, input.outcome);
       } catch (err) {
         if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTED') {
           await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not in DISPUTED state');
+        } else if (err instanceof AramoError && err.code === 'NOT_FOUND') {
+          // Backing evidence not visible to the acting tenant → not resolvable.
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         } else {
           throw err;
         }

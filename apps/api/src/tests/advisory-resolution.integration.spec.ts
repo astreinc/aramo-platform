@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -43,32 +43,7 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  // Slice-B1 — the regenerated talent_trust client SELECTs ResolutionSubject
-  // .last_reconciled_at + reconcile_attempts on every subject read (merge/
-  // unmerge), so the columns must exist or the advisory endpoints 500.
-  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  // TR-2a-B1 — SubjectAnchor.source_class + extended (…, source_class) unique
-  // key. The regenerated client SELECTs source_class on anchor reads.
-  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  // TR-2a-B2 — SubjectMatchAdvisory reopen provenance (client selects reopened_at).
-  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-  // TR-2a-B3b — SubjectMergeOperation. The /approve endpoint now runs phase 2
-  // (the record reconcile) after the subject merge; even the neither-promoted case
-  // (these advisories carry no ATS_TALENT_RECORD ref) creates a completed no-op
-  // operation record, so the table must exist or reconcile 500s.
-  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
+  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';

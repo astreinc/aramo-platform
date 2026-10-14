@@ -90,6 +90,13 @@ model ResolutionSubject {
   // (NULL = never checked). Independent of last_matched_at. A maintenance
   // watermark only — never keys a merge, never gates a read.
   last_consistency_at DateTime? @db.Timestamptz
+  // G1 (Aramo-G1-TrustState-Recompute-Ordering-and-Recovery-Directive-v1_0-LOCKED
+  // §3.3) — the durable recomputation request: set in the same transaction as every
+  // evidence creation / status change on this (origin) subject; cleared only by a
+  // successful recompute of the cluster that covers it; drained by the 2-minute
+  // repair job. NULL = nothing pending. Its partial index is migration-owned
+  // (20261014120000_g1_trust_recompute_requested_at), not declarable here.
+  trust_recompute_requested_at DateTime? @db.Timestamptz
 
   created_at DateTime @default(now()) @db.Timestamptz
 

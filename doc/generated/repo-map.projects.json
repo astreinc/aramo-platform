@@ -352,6 +352,7 @@
       "ReleaseIdentityService",
       "RequestId",
       "RequestIdMiddleware",
+      "TALENT_TRUST_MIGRATIONS",
       "agingDaysInTimeZone",
       "assertModuleHasNoLlmImports",
       "civilDayUtcMs",
@@ -373,7 +374,8 @@
       "resolveAppTimeZone",
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
-      "resolveReleaseRevision"
+      "resolveReleaseRevision",
+      "resolveTalentTrustMigrations"
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",
@@ -2218,6 +2220,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3870,6 +3878,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5312,6 +5326,12 @@
       { "project": "talent-intelligence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/contradiction-detection.service.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
         "project": "talent-reconcile",
         "status": "excluded"
@@ -5388,6 +5408,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-trust/src/tests/resolution.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/security-s1a-tenant-bound-lifecycle.spec.ts",
         "project": "talent-trust",
         "status": "excluded"
       },
@@ -8574,7 +8600,15 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-intelligence": [{ "project": "api", "status": "production" }],
-    "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
+    "@aramo/talent-reconcile": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/security-s1b-trust-lifecycle-hardening.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/talent-reconcile-signal": [
       { "project": "talent-reconcile", "status": "production" },
       { "project": "talent-record", "status": "production" }
@@ -8762,6 +8796,12 @@
     "@aramo/talent-trust": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/g1-trust-recompute-ordering-recovery.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8769,6 +8809,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
         "project": "api",
         "status": "excluded"
       },

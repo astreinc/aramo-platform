@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentTrustRepository } from '../lib/talent-trust.repository.js';
@@ -22,25 +22,7 @@ import type { SourceClass } from '../lib/vocab.js';
 //   - anchors are keyed to the ORIGIN subject and survive merge/unmerge un-touched.
 
 const MIGRATIONS = [
-  '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  // Slice-B1 — the regenerated client SELECTs ResolutionSubject.last_reconciled_at
-  // + reconcile_attempts (findSubjectByRef include), so the columns must exist.
-  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
-  // TR-2a-B1 — SubjectAnchor.source_class (regenerated client SELECTs it) + the
-  // extended (…, source_class) unique key. Both required once tr2a1 exists.
-  '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  // TR-3 B1 — the writer-less VerificationRequest table (seeded directly below).
-  '../../prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
+  ...resolveTalentTrustMigrations(resolve(__dirname, '../../../..')),  // G1 — the shared, complete talent-trust set
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

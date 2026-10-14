@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Logger } from '@nestjs/common';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
@@ -28,22 +28,7 @@ import {
 //         carrying actor + reason (the formerly-voided string).
 
 const MIGRATIONS = [
-  '../../prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  '../../prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  '../../prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  '../../prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  '../../prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  '../../prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  '../../prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  '../../prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  '../../prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-  '../../prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  '../../prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  '../../prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  '../../prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  '../../prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  '../../prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
+  ...resolveTalentTrustMigrations(resolve(__dirname, '../../../..')),  // G1 — the shared, complete talent-trust set
 ].map((p) => resolve(__dirname, p));
 
 const CREATED_BY = 'tr6-b1-engine-integration';
@@ -266,8 +251,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const surviving = await seed(T, [{ kind: 'EMAIL', value: 'du-survivor@x.com' }]);
       const merged = await seed(T, [{ kind: 'PHONE', value: '+15550000003' }]);
 
-      // Simulate a pre-B3b merge that left NO operation row (setSubjectMergeState direct).
-      await repo.setSubjectMergeState(merged, 'MERGED', surviving);
+      // Simulate a pre-B3b merge that left NO operation row (a direct row write).
+      await prisma.resolutionSubject.update({ where: { id: merged }, data: { status: 'MERGED', merged_into_subject_id: surviving } });
 
       const restored = await service.unmergeSubjects(merged, 'reviewer error — undo', ACTOR);
       expect(restored.status).toBe('ACTIVE');
