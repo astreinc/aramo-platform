@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { InvitationDto } from './dto/invitation.dto.js';
@@ -18,11 +19,48 @@ import {
   metaRank,
 } from './role-catalog/role-catalog.view.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
 import {
   generateInvitationToken,
   hashInvitationToken,
   INVITATION_TTL_MS,
 } from './tenant-user/invitation-token.js';
+import { normalizeEmail } from './util/email-domain.js';
+
+// IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — who owns an invite
+// email, classified BEFORE any side effect (Cognito call or DB write).
+export type InviteEmailOwnership =
+  | { kind: 'unregistered' }
+  | { kind: 'same_tenant'; user: UserDto; membership: MembershipDto }
+  | { kind: 'other_tenant'; user: UserDto; membership_tenant_ids: string[] };
+
+// The invite tier that attempted the refused invitation (audit payload only).
+export type InviteTier = 'platform' | 'tenant';
+
+// The ACTUAL reason retained in identity.invitation.rejected_cross_tenant
+// (never surfaced in the public 409 — the envelope carries `details: {}`).
+export type CrossTenantRejectionReason =
+  | 'existing_user_owned_by_other_tenant'
+  | 'existing_user_without_membership'
+  | 'email_uniqueness_race_lost';
+
+// Prisma P2002 on the User.email unique key. Prisma reports the violated
+// key in `meta.target` (a field list such as ['email'] or a constraint name
+// such as 'User_email_key'); when the driver omits the target, the only
+// unique key a FRESH uuid-v7 User create can violate inside the two creation
+// transactions is email, so a target-less P2002 on that path is treated as
+// the email key too. A P2002 naming a different key is NOT matched.
+export function isUserEmailUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  if ((err as { code?: unknown }).code !== 'P2002') return false;
+  const target = (err as { meta?: { target?: unknown } }).meta?.target;
+  if (target === undefined || target === null) return true;
+  if (typeof target === 'string') return /email/i.test(target);
+  if (Array.isArray(target)) {
+    return target.some((t) => typeof t === 'string' && /email/i.test(t));
+  }
+  return false;
+}
 
 // Aramo-Identity-Me-Endpoint — the public shape returned by GET /v1/me. A
 // self-read display projection (NOT the admin TenantUserView): the caller's
@@ -55,9 +93,10 @@ export interface MeView {
 // change for the resolve path consumers.
 //
 // D-AUTHZ-PLATFORM-INVITE-1 (Gate-6, in-service ruling): the D5 union-non-
-// invertibility check moves INTO the three membership-role-write methods
-// (createUserFromInvitation / addMembershipForExistingUser /
-// replaceMembershipRoles). The prior caller-side contract (documented but
+// invertibility check moves INTO the membership-role-write methods
+// (createUserFromInvitation / createInvitedUserNoSub /
+// replaceMembershipRoles; the former addMembershipForExistingUser is
+// RETIRED by IC-1 PR-1 — see below). The prior caller-side contract (documented but
 // unenforced) was honored by the tenant tier and silently violated by the
 // platform tier — a super_admin could persist an invertible scope union
 // via POST /platform/tenants/:tenant_id/invitations. Safe-by-construction:
@@ -66,12 +105,35 @@ export interface MeView {
 // audit emission, so audit-on-success is preserved. The validator no-ops
 // at length<2 (single-role invites are zero-cost). The identity → field-
 // masking edge already exists (S3a) and is acyclic.
+//
+// IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §1/§2/§4) — ONE USER, ONE
+// TENANT. Every product identity.User belongs to exactly one owning tenant
+// and holds exactly one membership. The in-service guard
+// (assertInviteEmailAvailable) runs INSIDE both User-creating write methods
+// (createUserFromInvitation — platform tier; createInvitedUserNoSub — tenant
+// tier), AFTER the D5 gate and BEFORE any DB write: an email already owned by
+// a different tenant is refused with 409 EMAIL_UNAVAILABLE + `details: {}`
+// (the tenant-scoped identity.invitation.rejected_cross_tenant audit event
+// retains the reason); an email already a member of the SAME tenant is
+// refused with the preserved 409 INVITATION_ALREADY_EXISTS (never converted
+// into the cross-tenant response). A User.email P2002 lost between the
+// pre-check and the insert is re-probed and mapped to the same governed
+// 409s (never a raw P2002 / HTTP 500). addMembershipForExistingUser — the
+// AUTHZ-2 "new tenant for existing user" branch — is RETIRED: no caller may
+// bind a second membership for an existing User. Until the IC-1 PR-2/PR-3
+// DB constraints land, these application guards are necessary but are not
+// the final structural guarantee.
 @Injectable()
 export class IdentityService {
+  private readonly logger = new Logger(IdentityService.name);
+
   constructor(
     private readonly identityRepo: IdentityRepository,
     private readonly audit: IdentityAuditService,
     private readonly roleBundle: RoleBundleValidator,
+    // IC-3 PR-8 — the LIVE tenant-capability read the role-assignability gate
+    // consults for the Sign product partition (never cached; HF2 INV-4).
+    private readonly entitlements: TenantEntitlementReader,
   ) {}
 
   async resolveUser(args: {
@@ -83,6 +145,196 @@ export class IdentityService {
 
   async findUserByEmail(email: string): Promise<UserDto | null> {
     return this.identityRepo.findUserByEmail(email);
+  }
+
+  // IC-1 PR-1 — every membership tenant for a user (no is_active /
+  // invite_status filter; see the repository note).
+  async findMembershipTenantIds(user_id: string): Promise<string[]> {
+    return this.identityRepo.findMembershipTenantIdsForUser(user_id);
+  }
+
+  // IC-1 PR-1 (Amendment A1 §4) — classify who owns an invite email BEFORE any
+  // side effect. The email is normalized (trim + lowercase) HERE as well as at
+  // the tier entry points, so the identity lookup is always on the canonical
+  // form (the platform tier previously probed with the raw email). Returns:
+  //   unregistered — no identity.User for the email;
+  //   same_tenant  — the User already holds a membership in the TARGET tenant
+  //                  (the preserved same-tenant contracts apply: 409
+  //                  INVITATION_ALREADY_EXISTS or roles_updated);
+  //   other_tenant — the User exists but holds NO membership in the target
+  //                  tenant (owned elsewhere, or — edge — membership-less);
+  //                  the caller MUST refuse via rejectCrossTenantInvitation.
+  async classifyInviteEmailOwnership(args: {
+    email: string;
+    tenant_id: string;
+  }): Promise<InviteEmailOwnership> {
+    const email = normalizeEmail(args.email);
+    const user = await this.identityRepo.findUserByEmail(email);
+    if (user === null) return { kind: 'unregistered' };
+    const membership = await this.identityRepo.findMembership({
+      user_id: user.id,
+      tenant_id: args.tenant_id,
+    });
+    if (membership !== null) return { kind: 'same_tenant', user, membership };
+    const membership_tenant_ids =
+      await this.identityRepo.findMembershipTenantIdsForUser(user.id);
+    return { kind: 'other_tenant', user, membership_tenant_ids };
+  }
+
+  // IC-1 PR-1 (Amendment A1 §4) — the governed cross-tenant refusal. Writes the
+  // tenant-scoped internal audit event (scoped to the ATTEMPTED target tenant;
+  // retains the actual reason, the tier, the caller, the attempted tenant and
+  // the request id) and throws HTTP 409 EMAIL_UNAVAILABLE with EXACTLY
+  // `details: {}`. The public response must not carry a tenant id, tenant
+  // name, user id, role, Cognito state or any other ownership detail.
+  //
+  // Gate-5 G5-08 (audit confidentiality): the tenant-scoped row has its OWN
+  // visibility boundary — GET /v1/tenant/audit-events surfaces `subject_id`
+  // raw (and accepts `?subject_id=` as a filter) to the target tenant's
+  // audit:read holders. So the row carries NO foreign-tenant identifier:
+  // subject_id is the ATTEMPTED tenant (the tenant_setting.updated
+  // precedent), and the payload holds only reason / tier / attempted tenant /
+  // request_id. The cross-tenant correlation (existing user id + the owning
+  // tenant ids, never the email) goes to the structured server log keyed by
+  // request_id — the already-authorized operator channel (the D-1 ruling) —
+  // not to any tenant-readable store. No new audit subsystem.
+  async rejectCrossTenantInvitation(args: {
+    tenant_id: string;
+    actor_user_id: string;
+    request_id: string;
+    tier: InviteTier;
+    existing: { user: UserDto; membership_tenant_ids: readonly string[] };
+    reason: CrossTenantRejectionReason;
+  }): Promise<never> {
+    this.logger.warn(
+      `invitation refused (${args.tier} tier, request ${args.request_id}): ` +
+        `reason=${args.reason} attempted_tenant=${args.tenant_id} ` +
+        `existing_user=${args.existing.user.id} ` +
+        `existing_membership_tenants=[${args.existing.membership_tenant_ids.join(',')}]`,
+    );
+    await this.audit.writeEvent({
+      event_type: 'identity.invitation.rejected_cross_tenant',
+      actor_type: 'user',
+      actor_id: args.actor_user_id,
+      tenant_id: args.tenant_id,
+      subject_id: args.tenant_id,
+      payload: {
+        reason: args.reason,
+        tier: args.tier,
+        attempted_tenant_id: args.tenant_id,
+        request_id: args.request_id,
+      },
+    });
+    throw new AramoError(
+      'EMAIL_UNAVAILABLE',
+      'This email address is not available for invitation',
+      409,
+      { requestId: args.request_id, details: {} },
+    );
+  }
+
+  // IC-1 PR-1 — the preserved SAME-tenant refusal used by the create paths: the
+  // email is already a member of the target tenant, so a fresh User create is
+  // never attempted. Same-tenant is NEVER converted into the cross-tenant
+  // response merely because the email is registered (Amendment A1 §3).
+  private sameTenantAlreadyMember(args: {
+    request_id: string;
+    tenant_id: string;
+    user: UserDto;
+    membership: MembershipDto;
+  }): AramoError {
+    return new AramoError(
+      'INVITATION_ALREADY_EXISTS',
+      'User already holds a membership in this tenant',
+      409,
+      {
+        requestId: args.request_id,
+        details: {
+          user_id: args.user.id,
+          tenant_id: args.tenant_id,
+          existing_membership_id: args.membership.id,
+        },
+      },
+    );
+  }
+
+  // IC-1 PR-1 — the in-service ownership guard shared by BOTH User-creating
+  // write methods. Fires AFTER the D5 gate (so an invertible bundle is still
+  // rejected without revealing whether the email exists) and BEFORE any DB
+  // write or audit-on-success emission.
+  private async assertInviteEmailAvailable(args: {
+    email: string;
+    tenant_id: string;
+    actor_user_id: string;
+    request_id: string;
+    tier: InviteTier;
+  }): Promise<void> {
+    const ownership = await this.classifyInviteEmailOwnership({
+      email: args.email,
+      tenant_id: args.tenant_id,
+    });
+    if (ownership.kind === 'unregistered') return;
+    if (ownership.kind === 'same_tenant') {
+      throw this.sameTenantAlreadyMember({
+        request_id: args.request_id,
+        tenant_id: args.tenant_id,
+        user: ownership.user,
+        membership: ownership.membership,
+      });
+    }
+    await this.rejectCrossTenantInvitation({
+      tenant_id: args.tenant_id,
+      actor_user_id: args.actor_user_id,
+      request_id: args.request_id,
+      tier: args.tier,
+      existing: ownership,
+      reason:
+        ownership.membership_tenant_ids.length === 0
+          ? 'existing_user_without_membership'
+          : 'existing_user_owned_by_other_tenant',
+    });
+  }
+
+  // IC-1 PR-1 (Amendment A1 §4 — "protect against races between pre-check and
+  // insert"). A User.email uniqueness violation raised by the create
+  // transaction AFTER the pre-check passed means a concurrent writer won the
+  // email. Re-probe ownership and map to the SAME governed 409s the pre-check
+  // would have produced; a P2002 on any other key, or a re-probe that no
+  // longer finds the user, is rethrown unchanged (never silently absorbed).
+  private async mapUserEmailCollision(
+    err: unknown,
+    args: {
+      email: string;
+      tenant_id: string;
+      actor_user_id: string;
+      request_id: string;
+      tier: InviteTier;
+    },
+  ): Promise<never> {
+    if (!isUserEmailUniqueViolation(err)) throw err;
+    const ownership = await this.classifyInviteEmailOwnership({
+      email: args.email,
+      tenant_id: args.tenant_id,
+    });
+    if (ownership.kind === 'same_tenant') {
+      throw this.sameTenantAlreadyMember({
+        request_id: args.request_id,
+        tenant_id: args.tenant_id,
+        user: ownership.user,
+        membership: ownership.membership,
+      });
+    }
+    if (ownership.kind === 'other_tenant') {
+      await this.rejectCrossTenantInvitation({
+        tenant_id: args.tenant_id,
+        actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
+        tier: args.tier,
+        existing: ownership,
+        reason: 'email_uniqueness_race_lost',
+      });
+    }
+    throw err;
   }
 
   // Platform-Console Increment-2 PR-1.5 (A2) — resolve a tenant's owner
@@ -223,6 +475,65 @@ export class IdentityService {
   // threaded in so the D5 union-non-invertibility check runs HERE, BEFORE
   // the DB write and BEFORE any audit emission. Every caller is covered;
   // the prior caller-side contract is retired.
+  // IC-2 PR-5 — platform-tier role keys (super_admin) are NEVER assignable
+  // through a tenant-side path. Only a caller that explicitly asserts the
+  // platform tier (apps/platform-admin's platform-admin invite against the
+  // sentinel tenant) may pass allow_platform_roles=true; absence denies.
+  // Fires BEFORE the D5 bundle check and before any write (safe-by-default).
+  //
+  // IC-3 PR-8 (IC-0 L10; PX-V1 §10) — second partition: the E-Sign PRODUCT
+  // roles (esign_*) are assignable ONLY in a tenant that holds the `esign`
+  // capability, read LIVE from the entitlement store (a Sign-only tenant
+  // qualifies without any ATS dependency; an ATS-only tenant is refused with
+  // VALIDATION_ERROR `esign_role_not_entitled`). The platform pool
+  // (allow_platform_roles) is exempt exactly as before — the sentinel never
+  // carries a product role through the platform-admin DTO. Fires BEFORE the
+  // D5 union check and BEFORE any write, so an unentitled Sign role never
+  // reaches the membership tables.
+  private async assertRoleKeysAssignable(args: {
+    role_keys: readonly string[];
+    tenant_id: string;
+    allow_platform_roles?: boolean;
+    request_id: string;
+  }): Promise<void> {
+    if (args.allow_platform_roles === true) return;
+    const platformKeys = args.role_keys.filter((k) =>
+      (PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
+    );
+    if (platformKeys.length > 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Platform-tier roles cannot be assigned to a tenant membership',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'platform_role_not_assignable', role_keys: platformKeys },
+        },
+      );
+    }
+    const esignKeys = args.role_keys.filter((k) =>
+      (ESIGN_PRODUCT_ROLE_KEYS as readonly string[]).includes(k),
+    );
+    if (esignKeys.length > 0) {
+      const capabilities = await this.entitlements.getCapabilities(args.tenant_id);
+      if (!capabilities.has('esign')) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'E-Sign roles require the esign capability on the tenant',
+          400,
+          {
+            requestId: args.request_id,
+            details: {
+              reason: 'esign_role_not_entitled',
+              role_keys: esignKeys,
+              missing_capabilities: ['esign'],
+            },
+          },
+        );
+      }
+    }
+  }
+
   async createUserFromInvitation(args: {
     email: string;
     display_name: string | null;
@@ -233,7 +544,10 @@ export class IdentityService {
     role_ids: readonly string[];
     actor_user_id: string;
     request_id: string;
+    // IC-2 PR-5 — only the platform-admin invite (sentinel tenant) sets this.
+    allow_platform_roles?: boolean;
   }): Promise<{ user: UserDto; membership_id: string }> {
+    await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR (details.reason=
     // 'invertible_role_union'); see-all-tier bypass derived internally.
@@ -242,17 +556,38 @@ export class IdentityService {
       request_id: args.request_id,
     });
 
+    // IC-1 PR-1 — one User, one tenant. Normalized lookup; same-tenant →
+    // preserved 409 INVITATION_ALREADY_EXISTS; other-tenant → audit + 409
+    // EMAIL_UNAVAILABLE (details {}). Fires BEFORE the DB write.
+    const email = normalizeEmail(args.email);
+    const guardArgs = {
+      email,
+      tenant_id: args.tenant_id,
+      actor_user_id: args.actor_user_id,
+      request_id: args.request_id,
+      tier: 'platform' as const,
+    };
+    await this.assertInviteEmailAvailable(guardArgs);
+
     const user_id = uuidv7();
-    const result =
-      await this.identityRepo.createUserWithExternalIdentityAndMembership({
-        user_id,
-        email: args.email,
-        display_name: args.display_name,
-        provider: args.provider,
-        provider_subject: args.provider_subject,
-        tenant_id: args.tenant_id,
-        role_ids: args.role_ids,
-      });
+    let result;
+    try {
+      result =
+        await this.identityRepo.createUserWithExternalIdentityAndMembership({
+          user_id,
+          email,
+          display_name: args.display_name,
+          provider: args.provider,
+          provider_subject: args.provider_subject,
+          tenant_id: args.tenant_id,
+          role_ids: args.role_ids,
+        });
+    } catch (err) {
+      // Race backstop: a User.email P2002 lost after the pre-check maps to
+      // the governed 409s (never a raw P2002 / HTTP 500).
+      await this.mapUserEmailCollision(err, guardArgs);
+      throw err;
+    }
 
     // Audit emission — best-effort (the wrapper swallows failures + logs).
     // identity.user.created + identity.external_identity.linked are GLOBAL
@@ -331,6 +666,8 @@ export class IdentityService {
     raw_token: string;
     expires_at: string;
   }> {
+    // IC-2 PR-5 — tenant-tier invite: platform roles are never assignable.
+    await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR before any write.
     await this.roleBundle.assertUnionNonInvertible({
@@ -338,14 +675,36 @@ export class IdentityService {
       request_id: args.request_id,
     });
 
-    const user_id = uuidv7();
-    const result = await this.identityRepo.createUserWithMembership({
-      user_id,
-      email: args.email,
-      display_name: args.display_name,
+    // IC-1 PR-1 — one User, one tenant (tenant tier). Normalized lookup;
+    // same-tenant → preserved 409 INVITATION_ALREADY_EXISTS; other-tenant →
+    // audit + 409 EMAIL_UNAVAILABLE (details {}). Fires BEFORE the DB write,
+    // so a refused invite leaves no User / membership / Invitation row.
+    const email = normalizeEmail(args.email);
+    const guardArgs = {
+      email,
       tenant_id: args.tenant_id,
-      role_ids: args.role_ids,
-    });
+      actor_user_id: args.actor_user_id,
+      request_id: args.request_id,
+      tier: 'tenant' as const,
+    };
+    await this.assertInviteEmailAvailable(guardArgs);
+
+    const user_id = uuidv7();
+    let result;
+    try {
+      result = await this.identityRepo.createUserWithMembership({
+        user_id,
+        email,
+        display_name: args.display_name,
+        tenant_id: args.tenant_id,
+        role_ids: args.role_ids,
+      });
+    } catch (err) {
+      // Race backstop: a User.email P2002 lost after the pre-check maps to
+      // the governed 409s (never a raw P2002 / HTTP 500).
+      await this.mapUserEmailCollision(err, guardArgs);
+      throw err;
+    }
 
     // Issue the invite token (mirror RefreshToken: hash at rest, raw once).
     const { raw, hash } = generateInvitationToken();
@@ -490,6 +849,14 @@ export class IdentityService {
   // Invite-S2 — the tenant label for the invite email greeting: the branding
   // display_name, falling back to the workspace name (same precedence as
   // GET /v1/me), and a neutral default for an unknown tenant.
+  // IC-3 PR-7 — tenant access state for the user re-enable leg (SUSPENDED /
+  // CLOSED / soft-disabled tenants never get a user re-enabled at the IdP).
+  async getTenantAccessState(
+    tenant_id: string,
+  ): Promise<{ status: string; is_active: boolean } | null> {
+    return this.identityRepo.findTenantAccessStateById(tenant_id);
+  }
+
   async getTenantLabel(tenant_id: string): Promise<string> {
     const t = await this.identityRepo.findTenantNameById(tenant_id);
     return t?.display_name ?? t?.name ?? 'your workspace';
@@ -565,76 +932,12 @@ export class IdentityService {
     await this.identityRepo.updateUserEmail(args);
   }
 
-  // AUTHZ-2: the new-tenant re-invite case (Lead ruling 8 case 3). The
-  // invitee already has identity.User + ExternalIdentity (in Cognito and
-  // mirrored); the invitation only needs a new UserTenantMembership +
-  // MembershipRole rows.
-  //
-  // D-AUTHZ-PLATFORM-INVITE-1 (in-service): role_keys + request_id threaded
-  // for the D5 gate (fires BEFORE the membership-existence check and the
-  // DB write).
-  async addMembershipForExistingUser(args: {
-    user_id: string;
-    tenant_id: string;
-    role_keys: readonly string[];
-    role_ids: readonly string[];
-    actor_user_id: string;
-    request_id: string;
-  }): Promise<{ membership_id: string }> {
-    // D5 integrity gate — in-service. Fires BEFORE the existence check so
-    // an invertible bundle is rejected without revealing whether the
-    // membership already exists (consistent with the role-assign
-    // ordering at S3b).
-    await this.roleBundle.assertUnionNonInvertible({
-      role_keys: args.role_keys,
-      request_id: args.request_id,
-    });
-
-    const existing = await this.identityRepo.findMembership({
-      user_id: args.user_id,
-      tenant_id: args.tenant_id,
-    });
-    if (existing !== null) {
-      throw new AramoError(
-        'INVITATION_ALREADY_EXISTS',
-        'User already holds a membership in this tenant',
-        409,
-        {
-          requestId: args.request_id,
-          details: {
-            user_id: args.user_id,
-            tenant_id: args.tenant_id,
-            existing_membership_id: existing.id,
-          },
-        },
-      );
-    }
-    const result = await this.identityRepo.createMembershipForExistingUser({
-      user_id: args.user_id,
-      tenant_id: args.tenant_id,
-      role_ids: args.role_ids,
-    });
-    await this.audit.writeEvent({
-      event_type: 'identity.membership.created',
-      actor_type: 'user',
-      actor_id: args.actor_user_id,
-      tenant_id: args.tenant_id,
-      subject_id: args.user_id,
-      payload: { membership_id: result.membership_id },
-    });
-    await this.audit.writeEvent({
-      event_type: 'identity.invitation.created',
-      actor_type: 'user',
-      actor_id: args.actor_user_id,
-      tenant_id: args.tenant_id,
-      subject_id: args.user_id,
-      payload: {
-        role_ids: [...args.role_ids],
-        reason: 'new_tenant_for_existing_user',
-      },
-    });
-    return result;
-  }
+  // IC-1 PR-1 (Amendment A1 §2): the AUTHZ-2 "new-tenant re-invite" entry
+  // point addMembershipForExistingUser — Lead ruling 8 case 3 — is RETIRED
+  // together with its repository writer. An existing User invited into a
+  // different tenant is refused (409 EMAIL_UNAVAILABLE) by the in-service
+  // guard above; no platform operator, tenant administrator, provisioner or
+  // reconciliation path may bind a second membership for an existing User.
 
   // AUTHZ-2: same-tenant role replacement (Lead ruling 8 case 2). The
   // membership row stays; the role junction is reconciled.
@@ -644,10 +947,17 @@ export class IdentityService {
   // never reaches the createMany/deleteMany inside the $transaction).
   async replaceMembershipRoles(args: {
     membership_id: string;
+    // IC-3 PR-8 — the membership's tenant (the caller already resolved the
+    // membership within it); the Sign-partition assignability gate reads this
+    // tenant's live capabilities.
+    tenant_id: string;
     role_keys: readonly string[];
     role_ids: readonly string[];
     request_id: string;
+    // IC-2 PR-5 — only the platform-admin flow (sentinel tenant) sets this.
+    allow_platform_roles?: boolean;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
+    await this.assertRoleKeysAssignable(args);
     await this.roleBundle.assertUnionNonInvertible({
       role_keys: args.role_keys,
       request_id: args.request_id,

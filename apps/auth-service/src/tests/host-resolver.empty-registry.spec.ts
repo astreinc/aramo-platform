@@ -36,17 +36,19 @@ const tenants = () => fakeTenantService({ astre: { identity_provider: 'AstreSAML
 describe('§4.4 — empty registry (prod config): env chain + host port still resolve', () => {
   it('TENANT host resolves via the HostContextDirectory fall-through', async () => {
     const r = await resolverLegacy(tenants()).resolve('astre.aramo.ai');
-    expect(r).toEqual({ derivedBase: 'https://astre.aramo.ai', identityProvider: 'AstreSAML' });
+    // IC-2 PR-4: the shape is widened additively (hostClass/contextId); the two
+    // legacy signals are byte-identical.
+    expect(r).toMatchObject({ derivedBase: 'https://astre.aramo.ai', identityProvider: 'AstreSAML', hostClass: 'TENANT' });
   });
 
   it('PLATFORM host resolves via the env allow-list (no tenant read)', async () => {
     const r = await resolverLegacy(tenants()).resolve(DEFAULT_PLATFORM_HOST);
-    expect(r).toEqual({ derivedBase: `https://${DEFAULT_PLATFORM_HOST}`, identityProvider: null });
+    expect(r).toMatchObject({ derivedBase: `https://${DEFAULT_PLATFORM_HOST}`, identityProvider: null, hostClass: 'PLATFORM', contextId: null });
   });
 
   it('unknown host → null base (env fallback, no AUTH_PUBLIC_BASE_URL set)', async () => {
     const r = await resolverLegacy(tenants()).resolve('evil.com');
-    expect(r).toEqual({ derivedBase: null, identityProvider: null });
+    expect(r).toMatchObject({ derivedBase: null, identityProvider: null, hostClass: null, contextId: null });
   });
 });
 

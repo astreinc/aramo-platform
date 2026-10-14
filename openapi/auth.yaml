@@ -46,7 +46,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
       responses:
         '302':
           description: Redirect to Cognito authorize endpoint; sets aramo_pkce_state cookie.
@@ -100,7 +100,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
         - name: code
           in: query
           required: false
@@ -146,15 +146,20 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
-        '409':
-          description: |
-            Tenant selection required — user has >1 active membership.
-            `error.details.tenants` carries the list of selectable
-            tenants per `TenantSelectionRequiredDetails`.
-          content:
-            application/json:
-              schema:
-                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        # IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 2): the HTTP 409
+        # TENANT_SELECTION_REQUIRED response is RETIRED — a User belongs to exactly
+        # one tenant (IC-1), so no selection can be required. The code remains in
+        # the ErrorCode enum as COMPATIBILITY_RESERVED. A defensive multi-tenant
+        # resolution and every host-binding denial (host_tenant_mismatch,
+        # host_class_consumer_mismatch, host_unbound under
+        # AUTH_HOST_TENANT_BINDING=enforce) surface as 403 TENANT_ACCESS_DENIED
+        # with `error.details.reason`, naming no tenant.
+        # IC-2 PR-6: a consumer whose product capability the tenant does not hold
+        # (recruiter/ingestion → ats, esign → esign) is refused with the existing
+        # 403 TENANT_CAPABILITY_NOT_ENTITLED (reason consumer_not_entitled); the
+        # portal consumer and unknown consumers are not minted on this path
+        # (403 INSUFFICIENT_PERMISSIONS, reason consumer_not_supported). The
+        # `platform` and `esign` consumer values are now documented (= code).
         '500':
           description: |
             Internal error. Triggers (carried in `error.details.reason`):
@@ -186,7 +191,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
       responses:
         '200':
           description: |
@@ -214,6 +219,16 @@ paths:
             consumer mismatch; reuse detected (after R.2 cascade);
             rotation race (conditional update failed). On 401, BOTH
             access and refresh cookies are cleared via Max-Age=0.
+            IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2): eligibility is
+            re-proven before any re-mint — `error.details.reason` is one of
+            `user_inactive`, `membership_inactive`, `tenant_suspended`,
+            `tenant_closed`, `consumer_not_entitled` (IC-2 PR-6: the tenant no
+            longer holds the consumer's product capability — ats for
+            recruiter/ingestion, esign for esign) or `consumer_not_supported`
+            (the presented token is revoked server-side), or,
+            under AUTH_HOST_TENANT_BINDING=enforce, a host-binding reason
+            (`host_tenant_mismatch`, `host_class_consumer_mismatch`,
+            `host_unbound`). No tenant is named.
           content:
             application/json:
               schema:
@@ -244,7 +259,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
       responses:
         '204':
           description: Logout completed; access + refresh cookies cleared.
@@ -293,7 +308,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
       responses:
         '302':
           description: Redirect to the Cognito hosted-UI /logout endpoint.
@@ -339,7 +354,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion]
+            enum: [recruiter, portal, ingestion, platform, esign]
       responses:
         '200':
           description: Session payload (6 fields; SE.3.g lock).
@@ -363,6 +378,20 @@ paths:
             Invalid token. Triggers: cookie missing; JWT
             invalid/expired/signature-bad/claim-missing; consumer
             mismatch (path vs JWT claim).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: |
+            IC-2 PR-5 — tenant access denied for this host. Under
+            AUTH_HOST_TENANT_BINDING=enforce the token's tenant is bound to
+            the request host (session-surface host policy); a mismatch or an
+            unbound host context is refused BEFORE any authorization detail
+            is returned. `error.details.reason` is `host_tenant_mismatch`,
+            `host_class_consumer_mismatch` or `host_unbound`; no tenant is
+            named. Under the default `log` posture this response is never
+            emitted.
           content:
             application/json:
               schema:
@@ -448,7 +477,7 @@ components:
           format: uuid
         consumer_type:
           type: string
-          enum: [recruiter, portal, ingestion]
+          enum: [recruiter, portal, ingestion, platform, esign]
         tenant_id:
           type: string
           format: uuid
@@ -466,11 +495,16 @@ components:
     TenantSelectionRequiredDetails:
       type: object
       additionalProperties: false
+      deprecated: true
       description: |
-        Embedded in `error.details` of a 409 TENANT_SELECTION_REQUIRED
-        response from /callback when the resolved user has more than
-        one active membership. Carries the list of selectable
-        tenants per CB.2 lock.
+        RETIRED (IC-2 PR-4, Auth-Decoupling PR-4 Amendment A1): no
+        /callback response carries this shape any more — a User belongs
+        to exactly one tenant (IC-1), so TENANT_SELECTION_REQUIRED (409)
+        is never emitted. Kept, deprecated, for historical contract
+        readers only.
+        Historically: embedded in `error.details` of a 409
+        TENANT_SELECTION_REQUIRED response from /callback when the
+        resolved user had more than one active membership (CB.2 lock).
       required:
         - tenants
       properties:

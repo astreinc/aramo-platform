@@ -32,10 +32,12 @@ import { Injectable, Logger } from '@nestjs/common';
 //   - adminDisableUser: invoked at the disable saga step 2 (AFTER the
 //     identity flip commits); failure triggers the reEnableMembership
 //     compensation.
-//   - adminEnableUser: NOT used by S3a's saga itself (S3a soft-disable only;
-//     a separate re-enable verb is out of scope). Declared here for symmetry
-//     so the live AWS-SDK adapter exposes the matching pair, but the lifecycle
-//     service does not currently call it.
+//   - adminEnableUser: IC-3 PR-7 — invoked at the ENABLE leg (after the
+//     identity re-enable commits). Contract (mirrors adminDeleteUser): an IdP
+//     account that does not exist is a NO-OP success (an invitee who never
+//     logged in has no Cognito user — the membership re-enable is the complete
+//     outcome); any other failure throws and the lifecycle service compensates
+//     by disabling the membership again (never a false end-to-end success).
 
 export interface TenantCognitoPort {
   adminCreateUser(args: {

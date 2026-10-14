@@ -48,6 +48,8 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
   'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
   // talent_trust — all migrations, INCLUDING the T3-B1 VerificationRequest table

@@ -15,4 +15,8 @@ export interface TenantDto {
   // selectedTenant.status with no extra query (the smallest correct read for
   // workstream E) and the platform console can filter/list by status.
   status: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL (TENANT_KINDS). Surfaced so the platform
+  // console and the session/provisioning paths can distinguish a one-person
+  // Sign subscriber from an organization without a second query.
+  kind: string;
 }

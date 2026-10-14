@@ -133,6 +133,8 @@ export function summarizeDetail(
       return 'Invited a user to the tenant';
     case 'identity.invitation.accepted':
       return 'Accepted a tenant invitation';
+    case 'identity.invitation.rejected_cross_tenant':
+      return 'Refused an invitation — the email is already registered to another tenant';
     case 'identity.user.created':
       return 'Created a user';
     case 'identity.membership.created':

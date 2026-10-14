@@ -84,10 +84,15 @@ export class PlatformController {
       actor_user_id: authCtx.sub,
       request_id: requestId,
       invite_owner,
+      // IC-2 PR-4 (F-4) — optional, validated downstream; never derived.
+      slug: body.slug,
+      // IC-4 PR-9 — optional; BUSINESS when omitted.
+      kind: body.kind,
     });
     return {
       tenant_id: result.tenant_id,
       tenant_name: result.tenant_name,
+      tenant_kind: result.tenant_kind,
       owner_user_id: result.owner_user_id,
       owner_email: result.owner_email,
       membership_id: result.membership_id,

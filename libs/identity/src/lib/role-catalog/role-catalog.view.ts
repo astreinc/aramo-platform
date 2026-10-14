@@ -38,6 +38,8 @@ interface RoleMeta {
 export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
   tenant_owner: { tier: 'Administration', tierRank: 0 },
   tenant_admin: { tier: 'Administration', tierRank: 0 },
+  // IC-3 PR-7 — product-neutral organization administrator.
+  org_admin: { tier: 'Administration', tierRank: 0 },
   delivery_manager: { tier: 'Management', tierRank: 1 },
   account_manager: { tier: 'Management', tierRank: 1 },
   recruiting_manager: { tier: 'Management', tierRank: 1 },
@@ -57,6 +59,13 @@ export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
     },
   },
   candidate: { tier: 'Portal', tierRank: 4 },
+  // IC-3 PR-8 — the E-Sign PRODUCT tier (PX-V1 PX-3 roles). Projected ONLY for
+  // a tenant that holds the `esign` capability (RoleCatalogService); ranked
+  // after every ATS tier so an ATS + Sign tenant's picker keeps its order.
+  esign_owner: { tier: 'E-Sign', tierRank: 5 },
+  esign_admin: { tier: 'E-Sign', tierRank: 5 },
+  esign_sender: { tier: 'E-Sign', tierRank: 5 },
+  esign_viewer: { tier: 'E-Sign', tierRank: 5 },
 };
 
 // The display name = the role description's leading phrase (the seed writes

@@ -663,6 +663,20 @@ const IDENTITY_IDP_MIGRATION_LC = resolve(ROOT, 'libs/identity/prisma/migrations
 // by the tenant-user lifecycle pacts (invite / disable / enable / role-change) WRITE
 // a baseline/bump here, so the provider DB must create it or those routes 500.
 const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql');
+// IC-1 PR-2 — owning tenant on User. The regenerated identity client SELECTs
+// User.tenant_id on every User read (the tenant-users directory, invite, audit actor
+// resolution), so the provider DB must carry the expanded column; the backfill is
+// applied too so the schema matches a post-migration production (it meets an empty
+// User table here and is a no-op).
+const IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql');
+const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql');
+// IC-1 PR-3 — restrict (NOT NULL + UNIQUE(user_id) + composite FK) and the immutability
+// trigger. The provider DB must match post-PR-3 production; every pact User seed below
+// supplies tenant_id and holds at most one membership, in that tenant.
+const IDENTITY_USER_TENANT_CARDINALITY_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql');
+const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql');
+// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -2883,6 +2897,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // (User/Role/Membership/Team/Invitation) must supply updated_at.
     const ATSW_USER_A = '00000000-0000-7000-8000-05e100000001';
     const ATSW_USER_B = '00000000-0000-7000-8000-05e100000002';
+    // IC-1 PR-1 — a second tenant that OWNS a user (cross-tenant invite refusal).
+    const ATSW_OTHER_TENANT_ID = '22222222-2222-7222-8222-222222222222';
     const ATSW_MEMBERSHIP_ID = '00000000-0000-7000-8000-33b000000001';
     const ATSW_ROLE_ID = '00000000-0000-7000-8000-401e00000001';
     const ATSW_ITEAM_ID = '00000000-0000-7000-8000-77ea00000001';
@@ -2891,14 +2907,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_IMPORT_BATCH_ID = '00000000-0000-7000-8000-1ba700000001';
     const ATSW_EDGE_ID = '00000000-0000-7000-8000-ed6e00000001';
 
+    // IC-1 PR-3: every User is born OWNED (NOT NULL tenant_id); the owner defaults to
+    // the pact tenant and must equal the tenant of the user's (single) membership.
     async function seedAtsWebUser(
       c: Client,
-      params: { id: string; email: string; displayName?: string },
+      params: { id: string; email: string; displayName?: string; tenantId?: string },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO identity."User" (id, email, display_name, updated_at)
-         VALUES ($1,$2,$3,NOW()) ON CONFLICT (id) DO NOTHING`,
-        [params.id, params.email, params.displayName ?? null],
+        `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+         VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.email, params.displayName ?? null, params.tenantId ?? TENANT_ID],
       );
     }
     async function seedAtsWebMembership(
@@ -3753,6 +3771,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_TENANT_SLUG_MIGRATION,
         IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC,
         IDENTITY_AUTHZ_VERSION_MIGRATION,
+        IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION,
+        IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION,
+        IDENTITY_USER_TENANT_CARDINALITY_MIGRATION,
+        IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION,
+        IDENTITY_TENANT_KIND_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
@@ -5582,10 +5605,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               [pipeline, TENANT_ID, talent, requisition],
             );
             await c.query(
-              `INSERT INTO identity."User" (id, email, display_name, updated_at)
-               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+              `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',$2,NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [RECRUITER_ID],
+              [RECRUITER_ID, TENANT_ID],
             );
           });
         },
@@ -5603,10 +5626,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               [PACT_TALENT_ID, TENANT_ID],
             );
             await c.query(
-              `INSERT INTO identity."User" (id, email, display_name, updated_at)
-               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+              `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',$2,NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [RECRUITER_ID],
+              [RECRUITER_ID, TENANT_ID],
             );
           });
         },
@@ -8765,6 +8788,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await resetAllRows(c);
           await seedAtsWebTenant(c);
           await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+        });
+      },
+      // IC-1 PR-1 (Amendment A1 §4) — the invited email already belongs to a
+      // User whose single membership is in a DIFFERENT tenant. The provider
+      // must refuse with the governed 409 EMAIL_UNAVAILABLE (details {}).
+      'an ats-web admin and a user owned by another tenant exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, updated_at)
+             VALUES ($1,'Other Co',NOW()) ON CONFLICT (id) DO NOTHING`,
+            [ATSW_OTHER_TENANT_ID],
+          );
+          await seedAtsWebUser(c, {
+            id: ATSW_USER_B,
+            email: 'owned.elsewhere@other.example',
+            displayName: 'Owned Elsewhere',
+            tenantId: ATSW_OTHER_TENANT_ID,
+          });
+          await c.query(
+            `INSERT INTO identity."UserTenantMembership"
+               (id, user_id, tenant_id, is_active, invite_status, updated_at)
+             VALUES ($1,$2,$3,true,'ACTIVE',NOW()) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-33b000000002', ATSW_USER_B, ATSW_OTHER_TENANT_ID],
+          );
         });
       },
       'an ats-web admin and an inactive tenant user exist': async () => {

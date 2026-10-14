@@ -154,11 +154,14 @@
       "CONSUMER_TYPES",
       "EFFECTIVE_AUTHORIZATION_RESOLVER",
       "JwtAuthGuard",
-      "PLATFORM_TENANT_SENTINEL_ID"
+      "PLATFORM_TENANT_SENTINEL_ID",
+      "assertTierTripwire",
+      "isPlatformRoutePath"
     ],
     "@aramo/auth-core": [
       "ACCESS_TOKEN_TTL_SECONDS",
       "ALG",
+      "ALLOW_UNBOUND_HOST_ENV",
       "AUDIT_SINK",
       "AuthController",
       "CognitoVerificationError",
@@ -166,6 +169,7 @@
       "CookieVerifierService",
       "ELIGIBILITY_POLICY",
       "EMAIL_SENDER",
+      "HOST_BINDING_MODE_ENV",
       "HOST_CONTEXT_DIRECTORY",
       "HostAuthProfileService",
       "HostBaseResolver",
@@ -180,17 +184,24 @@
       "PortalAuthController",
       "PortalLoginBudget",
       "PortalLoginService",
+      "REFRESH_ELIGIBILITY_REASONS",
       "RefreshOrchestratorService",
       "SessionOrchestratorService",
+      "TENANT_ACCESS_DENIED_REASONS",
+      "allowUnboundHost",
       "buildPortalLoginUrl",
+      "classifyHostByEnv",
       "computeKid",
       "deriveBaseFromHost",
       "derivePostLoginRedirect",
       "deriveRedirectUri",
       "deriveSignoutRedirect",
+      "evaluateHostBinding",
+      "evaluateSessionHostBinding",
       "isDevHostname",
       "isDevPosture",
       "parseHost",
+      "readHostBindingMode",
       "renderPortalLoginEmail",
       "resolvePublicBaseUrl"
     ],
@@ -199,6 +210,7 @@
       "AuthStorageModule",
       "DEFAULT_PLATFORM_HOST",
       "DEFAULT_PORTAL_HOST",
+      "DEFAULT_PRODUCT_HOST",
       "HOST_CLASSES",
       "HostAuthProfileStore",
       "RefreshTokenService",
@@ -795,11 +807,17 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "CursorDecodeError",
+      "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
       "DOMAIN_VERIFICATION_STATUSES",
       "DnsResolverModule",
       "DomainVerificationService",
+      "ESIGN_PRODUCT_ROLE_KEYS",
+      "ESIGN_SCOPE_PREFIX",
+      "ESIGN_SENDER_SCOPE_KEY",
       "EVENT_TYPES",
+      "EsignSenderBoundary",
+      "EsignSenderConsumerGuard",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
       "IdentityAuditService",
@@ -813,6 +831,10 @@
       "MINT_DENYING_STATUSES",
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
+      "ORG_ADMIN_SCOPE_KEYS",
+      "PERSONAL_TENANT_CAPABILITIES",
+      "PLATFORM_ROLE_KEYS",
+      "PLATFORM_SCOPE_PREFIX",
       "PrismaService",
       "RedisScopeCache",
       "RoleBundleValidator",
@@ -825,11 +847,15 @@
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
       "StubTenantCognitoAdapter",
+      "TENANT_ACTIVATING_OWNER_ROLE_KEYS",
+      "TENANT_ASSIGNABLE_ROLE_KEYS",
       "TENANT_COGNITO_PORT",
+      "TENANT_KINDS",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
       "TeamRepository",
+      "TenantEntitlementReader",
       "TenantRepository",
       "TenantService",
       "TenantUserLifecycleService",
@@ -840,16 +866,20 @@
       "deriveSlugOrThrow",
       "encodeCursor",
       "ensureBaselineVersion",
+      "evaluateEsignSenderAuthorization",
       "extractEmailDomain",
       "extractTenantSlugFromHost",
+      "filterScopesForConsumer",
       "generateDomainVerificationToken",
       "isDomainVerificationStatus",
       "isInviteStatus",
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
+      "isTenantKind",
       "isTenantStatus",
       "normalizeEmail",
-      "normalizeSlug"
+      "normalizeSlug",
+      "requiredCapabilityForConsumer"
     ],
     "@aramo/identity-index": [
       "CLUSTER_PURGE_STATEMENTS",
@@ -2296,6 +2326,12 @@
         "status": "unscoped"
       },
       { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-core/src/tests/host-binding.spec.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
       { "project": "auth-core", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -2312,6 +2348,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/host-auth-profile.behaviour-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-principal-directory.adapter.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -2406,6 +2448,12 @@
       { "project": "export", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/authorization-resolver.consumer-isolation.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a.controller.read.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -2413,6 +2461,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/hf-auth-1-authz-version.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic4-pr9-personal-tenant.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -4566,6 +4626,30 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic1-cardinality.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic1-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic4-pr9-personal-tenant.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/identity-audit.service.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -5978,6 +6062,12 @@
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "integration", "status": "production" },

@@ -65,6 +65,16 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql',
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
   'libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql',
+  // IC-1 PR-2/PR-3 — owning tenant on User. The PR-3 compound membership→User
+  // relation makes the directory/roster JOIN reference User.tenant_id, so this
+  // interleaved hand-list must carry the four IC-1 files; every User seeded
+  // below is born owned (tenant_id = its single membership tenant).
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
@@ -125,10 +135,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       active: boolean;
     }): Promise<void> {
       await db.query(
-        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
-         VALUES ($1::uuid, $2, $3, $4, CURRENT_TIMESTAMP)
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, $4, $5::uuid, CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO NOTHING`,
-        [args.userId, args.email, args.displayName, args.active],
+        [args.userId, args.email, args.displayName, args.active, args.tenantId],
       );
       await db.query(
         `INSERT INTO identity."UserTenantMembership"

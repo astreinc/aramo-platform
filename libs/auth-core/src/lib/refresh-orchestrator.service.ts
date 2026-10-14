@@ -4,6 +4,12 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { RefreshTokenService, RotationRaceError } from '@aramo/auth-storage';
 
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
+import {
+  allowUnboundHost,
+  evaluateSessionHostBinding,
+  readHostBindingMode,
+  type HostBindingClass,
+} from './host-binding.js';
 import { JwtIssuerService } from './jwt-issuer.service.js';
 import {
   PRINCIPAL_DIRECTORY,
@@ -22,6 +28,12 @@ export interface RefreshInput {
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3).
   consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
   refreshCookie: string | undefined;
+  // IC-2 PR-5 — the refresh request's host class + context (HostBaseResolver).
+  // Compared with the STORED token tenant under the PR-4 session-surface policy:
+  // enforce denies a mismatch / unbound host (fail closed) BEFORE any re-mint;
+  // log records a diagnostic and keeps today's outcome. undefined = unbound.
+  hostClass?: HostBindingClass | null;
+  contextId?: string | null;
 }
 
 export type RefreshResult =
@@ -86,6 +98,36 @@ export class RefreshOrchestratorService {
       return { kind: 'token_invalid', reason: 'reuse_detected' };
     }
 
+    // IC-2 PR-5 — host/tenant binding at refresh (session surface). The stored
+    // token's tenant is the domain-owned tenant; the request host must be
+    // compatible with it. A platform-sentinel token is served only on the
+    // PLATFORM host by the platform consumer; a portal token only on the PORTAL
+    // host. Unbound/unvalidated hosts are refused under enforce unless
+    // AUTH_ALLOW_UNBOUND_HOST=true. Never a re-mint on an enforced mismatch.
+    const binding = evaluateSessionHostBinding({
+      host_class: input.hostClass,
+      context_id: input.contextId,
+      consumer: input.consumer,
+      resolved_context_id: found.tenant_id,
+      allow_unbound: allowUnboundHost(),
+    });
+    if (!binding.ok) {
+      const mode = readHostBindingMode();
+      this.logger.warn(
+        JSON.stringify({
+          event: 'auth.host_binding',
+          stage: 'refresh',
+          mode,
+          outcome: binding.reason,
+          consumer: input.consumer,
+          host_class: input.hostClass ?? null,
+        }),
+      );
+      if (mode === 'enforce') {
+        return { kind: 'token_invalid', reason: binding.reason };
+      }
+    }
+
     // Normal refresh: re-derive scopes, generate new plaintext, rotate.
     //
     // Auth-Decoupling PR-4 (§7.4 Ruling 2): the site-stamp + scope resolution
@@ -93,10 +135,34 @@ export class RefreshOrchestratorService {
     // PrincipalDirectory.resolveScopes. site_id is re-derived deterministically
     // from the (user_id, tenant_id) membership (schema @@unique) and rides in
     // claims — byte-identical to the pre-port refresh (PR-A1a-3 Ruling 1/2).
+    //
+    // IC-2 PR-5 (Amendment A2): resolveScopes now re-proves ELIGIBILITY. A
+    // denial (inactive User, no active membership in the stored tenant,
+    // SUSPENDED/CLOSED tenant) REVOKES the presented token (best-effort) and
+    // is a 401 — a retained cookie copy cannot resume the session later
+    // without re-authenticating. Tenant ownership cannot change at re-mint:
+    // the only tenant minted is the stored one, and only if the principal's
+    // ONE active membership is in it.
     const resolved = await this.principals.resolveScopes({
       principal_id: found.user_id,
       context_id: found.tenant_id,
+      consumer: input.consumer,
     });
+    if (resolved.kind === 'denied') {
+      try {
+        await this.refreshTokens.revoke({ id: found.id });
+      } catch (err) {
+        this.logger.warn(`refresh eligibility revoke failed: ${(err as Error).message}`);
+      }
+      await this.auditSink.record({
+        event_type: 'identity.session.revoked',
+        actor_id: found.user_id,
+        context_id: found.tenant_id,
+        subject_id: found.user_id,
+        payload: { reason: `refresh_denied:${resolved.reason}`, refresh_token_id: found.id },
+      });
+      return { kind: 'token_invalid', reason: resolved.reason };
+    }
     // HF-AUTH-1 — re-mint compact: the refreshed token carries the CURRENT authz
     // revision (re-resolved here), not the scope list. A grant/role/membership
     // change since the last mint therefore rides forward as a new version, and the

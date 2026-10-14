@@ -132,6 +132,18 @@ export class IdentityRepository {
     return row === null ? null : { name: row.name, display_name: row.display_name };
   }
 
+  // IC-3 PR-7 — the tenant access state the re-enable leg checks before it
+  // touches the IdP: null for an unknown tenant.
+  async findTenantAccessStateById(
+    tenant_id: string,
+  ): Promise<{ status: string; is_active: boolean } | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenant_id },
+      select: { status: true, is_active: true },
+    });
+    return row === null ? null : { status: row.status, is_active: row.is_active };
+  }
+
   // Domain-Enforcement P1 — the invite domain-lock reads this. Returns the
   // tenant's normalized allowed_domain, or null for an unset (legacy) or
   // unknown tenant (both → allow-through at the lock).
@@ -448,6 +460,9 @@ export class IdentityRepository {
           id: args.user_id,
           email: args.email,
           display_name: args.display_name,
+          // IC-1 PR-2 — born OWNED: the owning tenant is the membership tenant,
+          // set in the same transaction (one User, one tenant).
+          tenant_id: args.tenant_id,
         },
       });
       await tx.externalIdentity.create({
@@ -490,42 +505,27 @@ export class IdentityRepository {
     });
   }
 
-  // AUTHZ-2: bind an additional UserTenantMembership for an existing User
-  // (the new-tenant re-invite case from Lead ruling 8 case 3). Reused by
-  // the invitation service when AdminGetUser confirms the Cognito user
-  // exists + identity.User exists, but the invitee has no membership in
-  // the target tenant yet.
-  async createMembershipForExistingUser(args: {
-    user_id: string;
-    tenant_id: string;
-    role_ids: readonly string[];
-  }): Promise<{ membership_id: string; membership_role_ids: string[] }> {
-    const membership_id = uuidv7();
-    const membership_role_ids = args.role_ids.map(() => uuidv7());
+  // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §2): the former
+  // createMembershipForExistingUser writer (AUTHZ-2 Lead ruling 8 case 3 —
+  // "bind an additional UserTenantMembership for an existing User") is
+  // RETIRED. One User, one tenant: no runtime path may bind a second
+  // membership for an existing User. The two remaining User-creating
+  // transactions (createUserWithExternalIdentityAndMembership above and
+  // createUserWithMembership below) each create the User AND its single
+  // membership atomically; the static guard spec
+  // (ic1-user-create-sites.spec.ts) pins those as the only runtime sites.
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.userTenantMembership.create({
-        data: {
-          id: membership_id,
-          user_id: args.user_id,
-          tenant_id: args.tenant_id,
-        },
-      });
-      if (args.role_ids.length > 0) {
-        await tx.userTenantMembershipRole.createMany({
-          data: args.role_ids.map((role_id, idx) => ({
-            id: membership_role_ids[idx]!,
-            membership_id,
-            role_id,
-          })),
-        });
-      }
-      await ensureBaselineVersion(tx, {
-        tenant_id: args.tenant_id,
-        principal_id: args.user_id,
-      });
+  // IC-1 PR-1 — the ownership read behind the cross-tenant invite guard: EVERY
+  // membership tenant for a user, regardless of is_active / invite_status
+  // (a disabled or still-INVITED membership still establishes which tenant
+  // owns the User). Ordered by joined_at so the owning tenant is stable.
+  async findMembershipTenantIdsForUser(user_id: string): Promise<string[]> {
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: { user_id },
+      select: { tenant_id: true },
+      orderBy: [{ joined_at: 'asc' }, { id: 'asc' }],
     });
-    return { membership_id, membership_role_ids };
+    return rows.map((r) => r.tenant_id);
   }
 
   // Invite-S2 (Pattern-2) — the no-sub identity-tx for the federated invite
@@ -558,6 +558,9 @@ export class IdentityRepository {
           id: args.user_id,
           email: args.email,
           display_name: args.display_name,
+          // IC-1 PR-2 — born OWNED: the owning tenant is the membership tenant,
+          // set in the same transaction (one User, one tenant).
+          tenant_id: args.tenant_id,
         },
       });
       await tx.userTenantMembership.create({

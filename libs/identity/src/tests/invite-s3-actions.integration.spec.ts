@@ -7,7 +7,7 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import {
-  ARAMO_POSTGRES_TEST_IMAGE, createAramoLogger } from '@aramo/common';
+  ARAMO_POSTGRES_TEST_IMAGE, createAramoLogger, resolveIdentityMigrations } from '@aramo/common';
 import type { MailerPort } from '@aramo/mailer';
 
 import { IdentityAuditRepository } from '../lib/audit/identity-audit.repository.js';
@@ -16,6 +16,7 @@ import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import { TenantUserLifecycleService } from '../lib/tenant-user/tenant-user-lifecycle.service.js';
 import type { TenantCognitoPort } from '../lib/tenant-user/tenant-cognito.port.js';
 import type { AuditFinancialsGate } from '../lib/tenant-user/audit-financials-gate.port.js';
@@ -36,17 +37,12 @@ import { deriveDisplayedStatus } from '../lib/tenant-user/invitation-token.js';
 // invite_status) — proving the §0 model through the real graph.
 
 const ROOT = resolve(__dirname, '../../../..');
-const MIGRATIONS = [
-  'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-  'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-  'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-  'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
-  'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
-  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-  // HF-AUTH-1 — the invite/disable/role saga paths bump AuthorizationVersion.
-  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
-].map((p) => resolve(ROOT, p));
+// IC-1 PR-2 — this spec used to hand-list a pure-identity SUBSET (8 migrations).
+// The regenerated identity client SELECTs User.tenant_id on every User read, so
+// the subset would fail on `column "tenant_id" does not exist`. Retrofitted to
+// the single ordered helper (PR-1.5 Workstream C convention); the extra additive
+// tables are behavior-neutral for this proof.
+const MIGRATIONS = resolveIdentityMigrations(ROOT);
 
 const TENANT = '01900000-0000-7000-8000-0000000000b1';
 const ACTOR = '01900000-0000-7000-8000-0000000000b2';
@@ -100,6 +96,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new IdentityRepository(prisma),
         audit,
         new RoleBundleValidator(prisma),
+        // IC-3 PR-8 — ATS tenant without the Sign product (no esign role assigned here).
+        { getCapabilities: async () => new Set<string>(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
       );
       const mailer: MailerPort = {
         send: async (m) => {

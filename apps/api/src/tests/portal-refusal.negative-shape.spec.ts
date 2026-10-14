@@ -101,6 +101,8 @@ const IDENTITY_TENANT_MIGRATIONS = [
   '20260709130000_add_tenant_lifecycle_status',
   '20260624000000_add_invitation_and_invite_status',
   '20260619000000_add_tenant_profile',
+  // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+  '20261017000000_ic4_tenant_kind',
 ].map((n) => resolve(ROOT, `libs/identity/prisma/migrations/${n}/migration.sql`));
 // Portal P1 PR-2a — the OPEN-4 chain provisions talent_trust (ResolutionSubject +
 // ResolutionSubjectRef, the PERSON_CLUSTER → ATS_TALENT_RECORD graph) and

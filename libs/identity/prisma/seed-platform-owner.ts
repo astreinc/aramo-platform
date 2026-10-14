@@ -85,12 +85,16 @@ export async function runPlatformOwnerSeed(
   //    reconcile flow links the sub on first login (§2 spine, unchanged).
   await db.user.upsert({
     where: { id: PLATFORM_OWNER_SEED_IDS.owner_user },
+    // IC-1 PR-2: `update` stays empty — an existing owner row is never re-pointed.
     update: {},
     create: {
       id: PLATFORM_OWNER_SEED_IDS.owner_user,
       email: PLATFORM_OWNER_EMAIL,
       display_name: PLATFORM_OWNER_DISPLAY_NAME,
       is_active: true,
+      // IC-1 PR-2 — born owned by the platform sentinel tenant (its single
+      // membership, step 3): platform operators are isolated in their own tenant.
+      tenant_id: SEED_IDS.platform_tenant,
     },
   });
 

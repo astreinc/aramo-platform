@@ -1,5 +1,5 @@
 import { Controller, Get, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
-import { JwtAuthGuard } from '@aramo/auth';
+import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
@@ -18,9 +18,11 @@ import type { RoleCatalogView } from './role-catalog.view.js';
 //     RolePicker (tenant_admin / tenant_owner / account_manager /
 //     recruiting_manager) already holds user-manage. No new scope, no seed.
 //
-// The 13 returned roles are GLOBAL system roles (same for every tenant; no
+// The returned roles are GLOBAL system roles (same rows for every tenant; no
 // per-tenant custom roles) — reference data with no tenant-specific content to
-// leak. There is no tenant_id input; the endpoint is auth-gated only.
+// leak. IC-3 PR-8: the caller's tenant (AuthContext, never a request input)
+// selects ONE partition — the E-Sign product roles appear only for a tenant
+// that holds the `esign` capability (RoleCatalogService).
 @Controller('v1/tenant/roles-catalog')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
@@ -30,7 +32,7 @@ export class RoleCatalogController {
   @Get()
   @HttpCode(HttpStatus.OK)
   @RequireScopes('tenant:admin:user-manage')
-  async list(): Promise<{ roles: RoleCatalogView[] }> {
-    return { roles: await this.catalog.getCatalog() };
+  async list(@AuthContext() authContext: AuthContextType): Promise<{ roles: RoleCatalogView[] }> {
+    return { roles: await this.catalog.getCatalog({ tenant_id: authContext.tenant_id }) };
   }
 }

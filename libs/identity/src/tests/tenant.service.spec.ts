@@ -179,3 +179,54 @@ describe('TenantService.provisionTenant — Domain-Enforcement P1', () => {
     );
   });
 });
+
+// IC-4 PR-9 (IC-0 §H; Domain-Enforcement P1 Amendment P1-A1) — the PERSONAL
+// kind: no locked domain, the personal-provider rejection does not apply, the
+// kind is persisted and recorded on the birth event; BUSINESS stays byte-
+// identical (kind BUSINESS, domain derived). Unknown kinds fail closed.
+describe('TenantService.provisionTenant — IC-4 PR-9 tenant kind', () => {
+  const ACTOR_ID = '01900000-0000-7000-8000-0000000000aa';
+  function makeService(): { service: TenantService; createTenant: ReturnType<typeof vi.fn>; writeEvent: ReturnType<typeof vi.fn> } {
+    const createTenant = vi.fn().mockResolvedValue({
+      id: TENANT_A, name: 'Jane Doe', is_active: true, created_at: '2026-10-14T00:00:00.000Z', updated_at: '2026-10-14T00:00:00.000Z',
+      identity_provider: null, status: 'PROVISIONED', kind: 'PERSONAL',
+    } satisfies TenantDto);
+    const repo = { findByNameCaseInsensitive: vi.fn().mockResolvedValue(null), createTenant } as unknown as TenantRepository;
+    const writeEvent = vi.fn().mockResolvedValue(undefined);
+    return { service: new TenantService(repo, { writeEvent } as unknown as IdentityAuditService), createTenant, writeEvent };
+  }
+  it('PERSONAL + personal-provider owner email → created with allowed_domain NULL, kind PERSONAL; the birth event records kind', async () => {
+    const { service, createTenant, writeEvent } = makeService();
+    await service.provisionTenant({ name: 'Jane Doe', owner_email: 'Jane.Doe@gmail.com', actor_user_id: ACTOR_ID, kind: 'PERSONAL' });
+    expect(createTenant).toHaveBeenCalledWith(expect.objectContaining({ name: 'Jane Doe', allowed_domain: null, kind: 'PERSONAL' }));
+    expect(writeEvent).toHaveBeenCalledWith(expect.objectContaining({
+      event_type: 'identity.tenant.created',
+      payload: expect.objectContaining({ allowed_domain: null, kind: 'PERSONAL' }),
+    }));
+  });
+  it('PERSONAL + disposable-provider owner email → also accepted (the P1 rejection is a BUSINESS rule)', async () => {
+    const { service, createTenant } = makeService();
+    await service.provisionTenant({ name: 'Temp Person', owner_email: 'someone@mailinator.com', actor_user_id: ACTOR_ID, kind: 'PERSONAL' });
+    expect(createTenant).toHaveBeenCalledWith(expect.objectContaining({ allowed_domain: null, kind: 'PERSONAL' }));
+  });
+  it('PERSONAL + malformed owner email → VALIDATION_ERROR invalid_owner_email; tenant NOT created', async () => {
+    const { service, createTenant } = makeService();
+    await expect(service.provisionTenant({ name: 'Nobody', owner_email: 'nobody-at-nowhere', actor_user_id: ACTOR_ID, kind: 'PERSONAL' }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'invalid_owner_email' } } });
+    expect(createTenant).not.toHaveBeenCalled();
+  });
+  it('unknown kind → VALIDATION_ERROR invalid_tenant_kind before any lookup or write', async () => {
+    const { service, createTenant } = makeService();
+    await expect(service.provisionTenant({ name: 'X', owner_email: 'owner@astreinc.com', actor_user_id: ACTOR_ID, kind: 'ENTERPRISE' }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'invalid_tenant_kind', kind: 'ENTERPRISE' } } });
+    expect(createTenant).not.toHaveBeenCalled();
+  });
+  it('BUSINESS (default when omitted) is unchanged: personal-provider owner refused, business owner domain locked, kind BUSINESS persisted', async () => {
+    const { service, createTenant, writeEvent } = makeService();
+    await expect(service.provisionTenant({ name: 'Acme', owner_email: 'founder@gmail.com', actor_user_id: ACTOR_ID }))
+      .rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'personal_email_not_allowed' } } });
+    await service.provisionTenant({ name: 'Acme', owner_email: 'Owner@Astreinc.com', actor_user_id: ACTOR_ID });
+    expect(createTenant).toHaveBeenCalledWith(expect.objectContaining({ allowed_domain: 'astreinc.com', kind: 'BUSINESS' }));
+    expect(writeEvent).toHaveBeenCalledWith(expect.objectContaining({ payload: expect.objectContaining({ allowed_domain: 'astreinc.com', kind: 'BUSINESS' }) }));
+  });
+});

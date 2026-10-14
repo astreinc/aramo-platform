@@ -34,6 +34,9 @@ export interface HostAuthResolution {
   readonly profile: HostAuthProfileDto;
   readonly derivedBase: string;
   readonly identityProvider: string | null;
+  // IC-2 PR-4 — the resolved host CONTEXT (the tenant id for a TENANT hit; null
+  // for the exact-match classes). Additive; carried so login can seal it.
+  readonly contextId: string | null;
 }
 
 // Normalise a stored PLATFORM/PORTAL host_pattern to a bare hostname for exact
@@ -80,6 +83,15 @@ export class HostAuthProfileService {
         return this.hit('PORTAL', portal, parsed.hostname, portal.default_idp);
       }
 
+      // IC-2 PR-4 (F-3) — PRODUCT exact-match, BEFORE the TENANT slug match so a
+      // product host is never parsed as a tenant slug. Dark scaffold: a hit only
+      // classifies; product-host login is not operational (host binding denies
+      // it under enforce; consumer→product mapping is IC-2 PR-6).
+      const product = byClass.get('PRODUCT');
+      if (product !== undefined && normalizePattern(product.host_pattern) === parsed.hostname) {
+        return this.hit('PRODUCT', product, parsed.hostname, product.default_idp);
+      }
+
       // TENANT (context-validated). Composes the class row with the tenant's own
       // identity_provider from the HostContextDirectory port (PR-5a: the adapter
       // owns slug extraction + the tenant read; byte-identical to the prior inline
@@ -93,7 +105,7 @@ export class HostAuthProfileService {
           // provider (§2.1); with a null class default this is exactly the
           // legacy `tenant.identity_provider ?? null`.
           const idp = ctx.identity_provider ?? tenantRow.default_idp ?? null;
-          return this.hit('TENANT', tenantRow, parsed.hostname, idp);
+          return this.hit('TENANT', tenantRow, parsed.hostname, idp, ctx.context_id ?? null);
         }
       }
 
@@ -110,10 +122,11 @@ export class HostAuthProfileService {
     profile: HostAuthProfileDto,
     hostname: string,
     identityProvider: string | null,
+    contextId: string | null = null,
   ): HostAuthResolution {
     // Every registry class derives `https://<hostname>` — identical to
     // deriveBaseFromHost's platform/portal/tenant branches. (Dev's http://<raw>
     // is handled by the deferred legacy path, never here.)
-    return { hostClass, profile, derivedBase: `https://${hostname}`, identityProvider };
+    return { hostClass, profile, derivedBase: `https://${hostname}`, identityProvider, contextId };
   }
 }

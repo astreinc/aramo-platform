@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import {
+  afterEach,
   afterAll,
   beforeAll,
   describe,
@@ -16,11 +17,13 @@ import {
 } from '@testcontainers/postgresql';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import {
   ARAMO_POSTGRES_TEST_IMAGE,
+  AramoExceptionFilter,
   CommonModule,
   resolveIdentityMigrations,
   resolveAuthStorageMigrations,
@@ -31,6 +34,7 @@ import {
   IdentityService,
   PrismaService as IdentityPrismaService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 import {
@@ -76,6 +80,12 @@ function splitDdl(sql: string): string[] {
 
 const FIXED_USER_ID = uuidv7();
 const FIXED_TENANT_ID = uuidv7();
+// IC-2 PR-4 (L6) — a SECOND tenant that owns another subdomain; the fixed user
+// is NOT a member of it. Logging in on its host must never mint a session for
+// FIXED_TENANT_ID under enforce.
+const OTHER_TENANT_ID = uuidv7();
+const OWN_HOST = 'tenanta.aramo.ai';
+const OTHER_HOST = 'tenantb.aramo.ai';
 const COGNITO_SUB = 'integration-cognito-sub';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -124,7 +134,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_POST_LOGIN_REDIRECT: process.env['AUTH_POST_LOGIN_REDIRECT'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
+        // IC-2 PR-4 — host binding flags + the apex the slug parse anchors to.
+        AUTH_HOST_TENANT_BINDING: process.env['AUTH_HOST_TENANT_BINDING'],
+        AUTH_ALLOW_UNBOUND_HOST: process.env['AUTH_ALLOW_UNBOUND_HOST'],
+        APP_ROOT_DOMAIN: process.env['APP_ROOT_DOMAIN'],
       };
+      delete process.env['AUTH_HOST_TENANT_BINDING'];
+      delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+      process.env['APP_ROOT_DOMAIN'] = 'aramo.ai';
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = 'aramo-test-audience';
       process.env['AUTH_PRIVATE_KEY'] = privatePem;
@@ -175,6 +192,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
           HostAuthProfileService,
           HostBaseResolver,
+          // IC-2 PR-5 — the PRODUCTION exception filter (auth.module.ts binds the
+          // same APP_FILTER), so error BODIES assert the real contract shape
+          // ({ error: { code, details } }) and not Nest's default envelope.
+          { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],
       })
         .overrideProvider(IdentityService)
@@ -188,6 +209,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             created_at: '',
             updated_at: '',
           }),
+          // IC-2 PR-5 — the refresh-path eligibility read (User.is_active).
+          findUserById: vi.fn().mockResolvedValue({ id: FIXED_USER_ID, is_active: true }),
         })
         .overrideProvider(TenantService)
         .useValue({
@@ -196,10 +219,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
               id: FIXED_TENANT_ID,
               name: 'Integration Tenant',
               is_active: true,
+              status: 'ACTIVE',
               created_at: '',
               updated_at: '',
             },
           ]),
+          // IC-2 PR-4 (L6) — the host→tenant read behind HostContextDirectory:
+          // two slugged tenants; the fixed user belongs to tenanta only.
+          findActiveBySlug: vi.fn(async (slug: string) =>
+            slug === 'tenanta'
+              ? { id: FIXED_TENANT_ID, name: 'Integration Tenant', is_active: true, identity_provider: null, status: 'ACTIVE' }
+              : slug === 'tenantb'
+                ? { id: OTHER_TENANT_ID, name: 'Other Tenant', is_active: true, identity_provider: null, status: 'ACTIVE' }
+                : null,
+          ),
         })
         .overrideProvider(RoleService)
         .useValue({
@@ -208,6 +241,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           findActiveMembershipSite: vi.fn().mockResolvedValue(null),
           getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
           getScopesByUserTenantAndSite: vi.fn().mockResolvedValue(['auth:session:read']),
+        })
+        // IC-2 PR-6 — the LIVE product-entitlement read (mint/refresh gate + the
+        // resolver's esign check). Default = the standard ATS bundle; tests mutate.
+        .overrideProvider(TenantEntitlementReader)
+        .useValue({
+          getCapabilities: vi.fn().mockResolvedValue(new Set(['core', 'ats', 'portal'])),
         })
         .compile();
 
@@ -255,8 +294,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function prepareLogin(
       consumer: string,
+      host?: string,
     ): Promise<{ pkceCookie: string; state: string }> {
-      const res = await request(app.getHttpServer()).get(`/auth/${consumer}/login`);
+      let req = request(app.getHttpServer()).get(`/auth/${consumer}/login`);
+      if (host !== undefined) req = req.set('Host', host);
+      const res = await req;
       expect(res.status).toBe(302);
       const setCookies = res.headers['set-cookie'] as unknown as string[];
       const cookieHeader = (Array.isArray(setCookies) ? setCookies : [setCookies as string])
@@ -301,6 +343,338 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // Test 40
+    // IC-2 PR-4 — L6 (host-bound login) and F-8 (legacy PKCE cookies), real
+    // HTTP through the real HostBaseResolver → IdentityHostContextAdapter →
+    // the stubbed findActiveBySlug, with the real PKCE sealing.
+    describe('IC-2 PR-4 — session tenant binding (L6) + legacy PKCE (F-8)', () => {
+      afterEach(() => {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+        delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+        unstubCognito();
+      });
+
+      async function callbackOn(host: string, pkceCookie: string, state: string) {
+        return request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${state}`)
+          .set('Host', host)
+          .set('Cookie', pkceCookie);
+      }
+
+      it('L6 enforce — login on ANOTHER tenant\'s host cannot mint a session: 302 /login?error=TENANT_ACCESS_DENIED, no cookies, no refresh row', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+        expect(cookies.some((c) => c.startsWith('aramo_access_token=') && !c.includes('Max-Age=0'))).toBe(false);
+        expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(false);
+      });
+
+      it('L6 enforce — login on the user\'s OWN tenant host mints normally (302 to that host)', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const res = await callbackOn(OWN_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/`);
+        const cookies = res.headers['set-cookie'] as unknown as string[];
+        expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
+      });
+
+      it('L6 log (default) — login on ANOTHER tenant\'s host keeps today\'s outcome (302 success)', async () => {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/`);
+      });
+
+      it('L6 enforce — a cookie sealed on one tenant host presented at another host is refused BEFORE the code exchange', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+      });
+
+      it('F-8 — a LEGACY PKCE cookie (no sealed host) on the dev host: allowed under log, refused under enforce, allowed again with AUTH_ALLOW_UNBOUND_HOST=true', async () => {
+        const pkce = module.get(PkceService);
+        const legacy = (): { pkceCookie: string; state: string } => {
+          const pair = pkce.generate();
+          const cipher = pkce.encryptState({
+            verifier: pair.verifier,
+            state: pair.state,
+            consumer: 'recruiter',
+            issued_at: Math.floor(Date.now() / 1000),
+          });
+          return { pkceCookie: `aramo_pkce_state=${cipher}`, state: pair.state };
+        };
+        stubCognitoVerifyOnly();
+        // log (default): unchanged outcome on the dev host.
+        let c = legacy();
+        let res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+        // enforce: unbound → refused.
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        c = legacy();
+        res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/\/login\?error=TENANT_ACCESS_DENIED$/);
+        // enforce + the explicit dev exception: allowed.
+        process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+        c = legacy();
+        res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+      });
+    });
+
+    // IC-2 PR-5 — session security: /session + /refresh + /logout host binding,
+    // refresh eligibility (disabled user, suspended tenant, foreign-tenant token),
+    // real HTTP + real refresh-token storage + real PKCE + the stubbed reads.
+    describe('IC-2 PR-5 — session, refresh and logout hardening', () => {
+      afterEach(() => {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+        delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+        unstubCognito();
+      });
+
+      async function loginOn(host: string): Promise<{ access: string; refresh: string }> {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', host);
+        const res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${state}`)
+          .set('Host', host)
+          .set('Cookie', pkceCookie);
+        expect(res.status).toBe(302);
+        const cookies = res.headers['set-cookie'] as unknown as string[];
+        const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`))!.split(';')[0]!;
+        return { access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+      }
+      const tenantSvc = () => module.get(TenantService) as unknown as { getTenantsByUser: ReturnType<typeof vi.fn> };
+      const identitySvc = () => module.get(IdentityService) as unknown as { findUserById: ReturnType<typeof vi.fn> };
+
+      it('1. /session on ANOTHER tenant\'s host: enforce → 403 TENANT_ACCESS_DENIED (no scopes); log → 200', async () => {
+        const { access } = await loginOn(OWN_HOST);
+        const logRes = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access);
+        expect(logRes.status).toBe(200);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access);
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('TENANT_ACCESS_DENIED');
+        expect(res.body.error.details.reason).toBe('host_tenant_mismatch');
+        expect(JSON.stringify(res.body)).not.toContain(OTHER_TENANT_ID);
+        expect(JSON.stringify(res.body)).not.toContain(FIXED_TENANT_ID);
+        const own = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', access);
+        expect(own.status).toBe(200);
+        expect(own.body.tenant_id).toBe(FIXED_TENANT_ID);
+      });
+
+      it('2. /refresh under a mismatched host (enforce) → 401 REFRESH_TOKEN_INVALID host_tenant_mismatch, both cookies cleared, token NOT rotated; missing host context → host_unbound', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.code).toBe('REFRESH_TOKEN_INVALID');
+        expect(res.body.error.details.reason).toBe('host_tenant_mismatch');
+        const cleared = res.headers['set-cookie'] as unknown as string[];
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        // 8/10. the same token still refreshes on the OWN host (not rotated by the refusal)
+        const ok = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(ok.status).toBe(200);
+        // unbound dev host (127.0.0.1) under enforce → host_unbound; with the dev exception → 200
+        const { refresh: r2 } = await loginOn(OWN_HOST);
+        const unbound = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Cookie', r2);
+        expect(unbound.status).toBe(401);
+        expect(unbound.body.error.details.reason).toBe('host_unbound');
+      });
+
+      it('3. SUSPENDED tenant refresh → 401 tenant_suspended; token revoked server-side (a retained copy cannot resume after reactivation)', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        tenantSvc().getTenantsByUser.mockResolvedValueOnce([{ id: FIXED_TENANT_ID, name: 'Integration Tenant', is_active: true, status: 'SUSPENDED', created_at: '', updated_at: '' }]);
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('tenant_suspended');
+        // tenant back to ACTIVE: the revoked token is still refused (explicitly_revoked)
+        const again = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(again.status).toBe(401);
+        expect(again.body.error.details.reason).toBe('explicitly_revoked');
+        // Deterministic: match the audit row by its payload reason (several
+        // session.revoked rows share a second in this file).
+        const revokedAudit = await identityPrisma.identityAuditEvent.findFirst({
+          where: {
+            event_type: 'identity.session.revoked',
+            actor_id: FIXED_USER_ID,
+            event_payload: { path: ['reason'], equals: 'refresh_denied:tenant_suspended' },
+          },
+        });
+        expect(revokedAudit).not.toBeNull();
+      });
+
+      it('4. disabled User (is_active=false) refresh → 401 user_inactive; and login mint refused (user_inactive)', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        identitySvc().findUserById.mockResolvedValueOnce({ id: FIXED_USER_ID, is_active: false });
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('user_inactive');
+        // login mint for a deactivated identity
+        stubCognitoVerifyOnly();
+        const idSvc = module.get(IdentityService) as unknown as { resolveUser: ReturnType<typeof vi.fn> };
+        idSvc.resolveUser.mockResolvedValueOnce({ id: FIXED_USER_ID, email: 'integration@aramo.dev', display_name: null, is_active: false, deactivated_at: '2026-10-14T00:00:00.000Z', created_at: '', updated_at: '' });
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const cb = await request(app.getHttpServer()).get(`/auth/recruiter/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
+        expect(cb.status).toBe(302);
+        expect(cb.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
+      });
+
+      it('7. logout on ANOTHER tenant\'s host (enforce): 204, cookies cleared, token revoked, audit records the mismatch — never strands', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/logout').set('Host', OTHER_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(204);
+        const cleared = res.headers['set-cookie'] as unknown as string[];
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        const after = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(after.status).toBe(401);
+        expect(after.body.error.details.reason).toBe('explicitly_revoked');
+        const audit = await identityPrisma.identityAuditEvent.findFirst({
+          where: {
+            event_type: 'identity.session.revoked',
+            actor_id: FIXED_USER_ID,
+            event_payload: { path: ['reason'], equals: 'logout_host_tenant_mismatch' },
+          },
+        });
+        expect(audit).not.toBeNull();
+      });
+
+      it('10. a stored refresh token for a tenant the user does NOT own cannot re-mint that tenant → 401 membership_inactive', async () => {
+        const plain = randomBytes(32).toString('base64url');
+        await refreshTokens.create({
+          user_id: FIXED_USER_ID,
+          tenant_id: OTHER_TENANT_ID,
+          consumer_type: 'recruiter',
+          token_hash: createHash('sha256').update(plain).digest('base64url'),
+          expires_at: new Date(Date.now() + 60_000),
+        });
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', `aramo_refresh_token=${plain}`);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('membership_inactive');
+      });
+
+      it('9. log (default): mismatched-host refresh and session keep today\'s outcome', async () => {
+        const { access, refresh } = await loginOn(OWN_HOST);
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access)).status).toBe(200);
+        expect((await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', refresh)).status).toBe(200);
+      });
+    });
+
+    // IC-2 PR-6 — product entitlements, consumer capabilities and scope isolation
+    // (real HTTP; real resolver + in-memory cache; stubbed role/entitlement reads).
+    describe('IC-2 PR-6 — product capability + consumer scope isolation', () => {
+      const entitlements = () => module.get(TenantEntitlementReader) as unknown as { getCapabilities: ReturnType<typeof vi.fn> };
+      const roles = () => module.get(RoleService) as unknown as { getScopesByUserTenantAndSite: ReturnType<typeof vi.fn>; getScopesByUserAndTenant: ReturnType<typeof vi.fn> };
+      const MIXED = ['auth:session:read', 'esign:envelope:read', 'platform:tenant:read'];
+      afterEach(() => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(['auth:session:read']);
+        roles().getScopesByUserAndTenant.mockResolvedValue(['auth:session:read']);
+        unstubCognito();
+      });
+      async function login(consumer: 'recruiter' | 'esign'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin(consumer, OWN_HOST);
+        const res = await request(app.getHttpServer())
+          .get(`/auth/${consumer}/callback?code=c&state=${state}`)
+          .set('Host', OWN_HOST)
+          .set('Cookie', pkceCookie);
+        const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+        const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`) && !c.includes('Max-Age=0'))?.split(';')[0];
+        return { status: res.status, location: res.headers['location'] as string, access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+      }
+
+      it('1/7/11. ATS-only tenant (core+ats+portal): the esign consumer cannot mint → 302 /login?error=TENANT_CAPABILITY_NOT_ENTITLED; core alone grants no product', async () => {
+        const r = await login('esign');
+        expect(r.status).toBe(302);
+        expect(r.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(r.access).toBeUndefined();
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core']));
+        const r2 = await login('recruiter');
+        expect(r2.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+      });
+
+      it('2/12. Sign-only tenant (core+esign): recruiter cannot mint; esign mints and carries ONLY esign:* — the recruiter path on an ATS tenant still works', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        expect((await login('recruiter')).location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        const e = await login('esign');
+        expect(e.location).toBe(`https://${OWN_HOST}/`);
+        const session = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(session.status).toBe(200);
+        expect(session.body.consumer_type).toBe('esign');
+        // IC-3 PR-7: the esign consumer also carries the product-neutral organization subset (auth:session:read ∈ ORG_ADMIN_SCOPE_KEYS); never platform:*.
+        expect(session.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const r = await login('recruiter');
+        expect(r.location).toBe(`https://${OWN_HOST}/`);
+      });
+
+      it('3/4/6. multi-product tenant: the SAME identity gets disjoint consumer-specific scopes; platform:* and esign:* never ride a recruiter token even when the roles hold them', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        const r = await login('recruiter');
+        const rs = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', r.access!);
+        expect(rs.body.scopes).toEqual(['auth:session:read']);
+        const e = await login('esign');
+        const es = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(es.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+      });
+
+      it('8/9. refresh cannot resurrect a revoked product capability, and a cached authorization does not keep superseded esign scopes', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        const e = await login('esign');
+        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+        // esign entitlement REMOVED — no authz_version bump, same cached canonical set.
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const after = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(after.status).toBe(200);
+        expect(after.body.scopes).toEqual([]);
+        const refresh = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        expect(refresh.status).toBe(401);
+        expect(refresh.body.error.details.reason).toBe('consumer_not_entitled');
+        const again = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        expect(again.body.error.details.reason).toBe('explicitly_revoked');
+      });
+
+      it('7. ATS entitlement removed after login: recruiter refresh → 401 consumer_not_entitled (revoked)', async () => {
+        const r = await login('recruiter');
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'portal']));
+        const refresh = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', r.refresh!);
+        expect(refresh.status).toBe(401);
+        expect(refresh.body.error.details.reason).toBe('consumer_not_entitled');
+      });
+
+      it('10. unknown consumers and unsupported consumers fail closed (400 at the path; portal never mints on the Cognito path)', async () => {
+        expect((await request(app.getHttpServer()).get('/auth/bogus/session').set('Host', OWN_HOST)).status).toBe(400);
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('portal', OWN_HOST);
+        const res = await request(app.getHttpServer()).get(`/auth/portal/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
+      });
+    });
+
     it('test 40 — /refresh rotates: old revoked + linked, new row created, audit row', async () => {
       stubCognitoVerifyOnly();
       const { pkceCookie, state } = await prepareLogin('recruiter');

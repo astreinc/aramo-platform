@@ -8157,6 +8157,99 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── IC-1 PR-1 — D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §5 (one User, one tenant) ──
+  # Minimum truthful contract for the tenant-admin invite surface this PR
+  # changed: the governed 409 outcomes. The request/response shapes mirror the
+  # controller (libs/identity TenantUserManagementController.invite).
+  /v1/tenant/users/invitations:
+    post:
+      operationId: inviteTenantUser
+      summary: Invite a user into the caller's tenant (tenant-admin tier).
+      description: |
+        Pattern-2 (no-sub) invite: creates the User + a single membership
+        (invite_status INVITED) + the invitation token, and sends the invite
+        email. The tenant is the caller's own (never body-supplied). The email
+        is normalized (trim + lowercase) before the identity lookup, the store
+        and the send. Requires scope `tenant:admin:user-manage`.
+
+        One User, one tenant (IC-1 PR-1): an email already registered to a user
+        who is a member of THIS tenant → 409 `INVITATION_ALREADY_EXISTS`; an
+        email already registered to a user owned by ANOTHER tenant → 409
+        `EMAIL_UNAVAILABLE` with exactly `details: {}` (no tenant, user, role
+        or identity-provider ownership detail is disclosed; a tenant-scoped
+        internal audit event retains the reason). A refused invite persists
+        nothing and sends no email. A uniqueness race lost between the
+        pre-check and the insert maps to the same governed 409, never a 500.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [email, role_keys]
+              properties:
+                email:
+                  type: string
+                  format: email
+                display_name:
+                  type: [string, 'null']
+                role_keys:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: The invited user, its single membership and the issued invitation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [user_id, membership_id, invite_status, invitation_id]
+                properties:
+                  user_id:
+                    type: string
+                    format: uuid
+                  membership_id:
+                    type: string
+                    format: uuid
+                  invite_status:
+                    type: string
+                    enum: [INVITED]
+                  invitation_id:
+                    type: string
+                    format: uuid
+        '400':
+          description: |
+            `VALIDATION_ERROR` — empty or unknown `role_keys`, invalid email,
+            email not on the tenant's locked domain (`details.reason`
+            `email_domain_mismatch`), an invertible role union
+            (`details.reason` `invertible_role_union`), a platform-tier role
+            (`details.reason` `platform_role_not_assignable`), or an E-Sign
+            product role (`esign_*`) in a tenant that does not hold the `esign`
+            capability (`details.reason` `esign_role_not_entitled`,
+            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          description: |
+            `INVITATION_ALREADY_EXISTS` — the email is already a member of this
+            tenant; or `EMAIL_UNAVAILABLE` — the email is already registered to
+            a user owned by another tenant (`details` is exactly `{}`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
 
 components:
   securitySchemes:

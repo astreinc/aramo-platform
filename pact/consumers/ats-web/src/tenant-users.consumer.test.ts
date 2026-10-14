@@ -212,6 +212,40 @@ describe('ats-web → tenant users (refusals)', () => {
     });
   }
 
+  // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4/§5) — one User, one
+  // tenant: an email already registered to a user owned by ANOTHER tenant is
+  // refused with the governed 409 EMAIL_UNAVAILABLE and `details: {}` (no
+  // ownership detail). Never a raw uniqueness failure / 500.
+  it('POST /v1/tenant/users/invitations for an email owned by another tenant returns 409 (EMAIL_UNAVAILABLE, empty details)', async () => {
+    const BODY = { email: 'owned.elsewhere@other.example', display_name: 'Owned Elsewhere', role_keys: ['recruiter'] };
+    await provider
+      .addInteraction()
+      .given('an ats-web admin and a user owned by another tenant exist')
+      .uponReceiving('a tenant user invitation for an email owned by another tenant')
+      .withRequest('POST', '/v1/tenant/users/invitations', (b) => {
+        b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'EMAIL_UNAVAILABLE',
+            message: like('This email address is not available for invitation'),
+            request_id: uuid(),
+            details: {},
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/tenant/users/invitations`, {
+          method: 'POST', headers: { Cookie: ACCESS_COOKIE, 'Content-Type': 'application/json' }, body: JSON.stringify(BODY),
+        });
+        expect(res.status).toBe(409);
+        const body = (await res.json()) as { error: { code: string; details: Record<string, unknown> } };
+        expect(body.error.code).toBe('EMAIL_UNAVAILABLE');
+        expect(body.error.details).toEqual({});
+      });
+  });
+
   it('PATCH email on a non-FAILED user returns 400 (email_locked)', async () => {
     const BODY = { email: 'x@astre.example' };
     await provider

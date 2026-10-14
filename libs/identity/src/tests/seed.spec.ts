@@ -97,6 +97,8 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'esign_viewer',
       'finance',
       'lead_recruiter',
+      // IC-3 PR-7 — product-neutral organization administrator.
+      'org_admin',
       'recruiter',
       'recruiting_manager',
       'sourcer',
@@ -104,5 +106,25 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'tenant_admin',
       'tenant_owner',
     ]);
+  });
+});
+
+// IC-3 PR-8 — deterministic seed proof of the Sign sender authority: the
+// `esign:envelope:send` scope is granted to EXACTLY esign_owner / esign_admin /
+// esign_sender (ESIGN_SENDER_SEED_BUNDLES); esign_viewer never holds it, and no
+// other seed bundle (ATS roles, org_admin, super_admin) grants ANY esign:* scope.
+describe('IC-3 PR-8 — Sign sender authority is seeded deterministically', () => {
+  it('esign:envelope:send is granted to exactly the three sender roles; esign_viewer is read-only', async () => {
+    const { ESIGN_SENDER_SEED_BUNDLES, SEED_IDS } = await import('../../prisma/seed.js');
+    const { ESIGN_PRODUCT_ROLE_KEYS, ESIGN_SENDER_SCOPE_KEY } = await import('../lib/dto/role.dto.js');
+    const holders = ESIGN_SENDER_SEED_BUNDLES.filter(([, scopes]) => scopes.includes(ESIGN_SENDER_SCOPE_KEY)).map(([k]) => k).sort();
+    expect(holders).toEqual(['esign_admin', 'esign_owner', 'esign_sender']);
+    expect(ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === 'esign_viewer')?.[1]).toEqual(['esign:envelope:read']);
+    // Every bundle key is a seeded Sign role with a deterministic role id, and the
+    // partition constant covers exactly the bundle keys (no orphan role, no hand list drift).
+    expect(ESIGN_SENDER_SEED_BUNDLES.map(([k]) => k).sort()).toEqual([...ESIGN_PRODUCT_ROLE_KEYS].sort());
+    for (const k of ESIGN_PRODUCT_ROLE_KEYS) expect(SEED_IDS.roles[k as keyof typeof SEED_IDS.roles]).toMatch(/^01900000-0000-7000-8000-0000000002a[0-3]$/);
+    // The Sign bundles hold ONLY esign:* scopes (never an ATS or platform scope).
+    for (const [, scopes] of ESIGN_SENDER_SEED_BUNDLES) expect(scopes.every((s) => s.startsWith('esign:'))).toBe(true);
   });
 });

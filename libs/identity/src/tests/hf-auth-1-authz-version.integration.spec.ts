@@ -15,6 +15,7 @@ import { AuthorizationVersionService } from '../lib/authorization-version.servic
 import { bumpPrincipalsWithRoleVersion } from '../lib/authorization-version.ops.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
 import { InMemoryScopeCache } from '../lib/authorization/in-memory-scope-cache.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import {
   IdentityEffectiveAuthorizationResolver,
 } from '../lib/authorization/identity-effective-authorization-resolver.js';
@@ -29,11 +30,16 @@ import {
 
 const MIGRATION_PATHS = resolveIdentityMigrations(resolve(__dirname, '../../../..'));
 
-// Comment-aware DDL splitter (the migration-comment-semicolon trap).
+// Comment-aware AND single-quote-aware DDL splitter (the migration-comment-
+// semicolon trap, plus — IC-1 PR-3 — the single-quoted plpgsql function body of
+// the `user_tenant_immutable` trigger migration, whose body contains statement
+// terminators that must NOT split the statement). A `''` inside a quoted string
+// is the SQL escape for a literal quote and does not end the string.
 function splitDdl(sql: string): string[] {
   const out: string[] = [];
   let cur = '';
   let inLineComment = false;
+  let inQuote = false;
   for (let i = 0; i < sql.length; i++) {
     const ch = sql[i];
     if (inLineComment) {
@@ -41,8 +47,25 @@ function splitDdl(sql: string): string[] {
       if (ch === '\n') inLineComment = false;
       continue;
     }
+    if (inQuote) {
+      cur += ch;
+      if (ch === "'") {
+        if (sql[i + 1] === "'") {
+          cur += "'";
+          i++;
+        } else {
+          inQuote = false;
+        }
+      }
+      continue;
+    }
     if (ch === '-' && sql[i + 1] === '-') {
       inLineComment = true;
+      cur += ch;
+      continue;
+    }
+    if (ch === "'") {
+      inQuote = true;
       cur += ch;
       continue;
     }
@@ -69,6 +92,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let cache: InMemoryScopeCache;
     let resolver: IdentityEffectiveAuthorizationResolver;
     let identityRepo: IdentityRepository;
+    // IC-2 PR-6 — the live entitlement read (controllable per test).
+    const entitlementCaps = { current: new Set<string>(['core', 'ats', 'portal']) };
+    const entitlementStub = { getCapabilities: async () => entitlementCaps.current } as unknown as TenantEntitlementReader;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -90,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       resolver = new IdentityEffectiveAuthorizationResolver(roleService, versions, cache, {
         portalScopes: ['portal:profile:read'],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       identityRepo = new IdentityRepository(prisma);
     }, 120_000);
 
@@ -114,7 +140,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const role_id = randomUUID();
       const membership_id = randomUUID();
       await prisma.tenant.create({ data: { id: tenant_id, name: `T-${tenant_id.slice(0, 8)}` } });
-      await prisma.user.create({ data: { id: user_id, email: `${user_id}@ex.test` } });
+      // IC-1 PR-3: a User is born OWNED by its (single) membership tenant.
+      await prisma.user.create({ data: { id: user_id, email: `${user_id}@ex.test`, tenant_id } });
       await prisma.role.create({ data: { id: role_id, key: `role-${role_id.slice(0, 8)}` } });
       const scopeIds: Record<string, string> = {};
       for (const key of scopeKeys) {
@@ -213,26 +240,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await resolver.resolve(p.input(999))).status).toBe('stale');
     });
 
-    it('TENANT ISOLATION: same user id in two tenants resolves independent versions + scopes', async () => {
+    // IC-1 PR-3 (Amendment A1 §1; IC-0 J-12 inversion): the former "same user id
+    // in two tenants" fixture is now IMPOSSIBLE — Postgres refuses a second
+    // membership for a User (UNIQUE user_id) and a membership whose tenant is not
+    // the User's owning tenant (composite FK). Tenant isolation of the authz
+    // version is proven with two DIFFERENT users, one per tenant.
+    it('TENANT ISOLATION (PR-3): a second membership for the same user is REJECTED by the database; versions of different users in different tenants stay independent', async () => {
       const a = await seedPrincipal(['ta:1']);
-      // A second membership for the SAME user in a DIFFERENT tenant, different scopes.
       const tenant_b = randomUUID();
-      const role_b = randomUUID();
-      const scope_b = randomUUID();
       await prisma.tenant.create({ data: { id: tenant_b, name: 'T-B' } });
-      await prisma.role.create({ data: { id: role_b, key: `rb-${role_b.slice(0, 6)}` } });
-      await prisma.scope.create({ data: { id: scope_b, key: `tb-${scope_b.slice(0, 4)}` } });
-      await prisma.roleScope.create({ data: { id: randomUUID(), role_id: role_b, scope_id: scope_b } });
-      const mb = randomUUID();
-      await prisma.userTenantMembership.create({ data: { id: mb, user_id: a.user_id, tenant_id: tenant_b } });
-      await prisma.userTenantMembershipRole.create({ data: { id: randomUUID(), membership_id: mb, role_id: role_b } });
-      await versions.ensureBaseline(prisma, { tenant_id: tenant_b, principal_id: a.user_id });
+      // The retired shape: a second membership for the SAME user in ANOTHER tenant.
+      await expect(
+        prisma.userTenantMembership.create({ data: { id: randomUUID(), user_id: a.user_id, tenant_id: tenant_b } }),
+      ).rejects.toThrow(/UserTenantMembership_user_id_key|UserTenantMembership_user_id_tenant_id_fkey|Unique constraint|Foreign key constraint/);
+      // Still exactly one membership, in the owning tenant.
+      const memberships = await prisma.userTenantMembership.findMany({ where: { user_id: a.user_id } });
+      expect(memberships).toHaveLength(1);
+      expect(memberships[0]?.tenant_id).toBe(a.tenant_id);
 
-      const inB = (v: number): EffectiveAuthorizationInput => ({
-        tenant_id: tenant_b, principal_id: a.user_id, token_authz_version: v, ...BASE_INPUT,
-      });
+      // Isolation across tenants: a DIFFERENT principal in tenant B.
+      const b = await seedPrincipal(['tb:1']);
       const rA = await resolver.resolve(a.input(1));
-      const rB = await resolver.resolve(inB(1));
+      const rB = await resolver.resolve(b.input(1));
       expect(rA.status).toBe('ok');
       expect(rB.status).toBe('ok');
       if (rA.status === 'ok' && rB.status === 'ok') {
@@ -240,10 +269,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(rB.scopes).toHaveLength(1);
         expect(rA.scopes[0]).not.toBe(rB.scopes[0]); // no cross-tenant leak
       }
-      // Bumping tenant B's version does NOT stale tenant A's token.
-      await bumpPrincipalsWithRoleVersion(prisma, { role_id: role_b });
+      // Bumping tenant B's principal does NOT stale tenant A's token.
+      await bumpPrincipalsWithRoleVersion(prisma, { role_id: b.role_id });
       expect((await resolver.resolve(a.input(1))).status).toBe('ok');
-      expect((await resolver.resolve(inB(1))).status).toBe('stale');
+      expect((await resolver.resolve(b.input(1))).status).toBe('stale');
     });
 
     it('SITE ISOLATION: a site-scoped membership resolves only under its site; tenant-wide token gets no site scopes', async () => {
@@ -254,7 +283,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const scope_id = randomUUID();
       const site_id = randomUUID();
       await prisma.tenant.create({ data: { id: tenant_id, name: 'T-Site' } });
-      await prisma.user.create({ data: { id: user_id, email: `${user_id}@ex.test` } });
+      await prisma.user.create({ data: { id: user_id, email: `${user_id}@ex.test`, tenant_id } });
       await prisma.$executeRawUnsafe(
         `INSERT INTO identity."Site" (id, tenant_id, name, updated_at) VALUES ('${site_id}','${tenant_id}','Site A', now())`,
       );
@@ -292,7 +321,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const failResolver = new IdentityEffectiveAuthorizationResolver(throwingRole, versions, new InMemoryScopeCache(), {
         portalScopes: [],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       expect((await failResolver.resolve(p.input(1))).status).toBe('unresolvable');
 
       // Version-authority unreachable → also unresolvable.
@@ -304,8 +333,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const failResolver2 = new IdentityEffectiveAuthorizationResolver(roleService, throwingVersions, new InMemoryScopeCache(), {
         portalScopes: [],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       expect((await failResolver2.resolve(p.input(1))).status).toBe('unresolvable');
+    });
+
+    // IC-2 PR-6 — one identity, three consumers, three disjoint authorizations.
+    it('IC-2 PR-6: ONE principal holding ATS + esign + platform scopes resolves a DISJOINT set per consumer; esign only while entitled', async () => {
+      const p = await seedPrincipal(['talent:read', 'esign:envelope:send', 'platform:tenant:read']);
+      const forConsumer = (c: EffectiveAuthorizationInput['consumer_type']) => ({ ...p.input(1), consumer_type: c });
+      const recruiter = await resolver.resolve(forConsumer('recruiter'));
+      expect(recruiter.status).toBe('ok');
+      if (recruiter.status === 'ok') {
+        expect(recruiter.scopes).toHaveLength(1);
+        expect(recruiter.scopes[0]).toMatch(/^talent:read/);
+      }
+      const platform = await resolver.resolve(forConsumer('platform'));
+      if (platform.status === 'ok') expect(platform.scopes.map((x) => x.split('-')[0])).toEqual(['platform:tenant:read']);
+      // esign: NOT entitled → nothing; entitled → esign:* only; revoked again → nothing (no version bump needed).
+      const before = await resolver.resolve(forConsumer('esign'));
+      expect(before).toEqual({ status: 'ok', scopes: [] });
+      entitlementCaps.current = new Set(['core', 'ats', 'portal', 'esign']);
+      const entitled = await resolver.resolve(forConsumer('esign'));
+      if (entitled.status === 'ok') expect(entitled.scopes.map((x) => x.split('-')[0])).toEqual(['esign:envelope:send']);
+      entitlementCaps.current = new Set(['core', 'ats', 'portal']);
+      expect(await resolver.resolve(forConsumer('esign'))).toEqual({ status: 'ok', scopes: [] });
     });
 
     it('PORTAL: fixed scopes, version pinned to 1 (independent of RBAC growth)', async () => {

@@ -26,7 +26,7 @@ import { resolve } from 'node:path';
 // ── Scope (PR-1.5 ruling: bounded + documented). ──────────────────────────────
 // The 23 curated sites do NOT share one identity set — recon found ≥6 distinct
 // (subset, order) signatures; each spec applies only the migrations its scenario
-// needs. This helper carries the FULL ordered set (all 11); sites that apply a
+// needs. This helper carries the FULL ordered set (16 as of IC-1 PR-3); sites that apply a
 // pure-identity subset are retrofitted to consume it (the extra additive tables
 // are behavior-neutral). Sites that interleave the identity set with other
 // schema stacks (entitlement / talent-trust / talent-record / …) stay
@@ -55,6 +55,28 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // identity.repository bump paths write to it on membership create/disable/role
   // change, so EVERY identity/auth-service integration spec needs it present.
   'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
+  // IC-1 PR-2 — owning tenant on User (Amendment A1, one User / one tenant).
+  // `expand` adds the NULLABLE column + FK + index + UNIQUE(id, tenant_id) (additive,
+  // old-image safe); `backfill` assigns each User its single membership tenant and
+  // ABORTS the file when any User would remain unowned. Both apply LAST: the
+  // regenerated Prisma client SELECTs `tenant_id` on every User read, so every
+  // consumer that reads User through the client needs `expand` applied. The backfill
+  // reads only UserTenantMembership (init) — Invariant 2 holds.
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  // IC-1 PR-3 — RESTRICT. `cardinality` re-runs the backfill, pre-validates (no unowned
+  // User, no multi-membership User, no membership/owner tenant mismatch — each a
+  // single-statement raise), then SET NOT NULL + UNIQUE(user_id) on membership + the
+  // composite membership→owner FK. `immutable` adds the single-quoted plpgsql trigger
+  // (no `$$`). From here every fixture that inserts a User MUST supply tenant_id and
+  // may hold at most ONE membership, in that tenant.
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (BUSINESS | PERSONAL), additive with default. The
+  // regenerated client SELECTs `kind` on every Tenant read, so every consumer
+  // that reads Tenant through the client needs this applied (Invariant 2 holds:
+  // ALTER TABLE on identity.Tenant only).
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

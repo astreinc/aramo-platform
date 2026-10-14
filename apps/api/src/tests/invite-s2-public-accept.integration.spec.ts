@@ -46,6 +46,17 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+  // IC-1 PR-2 — owning tenant on User (nullable expand + backfill). The accept path
+  // reads the invited User through the regenerated identity client, which SELECTs
+  // User.tenant_id, so the expand file is required; the backfill meets an empty
+  // table here (no-op). (Interleaved entitlement + identity list → stays hand-listed.)
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  // IC-1 PR-3 — restrict + immutability trigger (whole-file through pg).
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT = '01900000-0000-7000-8000-0000000000a1';
@@ -81,9 +92,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const invitationId = uuidv7();
       const rawToken = randomBytes(32).toString('base64url');
       await db.query(
-        `INSERT INTO identity."User" (id, email, is_active, created_at, updated_at)
-         VALUES ($1::uuid, $2, true, now(), now())`,
-        [userId, args.email],
+        `INSERT INTO identity."User" (id, email, is_active, tenant_id, created_at, updated_at)
+         VALUES ($1::uuid, $2, true, $3::uuid, now(), now())`,
+        [userId, args.email, TENANT],
       );
       await db.query(
         `INSERT INTO identity."UserTenantMembership"

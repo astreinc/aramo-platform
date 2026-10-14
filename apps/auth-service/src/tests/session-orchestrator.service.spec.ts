@@ -13,6 +13,7 @@ import type {
   IdentityAuditService,
   IdentityService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 import type { RefreshTokenService } from '@aramo/auth-storage';
@@ -46,6 +47,8 @@ interface Mocks {
   jwtIssuer: JwtIssuerService;
   audit: IdentityAuditService;
   authzVersions: AuthorizationVersionService;
+  // IC-2 PR-6 — live product capabilities (default: the standard ATS bundle).
+  entitlements: TenantEntitlementReader;
 }
 
 function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
@@ -147,6 +150,7 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
     authzVersions: {
       getCurrentVersion: vi.fn().mockResolvedValue(1),
     } as unknown as AuthorizationVersionService,
+    entitlements: { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
   };
   return { ...base, ...overrides };
 }
@@ -158,6 +162,7 @@ function makeService(mocks: Mocks): SessionOrchestratorService {
     mocks.role,
     mocks.audit,
     mocks.authzVersions,
+    mocks.entitlements,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new SessionOrchestratorService(
@@ -325,8 +330,10 @@ describe('SessionOrchestratorService.handleCallback', () => {
     );
   });
 
-  // Test 29: tenant_selection_required for >1 active membership.
-  it('returns tenant_selection_required with tenants[] for multi-membership user', async () => {
+  // Test 29 (INVERTED by IC-2 PR-4, Auth-Decoupling PR-4 Amendment A1): a
+  // defensive multi-tenant read (unreachable against the IC-1 PR-3 database) is
+  // a fail-closed auth_error, NEVER a tenant chooser.
+  it('returns auth_error tenant_resolution_ambiguous (no chooser) for a defensive multi-membership read', async () => {
     const mocks = makeMocks({
       tenant: {
         getTenantsByUser: vi.fn().mockResolvedValue([
@@ -346,10 +353,10 @@ describe('SessionOrchestratorService.handleCallback', () => {
       pkceStateCipher: 'cipher',
     });
 
-    expect(result.kind).toBe('tenant_selection_required');
-    if (result.kind !== 'tenant_selection_required') return;
-    expect(result.tenants).toHaveLength(2);
-    expect(result.tenants[0]).toEqual({ id: TENANT_ID, name: 'Tenant One' });
+    expect(result).toEqual({ kind: 'auth_error', reason: 'tenant_resolution_ambiguous' });
+    // Nothing minted, nothing persisted.
+    expect(mocks.refreshTokens.create).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
   });
 
   // Test 30: 0 active memberships → §5 D2 P4 AUTH_ERROR no_active_tenant
@@ -778,5 +785,132 @@ describe('SessionOrchestratorService — tenant-status mint gate (PR-1 workstrea
     const gatedOut =
       result.kind === 'auth_error' && result.reason === 'tenant_suspended';
     expect(gatedOut).toBe(false);
+  });
+});
+
+// IC-2 PR-4 (F-5/F-6/F-8) — host-context agreement between login and callback,
+// and what the port receives. A fake PrincipalDirectory captures the port input.
+describe('IC-2 PR-4 — host binding at the orchestrator', () => {
+  const BINDING_ENV = ['AUTH_HOST_TENANT_BINDING', 'AUTH_ALLOW_UNBOUND_HOST'] as const;
+  let savedBinding: Partial<Record<string, string | undefined>> = {};
+  beforeEach(() => {
+    savedBinding = {};
+    for (const k of BINDING_ENV) {
+      savedBinding[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of BINDING_ENV) {
+      if (savedBinding[k] === undefined) delete process.env[k];
+      else process.env[k] = savedBinding[k];
+    }
+  });
+
+  function withPayload(extra: Partial<PkceStatePayload>): Mocks {
+    const payload: PkceStatePayload = {
+      verifier: 'v',
+      state: 'state-1',
+      consumer: 'recruiter',
+      issued_at: Math.floor(Date.now() / 1000),
+      ...extra,
+    };
+    return makeMocks({
+      pkce: {
+        decryptState: vi.fn().mockReturnValue(payload),
+        generate: vi.fn(),
+        encryptState: vi.fn(),
+      } as unknown as PkceService,
+    });
+  }
+
+  function serviceWithCapturingPort(mocks: Mocks): {
+    svc: SessionOrchestratorService;
+    resolveSession: ReturnType<typeof vi.fn>;
+  } {
+    const resolveSession = vi.fn().mockResolvedValue({
+      kind: 'resolved',
+      principal_id: USER_ID,
+      context_id: TENANT_ID,
+      scopes: ['auth:session:read'],
+      authz_version: 1,
+    });
+    const svc = new SessionOrchestratorService(
+      mocks.pkce,
+      mocks.cognito,
+      { resolveSession, resolveScopes: vi.fn() },
+      mocks.refreshTokens,
+      mocks.jwtIssuer,
+      new IdentityAuditSinkAdapter(mocks.audit),
+    );
+    return { svc, resolveSession };
+  }
+
+  const baseInput = {
+    consumer: 'recruiter' as const,
+    code: 'c',
+    state: 'state-1',
+    cognitoError: undefined,
+    cognitoErrorDescription: undefined,
+    pkceStateCipher: 'cipher',
+  };
+
+  it('LEGACY cookie (no host_class): the port receives NO host fields (unbound, F-8) and the outcome is unchanged', async () => {
+    const { svc, resolveSession } = serviceWithCapturingPort(withPayload({}));
+    const result = await svc.handleCallback({ ...baseInput, hostClass: 'TENANT', contextId: TENANT_ID });
+    expect(result.kind).toBe('success');
+    const input = resolveSession.mock.calls[0]![0] as Record<string, unknown>;
+    expect('host_class' in input).toBe(false);
+    expect('context_id' in input).toBe(false);
+  });
+
+  it('SEALED cookie agreeing with the callback host: the SEALED class + context ride to the port', async () => {
+    const { svc, resolveSession } = serviceWithCapturingPort(
+      withPayload({ host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+    const result = await svc.handleCallback({ ...baseInput, hostClass: 'TENANT', contextId: TENANT_ID });
+    expect(result.kind).toBe('success');
+    expect(resolveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+  });
+
+  it('SEALED cookie disagreeing with the callback host under ENFORCE: auth_error host_tenant_mismatch BEFORE the code exchange', async () => {
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    const { svc, resolveSession } = serviceWithCapturingPort(
+      withPayload({ host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+    const result = await svc.handleCallback({ ...baseInput, hostClass: 'TENANT', contextId: TENANT_ID_2 });
+    expect(result).toEqual({ kind: 'auth_error', reason: 'host_tenant_mismatch' });
+    // Fail-closed early: no Cognito exchange, no resolution, nothing minted.
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(resolveSession).not.toHaveBeenCalled();
+  });
+
+  it('SEALED cookie disagreeing with the callback host under LOG (default): outcome unchanged, sealed context forwarded', async () => {
+    const { svc, resolveSession } = serviceWithCapturingPort(
+      withPayload({ host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+    const result = await svc.handleCallback({ ...baseInput, hostClass: null, contextId: null });
+    expect(result.kind).toBe('success');
+    expect(resolveSession).toHaveBeenCalledWith(
+      expect.objectContaining({ host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+  });
+
+  it('a port denial with a host-binding reason is passed through verbatim as auth_error', async () => {
+    const mocks = withPayload({ host_class: 'TENANT', context_id: TENANT_ID });
+    const resolveSession = vi.fn().mockResolvedValue({ kind: 'denied', reason: 'host_tenant_mismatch' });
+    const svc = new SessionOrchestratorService(
+      mocks.pkce,
+      mocks.cognito,
+      { resolveSession, resolveScopes: vi.fn() },
+      mocks.refreshTokens,
+      mocks.jwtIssuer,
+      new IdentityAuditSinkAdapter(mocks.audit),
+    );
+    const result = await svc.handleCallback({ ...baseInput, hostClass: 'TENANT', contextId: TENANT_ID });
+    expect(result).toEqual({ kind: 'auth_error', reason: 'host_tenant_mismatch' });
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
   });
 });

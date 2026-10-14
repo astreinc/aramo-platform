@@ -15,7 +15,9 @@
 // dependency violations on /consent/check (PR-4).
 //
 // PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409) for /callback
-// when a user has >1 active membership, and REFRESH_TOKEN_INVALID (HTTP 401)
+// when a user has >1 active membership (COMPATIBILITY_RESERVED since IC-2 PR-4:
+// one User = one tenant, so it is never emitted; the registry is append-only),
+// and REFRESH_TOKEN_INVALID (HTTP 401)
 // for /refresh failures (cookie missing, token expired/revoked, consumer
 // mismatch, reuse detected, rotation race). Total: 9 codes.
 //
@@ -286,7 +288,7 @@ export const ERROR_CODES = [
   'OBJECT_STORAGE_UPLOAD_FAILED',  // A8-3a — presigned-URL generation OR upstream S3 PUT/GET failure at the ObjectStorageService boundary. HTTP 502 (upstream-dependency error class). Distinct from INTERNAL_ERROR so the recruiter UI can render an actionable "try again" vs. a generic 500.
   'TENANT_ALREADY_EXISTS',  // AUTHZ-2 — provisioning refusal: a Tenant with the requested name already exists (case-insensitive uniqueness over name). HTTP 409. Idempotent re-provision is rejected at the platform-tier boundary (Lead ruling 2 — same-name → 409, not silently aliased).
   'COGNITO_PROVISION_FAILED',  // AUTHZ-2 — Cognito AdminCreateUser upstream failure (Pattern A; the load-bearing external integration). HTTP 502. Distinct from INTERNAL_ERROR so the platform-admin UI can surface "Cognito unavailable, retry" vs. a generic 500. Mirrors OBJECT_STORAGE_UPLOAD_FAILED at the IdP boundary.
-  'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. AdminGetUser is the idempotency check; Cognito is NOT re-created. The two same-tenant-different-roles / new-tenant / drift cases (Ruling 8) do NOT raise this — they reconcile.
+  'INVITATION_ALREADY_EXISTS',  // AUTHZ-2 — re-invite refusal for the (email, tenant_id) pair when the User already holds a membership in the tenant with the same role set. HTTP 409. Cognito is NOT re-created. Same-tenant-different-roles reconciles (roles_updated); Cognito-identity drift mirrors. IC-1 PR-1 (Amendment A1 §2): the former new-tenant case (membership_added) is RETIRED — an email owned by another tenant is refused with EMAIL_UNAVAILABLE.
   'MANAGEMENT_CYCLE_REJECTED',  // AUTHZ-D4a — set-management-edge refusal: the proposed (manager_user_id, report_user_id) edge would create a cycle in the management graph (e.g. A manages B; attempting B manages A, or the transitive A→B→C; attempting C→A). The cycle check walks upward from report_user_id; if manager_user_id appears in the ancestor set, the edge is rejected. HTTP 409 (mirrors SUBMITTAL_ALREADY_CONFIRMED / IMPORT_ALREADY_REVERTED for state-conflict refusals).
   'TALENT_RECORD_SUPERSEDED',  // TR-2a-B3a (DDR-3 §3) — outreach-send refusal: the selection's TalentRecord was superseded by a late-merge reconcile (record_status='superseded'); the surviving record speaks for the human, so the husk is non-operational. HTTP 422 (a state-invalid refusal — mirrors SELECTION_STATE_INVALID). Writer-less in B3a; the B3b reconcile writer produces the state.
   'TALENT_RECORD_DUPLICATE',  // B3/B4 — manual-create dedup refusal: an active TalentRecord with the same primary email already exists in the tenant. HTTP 409.
@@ -954,6 +956,14 @@ export const ERROR_CODES = [
   // A concurrent scheduling attempt already holds the operation for this key; the
   // caller must not independently proceed (FIX_NOW-2).
   'MICROSOFT_SCHEDULING_IN_PROGRESS',
+  // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — invitation refusal
+  // when the normalized email already belongs to an identity.User owned by a
+  // DIFFERENT tenant (one User, one tenant). HTTP 409 at BOTH invite tiers;
+  // the public envelope carries EXACTLY `details: {}` (no tenant/user/role/
+  // Cognito ownership detail — the internal audit event
+  // identity.invitation.rejected_cross_tenant retains the reason). Also the
+  // governed mapping for a User.email P2002 lost race on the create path.
+  'EMAIL_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

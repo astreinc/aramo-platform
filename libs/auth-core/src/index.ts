@@ -20,6 +20,18 @@ export type { EmailSenderInput, EmailSenderResult, EmailSender } from './lib/ema
 export { HostAuthProfileService } from './lib/host-auth-profile.service.js';
 export type { HostAuthResolution } from './lib/host-auth-profile.service.js';
 export { HostBaseResolver } from './lib/host-base-resolver.service.js';
+export type { HostResolution } from './lib/host-base-resolver.service.js';
+export {
+  HOST_BINDING_MODE_ENV,
+  ALLOW_UNBOUND_HOST_ENV,
+  TENANT_ACCESS_DENIED_REASONS,
+  readHostBindingMode,
+  allowUnboundHost,
+  evaluateHostBinding,
+  evaluateSessionHostBinding,
+  REFRESH_ELIGIBILITY_REASONS,
+} from './lib/host-binding.js';
+export type { HostBindingClass, HostBindingMode, HostBindingReason, HostBindingInput, HostBindingVerdict } from './lib/host-binding.js';
 export { HOST_CONTEXT_DIRECTORY } from './lib/host-context-directory.port.js';
 export type { HostContext, HostContextDirectory } from './lib/host-context-directory.port.js';
 export { JwksController } from './lib/jwks.controller.js';
@@ -38,11 +50,10 @@ export { PortalLoginService } from './lib/portal-login.service.js';
 export type { PortalConsumeResult } from './lib/portal-login.service.js';
 export { PRINCIPAL_DIRECTORY } from './lib/principal-directory.port.js';
 export type { ResolveSessionInput, ResolveSessionResult, ResolveScopesInput, ResolveScopesResult, PrincipalDirectory } from './lib/principal-directory.port.js';
-export { isDevPosture, parseHost, isDevHostname, deriveBaseFromHost, resolvePublicBaseUrl, deriveRedirectUri, derivePostLoginRedirect, deriveSignoutRedirect } from './lib/redirect-uri.js';
-export type { ParsedHost } from './lib/redirect-uri.js';
+export { isDevPosture, parseHost, isDevHostname, deriveBaseFromHost, classifyHostByEnv, resolvePublicBaseUrl, deriveRedirectUri, derivePostLoginRedirect, deriveSignoutRedirect } from './lib/redirect-uri.js';
+export type { ParsedHost, EnvHostClass } from './lib/redirect-uri.js';
 export { RefreshOrchestratorService } from './lib/refresh-orchestrator.service.js';
 export type { RefreshInput, RefreshResult } from './lib/refresh-orchestrator.service.js';
 export { PORTAL_SESSION_SCOPES, SessionOrchestratorService } from './lib/session-orchestrator.service.js';
 export type { CallbackInput, CallbackResult } from './lib/session-orchestrator.service.js';
 export type { SessionResponseDto } from './lib/dto/session-response.dto.js';
-export type { TenantSelectionTenantDto, TenantSelectionRequiredDetailsDto } from './lib/dto/tenant-selection-error.dto.js';

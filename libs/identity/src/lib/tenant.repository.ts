@@ -76,6 +76,9 @@ export class TenantRepository {
     id: string;
     name: string;
     allowed_domain?: string | null;
+    // IC-4 PR-9 — BUSINESS (default) | PERSONAL; validated upstream by
+    // TenantService.provisionTenant (isTenantKind).
+    kind?: string;
     // Subdomain-Identity Directive A — the validated subdomain slug (DNS-safe,
     // lowercased by deriveSlugOrThrow upstream). Optional so legacy/test callers
     // that do not supply it leave it NULL (no subdomain; the ask-endpoint 404s
@@ -88,6 +91,7 @@ export class TenantRepository {
         name: args.name,
         allowed_domain: args.allowed_domain ?? null,
         slug: args.slug ?? null,
+        ...(args.kind === undefined ? {} : { kind: args.kind }),
       },
     });
     return toTenantDto(row);
@@ -139,6 +143,7 @@ export class TenantRepository {
         created_at: true,
         activated_at: true,
         suspended_at: true,
+        kind: true,
       },
     });
     return rows.map(toPlatformTenantListRow);
@@ -323,6 +328,8 @@ export interface DomainVerificationRow {
 export interface PlatformTenantListRow {
   id: string;
   name: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL (lifecycle-triage column).
+  kind: string;
   slug: string | null;
   status: string;
   status_reason_code: string | null;
@@ -344,10 +351,12 @@ function toPlatformTenantListRow(row: {
   created_at: Date;
   activated_at: Date | null;
   suspended_at: Date | null;
+  kind: string;
 }): PlatformTenantListRow {
   return {
     id: row.id,
     name: row.name,
+    kind: row.kind,
     slug: row.slug,
     status: row.status,
     status_reason_code: row.status_reason_code,
@@ -370,6 +379,8 @@ type TenantRow = {
   identity_provider: string | null;
   // Platform-Console Increment-2 PR-1 — the lifecycle status.
   status: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL.
+  kind: string;
 };
 
 export interface TenantProfileRow {
@@ -441,5 +452,6 @@ function toTenantDto(row: TenantRow): TenantDto {
     updated_at: row.updated_at.toISOString(),
     identity_provider: row.identity_provider,
     status: row.status,
+    kind: row.kind,
   };
 }

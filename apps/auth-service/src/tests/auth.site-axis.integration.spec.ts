@@ -49,6 +49,7 @@ import {
   AuthorizationResolverModule,
   IdentityCoreModule,
   PrismaService as IdentityPrismaService,
+  TenantEntitlementReader,
 } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
@@ -214,7 +215,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           // nested {error:{code,...}} envelope the real app emits.
           { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],
-      }).compile();
+      })
+        // IC-2 PR-6 — the entitlement schema is not migrated in this harness; the
+        // live capability read is stubbed to the standard ATS bundle.
+        .overrideProvider(TenantEntitlementReader)
+        .useValue({ getCapabilities: async () => new Set(['core', 'ats', 'portal']) })
+        .compile();
 
       app = module.createNestApplication();
       app.use(cookieParser());
@@ -386,6 +392,8 @@ async function seedSiteAxisFixture(prisma: IdentityPrismaService): Promise<void>
       email: 'site-user@aramo.dev',
       display_name: 'Site User',
       is_active: true,
+      // IC-1 PR-3: a User is born OWNED by its single membership tenant.
+      tenant_id: TENANT_ID,
     },
   });
   await prisma.user.upsert({
@@ -396,6 +404,7 @@ async function seedSiteAxisFixture(prisma: IdentityPrismaService): Promise<void>
       email: 'tenant-wide-user@aramo.dev',
       display_name: 'Tenant Wide User',
       is_active: true,
+      tenant_id: TENANT_ID,
     },
   });
   await prisma.externalIdentity.upsert({

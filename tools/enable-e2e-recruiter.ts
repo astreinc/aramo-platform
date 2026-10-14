@@ -73,6 +73,8 @@ async function main(): Promise<void> {
             email: RECRUITER_EMAIL,
             display_name: RECRUITER_DISPLAY,
             is_active: true,
+            // IC-1 PR-2 — born owned by the single membership tenant below.
+            tenant_id: TENANT,
           },
         });
         console.log(`[enable] created identity.User ${userId}`);

@@ -172,7 +172,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`TENANT_ALREADY_EXISTS` — a tenant with this name already exists (case-insensitive).'
+          description: |
+            `TENANT_ALREADY_EXISTS` — a tenant with this name already exists
+            (case-insensitive); or `EMAIL_UNAVAILABLE` — the owner email is
+            already registered to a user owned by another tenant (`details` is
+            exactly `{}`; IC-1 PR-1 — refused before any Cognito side effect).
           content:
             application/json:
               schema:
@@ -252,14 +256,18 @@ paths:
       summary: Invite a user into a tenant.
       description: |
         Invite a user into an existing tenant with one or more AUTHZ-1 tenant
-        roles. Idempotency (Lead ruling 8): an existing user + existing
-        membership with the same role set → 409 `INVITATION_ALREADY_EXISTS`; a
-        different role set → the membership roles are reconciled (200-shaped
-        `roles_updated`); no membership → a new membership (`membership_added`);
-        drift (Cognito has the user, identity does not) → identity rows are
-        written against the existing sub (`invitation_sent`). An invertible role
-        union is refused (400 `VALIDATION_ERROR`, `details.reason`
-        `invertible_role_union`).
+        roles. The email is normalized (trim + lowercase) before every probe.
+        Idempotency (Lead ruling 8, as amended by IC-1 PR-1 — one User, one
+        tenant): an existing user + existing membership in THIS tenant with the
+        same role set → 409 `INVITATION_ALREADY_EXISTS`; a different role set →
+        the membership roles are reconciled (`roles_updated`); an existing user
+        with NO membership in this tenant is owned by another tenant → 409
+        `EMAIL_UNAVAILABLE` with exactly `details: {}` (no tenant, user, role or
+        Cognito ownership detail; the former `membership_added` outcome is
+        retired and no second membership is ever created); drift (Cognito has
+        the user, identity does not) → identity rows are written against the
+        existing sub (`invitation_sent`). An invertible role union is refused
+        (400 `VALIDATION_ERROR`, `details.reason` `invertible_role_union`).
 
         Requires scope `platform:tenant:provision`.
       security:
@@ -282,8 +290,12 @@ paths:
                 $ref: '#/components/schemas/InviteUserResponse'
         '400':
           description: |
-            `VALIDATION_ERROR` — an unknown `role_key` (rejected at the DTO) or
-            an invertible role union (`details.reason` `invertible_role_union`).
+            `VALIDATION_ERROR` — an unknown `role_key` (rejected at the DTO), an
+            invertible role union (`details.reason` `invertible_role_union`), a
+            platform-tier role (`details.reason` `platform_role_not_assignable`),
+            or an E-Sign product role (`esign_*`) for a tenant that does not hold
+            the `esign` capability (`details.reason` `esign_role_not_entitled`,
+            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
           content:
             application/json:
               schema:
@@ -293,7 +305,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`INVITATION_ALREADY_EXISTS` — the user already holds this membership with the same role set.'
+          description: |
+            `INVITATION_ALREADY_EXISTS` — the user already holds this membership
+            in this tenant with the same role set; or `EMAIL_UNAVAILABLE` — the
+            email is already registered to a user owned by another tenant
+            (`details` is exactly `{}`; IC-1 PR-1).
           content:
             application/json:
               schema:
@@ -540,7 +556,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`INVITATION_ALREADY_EXISTS` — the admin already holds a platform membership.'
+          description: |
+            `INVITATION_ALREADY_EXISTS` — the admin already holds a platform
+            membership with the same role set; or `EMAIL_UNAVAILABLE` — the
+            email is already registered to a user owned by another tenant
+            (`details` is exactly `{}`; IC-1 PR-1).
           content:
             application/json:
               schema:
@@ -1437,7 +1457,14 @@ components:
           type: array
           items:
             type: string
-          description: Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+          description: >-
+            Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+            IC-3 PR-7: `core` is always held (added when absent). ATS is not a
+            prerequisite — a Sign-only organization is provisioned with
+            [core, esign] (owner role org_admin, no ATS projections); ATS+Sign with
+            [core, ats, portal, esign] (owner role tenant_owner). Sign sender
+            authorization and the product host are separate (PR-8); an esign
+            entitlement alone activates nothing.
         invite_owner:
           type: boolean
           default: true
@@ -1447,17 +1474,50 @@ components:
             suppressed (no email) and the tenant still lands PROVISIONED; the operator
             sends the invite when ready via POST .../resend-owner-invite. Omitting the
             field preserves the pre-3.4 behavior exactly.
+        kind:
+          $ref: '#/components/schemas/TenantKind'
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 63
+          pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$'
+          description: >-
+            IC-2 PR-4 (F-4) — OPTIONAL subdomain slug (<slug>.aramo.ai). Validated as a
+            DNS-safe label (lowercase letters, digits, internal hyphens), refused when
+            reserved (400 VALIDATION_ERROR reason invalid_slug / reserved_slug), unique
+            across tenants. Never derived from the name; omitted → no subdomain (slug
+            null). Host-bound login enforcement requires every tenant that signs in on a
+            tenant host to carry a slug.
+
+    TenantKind:
+      type: string
+      enum: [BUSINESS, PERSONAL]
+      description: >-
+        IC-4 PR-9 — the tenant kind. BUSINESS (default): an organization whose
+        owner's non-personal email domain becomes the locked `allowed_domain`;
+        any product set. PERSONAL: a one-person Sign subscriber — an ordinary
+        tenant (one owning User, one membership, same identity spine) provisioned
+        WITHOUT a locked domain (a personal-provider owner address is allowed;
+        `allowed_domain` null), whose capability set is CLOSED to
+        [core, esign] (any other requested capability → 400 `VALIDATION_ERROR`
+        `details.reason` `personal_tenant_capability_not_allowed`, before any
+        Cognito side effect), whose owner receives `org_admin` (never an ATS
+        role) and for which no ATS projection runs. The Sign sender role is a
+        separate governed grant (IC-3 PR-8); ATS/TIP entitlement for a personal
+        identity is not provisionable.
 
     ProvisionTenantResponse:
       type: object
       additionalProperties: false
-      required: [tenant_id, tenant_name, owner_user_id, owner_email, membership_id, capabilities, invitation_sent]
+      required: [tenant_id, tenant_name, tenant_kind, owner_user_id, owner_email, membership_id, capabilities, invitation_sent]
       properties:
         tenant_id:
           type: string
           format: uuid
         tenant_name:
           type: string
+        tenant_kind:
+          $ref: '#/components/schemas/TenantKind'
         owner_user_id:
           type: string
           format: uuid
@@ -1481,7 +1541,7 @@ components:
     PlatformTenantSummary:
       type: object
       additionalProperties: false
-      required: [id, name, slug, status, status_reason_code, status_changed_at, is_active, created_at, activated_at, suspended_at]
+      required: [id, name, kind, slug, status, status_reason_code, status_changed_at, is_active, created_at, activated_at, suspended_at]
       description: The operator list-row shape (lifecycle-triage columns; capability summary lives on the detail read).
       properties:
         id:
@@ -1489,6 +1549,8 @@ components:
           format: uuid
         name:
           type: string
+        kind:
+          $ref: '#/components/schemas/TenantKind'
         slug:
           oneOf:
             - type: string
@@ -1531,13 +1593,15 @@ components:
     TenantDetail:
       type: object
       additionalProperties: false
-      required: [id, name, is_active, created_at, updated_at, identity_provider, status]
+      required: [id, name, kind, is_active, created_at, updated_at, identity_provider, status]
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+        kind:
+          $ref: '#/components/schemas/TenantKind'
         is_active:
           type: boolean
         created_at:
@@ -1712,10 +1776,11 @@ components:
             type: string
         status:
           type: string
+          # IC-1 PR-1: `membership_added` RETIRED — an existing user owned by
+          # another tenant is refused with 409 EMAIL_UNAVAILABLE.
           enum:
             - invitation_sent
             - roles_updated
-            - membership_added
 
     ResendOwnerInviteResponse:
       type: object

@@ -145,6 +145,31 @@ const IDENTITY_AUTHZ_VERSION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 );
+// IC-1 PR-2 — owning tenant on User (nullable expand + backfill). The regenerated
+// identity client SELECTs User.tenant_id on every User read (the invite saga, /v1/me,
+// the roster), so this interleaved hand-list must carry the expand file; the backfill
+// meets an empty table at apply time (no-op) and is included so the schema matches a
+// post-migration production. (Interleaved multi-stack list → stays hand-listed, per the
+// PR-1.5 Workstream C convention.)
+const IDENTITY_USER_TENANT_OWNER_EXPAND = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+);
+const IDENTITY_USER_TENANT_OWNER_BACKFILL = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+);
+// IC-1 PR-3 — restrict + immutability trigger (applied whole-file through pg).
+const IDENTITY_USER_TENANT_CARDINALITY = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+);
+const IDENTITY_USER_TENANT_IMMUTABLE = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+);
+// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -459,10 +484,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // admin token's version read is authoritative (not a fallback). ----
     async function seedAdminPrincipal(): Promise<void> {
       await db.query(
-        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
-         VALUES ($1::uuid, $2, $3, true, CURRENT_TIMESTAMP)
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, true, $4::uuid, CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO NOTHING`,
-        [TENANT_ADMIN, 'tenant.admin.d1@aramo.dev', 'D1 Tenant Admin'],
+        [TENANT_ADMIN, 'tenant.admin.d1@aramo.dev', 'D1 Tenant Admin', TENANT_ATS],
       );
       const membershipId = uuidv7();
       await db.query(
@@ -663,6 +688,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_PROFILE,
         IDENTITY_SITE_HIERARCHY,
         IDENTITY_AUTHZ_VERSION,
+        IDENTITY_USER_TENANT_OWNER_EXPAND,
+        IDENTITY_USER_TENANT_OWNER_BACKFILL,
+        IDENTITY_USER_TENANT_CARDINALITY,
+        IDENTITY_USER_TENANT_IMMUTABLE,
+        IDENTITY_IC4_TENANT_KIND,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
@@ -874,6 +904,115 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [recruiterMembershipId],
       );
       expect(roles.rows.map((r) => r.key)).toEqual(['recruiter']);
+    });
+
+    // ======================================================================
+    // IC-1 PR-1 — D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4 at the REAL
+    // tenant-tier HTTP surface (apps/api, real Postgres): an email already
+    // owned by ANOTHER tenant is refused with the governed 409
+    // EMAIL_UNAVAILABLE and EXACTLY `details: {}`; nothing persists.
+    // ======================================================================
+    it('IC-1 PR-1 — POST /v1/tenant/users/invitations for an email owned by another tenant → 409 EMAIL_UNAVAILABLE, details {}, no new rows', async () => {
+      const OTHER_TENANT = '01900000-0000-7000-8000-00000000ab01';
+      const ownedUserId = uuidv7();
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, updated_at)
+         VALUES ($1::uuid, 'IC-1 Other Tenant', CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO NOTHING`,
+        [OTHER_TENANT],
+      );
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, true, $4::uuid, CURRENT_TIMESTAMP)`,
+        [ownedUserId, 'owned.elsewhere@aramo.dev', 'Owned Elsewhere', OTHER_TENANT],
+      );
+      await db.query(
+        `INSERT INTO identity."UserTenantMembership"
+           (id, user_id, tenant_id, site_id, is_active, invite_status, updated_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, NULL, true, 'ACTIVE', CURRENT_TIMESTAMP)`,
+        [uuidv7(), ownedUserId, OTHER_TENANT],
+      );
+      const before = await db.query<{ users: string; memberships: string; invitations: string }>(
+        `SELECT (SELECT count(*) FROM identity."User") AS users,
+                (SELECT count(*) FROM identity."UserTenantMembership") AS memberships,
+                (SELECT count(*) FROM identity."Invitation") AS invitations`,
+      );
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/tenant/users/invitations`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${adminJwt}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'Owned.Elsewhere@Aramo.DEV',
+            display_name: 'Owned Elsewhere',
+            role_keys: ['recruiter'],
+          }),
+        },
+      );
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as {
+        error: { code: string; request_id: string; details: Record<string, unknown> };
+      };
+      expect(body.error.code).toBe('EMAIL_UNAVAILABLE');
+      expect(body.error.details).toEqual({});
+      expect(typeof body.error.request_id).toBe('string');
+      const serialized = JSON.stringify(body);
+      expect(serialized).not.toContain(OTHER_TENANT);
+      expect(serialized).not.toContain(ownedUserId);
+
+      const after = await db.query<{ users: string; memberships: string; invitations: string }>(
+        `SELECT (SELECT count(*) FROM identity."User") AS users,
+                (SELECT count(*) FROM identity."UserTenantMembership") AS memberships,
+                (SELECT count(*) FROM identity."Invitation") AS invitations`,
+      );
+      expect(after.rows[0]).toEqual(before.rows[0]);
+      // The owner still has exactly ONE membership, in the other tenant.
+      const owned = await db.query<{ tenant_id: string }>(
+        `SELECT tenant_id FROM identity."UserTenantMembership" WHERE user_id = $1::uuid`,
+        [ownedUserId],
+      );
+      expect(owned.rows.map((r) => r.tenant_id)).toEqual([OTHER_TENANT]);
+      // The tenant-scoped audit entry (scoped to THIS tenant) retains the reason.
+      const audit = await db.query<{ event_payload: { reason: string; tier: string } }>(
+        `SELECT event_payload FROM identity."IdentityAuditEvent"
+          WHERE tenant_id = $1::uuid AND event_type = 'identity.invitation.rejected_cross_tenant'`,
+        [TENANT_ATS],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]?.event_payload).toMatchObject({
+        reason: 'existing_user_owned_by_other_tenant',
+        tier: 'tenant',
+      });
+
+      // Gate-5 G5-08 — the tenant admin's OWN audit read (the real GET
+      // /v1/tenant/audit-events, audit:read scope) must expose NO foreign
+      // identifier: neither the other tenant's id, nor the owned user's id,
+      // nor the email; and the subject is this tenant, not the foreign user.
+      const auditRes = await fetch(
+        `http://127.0.0.1:${port}/v1/tenant/audit-events?event_type=identity.invitation.rejected_cross_tenant`,
+        { headers: { Authorization: `Bearer ${adminJwt}` } },
+      );
+      expect(auditRes.status).toBe(200);
+      const auditBody = (await auditRes.json()) as {
+        items: Array<{ subject_id: string; detail: string }>;
+      };
+      expect(auditBody.items).toHaveLength(1);
+      expect(auditBody.items[0]?.subject_id).toBe(TENANT_ATS);
+      const auditSerialized = JSON.stringify(auditBody);
+      expect(auditSerialized).not.toContain(OTHER_TENANT);
+      expect(auditSerialized).not.toContain(ownedUserId);
+      expect(auditSerialized).not.toContain('owned.elsewhere');
+      // A subject_id probe for the foreign user id returns nothing.
+      const probeRes = await fetch(
+        `http://127.0.0.1:${port}/v1/tenant/audit-events?subject_id=${ownedUserId}`,
+        { headers: { Authorization: `Bearer ${adminJwt}` } },
+      );
+      expect(probeRes.status).toBe(200);
+      expect(((await probeRes.json()) as { items: unknown[] }).items).toEqual([]);
     });
 
     // ======================================================================

@@ -2,6 +2,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 
 import { Injectable } from '@nestjs/common';
 
+import type { HostBindingClass } from './host-binding.js';
+
 // Per directive §8.1 step 2 + §3 PKCE state cookie. RFC 7636 mandates a
 // 43-128-char verifier (base64url-encoded high-entropy). Cognito S256
 // challenge = base64url(SHA-256(verifier)).
@@ -21,6 +23,11 @@ export interface PkceStatePayload {
   state: string;
   consumer: string;
   issued_at: number;
+  // IC-2 PR-4 — the host class + host context sealed at login (F-5). OPTIONAL:
+  // a cookie minted before PR-4 carries neither and is a LEGACY (unbound) state
+  // for at most its 600 s TTL (F-8). The cookie format and TTL are unchanged.
+  host_class?: HostBindingClass | null;
+  context_id?: string | null;
 }
 
 const VERIFIER_BYTES = 64; // 64 random bytes → ~86-char base64url verifier (within 43-128 range)

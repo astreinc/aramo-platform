@@ -84,6 +84,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         undefined as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         undefined as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        undefined as any,
       );
       tenantSvc = new TenantService(new TenantRepository(prisma));
       roleSvc = new RoleService(new RoleRepository(prisma));
@@ -147,6 +149,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'esign_viewer',
         'finance',
         'lead_recruiter',
+        // IC-3 PR-7 — org_admin (product-neutral organization administrator, 0x2b0).
+        'org_admin',
         'recruiter',
         'recruiting_manager',
         'sourcer',
@@ -458,7 +462,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(740); // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (esign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(748); // IC-3 PR-7 +8 grants (org_admin × ORG_ADMIN_SCOPE_KEYS, range 0x1600+) → 740+8=748. // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (esign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -667,7 +671,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { key: { not: 'super_admin' }, NOT: { key: { startsWith: 'esign_' } } },
         select: { key: true },
       });
-      expect(tenantRoles.length).toBe(13);
+      // IC-3 PR-7 — +1 org_admin (product-neutral organization administrator) → 14 tenant roles.
+      expect(tenantRoles.length).toBe(14);
     });
 
     // -----------------------------------------------------------------
@@ -2002,6 +2007,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'authz1-multirole@aramo.dev',
           display_name: 'AUTHZ-1 multirole',
           is_active: true,
+          // IC-1 PR-3: born OWNED by the membership tenant below.
+          tenant_id: SEED_IDS.tenant,
         },
       });
       await prisma.userTenantMembership.upsert({
@@ -2082,6 +2089,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'dup-test-user@aramo.dev',
           display_name: 'dup test',
           is_active: true,
+          // IC-1 PR-3: NOT NULL owner (this fixture has no membership — the DB
+          // enforces at MOST one; at LEAST one is the writers' job, not the DB's).
+          tenant_id: SEED_IDS.tenant,
         },
       });
 
@@ -2125,6 +2135,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'link-test-user@aramo.dev',
           display_name: 'link test',
           is_active: true,
+          tenant_id: SEED_IDS.tenant,
         },
       });
 
@@ -2232,6 +2243,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.domain.verified',
         'identity.invitation.accepted',
         'identity.invitation.created',
+        // IC-1 PR-1 — cross-tenant invitation refusal (scoped to the attempted tenant).
+        // NOTE: PR-1's Gate-5 run covered 4 identity real-Postgres specs, not this
+        // root-wide exact-set assertion; the gap surfaced in PR-2's full-matrix run
+        // and is reconciled here (test-only; the registry itself is unchanged).
+        'identity.invitation.rejected_cross_tenant',
         'identity.management_edge.cleared',
         'identity.management_edge.set',
         'identity.membership.created',
@@ -2251,6 +2267,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.tenant_profile.updated',
         'identity.tenant_setting.updated',
         'identity.tenant_user.disabled',
+        // IC-3 PR-7 — tenant-user ENABLE event (identity + IdP confirmed).
+        'identity.tenant_user.enabled',
         'identity.tenant_user.role_assigned',
         'identity.tenant_user.role_removed',
         'identity.user_client_assignment.created',

@@ -75,6 +75,8 @@ const IDENTITY_IDP_LC = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
 );
+// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
 const IDENTITY_INVITATION_MIG = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
@@ -449,6 +451,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_SLUG,
         IDENTITY_IDP,
         IDENTITY_IDP_LC,
+        IDENTITY_IC4_TENANT_KIND,
         IDENTITY_INVITATION_MIG,
         IDENTITY_SITE_AXIS,
         IDENTITY_D4A,

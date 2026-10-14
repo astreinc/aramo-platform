@@ -9,7 +9,7 @@ import {
 } from '@testcontainers/postgresql';
 import { v7 as uuidv7 } from 'uuid';
 import {
-  ARAMO_POSTGRES_TEST_IMAGE, createAramoLogger } from '@aramo/common';
+  ARAMO_POSTGRES_TEST_IMAGE, createAramoLogger, resolveIdentityMigrations } from '@aramo/common';
 
 import { IdentityAuditRepository } from '../lib/audit/identity-audit.repository.js';
 import { IdentityAuditService } from '../lib/audit/identity-audit.service.js';
@@ -17,6 +17,7 @@ import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 
 // Invite-S2 (Pattern-2) — the 3-STATE TRANSITION + TOKEN-LIFECYCLE proof
 // (directive §8.10 LOCAL PROOF + the mandatory 3-state + token specs).
@@ -37,47 +38,12 @@ import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js
 // (a second accept is rejected), expiry enforced, revoke honored.
 
 const ROOT = resolve(__dirname, '../../../..');
-const IDENTITY_INIT = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
-// HF-AUTH-1 — createUserWithMembership (the invite saga) calls ensureBaselineVersion,
-// which writes AuthorizationVersion; the table must exist or the saga 500s.
-const IDENTITY_AUTHZ_VERSION = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
-);
-// Domain-Enforcement P1 — additive Tenant.allowed_domain column.
-const IDENTITY_ALLOWED_DOMAIN = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-);
-// Domain-Enforcement P2b — additive Tenant domain-verification columns.
-const IDENTITY_DOMAIN_VERIFICATION = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-);
-const IDENTITY_SLUG = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-);
-// The site axis adds UserTenantMembership.site_id, which the generated Prisma
-// client SELECTs/INSERTs on every membership op — required for the client to
-// match the DB even though this proof never sets a site.
-const IDENTITY_SITE_AXIS = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
-);
-// Tenant.display_name (used by the invite/acceptance email greeting) comes
-// from the tenant-profile migration; the Prisma client SELECTs it.
-const IDENTITY_PROFILE = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
-);
-const IDENTITY_INVITATION = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
-);
+// IC-1 PR-2 — this spec used to hand-list a pure-identity SUBSET (8 of the
+// migrations). The regenerated identity client now SELECTs User.tenant_id on
+// every User read, so the subset broke on `column "tenant_id" does not exist`.
+// Retrofitted to the single ordered helper (PR-1.5 Workstream C convention):
+// the extra additive tables are behavior-neutral for this proof.
+const IDENTITY_MIGRATION_SQL_PATHS = resolveIdentityMigrations(ROOT);
 
 const TENANT = '01900000-0000-7000-8000-0000000000a1';
 const ACTOR = '01900000-0000-7000-8000-0000000000a2';
@@ -100,14 +66,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const setup = new PrismaService(url);
       await setup.$connect();
-      for (const file of [
-        IDENTITY_INIT,
-        IDENTITY_AUTHZ_VERSION,
-        IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG,
-        IDENTITY_SITE_AXIS,
-        IDENTITY_PROFILE,
-        IDENTITY_INVITATION,
-      ]) {
+      for (const file of IDENTITY_MIGRATION_SQL_PATHS) {
         for (const stmt of splitDdl(readFileSync(file, 'utf8'))) {
           const t = stmt.trim();
           if (t.length > 0) await setup.$executeRawUnsafe(t);
@@ -134,6 +93,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new IdentityRepository(prisma),
         audit,
         new RoleBundleValidator(prisma),
+        // IC-3 PR-8 — ATS tenant without the Sign product (no esign role assigned here).
+        { getCapabilities: async () => new Set<string>(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
       );
     }, 120_000);
 

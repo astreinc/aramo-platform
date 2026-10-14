@@ -4,14 +4,21 @@ import {
   IdentityAuditService,
   IdentityService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
+  requiredCapabilityForConsumer,
+  SYSTEM_SERVICE_ACCOUNT_ID,
+  TENANT_ACTIVATING_OWNER_ROLE_KEYS,
 } from '@aramo/identity';
-import type {
-  PrincipalDirectory,
-  ResolveScopesInput,
-  ResolveScopesResult,
-  ResolveSessionInput,
-  ResolveSessionResult,
+import {
+  allowUnboundHost,
+  evaluateHostBinding,
+  readHostBindingMode,
+  type PrincipalDirectory,
+  type ResolveScopesInput,
+  type ResolveScopesResult,
+  type ResolveSessionInput,
+  type ResolveSessionResult,
 } from '@aramo/auth-core';
 
 type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['event_type'];
@@ -37,6 +44,15 @@ type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['e
 //  (5) status gate applies to TENANT consumers only; `platform` is exempt
 //      (sentinel tenant has no lifecycle). PROVISIONED/ACTIVE/OFFBOARDING mint.
 //  (6) site_id === null → tenant-wide scopes; otherwise → site-scoped scopes.
+//
+// IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1): the result union is
+// resolved | denied — a defensive multi-tenant read (unreachable against the
+// IC-1 PR-3 database) is `denied tenant_resolution_ambiguous`, never a chooser;
+// and the HOST BINDING check (F-5) runs AFTER tenant selection and BEFORE the
+// status gate, comparing selectedTenant.id (F-2 — equal to User.tenant_id by the
+// PR-3 composite FK) with the host context sealed at login. Under
+// AUTH_HOST_TENANT_BINDING=log (default) a failure is logged and the outcome is
+// unchanged; under enforce it is denied and no session is minted.
 @Injectable()
 export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   private readonly logger = new Logger(IdentityPrincipalDirectoryAdapter.name);
@@ -49,7 +65,35 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     // HF-AUTH-1 — the current authorization revision to stamp into the compact
     // token (login + refresh mint paths).
     private readonly authzVersions: AuthorizationVersionService,
+    // IC-2 PR-6 — live product-entitlement read for the consumer→capability gate.
+    private readonly entitlements: TenantEntitlementReader,
   ) {}
+
+  // IC-2 PR-6 (IC-0 §F.2 rule 3) — a consumer credential is minted or
+  // re-minted ONLY when the tenant holds the consumer's product capability:
+  // recruiter/ingestion → `ats`, esign → `esign`, platform → exempt (sentinel),
+  // portal/unknown → unsupported on this path. Re-proven at EVERY mint and
+  // refresh from the entitlement store (never from the token), so a removed
+  // entitlement cannot be resurrected by refresh. A valid identity is not
+  // evidence of product entitlement. Fail closed on an unreadable store.
+  private async assertConsumerEntitled(
+    consumer: string | undefined,
+    tenant_id: string,
+  ): Promise<{ ok: true } | { ok: false; reason: 'consumer_not_entitled' | 'consumer_not_supported' }> {
+    const requirement = requiredCapabilityForConsumer(consumer);
+    if (requirement.kind === 'exempt') return { ok: true };
+    if (requirement.kind === 'unsupported') return { ok: false, reason: 'consumer_not_supported' };
+    let capabilities: ReadonlySet<string>;
+    try {
+      capabilities = await this.entitlements.getCapabilities(tenant_id);
+    } catch (err) {
+      this.logger.warn(`entitlement read failed (fail closed): ${(err as Error).message}`);
+      return { ok: false, reason: 'consumer_not_entitled' };
+    }
+    return capabilities.has(requirement.capability)
+      ? { ok: true }
+      : { ok: false, reason: 'consumer_not_entitled' };
+  }
 
   async resolveSession(input: ResolveSessionInput): Promise<ResolveSessionResult> {
     // Reconcile by federated sub; on miss, reconcile-by-verified-email.
@@ -91,6 +135,14 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       user = existing;
     }
 
+    // IC-2 PR-5 (N-6 wired) — the GLOBAL User.is_active flag is an eligibility
+    // gate at mint: a deactivated identity never mints, whatever its
+    // membership rows say. Checked before activation/selection so nothing is
+    // written for it.
+    if (user.is_active === false) {
+      return { kind: 'denied', reason: 'user_inactive' };
+    }
+
     // Invariant 1+2: the SINGLE membership-activation seam. AFTER reconcile/link,
     // BEFORE tenant resolution; best-effort (an activation write must not break an
     // otherwise-valid sign-in).
@@ -107,12 +159,40 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       return { kind: 'denied', reason: 'no_active_tenant' };
     }
     if (tenants.length > 1) {
-      return {
-        kind: 'ambiguous',
-        choices: tenants.map((t) => ({ id: t.id, name: t.name })),
-      };
+      // IC-1 made this unreachable at the database (UNIQUE membership per User);
+      // kept as a FAIL-CLOSED guard (Amendment A1 §2 item 1). No tenant named.
+      return { kind: 'denied', reason: 'tenant_resolution_ambiguous' };
     }
     const selectedTenant = tenants[0]!;
+
+    // IC-2 PR-4 (F-5) — host binding: AFTER tenant selection, BEFORE the status
+    // gate, so a mismatched host never learns another tenant's lifecycle state.
+    const binding = evaluateHostBinding({
+      host_class: input.host_class,
+      context_id: input.context_id,
+      consumer: input.consumer,
+      resolved_context_id: selectedTenant.id,
+      allow_unbound: allowUnboundHost(),
+    });
+    if (!binding.ok) {
+      const mode = readHostBindingMode();
+      // Structured diagnostic (F-6 log mode). Deliberately carries NO tenant or
+      // user identifiers — nothing here can disclose a foreign tenant.
+      this.logger.warn(
+        JSON.stringify({
+          event: 'auth.host_binding',
+          stage: 'principal_resolution',
+          mode,
+          outcome: binding.reason,
+          consumer: input.consumer,
+          host_class: input.host_class ?? null,
+          legacy_pkce: input.host_class === undefined,
+        }),
+      );
+      if (mode === 'enforce') {
+        return { kind: 'denied', reason: binding.reason };
+      }
+    }
 
     // Invariant 5: tenant-status mint gate — TENANT consumers only. The platform
     // consumer's sentinel tenant has no lifecycle and is exempt. SUSPENDED/CLOSED
@@ -127,6 +207,13 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       }
     }
 
+    // IC-2 PR-6 (rule 3) — product capability gate AFTER the status gate, BEFORE
+    // any scope resolution: no session for a product the tenant is not entitled to.
+    const entitled = await this.assertConsumerEntitled(input.consumer, selectedTenant.id);
+    if (!entitled.ok) {
+      return { kind: 'denied', reason: entitled.reason };
+    }
+
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: user.id,
       tenant_id: selectedTenant.id,
@@ -136,6 +223,22 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       tenant_id: selectedTenant.id,
       principal_id: user.id,
     });
+
+    // IC-4 PR-9 / IC-0 J-9 (Platform-Console Inc-2 PR-1 Amendment Inc-2-PR-1-A1)
+    // — OWNER FIRST-SESSION ACTIVATION. A Pattern-A owner (Cognito-invited at
+    // provisioning) has no Invitation row, so the acceptance-time hook never
+    // fires and the tenant would sit PROVISIONED forever. Here, AFTER every
+    // gate has passed (host binding, status, entitlement, scopes) and ONLY for
+    // a tenant consumer whose tenant is still PROVISIONED and whose membership
+    // holds an activating owner role (tenant_owner / org_admin), the tenant is
+    // transitioned PROVISIONED → ACTIVE by the system actor. Best-effort and
+    // idempotent (transitionTenantStatus no-ops on an already-ACTIVE tenant):
+    // an activation failure NEVER fails an otherwise-valid sign-in — the mint
+    // gate already allows PROVISIONED. Nothing here widens scopes or changes
+    // the minted session.
+    if (input.consumer !== 'platform' && selectedTenant.status === 'PROVISIONED') {
+      await this.activateOnOwnerFirstSession({ user_id: user.id, tenant_id: selectedTenant.id });
+    }
 
     return {
       kind: 'resolved',
@@ -147,7 +250,62 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     };
   }
 
+  private async activateOnOwnerFirstSession(args: { user_id: string; tenant_id: string }): Promise<void> {
+    try {
+      const membership = await this.identity.findMembership(args);
+      if (membership === null) return;
+      const roleKeys = await this.identity.findRoleKeysForMembership(membership.id);
+      if (!roleKeys.some((k) => TENANT_ACTIVATING_OWNER_ROLE_KEYS.includes(k))) return;
+      await this.tenant.transitionTenantStatus({
+        tenant_id: args.tenant_id,
+        to: 'ACTIVE',
+        actor_id: SYSTEM_SERVICE_ACCOUNT_ID,
+        actor_type: 'system',
+        source: 'owner_first_session',
+        related: { membershipId: membership.id, userId: args.user_id },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `owner first-session activation failed (non-blocking; tenant stays PROVISIONED, mint-gate allows it): ${(err as Error).message}`,
+      );
+    }
+  }
+
   async resolveScopes(input: ResolveScopesInput): Promise<ResolveScopesResult> {
+    // IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — ELIGIBILITY is re-proven
+    // at every refresh, at the authoritative identity boundary, BEFORE anything
+    // is re-minted:
+    //  (1) the User exists and is globally active (N-6 wired);
+    //  (2) the principal holds an ACTIVE membership in an ACTIVE tenant and that
+    //      tenant IS the stored context — one User, one tenant (IC-1): the
+    //      stored token can never re-mint a tenant the principal does not own;
+    //  (3) the tenant status gate (SUSPENDED/CLOSED deny; `platform` exempt),
+    //      the same gate resolveSession applies.
+    const user = await this.identity.findUserById(input.principal_id);
+    if (user === null || user.is_active === false) {
+      return { kind: 'denied', reason: 'user_inactive' };
+    }
+    const tenants = await this.tenant.getTenantsByUser({ user_id: input.principal_id });
+    const stored = tenants.find((t) => t.id === input.context_id);
+    if (stored === undefined) {
+      return { kind: 'denied', reason: 'membership_inactive' };
+    }
+    if (input.consumer !== 'platform') {
+      if (stored.status === 'SUSPENDED') {
+        return { kind: 'denied', reason: 'tenant_suspended' };
+      }
+      if (stored.status === 'CLOSED') {
+        return { kind: 'denied', reason: 'tenant_closed' };
+      }
+    }
+
+    // IC-2 PR-6 (rule 3) — the consumer's product capability is re-proven at
+    // every refresh; a refresh cannot resurrect a revoked product capability.
+    const entitled = await this.assertConsumerEntitled(input.consumer, input.context_id);
+    if (!entitled.ok) {
+      return { kind: 'denied', reason: entitled.reason };
+    }
+
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: input.principal_id,
       tenant_id: input.context_id,
@@ -158,7 +316,12 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       tenant_id: input.context_id,
       principal_id: input.principal_id,
     });
-    return { scopes, authz_version, ...(site_id !== null ? { claims: { site_id } } : {}) };
+    return {
+      kind: 'resolved',
+      scopes,
+      authz_version,
+      ...(site_id !== null ? { claims: { site_id } } : {}),
+    };
   }
 
   // Invariant 6: site-stamp scope selection, shared by resolveSession and

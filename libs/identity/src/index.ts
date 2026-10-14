@@ -7,7 +7,35 @@ export { IdentityModule } from './lib/identity.module.js';
 // forRoot IdentityModule used to collide with.
 export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
+// IC-1 PR-1 (Amendment A1 §4) — the invite-email ownership classification the
+// platform tier runs BEFORE any Cognito side effect, plus the audit vocabulary.
+export type {
+  InviteEmailOwnership,
+  InviteTier,
+  CrossTenantRejectionReason,
+} from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
+// IC-2 PR-6 — live product-entitlement read (mint/refresh gate + resolver) and
+// the pure consumer→capability / scope-namespace policy.
+export { TenantEntitlementReader } from './lib/tenant-entitlement-reader.service.js';
+export {
+  requiredCapabilityForConsumer,
+  filterScopesForConsumer,
+  ESIGN_SCOPE_PREFIX,
+  PLATFORM_SCOPE_PREFIX,
+  type ConsumerCapabilityRequirement,
+  type ProductConsumer,
+} from './lib/authorization/consumer-scope-policy.js';
+// IC-3 PR-8 — the Sign SENDER authorization boundary (guard composition + the
+// pure decision) a `v1/esign/sender/*` route mounts; see the module header for
+// the activation dependency.
+export {
+  EsignSenderBoundary,
+  EsignSenderConsumerGuard,
+  evaluateEsignSenderAuthorization,
+  type EsignSenderDenialReason,
+  type EsignSenderVerdict,
+} from './lib/authorization/esign-sender-boundary.js';
 // Inc-3 PR-3.8 (A) — the operator dashboard payload shape.
 export type {
   PlatformDashboardData,
@@ -48,7 +76,20 @@ export {
   TENANT_TRANSITIONS,
   isLegalTransition,
   MINT_DENYING_STATUSES,
+  // IC-4 PR-9 — the system actor id for automatic lifecycle writes (J-9 owner
+  // first-session activation runs in the auth-service adapter).
+  SYSTEM_SERVICE_ACCOUNT_ID,
 } from './lib/util/tenant-lifecycle.js';
+// IC-4 PR-9 — tenant KIND vocabulary (BUSINESS | PERSONAL), the closed personal
+// capability set and the first-session activation owner keys (J-9).
+export {
+  TENANT_KINDS,
+  type TenantKind,
+  isTenantKind,
+  DEFAULT_TENANT_KIND,
+  PERSONAL_TENANT_CAPABILITIES,
+  TENANT_ACTIVATING_OWNER_ROLE_KEYS,
+} from './lib/util/tenant-kind.js';
 export { IdentityRepository } from './lib/identity.repository.js';
 export { TenantRepository } from './lib/tenant.repository.js';
 // Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row shape.
@@ -81,6 +122,11 @@ export { IdentityAuditService } from './lib/audit/identity-audit.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   SEED_ROLE_KEYS,
+  PLATFORM_ROLE_KEYS,
+  TENANT_ASSIGNABLE_ROLE_KEYS,
+  ORG_ADMIN_SCOPE_KEYS,
+  ESIGN_PRODUCT_ROLE_KEYS,
+  ESIGN_SENDER_SCOPE_KEY,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';

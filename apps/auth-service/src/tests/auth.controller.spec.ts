@@ -458,6 +458,44 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     }
   });
 
+  // IC-2 PR-4 (F-5): the callback threads the CALLBACK host's class + context
+  // into the orchestrator (compared there with the sealed login context).
+  it('threads the callback host class + context into handleCallback', async () => {
+    const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
+    process.env['AUTH_POST_LOGIN_REDIRECT'] = 'https://app.example/';
+    try {
+      const handleCallback = vi.fn().mockResolvedValue({
+        kind: 'success',
+        accessJwt: 'a.b.c',
+        refreshTokenPlaintext: 'rt-plain',
+      });
+      const hostBase = {
+        resolve: vi.fn().mockResolvedValue({
+          derivedBase: 'https://acme.aramo.ai',
+          identityProvider: null,
+          hostClass: 'TENANT',
+          contextId: TENANT_ID,
+        }),
+      } as unknown as HostBaseResolver;
+      const ctl = makeController({
+        sessionOrch: { handleCallback } as unknown as SessionOrchestratorService,
+        hostBase,
+      });
+      const req = {
+        cookies: { aramo_pkce_state: 'cipher' },
+        requestId: 'r',
+        get: () => 'acme.aramo.ai',
+      } as never;
+      await ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, makeRes() as never);
+      expect(handleCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ consumer: 'recruiter', hostClass: 'TENANT', contextId: TENANT_ID }),
+      );
+    } finally {
+      if (prev === undefined) delete process.env['AUTH_POST_LOGIN_REDIRECT'];
+      else process.env['AUTH_POST_LOGIN_REDIRECT'] = prev;
+    }
+  });
+
   it('on success WITHOUT AUTH_POST_LOGIN_REDIRECT configured: throws 500 (no hardcoded fallback)', async () => {
     const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
     delete process.env['AUTH_POST_LOGIN_REDIRECT'];
@@ -538,11 +576,21 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     }
 
     const CASES: ReadonlyArray<readonly [string, unknown, string]> = [
+      // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1): the 409 tenant-selection
+      // path is RETIRED — a defensive multi-tenant resolution and every
+      // host-binding denial map to the EXISTING 403 TENANT_ACCESS_DENIED (F-5).
       [
-        'tenant_selection_required',
-        { kind: 'tenant_selection_required', tenants: [{ id: TENANT_ID, name: 'T1' }] },
-        'TENANT_SELECTION_REQUIRED',
+        'tenant_resolution_ambiguous',
+        { kind: 'auth_error', reason: 'tenant_resolution_ambiguous' },
+        'TENANT_ACCESS_DENIED',
       ],
+      ['host_tenant_mismatch', { kind: 'auth_error', reason: 'host_tenant_mismatch' }, 'TENANT_ACCESS_DENIED'],
+      ['host_class_consumer_mismatch', { kind: 'auth_error', reason: 'host_class_consumer_mismatch' }, 'TENANT_ACCESS_DENIED'],
+      ['host_unbound', { kind: 'auth_error', reason: 'host_unbound' }, 'TENANT_ACCESS_DENIED'],
+      // IC-2 PR-6 — product capability refusals: the EXISTING entitlement code for a
+      // tenant not entitled to the consumer's product; unsupported consumer → default 403.
+      ['consumer_not_entitled', { kind: 'auth_error', reason: 'consumer_not_entitled' }, 'TENANT_CAPABILITY_NOT_ENTITLED'],
+      ['consumer_not_supported', { kind: 'auth_error', reason: 'consumer_not_supported' }, 'INSUFFICIENT_PERMISSIONS'],
       ['tenant_suspended', { kind: 'auth_error', reason: 'tenant_suspended' }, 'TENANT_SUSPENDED'],
       ['tenant_closed', { kind: 'auth_error', reason: 'tenant_closed' }, 'TENANT_CLOSED'],
       ['email_not_verified', { kind: 'auth_error', reason: 'email_not_verified' }, 'INVALID_TOKEN'],
@@ -751,6 +799,35 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
   });
 
+  // IC-2 PR-4 (F-5): login SEALS the host class + context into the PKCE state
+  // next to the consumer, so the callback can bind the resolved identity to the
+  // host the user actually logged in on.
+  it('seals host_class + context_id from resolve into the PKCE state', async () => {
+    const pkce = fakePkce();
+    const hostBase = {
+      resolve: vi.fn().mockResolvedValue({
+        derivedBase: 'https://astre.aramo.ai',
+        identityProvider: null,
+        hostClass: 'TENANT',
+        contextId: TENANT_ID,
+      }),
+    } as unknown as HostBaseResolver;
+    const ctl = makeController({ pkce, hostBase });
+    await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), makeRes() as never);
+    expect(pkce.encryptState).toHaveBeenCalledWith(
+      expect.objectContaining({ consumer: 'recruiter', host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+  });
+
+  it('seals host_class null + context_id null for an UNVALIDATED host (unbound under F-6)', async () => {
+    const pkce = fakePkce();
+    const ctl = makeController({ pkce, hostBase: hostBaseYielding(null) });
+    await ctl.login('recruiter', reqWithHost('evil.com'), makeRes() as never);
+    expect(pkce.encryptState).toHaveBeenCalledWith(
+      expect.objectContaining({ host_class: null, context_id: null }),
+    );
+  });
+
   it('derivedBase from resolve WINS the redirect_uri (host-derived callback)', async () => {
     const hostBase = {
       resolve: vi.fn().mockResolvedValue({
@@ -764,5 +841,156 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     expect(locationOf(res).searchParams.get('redirect_uri')).toBe(
       'https://admin.aramo.ai/auth/platform/callback',
     );
+  });
+});
+
+// IC-2 PR-5 — session-surface host binding at /session, /refresh and /logout.
+describe('IC-2 PR-5 — /session, /refresh, /logout host binding', () => {
+  const BINDING_ENV = ['AUTH_HOST_TENANT_BINDING', 'AUTH_ALLOW_UNBOUND_HOST'] as const;
+  let saved: Partial<Record<string, string | undefined>> = {};
+  beforeAll(() => {
+    saved = {};
+    for (const k of BINDING_ENV) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterAll(() => {
+    for (const k of BINDING_ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+  const OTHER_TENANT = '01900000-0000-7000-8000-0000000000ab';
+
+  function hostBaseOf(hostClass: string | null, contextId: string | null): HostBaseResolver {
+    return {
+      resolve: vi.fn().mockResolvedValue({ derivedBase: 'https://x.aramo.ai', identityProvider: null, hostClass, contextId }),
+    } as unknown as HostBaseResolver;
+  }
+  function cookieVerifierFor(tenantId: string, consumer = 'recruiter'): CookieVerifierService {
+    return {
+      verify: vi.fn().mockResolvedValue({
+        sub: USER_ID,
+        consumer_type: consumer,
+        tenant_id: tenantId,
+        authz_version: 1,
+        iat: 1_700_000_000,
+        exp: 1_700_000_900,
+      }),
+    } as unknown as CookieVerifierService;
+  }
+  const sessionReq = { cookies: { aramo_access_token: 'a.jwt' }, requestId: 'req-1', get: () => 'x.aramo.ai' } as never;
+
+  describe('/session', () => {
+    it('enforce: token tenant ≠ host tenant → 403 TENANT_ACCESS_DENIED (host_tenant_mismatch), no scopes returned', async () => {
+      process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+      try {
+        const authzResolver = { resolve: vi.fn() } as unknown as EffectiveAuthorizationResolver;
+        const ctl = makeController({ cookieVerifier: cookieVerifierFor(TENANT_ID), hostBase: hostBaseOf('TENANT', OTHER_TENANT), authzResolver });
+        await expect(ctl.session('recruiter', sessionReq)).rejects.toMatchObject({
+          code: 'TENANT_ACCESS_DENIED',
+          statusCode: 403,
+          context: { details: { reason: 'host_tenant_mismatch' } },
+        });
+        expect(authzResolver.resolve).not.toHaveBeenCalled();
+      } finally {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+      }
+    });
+    it('enforce: matching host → the 6-field session', async () => {
+      process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+      try {
+        const ctl = makeController({ cookieVerifier: cookieVerifierFor(TENANT_ID), hostBase: hostBaseOf('TENANT', TENANT_ID) });
+        const out = await ctl.session('recruiter', sessionReq);
+        expect(out.tenant_id).toBe(TENANT_ID);
+      } finally {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+      }
+    });
+    it('enforce: unbound host → 403 host_unbound unless AUTH_ALLOW_UNBOUND_HOST=true', async () => {
+      process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+      try {
+        const ctl = makeController({ cookieVerifier: cookieVerifierFor(TENANT_ID), hostBase: hostBaseOf(null, null) });
+        await expect(ctl.session('recruiter', sessionReq)).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED', context: { details: { reason: 'host_unbound' } } });
+        process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+        const out = await ctl.session('recruiter', sessionReq);
+        expect(out.sub).toBe(USER_ID);
+      } finally {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+        delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+      }
+    });
+    it('enforce: platform session on the PLATFORM host → ok; platform session on a TENANT host → 403', async () => {
+      process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+      try {
+        const sentinel = '01900000-0000-7000-8000-000000000100';
+        const ok = makeController({ cookieVerifier: cookieVerifierFor(sentinel, 'platform'), hostBase: hostBaseOf('PLATFORM', null) });
+        expect((await ok.session('platform', sessionReq)).consumer_type).toBe('platform');
+        const bad = makeController({ cookieVerifier: cookieVerifierFor(sentinel, 'platform'), hostBase: hostBaseOf('TENANT', TENANT_ID) });
+        await expect(bad.session('platform', sessionReq)).rejects.toMatchObject({ code: 'TENANT_ACCESS_DENIED', context: { details: { reason: 'host_tenant_mismatch' } } });
+      } finally {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+      }
+    });
+    it('log (default): token tenant ≠ host tenant → outcome unchanged (session returned)', async () => {
+      const ctl = makeController({ cookieVerifier: cookieVerifierFor(TENANT_ID), hostBase: hostBaseOf('TENANT', OTHER_TENANT) });
+      const out = await ctl.session('recruiter', sessionReq);
+      expect(out.tenant_id).toBe(TENANT_ID);
+    });
+  });
+
+  describe('/refresh', () => {
+    it('threads the request host class + context into handleRefresh', async () => {
+      const handleRefresh = vi.fn().mockResolvedValue({ kind: 'success', accessJwt: 'a', refreshTokenPlaintext: 'r' });
+      const ctl = makeController({ refreshOrch: { handleRefresh } as unknown as RefreshOrchestratorService, hostBase: hostBaseOf('TENANT', TENANT_ID) });
+      const res = makeRes();
+      await ctl.refresh('recruiter', { cookies: { aramo_refresh_token: 'p' }, requestId: 'r', get: () => 'x.aramo.ai' } as never, res as never);
+      expect(handleRefresh).toHaveBeenCalledWith({ consumer: 'recruiter', refreshCookie: 'p', hostClass: 'TENANT', contextId: TENANT_ID });
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+    it('maps a host-binding / eligibility token_invalid to 401 REFRESH_TOKEN_INVALID with BOTH cookies cleared', async () => {
+      for (const reason of ['host_tenant_mismatch', 'host_unbound', 'user_inactive', 'tenant_suspended']) {
+        const handleRefresh = vi.fn().mockResolvedValue({ kind: 'token_invalid', reason });
+        const ctl = makeController({ refreshOrch: { handleRefresh } as unknown as RefreshOrchestratorService });
+        const res = makeRes();
+        await expect(
+          ctl.refresh('recruiter', { cookies: { aramo_refresh_token: 'p' }, requestId: 'r', get: () => undefined } as never, res as never),
+        ).rejects.toMatchObject({ code: 'REFRESH_TOKEN_INVALID', statusCode: 401, context: { details: { reason } } });
+        // access + refresh cookies cleared (maxAge 0)
+        expect(res.cookie).toHaveBeenCalledTimes(2);
+      }
+    });
+  });
+
+  describe('/logout', () => {
+    function foundToken(tenantId: string): RefreshTokenDto {
+      return { id: 'rt-1', user_id: USER_ID, tenant_id: tenantId, consumer_type: 'recruiter', token_hash: 'h', created_at: '', updated_at: '', expires_at: '', revoked_at: null, replaced_by_id: null };
+    }
+    it.each(['log', 'enforce'] as const)('host mismatch (%s): NEVER strands — token revoked, cookies cleared, 204; audit reason records the mismatch; no tenant disclosed', async (mode) => {
+      if (mode === 'enforce') process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+      try {
+        const refreshTokens = { findByHash: vi.fn().mockResolvedValue(foundToken(TENANT_ID)), revoke: vi.fn().mockResolvedValue(undefined) } as unknown as RefreshTokenService;
+        const audit = { writeEvent: vi.fn().mockResolvedValue(undefined) } as unknown as IdentityAuditService;
+        const ctl = makeController({ refreshTokens, audit, hostBase: hostBaseOf('TENANT', OTHER_TENANT) });
+        const res = makeRes();
+        await ctl.logout('recruiter', { cookies: { aramo_refresh_token: 'plaintext' }, requestId: 'r', get: () => 'x.aramo.ai' } as never, res as never);
+        expect(refreshTokens.revoke).toHaveBeenCalledWith({ id: 'rt-1' });
+        expect(audit.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'identity.session.revoked', payload: { reason: 'logout_host_tenant_mismatch' } }));
+        expect(res.cookie).toHaveBeenCalledTimes(2);
+        expect(res.status).toHaveBeenCalledWith(204);
+      } finally {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+      }
+    });
+    it('matching host: audit reason stays "logout"; unbound dev host under log likewise', async () => {
+      for (const hb of [hostBaseOf('TENANT', TENANT_ID), hostBaseOf(null, null)]) {
+        const refreshTokens = { findByHash: vi.fn().mockResolvedValue(foundToken(TENANT_ID)), revoke: vi.fn().mockResolvedValue(undefined) } as unknown as RefreshTokenService;
+        const audit = { writeEvent: vi.fn().mockResolvedValue(undefined) } as unknown as IdentityAuditService;
+        const ctl = makeController({ refreshTokens, audit, hostBase: hb });
+        await ctl.logout('recruiter', { cookies: { aramo_refresh_token: 'plaintext' }, requestId: 'r', get: () => 'x.aramo.ai' } as never, makeRes() as never);
+        expect(audit.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ payload: { reason: 'logout' } }));
+      }
+    });
   });
 });

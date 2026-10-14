@@ -24,6 +24,7 @@ function makeService(ctx: MeContextRow | null) {
     { findMeContext } as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   return { svc, findMeContext };
 }

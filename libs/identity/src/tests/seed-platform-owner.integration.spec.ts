@@ -87,6 +87,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(owner?.email).toBe(PLATFORM_OWNER_EMAIL);
       expect(owner?.display_name).toBe(PLATFORM_OWNER_DISPLAY_NAME);
+      // IC-1 PR-2 — the seeded platform owner is born OWNED by the sentinel tenant.
+      expect(owner?.tenant_id).toBe(SEED_IDS.platform_tenant);
 
       // Membership binds to the SENTINEL UUID.
       const membership = await prisma.userTenantMembership.findUnique({

@@ -121,6 +121,13 @@ export class TenantUserLifecycleService {
   //   step 2: no-sub identity create + token issue via
   //           createInvitedUserNoSub (the D5 union-non-invertibility gate
   //           runs INSIDE it, BEFORE any write; no Cognito user is minted).
+  //           IC-1 PR-1 (Amendment A1 §4): the one-User-one-tenant guard
+  //           ALSO runs inside it, after D5 and before the write, on the
+  //           normalized email — same-tenant → 409 INVITATION_ALREADY_EXISTS;
+  //           owned by another tenant → tenant-scoped audit + 409
+  //           EMAIL_UNAVAILABLE (details {}); a User.email P2002 lost
+  //           between pre-check and insert maps to the same governed 409s.
+  //           A refused invite persists nothing and sends no email.
   //   step 3: send the invite email (S1 mailer) with the raw token link.
   // The audit events (identity.user.created / membership.created /
   // invitation.created) are emitted from inside createInvitedUserNoSub —
@@ -487,6 +494,7 @@ export class TenantUserLifecycleService {
     // throws VALIDATION_ERROR here and never reaches the $transaction.
     await this.identitySvc.replaceMembershipRoles({
       membership_id: membership.id,
+      tenant_id: args.tenant_id,
       role_keys: args.role_keys,
       role_ids,
       request_id: args.request_id,
@@ -533,7 +541,54 @@ export class TenantUserLifecycleService {
     tenant_id: string;
     user_id: string;
     request_id: string;
-  }): Promise<{ membership_id: string }> {
+  }): Promise<{ membership_id: string; changed: boolean; cognito: 'enabled' | 'skipped' }> {
+    // IC-3 PR-7 (PR-5 residual) — the complete re-enable: identity first
+    // (reEnableMembership, the established lifecycle), then the IdP leg
+    // (adminEnableUser) that the disable saga's adminDisableUser left behind.
+    //
+    //  step 0: the user must exist (404) — the IdP username is the email.
+    //  step 1: the TENANT must permit access: SUSPENDED/CLOSED or soft-disabled
+    //          (is_active=false) tenants never get a user re-enabled at the IdP
+    //          (403 TENANT_SUSPENDED / TENANT_CLOSED — the same codes the mint
+    //          gate uses). Product entitlement is NOT consulted: enabling a
+    //          membership grants no product access (PR-6 gates every mint).
+    //  step 2: identity flip via reEnableMembership (404 if no membership in
+    //          this tenant; idempotent — an already-active membership is a
+    //          no-op and the IdP leg is still reconciled, since Cognito
+    //          AdminEnableUser is idempotent).
+    //  step 3: cognito.adminEnableUser. The port contract (mirrors
+    //          adminDeleteUser): an IdP account that does NOT exist (an invitee
+    //          who never logged in has no Cognito user) is a no-op success —
+    //          the membership re-enable IS the complete safe outcome. Any OTHER
+    //          IdP failure is COMPENSATED (the membership is disabled again, so
+    //          identity never reports an enabled user the IdP refuses) and
+    //          surfaced as 502 COGNITO_PROVISION_FAILED — never a false
+    //          end-to-end success.
+    const user = await this.identitySvc.findUserById(args.user_id);
+    if (user === null) {
+      throw new AramoError('NOT_FOUND', 'user not found', 404, {
+        requestId: args.request_id,
+        details: { user_id: args.user_id },
+      });
+    }
+    const tenantState = await this.identitySvc.getTenantAccessState(args.tenant_id);
+    if (tenantState === null || tenantState.is_active === false || tenantState.status === 'CLOSED') {
+      throw new AramoError('TENANT_CLOSED', 'Tenant is closed or disabled; users cannot be re-enabled', 403, {
+        requestId: args.request_id,
+        details: { tenant_id: args.tenant_id, reason: 'tenant_not_active' },
+      });
+    }
+    if (tenantState.status === 'SUSPENDED') {
+      throw new AramoError('TENANT_SUSPENDED', 'Tenant is suspended; users cannot be re-enabled', 403, {
+        requestId: args.request_id,
+        details: { tenant_id: args.tenant_id, reason: 'tenant_suspended' },
+      });
+    }
+
+    const wasActive = await this.identitySvc.findMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
     const result = await this.identitySvc.reEnableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
@@ -549,7 +604,38 @@ export class TenantUserLifecycleService {
         },
       );
     }
-    return { membership_id: result.membership_id };
+    const changed = wasActive?.is_active !== true;
+
+    try {
+      await this.cognito.adminEnableUser({ email: user.email });
+    } catch (err) {
+      if (changed) {
+        await this.identitySvc
+          .disableMembership({ user_id: args.user_id, tenant_id: args.tenant_id })
+          .catch((compErr: unknown) => {
+            this.logger.error(
+              `tenant enable — compensation re-disable FAILED: ${(compErr as Error).message}. ` +
+                `Membership is_active=true but Cognito is still disabled. Manual reconciliation required.`,
+            );
+          });
+      }
+      throw new AramoError(
+        'COGNITO_PROVISION_FAILED',
+        'Cognito AdminEnableUser failed; membership left disabled',
+        502,
+        {
+          requestId: args.request_id,
+          details: {
+            user_id: args.user_id,
+            email: user.email,
+            pool: 'tenant',
+            error_message: (err as Error).message,
+            compensation: changed ? 're_disabled' : 'none_required',
+          },
+        },
+      );
+    }
+    return { membership_id: result.membership_id, changed, cognito: 'enabled' };
   }
 
   // §4.2 REVOKE — cancel a still-pending invite. Two writes, both identity-

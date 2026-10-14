@@ -26,9 +26,19 @@ model User {
   deactivated_at  DateTime? @db.Timestamptz
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz
+  // IC-1 PR-2/PR-3 (Amendment A1 §1 — one User, one tenant) — the OWNING tenant.
+  // PR-2 added it nullable + backfilled; PR-3 re-ran the backfill and set NOT NULL,
+  // so every User is born owned by its single membership tenant (set in the same
+  // creation transaction) and can never be re-pointed (BEFORE UPDATE OF tenant_id
+  // trigger `user_tenant_no_repoint` raises). FK → Tenant (ON DELETE RESTRICT).
+  tenant_id       String   @db.Uuid
 
   memberships     UserTenantMembership[]
   external_identities ExternalIdentity[]
+  // IC-1 PR-2 — owner relation. Named ("UserOwner") because Tenant↔User already
+  // relate indirectly through memberships; the composite unique (id, tenant_id)
+  // is the FK target of the PR-3 membership-to-owner composite FK.
+  owner_tenant    Tenant   @relation("UserOwner", fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   // AUTHZ-D4a — Axis-1 management hierarchy (intra-schema FK both ends).
   managed_edges       ManagementEdge[] @relation("ManagementEdgeManager")
@@ -37,7 +47,9 @@ model User {
   owned_teams         Team[]           @relation("TeamOwner")
   team_memberships    TeamMembership[]
 
+  @@unique([id, tenant_id])
   @@index([is_active])
+  @@index([tenant_id])
   @@schema("identity")
 }
 
@@ -47,6 +59,13 @@ model Tenant {
   is_active    Boolean  @default(true)
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
+
+  // IC-4 PR-9 — tenant KIND: BUSINESS (organization; locked email domain) or
+  // PERSONAL (one-person Sign subscriber; allowed_domain NULL; [core, esign]
+  // only). String vocabulary enforced in app code (TENANT_KINDS, util/tenant-
+  // kind.ts) per the status / invite_status convention — NOT a Prisma enum.
+  // Additive with a default: every pre-existing row is BUSINESS.
+  kind         String   @default("BUSINESS")
 
   // Domain-Enforcement P1 — the one email domain this tenant is locked to
   // (stored NORMALIZED / lowercased). Nullable because existing tenants
@@ -162,6 +181,8 @@ model Tenant {
 
   memberships  UserTenantMembership[]
   sites        Site[]
+  // IC-1 PR-2 — the Users this tenant OWNS (one owning tenant per User).
+  owned_users  User[]   @relation("UserOwner")
 
   @@index([is_active])
   @@index([status])
@@ -204,7 +225,12 @@ model Site {
 
 model UserTenantMembership {
   id           String   @id @db.Uuid
-  user_id      String   @db.Uuid
+  // IC-1 PR-3 (Amendment A1 §1) — EXACTLY one membership per User (DB unique
+  // `UserTenantMembership_user_id_key`); the composite relation below pins the
+  // membership tenant to the User's owning tenant (DB composite FK against
+  // User UNIQUE (id, tenant_id)). The older (user_id, tenant_id) unique and the
+  // single-column FK stay in the database (ADD-not-rename; harmless).
+  user_id      String   @unique @db.Uuid
   tenant_id    String   @db.Uuid
   // Optional site partition (PR-A1a Ruling 4). NULL = tenant-wide membership
   // (existing behavior pre-A1a, preserved); set = site-scoped membership.
@@ -223,7 +249,10 @@ model UserTenantMembership {
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
 
-  user         User     @relation(fields: [user_id], references: [id])
+  // IC-1 PR-3 — compound relation: membership (user_id, tenant_id) → User (id,
+  // tenant_id). The same `tenant_id` scalar also feeds the `tenant` relation
+  // (the CompanyRelationship precedent, libs/company/prisma/schema.prisma).
+  user         User     @relation(fields: [user_id, tenant_id], references: [id, tenant_id], onDelete: Restrict, onUpdate: Cascade)
   tenant       Tenant   @relation(fields: [tenant_id], references: [id])
   site         Site?    @relation(fields: [site_id], references: [id])
   role_assignments UserTenantMembershipRole[]
