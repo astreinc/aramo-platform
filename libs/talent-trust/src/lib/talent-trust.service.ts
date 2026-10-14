@@ -43,6 +43,7 @@ import {
   type CorroboratorConflictsByTarget,
 } from './subject-matcher.service.js';
 import {
+  StaleEvidenceTransitionError,
   TalentTrustRepository,
   type EvidenceRecordRow,
   type EvidenceLinkRow,
@@ -982,32 +983,49 @@ export class TalentTrustService {
   // (idempotent re-raise); any other status refuses with a domain code. Full
   // actor + grounds audit event. requestId threads into the refusal envelope
   // (defaults to the lib sentinel off-HTTP).
+  // Security S1 (R1/R2) — `tenantId` is the ACTING tenant (the caller's trusted,
+  // already-authorized tenant — never the evidence row). A row owned by another
+  // tenant is indistinguishable from a missing one (404 NOT_FOUND, no status), and
+  // the write is tenant- and expected-status-keyed in one transaction.
   async dispute(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     grounds: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<{ status: EvidenceStatus }> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status === 'DISPUTED') {
-      // Repeat raise on an already-open dispute → no-op returning current state.
-      return { status: ev.current_status };
-    }
-    if (ev.current_status !== 'VALID') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const refuseOrEcho = (current: EvidenceStatus): { status: EvidenceStatus } => {
+      if (current === 'DISPUTED') {
+        // Repeat raise on an already-open dispute → no-op returning current state.
+        return { status: current };
+      }
       // Only a live (VALID) record can be disputed — a dispute against a STALE/
       // CONTRADICTED/REVOKED/SUPERSEDED row is meaningless. Domain-coded 422.
       throw new AramoError(
         'EVIDENCE_NOT_DISPUTABLE',
-        `dispute requires a VALID record (evidence ${evidenceId} is ${ev.current_status})`,
+        `dispute requires a VALID record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
-    await this.applyLifecycle(evidenceId, 'DISPUTED', {
+    };
+    if (ev.current_status !== 'VALID') return refuseOrEcho(ev.current_status);
+    const written = await this.repo.applyTenantBoundTransition({
+      evidence_id: evidenceId,
+      tenant_id: tenantId,
+      expected_status: 'VALID',
+      next_status: EVENT_TO_STATUS['DISPUTED'],
+      event_type: 'DISPUTED',
       reason: grounds,
       actor,
-      evidence: ev,
     });
+    if (!written) {
+      // The status moved between read and write (a concurrent transition): nothing
+      // was written; classify against a fresh tenant-bound read, never re-write.
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      return refuseOrEcho(now.current_status);
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
     return { status: 'DISPUTED' };
   }
 
@@ -1018,24 +1036,27 @@ export class TalentTrustService {
   // tx — the honest trail: the dispute resolved, and the evidence retired because
   // it was wrong). Recompute rides both. The DTO is lenient (IsString), so the
   // outcome is validated HERE → DISPUTE_OUTCOME_INVALID for anything else.
+  // Security S1 (R1/R2) — `tenantId` is the acting tenant; both outcome paths are
+  // tenant- and expected-status-keyed (the upheld pair included).
   async resolveDispute(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     outcome: string,
     justification: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<{ status: EvidenceStatus }> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status !== 'DISPUTED') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const notDisputed = (current: EvidenceStatus): AramoError =>
       // A resolve is meaningful only against a standing dispute (mirrors the
       // contradiction template's not-CONTRADICTED refusal). Domain-coded 422.
-      throw new AramoError(
+      new AramoError(
         'EVIDENCE_NOT_DISPUTED',
-        `resolveDispute requires a DISPUTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        `resolveDispute requires a DISPUTED record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
+    if (ev.current_status !== 'DISPUTED') throw notDisputed(ev.current_status);
     if (outcome !== 'upheld' && outcome !== 'rejected') {
       throw new AramoError(
         'DISPUTE_OUTCOME_INVALID',
@@ -1044,26 +1065,43 @@ export class TalentTrustService {
         { requestId, details: { evidence_id: evidenceId, outcome } },
       );
     }
+    // A concurrent transition moved the status between read and write: nothing
+    // was written; classify against a fresh tenant-bound read, never re-write.
+    const classifyStale = async (): Promise<never> => {
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      throw notDisputed(now.current_status);
+    };
     if (outcome === 'rejected') {
       // The dispute did not hold → the record returns to VALID and re-accrues.
-      await this.applyLifecycle(evidenceId, 'DISPUTE_RESOLVED', {
+      const written = await this.repo.applyTenantBoundTransition({
+        evidence_id: evidenceId,
+        tenant_id: tenantId,
+        expected_status: 'DISPUTED',
+        next_status: EVENT_TO_STATUS['DISPUTE_RESOLVED'],
+        event_type: 'DISPUTE_RESOLVED',
         reason: justification,
         actor,
-        evidence: ev,
       });
+      if (!written) return classifyStale();
+      await this.recompute(ev.subject_id, tenantId, new Date());
       return { status: 'VALID' };
     }
     // upheld → the evidence was wrong: resolve the dispute AND retire the
     // evidence, atomically (DISPUTE_RESOLVED then REVOKED in one transaction —
     // a mid-tx failure leaves neither event and no status change). REVOKED is
     // excluded from accrual, so the retirement is permanent for this row.
-    await this.repo.appendResolvedThenRevoked({
-      evidence_id: evidenceId,
-      tenant_id: ev.tenant_id,
-      actor,
-      justification,
-    });
-    await this.recompute(ev.subject_id, ev.tenant_id, new Date());
+    try {
+      await this.repo.appendResolvedThenRevoked({
+        evidence_id: evidenceId,
+        tenant_id: tenantId,
+        actor,
+        justification,
+      });
+    } catch (err) {
+      if (err instanceof StaleEvidenceTransitionError) return classifyStale();
+      throw err;
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
     return { status: 'REVOKED' };
   }
 
@@ -1074,29 +1112,42 @@ export class TalentTrustService {
   // CONTRADICTED record resolves; anything else refuses (a resolve is meaningful
   // only against a standing contradiction). Distinct from resolveDispute (the
   // DISPUTED axis). Does NOT touch the CONTRADICTS link (append-only history stays).
+  // Security S1 (R1/R2) — `tenantId` is the acting tenant; tenant- and
+  // expected-status-keyed in one transaction.
   async resolveContradiction(
+    tenantId: string,
     evidenceId: string,
     actor: string,
     reason: string,
     requestId: string = CLAIM_SHAPE_REQUEST_ID,
   ): Promise<void> {
-    const ev = await this.requireEvidence(evidenceId);
-    if (ev.current_status !== 'CONTRADICTED') {
+    const ev = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+    const notContradicted = (current: EvidenceStatus): AramoError =>
       // TR-4 B3 (§3.3) — the resolve API's not-CONTRADICTED refusal. A resolve is
       // meaningful only against a standing contradiction. Domain-coded 422; the
       // controller passes its requestId (defaults to the lib sentinel off-HTTP).
-      throw new AramoError(
+      new AramoError(
         'EVIDENCE_NOT_CONTRADICTED',
-        `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${ev.current_status})`,
+        `resolveContradiction requires a CONTRADICTED record (evidence ${evidenceId} is ${current})`,
         422,
-        { requestId, details: { evidence_id: evidenceId, current_status: ev.current_status } },
+        { requestId, details: { evidence_id: evidenceId, current_status: current } },
       );
-    }
-    await this.applyLifecycle(evidenceId, 'CONTRADICTION_RESOLVED', {
+    if (ev.current_status !== 'CONTRADICTED') throw notContradicted(ev.current_status);
+    const written = await this.repo.applyTenantBoundTransition({
+      evidence_id: evidenceId,
+      tenant_id: tenantId,
+      expected_status: 'CONTRADICTED',
+      next_status: EVENT_TO_STATUS['CONTRADICTION_RESOLVED'],
+      event_type: 'CONTRADICTION_RESOLVED',
       reason,
       actor,
-      evidence: ev,
     });
+    if (!written) {
+      // Concurrent transition: nothing was written; classify, never re-write.
+      const now = await this.requireEvidenceForTenant(tenantId, evidenceId, requestId);
+      throw notContradicted(now.current_status);
+    }
+    await this.recompute(ev.subject_id, tenantId, new Date());
   }
 
   // TR-4 B3 (§3.2.3) — record an interior TIMELINE_GAP as CONTINUITY evidence,
@@ -1989,6 +2040,22 @@ export class TalentTrustService {
     return ev;
   }
 
+  // Security S1 (R1/R4) — the tenant-bound evidence guard. Another tenant's row
+  // and a non-existent id are indistinguishable: both throw the same 404
+  // NOT_FOUND, with no status and no id-bearing message (the markProposalActed /
+  // dismissProposal load-then-guard precedent).
+  private async requireEvidenceForTenant(
+    tenantId: string,
+    evidenceId: string,
+    requestId: string,
+  ): Promise<EvidenceRecordRow> {
+    const ev = await this.repo.findEvidenceByIdForTenant(tenantId, evidenceId);
+    if (ev === null) {
+      throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
+    }
+    return ev;
+  }
+
   // TR-2a-B3a (DDR-3 §2.3/§5) — INTENTIONAL NON-FOLLOWER: existence/identity
   // guard on a SPECIFIC subject id (merge/un-merge operands). It must see the
   // subject AS-IS (ACTIVE or MERGED), never its fixpoint — do NOT follow.
@@ -2146,7 +2213,11 @@ export class TalentTrustService {
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) continue;
       try {
+        // Security S1 (C6) — the acting tenant is the work item's own tenant (the
+        // authorized unit of a cluster-scoped withdrawal; items may span tenants),
+        // never the evidence row.
         await this.resolveDispute(
+          wi.tenant_id,
           evidenceId,
           input.actor,
           'rejected',
@@ -2178,7 +2249,9 @@ export class TalentTrustService {
     }
     // VERIFICATION: VR.id → the PLATFORM_VERIFIED anchor for its (subject,kind,value).
     const vr = await this.repo.findVerificationRequestById(wi.underlying_ref_id);
-    if (vr === null) return null;
+    // Security S1 (C7) — the verification request must belong to the work item's
+    // tenant; otherwise it is not resolvable for this item (no foreign evidence).
+    if (vr === null || vr.tenant_id !== wi.tenant_id) return null;
     const anchor = await this.repo.findSubjectAnchor(
       vr.tenant_id,
       vr.subject_id,
@@ -2204,17 +2277,24 @@ export class TalentTrustService {
     }
     for (const wi of items) {
       if (wi.status !== 'OPEN') continue;
+      // Security S1 (C4) — items come from the tenant-bound query; the acting
+      // tenant is the authorized input tenant, and an item of any other tenant is
+      // never acted on.
+      if (wi.tenant_id !== input.tenantId) continue;
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) {
         await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         continue;
       }
       try {
-        await this.dispute(evidenceId, input.actor, 'talent dispute — triaged for review', input.requestId);
+        await this.dispute(input.tenantId, evidenceId, input.actor, 'talent dispute — triaged for review', input.requestId);
         await this.repo.advancePortalWorkItemStatus(wi.id, 'UNDER_REVIEW');
       } catch (err) {
         if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTABLE') {
           await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not disputable');
+        } else if (err instanceof AramoError && err.code === 'NOT_FOUND') {
+          // Backing evidence not visible to the acting tenant → not resolvable.
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         } else {
           throw err;
         }
@@ -2263,17 +2343,22 @@ export class TalentTrustService {
     const tr15Outcome = PORTAL_DISPUTE_OUTCOME_MAP[input.outcome].tr15Outcome;
     for (const wi of items) {
       if (wi.status !== 'UNDER_REVIEW') continue; // only triaged items are disposable
+      // Security S1 (C5) — act only on the authorized tenant's items.
+      if (wi.tenant_id !== input.tenantId) continue;
       const evidenceId = await this.resolveWorkItemEvidenceId(wi);
       if (evidenceId === null) {
         await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         continue;
       }
       try {
-        await this.resolveDispute(evidenceId, input.actor, tr15Outcome, input.note, input.requestId);
+        await this.resolveDispute(input.tenantId, evidenceId, input.actor, tr15Outcome, input.note, input.requestId);
         await this.repo.advancePortalWorkItemStatus(wi.id, input.outcome);
       } catch (err) {
         if (err instanceof AramoError && err.code === 'EVIDENCE_NOT_DISPUTED') {
           await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'evidence not in DISPUTED state');
+        } else if (err instanceof AramoError && err.code === 'NOT_FOUND') {
+          // Backing evidence not visible to the acting tenant → not resolvable.
+          await this.repo.advancePortalWorkItemStatus(wi.id, 'RESOLVED_NO_TRANSITION', 'backing evidence not resolvable');
         } else {
           throw err;
         }

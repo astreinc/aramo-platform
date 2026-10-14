@@ -29,8 +29,12 @@ import {
 // Same conventions as its twin: lives in apps/api (above the I15 wall), calls
 // the cip TalentTrustService, and is gated by the same privileged, tenant-scoped
 // `identity:resolve` scope as the contradiction + advisory-merge surfaces
-// (tenant_admin + tenant_owner). actor comes ONLY from the JWT (R4 audit).
-// Refusals are domain-coded by the service: unknown evidence id → 404; a
+// (tenant_admin + tenant_owner + sourcer — the seed IDENTITY_RESOLVE bundle).
+// actor comes ONLY from the JWT (R4 audit). Security S1 — the acting tenant comes
+// ONLY from the JWT too and is passed to the service, which loads the evidence
+// tenant-bound: another tenant's evidence id is indistinguishable from an unknown
+// one. Refusals are domain-coded by the service: unknown or foreign evidence id →
+// 404 NOT_FOUND; a
 // non-VALID dispute target → 422 EVIDENCE_NOT_DISPUTABLE; a non-DISPUTED resolve
 // target → 422 EVIDENCE_NOT_DISPUTED; a bad outcome → 422 DISPUTE_OUTCOME_INVALID.
 // No FE this slice (the dossier's timeline shows the events automatically).
@@ -51,8 +55,9 @@ export class DisputeResolutionController {
   ): Promise<{ status: string; evidence_id: string }> {
     // A repeat raise on an already-DISPUTED record is an idempotent no-op that
     // returns the current status; a non-VALID target throws EVIDENCE_NOT_DISPUTABLE
-    // (422). NotFoundException (→404) for an unknown id. requestId threads through.
+    // (422). 404 NOT_FOUND for an unknown or foreign id. requestId threads through.
     const { status } = await this.trust.dispute(
+      authContext.tenant_id,
       evidenceId,
       authContext.sub,
       body.grounds,
@@ -72,8 +77,9 @@ export class DisputeResolutionController {
   ): Promise<{ status: string; evidence_id: string }> {
     // rejected → VALID; upheld → REVOKED (DISPUTE_RESOLVED+REVOKED atomically).
     // EVIDENCE_NOT_DISPUTED (422) for a non-standing dispute; DISPUTE_OUTCOME_INVALID
-    // (422) for a bad outcome; NotFoundException (→404) for an unknown id.
+    // (422) for a bad outcome; 404 NOT_FOUND for an unknown or foreign id.
     const { status } = await this.trust.resolveDispute(
+      authContext.tenant_id,
       evidenceId,
       authContext.sub,
       body.outcome,

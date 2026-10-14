@@ -23,8 +23,10 @@ import { ResolveContradictionDto } from './dto/contradiction-resolution.dto.js';
 //
 // Resolving a contradiction is a trust-model action, not recruiter self-serve:
 // same privileged, tenant-scoped `identity:resolve` scope as the advisory merge
-// surface (tenant_admin + tenant_owner). actor comes ONLY from the JWT (R4 audit).
-// Refusals are domain-coded: an unknown evidence id → 404; a not-CONTRADICTED
+// surface (tenant_admin + tenant_owner + sourcer — the seed IDENTITY_RESOLVE
+// bundle). actor comes ONLY from the JWT (R4 audit). Security S1 — the acting
+// tenant comes ONLY from the JWT and the service loads the evidence tenant-bound.
+// Refusals are domain-coded: an unknown or foreign evidence id → 404 NOT_FOUND; a not-CONTRADICTED
 // record → 422 EVIDENCE_NOT_CONTRADICTED. No FE this slice (TR-14 owns the UI).
 @Controller('v1/talent/identity/contradictions')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
@@ -42,10 +44,10 @@ export class ContradictionResolutionController {
     @Body() body: ResolveContradictionDto,
   ): Promise<{ status: 'RESOLVED'; evidence_id: string }> {
     // Flips CONTRADICTED → VALID via the CONTRADICTION_RESOLVED arm; recompute
-    // fires and the CORROBORATED cap lifts. Throws NotFoundException (→404) for an
-    // unknown id, or AramoError EVIDENCE_NOT_CONTRADICTED (422) for a non-standing
+    // fires and the CORROBORATED cap lifts. Throws 404 NOT_FOUND for an unknown or
+    // foreign id, or AramoError EVIDENCE_NOT_CONTRADICTED (422) for a non-standing
     // contradiction — the requestId threads into that envelope.
-    await this.trust.resolveContradiction(evidenceId, authContext.sub, body.reason, requestId);
+    await this.trust.resolveContradiction(authContext.tenant_id, evidenceId, authContext.sub, body.reason, requestId);
     return { status: 'RESOLVED', evidence_id: evidenceId };
   }
 }

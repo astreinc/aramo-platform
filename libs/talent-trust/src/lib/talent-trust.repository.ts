@@ -365,6 +365,17 @@ export interface SubjectMergeOperationRow {
   post_merge_accretions: unknown | null;
 }
 
+// Security S1 (R2.2) — a tenant-keyed, expected-status lifecycle write matched no
+// row (the record is not the acting tenant's, or its status moved concurrently).
+// Thrown INSIDE the transaction so it rolls back; the service re-reads the bound
+// row to classify it (NOT_FOUND vs the domain refusal).
+export class StaleEvidenceTransitionError extends Error {
+  constructor(readonly evidenceId: string) {
+    super(`evidence ${evidenceId} did not match the expected tenant/status for this transition`);
+    this.name = 'StaleEvidenceTransitionError';
+  }
+}
+
 @Injectable()
 export class TalentTrustRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -721,6 +732,53 @@ export class TalentTrustRepository {
     return (row as EvidenceRecordRow | null) ?? null;
   }
 
+  // Security S1 (R1) — the tenant-bound evidence read. A row owned by another
+  // tenant and a non-existent id are indistinguishable (both null). Mirrors the
+  // in-lib tenant-bound by-id reads (findProposalById / findAnchorById /
+  // findMatchAdvisoryById / findMergeOperationById).
+  async findEvidenceByIdForTenant(tenantId: string, id: string): Promise<EvidenceRecordRow | null> {
+    const row = await this.prisma.evidenceRecord.findFirst({ where: { id, tenant_id: tenantId } });
+    return (row as EvidenceRecordRow | null) ?? null;
+  }
+
+  // Security S1 (R2) — one lifecycle transition, atomic and tenant-keyed. In ONE
+  // interactive transaction: the status flips ONLY on a row matching
+  // { id, tenant_id, current_status: expected } (count must be 1), then the event
+  // is appended with the SAME acting tenant. No match → nothing is written and
+  // false is returned (the caller re-reads to classify a concurrent change); an
+  // error after the update rolls the update back (no status change, no event).
+  async applyTenantBoundTransition(input: {
+    evidence_id: string;
+    tenant_id: string;
+    expected_status: EvidenceStatus;
+    next_status: EvidenceStatus;
+    event_type: EvidenceEventType;
+    reason?: string | null;
+    actor?: string | null;
+    occurred_at?: Date;
+  }): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const flipped = await tx.evidenceRecord.updateMany({
+        where: { id: input.evidence_id, tenant_id: input.tenant_id, current_status: input.expected_status },
+        data: { current_status: input.next_status },
+      });
+      if (flipped.count !== 1) return false;
+      await tx.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: input.evidence_id,
+          tenant_id: input.tenant_id,
+          event_type: input.event_type,
+          reason: input.reason ?? null,
+          linked_evidence_id: null,
+          actor: input.actor ?? null,
+          ...(input.occurred_at ? { occurred_at: input.occurred_at } : {}),
+        },
+      });
+      return true;
+    });
+  }
+
   async listEvidenceBySubject(
     subjectId: string,
     filters?: { dimension?: TrustDimension; current_status?: EvidenceStatus },
@@ -793,12 +851,16 @@ export class TalentTrustRepository {
   }
 
   // TR-15 B1 (DDR §2) — the upheld-dispute atomic pair. Appends DISPUTE_RESOLVED
-  // then REVOKED and flips current_status to REVOKED in ONE transaction (array
-  // form, the insertAnchor precedent): a mid-tx failure leaves NEITHER event and
-  // no status change (§5c atomicity). occurred_at is monotonic (REVOKED 1ms after
-  // RESOLVED) so the timeline reads the honest order resolved-then-revoked. Both
-  // events carry the actor + justification. current_status projects to REVOKED
-  // (the last event) — the record is retired and drops out of accrual.
+  // then REVOKED and flips current_status to REVOKED in ONE transaction: a mid-tx
+  // failure leaves NEITHER event and no status change (§5c atomicity). occurred_at
+  // is monotonic (REVOKED 1ms after RESOLVED) so the timeline reads the honest
+  // order resolved-then-revoked. Both events carry the actor + justification.
+  // current_status projects to REVOKED (the last event) — the record is retired
+  // and drops out of accrual.
+  // Security S1 (R2.2) — tenant-keyed: the status flip matches ONLY
+  // { id, tenant_id, current_status: 'DISPUTED' } and runs FIRST; anything other
+  // than exactly one row throws StaleEvidenceTransitionError inside the
+  // transaction, so neither event is written. Both events carry the acting tenant.
   async appendResolvedThenRevoked(input: {
     evidence_id: string;
     tenant_id: string;
@@ -807,8 +869,13 @@ export class TalentTrustRepository {
   }): Promise<void> {
     const resolvedAt = new Date();
     const revokedAt = new Date(resolvedAt.getTime() + 1);
-    await this.prisma.$transaction([
-      this.prisma.evidenceEvent.create({
+    await this.prisma.$transaction(async (tx) => {
+      const flipped = await tx.evidenceRecord.updateMany({
+        where: { id: input.evidence_id, tenant_id: input.tenant_id, current_status: 'DISPUTED' },
+        data: { current_status: 'REVOKED' },
+      });
+      if (flipped.count !== 1) throw new StaleEvidenceTransitionError(input.evidence_id);
+      await tx.evidenceEvent.create({
         data: {
           id: uuidv7(),
           evidence_id: input.evidence_id,
@@ -818,8 +885,8 @@ export class TalentTrustRepository {
           actor: input.actor,
           occurred_at: resolvedAt,
         },
-      }),
-      this.prisma.evidenceEvent.create({
+      });
+      await tx.evidenceEvent.create({
         data: {
           id: uuidv7(),
           evidence_id: input.evidence_id,
@@ -829,12 +896,8 @@ export class TalentTrustRepository {
           actor: input.actor,
           occurred_at: revokedAt,
         },
-      }),
-      this.prisma.evidenceRecord.update({
-        where: { id: input.evidence_id },
-        data: { current_status: 'REVOKED' },
-      }),
-    ]);
+      });
+    });
   }
 
   // ---- EvidenceLink (append-only) ------------------------------------
@@ -897,9 +960,9 @@ export class TalentTrustRepository {
 
   // TR-14 B1 (DDR §2.2) — the event-timeline READ for the dossier: the lifecycle
   // events of every evidence row across a subject's CLUSTER-UNION, keyset-paged
-  // NEWEST-FIRST (the ledger can be long). EvidenceEvent has no FK to
-  // EvidenceRecord (UUID-only by design), so this resolves the cluster's evidence
-  // ids first, then pages events over them. Keyset on (occurred_at, id) desc —
+  // NEWEST-FIRST (the ledger can be long). EvidenceEvent carries evidence_id (an
+  // FK to EvidenceRecord — init_talent_trust migration), not subject_id, so this
+  // resolves the cluster's evidence ids first, then pages events over them. Keyset on (occurred_at, id) desc —
   // the same (timestamp, id) tuple convention as the sourcing/worklist cursors.
   async listEvidenceEventsBySubjects(
     subjectIds: string[],
