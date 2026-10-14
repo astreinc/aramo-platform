@@ -290,8 +290,12 @@ paths:
                 $ref: '#/components/schemas/InviteUserResponse'
         '400':
           description: |
-            `VALIDATION_ERROR` — an unknown `role_key` (rejected at the DTO) or
-            an invertible role union (`details.reason` `invertible_role_union`).
+            `VALIDATION_ERROR` — an unknown `role_key` (rejected at the DTO), an
+            invertible role union (`details.reason` `invertible_role_union`), a
+            platform-tier role (`details.reason` `platform_role_not_assignable`),
+            or an E-Sign product role (`esign_*`) for a tenant that does not hold
+            the `esign` capability (`details.reason` `esign_role_not_entitled`,
+            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
           content:
             application/json:
               schema:

@@ -84,6 +84,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         undefined as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         undefined as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        undefined as any,
       );
       tenantSvc = new TenantService(new TenantRepository(prisma));
       roleSvc = new RoleService(new RoleRepository(prisma));

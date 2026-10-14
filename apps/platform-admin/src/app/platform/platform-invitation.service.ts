@@ -504,6 +504,7 @@ export class PlatformInvitationService {
       // the in-service D5 union-non-invertibility check.
       await this.identitySvc.replaceMembershipRoles({
         membership_id: membership.id,
+        tenant_id: args.tenant_id,
         role_keys: args.role_keys,
         role_ids,
         request_id: args.request_id,

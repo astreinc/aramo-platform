@@ -809,8 +809,12 @@
       "DOMAIN_VERIFICATION_STATUSES",
       "DnsResolverModule",
       "DomainVerificationService",
+      "ESIGN_PRODUCT_ROLE_KEYS",
       "ESIGN_SCOPE_PREFIX",
+      "ESIGN_SENDER_SCOPE_KEY",
       "EVENT_TYPES",
+      "EsignSenderBoundary",
+      "EsignSenderConsumerGuard",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
       "IdentityAuditService",
@@ -856,6 +860,7 @@
       "deriveSlugOrThrow",
       "encodeCursor",
       "ensureBaselineVersion",
+      "evaluateEsignSenderAuthorization",
       "extractEmailDomain",
       "extractTenantSlugFromHost",
       "filterScopesForConsumer",
@@ -2443,6 +2448,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/hf-auth-1-authz-version.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -4602,6 +4613,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/identity-audit.service.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -6002,6 +6019,12 @@
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "integration", "status": "production" },

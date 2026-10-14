@@ -16,6 +16,7 @@ import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import { TenantUserLifecycleService } from '../lib/tenant-user/tenant-user-lifecycle.service.js';
 import type { TenantCognitoPort } from '../lib/tenant-user/tenant-cognito.port.js';
 import type { AuditFinancialsGate } from '../lib/tenant-user/audit-financials-gate.port.js';
@@ -95,6 +96,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new IdentityRepository(prisma),
         audit,
         new RoleBundleValidator(prisma),
+        // IC-3 PR-8 — ATS tenant without the Sign product (no esign role assigned here).
+        { getCapabilities: async () => new Set<string>(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
       );
       const mailer: MailerPort = {
         send: async (m) => {

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
-import { PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
+import { ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { InvitationDto } from './dto/invitation.dto.js';
@@ -19,6 +19,7 @@ import {
   metaRank,
 } from './role-catalog/role-catalog.view.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
 import {
   generateInvitationToken,
   hashInvitationToken,
@@ -130,6 +131,9 @@ export class IdentityService {
     private readonly identityRepo: IdentityRepository,
     private readonly audit: IdentityAuditService,
     private readonly roleBundle: RoleBundleValidator,
+    // IC-3 PR-8 — the LIVE tenant-capability read the role-assignability gate
+    // consults for the Sign product partition (never cached; HF2 INV-4).
+    private readonly entitlements: TenantEntitlementReader,
   ) {}
 
   async resolveUser(args: {
@@ -476,11 +480,22 @@ export class IdentityService {
   // platform tier (apps/platform-admin's platform-admin invite against the
   // sentinel tenant) may pass allow_platform_roles=true; absence denies.
   // Fires BEFORE the D5 bundle check and before any write (safe-by-default).
-  private assertRoleKeysAssignable(args: {
+  //
+  // IC-3 PR-8 (IC-0 L10; PX-V1 §10) — second partition: the E-Sign PRODUCT
+  // roles (esign_*) are assignable ONLY in a tenant that holds the `esign`
+  // capability, read LIVE from the entitlement store (a Sign-only tenant
+  // qualifies without any ATS dependency; an ATS-only tenant is refused with
+  // VALIDATION_ERROR `esign_role_not_entitled`). The platform pool
+  // (allow_platform_roles) is exempt exactly as before — the sentinel never
+  // carries a product role through the platform-admin DTO. Fires BEFORE the
+  // D5 union check and BEFORE any write, so an unentitled Sign role never
+  // reaches the membership tables.
+  private async assertRoleKeysAssignable(args: {
     role_keys: readonly string[];
+    tenant_id: string;
     allow_platform_roles?: boolean;
     request_id: string;
-  }): void {
+  }): Promise<void> {
     if (args.allow_platform_roles === true) return;
     const platformKeys = args.role_keys.filter((k) =>
       (PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
@@ -495,6 +510,27 @@ export class IdentityService {
           details: { reason: 'platform_role_not_assignable', role_keys: platformKeys },
         },
       );
+    }
+    const esignKeys = args.role_keys.filter((k) =>
+      (ESIGN_PRODUCT_ROLE_KEYS as readonly string[]).includes(k),
+    );
+    if (esignKeys.length > 0) {
+      const capabilities = await this.entitlements.getCapabilities(args.tenant_id);
+      if (!capabilities.has('esign')) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'E-Sign roles require the esign capability on the tenant',
+          400,
+          {
+            requestId: args.request_id,
+            details: {
+              reason: 'esign_role_not_entitled',
+              role_keys: esignKeys,
+              missing_capabilities: ['esign'],
+            },
+          },
+        );
+      }
     }
   }
 
@@ -511,7 +547,7 @@ export class IdentityService {
     // IC-2 PR-5 — only the platform-admin invite (sentinel tenant) sets this.
     allow_platform_roles?: boolean;
   }): Promise<{ user: UserDto; membership_id: string }> {
-    this.assertRoleKeysAssignable(args);
+    await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR (details.reason=
     // 'invertible_role_union'); see-all-tier bypass derived internally.
@@ -631,7 +667,7 @@ export class IdentityService {
     expires_at: string;
   }> {
     // IC-2 PR-5 — tenant-tier invite: platform roles are never assignable.
-    this.assertRoleKeysAssignable(args);
+    await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR before any write.
     await this.roleBundle.assertUnionNonInvertible({
@@ -911,13 +947,17 @@ export class IdentityService {
   // never reaches the createMany/deleteMany inside the $transaction).
   async replaceMembershipRoles(args: {
     membership_id: string;
+    // IC-3 PR-8 — the membership's tenant (the caller already resolved the
+    // membership within it); the Sign-partition assignability gate reads this
+    // tenant's live capabilities.
+    tenant_id: string;
     role_keys: readonly string[];
     role_ids: readonly string[];
     request_id: string;
     // IC-2 PR-5 — only the platform-admin flow (sentinel tenant) sets this.
     allow_platform_roles?: boolean;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
-    this.assertRoleKeysAssignable(args);
+    await this.assertRoleKeysAssignable(args);
     await this.roleBundle.assertUnionNonInvertible({
       role_keys: args.role_keys,
       request_id: args.request_id,

@@ -20,6 +20,7 @@ import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 
 // IC-1 PR-1 — D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 (ONE USER, ONE TENANT),
 // proven against the REAL module graph (real IdentityService +
@@ -96,6 +97,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           createAramoLogger('ic1-cardinality-spec'),
         ),
         new RoleBundleValidator(prisma),
+        // IC-3 PR-8 — ATS tenant without the Sign product (no esign role assigned here).
+        { getCapabilities: async () => new Set<string>(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
       );
     }, 120_000);
 

@@ -22,6 +22,19 @@ import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.
 // authoritative tenant_id is passed by the caller). The /signing surface is the
 // public signer transport (tenant resolved FROM the capability token, never the
 // client). TRANSPORT ONLY — no RTR/Submittal/Offer/recruiter-workflow logic.
+//
+// IC-3 PR-8 / PX-V1 §11 — THREE auth zones, never merged:
+//   1. v1/esign/envelopes  — internal service-to-service (this file; no JWT; the
+//      caller is the trusted ATS adapter and passes the authoritative tenant_id).
+//   2. v1/esign/sender/*   — the AUTHENTICATED SENDER surface (PX-V1 §8 D-2):
+//      ABSENT at the PR-8 baseline. When built it MUST mount
+//      `@EsignSenderBoundary()` from @aramo/identity (shared-identity JWT →
+//      esign consumer → tenant `esign` capability → effective
+//      `esign:envelope:send`); activation also needs apps/esign-web, the
+//      esign.aramo.ai ingress and the esign-service → auth/entitlement/
+//      authorization wiring (3-place per CLAUDE.md). PR-8 adds NO sender route
+//      here on purpose (no dark, unauthenticated send API).
+//   3. v1/esign/signing    — capability-token signer transport (below).
 
 function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof EnvelopeNotFoundError) return new AramoError('ENVELOPE_NOT_FOUND', e.message, 404, { requestId });

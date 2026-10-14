@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 
 import {
   displayFromDescription,
@@ -17,27 +18,42 @@ import {
 // set the RolePicker assigns + the matrix displays. The result is sorted by
 // presentation tier then display name (legible, deterministic).
 //
-// There is no tenant-specific data here (roles are global reference data); the
-// endpoint is still auth-gated (tenant:admin:user-manage) so only an operator
-// who manages users/roles reads it.
+// The role ROWS are global reference data; the ONE tenant-dependent input is
+// the Sign partition (IC-3 PR-8): E-Sign product roles (any esign:* scope) are
+// projected ONLY for a tenant that holds the `esign` capability (read LIVE —
+// never cached), so an ATS-only tenant's picker never offers a role its
+// administrators cannot assign (the assignability gate refuses it anyway —
+// IdentityService.assertRoleKeysAssignable — this keeps the two surfaces
+// coherent) and a Sign-only tenant's org_admin can work with Sign roles
+// without any ATS role or UI assumption. The endpoint stays auth-gated
+// (tenant:admin:user-manage) so only an operator who manages users/roles reads it.
 
 @Injectable()
 export class RoleCatalogService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: TenantEntitlementReader,
+  ) {}
 
-  async getCatalog(): Promise<RoleCatalogView[]> {
+  // `tenant_id` — the caller's tenant (AuthContext). Omitted (legacy/internal
+  // callers) → the Sign partition is excluded, exactly the pre-PR-8 projection.
+  async getCatalog(args?: { tenant_id?: string }): Promise<RoleCatalogView[]> {
     const roles = await this.prisma.role.findMany({
       include: { role_scopes: { include: { scope: true } } },
     });
+    const includeEsign =
+      args?.tenant_id !== undefined &&
+      (await this.entitlements.getCapabilities(args.tenant_id)).has('esign');
 
     const views: RoleCatalogView[] = [];
     for (const role of roles) {
       const scopeKeys = role.role_scopes.map((rs) => rs.scope.key);
       // Exclude the platform tier (super_admin) — any platform:* scope marks a
-      // non-tenant role; the tenant catalog never includes it. PX-V1 PX-3 — the
-      // same partition for E-Sign product roles: any esign:* scope marks an
-      // esign_* product role, kept OUT of the ATS tenant RolePicker.
-      if (scopeKeys.some((k) => k.startsWith('platform:') || k.startsWith('esign:'))) continue;
+      // non-tenant role; the tenant catalog never includes it.
+      if (scopeKeys.some((k) => k.startsWith('platform:'))) continue;
+      // PX-V1 PX-3 / IC-3 PR-8 — the E-Sign product partition: any esign:* scope
+      // marks an esign_* product role, projected only for an esign-entitled tenant.
+      if (!includeEsign && scopeKeys.some((k) => k.startsWith('esign:'))) continue;
 
       const scopes = [...new Set(scopeKeys)].sort();
       const meta = ROLE_CATALOG_META[role.key];

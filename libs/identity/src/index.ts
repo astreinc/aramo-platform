@@ -26,6 +26,16 @@ export {
   type ConsumerCapabilityRequirement,
   type ProductConsumer,
 } from './lib/authorization/consumer-scope-policy.js';
+// IC-3 PR-8 — the Sign SENDER authorization boundary (guard composition + the
+// pure decision) a `v1/esign/sender/*` route mounts; see the module header for
+// the activation dependency.
+export {
+  EsignSenderBoundary,
+  EsignSenderConsumerGuard,
+  evaluateEsignSenderAuthorization,
+  type EsignSenderDenialReason,
+  type EsignSenderVerdict,
+} from './lib/authorization/esign-sender-boundary.js';
 // Inc-3 PR-3.8 (A) — the operator dashboard payload shape.
 export type {
   PlatformDashboardData,
@@ -102,6 +112,8 @@ export {
   PLATFORM_ROLE_KEYS,
   TENANT_ASSIGNABLE_ROLE_KEYS,
   ORG_ADMIN_SCOPE_KEYS,
+  ESIGN_PRODUCT_ROLE_KEYS,
+  ESIGN_SENDER_SCOPE_KEY,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';

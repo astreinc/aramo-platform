@@ -8225,8 +8225,12 @@ paths:
           description: |
             `VALIDATION_ERROR` — empty or unknown `role_keys`, invalid email,
             email not on the tenant's locked domain (`details.reason`
-            `email_domain_mismatch`), or an invertible role union
-            (`details.reason` `invertible_role_union`).
+            `email_domain_mismatch`), an invertible role union
+            (`details.reason` `invertible_role_union`), a platform-tier role
+            (`details.reason` `platform_role_not_assignable`), or an E-Sign
+            product role (`esign_*`) in a tenant that does not hold the `esign`
+            capability (`details.reason` `esign_role_not_entitled`,
+            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
           content:
             application/json:
               schema:

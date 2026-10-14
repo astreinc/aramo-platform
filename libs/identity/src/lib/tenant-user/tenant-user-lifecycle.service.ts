@@ -494,6 +494,7 @@ export class TenantUserLifecycleService {
     // throws VALIDATION_ERROR here and never reaches the $transaction.
     await this.identitySvc.replaceMembershipRoles({
       membership_id: membership.id,
+      tenant_id: args.tenant_id,
       role_keys: args.role_keys,
       role_ids,
       request_id: args.request_id,

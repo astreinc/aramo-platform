@@ -17,6 +17,7 @@ import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 
 // Invite-S2 (Pattern-2) — the 3-STATE TRANSITION + TOKEN-LIFECYCLE proof
 // (directive §8.10 LOCAL PROOF + the mandatory 3-state + token specs).
@@ -92,6 +93,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         new IdentityRepository(prisma),
         audit,
         new RoleBundleValidator(prisma),
+        // IC-3 PR-8 — ATS tenant without the Sign product (no esign role assigned here).
+        { getCapabilities: async () => new Set<string>(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
       );
     }, 120_000);
 

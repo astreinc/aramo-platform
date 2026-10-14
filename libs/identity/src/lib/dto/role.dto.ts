@@ -106,6 +106,26 @@ export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEY
   (k) => !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
 );
 
+// IC-3 PR-8 (IC-0 §F.2 rule 2 / L10; PX-V1 §10–§11) — the E-SIGN PRODUCT
+// partition of the catalog: the four Sign roles (PX-V1 PX-3). They hold ONLY
+// esign:* scopes and are assignable ONLY in a tenant that holds the `esign`
+// capability; every tenant-side assignment path (tenant invite, PATCH roles,
+// platform-tier invite INTO a tenant) refuses them for an unentitled tenant
+// with VALIDATION_ERROR `esign_role_not_entitled` (400 — the L10 shape, the
+// same status the platform-role refusal uses). Derived from SEED_ROLE_KEYS by
+// the `esign_` prefix so a new Sign role joins the partition without a hand
+// list; the seed spec pins the membership.
+export const ESIGN_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter((k) =>
+  k.startsWith('esign_'),
+);
+
+// IC-3 PR-8 — the SINGLE scope that authorizes the Sign SEND action
+// (PX-V1 §11 rule 5: send authority derives from the `esign` capability + an
+// org role, never bare authentication). Granted by the seed to esign_owner,
+// esign_admin and esign_sender only (ESIGN_SENDER_SEED_BUNDLES); esign_viewer,
+// org_admin, every ATS role and super_admin never hold it.
+export const ESIGN_SENDER_SCOPE_KEY = 'esign:envelope:send' as const;
+
 // RoleDto — public shape of the Role entity.
 export interface RoleDto {
   id: string;

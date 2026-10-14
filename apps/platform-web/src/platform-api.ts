@@ -85,7 +85,10 @@ export interface LifecycleActionResult {
   changed: boolean;
 }
 
-const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing'] as const;
+// IC-3 PR-8 — mirrors libs/entitlement CAPABILITY_VALUES (the backend-authoritative
+// closed set; the DTO + EntitlementRepository decide, this list only OFFERS). `esign`
+// lets an operator provision a Sign-only ([core, esign]) or ATS + Sign tenant.
+const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'esign'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
 

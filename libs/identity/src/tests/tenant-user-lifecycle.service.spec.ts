@@ -764,6 +764,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
     // through so the in-service check has its inputs.
     expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: MEMBERSHIP_ID,
+      tenant_id: TENANT_ID,
       role_keys: ['account_manager', 'recruiter'],
       role_ids: ['rid-am', 'rid-rc'],
       request_id: REQUEST_ID,
@@ -891,6 +892,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
     // single-role assignment zero-cost.
     expect(identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: MEMBERSHIP_ID,
+      tenant_id: TENANT_ID,
       role_keys: ['auditor_with_financials'],
       role_ids: ['rid-awf'],
       request_id: REQUEST_ID,

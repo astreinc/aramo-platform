@@ -802,6 +802,7 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
     // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded.
     expect(mocks.identitySvc.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: 'mem-1',
+      tenant_id: 't1',
       role_keys: ['recruiter', 'account_manager'],
       role_ids: ['r-rec', 'r-am'],
       request_id: TEST_REQUEST_ID,
