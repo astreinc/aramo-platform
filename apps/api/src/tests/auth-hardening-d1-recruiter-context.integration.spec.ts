@@ -145,6 +145,20 @@ const IDENTITY_AUTHZ_VERSION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 );
+// IC-1 PR-2 — owning tenant on User (nullable expand + backfill). The regenerated
+// identity client SELECTs User.tenant_id on every User read (the invite saga, /v1/me,
+// the roster), so this interleaved hand-list must carry the expand file; the backfill
+// meets an empty table at apply time (no-op) and is included so the schema matches a
+// post-migration production. (Interleaved multi-stack list → stays hand-listed, per the
+// PR-1.5 Workstream C convention.)
+const IDENTITY_USER_TENANT_OWNER_EXPAND = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+);
+const IDENTITY_USER_TENANT_OWNER_BACKFILL = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+);
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -663,6 +677,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_PROFILE,
         IDENTITY_SITE_HIERARCHY,
         IDENTITY_AUTHZ_VERSION,
+        IDENTITY_USER_TENANT_OWNER_EXPAND,
+        IDENTITY_USER_TENANT_OWNER_BACKFILL,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,

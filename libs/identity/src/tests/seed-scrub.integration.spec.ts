@@ -143,6 +143,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { id: owner_user_id },
       });
       expect(owner?.email).toBe(ASTRE_OWNER_EMAIL);
+      // IC-1 PR-2 — the seeded Astre owner is born OWNED by the Astre tenant.
+      expect(owner?.tenant_id).toBe(astre_tenant_id);
 
       // Owner is tenant_owner, with NO external identity (links on first login).
       const ownerRole = await prisma.userTenantMembershipRole.findUnique({

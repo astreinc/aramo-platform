@@ -2896,12 +2896,16 @@ export async function runIdentitySeed(
   if (includeDevFixtures) {
     await prisma.user.upsert({
       where: { id: SEED_IDS.user_admin },
+      // IC-1 PR-2: `update` stays empty on purpose — an existing row's owner is
+      // never re-pointed by a seed (the backfill migration owns pre-PR-2 rows).
       update: {},
       create: {
         id: SEED_IDS.user_admin,
         email: SEED_ADMIN_EMAIL,
         display_name: SEED_ADMIN_DISPLAY_NAME,
         is_active: true,
+        // IC-1 PR-2 — born owned by the dev tenant (its single membership, step 3).
+        tenant_id: SEED_IDS.tenant,
       },
     });
   }

@@ -2232,6 +2232,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.domain.verified',
         'identity.invitation.accepted',
         'identity.invitation.created',
+        // IC-1 PR-1 — cross-tenant invitation refusal (scoped to the attempted tenant).
+        // NOTE: PR-1's Gate-5 run covered 4 identity real-Postgres specs, not this
+        // root-wide exact-set assertion; the gap surfaced in PR-2's full-matrix run
+        // and is reconciled here (test-only; the registry itself is unchanged).
+        'identity.invitation.rejected_cross_tenant',
         'identity.management_edge.cleared',
         'identity.management_edge.set',
         'identity.membership.created',

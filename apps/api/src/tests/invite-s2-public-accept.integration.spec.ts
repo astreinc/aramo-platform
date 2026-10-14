@@ -46,6 +46,12 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql',
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
   'libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql',
+  // IC-1 PR-2 — owning tenant on User (nullable expand + backfill). The accept path
+  // reads the invited User through the regenerated identity client, which SELECTs
+  // User.tenant_id, so the expand file is required; the backfill meets an empty
+  // table here (no-op). (Interleaved entitlement + identity list → stays hand-listed.)
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT = '01900000-0000-7000-8000-0000000000a1';

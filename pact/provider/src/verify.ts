@@ -87,6 +87,20 @@ const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql',
 );
+// IC-1 PR-2 — owning tenant on User. The regenerated identity client SELECTs
+// User.tenant_id on the reconcile-by-email read (findUserByEmail) and the by-sub
+// read, so the booted auth-service needs the expanded column. The backfill meets an
+// empty User table here (no-op) and is applied so the schema matches production.
+// NOTE: this verifier still hand-lists a SUBSET of the identity set (6 of 12 before
+// PR-2); that pre-existing divergence is recorded, not widened, here.
+const IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
+);
+const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -135,6 +149,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_D4A_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_PROFILE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_AUTHZ_VERSION_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
       ]) {

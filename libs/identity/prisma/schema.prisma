@@ -26,9 +26,20 @@ model User {
   deactivated_at  DateTime? @db.Timestamptz
   created_at      DateTime @default(now()) @db.Timestamptz
   updated_at      DateTime @updatedAt @db.Timestamptz
+  // IC-1 PR-2 (Amendment A1 §1 — one User, one tenant) — the OWNING tenant.
+  // NULLABLE in PR-2 (expand + backfill): rows created by an older image during
+  // the migrate→recreate window may be NULL until the PR-3 restrict migration
+  // re-runs the backfill and sets NOT NULL. Every runtime creation transaction
+  // sets it to the membership tenant from PR-2 onward. Never re-pointed
+  // (immutability trigger lands in PR-3). FK → Tenant (ON DELETE RESTRICT).
+  tenant_id       String?  @db.Uuid
 
   memberships     UserTenantMembership[]
   external_identities ExternalIdentity[]
+  // IC-1 PR-2 — owner relation. Named ("UserOwner") because Tenant↔User already
+  // relate indirectly through memberships; the composite unique (id, tenant_id)
+  // is the FK target for the PR-3 membership-to-owner composite FK.
+  owner_tenant    Tenant?  @relation("UserOwner", fields: [tenant_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   // AUTHZ-D4a — Axis-1 management hierarchy (intra-schema FK both ends).
   managed_edges       ManagementEdge[] @relation("ManagementEdgeManager")
@@ -37,7 +48,9 @@ model User {
   owned_teams         Team[]           @relation("TeamOwner")
   team_memberships    TeamMembership[]
 
+  @@unique([id, tenant_id])
   @@index([is_active])
+  @@index([tenant_id])
   @@schema("identity")
 }
 
@@ -162,6 +175,8 @@ model Tenant {
 
   memberships  UserTenantMembership[]
   sites        Site[]
+  // IC-1 PR-2 — the Users this tenant OWNS (one owning tenant per User).
+  owned_users  User[]   @relation("UserOwner")
 
   @@index([is_active])
   @@index([status])

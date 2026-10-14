@@ -663,6 +663,13 @@ const IDENTITY_IDP_MIGRATION_LC = resolve(ROOT, 'libs/identity/prisma/migrations
 // by the tenant-user lifecycle pacts (invite / disable / enable / role-change) WRITE
 // a baseline/bump here, so the provider DB must create it or those routes 500.
 const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql');
+// IC-1 PR-2 — owning tenant on User. The regenerated identity client SELECTs
+// User.tenant_id on every User read (the tenant-users directory, invite, audit actor
+// resolution), so the provider DB must carry the expanded column; the backfill is
+// applied too so the schema matches a post-migration production (it meets an empty
+// User table here and is a no-op).
+const IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql');
+const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -3749,6 +3756,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_TENANT_SLUG_MIGRATION,
         IDENTITY_IDP_MIGRATION, IDENTITY_IDP_MIGRATION_LC,
         IDENTITY_AUTHZ_VERSION_MIGRATION,
+        IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION,
+        IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,

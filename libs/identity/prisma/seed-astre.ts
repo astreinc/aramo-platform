@@ -121,12 +121,15 @@ export async function runAstreSeed(
   //    flow links the sub on first login (scenario 3 LINKS).
   await db.user.upsert({
     where: { id: ASTRE_SEED_IDS.owner_user },
+    // IC-1 PR-2: `update` stays empty — an existing owner row is never re-pointed.
     update: {},
     create: {
       id: ASTRE_SEED_IDS.owner_user,
       email: ASTRE_OWNER_EMAIL,
       display_name: ASTRE_OWNER_DISPLAY_NAME,
       is_active: true,
+      // IC-1 PR-2 — born owned by the Astre tenant (its single membership, step 4).
+      tenant_id: ASTRE_SEED_IDS.tenant,
     },
   });
 

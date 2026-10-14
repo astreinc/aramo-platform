@@ -448,6 +448,9 @@ export class IdentityRepository {
           id: args.user_id,
           email: args.email,
           display_name: args.display_name,
+          // IC-1 PR-2 — born OWNED: the owning tenant is the membership tenant,
+          // set in the same transaction (one User, one tenant).
+          tenant_id: args.tenant_id,
         },
       });
       await tx.externalIdentity.create({
@@ -543,6 +546,9 @@ export class IdentityRepository {
           id: args.user_id,
           email: args.email,
           display_name: args.display_name,
+          // IC-1 PR-2 — born OWNED: the owning tenant is the membership tenant,
+          // set in the same transaction (one User, one tenant).
+          tenant_id: args.tenant_id,
         },
       });
       await tx.userTenantMembership.create({

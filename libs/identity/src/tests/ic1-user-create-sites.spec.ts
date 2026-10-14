@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -53,6 +54,11 @@ function fileOf(hit: string): string {
   return hit.slice(0, hit.indexOf(':'));
 }
 
+// The WORKING-TREE source of the repository (what the build compiles), read from disk.
+function readRepositorySource(): string {
+  return readFileSync(resolve(ROOT, 'libs/identity/src/lib/identity.repository.ts'), 'utf8');
+}
+
 // Runtime User-create sites (production code). The two creation transactions.
 const RUNTIME_USER_CREATE_SITES: ReadonlyArray<{ file: string; count: number }> = [
   { file: 'libs/identity/src/lib/identity.repository.ts', count: 2 },
@@ -83,6 +89,19 @@ describe('IC-1 PR-1 — static guard: retired entry points + User-create sites',
       .map(([file, count]) => ({ file, count }))
       .sort((a, b) => a.file.localeCompare(b.file));
     expect(observed).toEqual([...RUNTIME_USER_CREATE_SITES]);
+  });
+
+  // IC-1 PR-2 — both runtime creation transactions set the owning tenant from
+  // the membership tenant in the SAME transaction (`tenant_id: args.tenant_id`
+  // inside each `tx.user.create`). Exactly 2 such sites, in the repository.
+  it('IC-1 PR-2: both runtime User creation transactions pass tenant_id (born owned)', () => {
+    const source = readRepositorySource();
+    const userCreates = source.split('tx.user.create({').slice(1);
+    expect(userCreates).toHaveLength(2);
+    for (const block of userCreates) {
+      const dataBlock = block.slice(0, block.indexOf('});'));
+      expect(dataBlock).toContain('tenant_id: args.tenant_id');
+    }
   });
 
   it('no runtime site creates a bare UserTenantMembership for an existing User outside IdentityRepository', () => {

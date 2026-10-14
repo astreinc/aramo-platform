@@ -175,6 +175,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(versions[0]?.tenant_id).toBe(TENANT_A);
       expect(versions[0]?.version).toBe(1);
       expect(await prisma.externalIdentity.count({ where: { user_id: ownedByA } })).toBe(0);
+      // IC-1 PR-2 — born OWNED: User.tenant_id equals the single membership tenant.
+      expect((await prisma.user.findUnique({ where: { id: ownedByA } }))?.tenant_id).toBe(TENANT_A);
     });
 
     it('L18 — createUserFromInvitation (platform tier) creates the User with EXACTLY one membership, one ExternalIdentity and a baseline AuthorizationVersion', async () => {
@@ -182,6 +184,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = r.user.id;
       expect(await prisma.userTenantMembership.count({ where: { user_id: id } })).toBe(1);
       expect(await prisma.externalIdentity.count({ where: { user_id: id } })).toBe(1);
+      // IC-1 PR-2 — born OWNED: User.tenant_id equals the single membership tenant.
+      expect((await prisma.user.findUnique({ where: { id } }))?.tenant_id).toBe(TENANT_B);
       const versions = await prisma.authorizationVersion.findMany({
         where: { principal_id: id },
       });
@@ -332,6 +336,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           GROUP BY user_id HAVING count(*) > 1`,
       );
       expect(rows).toHaveLength(0);
+    });
+
+    it('IC-1 PR-2 invariant snapshot — after the whole run, every User created by a saga is OWNED and its owner equals its membership tenant (0 NULL, 0 mismatches)', async () => {
+      const nulls = await prisma.user.count({ where: { tenant_id: null } });
+      expect(nulls).toBe(0);
+      const mismatches = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
+        `SELECT u.id FROM identity."User" u
+           JOIN identity."UserTenantMembership" m ON m.user_id = u.id
+          WHERE m.tenant_id <> u.tenant_id`,
+      );
+      expect(mismatches).toHaveLength(0);
     });
 
     // Keep the fresh-id helper referenced (uuidv7 is the project's id scheme).
