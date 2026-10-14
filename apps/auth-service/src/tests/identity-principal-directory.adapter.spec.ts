@@ -5,6 +5,7 @@ import type {
   IdentityAuditService,
   IdentityService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 
@@ -27,6 +28,7 @@ interface Deps {
   role: RoleService;
   audit: IdentityAuditService;
   authzVersions: AuthorizationVersionService;
+  entitlements: TenantEntitlementReader;
 }
 
 function makeDeps(over: {
@@ -39,6 +41,8 @@ function makeDeps(over: {
   activateImpl?: () => Promise<unknown>;
   site?: string | null;
   order?: string[];
+  // IC-2 PR-6 — the tenant's live product capabilities ('throws' = store down).
+  capabilities?: string[] | 'throws';
 } = {}): Deps & {
   resolveUser: ReturnType<typeof vi.fn>;
   findUserByEmail: ReturnType<typeof vi.fn>;
@@ -49,6 +53,7 @@ function makeDeps(over: {
   getScopesByUserAndTenant: ReturnType<typeof vi.fn>;
   getScopesByUserTenantAndSite: ReturnType<typeof vi.fn>;
   writeGlobalEvent: ReturnType<typeof vi.fn>;
+  getCapabilities: ReturnType<typeof vi.fn>;
 } {
   const order = over.order;
   const resolveUser = vi
@@ -96,16 +101,21 @@ function makeDeps(over: {
   // resolved session/scopes for the compact token mint.
   const getCurrentVersion = vi.fn().mockResolvedValue(1);
   const authzVersions = { getCurrentVersion } as unknown as AuthorizationVersionService;
+  const getCapabilities = vi.fn(async () => {
+    if (over.capabilities === 'throws') throw new Error('entitlement store down');
+    return new Set<string>(over.capabilities ?? ['core', 'ats', 'portal']);
+  });
+  const entitlements = { getCapabilities } as unknown as TenantEntitlementReader;
 
   return {
-    identity, tenant, role, audit, authzVersions,
+    identity, tenant, role, audit, authzVersions, entitlements, getCapabilities,
     resolveUser, findUserByEmail, linkExternalIdentity, activate, getTenantsByUser,
     findActiveMembershipSite, getScopesByUserAndTenant, getScopesByUserTenantAndSite, writeGlobalEvent,
   };
 }
 
 function adapter(d: Deps): IdentityPrincipalDirectoryAdapter {
-  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit, d.authzVersions);
+  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit, d.authzVersions, d.entitlements);
 }
 
 const SESSION_INPUT = {
@@ -259,7 +269,7 @@ describe('§2.4 invariant 6 — site-stamp scope selection (resolveSession + res
 
   it('resolveScopes site-scoped → { scopes, claims.site_id }', async () => {
     const d = makeDeps({ site: SITE_ID });
-    const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
+    const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' });
     // HF-AUTH-1 — resolveScopes now also carries the current authorization version
     // (stamped into the re-minted compact token on refresh).
     expect(r).toEqual({ kind: 'resolved', scopes: ['talent:read'], authz_version: 1, claims: { site_id: SITE_ID } });
@@ -267,7 +277,7 @@ describe('§2.4 invariant 6 — site-stamp scope selection (resolveSession + res
 
   it('resolveScopes tenant-wide → { scopes } (no claims)', async () => {
     const d = makeDeps({ site: null });
-    const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
+    const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' });
     expect(r).toEqual({ kind: 'resolved', scopes: ['auth:session:read'], authz_version: 1 });
   });
 });
@@ -394,7 +404,7 @@ describe('IC-2 PR-4 — host binding (after tenant selection, before the status 
 // IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — refresh ELIGIBILITY re-proven
 // at the identity boundary; User.is_active (N-6) at login AND refresh.
 describe('IC-2 PR-5 — resolveScopes eligibility (refresh) + User.is_active at login', () => {
-  const INPUT = { principal_id: USER_ID, context_id: TENANT_ID };
+  const INPUT = { principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' as const };
 
   it('eligible: active user, active membership in the stored tenant, ACTIVE tenant → resolved', async () => {
     const r = await adapter(makeDeps()).resolveScopes(INPUT);
@@ -438,5 +448,46 @@ describe('IC-2 PR-5 — resolveScopes eligibility (refresh) + User.is_active at 
     const d = makeDeps({ resolveUser: null, findUserByEmail: { id: USER_ID, is_active: false } });
     expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'user_inactive' });
     expect(d.getTenantsByUser).not.toHaveBeenCalled();
+  });
+});
+
+// IC-2 PR-6 (IC-0 §F.2 rule 3) — consumer→capability gate at mint AND refresh.
+describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', () => {
+  const REFRESH = { principal_id: USER_ID, context_id: TENANT_ID };
+  it('recruiter on an ATS-entitled tenant → resolved; on a tenant WITHOUT ats → denied consumer_not_entitled (no scopes read)', async () => {
+    expect((await adapter(makeDeps()).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
+    const d = makeDeps({ capabilities: ['core', 'portal'] });
+    expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+  });
+  it('esign on an ATS-only tenant → denied; on an esign-entitled tenant → resolved (Sign-only tenant: recruiter denied)', async () => {
+    expect(await adapter(makeDeps({ capabilities: ['core', 'ats', 'portal'] })).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect((await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
+    expect(await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+  });
+  it('multi-product tenant: BOTH consumers resolve (scope isolation is the resolver\'s job)', async () => {
+    const d = makeDeps({ capabilities: ['core', 'ats', 'portal', 'esign'] });
+    expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
+  });
+  it('platform is exempt (sentinel has no entitlements); portal and unknown consumers are unsupported on this path', async () => {
+    const d = makeDeps({ capabilities: [] });
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'platform' })).kind).toBe('resolved');
+    expect(d.getCapabilities).not.toHaveBeenCalled();
+    expect(await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, consumer: 'portal' })).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
+    expect(await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, consumer: 'bogus' as never })).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
+  });
+  it('an unreadable entitlement store denies (fail closed), never grants', async () => {
+    expect(await adapter(makeDeps({ capabilities: 'throws' })).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+  });
+  it('the gate runs AFTER the status gate (a suspended tenant reports tenant_suspended, not entitlement)', async () => {
+    expect(await adapter(makeDeps({ status: 'SUSPENDED', capabilities: [] })).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+  });
+  it('refresh: the capability is re-proven — a removed ats/esign entitlement denies consumer_not_entitled; missing consumer is unsupported', async () => {
+    expect(await adapter(makeDeps({ capabilities: ['core'] })).resolveScopes({ ...REFRESH, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(await adapter(makeDeps({ capabilities: ['core', 'ats'] })).resolveScopes({ ...REFRESH, consumer: 'esign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect((await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveScopes({ ...REFRESH, consumer: 'esign' })).kind).toBe('resolved');
+    expect(await adapter(makeDeps()).resolveScopes(REFRESH)).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
+    expect((await adapter(makeDeps({ capabilities: [] })).resolveScopes({ ...REFRESH, consumer: 'platform' })).kind).toBe('resolved');
   });
 });

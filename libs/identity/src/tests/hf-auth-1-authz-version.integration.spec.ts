@@ -15,6 +15,7 @@ import { AuthorizationVersionService } from '../lib/authorization-version.servic
 import { bumpPrincipalsWithRoleVersion } from '../lib/authorization-version.ops.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
 import { InMemoryScopeCache } from '../lib/authorization/in-memory-scope-cache.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import {
   IdentityEffectiveAuthorizationResolver,
 } from '../lib/authorization/identity-effective-authorization-resolver.js';
@@ -91,6 +92,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let cache: InMemoryScopeCache;
     let resolver: IdentityEffectiveAuthorizationResolver;
     let identityRepo: IdentityRepository;
+    // IC-2 PR-6 — the live entitlement read (controllable per test).
+    const entitlementCaps = { current: new Set<string>(['core', 'ats', 'portal']) };
+    const entitlementStub = { getCapabilities: async () => entitlementCaps.current } as unknown as TenantEntitlementReader;
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -112,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       resolver = new IdentityEffectiveAuthorizationResolver(roleService, versions, cache, {
         portalScopes: ['portal:profile:read'],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       identityRepo = new IdentityRepository(prisma);
     }, 120_000);
 
@@ -317,7 +321,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const failResolver = new IdentityEffectiveAuthorizationResolver(throwingRole, versions, new InMemoryScopeCache(), {
         portalScopes: [],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       expect((await failResolver.resolve(p.input(1))).status).toBe('unresolvable');
 
       // Version-authority unreachable → also unresolvable.
@@ -329,8 +333,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const failResolver2 = new IdentityEffectiveAuthorizationResolver(roleService, throwingVersions, new InMemoryScopeCache(), {
         portalScopes: [],
         scopeCacheTtlSeconds: 300,
-      });
+      }, entitlementStub);
       expect((await failResolver2.resolve(p.input(1))).status).toBe('unresolvable');
+    });
+
+    // IC-2 PR-6 — one identity, three consumers, three disjoint authorizations.
+    it('IC-2 PR-6: ONE principal holding ATS + esign + platform scopes resolves a DISJOINT set per consumer; esign only while entitled', async () => {
+      const p = await seedPrincipal(['talent:read', 'esign:envelope:send', 'platform:tenant:read']);
+      const forConsumer = (c: EffectiveAuthorizationInput['consumer_type']) => ({ ...p.input(1), consumer_type: c });
+      const recruiter = await resolver.resolve(forConsumer('recruiter'));
+      expect(recruiter.status).toBe('ok');
+      if (recruiter.status === 'ok') {
+        expect(recruiter.scopes).toHaveLength(1);
+        expect(recruiter.scopes[0]).toMatch(/^talent:read/);
+      }
+      const platform = await resolver.resolve(forConsumer('platform'));
+      if (platform.status === 'ok') expect(platform.scopes.map((x) => x.split('-')[0])).toEqual(['platform:tenant:read']);
+      // esign: NOT entitled → nothing; entitled → esign:* only; revoked again → nothing (no version bump needed).
+      const before = await resolver.resolve(forConsumer('esign'));
+      expect(before).toEqual({ status: 'ok', scopes: [] });
+      entitlementCaps.current = new Set(['core', 'ats', 'portal', 'esign']);
+      const entitled = await resolver.resolve(forConsumer('esign'));
+      if (entitled.status === 'ok') expect(entitled.scopes.map((x) => x.split('-')[0])).toEqual(['esign:envelope:send']);
+      entitlementCaps.current = new Set(['core', 'ats', 'portal']);
+      expect(await resolver.resolve(forConsumer('esign'))).toEqual({ status: 'ok', scopes: [] });
     });
 
     it('PORTAL: fixed scopes, version pinned to 1 (independent of RBAC growth)', async () => {

@@ -15,6 +15,17 @@ export type {
   CrossTenantRejectionReason,
 } from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
+// IC-2 PR-6 — live product-entitlement read (mint/refresh gate + resolver) and
+// the pure consumer→capability / scope-namespace policy.
+export { TenantEntitlementReader } from './lib/tenant-entitlement-reader.service.js';
+export {
+  requiredCapabilityForConsumer,
+  filterScopesForConsumer,
+  ESIGN_SCOPE_PREFIX,
+  PLATFORM_SCOPE_PREFIX,
+  type ConsumerCapabilityRequirement,
+  type ProductConsumer,
+} from './lib/authorization/consumer-scope-policy.js';
 // Inc-3 PR-3.8 (A) — the operator dashboard payload shape.
 export type {
   PlatformDashboardData,

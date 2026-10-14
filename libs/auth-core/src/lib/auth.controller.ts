@@ -394,6 +394,21 @@ export class AuthController {
           }),
         );
       }
+      // IC-2 PR-6 — the tenant is not entitled to the consumer's product: the
+      // EXISTING entitlement refusal code (EntitlementGuard parity), no tenant or
+      // capability inventory disclosed beyond the reason.
+      if (result.reason === 'consumer_not_entitled') {
+        return this.redirectCallbackErrorOrJson(
+          res,
+          derivedBase,
+          new AramoError(
+            'TENANT_CAPABILITY_NOT_ENTITLED',
+            'Tenant not entitled to this product',
+            403,
+            { requestId, details },
+          ),
+        );
+      }
       return this.redirectCallbackErrorOrJson(
         res,
         derivedBase,

@@ -587,6 +587,10 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
       ['host_tenant_mismatch', { kind: 'auth_error', reason: 'host_tenant_mismatch' }, 'TENANT_ACCESS_DENIED'],
       ['host_class_consumer_mismatch', { kind: 'auth_error', reason: 'host_class_consumer_mismatch' }, 'TENANT_ACCESS_DENIED'],
       ['host_unbound', { kind: 'auth_error', reason: 'host_unbound' }, 'TENANT_ACCESS_DENIED'],
+      // IC-2 PR-6 — product capability refusals: the EXISTING entitlement code for a
+      // tenant not entitled to the consumer's product; unsupported consumer → default 403.
+      ['consumer_not_entitled', { kind: 'auth_error', reason: 'consumer_not_entitled' }, 'TENANT_CAPABILITY_NOT_ENTITLED'],
+      ['consumer_not_supported', { kind: 'auth_error', reason: 'consumer_not_supported' }, 'INSUFFICIENT_PERMISSIONS'],
       ['tenant_suspended', { kind: 'auth_error', reason: 'tenant_suspended' }, 'TENANT_SUSPENDED'],
       ['tenant_closed', { kind: 'auth_error', reason: 'tenant_closed' }, 'TENANT_CLOSED'],
       ['email_not_verified', { kind: 'auth_error', reason: 'email_not_verified' }, 'INVALID_TOKEN'],

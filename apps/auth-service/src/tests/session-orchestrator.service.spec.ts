@@ -13,6 +13,7 @@ import type {
   IdentityAuditService,
   IdentityService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 import type { RefreshTokenService } from '@aramo/auth-storage';
@@ -46,6 +47,8 @@ interface Mocks {
   jwtIssuer: JwtIssuerService;
   audit: IdentityAuditService;
   authzVersions: AuthorizationVersionService;
+  // IC-2 PR-6 — live product capabilities (default: the standard ATS bundle).
+  entitlements: TenantEntitlementReader;
 }
 
 function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
@@ -147,6 +150,7 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
     authzVersions: {
       getCurrentVersion: vi.fn().mockResolvedValue(1),
     } as unknown as AuthorizationVersionService,
+    entitlements: { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
   };
   return { ...base, ...overrides };
 }
@@ -158,6 +162,7 @@ function makeService(mocks: Mocks): SessionOrchestratorService {
     mocks.role,
     mocks.audit,
     mocks.authzVersions,
+    mocks.entitlements,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new SessionOrchestratorService(

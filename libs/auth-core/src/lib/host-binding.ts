@@ -141,4 +141,8 @@ export const REFRESH_ELIGIBILITY_REASONS: ReadonlySet<string> = new Set([
   'membership_inactive',
   'tenant_suspended',
   'tenant_closed',
+  // IC-2 PR-6 — the consumer's product capability is not entitled / the consumer
+  // is not supported on the Cognito mint path.
+  'consumer_not_entitled',
+  'consumer_not_supported',
 ]);

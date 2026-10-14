@@ -148,6 +148,6 @@ describe('evaluateSessionHostBinding — session surface (PR-5)', () => {
     expect(evaluateSessionHostBinding({ host_class: 'PLATFORM', context_id: null, consumer: 'platform', resolved_context_id: PLATFORM_TENANT_SENTINEL_ID, allow_unbound: false })).toEqual({ ok: true, bound: true });
   });
   it('the refresh eligibility reason set is closed and complete', () => {
-    expect([...REFRESH_ELIGIBILITY_REASONS].sort()).toEqual(['membership_inactive', 'tenant_closed', 'tenant_suspended', 'user_inactive']);
+    expect([...REFRESH_ELIGIBILITY_REASONS].sort()).toEqual(['consumer_not_entitled', 'consumer_not_supported', 'membership_inactive', 'tenant_closed', 'tenant_suspended', 'user_inactive']);
   });
 });

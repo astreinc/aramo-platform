@@ -4,7 +4,9 @@ import {
   IdentityAuditService,
   IdentityService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
+  requiredCapabilityForConsumer,
 } from '@aramo/identity';
 import {
   allowUnboundHost,
@@ -61,7 +63,35 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     // HF-AUTH-1 — the current authorization revision to stamp into the compact
     // token (login + refresh mint paths).
     private readonly authzVersions: AuthorizationVersionService,
+    // IC-2 PR-6 — live product-entitlement read for the consumer→capability gate.
+    private readonly entitlements: TenantEntitlementReader,
   ) {}
+
+  // IC-2 PR-6 (IC-0 §F.2 rule 3) — a consumer credential is minted or
+  // re-minted ONLY when the tenant holds the consumer's product capability:
+  // recruiter/ingestion → `ats`, esign → `esign`, platform → exempt (sentinel),
+  // portal/unknown → unsupported on this path. Re-proven at EVERY mint and
+  // refresh from the entitlement store (never from the token), so a removed
+  // entitlement cannot be resurrected by refresh. A valid identity is not
+  // evidence of product entitlement. Fail closed on an unreadable store.
+  private async assertConsumerEntitled(
+    consumer: string | undefined,
+    tenant_id: string,
+  ): Promise<{ ok: true } | { ok: false; reason: 'consumer_not_entitled' | 'consumer_not_supported' }> {
+    const requirement = requiredCapabilityForConsumer(consumer);
+    if (requirement.kind === 'exempt') return { ok: true };
+    if (requirement.kind === 'unsupported') return { ok: false, reason: 'consumer_not_supported' };
+    let capabilities: ReadonlySet<string>;
+    try {
+      capabilities = await this.entitlements.getCapabilities(tenant_id);
+    } catch (err) {
+      this.logger.warn(`entitlement read failed (fail closed): ${(err as Error).message}`);
+      return { ok: false, reason: 'consumer_not_entitled' };
+    }
+    return capabilities.has(requirement.capability)
+      ? { ok: true }
+      : { ok: false, reason: 'consumer_not_entitled' };
+  }
 
   async resolveSession(input: ResolveSessionInput): Promise<ResolveSessionResult> {
     // Reconcile by federated sub; on miss, reconcile-by-verified-email.
@@ -175,6 +205,13 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       }
     }
 
+    // IC-2 PR-6 (rule 3) — product capability gate AFTER the status gate, BEFORE
+    // any scope resolution: no session for a product the tenant is not entitled to.
+    const entitled = await this.assertConsumerEntitled(input.consumer, selectedTenant.id);
+    if (!entitled.ok) {
+      return { kind: 'denied', reason: entitled.reason };
+    }
+
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: user.id,
       tenant_id: selectedTenant.id,
@@ -221,6 +258,13 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       if (stored.status === 'CLOSED') {
         return { kind: 'denied', reason: 'tenant_closed' };
       }
+    }
+
+    // IC-2 PR-6 (rule 3) — the consumer's product capability is re-proven at
+    // every refresh; a refresh cannot resurrect a revoked product capability.
+    const entitled = await this.assertConsumerEntitled(input.consumer, input.context_id);
+    if (!entitled.ok) {
+      return { kind: 'denied', reason: entitled.reason };
     }
 
     const { scopes, site_id } = await this.resolveScopesInternal({

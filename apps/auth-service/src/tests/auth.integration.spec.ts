@@ -34,6 +34,7 @@ import {
   IdentityService,
   PrismaService as IdentityPrismaService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 import {
@@ -240,6 +241,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           findActiveMembershipSite: vi.fn().mockResolvedValue(null),
           getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
           getScopesByUserTenantAndSite: vi.fn().mockResolvedValue(['auth:session:read']),
+        })
+        // IC-2 PR-6 — the LIVE product-entitlement read (mint/refresh gate + the
+        // resolver's esign check). Default = the standard ATS bundle; tests mutate.
+        .overrideProvider(TenantEntitlementReader)
+        .useValue({
+          getCapabilities: vi.fn().mockResolvedValue(new Set(['core', 'ats', 'portal'])),
         })
         .compile();
 
@@ -569,6 +576,101 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { access, refresh } = await loginOn(OWN_HOST);
         expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access)).status).toBe(200);
         expect((await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', refresh)).status).toBe(200);
+      });
+    });
+
+    // IC-2 PR-6 — product entitlements, consumer capabilities and scope isolation
+    // (real HTTP; real resolver + in-memory cache; stubbed role/entitlement reads).
+    describe('IC-2 PR-6 — product capability + consumer scope isolation', () => {
+      const entitlements = () => module.get(TenantEntitlementReader) as unknown as { getCapabilities: ReturnType<typeof vi.fn> };
+      const roles = () => module.get(RoleService) as unknown as { getScopesByUserTenantAndSite: ReturnType<typeof vi.fn>; getScopesByUserAndTenant: ReturnType<typeof vi.fn> };
+      const MIXED = ['auth:session:read', 'esign:envelope:read', 'platform:tenant:read'];
+      afterEach(() => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(['auth:session:read']);
+        roles().getScopesByUserAndTenant.mockResolvedValue(['auth:session:read']);
+        unstubCognito();
+      });
+      async function login(consumer: 'recruiter' | 'esign'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin(consumer, OWN_HOST);
+        const res = await request(app.getHttpServer())
+          .get(`/auth/${consumer}/callback?code=c&state=${state}`)
+          .set('Host', OWN_HOST)
+          .set('Cookie', pkceCookie);
+        const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+        const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`) && !c.includes('Max-Age=0'))?.split(';')[0];
+        return { status: res.status, location: res.headers['location'] as string, access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+      }
+
+      it('1/7/11. ATS-only tenant (core+ats+portal): the esign consumer cannot mint → 302 /login?error=TENANT_CAPABILITY_NOT_ENTITLED; core alone grants no product', async () => {
+        const r = await login('esign');
+        expect(r.status).toBe(302);
+        expect(r.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(r.access).toBeUndefined();
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core']));
+        const r2 = await login('recruiter');
+        expect(r2.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+      });
+
+      it('2/12. Sign-only tenant (core+esign): recruiter cannot mint; esign mints and carries ONLY esign:* — the recruiter path on an ATS tenant still works', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        expect((await login('recruiter')).location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        const e = await login('esign');
+        expect(e.location).toBe(`https://${OWN_HOST}/`);
+        const session = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(session.status).toBe(200);
+        expect(session.body.consumer_type).toBe('esign');
+        expect(session.body.scopes).toEqual(['esign:envelope:read']);
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const r = await login('recruiter');
+        expect(r.location).toBe(`https://${OWN_HOST}/`);
+      });
+
+      it('3/4/6. multi-product tenant: the SAME identity gets disjoint consumer-specific scopes; platform:* and esign:* never ride a recruiter token even when the roles hold them', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        const r = await login('recruiter');
+        const rs = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', r.access!);
+        expect(rs.body.scopes).toEqual(['auth:session:read']);
+        const e = await login('esign');
+        const es = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(es.body.scopes).toEqual(['esign:envelope:read']);
+      });
+
+      it('8/9. refresh cannot resurrect a revoked product capability, and a cached authorization does not keep superseded esign scopes', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
+        const e = await login('esign');
+        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['esign:envelope:read']);
+        // esign entitlement REMOVED — no authz_version bump, same cached canonical set.
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const after = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(after.status).toBe(200);
+        expect(after.body.scopes).toEqual([]);
+        const refresh = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        expect(refresh.status).toBe(401);
+        expect(refresh.body.error.details.reason).toBe('consumer_not_entitled');
+        const again = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        expect(again.body.error.details.reason).toBe('explicitly_revoked');
+      });
+
+      it('7. ATS entitlement removed after login: recruiter refresh → 401 consumer_not_entitled (revoked)', async () => {
+        const r = await login('recruiter');
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'portal']));
+        const refresh = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', r.refresh!);
+        expect(refresh.status).toBe(401);
+        expect(refresh.body.error.details.reason).toBe('consumer_not_entitled');
+      });
+
+      it('10. unknown consumers and unsupported consumers fail closed (400 at the path; portal never mints on the Cognito path)', async () => {
+        expect((await request(app.getHttpServer()).get('/auth/bogus/session').set('Host', OWN_HOST)).status).toBe(400);
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('portal', OWN_HOST);
+        const res = await request(app.getHttpServer()).get(`/auth/portal/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
       });
     });
 

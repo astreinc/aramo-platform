@@ -7,7 +7,9 @@ import type {
 
 import { AuthorizationVersionService } from '../authorization-version.service.js';
 import { RoleService } from '../role.service.js';
+import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 
+import { filterScopesForConsumer } from './consumer-scope-policy.js';
 import { AUTHORIZATION_SCOPE_CACHE, type AuthorizationScopeCache } from './scope-cache.port.js';
 
 // HF-AUTH-1 resolver config, bound at the app composition root. `portalScopes` is
@@ -49,6 +51,8 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
     private readonly versions: AuthorizationVersionService,
     @Inject(AUTHORIZATION_SCOPE_CACHE) private readonly cache: AuthorizationScopeCache,
     @Inject(AUTHZ_RESOLVER_CONFIG) private readonly config: AuthzResolverConfig,
+    // IC-2 PR-6 — LIVE entitlement read for the esign namespace (never cached).
+    private readonly entitlements: TenantEntitlementReader,
   ) {}
 
   async resolve(input: EffectiveAuthorizationInput): Promise<EffectiveAuthorizationResolution> {
@@ -87,7 +91,7 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
       cacheReachable = false; // cache down → fall through to canonical RBAC
     }
     if (cached !== null) {
-      return { status: 'ok', scopes: cached };
+      return { status: 'ok', scopes: await this.forConsumer(input, cached) };
     }
 
     let scopes: string[];
@@ -105,7 +109,32 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
         // Cache write failure is non-fatal — the resolution is already proven.
       }
     }
-    return { status: 'ok', scopes };
+    return { status: 'ok', scopes: await this.forConsumer(input, scopes) };
+  }
+
+  // IC-2 PR-6 (IC-0 §F.2 rule 4) — the per-consumer scope-namespace filter,
+  // applied AFTER the cached canonical set is read so a cached snapshot can
+  // never widen a token; the esign capability is read LIVE (uncached) so a
+  // removed entitlement stops esign:* on the very next request. A canonical set
+  // is cached per (tenant, principal, version, site, consumer).
+  private async forConsumer(
+    input: EffectiveAuthorizationInput,
+    canonical: string[],
+  ): Promise<string[]> {
+    let tenantHasEsign = false;
+    if (input.consumer_type === 'esign') {
+      // Fail closed: an unreadable entitlement store yields NO esign scopes.
+      try {
+        tenantHasEsign = (await this.entitlements.getCapabilities(input.tenant_id)).has('esign');
+      } catch {
+        tenantHasEsign = false;
+      }
+    }
+    return filterScopesForConsumer({
+      consumer: input.consumer_type,
+      scopes: canonical,
+      tenantHasEsign,
+    });
   }
 
   // Canonical RBAC resolution — site-aware union (tenant-wide ∪ site-matched), the
@@ -123,6 +152,8 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
   // tenant-wide one. Tenant + principal isolate across tenants.
   private cacheKey(input: EffectiveAuthorizationInput, version: number): string {
     const site = input.site_id ?? '-';
-    return `authz:${input.tenant_id}:${input.principal_id}:${String(version)}:${site}`;
+    // IC-2 PR-6: the consumer is part of the key (two consumers on one identity
+    // are two authorizations; a snapshot resolved for one never serves the other).
+    return `authz:${input.tenant_id}:${input.principal_id}:${String(version)}:${site}:${input.consumer_type}`;
   }
 }

@@ -1,6 +1,7 @@
 import { Global, Module, type DynamicModule } from '@nestjs/common';
 import { RedisConnectionConfig } from '@aramo/common';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
+import { EntitlementModule } from '@aramo/entitlement';
 
 import { IdentityCoreModule } from '../identity-core.module.js';
 
@@ -31,7 +32,9 @@ export class AuthorizationResolverModule {
   static forRoot(config: AuthzResolverConfig): DynamicModule {
     return {
       module: AuthorizationResolverModule,
-      imports: [IdentityCoreModule],
+      // IC-2 PR-6 — EntitlementModule for the resolver's live esign capability read
+      // (TenantEntitlementReader is exported by IdentityCoreModule).
+      imports: [IdentityCoreModule, EntitlementModule],
       providers: [
         { provide: AUTHZ_RESOLVER_CONFIG, useValue: config },
         {

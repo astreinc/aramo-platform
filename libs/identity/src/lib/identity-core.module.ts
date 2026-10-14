@@ -29,6 +29,7 @@ import { SitesController } from './sites/sites.controller.js';
 import { SitesService } from './sites/sites.service.js';
 import { SiteRepository } from './sites/site.repository.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
+import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
 
 // IdentityCoreModule — the SHARED identity read surface (Auth-Hardening
 // IdentityModule-Split Directive v1.0, Option c).
@@ -104,6 +105,9 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
     // the shared module; platform-admin also imports it directly. It does NOT
     // depend on either invite port.
     RoleBundleValidator,
+    // IC-2 PR-6 — live product-entitlement read for the mint/refresh capability
+    // gate and the resolver's esign namespace check (EntitlementModule imported).
+    TenantEntitlementReader,
     {
       provide: 'IdentityAuditServiceLogger',
       useFactory: () => createAramoLogger(IdentityAuditService.name),
@@ -115,6 +119,7 @@ import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
     RoleService,
     AuthorizationVersionService,
     IdentityAuditService,
+    TenantEntitlementReader,
     // Platform-Console Increment-2 PR-2 (G1) — exported so the platform-admin
     // PlatformController can inject it for the tenant lifecycle audit read
     // (GET /platform/tenants/:id/audit).

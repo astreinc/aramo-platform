@@ -6,9 +6,13 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import {
   ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations } from '@aramo/common';
 
+import { AuthorizationVersionService } from '../lib/authorization-version.service.js';
+import { IdentityEffectiveAuthorizationResolver } from '../lib/authorization/identity-effective-authorization-resolver.js';
+import { InMemoryScopeCache } from '../lib/authorization/in-memory-scope-cache.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleRepository } from '../lib/role.repository.js';
 import { RoleService } from '../lib/role.service.js';
+import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import { runIdentitySeed, SEED_IDS } from '../../prisma/seed.js';
 
 // PX-V1 PX-3 — proves the E-Sign sender identity resolves through the SHARED
@@ -80,6 +84,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
     expect([...scopes].sort()).toEqual(['esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send']);
     // The decisive partition: every resolved scope is in the esign namespace.
     expect([...scopes].every((s) => s.startsWith('esign:'))).toBe(true);
+  });
+
+  // IC-2 PR-6 — through the EFFECTIVE resolver (what the guard and /session use):
+  // an esign_sender identity carries its esign:* scopes ONLY on the esign consumer
+  // AND only while the tenant holds the esign capability; on the recruiter
+  // consumer the same identity resolves NO scopes.
+  it('IC-2 PR-6: esign_sender via the effective resolver — esign consumer + entitlement → esign:*; not entitled → []; recruiter consumer → []', async () => {
+    const userId = await assignRoleToFreshUser('e3', SEED_IDS.roles.esign_sender);
+    const versions = new AuthorizationVersionService(prisma);
+    await versions.ensureBaseline(prisma, { tenant_id: SEED_IDS.tenant, principal_id: userId });
+    const caps = { current: new Set<string>(['core', 'ats', 'portal']) };
+    const resolver = new IdentityEffectiveAuthorizationResolver(
+      roleSvc, versions, new InMemoryScopeCache(), { portalScopes: [], scopeCacheTtlSeconds: 300 },
+      { getCapabilities: async () => caps.current } as unknown as TenantEntitlementReader,
+    );
+    const input = (consumer_type: 'esign' | 'recruiter') => ({
+      tenant_id: SEED_IDS.tenant, principal_id: userId, consumer_type, actor_kind: 'user' as const, token_authz_version: 1,
+    });
+    expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: [] });
+    caps.current = new Set(['core', 'ats', 'portal', 'esign']);
+    const entitled = await resolver.resolve(input('esign'));
+    expect(entitled.status).toBe('ok');
+    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send']);
+    expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: [] });
   });
 
   it('esign_viewer resolves read-only within the esign namespace', async () => {

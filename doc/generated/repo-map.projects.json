@@ -809,6 +809,7 @@
       "DOMAIN_VERIFICATION_STATUSES",
       "DnsResolverModule",
       "DomainVerificationService",
+      "ESIGN_SCOPE_PREFIX",
       "EVENT_TYPES",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
@@ -824,6 +825,7 @@
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
       "PLATFORM_ROLE_KEYS",
+      "PLATFORM_SCOPE_PREFIX",
       "PrismaService",
       "RedisScopeCache",
       "RoleBundleValidator",
@@ -842,6 +844,7 @@
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
       "TeamRepository",
+      "TenantEntitlementReader",
       "TenantRepository",
       "TenantService",
       "TenantUserLifecycleService",
@@ -854,6 +857,7 @@
       "ensureBaselineVersion",
       "extractEmailDomain",
       "extractTenantSlugFromHost",
+      "filterScopesForConsumer",
       "generateDomainVerificationToken",
       "isDomainVerificationStatus",
       "isInviteStatus",
@@ -861,7 +865,8 @@
       "isPersonalOrDisposableDomain",
       "isTenantStatus",
       "normalizeEmail",
-      "normalizeSlug"
+      "normalizeSlug",
+      "requiredCapabilityForConsumer"
     ],
     "@aramo/identity-index": [
       "CLUSTER_PURGE_STATEMENTS",
@@ -2422,6 +2427,12 @@
       { "project": "entitlement", "status": "production" },
       { "project": "examination", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/authorization-resolver.consumer-isolation.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a.controller.read.spec.ts",

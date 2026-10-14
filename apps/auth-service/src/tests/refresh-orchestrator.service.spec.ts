@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  TenantEntitlementReader,
   AuthorizationVersionService,
   IdentityAuditService,
   IdentityService,
@@ -48,6 +49,7 @@ interface Mocks {
   // IC-2 PR-5 — resolveScopes now re-proves eligibility through identity + tenant.
   identity: IdentityService;
   tenant: TenantService;
+  entitlements: TenantEntitlementReader;
 }
 
 function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
@@ -90,6 +92,7 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
     tenant: {
       getTenantsByUser: vi.fn().mockResolvedValue([{ id: TENANT_ID, name: 'Tenant One', status: 'ACTIVE' }]),
     } as unknown as TenantService,
+    entitlements: { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader,
     ...overrides,
   };
 }
@@ -101,6 +104,7 @@ function makeSvc(mocks: Mocks): RefreshOrchestratorService {
     mocks.role,
     {} as IdentityAuditService,
     { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService,
+    mocks.entitlements,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new RefreshOrchestratorService(
@@ -391,5 +395,24 @@ describe('IC-2 PR-5 — refresh host binding + eligibility', () => {
     const r = await makeSvc(mocks).handleRefresh(input);
     expect(r).toEqual({ kind: 'token_invalid', reason: 'membership_inactive' });
     expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
+  });
+});
+
+// IC-2 PR-6 — refresh cannot resurrect a revoked product capability.
+describe('IC-2 PR-6 — refresh re-proves the consumer\'s product capability', () => {
+  it('ats entitlement removed → token_invalid consumer_not_entitled; presented token REVOKED; nothing re-minted', async () => {
+    const mocks = makeMocks({ entitlements: { getCapabilities: async () => new Set(['core', 'portal']) } as unknown as TenantEntitlementReader });
+    const r = await makeSvc(mocks).handleRefresh({ consumer: 'recruiter', refreshCookie: 'plain' });
+    expect(r).toEqual({ kind: 'token_invalid', reason: 'consumer_not_entitled' });
+    expect(mocks.refreshTokens.revoke).toHaveBeenCalledWith({ id: TOKEN_ID });
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
+  });
+  it('esign refresh on an ATS-only tenant → consumer_not_entitled; with esign → success', async () => {
+    const esignDto = () => makeDto({ consumer_type: 'esign' });
+    const base = () => ({ ...makeMocks().refreshTokens, findByHash: vi.fn().mockResolvedValue(esignDto()) } as unknown as RefreshTokenService);
+    const denied = await makeSvc(makeMocks({ refreshTokens: base() })).handleRefresh({ consumer: 'esign', refreshCookie: 'p' });
+    expect(denied).toEqual({ kind: 'token_invalid', reason: 'consumer_not_entitled' });
+    const ok = await makeSvc(makeMocks({ refreshTokens: base(), entitlements: { getCapabilities: async () => new Set(['core', 'esign']) } as unknown as TenantEntitlementReader })).handleRefresh({ consumer: 'esign', refreshCookie: 'p' });
+    expect(ok.kind).toBe('success');
   });
 });
