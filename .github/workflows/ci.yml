@@ -716,9 +716,13 @@ jobs:
       # pull ultimately fails, Testcontainers still retries on demand, so this never masks a
       # real test failure. (localstack/localstack:3 is large and used by a single root, so it
       # is intentionally left to on-demand pull rather than warmed in every leg.)
+      # pgvector/pgvector:pg17 is ARAMO_POSTGRES_TEST_IMAGE (libs/common/src/lib/testing/
+      # postgres-test-image.ts, GS-2A codemod): every Postgres-backed integration spec starts
+      # it, so a leg whose FIRST spec pays the pull inside its beforeAll budget (120 s) times
+      # out on a slow pull — seen on PR #937 (libs/pre-start-requirement). Warm it here.
       - name: Pre-warm Testcontainers base images (absorb Docker Hub transient 5xx)
         run: |
-          for img in postgres:17 postgres:17-alpine redis:7; do
+          for img in pgvector/pgvector:pg17 postgres:17 postgres:17-alpine redis:7; do
             for i in 1 2 3 4 5; do
               if docker pull "$img"; then break; fi
               echo "::warning::docker pull $img attempt $i failed (suspected Docker Hub transient 5xx); backing off"
