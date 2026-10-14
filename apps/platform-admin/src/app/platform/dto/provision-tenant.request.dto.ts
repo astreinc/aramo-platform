@@ -2,10 +2,12 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
+import { TENANT_KINDS } from '@aramo/identity';
 
 // POST /platform/tenants — provision a tenant + invite the Tenant Owner
 // as the singular first act (Lead ruling 6). The platform-admin caller
@@ -55,4 +57,13 @@ export class ProvisionTenantRequestDto {
   @IsOptional()
   @IsString()
   slug?: string;
+
+  // IC-4 PR-9 — BUSINESS (default; byte-preserved pre-PR-9 path) or PERSONAL
+  // (one-person Sign subscriber: personal-provider owner email allowed,
+  // allowed_domain NULL, capabilities CLOSED to [core, esign], owner role
+  // org_admin, no ATS projection). Validated at the DTO (400 on any other
+  // value) and again in-service (single-source TENANT_KINDS).
+  @IsOptional()
+  @IsIn([...TENANT_KINDS])
+  kind?: string;
 }

@@ -135,6 +135,8 @@ const PLATFORM_ADMIN_INVITE_SCOPE_ID = '01900000-0000-7000-8000-00000000008b';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
 // IC-3 PR-7 — org_admin (seed id 0x2b0).
 const ORG_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
+// IC-4 PR-9 — the E-Sign owner role (PX-V1 PX-3 id), for the governed Sign grant proof.
+const ESIGN_OWNER_ROLE_ID = '01900000-0000-7000-8000-0000000002a0';
 const RECRUITER_ROLE_ID = '01900000-0000-7000-8000-000000000011';
 // AUTHZ-1b fixture swap: hiring_manager retired -> use account_manager
 // (UUID 0x16, in the staffing catalog). The fixture just needs a third
@@ -269,6 +271,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             id: ORG_ADMIN_ROLE_ID,
             key: 'org_admin',
             description: 'Organization Admin',
+            is_active: true,
+          },
+          // IC-4 PR-9 — the E-Sign owner role (assignable only in an esign-entitled tenant).
+          {
+            id: ESIGN_OWNER_ROLE_ID,
+            key: 'esign_owner',
+            description: 'E-Sign Owner',
             is_active: true,
           },
           {
@@ -740,6 +749,104 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
       expect(tenant?.status).toBe('PROVISIONED');
       expect(tenant?.is_active).toBe(true);
+    });
+
+    // IC-4 PR-9 — PERSONAL tenancy through the REAL console graph.
+    it('IC-4 PR-9 #1/#7/#10 — POST /platform/tenants kind PERSONAL + gmail owner → 201: Tenant PERSONAL, allowed_domain NULL, [core, esign], org_admin owner, ONE membership, authz baseline, NO ATS projection, PROVISIONED', async () => {
+      policyPublishSpy.mockClear();
+      rtrPublishSpy.mockClear();
+      cognitoMock.adminCreateUser.mockClear();
+      const token = await platformJwt();
+      const res = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', owner_display_name: 'Jane Doe', kind: 'PERSONAL' });
+      expect(res.status).toBe(201);
+      expect(res.body.tenant_kind).toBe('PERSONAL');
+      expect(res.body.capabilities).toEqual(['core', 'esign']);
+      expect(cognitoMock.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({ pool: 'tenant', email: 'jane.doe@gmail.com' }));
+      const tenantId = res.body.tenant_id as string;
+      const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
+      expect(tenant?.kind).toBe('PERSONAL');
+      expect(tenant?.allowed_domain).toBeNull();
+      expect(tenant?.status).toBe('PROVISIONED');
+      expect(tenant?.is_active).toBe(true);
+      const entitled = await module.get(EntitlementRepository).getCapabilities(tenantId);
+      expect([...entitled].sort()).toEqual(['core', 'esign']);
+      const owner = await identityPrisma.user.findUnique({ where: { email: 'jane.doe@gmail.com' } });
+      expect(owner?.tenant_id).toBe(tenantId);
+      const memberships = await identityPrisma.userTenantMembership.findMany({ where: { user_id: owner!.id } });
+      expect(memberships).toHaveLength(1);
+      const memRoles = await identityPrisma.userTenantMembershipRole.findMany({
+        where: { membership_id: memberships[0]!.id },
+        include: { role: { select: { key: true } } },
+      });
+      expect(memRoles.map((r) => r.role.key)).toEqual(['org_admin']);
+      expect(await identityPrisma.authorizationVersion.findFirst({ where: { tenant_id: tenantId, principal_id: owner!.id } })).not.toBeNull();
+      expect(policyPublishSpy).not.toHaveBeenCalled();
+      expect(rtrPublishSpy).not.toHaveBeenCalled();
+      // The list row and the detail read surface the kind.
+      const list = await request(app.getHttpServer()).get('/platform/tenants').set('Authorization', `Bearer ${await platformJwt()}`);
+      expect(list.status).toBe(200);
+      const row = (list.body.tenants as Array<{ id: string; kind: string }>).find((t) => t.id === tenantId);
+      expect(row?.kind).toBe('PERSONAL');
+    });
+
+    it('IC-4 PR-9 #4/#8 — PERSONAL with an ATS capability → 400 personal_tenant_capability_not_allowed BEFORE Cognito; unknown kind → 400 at the DTO; no tenant rows', async () => {
+      cognitoMock.adminCreateUser.mockClear();
+      const token = await platformJwt();
+      const ats = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jane ATS', owner_email: 'jane.ats@gmail.com', kind: 'PERSONAL', capabilities: ['core', 'ats'] });
+      expect(ats.status).toBe(400);
+      expect(ats.body.error.details?.reason).toBe('personal_tenant_capability_not_allowed');
+      const bad = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jane Kind', owner_email: 'jane.kind@gmail.com', kind: 'ENTERPRISE' });
+      expect(bad.status).toBe(400);
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(await identityPrisma.tenant.findFirst({ where: { name: { in: ['Jane ATS', 'Jane Kind'] } } })).toBeNull();
+    });
+
+    it('IC-4 PR-9 #3/#9 — a registered personal email cannot provision a second tenant (409 EMAIL_UNAVAILABLE before Cognito); BUSINESS still refuses a personal-provider owner (proof 7 unchanged)', async () => {
+      cognitoMock.adminCreateUser.mockClear();
+      const token = await platformJwt();
+      const dup = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Jane Doe Again', owner_email: 'Jane.Doe@gmail.com', kind: 'PERSONAL' });
+      expect(dup.status).toBe(409);
+      expect(dup.body.error.code).toBe('EMAIL_UNAVAILABLE');
+      expect(dup.body.error.details).toEqual({});
+      const biz = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Gmail Business', owner_email: 'founder2@gmail.com' });
+      expect(biz.status).toBe(400);
+      expect(biz.body.error.details?.reason).toBe('personal_email_not_allowed');
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(await identityPrisma.tenant.count({ where: { name: { in: ['Jane Doe Again', 'Gmail Business'] } } })).toBe(0);
+    });
+
+    it('IC-4 PR-9 #6 — the personal owner (org_admin) grants esign_owner to itself through the governed role path; the same grant is refused for a tenant without esign (IC-3 PR-8)', async () => {
+      const identitySvc = module.get(IdentityService);
+      const owner = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'jane.doe@gmail.com' } });
+      const membership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: owner.id } });
+      await identitySvc.replaceMembershipRoles({
+        membership_id: membership.id, tenant_id: owner.tenant_id, role_keys: ['org_admin', 'esign_owner'],
+        role_ids: [ORG_ADMIN_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant',
+      });
+      const keys = await identitySvc.findRoleKeysForMembership(membership.id);
+      expect(keys.sort()).toEqual(['esign_owner', 'org_admin']);
+      // An ATS-only business tenant's owner cannot receive a Sign role.
+      const acme = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'owner@acme.corp' } });
+      const acmeMembership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: acme.id } });
+      await expect(identitySvc.replaceMembershipRoles({
+        membership_id: acmeMembership.id, tenant_id: acme.tenant_id, role_keys: ['tenant_owner', 'esign_owner'],
+        role_ids: [TENANT_OWNER_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant-2',
+      })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'esign_role_not_entitled' } } });
     });
 
     it('IC-3 PR-7 — ATS + Sign provisioning: ONE tenant, ONE owner (tenant_owner), all four entitlements, ATS projections run; ATS-only (proof 2) unchanged', async () => {

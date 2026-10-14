@@ -60,6 +60,13 @@ model Tenant {
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
 
+  // IC-4 PR-9 — tenant KIND: BUSINESS (organization; locked email domain) or
+  // PERSONAL (one-person Sign subscriber; allowed_domain NULL; [core, esign]
+  // only). String vocabulary enforced in app code (TENANT_KINDS, util/tenant-
+  // kind.ts) per the status / invite_status convention — NOT a Prisma enum.
+  // Additive with a default: every pre-existing row is BUSINESS.
+  kind         String   @default("BUSINESS")
+
   // Domain-Enforcement P1 — the one email domain this tenant is locked to
   // (stored NORMALIZED / lowercased). Nullable because existing tenants
   // predate it; `required-on-new` is enforced in app code at provision

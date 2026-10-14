@@ -55,6 +55,8 @@ const MIGRATIONS = [
   // IC-1 PR-3 — restrict + immutability trigger (whole-file through pg).
   'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT = '01900000-0000-7000-8000-0000000000a1';

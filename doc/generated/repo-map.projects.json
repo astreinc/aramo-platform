@@ -805,6 +805,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "CursorDecodeError",
+      "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
       "DOMAIN_VERIFICATION_STATUSES",
       "DnsResolverModule",
@@ -829,6 +830,7 @@
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
       "ORG_ADMIN_SCOPE_KEYS",
+      "PERSONAL_TENANT_CAPABILITIES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PrismaService",
@@ -843,8 +845,10 @@
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
       "StubTenantCognitoAdapter",
+      "TENANT_ACTIVATING_OWNER_ROLE_KEYS",
       "TENANT_ASSIGNABLE_ROLE_KEYS",
       "TENANT_COGNITO_PORT",
+      "TENANT_KINDS",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
@@ -869,6 +873,7 @@
       "isInviteStatus",
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
+      "isTenantKind",
       "isTenantStatus",
       "normalizeEmail",
       "normalizeSlug",
@@ -2454,6 +2459,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic4-pr9-personal-tenant.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -4614,6 +4625,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ic4-pr9-personal-tenant.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },

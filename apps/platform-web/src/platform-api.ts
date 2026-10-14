@@ -7,6 +7,8 @@ import { apiClient } from '@aramo/fe-foundation';
 export interface PlatformTenantSummary {
   id: string;
   name: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL.
+  kind: string;
   slug: string | null;
   status: string;
   status_reason_code: string | null;
@@ -23,6 +25,8 @@ export interface PlatformTenantSummary {
 export interface PlatformTenantDetail {
   id: string;
   name: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL.
+  kind: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -70,6 +74,8 @@ export interface PlatformDashboard {
 export interface ProvisionTenantResult {
   tenant_id: string;
   tenant_name: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL.
+  tenant_kind: string;
   owner_user_id: string;
   owner_email: string;
   membership_id: string;
@@ -91,6 +97,13 @@ export interface LifecycleActionResult {
 const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'esign'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
+
+// IC-4 PR-9 — mirrors libs/identity TENANT_KINDS (backend-authoritative). A
+// PERSONAL tenant's capability set is CLOSED to [core, esign] server-side; the
+// form only pre-selects it.
+export const TENANT_KINDS = ['BUSINESS', 'PERSONAL'] as const;
+export type TenantKind = (typeof TENANT_KINDS)[number];
+export const PERSONAL_TENANT_CAPABILITIES: readonly Capability[] = ['core', 'esign'];
 
 export const platformApi = {
   // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
@@ -124,6 +137,9 @@ export const platformApi = {
     // Inc-3 PR-3.4 — omit/true invites the owner now; false defers the invite
     // (create-now-invite-later). Response carries invitation_sent.
     invite_owner?: boolean;
+    // IC-4 PR-9 — BUSINESS (default) | PERSONAL; the backend DTO + service are
+    // the authority (closed TENANT_KINDS, personal capability set, owner role).
+    kind?: TenantKind;
   }): Promise<ProvisionTenantResult> {
     return apiClient.post('/platform/tenants', body);
   },

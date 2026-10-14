@@ -43,6 +43,10 @@ function makeDeps(over: {
   order?: string[];
   // IC-2 PR-6 — the tenant's live product capabilities ('throws' = store down).
   capabilities?: string[] | 'throws';
+  // IC-4 PR-9 (J-9) — the membership's role keys for the first-session
+  // activation discriminator; 'throws' = the transition fails.
+  roleKeys?: string[];
+  transition?: 'throws';
 } = {}): Deps & {
   resolveUser: ReturnType<typeof vi.fn>;
   findUserByEmail: ReturnType<typeof vi.fn>;
@@ -54,6 +58,9 @@ function makeDeps(over: {
   getScopesByUserTenantAndSite: ReturnType<typeof vi.fn>;
   writeGlobalEvent: ReturnType<typeof vi.fn>;
   getCapabilities: ReturnType<typeof vi.fn>;
+  findMembership: ReturnType<typeof vi.fn>;
+  findRoleKeysForMembership: ReturnType<typeof vi.fn>;
+  transitionTenantStatus: ReturnType<typeof vi.fn>;
 } {
   const order = over.order;
   const resolveUser = vi
@@ -83,14 +90,23 @@ function makeDeps(over: {
   const getScopesByUserTenantAndSite = vi.fn().mockResolvedValue(['talent:read']);
   const writeGlobalEvent = vi.fn().mockResolvedValue(undefined);
 
+  // IC-4 PR-9 (J-9) — owner first-session activation collaborators.
+  const findMembership = vi.fn().mockResolvedValue({ id: 'mem-1', user_id: USER_ID, tenant_id: TENANT_ID, is_active: true });
+  const findRoleKeysForMembership = vi.fn().mockResolvedValue(over.roleKeys ?? ['recruiter']);
+  const transitionTenantStatus = vi.fn(async () => {
+    if (over.transition === 'throws') throw new Error('lifecycle write failed');
+    return { from: 'PROVISIONED', to: 'ACTIVE', changed: true };
+  });
   const identity = {
     resolveUser,
     findUserByEmail,
     findUserById,
     linkExternalIdentity,
     activateAcceptedMembershipsOnSession: activate,
+    findMembership,
+    findRoleKeysForMembership,
   } as unknown as IdentityService;
-  const tenant = { getTenantsByUser } as unknown as TenantService;
+  const tenant = { getTenantsByUser, transitionTenantStatus } as unknown as TenantService;
   const role = {
     findActiveMembershipSite,
     getScopesByUserAndTenant,
@@ -111,6 +127,7 @@ function makeDeps(over: {
     identity, tenant, role, audit, authzVersions, entitlements, getCapabilities,
     resolveUser, findUserByEmail, linkExternalIdentity, activate, getTenantsByUser,
     findActiveMembershipSite, getScopesByUserAndTenant, getScopesByUserTenantAndSite, writeGlobalEvent,
+    findMembership, findRoleKeysForMembership, transitionTenantStatus,
   };
 }
 
@@ -489,5 +506,80 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
     expect((await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveScopes({ ...REFRESH, consumer: 'esign' })).kind).toBe('resolved');
     expect(await adapter(makeDeps()).resolveScopes(REFRESH)).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
     expect((await adapter(makeDeps({ capabilities: [] })).resolveScopes({ ...REFRESH, consumer: 'platform' })).kind).toBe('resolved');
+  });
+});
+
+// IC-4 PR-9 / IC-0 J-9 (Inc-2 PR-1 Amendment Inc-2-PR-1-A1) — OWNER FIRST-SESSION
+// ACTIVATION: a Pattern-A owner (no Invitation row) activates its PROVISIONED
+// tenant on its first successful session. After every gate; best-effort;
+// idempotent; never for the platform consumer, a non-owner, an ACTIVE tenant
+// or a refresh; never changes the minted session.
+describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
+  it('PROVISIONED tenant + org_admin membership (Sign-only / PERSONAL owner) → resolved AND transitionTenantStatus(→ACTIVE, system actor, owner_first_session)', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'esign'] });
+    const r = await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'esign' });
+    expect(r.kind).toBe('resolved');
+    expect(d.findMembership).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
+    expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
+    expect(d.transitionTenantStatus).toHaveBeenCalledWith(expect.objectContaining({
+      tenant_id: TENANT_ID, to: 'ACTIVE', actor_type: 'system', source: 'owner_first_session',
+      related: expect.objectContaining({ membershipId: 'mem-1', userId: USER_ID }),
+    }));
+  });
+  it('PROVISIONED tenant + tenant_owner membership (ATS owner, recruiter consumer) → activates; the resolved session is unchanged by the hook', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner'] });
+    const r = await adapter(d).resolveSession(SESSION_INPUT);
+    expect(r).toMatchObject({ kind: 'resolved', principal_id: USER_ID, context_id: TENANT_ID, scopes: ['auth:session:read'] });
+    expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
+  });
+  it('PROVISIONED tenant + NON-owner membership (recruiter) → resolved, NO transition', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['recruiter'] });
+    expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
+    expect(d.transitionTenantStatus).not.toHaveBeenCalled();
+  });
+  it('ACTIVE tenant → no membership/role lookup, NO transition (idempotent fast path)', async () => {
+    const d = makeDeps({ status: 'ACTIVE', roleKeys: ['org_admin'] });
+    expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
+    expect(d.findMembership).not.toHaveBeenCalled();
+    expect(d.transitionTenantStatus).not.toHaveBeenCalled();
+  });
+  it('platform consumer (sentinel) → NEVER activates', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['super_admin'], tenants: [{ id: PLATFORM_TENANT_SENTINEL_ID, name: 'Aramo Platform', status: 'PROVISIONED' }] });
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'platform' })).kind).toBe('resolved');
+    expect(d.transitionTenantStatus).not.toHaveBeenCalled();
+  });
+  it('a failing activation write NEVER fails the sign-in (best-effort; tenant stays PROVISIONED, mint-gate allows it)', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], transition: 'throws' });
+    const r = await adapter(d).resolveSession(SESSION_INPUT);
+    expect(r.kind).toBe('resolved');
+    expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
+  });
+  it('the hook runs AFTER the gates: a denied session (not entitled / suspended / mismatched host under enforce) never activates', async () => {
+    const d1 = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'esign'] });
+    expect(await adapter(d1).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d1.transitionTenantStatus).not.toHaveBeenCalled();
+    const d2 = makeDeps({ status: 'SUSPENDED', roleKeys: ['org_admin'] });
+    expect((await adapter(d2).resolveSession(SESSION_INPUT)).kind).toBe('denied');
+    expect(d2.transitionTenantStatus).not.toHaveBeenCalled();
+  });
+  it('refresh (resolveScopes) never activates', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'] });
+    expect((await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' })).kind).toBe('resolved');
+    expect(d.transitionTenantStatus).not.toHaveBeenCalled();
+  });
+});
+
+// IC-4 PR-9 §4 — a PERSONAL Sign tenant ([core, esign]) is NOT entitled to ATS:
+// the recruiter credential is refused at mint and at refresh whatever roles the
+// personal User holds; the esign credential is minted. Identity registration,
+// tenant creation, product entitlement and Sign sender eligibility stay separate.
+describe('IC-4 PR-9 — personal Sign tenant never mints an ATS credential', () => {
+  it('recruiter consumer → denied consumer_not_entitled (no scopes read); esign consumer → resolved; refresh of a recruiter token → denied', async () => {
+    const personal = { capabilities: ['core', 'esign'], roleKeys: ['org_admin'] };
+    const d = makeDeps(personal);
+    expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    expect((await adapter(makeDeps(personal)).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
+    expect(await adapter(makeDeps(personal)).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
 });

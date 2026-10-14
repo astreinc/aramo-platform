@@ -1474,6 +1474,8 @@ components:
             suppressed (no email) and the tenant still lands PROVISIONED; the operator
             sends the invite when ready via POST .../resend-owner-invite. Omitting the
             field preserves the pre-3.4 behavior exactly.
+        kind:
+          $ref: '#/components/schemas/TenantKind'
         slug:
           type: string
           minLength: 1
@@ -1487,16 +1489,35 @@ components:
             null). Host-bound login enforcement requires every tenant that signs in on a
             tenant host to carry a slug.
 
+    TenantKind:
+      type: string
+      enum: [BUSINESS, PERSONAL]
+      description: >-
+        IC-4 PR-9 — the tenant kind. BUSINESS (default): an organization whose
+        owner's non-personal email domain becomes the locked `allowed_domain`;
+        any product set. PERSONAL: a one-person Sign subscriber — an ordinary
+        tenant (one owning User, one membership, same identity spine) provisioned
+        WITHOUT a locked domain (a personal-provider owner address is allowed;
+        `allowed_domain` null), whose capability set is CLOSED to
+        [core, esign] (any other requested capability → 400 `VALIDATION_ERROR`
+        `details.reason` `personal_tenant_capability_not_allowed`, before any
+        Cognito side effect), whose owner receives `org_admin` (never an ATS
+        role) and for which no ATS projection runs. The Sign sender role is a
+        separate governed grant (IC-3 PR-8); ATS/TIP entitlement for a personal
+        identity is not provisionable.
+
     ProvisionTenantResponse:
       type: object
       additionalProperties: false
-      required: [tenant_id, tenant_name, owner_user_id, owner_email, membership_id, capabilities, invitation_sent]
+      required: [tenant_id, tenant_name, tenant_kind, owner_user_id, owner_email, membership_id, capabilities, invitation_sent]
       properties:
         tenant_id:
           type: string
           format: uuid
         tenant_name:
           type: string
+        tenant_kind:
+          $ref: '#/components/schemas/TenantKind'
         owner_user_id:
           type: string
           format: uuid
@@ -1520,7 +1541,7 @@ components:
     PlatformTenantSummary:
       type: object
       additionalProperties: false
-      required: [id, name, slug, status, status_reason_code, status_changed_at, is_active, created_at, activated_at, suspended_at]
+      required: [id, name, kind, slug, status, status_reason_code, status_changed_at, is_active, created_at, activated_at, suspended_at]
       description: The operator list-row shape (lifecycle-triage columns; capability summary lives on the detail read).
       properties:
         id:
@@ -1528,6 +1549,8 @@ components:
           format: uuid
         name:
           type: string
+        kind:
+          $ref: '#/components/schemas/TenantKind'
         slug:
           oneOf:
             - type: string
@@ -1570,13 +1593,15 @@ components:
     TenantDetail:
       type: object
       additionalProperties: false
-      required: [id, name, is_active, created_at, updated_at, identity_provider, status]
+      required: [id, name, kind, is_active, created_at, updated_at, identity_provider, status]
       properties:
         id:
           type: string
           format: uuid
         name:
           type: string
+        kind:
+          $ref: '#/components/schemas/TenantKind'
         is_active:
           type: boolean
         created_at:

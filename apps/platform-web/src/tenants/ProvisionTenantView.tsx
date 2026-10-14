@@ -7,7 +7,13 @@ import {
   InlineAlert, Checkbox, Input,
 } from '@aramo/fe-foundation';
 
-import { platformApi, ALL_CAPABILITIES } from '../platform-api';
+import {
+  platformApi,
+  ALL_CAPABILITIES,
+  PERSONAL_TENANT_CAPABILITIES,
+  TENANT_KINDS,
+  type TenantKind,
+} from '../platform-api';
 
 // Provision screen — provision now, invite the owner now or later (Inc-3 PR-3.4,
 // R16). The "Send owner invitation now" toggle (default on) drives invite_owner:
@@ -20,6 +26,9 @@ export function ProvisionTenantView() {
   const [ownerEmail, setOwnerEmail] = useState('');
   const [ownerDisplayName, setOwnerDisplayName] = useState('');
   const [caps, setCaps] = useState<string[]>(['core', 'ats', 'portal']);
+  // IC-4 PR-9 — BUSINESS (default) | PERSONAL. Choosing PERSONAL pre-selects
+  // the closed personal capability set; the backend refuses anything else.
+  const [kind, setKind] = useState<TenantKind>('BUSINESS');
   const [inviteOwner, setInviteOwner] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,8 +48,9 @@ export function ProvisionTenantView() {
         name: name.trim(),
         owner_email: ownerEmail.trim(),
         owner_display_name: ownerDisplayName.trim() || undefined,
-        capabilities: caps,
+        capabilities: kind === 'PERSONAL' ? [...PERSONAL_TENANT_CAPABILITIES] : caps,
         invite_owner: inviteOwner,
+        kind,
       });
       navigate(`/tenants/${res.tenant_id}`);
     } catch (err) {
@@ -78,8 +88,34 @@ export function ProvisionTenantView() {
           />
         </FormField>
         <FormField
+          label="Tenant kind"
+          helper={
+            kind === 'PERSONAL'
+              ? 'A one-person Sign account: a personal email is allowed, no locked domain, capabilities fixed to core + esign, owner role org_admin.'
+              : 'An organization: the owner\'s business email domain becomes the locked allowed domain.'
+          }
+        >
+          <div style={{ display: 'flex', gap: 16 }}>
+            {TENANT_KINDS.map((k) => (
+              <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="radio"
+                  name="tenant-kind"
+                  checked={kind === k}
+                  onChange={() => setKind(k)}
+                />
+                <span>{k}</span>
+              </label>
+            ))}
+          </div>
+        </FormField>
+        <FormField
           label="Owner email"
-          helper="A business email — the owner's domain becomes the tenant's allowed domain."
+          helper={
+            kind === 'PERSONAL'
+              ? 'The subscriber\'s own email (personal providers allowed).'
+              : "A business email — the owner's domain becomes the tenant's allowed domain."
+          }
         >
           <Input unstyled
             className="tc-input"
@@ -103,7 +139,8 @@ export function ProvisionTenantView() {
               <label key={c} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <Checkbox
                  
-                  checked={caps.includes(c)}
+                  checked={kind === 'PERSONAL' ? PERSONAL_TENANT_CAPABILITIES.includes(c) : caps.includes(c)}
+                  disabled={kind === 'PERSONAL'}
                   onChange={() => toggleCap(c)}
                 />
                 <span>{c}</span>

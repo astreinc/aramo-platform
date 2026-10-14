@@ -112,6 +112,8 @@ const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
 );
+// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -164,6 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_CARDINALITY_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_TENANT_KIND_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
       ]) {

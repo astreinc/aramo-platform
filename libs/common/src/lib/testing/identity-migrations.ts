@@ -72,6 +72,11 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // may hold at most ONE membership, in that tenant.
   'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (BUSINESS | PERSONAL), additive with default. The
+  // regenerated client SELECTs `kind` on every Tenant read, so every consumer
+  // that reads Tenant through the client needs this applied (Invariant 2 holds:
+  // ALTER TABLE on identity.Tenant only).
+  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

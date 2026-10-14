@@ -7,6 +7,8 @@ import {
   TenantEntitlementReader,
   TenantService,
   requiredCapabilityForConsumer,
+  SYSTEM_SERVICE_ACCOUNT_ID,
+  TENANT_ACTIVATING_OWNER_ROLE_KEYS,
 } from '@aramo/identity';
 import {
   allowUnboundHost,
@@ -222,6 +224,22 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       principal_id: user.id,
     });
 
+    // IC-4 PR-9 / IC-0 J-9 (Platform-Console Inc-2 PR-1 Amendment Inc-2-PR-1-A1)
+    // — OWNER FIRST-SESSION ACTIVATION. A Pattern-A owner (Cognito-invited at
+    // provisioning) has no Invitation row, so the acceptance-time hook never
+    // fires and the tenant would sit PROVISIONED forever. Here, AFTER every
+    // gate has passed (host binding, status, entitlement, scopes) and ONLY for
+    // a tenant consumer whose tenant is still PROVISIONED and whose membership
+    // holds an activating owner role (tenant_owner / org_admin), the tenant is
+    // transitioned PROVISIONED → ACTIVE by the system actor. Best-effort and
+    // idempotent (transitionTenantStatus no-ops on an already-ACTIVE tenant):
+    // an activation failure NEVER fails an otherwise-valid sign-in — the mint
+    // gate already allows PROVISIONED. Nothing here widens scopes or changes
+    // the minted session.
+    if (input.consumer !== 'platform' && selectedTenant.status === 'PROVISIONED') {
+      await this.activateOnOwnerFirstSession({ user_id: user.id, tenant_id: selectedTenant.id });
+    }
+
     return {
       kind: 'resolved',
       principal_id: user.id,
@@ -230,6 +248,27 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       authz_version,
       ...(site_id !== null ? { claims: { site_id } } : {}),
     };
+  }
+
+  private async activateOnOwnerFirstSession(args: { user_id: string; tenant_id: string }): Promise<void> {
+    try {
+      const membership = await this.identity.findMembership(args);
+      if (membership === null) return;
+      const roleKeys = await this.identity.findRoleKeysForMembership(membership.id);
+      if (!roleKeys.some((k) => TENANT_ACTIVATING_OWNER_ROLE_KEYS.includes(k))) return;
+      await this.tenant.transitionTenantStatus({
+        tenant_id: args.tenant_id,
+        to: 'ACTIVE',
+        actor_id: SYSTEM_SERVICE_ACCOUNT_ID,
+        actor_type: 'system',
+        source: 'owner_first_session',
+        related: { membershipId: membership.id, userId: args.user_id },
+      });
+    } catch (err) {
+      this.logger.warn(
+        `owner first-session activation failed (non-blocking; tenant stays PROVISIONED, mint-gate allows it): ${(err as Error).message}`,
+      );
+    }
   }
 
   async resolveScopes(input: ResolveScopesInput): Promise<ResolveScopesResult> {

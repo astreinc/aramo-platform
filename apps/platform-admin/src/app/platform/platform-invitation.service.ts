@@ -12,6 +12,9 @@ import {
   PLATFORM_ROLE_KEYS,
   TenantService,
   deriveAllowedDomainOrThrow,
+  DEFAULT_TENANT_KIND,
+  isTenantKind,
+  PERSONAL_TENANT_CAPABILITIES,
   deriveSlugOrThrow,
   normalizeEmail,
 } from '@aramo/identity';
@@ -66,6 +69,8 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
 export interface ProvisionResult {
   tenant_id: string;
   tenant_name: string;
+  // IC-4 PR-9 — BUSINESS | PERSONAL.
+  tenant_kind: string;
   owner_user_id: string;
   owner_email: string;
   membership_id: string;
@@ -112,7 +117,23 @@ export class PlatformInvitationService {
     // IC-2 PR-4 (F-4) — optional subdomain slug, forwarded verbatim to
     // TenantService.provisionTenant (deriveSlugOrThrow validates it there).
     slug?: string;
+    // IC-4 PR-9 — BUSINESS (default) | PERSONAL. A PERSONAL tenant: the
+    // personal-provider pre-check is skipped (P1-A1; TenantService still
+    // requires a well-formed address and stores allowed_domain NULL), the
+    // capability set is CLOSED to PERSONAL_TENANT_CAPABILITIES ([core, esign];
+    // any other requested capability → 400 BEFORE Cognito), the owner receives
+    // org_admin (no ats → the N-2 product-neutral owner; never an ATS role) and
+    // no ATS projection runs. Identity registration, tenant creation, product
+    // entitlement and Sign sender eligibility stay separate steps.
+    kind?: string;
   }): Promise<ProvisionResult> {
+    const kind = args.kind ?? DEFAULT_TENANT_KIND;
+    if (!isTenantKind(kind)) {
+      throw new AramoError('VALIDATION_ERROR', 'Unknown tenant kind', 400, {
+        requestId: args.request_id,
+        details: { reason: 'invalid_tenant_kind', kind: args.kind },
+      });
+    }
     // 0. Validate capability set (default = core,ats,portal).
     // IC-3 PR-7 — product-neutral provisioning. `core` ("is an Aramo
     // organization") is ALWAYS held: the org routes are core-gated and the
@@ -124,9 +145,36 @@ export class PlatformInvitationService {
       args.capabilities === undefined || args.capabilities.length === 0
         ? DEFAULT_TENANT_CAPABILITIES
         : args.capabilities.filter(isCapability);
-    const desired: readonly Capability[] = requested.includes('core')
+    const desiredRaw: readonly Capability[] = requested.includes('core')
       ? requested
       : ['core', ...requested];
+    // IC-4 PR-9 (§4) — a PERSONAL tenant may hold ONLY the closed personal set.
+    // Fail closed on anything else (an ATS/TIP entitlement for a personal
+    // identity is a separately governed decision that does not exist). When no
+    // capabilities are supplied the personal default is [core, esign], NOT the
+    // business default bundle.
+    const desired: readonly Capability[] =
+      kind === 'PERSONAL'
+        ? (() => {
+            const personal =
+              args.capabilities === undefined || args.capabilities.length === 0
+                ? (PERSONAL_TENANT_CAPABILITIES as readonly Capability[])
+                : desiredRaw;
+            const disallowed = personal.filter((c) => !PERSONAL_TENANT_CAPABILITIES.includes(c));
+            if (disallowed.length > 0) {
+              throw new AramoError(
+                'VALIDATION_ERROR',
+                'A personal tenant may hold only the core and esign capabilities',
+                400,
+                {
+                  requestId: args.request_id,
+                  details: { reason: 'personal_tenant_capability_not_allowed', capabilities: disallowed },
+                },
+              );
+            }
+            return personal.includes('core') ? personal : ['core', ...personal];
+          })()
+        : desiredRaw;
     const atsEntitled = desired.includes('ats');
     // The owner role follows the product set: an ATS tenant keeps tenant_owner
     // (the ATS owner bundle, unchanged); a tenant WITHOUT ats receives
@@ -158,7 +206,13 @@ export class PlatformInvitationService {
     // then revoke. This pre-check (the SAME single-source gate provisionTenant
     // runs) prevents that email entirely — mirrors the 0a name pre-check that
     // avoids a Cognito side-effect for an obvious conflict.
-    deriveAllowedDomainOrThrow(args.owner_email, 'platform.provision');
+    // IC-4 PR-9 (P1-A1) — NOT applied to a PERSONAL tenant: a personal
+    // subscriber signs up with a personal-provider address by definition.
+    // TenantService.provisionTenant (step 2) remains the authoritative gate for
+    // BOTH kinds (well-formed address; business → locked domain).
+    if (kind !== 'PERSONAL') {
+      deriveAllowedDomainOrThrow(args.owner_email, 'platform.provision');
+    }
 
     // 0a-bis-2. IC-2 PR-4 (F-4) — validate a supplied slug BEFORE the Cognito
     // side-effect with the SAME single-source gate provisionTenant runs
@@ -247,6 +301,9 @@ export class PlatformInvitationService {
         invitation_sent: args.invite_owner,
         // IC-2 PR-4 (F-4) — only forwarded when supplied (slug NULL otherwise).
         ...(args.slug === undefined ? {} : { slug: args.slug }),
+        // IC-4 PR-9 — the kind reaches the identity spine (allowed_domain NULL
+        // for PERSONAL is decided THERE, the single-source placement).
+        kind,
       });
       tenant_id = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
@@ -399,6 +456,7 @@ export class PlatformInvitationService {
     return {
       tenant_id,
       tenant_name: args.name,
+      tenant_kind: kind,
       owner_user_id,
       owner_email: args.owner_email,
       membership_id,

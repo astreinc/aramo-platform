@@ -76,7 +76,20 @@ export {
   TENANT_TRANSITIONS,
   isLegalTransition,
   MINT_DENYING_STATUSES,
+  // IC-4 PR-9 — the system actor id for automatic lifecycle writes (J-9 owner
+  // first-session activation runs in the auth-service adapter).
+  SYSTEM_SERVICE_ACCOUNT_ID,
 } from './lib/util/tenant-lifecycle.js';
+// IC-4 PR-9 — tenant KIND vocabulary (BUSINESS | PERSONAL), the closed personal
+// capability set and the first-session activation owner keys (J-9).
+export {
+  TENANT_KINDS,
+  type TenantKind,
+  isTenantKind,
+  DEFAULT_TENANT_KIND,
+  PERSONAL_TENANT_CAPABILITIES,
+  TENANT_ACTIVATING_OWNER_ROLE_KEYS,
+} from './lib/util/tenant-kind.js';
 export { IdentityRepository } from './lib/identity.repository.js';
 export { TenantRepository } from './lib/tenant.repository.js';
 // Platform-Console Increment-2 PR-1.5 (A1) — the platform-operator list row shape.

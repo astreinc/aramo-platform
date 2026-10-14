@@ -675,6 +675,8 @@ const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(ROOT, 'libs/identi
 // supplies tenant_id and holds at most one membership, in that tenant.
 const IDENTITY_USER_TENANT_CARDINALITY_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql');
 const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql');
+// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
+const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -3767,6 +3769,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION,
         IDENTITY_USER_TENANT_CARDINALITY_MIGRATION,
         IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION,
+        IDENTITY_TENANT_KIND_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,

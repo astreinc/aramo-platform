@@ -1112,3 +1112,82 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
     );
   });
 });
+
+// IC-4 PR-9 — PERSONAL tenant provisioning through the saga: the personal-
+// provider pre-check is skipped (P1-A1), the kind is forwarded to the identity
+// spine, the capability set is CLOSED to [core, esign] (anything else → 400
+// BEFORE any Cognito side effect), the owner receives org_admin (never an ATS
+// role) and no ATS projection runs. BUSINESS is byte-identical to before.
+describe('PlatformInvitationService — IC-4 PR-9 PERSONAL tenant provisioning', () => {
+  function happyMocks() {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-org-admin']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-p1' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({ id: 'tenant-p', name: 'Jane Doe', is_active: true, created_at: '', updated_at: '', identity_provider: null, status: 'PROVISIONED', kind: 'PERSONAL' });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'owner-p', email: 'jane.doe@gmail.com', display_name: 'Jane Doe', is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'mem-p',
+    });
+    mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+    return mocks;
+  }
+  it('PERSONAL + gmail owner, no capabilities → Cognito → identity (kind forwarded, org_admin owner) → [core, esign]; NO ATS projection; tenant_kind echoed', async () => {
+    const mocks = happyMocks();
+    const out = await buildService(mocks).provisionTenantAndInviteOwner({
+      name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', owner_display_name: 'Jane Doe',
+      actor_user_id: 'super-admin-1', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL',
+    });
+    expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({ pool: 'tenant', email: 'jane.doe@gmail.com' }));
+    expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({ kind: 'PERSONAL', owner_email: 'jane.doe@gmail.com' }));
+    expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['org_admin']);
+    expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-p', role_keys: ['org_admin'] }));
+    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'esign'] });
+    expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
+    expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ tenant_id: 'tenant-p', tenant_kind: 'PERSONAL', capabilities: ['core', 'esign'] });
+  });
+  it('PERSONAL with capabilities [esign] (explicit) → [core, esign]; with [core, ats] → 400 personal_tenant_capability_not_allowed BEFORE Cognito and before any tenant/identity call', async () => {
+    const ok = happyMocks();
+    await buildService(ok).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', capabilities: ['esign'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' });
+    expect(ok.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'esign'] });
+
+    const refused = happyMocks();
+    await expect(
+      buildService(refused).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', capabilities: ['core', 'ats'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'personal_tenant_capability_not_allowed', capabilities: ['ats'] } } });
+    expect(refused.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(refused.tenantSvc.provisionTenant).not.toHaveBeenCalled();
+    expect(refused.identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+    expect(refused.tenantSvc.findByNameCaseInsensitive).not.toHaveBeenCalled();
+  });
+  it('unknown kind → 400 invalid_tenant_kind before any side effect; BUSINESS (omitted) still refuses a personal-provider owner BEFORE Cognito', async () => {
+    const m1 = happyMocks();
+    await expect(
+      buildService(m1).provisionTenantAndInviteOwner({ name: 'X', owner_email: 'owner@acme.io', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'ENTERPRISE' }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'invalid_tenant_kind' } } });
+    expect(m1.cognito.adminCreateUser).not.toHaveBeenCalled();
+    const m2 = happyMocks();
+    await expect(
+      buildService(m2).provisionTenantAndInviteOwner({ name: 'Acme', owner_email: 'founder@gmail.com', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'personal_email_not_allowed' } } });
+    expect(m2.cognito.adminCreateUser).not.toHaveBeenCalled();
+  });
+  it('PERSONAL owner email already registered → 409 EMAIL_UNAVAILABLE (details {}) BEFORE Cognito (one identity, one tenant)', async () => {
+    const mocks = happyMocks();
+    mocks.identitySvc.findUserByEmail.mockResolvedValue({ id: 'u-existing', email: 'jane.doe@gmail.com' });
+    await expect(
+      buildService(mocks).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' }),
+    ).rejects.toMatchObject({ code: 'EMAIL_UNAVAILABLE', statusCode: 409, context: { details: {} } });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.tenantSvc.provisionTenant).not.toHaveBeenCalled();
+  });
+  it('PERSONAL entitlement-grant failure → tenant SOFT-DISABLED (no product access from an incomplete provision)', async () => {
+    const mocks = happyMocks();
+    mocks.entitlementRepo.grantCapabilities.mockRejectedValue(new Error('entitlement down'));
+    await expect(
+      buildService(mocks).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' }),
+    ).rejects.toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
+    expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-p', reason: 'entitlement_grant_failed' }));
+  });
+});

@@ -7,7 +7,8 @@ import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { EventType } from './audit/identity-audit.repository.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { TenantRepository, type PlatformTenantListRow } from './tenant.repository.js';
-import { deriveAllowedDomainOrThrow } from './util/email-domain.js';
+import { deriveAllowedDomainOrThrow, extractEmailDomain } from './util/email-domain.js';
+import { DEFAULT_TENANT_KIND, isTenantKind, type TenantKind } from './util/tenant-kind.js';
 import { deriveSlugOrThrow } from './util/tenant-slug.js';
 import {
   isLegalTransition,
@@ -215,7 +216,20 @@ export class TenantService {
     // non-platform callers (e.g. the seed) → the field is absent and the payload
     // is byte-equivalent to the pre-3.4 shape.
     invitation_sent?: boolean;
+    // IC-4 PR-9 — BUSINESS (default; the pre-PR-9 path byte-for-byte) or
+    // PERSONAL (one-person Sign subscriber: NO locked domain, the personal-
+    // provider rejection does not apply — Domain-Enforcement P1 Amendment
+    // P1-A1; the owner email must still be well-formed). Unknown kind → 400.
+    kind?: string;
   }): Promise<TenantDto> {
+    const kindInput: string = args.kind ?? DEFAULT_TENANT_KIND;
+    if (!isTenantKind(kindInput)) {
+      throw new AramoError('VALIDATION_ERROR', 'Unknown tenant kind', 400, {
+        requestId: 'provision',
+        details: { reason: 'invalid_tenant_kind', kind: args.kind },
+      });
+    }
+    const kind: TenantKind = kindInput;
     const existing = await this.tenantRepo.findByNameCaseInsensitive(args.name);
     if (existing !== null) {
       throw new AramoError(
@@ -235,10 +249,24 @@ export class TenantService {
     // service stays authoritative so a future caller (self-service signup)
     // inherits the invariant. The surviving domain becomes the tenant's locked
     // allowed_domain (stored normalized).
-    const allowed_domain = deriveAllowedDomainOrThrow(
-      args.owner_email,
-      'provision',
-    );
+    // IC-4 PR-9 (P1-A1) — a PERSONAL tenant is born with allowed_domain NULL
+    // (no invite domain-lock; the tenant never invites anyone else — IC-1
+    // cardinality keeps it a one-User tenant) and the personal-provider
+    // rejection is NOT applied; a malformed address is still refused.
+    let allowed_domain: string | null;
+    if (kind === 'PERSONAL') {
+      if (extractEmailDomain(args.owner_email).length === 0) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'A valid owner email is required to provision a tenant',
+          400,
+          { requestId: 'provision', details: { reason: 'invalid_owner_email' } },
+        );
+      }
+      allowed_domain = null;
+    } else {
+      allowed_domain = deriveAllowedDomainOrThrow(args.owner_email, 'provision');
+    }
 
     // Subdomain-Identity Directive A — validate the slug (if supplied) at the
     // same authoritative spine, throwing 4xx for a non-DNS-safe value. The
@@ -254,6 +282,7 @@ export class TenantService {
       name: args.name,
       allowed_domain,
       slug,
+      kind,
     });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
@@ -265,6 +294,9 @@ export class TenantService {
         name: args.name,
         source: 'platform.provision',
         allowed_domain,
+        // IC-4 PR-9 — the kind is part of the birth record; BUSINESS rows keep
+        // the pre-PR-9 payload plus this one key.
+        kind,
         ...(slug === undefined ? {} : { slug }),
         ...(args.invitation_sent === undefined
           ? {}
