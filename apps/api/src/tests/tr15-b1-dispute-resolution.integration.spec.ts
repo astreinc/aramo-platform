@@ -252,7 +252,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // A non-VALID record refuses with EVIDENCE_NOT_DISPUTABLE (422).
       const other = await seedAuthoritativeClaim(uuidv7(), 's2');
-      await trust.markStale(other);
+      await trust.markStale(TENANT, other);
       const r3 = await post(RAISE(other), jwt, { grounds: 'x' });
       expect(r3.status).toBe(422);
       expect(codeOf(r3.body)).toBe('EVIDENCE_NOT_DISPUTABLE');

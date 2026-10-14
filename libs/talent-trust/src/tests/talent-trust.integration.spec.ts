@@ -240,7 +240,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const pre = await service.getTrustState(subjectRefA);
       expect(pre?.eligibility_band).toBe('INDEPENDENTLY_VERIFIED');
 
-      await service.contradict(authoritative.id, contradicting.id, 'registry vs vendor conflict');
+      await service.contradict(TENANT, authoritative.id, contradicting.id, 'registry vs vendor conflict');
 
       const post = await service.getTrustState(subjectRefA);
       expect(post?.eligibility_band).toBe('CORROBORATED'); // capped
@@ -281,7 +281,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_by: 'tr-7-continuity',
       });
 
-      await service.supersede(oldEv.id, newEv.id);
+      await service.supersede(TENANT, oldEv.id, newEv.id);
 
       const oldRow = await repo.findEvidenceById(oldEv.id);
       const newRow = await repo.findEvidenceById(newEv.id);
@@ -323,11 +323,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Back to VALID — AUTHORITATIVE_ISSUER via API_REGISTRY is an authoritative source.
       expect(state?.claims_band).toBe('AUTHORITATIVE');
 
-      await service.markStale(ev.id);
+      await service.markStale(TENANT, ev.id);
       state = await service.getTrustState(subjectRefB);
       expect(state?.stale_evidence_count).toBe(1);
 
-      await service.revoke(ev.id, 'cert revoked by issuer');
+      await service.revoke(TENANT, ev.id, 'cert revoked by issuer');
       const revoked = await repo.findEvidenceById(ev.id);
       expect(revoked?.current_status).toBe('REVOKED');
     });
@@ -353,8 +353,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ),
       ).rejects.toThrow(/immutable/i);
 
-      // Updating only current_status is permitted (the lifecycle path).
-      await expect(repo.updateEvidenceStatus(ev.id, 'STALE')).resolves.toBeTruthy();
+      // Updating only current_status is permitted (the lifecycle path) — proven
+      // directly against the trigger (Security S1b removed the id-only
+      // updateEvidenceStatus primitive; lifecycle writes are tenant-bound).
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE talent_trust."EvidenceRecord" SET current_status = 'STALE' WHERE id = $1`,
+          ev.id,
+        ),
+      ).resolves.toBe(1);
     });
 
     it('EvidenceEvent is append-only (UPDATE rejected by trigger)', async () => {

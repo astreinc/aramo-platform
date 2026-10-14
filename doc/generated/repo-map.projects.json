@@ -5324,6 +5324,12 @@
       { "project": "talent-intelligence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-reconcile/src/tests/contradiction-detection.service.spec.ts",
+        "project": "talent-reconcile",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
         "project": "talent-reconcile",
         "status": "excluded"
@@ -8592,7 +8598,15 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-intelligence": [{ "project": "api", "status": "production" }],
-    "@aramo/talent-reconcile": [{ "project": "api", "status": "production" }],
+    "@aramo/talent-reconcile": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/security-s1b-trust-lifecycle-hardening.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/talent-reconcile-signal": [
       { "project": "talent-reconcile", "status": "production" },
       { "project": "talent-record", "status": "production" }

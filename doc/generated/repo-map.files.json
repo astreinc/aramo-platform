@@ -607,6 +607,7 @@
     "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
     "apps/api/src/tests/rtr-template-resolver.integration.spec.ts",
     "apps/api/src/tests/security-s1a-trust-tenant-isolation.integration.spec.ts",
+    "apps/api/src/tests/security-s1b-trust-lifecycle-hardening.integration.spec.ts",
     "apps/api/src/tests/seed-client-company.ts",
     "apps/api/src/tests/selection-create.negative-shape.spec.ts",
     "apps/api/src/tests/selection-transition.negative-shape.spec.ts",

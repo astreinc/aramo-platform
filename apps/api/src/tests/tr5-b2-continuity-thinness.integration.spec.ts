@@ -275,7 +275,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [sid],
       );
       for (const row of contactIds.rows.slice(1)) {
-        await trust.contradictRecord(row.id, 'TEST_RETIRE');
+        await trust.contradictRecord(TENANT, row.id, 'TEST_RETIRE');
       }
       await trust.runConsistencyForSubject(TENANT, sid);
       f = await flagsOf(sid);

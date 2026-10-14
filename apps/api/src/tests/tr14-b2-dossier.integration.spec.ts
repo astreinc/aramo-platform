@@ -150,7 +150,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // don't touch — pre-2016 so it never affects the gap coverage).
       const cA = await seedEmployment(R1, 'confco', '2010-01-01', '2011-01-01', 'c1');
       const cB = await seedEmployment(R1, 'rivalco', '2010-01-01', '2011-01-01', 'c2');
-      await trust.contradict(cA, cB, 'Overlapping roles at different employers');
+      await trust.contradict(TENANT, cA, cB, 'Overlapping roles at different employers');
 
       // the verified anchor's CONFIRMED verification request
       await db.query(
@@ -225,7 +225,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const R = uuidv7();
       const a = await seedEmployment(R, 'acme', '2020-01-01', '2020-12-31', 'a');
       const b = await seedEmployment(R, 'globex', '2020-01-01', '2020-12-31', 'b');
-      await trust.contradict(a, b, 'conflict');
+      await trust.contradict(TENANT, a, b, 'conflict');
       const sid = await subjectIdFor(R);
 
       const before = await dossier.getDossier(TENANT, R);

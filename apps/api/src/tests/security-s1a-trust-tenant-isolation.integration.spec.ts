@@ -84,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     };
     const contradictedB = async (): Promise<string> => {
       const { ev } = await seedB();
-      await h.trust.contradictRecord(ev, 'owner-side contradiction (setup)');
+      await h.trust.contradictRecord(TENANT_B, ev, 'owner-side contradiction (setup)');
       return ev;
     };
     // The universal foreign-tenant predicate (a)–(f).

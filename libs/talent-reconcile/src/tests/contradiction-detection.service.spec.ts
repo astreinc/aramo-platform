@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AramoError } from '@aramo/common';
 
 import { ContradictionDetectionService } from '../lib/contradiction-detection.service.js';
 
@@ -14,10 +15,12 @@ const ROW = {
   incumbent_evidence_id: 'ev-incumbent',
 };
 
-function make(parts: { contradictThrows?: boolean } = {}) {
-  const contradict = parts.contradictThrows
-    ? vi.fn().mockRejectedValue(new Error('db down'))
-    : vi.fn().mockResolvedValue(undefined);
+function make(parts: { contradictThrows?: boolean; contradictRefuses?: 'NOT_FOUND' | 'INVALID_REQUEST' } = {}) {
+  const contradict = parts.contradictRefuses
+    ? vi.fn().mockRejectedValue(new AramoError(parts.contradictRefuses, 'refused', parts.contradictRefuses === 'NOT_FOUND' ? 404 : 400, { requestId: 'r' }))
+    : parts.contradictThrows
+      ? vi.fn().mockRejectedValue(new Error('db down'))
+      : vi.fn().mockResolvedValue(undefined);
   const trust = { contradict } as never;
   const markContradictionResolved = vi.fn().mockResolvedValue(undefined);
   const reconcileRepo = { markContradictionResolved } as never;
@@ -36,7 +39,8 @@ describe('ContradictionDetectionService.resolvePending', () => {
     const result = await service.resolvePending(ROW);
 
     expect(result.outcome).toBe('contradicted');
-    expect(contradict).toHaveBeenCalledWith('ev-incumbent', 'ev-new', expect.stringContaining("field 'email1'"));
+    // Security S1b — the acting tenant is the pending row's own tenant.
+    expect(contradict).toHaveBeenCalledWith('ten-1', 'ev-incumbent', 'ev-new', expect.stringContaining("field 'email1'"));
     expect(markContradictionResolved).toHaveBeenCalledWith('pend-1');
     expect(calls).toEqual(['contradict', 'markResolved']);
   });
@@ -44,7 +48,7 @@ describe('ContradictionDetectionService.resolvePending', () => {
   it('reason is PII-free (field name + pending id only, no values)', async () => {
     const { service, contradict } = make();
     await service.resolvePending(ROW);
-    const reason = contradict.mock.calls[0][2] as string;
+    const reason = contradict.mock.calls[0][3] as string;
     expect(reason).toContain('email1');
     expect(reason).toContain('pend-1');
     expect(reason).not.toContain('@'); // no email value leaked
@@ -57,6 +61,16 @@ describe('ContradictionDetectionService.resolvePending', () => {
     expect(contradict).not.toHaveBeenCalled();
     expect(markContradictionResolved).not.toHaveBeenCalled();
   });
+
+  it.each(['NOT_FOUND', 'INVALID_REQUEST'] as const)(
+    'refused (%s): a tenant/relationship refusal → outcome refused, NOT marked resolved, logged distinctly',
+    async (code) => {
+      const { service, markContradictionResolved } = make({ contradictRefuses: code });
+      const result = await service.resolvePending(ROW);
+      expect(result.outcome).toBe('refused');
+      expect(markContradictionResolved).not.toHaveBeenCalled();
+    },
+  );
 
   it('transient_retry: contradict throws → NOT marked resolved (re-polled next tick)', async () => {
     const { service, markContradictionResolved } = make({ contradictThrows: true });

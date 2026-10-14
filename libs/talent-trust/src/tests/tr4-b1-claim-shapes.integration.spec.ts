@@ -241,9 +241,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'SLOW', created_by: 'tr4-test',
       });
 
-      await service.contradict(incumbent.id, challenger.id, 'first raise');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'first raise');
       // Repeat — must NOT throw and must NOT duplicate.
-      await service.contradict(incumbent.id, challenger.id, 'second raise (no-op)');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'second raise (no-op)');
 
       const links = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
         `SELECT COUNT(*)::bigint AS count FROM talent_trust."EvidenceLink"
@@ -278,7 +278,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       expect((await service.getTrustState(ref))?.eligibility_band).toBe('INDEPENDENTLY_VERIFIED');
 
-      await service.contradict(incumbent.id, challenger.id, 'conflict');
+      await service.contradict(TENANT, incumbent.id, challenger.id, 'conflict');
       const capped = await service.getTrustState(ref);
       expect(capped?.eligibility_band).toBe('CORROBORATED');
       expect(capped?.open_contradiction_count).toBe(1);

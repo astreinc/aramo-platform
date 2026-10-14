@@ -142,7 +142,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'MODERATE',
         created_by: 'test',
       });
-      await trust.contradictRecord(ev.id, 'seeded contradiction');
+      await trust.contradictRecord(TENANT, ev.id, 'seeded contradiction');
       const subjectId = (await trust.resolveSubjectRef(refOf(recordId)))!.id;
       return { subjectId, evidenceId: ev.id };
     }
@@ -313,7 +313,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'MODERATE',
         created_by: 'test',
       });
-      await trust.contradictRecord(ev2.id, 'second contradiction');
+      await trust.contradictRecord(TENANT, ev2.id, 'second contradiction');
       await trust.generateProposalsForSubject(subjectId, TENANT);
       rows = await proposals(subjectId);
       expect(rows).toHaveLength(2);

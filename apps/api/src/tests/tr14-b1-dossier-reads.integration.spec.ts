@@ -143,10 +143,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await mergeAndComplete(sidA, sidB); // B merged into A → cluster [A,B]
 
       // A contradiction across the cluster (e1 on A, e2 on B) + a supersede chain.
-      await trust.contradict(e1, e2, 'EMPLOYER_CONFLICT_SAME_WINDOW');
+      await trust.contradict(TENANT, e1, e2, 'EMPLOYER_CONFLICT_SAME_WINDOW');
       const e3 = await seedEmployment({ talentId: tA, employer: 'initech', start: '2019-01-01', end: '2019-06-30', srcId: 'a2' });
       const e4 = await seedEmployment({ talentId: tA, employer: 'initech', start: '2019-01-01', end: '2019-07-31', srcId: 'a3' });
-      await trust.supersede(e3, e4); // e4 SUPERSEDES e3
+      await trust.supersede(TENANT, e3, e4); // e4 SUPERSEDES e3
 
       const links = await trust.getEvidenceLinks(ref(tA));
       const relations = links.map((l) => l.relation).sort();

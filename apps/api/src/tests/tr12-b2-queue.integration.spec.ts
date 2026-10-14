@@ -161,7 +161,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         decay_profile: 'MODERATE',
         created_by: 'test',
       });
-      await trust.contradictRecord(ev.id, 'seeded');
+      await trust.contradictRecord(TENANT, ev.id, 'seeded');
       const subjectId = (await trust.resolveSubjectRef(refOf(recordId)))!.id;
       return { subjectId, evidenceId: ev.id };
     }
@@ -279,7 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         assertion_payload: { value_raw: 'Rust' }, source_class: 'SELF', method: 'SELF_DECLARED',
         portability_class: 'TENANT_ONLY', decay_profile: 'MODERATE', created_by: 'test',
       });
-      await trust.contradictRecord(ev2.id, 'still holds');
+      await trust.contradictRecord(TENANT, ev2.id, 'still holds');
 
       await consistency.drainBatch({ batchSize: 100 });
       let rows = await proposals(subjectId);
