@@ -285,11 +285,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Resolving a NON-contradicted record refuses.
       await expect(
-        service.resolveContradiction(challenger.id, 'reviewer', 'not contradicted'),
+        service.resolveContradiction(TENANT, challenger.id, 'reviewer', 'not contradicted'),
       ).rejects.toThrow(/CONTRADICTED/);
 
       // Resolve the actual contradiction → VALID, event carries actor+reason.
-      await service.resolveContradiction(incumbent.id, 'reviewer-1', 'registry re-confirmed');
+      await service.resolveContradiction(TENANT, incumbent.id, 'reviewer-1', 'registry re-confirmed');
       const resolvedRow = await repo.findEvidenceById(incumbent.id);
       expect(resolvedRow?.current_status).toBe('VALID');
 

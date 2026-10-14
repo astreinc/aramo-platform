@@ -378,7 +378,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await proposals(subjectId)).filter((r) => r.kind === 'RESOLVE_CONTRADICTION')).toHaveLength(1);
 
       // The human resolves it (executed directly in-test). The contradiction clears.
-      await trust.resolveContradiction(evidenceId, ACTOR, 'resolved', 'req-r');
+      await trust.resolveContradiction(TENANT, evidenceId, ACTOR, 'resolved', 'req-r');
       await trust.generateProposalsForSubject(subjectId, TENANT);
       // Still exactly one RESOLVE row — nothing NEW minted (the trigger cleared).
       expect((await proposals(subjectId)).filter((r) => r.kind === 'RESOLVE_CONTRADICTION')).toHaveLength(1);

@@ -286,7 +286,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows.filter((r) => r.kind === 'RESOLVE_CONTRADICTION' && r.status === 'OPEN')).toHaveLength(2);
 
       // Resolve ONE contradiction — its trigger clears; the other still holds.
-      await trust.resolveContradiction(evidenceId, ACTOR, 'resolved', 'req');
+      await trust.resolveContradiction(TENANT, evidenceId, ACTOR, 'resolved', 'req');
       // Re-arm the watermark so the consistency host re-visits the subject (the
       // opportunistic drift-heal fires whenever a subject is next examined; a
       // resolve writes no new EvidenceRecord, so the gate needs re-arming here —
@@ -339,7 +339,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await proposals(subjectId))[0]!.status).toBe('OPEN');
 
       // The human resolves it (the ACT) but never marks the proposal acted.
-      await trust.resolveContradiction(evidenceId, ACTOR, 'resolved', 'req');
+      await trust.resolveContradiction(TENANT, evidenceId, ACTOR, 'resolved', 'req');
       await trust.generateProposalsForSubject(subjectId, TENANT, new Date(), 'consistency');
 
       const row = (await proposals(subjectId))[0]!;

@@ -2218,6 +2218,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3870,6 +3876,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5388,6 +5400,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-trust/src/tests/resolution.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/security-s1a-tenant-bound-lifecycle.spec.ts",
         "project": "talent-trust",
         "status": "excluded"
       },
@@ -8769,6 +8787,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
         "project": "api",
         "status": "excluded"
       },

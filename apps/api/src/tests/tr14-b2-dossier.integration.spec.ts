@@ -233,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const capped = before.contradictions[0]!;
 
       // the tab's dialog calls the TR-4 resolve endpoint (exercised directly here).
-      await trust.resolveContradiction(capped.evidence_id, 'tester', 'reviewed — not a conflict');
+      await trust.resolveContradiction(TENANT, capped.evidence_id, 'tester', 'reviewed — not a conflict');
 
       const after = await dossier.getDossier(TENANT, R);
       expect(after.contradictions.find((c) => c.evidence_id === capped.evidence_id)).toBeUndefined();

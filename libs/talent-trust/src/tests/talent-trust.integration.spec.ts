@@ -309,15 +309,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_by: 'tr-8-cert',
       });
 
-      // TR-15 B1 — new arm signatures (evidenceId, actor, grounds/outcome, …).
-      await service.dispute(ev.id, 'tr-15-reviewer', 'talent disputes expiry date');
+      // TR-15 B1 — arm signatures; Security S1 prepends the acting tenant (tenantId, evidenceId, actor, grounds/outcome, …).
+      await service.dispute(TENANT, ev.id, 'tr-15-reviewer', 'talent disputes expiry date');
       let state = await service.getTrustState(subjectRefB);
       expect(state?.has_open_dispute).toBe(true);
       expect(state?.claims_band).toBe('NOT_ESTABLISHED'); // disputed → non-contributing
 
       // rejected → the record returns to VALID (the upheld→REVOKED retirement
       // path is exercised in tr15-b1-dispute-resolution.integration.spec.ts).
-      await service.resolveDispute(ev.id, 'tr-15-reviewer', 'rejected', 'reviewer restored the record');
+      await service.resolveDispute(TENANT, ev.id, 'tr-15-reviewer', 'rejected', 'reviewer restored the record');
       state = await service.getTrustState(subjectRefB);
       expect(state?.has_open_dispute).toBe(false);
       // Back to VALID — AUTHORITATIVE_ISSUER via API_REGISTRY is an authoritative source.

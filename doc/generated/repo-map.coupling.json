@@ -23379,6 +23379,12 @@
       "status": "production",
       "to": "apps/api/src/tests/app-module-di.spec.ts"
     },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/talent-trust/src/tests/security-s1a-tenant-bound-lifecycle.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/security-s1a-trust-tenant-isolation.integration.spec.ts"
+    },
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/src/index.ts" },
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/tsconfig.lib.json" },
     {
