@@ -824,6 +824,7 @@
       "MINT_DENYING_STATUSES",
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
+      "ORG_ADMIN_SCOPE_KEYS",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PrismaService",

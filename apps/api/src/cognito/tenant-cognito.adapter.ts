@@ -109,10 +109,23 @@ export class TenantCognitoAdapter implements TenantCognitoPort {
     );
   }
 
+  // IC-3 PR-7 — the ENABLE leg. UserNotFoundException is swallowed (the
+  // adminDeleteUser contract): an invitee who never completed a federated
+  // login has no Cognito user, and the identity re-enable is the complete
+  // outcome. Every other failure propagates so the lifecycle saga compensates.
   async adminEnableUser(args: { email: string }): Promise<void> {
     const UserPoolId = this.userPoolId();
-    await this.client.send(
-      new AdminEnableUserCommand({ UserPoolId, Username: args.email }),
-    );
+    try {
+      await this.client.send(
+        new AdminEnableUserCommand({ UserPoolId, Username: args.email }),
+      );
+    } catch (err) {
+      if (err instanceof UserNotFoundException) {
+        this.logger.warn(`cognito admin enable user: no IdP account for the user (no-op)`);
+        return;
+      }
+      this.logger.warn(`cognito admin enable user failed: ${(err as Error).message}`);
+      throw err;
+    }
   }
 }

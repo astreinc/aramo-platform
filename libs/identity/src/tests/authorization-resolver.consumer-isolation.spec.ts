@@ -39,9 +39,9 @@ describe('IdentityEffectiveAuthorizationResolver — consumer isolation (IC-2 PR
     expect(r).toEqual({ status: 'ok', scopes: ['talent:read', 'tenant:admin:profile'] });
     expect(getCapabilities).not.toHaveBeenCalled();
   });
-  it('esign with the esign capability: ONLY esign:*; without it: NOTHING (live read, every request)', async () => {
+  it('esign with the esign capability: esign:* + the organization subset; without it: NOTHING (live read, every request)', async () => {
     const { resolver, caps, getCapabilities } = build({ capabilities: ['core', 'esign'] });
-    expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: ['esign:envelope:read'] });
+    expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: ['esign:envelope:read', 'tenant:admin:profile'] });
     caps.current = new Set(['core']); // entitlement removed — no version bump, same cached canonical set
     expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: [] });
     expect(getCapabilities).toHaveBeenCalledTimes(2);
@@ -64,7 +64,7 @@ describe('IdentityEffectiveAuthorizationResolver — consumer isolation (IC-2 PR
     await resolver.resolve(input('esign'));
     expect(getScopes).toHaveBeenCalledTimes(2); // two distinct cache keys
     expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: ['talent:read', 'tenant:admin:profile'] });
-    expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: ['esign:envelope:read'] });
+    expect(await resolver.resolve(input('esign'))).toEqual({ status: 'ok', scopes: ['esign:envelope:read', 'tenant:admin:profile'] });
     expect(getScopes).toHaveBeenCalledTimes(2); // both served from their own snapshot
   });
   it('a cached snapshot never widens: filtering is applied on the cache HIT path too', async () => {

@@ -307,6 +307,78 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     expect(mocks.identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
   });
 
+  // IC-3 PR-7 — product-neutral provisioning: owner role and ATS projections
+  // follow the product set; core is always held; ATS-only is unchanged.
+  describe('IC-3 PR-7 — product-neutral provisioning', () => {
+    function armed() {
+      const mocks = makeMocks();
+      mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+      mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id']);
+      mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-123' });
+      mocks.tenantSvc.provisionTenant.mockResolvedValue({ id: 'tenant-x', name: 'X', is_active: true, created_at: '', updated_at: '' });
+      mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+        user: { id: 'owner-u', email: 'owner@acme.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+        membership_id: 'mem-1',
+      });
+      mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+      return mocks;
+    }
+    const provision = (mocks: ReturnType<typeof makeMocks>, capabilities?: string[]) =>
+      buildService(mocks).provisionTenantAndInviteOwner({
+        name: 'X', owner_email: 'owner@acme.io', actor_user_id: 'super-admin-1', request_id: TEST_REQUEST_ID, invite_owner: true,
+        ...(capabilities === undefined ? {} : { capabilities }),
+      });
+
+    it('Sign-only ([esign]): core is added, owner role is org_admin, NO ATS projection (policy package / RTR template), entitlements [core, esign]', async () => {
+      const mocks = armed();
+      const out = await provision(mocks, ['esign']);
+      expect(out.capabilities).toEqual(['core', 'esign']);
+      expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['org_admin']);
+      expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['org_admin'] }));
+      expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-x', capabilities: ['core', 'esign'] });
+      expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
+      expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).not.toHaveBeenCalled();
+      // exactly ONE tenant and ONE owner identity
+      expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledTimes(1);
+      expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledTimes(1);
+    });
+
+    it('ATS + Sign ([core, ats, portal, esign]): ONE tenant, ONE owner (tenant_owner), both product entitlements, ATS projections run', async () => {
+      const mocks = armed();
+      const out = await provision(mocks, ['core', 'ats', 'portal', 'esign']);
+      expect(out.capabilities).toEqual(['core', 'ats', 'portal', 'esign']);
+      expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['tenant_owner']);
+      expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledWith('tenant-x');
+      expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).toHaveBeenCalledWith('tenant-x');
+      expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledTimes(1);
+    });
+
+    it('ATS-only (default bundle, no capabilities supplied): unchanged — tenant_owner, {core, ats, portal}, projections run', async () => {
+      const mocks = armed();
+      const out = await provision(mocks);
+      expect(out.capabilities).toEqual(['core', 'ats', 'portal']);
+      expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['tenant_owner']);
+      expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledTimes(1);
+      expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).toHaveBeenCalledTimes(1);
+    });
+
+    it('core alone ([core]): a valid organization with NO product — org_admin owner, no projections, no product entitlement', async () => {
+      const mocks = armed();
+      const out = await provision(mocks, ['core']);
+      expect(out.capabilities).toEqual(['core']);
+      expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['org_admin']);
+      expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
+    });
+
+    it('Sign-only entitlement-grant failure: tenant soft-disabled (no partial product access), 500 — same compensation as ATS', async () => {
+      const mocks = armed();
+      mocks.entitlementRepo.grantCapabilities.mockRejectedValue(new Error('entitlement schema down'));
+      await expect(provision(mocks, ['esign'])).rejects.toMatchObject({ code: 'INTERNAL_ERROR', context: { details: { reason: 'entitlement_grant_failed' } } });
+      expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-x', reason: 'entitlement_grant_failed' }));
+      expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
+    });
+  });
+
   it('step 4 (ADR-0024 PR-4a-2): a policy-package publish failure soft-disables the tenant and throws INTERNAL_ERROR (created-and-flagged, not deleted)', async () => {
     const mocks = makeMocks();
     mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);

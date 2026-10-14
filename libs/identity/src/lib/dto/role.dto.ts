@@ -55,6 +55,12 @@ export const SEED_ROLE_KEYS = [
   // Settings S4 — auditor_with_financials (compliance + see-all-comp,
   // gated by audit.financials_enabled).
   'auditor_with_financials',
+  // IC-3 PR-7 (IC-0 N-2) — org_admin: the PRODUCT-NEUTRAL organization
+  // administrator. Holds exactly ORG_ADMIN_SCOPE_KEYS (the scopes the
+  // core-gated /v1/tenant/* organization routes demand) — no ATS, no Sign, no
+  // platform scope. The owner role of a tenant provisioned WITHOUT the `ats`
+  // capability (Sign-only); ATS tenants keep tenant_owner (a superset).
+  'org_admin',
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
   // PX-V1 PX-3 — E-Sign SENDER product roles (esign.aramo.ai). Namespace-separate
@@ -67,6 +73,26 @@ export const SEED_ROLE_KEYS = [
   'esign_viewer',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
+
+// IC-3 PR-7 — the organization-management scope set: EXACTLY the scopes the
+// `@RequireCapability('core')` organization routes demand at the baseline
+// (tenant profile, domain verification, sites, user management + roles
+// catalog, directory read, audit trail, tenant settings) plus the baseline
+// session marker every tenant role carries. Derived from the live route
+// decorators, never widened: no `identity:resolve` (talent-identity
+// dispositions), no `org:manage`/`team:manage` (ATS-gated D4a), no product
+// scope. This set is BOTH the org_admin role bundle (seed) and the
+// organization subset an `esign` consumer may carry (IC-0 §F.2 rule 4 / N-2).
+export const ORG_ADMIN_SCOPE_KEYS = [
+  'tenant:admin:profile',
+  'tenant:admin:domain',
+  'tenant:admin:sites',
+  'tenant:admin:user-manage',
+  'tenant:admin:settings',
+  'tenant:user:read:directory',
+  'audit:read',
+  'auth:session:read',
+] as const;
 
 // IC-2 PR-5 (IC-0 §F.2 rule 2 / L10) — the PLATFORM-TIER partition of the
 // catalog. These keys are grantable ONLY against the platform sentinel tenant

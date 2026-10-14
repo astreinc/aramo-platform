@@ -106,6 +106,8 @@ function makeMocks(): Mocks {
     findUserById: vi.fn(),
     disableMembership: vi.fn(),
     reEnableMembership: vi.fn(),
+    // IC-3 PR-7 — tenant access state for the enable leg (default: ACTIVE).
+    getTenantAccessState: vi.fn().mockResolvedValue({ status: 'ACTIVE', is_active: true }),
     findMembership: vi.fn(),
     findRoleKeysForMembership: vi.fn(),
     replaceMembershipRoles: vi.fn(),
@@ -1026,36 +1028,90 @@ const INVITATION = {
   updated_at: '2026-06-05T00:00:00.000Z',
 };
 
-describe('TenantUserLifecycleService.enableTenantUser (§4.1)', () => {
-  it('re-enables the membership (identity-only; no Cognito) and returns membership_id', async () => {
-    const { service, identitySvc, cognito } = makeMocks();
-    identitySvc.reEnableMembership.mockResolvedValue({
-      membership_id: MEMBERSHIP_ID,
+describe('TenantUserLifecycleService.enableTenantUser (§4.1 + IC-3 PR-7 Cognito re-enable leg)', () => {
+  function armed(mocks: ReturnType<typeof makeMocks>, membershipActive = false) {
+    mocks.identitySvc.findUserById.mockResolvedValue(makeUserDto());
+    mocks.identitySvc.findMembership.mockResolvedValue({ id: MEMBERSHIP_ID, is_active: membershipActive });
+    mocks.identitySvc.reEnableMembership.mockResolvedValue({ membership_id: MEMBERSHIP_ID });
+    mocks.cognito.adminEnableUser.mockResolvedValue(undefined);
+    return mocks;
+  }
+  const call = (service: TenantUserLifecycleService) =>
+    service.enableTenantUser({ tenant_id: TENANT_ID, user_id: USER_ID, request_id: REQUEST_ID });
+
+  it('normal re-enable: identity flip THEN Cognito AdminEnableUser (by email) → changed:true, cognito:enabled', async () => {
+    const { service, identitySvc, cognito } = armed(makeMocks());
+    const result = await call(service);
+    expect(result).toEqual({ membership_id: MEMBERSHIP_ID, changed: true, cognito: 'enabled' });
+    expect(identitySvc.reEnableMembership).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
+    expect(cognito.adminEnableUser).toHaveBeenCalledWith({ email: makeUserDto().email });
+    // Identity first, IdP second (the disable saga's mirror image).
+    expect(identitySvc.reEnableMembership.mock.invocationCallOrder[0]!).toBeLessThan(cognito.adminEnableUser.mock.invocationCallOrder[0]!);
+  });
+
+  it('idempotent: an already-active membership reports changed:false; the IdP leg is still reconciled (AdminEnableUser is idempotent)', async () => {
+    const { service, cognito } = armed(makeMocks(), true);
+    const result = await call(service);
+    expect(result).toEqual({ membership_id: MEMBERSHIP_ID, changed: false, cognito: 'enabled' });
+    expect(cognito.adminEnableUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('Cognito-absent identity (invitee never logged in): the port resolves (adapter swallows user-not-found) → success, membership re-enabled', async () => {
+    const { service, identitySvc, cognito } = armed(makeMocks());
+    cognito.adminEnableUser.mockResolvedValue(undefined); // the TenantCognitoAdapter contract for UserNotFoundException
+    const result = await call(service);
+    expect(result.cognito).toBe('enabled');
+    expect(identitySvc.disableMembership).not.toHaveBeenCalled();
+  });
+
+  it('IdP failure: the membership is COMPENSATED (disabled again) and 502 COGNITO_PROVISION_FAILED surfaces — never a false success', async () => {
+    const { service, identitySvc, cognito } = armed(makeMocks());
+    cognito.adminEnableUser.mockRejectedValue(new Error('cognito unavailable'));
+    identitySvc.disableMembership.mockResolvedValue({ membership_id: MEMBERSHIP_ID, changed: true });
+    await expect(call(service)).rejects.toMatchObject({
+      code: 'COGNITO_PROVISION_FAILED',
+      statusCode: 502,
+      context: { details: { compensation: 're_disabled', user_id: USER_ID } },
     });
-    const result = await service.enableTenantUser({
-      tenant_id: TENANT_ID,
-      user_id: USER_ID,
-      request_id: REQUEST_ID,
-    });
-    expect(result).toEqual({ membership_id: MEMBERSHIP_ID });
-    expect(identitySvc.reEnableMembership).toHaveBeenCalledWith({
-      user_id: USER_ID,
-      tenant_id: TENANT_ID,
-    });
-    // Identity-only — no Cognito leg.
+    expect(identitySvc.disableMembership).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
+  });
+
+  it('IdP failure on an already-active membership: no compensation needed (identity unchanged), still 502', async () => {
+    const { service, identitySvc, cognito } = armed(makeMocks(), true);
+    cognito.adminEnableUser.mockRejectedValue(new Error('cognito unavailable'));
+    await expect(call(service)).rejects.toMatchObject({ code: 'COGNITO_PROVISION_FAILED', context: { details: { compensation: 'none_required' } } });
+    expect(identitySvc.disableMembership).not.toHaveBeenCalled();
+  });
+
+  it('SUSPENDED tenant → 403 TENANT_SUSPENDED; no identity flip, no Cognito call', async () => {
+    const { service, identitySvc, cognito } = armed(makeMocks());
+    identitySvc.getTenantAccessState.mockResolvedValue({ status: 'SUSPENDED', is_active: true });
+    await expect(call(service)).rejects.toMatchObject({ code: 'TENANT_SUSPENDED', statusCode: 403 });
+    expect(identitySvc.reEnableMembership).not.toHaveBeenCalled();
     expect(cognito.adminEnableUser).not.toHaveBeenCalled();
   });
 
-  it('no membership in this tenant → 404 NOT_FOUND', async () => {
-    const { service, identitySvc } = makeMocks();
-    identitySvc.reEnableMembership.mockResolvedValue(null);
-    await expect(
-      service.enableTenantUser({
-        tenant_id: TENANT_ID,
-        user_id: USER_ID,
-        request_id: REQUEST_ID,
-      }),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+  it.each([
+    ['CLOSED', { status: 'CLOSED', is_active: true }],
+    ['soft-disabled (is_active=false)', { status: 'ACTIVE', is_active: false }],
+    ['unknown tenant', null],
+  ])('%s tenant → 403 TENANT_CLOSED; nothing touched', async (_l, state) => {
+    const { service, identitySvc, cognito } = armed(makeMocks());
+    identitySvc.getTenantAccessState.mockResolvedValue(state);
+    await expect(call(service)).rejects.toMatchObject({ code: 'TENANT_CLOSED', statusCode: 403 });
+    expect(identitySvc.reEnableMembership).not.toHaveBeenCalled();
+    expect(cognito.adminEnableUser).not.toHaveBeenCalled();
+  });
+
+  it('user not found → 404; no membership in this tenant → 404 (no Cognito call either way)', async () => {
+    const a = makeMocks();
+    a.identitySvc.findUserById.mockResolvedValue(null);
+    await expect(call(a.service)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    const b = armed(makeMocks());
+    b.identitySvc.reEnableMembership.mockResolvedValue(null);
+    await expect(call(b.service)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(a.cognito.adminEnableUser).not.toHaveBeenCalled();
+    expect(b.cognito.adminEnableUser).not.toHaveBeenCalled();
   });
 });
 

@@ -31,10 +31,12 @@ describe('filterScopesForConsumer (rule 4)', () => {
       ]);
     }
   });
-  it('esign carries ONLY esign:* and ONLY while the tenant holds the esign capability', () => {
+  it('esign carries esign:* PLUS the product-neutral organization subset (ORG_ADMIN_SCOPE_KEYS), and ONLY while the tenant holds the esign capability', () => {
     expect(filterScopesForConsumer({ consumer: 'esign', scopes: SCOPES, tenantHasEsign: true })).toEqual([
-      'esign:envelope:read', 'esign:envelope:send',
+      'tenant:admin:profile', 'esign:envelope:read', 'esign:envelope:send', 'audit:read',
     ]);
+    // ATS product scopes never ride the esign consumer, even when the role holds them.
+    expect(filterScopesForConsumer({ consumer: 'esign', scopes: ['talent:read', 'requisition:read', 'esign:envelope:read'], tenantHasEsign: true })).toEqual(['esign:envelope:read']);
     expect(filterScopesForConsumer({ consumer: 'esign', scopes: SCOPES, tenantHasEsign: false })).toEqual([]);
   });
   it('platform carries ONLY platform:* (never tenant product scopes)', () => {

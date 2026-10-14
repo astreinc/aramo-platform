@@ -410,11 +410,25 @@ export class TenantUserManagementController {
     @Param('user_id') userId: string,
     @RequestId() requestId: string,
   ): Promise<{ membership_id: string }> {
-    return this.lifecycle.enableTenantUser({
+    const result = await this.lifecycle.enableTenantUser({
       tenant_id: authContext.tenant_id,
       user_id: userId,
       request_id: requestId,
     });
+    if (result.changed === true) {
+      // IC-3 PR-7 — best-effort audit of the confirmed end-to-end re-enable
+      // (identity + IdP); mirrors the disable seam (no emit on an idempotent
+      // no-op; an audit failure never rolls back the enable).
+      await this.audit.writeEvent({
+        event_type: 'identity.tenant_user.enabled',
+        actor_type: 'user',
+        actor_id: authContext.sub,
+        tenant_id: authContext.tenant_id,
+        subject_id: userId,
+        payload: { membership_id: result.membership_id, cognito: result.cognito },
+      });
+    }
+    return { membership_id: result.membership_id };
   }
 
   // Invite-S3 (§4.2) — POST /v1/tenant/users/:user_id/revoke.

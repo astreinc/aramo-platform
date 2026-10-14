@@ -38,6 +38,8 @@ interface RoleMeta {
 export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
   tenant_owner: { tier: 'Administration', tierRank: 0 },
   tenant_admin: { tier: 'Administration', tierRank: 0 },
+  // IC-3 PR-7 — product-neutral organization administrator.
+  org_admin: { tier: 'Administration', tierRank: 0 },
   delivery_manager: { tier: 'Management', tierRank: 1 },
   account_manager: { tier: 'Management', tierRank: 1 },
   recruiting_manager: { tier: 'Management', tierRank: 1 },

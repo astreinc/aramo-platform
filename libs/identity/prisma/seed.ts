@@ -40,6 +40,8 @@
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
+import { ORG_ADMIN_SCOPE_KEYS } from '../src/lib/dto/role.dto.js';
+
 import { PrismaClient } from './generated/client/client.js';
 
 // =============================================================================
@@ -94,6 +96,9 @@ export const SEED_IDS = {
     esign_admin: '01900000-0000-7000-8000-0000000002a1',
     esign_sender: '01900000-0000-7000-8000-0000000002a2',
     esign_viewer: '01900000-0000-7000-8000-0000000002a3',
+    // IC-3 PR-7 — org_admin, the product-neutral organization administrator
+    // (dedicated 0x2b0 id; a TENANT role, visible in the tenant catalog).
+    org_admin: '01900000-0000-7000-8000-0000000002b0',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -2806,6 +2811,23 @@ export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
   ['esign_viewer', ['esign:envelope:read']],
 ];
 
+// IC-3 PR-7 — org_admin grant: the ORG_ADMIN_SCOPE_KEYS bundle (8 grants),
+// dedicated range 0x1600+ (append-don't-renumber; 0x1500+ is the last prior range).
+export const ORG_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['org_admin', ORG_ADMIN_SCOPE_KEYS],
+];
+const ORG_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1600;
+  for (const [role, scopes] of ORG_ADMIN_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // Deterministic RoleScope row ids for the 10 E-Sign grants. Fresh range 0x1350+.
 const ESIGN_SENDER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
@@ -2973,6 +2995,10 @@ export async function runIdentitySeed(
   // PX-V1 PX-3 — E-Sign sender product roles. Namespace-separate from the ATS
   // tenant roles (like super_admin): they hold ONLY esign:* scopes and are excluded
   // from the tenant ATS RolePicker. Shared Aramo identity; independent E-Sign product.
+  // IC-3 PR-7 (IC-0 N-2) — org_admin: product-neutral organization administrator;
+  // EXACTLY the ORG_ADMIN_SCOPE_KEYS bundle (no ATS/Sign/platform scope). The
+  // owner role of a tenant provisioned without the ats capability.
+  await upsertRole(prisma, SEED_IDS.roles.org_admin, 'org_admin', 'Organization Admin — product-neutral organization administrator (profile, domain, sites, users and roles, settings, audit trail); no ATS, Sign or platform authority');
   await upsertRole(prisma, SEED_IDS.roles.esign_owner, 'esign_owner', 'E-Sign Owner — top authority of an E-Sign organization; full envelope authority (create/send/read).');
   await upsertRole(prisma, SEED_IDS.roles.esign_admin, 'esign_admin', 'E-Sign Admin — administrative operator of an E-Sign organization; full envelope authority (create/send/read).');
   await upsertRole(prisma, SEED_IDS.roles.esign_sender, 'esign_sender', 'E-Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
@@ -4159,6 +4185,23 @@ export async function runIdentitySeed(
         throw new Error(
           `Documents-DOC3-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // IC-3 PR-7 — org_admin ← ORG_ADMIN_SCOPE_KEYS (range 0x1600+).
+  for (const [roleKey, scopeKeys] of ORG_ADMIN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ORG_ADMIN_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Org-Admin-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

@@ -132,6 +132,18 @@ export class IdentityRepository {
     return row === null ? null : { name: row.name, display_name: row.display_name };
   }
 
+  // IC-3 PR-7 — the tenant access state the re-enable leg checks before it
+  // touches the IdP: null for an unknown tenant.
+  async findTenantAccessStateById(
+    tenant_id: string,
+  ): Promise<{ status: string; is_active: boolean } | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id: tenant_id },
+      select: { status: true, is_active: true },
+    });
+    return row === null ? null : { status: row.status, is_active: row.is_active };
+  }
+
   // Domain-Enforcement P1 — the invite domain-lock reads this. Returns the
   // tenant's normalized allowed_domain, or null for an unset (legacy) or
   // unknown tenant (both → allow-through at the lock).

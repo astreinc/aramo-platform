@@ -82,8 +82,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings D4: +3 site.created + site.updated + site.deactivated (27 -> 30).
   // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (30 -> 32).
   // IC-1 PR-1: +1 invitation.rejected_cross_tenant (41 -> 42).
-  it('EVENT_TYPES contains 42 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(42);
+  // IC-3 PR-7: +1 tenant_user.enabled (42 -> 43).
+  it('EVENT_TYPES contains 43 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(43);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.tenant_user.enabled')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.invitation.rejected_cross_tenant')).toBe(true);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
@@ -110,7 +112,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings D3 adds tenant_profile.updated (21 -> 22).
   // Settings D4 adds site.created + site.updated + site.deactivated (22 -> 25).
   // Domain-Enforcement P2b adds domain.verification.requested + domain.verified (25 -> 27).
-  it('TENANT_SCOPED_EVENT_TYPES contains all 27 tenant-scoped values', () => {
+  // IC-3 PR-7 adds tenant_user.enabled (27 -> 28).
+  it('TENANT_SCOPED_EVENT_TYPES contains all 28 tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -136,6 +139,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.tenant_setting.updated',
       // Settings S3a — tenant-user lifecycle DISABLE event.
       'identity.tenant_user.disabled',
+      // IC-3 PR-7 — tenant-user lifecycle ENABLE event (identity + IdP confirmed).
+      'identity.tenant_user.enabled',
       // Settings S3b — tenant-user role-assign events (per-delta gating).
       'identity.tenant_user.role_assigned',
       'identity.tenant_user.role_removed',
@@ -159,7 +164,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'tenant.closed',
       'tenant.lifecycle_transition_rejected',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(37);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(38); // IC-3 PR-7 +1 tenant_user.enabled
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

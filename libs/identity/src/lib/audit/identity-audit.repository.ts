@@ -79,6 +79,10 @@ export const EVENT_TYPES = [
   // identity.membership.created + identity.invitation.created events
   // emitted by createUserFromInvitation (no new event_type for invite).
   'identity.tenant_user.disabled',
+  // IC-3 PR-7 — tenant-user lifecycle (ENABLE leg): identity re-enable +
+  // Cognito AdminEnableUser confirmed. Emitted by the controller on a true
+  // INACTIVE→ACTIVE flip only (idempotent re-enable does not emit).
+  'identity.tenant_user.enabled',
   // Settings S3b — tenant-user role-assign. Emitted by
   // TenantUserManagementController.assignRoles (PATCH /v1/tenant/users/
   // :user_id/roles) AFTER the merged replaceMembershipRoles reconcile
@@ -174,6 +178,10 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // disables once per tenant). subject_id is the user_id; tenant_id is
   // the membership's tenant.
   'identity.tenant_user.disabled',
+  // IC-3 PR-7 — tenant-user lifecycle (ENABLE leg): identity re-enable +
+  // Cognito AdminEnableUser confirmed. Emitted by the controller on a true
+  // INACTIVE→ACTIVE flip only (idempotent re-enable does not emit).
+  'identity.tenant_user.enabled',
   // Settings S3b — tenant-user role-assign is per-tenant (the
   // membership's roles live in one tenant). Same subject_id +
   // tenant_id discipline as disable.

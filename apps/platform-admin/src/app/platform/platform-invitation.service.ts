@@ -114,10 +114,25 @@ export class PlatformInvitationService {
     slug?: string;
   }): Promise<ProvisionResult> {
     // 0. Validate capability set (default = core,ats,portal).
-    const desired: readonly Capability[] =
+    // IC-3 PR-7 — product-neutral provisioning. `core` ("is an Aramo
+    // organization") is ALWAYS held: the org routes are core-gated and the
+    // owner must be able to administer the organization whatever products it
+    // subscribes to. ATS is NOT a prerequisite: a Sign-only tenant is
+    // [core, esign]; ATS+Sign is [core, ats, portal, esign]; the default bundle
+    // (no capabilities supplied) is unchanged (HF2 DEFAULT_TENANT_CAPABILITIES).
+    const requested: readonly Capability[] =
       args.capabilities === undefined || args.capabilities.length === 0
         ? DEFAULT_TENANT_CAPABILITIES
         : args.capabilities.filter(isCapability);
+    const desired: readonly Capability[] = requested.includes('core')
+      ? requested
+      : ['core', ...requested];
+    const atsEntitled = desired.includes('ats');
+    // The owner role follows the product set: an ATS tenant keeps tenant_owner
+    // (the ATS owner bundle, unchanged); a tenant WITHOUT ats receives
+    // org_admin — the product-neutral organization administrator (no ATS, no
+    // Sign, no platform authority). Sign SENDER roles are PR-8's call.
+    const ownerRoleKey = atsEntitled ? 'tenant_owner' : 'org_admin';
 
     // 0a. Pre-check tenant name uniqueness (the service-layer raise still
     // re-checks — this avoids the Cognito side-effect for an obvious
@@ -182,9 +197,7 @@ export class PlatformInvitationService {
 
     // 0b. Resolve role IDs (the Tenant-Owner-first invite hard-fixes
     // the role to 'tenant_owner').
-    const role_ids = await this.identitySvc.resolveRoleIdsByKeys([
-      'tenant_owner',
-    ]);
+    const role_ids = await this.identitySvc.resolveRoleIdsByKeys([ownerRoleKey]);
 
     // 1. Cognito (TENANT pool) — AdminCreateUser. Pattern A: Cognito
     // owns the credential + invitation email; Aramo never holds a
@@ -247,7 +260,7 @@ export class PlatformInvitationService {
         provider: 'cognito',
         provider_subject: cognito_sub,
         tenant_id,
-        role_keys: ['tenant_owner'],
+        role_keys: [ownerRoleKey],
         role_ids,
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
@@ -306,67 +319,74 @@ export class PlatformInvitationService {
     // that cannot add talent must be inert, not silently broken. The startup
     // coverage guard (apps/api) and the add-time fail-closed are the reconciling
     // safety nets for the non-atomic gap.
-    try {
-      await this.policyProvisioning.publishDefaultLifecyclePackage(tenant_id);
-    } catch (err) {
-      this.logger.warn(
-        `policy package publish failed; soft-disabling tenant ${tenant_id}: ${
-          (err as Error).message
-        }`,
-      );
-      await this.tenantSvc.deactivateTenant({
-        tenant_id,
-        actor_user_id: args.actor_user_id,
-        reason: 'policy_package_publish_failed',
-      });
-      throw new AramoError(
-        'INTERNAL_ERROR',
-        'Policy package publish failed; tenant soft-disabled',
-        500,
-        {
-          requestId: 'platform.provision',
-          details: { tenant_id, reason: 'policy_package_publish_failed' },
-        },
-      );
+    // IC-3 PR-7 — the two ATS projections (the default lifecycle policy package
+    // and the default RTR document template) run ONLY for an ATS-entitled
+    // tenant. A Sign-only organization gets no ATS projection, no ATS
+    // dependency and no ATS assignment; compensation semantics are unchanged.
+    if (atsEntitled) {
+      try {
+        await this.policyProvisioning.publishDefaultLifecyclePackage(tenant_id);
+      } catch (err) {
+        this.logger.warn(
+          `policy package publish failed; soft-disabling tenant ${tenant_id}: ${
+            (err as Error).message
+          }`,
+        );
+        await this.tenantSvc.deactivateTenant({
+          tenant_id,
+          actor_user_id: args.actor_user_id,
+          reason: 'policy_package_publish_failed',
+        });
+        throw new AramoError(
+          'INTERNAL_ERROR',
+          'Policy package publish failed; tenant soft-disabled',
+          500,
+          {
+            requestId: 'platform.provision',
+            details: { tenant_id, reason: 'policy_package_publish_failed' },
+          },
+        );
+      }
+
+      // 5. Documents (RTR-TEMPLATE-1 §7) — publish the tenant's default RTR
+      // template as a byte-identical copy of the platform template. Same
+      // fail-closed compensation class as policy (Lead ruling 7): a tenant that
+      // cannot resolve an RTR template cannot produce an RTR, which gates
+      // submittal, so it must be inert rather than silently broken. The
+      // existing-tenant backfill migration + this seam together guarantee every
+      // tenant resolves exactly one ACTIVE tenant-wide RTR template (INV-12, no
+      // inline fallback). On failure -> SOFT-DISABLE.
+      try {
+        await this.docTemplateProvisioning.publishDefaultRtrTemplate(tenant_id);
+      } catch (err) {
+        this.logger.warn(
+          `RTR template publish failed; soft-disabling tenant ${tenant_id}: ${
+            (err as Error).message
+          }`,
+        );
+        await this.tenantSvc.deactivateTenant({
+          tenant_id,
+          actor_user_id: args.actor_user_id,
+          reason: 'rtr_template_publish_failed',
+        });
+        throw new AramoError(
+          'INTERNAL_ERROR',
+          'RTR template publish failed; tenant soft-disabled',
+          500,
+          {
+            requestId: 'platform.provision',
+            details: { tenant_id, reason: 'rtr_template_publish_failed' },
+          },
+        );
+      }
+
+      // B2 — emit tenant.owner_invite.sent ONLY when mail actually went (the
+      // invite_owner=true path; the Cognito email was sent above without SUPPRESS).
+      // reason=first_send: this is the owner's first invitation. On the deferred
+      // path (invite_owner=false) nothing is emitted — the send happens later via
+      // the resend-owner-invite endpoint, which emits its own first_send there.
     }
 
-    // 5. Documents (RTR-TEMPLATE-1 §7) — publish the tenant's default RTR
-    // template as a byte-identical copy of the platform template. Same
-    // fail-closed compensation class as policy (Lead ruling 7): a tenant that
-    // cannot resolve an RTR template cannot produce an RTR, which gates
-    // submittal, so it must be inert rather than silently broken. The
-    // existing-tenant backfill migration + this seam together guarantee every
-    // tenant resolves exactly one ACTIVE tenant-wide RTR template (INV-12, no
-    // inline fallback). On failure -> SOFT-DISABLE.
-    try {
-      await this.docTemplateProvisioning.publishDefaultRtrTemplate(tenant_id);
-    } catch (err) {
-      this.logger.warn(
-        `RTR template publish failed; soft-disabling tenant ${tenant_id}: ${
-          (err as Error).message
-        }`,
-      );
-      await this.tenantSvc.deactivateTenant({
-        tenant_id,
-        actor_user_id: args.actor_user_id,
-        reason: 'rtr_template_publish_failed',
-      });
-      throw new AramoError(
-        'INTERNAL_ERROR',
-        'RTR template publish failed; tenant soft-disabled',
-        500,
-        {
-          requestId: 'platform.provision',
-          details: { tenant_id, reason: 'rtr_template_publish_failed' },
-        },
-      );
-    }
-
-    // B2 — emit tenant.owner_invite.sent ONLY when mail actually went (the
-    // invite_owner=true path; the Cognito email was sent above without SUPPRESS).
-    // reason=first_send: this is the owner's first invitation. On the deferred
-    // path (invite_owner=false) nothing is emitted — the send happens later via
-    // the resend-owner-invite endpoint, which emits its own first_send there.
     if (args.invite_owner) {
       await this.tenantSvc.recordOwnerInviteSent({
         tenant_id,

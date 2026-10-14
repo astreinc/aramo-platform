@@ -1453,7 +1453,14 @@ components:
           type: array
           items:
             type: string
-          description: Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+          description: >-
+            Optional capability set; defaults to {core, ats, portal} when omitted/empty.
+            IC-3 PR-7: `core` is always held (added when absent). ATS is not a
+            prerequisite — a Sign-only organization is provisioned with
+            [core, esign] (owner role org_admin, no ATS projections); ATS+Sign with
+            [core, ats, portal, esign] (owner role tenant_owner). Sign sender
+            authorization and the product host are separate (PR-8); an esign
+            entitlement alone activates nothing.
         invite_owner:
           type: boolean
           default: true

@@ -97,6 +97,8 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'esign_viewer',
       'finance',
       'lead_recruiter',
+      // IC-3 PR-7 — product-neutral organization administrator.
+      'org_admin',
       'recruiter',
       'recruiting_manager',
       'sourcer',

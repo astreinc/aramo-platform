@@ -622,7 +622,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const session = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
         expect(session.status).toBe(200);
         expect(session.body.consumer_type).toBe('esign');
-        expect(session.body.scopes).toEqual(['esign:envelope:read']);
+        // IC-3 PR-7: the esign consumer also carries the product-neutral organization subset (auth:session:read ∈ ORG_ADMIN_SCOPE_KEYS); never platform:*.
+        expect(session.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         const r = await login('recruiter');
         expect(r.location).toBe(`https://${OWN_HOST}/`);
@@ -636,14 +637,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(rs.body.scopes).toEqual(['auth:session:read']);
         const e = await login('esign');
         const es = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
-        expect(es.body.scopes).toEqual(['esign:envelope:read']);
+        expect(es.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
       });
 
       it('8/9. refresh cannot resurrect a revoked product capability, and a cached authorization does not keep superseded esign scopes', async () => {
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
         const e = await login('esign');
-        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['esign:envelope:read']);
+        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
         // esign entitlement REMOVED — no authz_version bump, same cached canonical set.
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         const after = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);

@@ -29,7 +29,7 @@ import {
 } from '@aramo/common';
 import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
-import { EntitlementModule } from '@aramo/entitlement';
+import { EntitlementModule, EntitlementRepository } from '@aramo/entitlement';
 import {
   IdentityCoreModule,
   IdentityRepository,
@@ -90,7 +90,8 @@ function splitDdl(sql: string): string[] {
 // migration file to mirror).
 const ENTITLEMENT_DDL_STATEMENTS: ReadonlyArray<string> = [
   'CREATE SCHEMA IF NOT EXISTS entitlement',
-  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing')`,
+  // IC-3 PR-7 — `esign` is part of the live enum (20260923173000_add_esign_capability).
+  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing', 'esign')`,
   `CREATE TABLE IF NOT EXISTS entitlement."TenantEntitlement" (
      tenant_id   uuid NOT NULL,
      capability  entitlement."Capability" NOT NULL,
@@ -132,6 +133,8 @@ const PLATFORM_TENANT_PROVISION_SCOPE_ID =
 const PLATFORM_TENANT_READ_SCOPE_ID = '01900000-0000-7000-8000-00000000008a';
 const PLATFORM_ADMIN_INVITE_SCOPE_ID = '01900000-0000-7000-8000-00000000008b';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
+// IC-3 PR-7 — org_admin (seed id 0x2b0).
+const ORG_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
 const RECRUITER_ROLE_ID = '01900000-0000-7000-8000-000000000011';
 // AUTHZ-1b fixture swap: hiring_manager retired -> use account_manager
 // (UUID 0x16, in the staffing catalog). The fixture just needs a third
@@ -151,6 +154,10 @@ const COMPENSATION_VIEW_SPREAD_AMOUNT_SCOPE_ID =
 
 // HF-AUTH-1 — MODE A resolver: each token declares its scopes via grant().
 const __authzResolver = new ConfigurableAuthzResolver();
+
+// IC-3 PR-7 — ATS projection spies (see the providers block).
+const policyPublishSpy = vi.fn(async (_tenantId: string) => undefined);
+const rtrPublishSpy = vi.fn(async (_tenantId: string) => undefined);
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -254,6 +261,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             id: TENANT_OWNER_ROLE_ID,
             key: 'tenant_owner',
             description: 'Tenant Owner',
+            is_active: true,
+          },
+          // IC-3 PR-7 — the product-neutral organization administrator (the
+          // owner role of a tenant provisioned without the ats capability).
+          {
+            id: ORG_ADMIN_ROLE_ID,
+            key: 'org_admin',
+            description: 'Organization Admin',
             is_active: true,
           },
           {
@@ -404,14 +419,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           PlatformInvitationService,
           // ADR-0024 PR-4a-2 — stub the template-copy dep; this spec does not
           // provision, so no PolicyStore/template is exercised.
+          // IC-3 PR-7 — the two ATS projections are SPIES so the Sign-only proof
+          // can assert they never run for a tenant without the ats capability.
           {
             provide: TenantPolicyProvisioningService,
-            useValue: { publishDefaultLifecyclePackage: async () => undefined },
+            useValue: { publishDefaultLifecyclePackage: policyPublishSpy },
           },
           // RTR-TEMPLATE-1 — stub the step-5 RTR template-copy dep (no provisioning here).
           {
             provide: TenantDocumentTemplateProvisioningService,
-            useValue: { publishDefaultRtrTemplate: async () => undefined },
+            useValue: { publishDefaultRtrTemplate: rtrPublishSpy },
           },
           CognitoAdminService,
           // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.
@@ -687,6 +704,71 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
       expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(callsBefore);
       expect(await identityPrisma.user.findUnique({ where: { email: 'ops@nosuper.co' } })).toBeNull();
+    });
+
+    // IC-3 PR-7 — product-neutral provisioning (real PG): Sign-only, ATS+Sign,
+    // one tenant + one owner identity, owner role per product set, no ATS
+    // projection for a tenant without ats, authorization baseline present.
+    it('IC-3 PR-7 — Sign-only provisioning ([esign]): tenant + org_admin owner + [core, esign]; NO ATS projection; authz baseline exists', async () => {
+      policyPublishSpy.mockClear();
+      rtrPublishSpy.mockClear();
+      const token = await platformJwt();
+      const res = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'SignOnly Corp', owner_email: 'owner@signonly.corp', capabilities: ['esign'] });
+      expect(res.status).toBe(201);
+      expect(res.body.capabilities).toEqual(['core', 'esign']);
+      const tenantId = res.body.tenant_id as string;
+      const entitled = await module.get(EntitlementRepository).getCapabilities(tenantId);
+      expect([...entitled].sort()).toEqual(['core', 'esign']);
+      const owner = await identityPrisma.user.findUnique({ where: { email: 'owner@signonly.corp' } });
+      expect(owner?.tenant_id).toBe(tenantId);
+      const orgAdmin = await identityPrisma.role.findUnique({ where: { key: 'org_admin' } });
+      const memRoles = await identityPrisma.userTenantMembershipRole.findMany({
+        where: { membership: { user_id: owner!.id, tenant_id: tenantId } },
+        include: { role: { select: { key: true } } },
+      });
+      expect(memRoles.map((r) => r.role.key)).toEqual(['org_admin']);
+      expect(orgAdmin).not.toBeNull();
+      // authorization baseline for the owner in its one tenant
+      const baseline = await identityPrisma.authorizationVersion.findFirst({ where: { tenant_id: tenantId, principal_id: owner!.id } });
+      expect(baseline).not.toBeNull();
+      // NO ATS projection ran
+      expect(policyPublishSpy).not.toHaveBeenCalled();
+      expect(rtrPublishSpy).not.toHaveBeenCalled();
+      const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
+      expect(tenant?.status).toBe('PROVISIONED');
+      expect(tenant?.is_active).toBe(true);
+    });
+
+    it('IC-3 PR-7 — ATS + Sign provisioning: ONE tenant, ONE owner (tenant_owner), all four entitlements, ATS projections run; ATS-only (proof 2) unchanged', async () => {
+      policyPublishSpy.mockClear();
+      rtrPublishSpy.mockClear();
+      const token = await platformJwt();
+      const res = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Both Corp', owner_email: 'owner@both.corp', capabilities: ['core', 'ats', 'portal', 'esign'] });
+      expect(res.status).toBe(201);
+      expect(res.body.capabilities).toEqual(['core', 'ats', 'portal', 'esign']);
+      const tenantId = res.body.tenant_id as string;
+      const owners = await identityPrisma.user.findMany({ where: { email: 'owner@both.corp' } });
+      expect(owners).toHaveLength(1);
+      const memRoles = await identityPrisma.userTenantMembershipRole.findMany({
+        where: { membership: { user_id: owners[0]!.id, tenant_id: tenantId } },
+        include: { role: { select: { key: true } } },
+      });
+      expect(memRoles.map((r) => r.role.key)).toEqual(['tenant_owner']);
+      expect(policyPublishSpy).toHaveBeenCalledWith(tenantId);
+      expect(rtrPublishSpy).toHaveBeenCalledWith(tenantId);
+      // cross-tenant email collision still refused for the Sign-only owner's email
+      const dup = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Dup Corp', owner_email: 'owner@signonly.corp', capabilities: ['esign'] });
+      expect(dup.status).toBe(409);
+      expect(dup.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
     });
 
     // -------------------------------------------------------------------

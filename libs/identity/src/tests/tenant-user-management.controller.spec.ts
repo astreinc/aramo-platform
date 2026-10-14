@@ -75,7 +75,7 @@ function makeMocks(): Mocks {
     inviteTenantUser: vi.fn(),
     disableTenantUser: vi.fn(),
     assignTenantUserRoles: vi.fn(),
-    enableTenantUser: vi.fn().mockResolvedValue({ membership_id: 'mem-1' }),
+    enableTenantUser: vi.fn().mockResolvedValue({ membership_id: 'mem-1', changed: true, cognito: 'enabled' }),
     revokeTenantInvite: vi
       .fn()
       .mockResolvedValue({ revoked: true, displayed_status: 'INACTIVE' }),
@@ -669,9 +669,9 @@ describe('TenantUserManagementController.detail — Cat-5 (b) (f) + scoping', ()
 // threads authContext.tenant_id (NEVER a body field) + the user_id param, and
 // that edit-email parses its body.
 
-describe('TenantUserManagementController.enable (§4.1)', () => {
-  it('delegates with authContext.tenant_id + the user_id param', async () => {
-    const { ctl, lifecycle } = makeMocks();
+describe('TenantUserManagementController.enable (§4.1 + IC-3 PR-7 audit)', () => {
+  it('delegates with authContext.tenant_id + the user_id param and audits the confirmed re-enable (identity + IdP)', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
     const result = await ctl.enable(makeAuthContext(), USER_ID, REQUEST_ID);
     expect(result).toEqual({ membership_id: 'mem-1' });
     expect(lifecycle.enableTenantUser).toHaveBeenCalledWith({
@@ -679,6 +679,21 @@ describe('TenantUserManagementController.enable (§4.1)', () => {
       user_id: USER_ID,
       request_id: REQUEST_ID,
     });
+    expect(audit.writeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'identity.tenant_user.enabled',
+        tenant_id: TENANT_ID,
+        subject_id: USER_ID,
+        payload: { membership_id: 'mem-1', cognito: 'enabled' },
+      }),
+    );
+  });
+
+  it('idempotent re-enable (changed:false) emits NO audit event', async () => {
+    const { ctl, lifecycle, audit } = makeMocks();
+    lifecycle.enableTenantUser.mockResolvedValue({ membership_id: 'mem-1', changed: false, cognito: 'enabled' });
+    await ctl.enable(makeAuthContext(), USER_ID, REQUEST_ID);
+    expect(audit.writeEvent).not.toHaveBeenCalled();
   });
 });
 

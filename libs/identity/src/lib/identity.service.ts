@@ -813,6 +813,14 @@ export class IdentityService {
   // Invite-S2 — the tenant label for the invite email greeting: the branding
   // display_name, falling back to the workspace name (same precedence as
   // GET /v1/me), and a neutral default for an unknown tenant.
+  // IC-3 PR-7 — tenant access state for the user re-enable leg (SUSPENDED /
+  // CLOSED / soft-disabled tenants never get a user re-enabled at the IdP).
+  async getTenantAccessState(
+    tenant_id: string,
+  ): Promise<{ status: string; is_active: boolean } | null> {
+    return this.identityRepo.findTenantAccessStateById(tenant_id);
+  }
+
   async getTenantLabel(tenant_id: string): Promise<string> {
     const t = await this.identityRepo.findTenantNameById(tenant_id);
     return t?.display_name ?? t?.name ?? 'your workspace';

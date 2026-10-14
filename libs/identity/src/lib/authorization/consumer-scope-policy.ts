@@ -15,14 +15,18 @@
 //      authorization resolver AFTER the cached canonical set is read, so a cache
 //      can never widen a token: recruiter/ingestion (ATS family) never carry
 //      `esign:*` or `platform:*`; `esign` carries ONLY `esign:*` and ONLY while
-//      the tenant holds the `esign` capability (read live, never cached);
+//      the tenant holds the `esign` capability (read live, never cached) PLUS
+//      the product-neutral organization subset (ORG_ADMIN_SCOPE_KEYS — IC-3
+//      PR-7 / N-2) so a Sign-only organization can be administered;
 //      `platform` carries ONLY `platform:*`; `portal` is the fixed set handled
 //      before this filter; an unknown consumer resolves NOTHING (fail closed).
 //
 // Namespaces are the existing documented scope keys (`<namespace>:<action>`);
 // nothing is renamed. "core" is NOT a product: holding `core` grants no ATS or
 // Sign authorization. The org-admin subset for Sign-only owners (IC-0 N-2) is
-// NOT decided here — an `esign` consumer today receives esign:* only.
+// the ORG_ADMIN_SCOPE_KEYS set (IC-3 PR-7 ruling: org_admin).
+
+import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
 
 export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
 
@@ -64,7 +68,13 @@ export function filterScopesForConsumer(args: {
         (s) => !s.startsWith(ESIGN_SCOPE_PREFIX) && !s.startsWith(PLATFORM_SCOPE_PREFIX),
       );
     case 'esign':
-      return args.tenantHasEsign ? args.scopes.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX)) : [];
+      return args.tenantHasEsign
+        ? args.scopes.filter(
+            (s) =>
+              s.startsWith(ESIGN_SCOPE_PREFIX) ||
+              (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s),
+          )
+        : [];
     case 'platform':
       return args.scopes.filter((s) => s.startsWith(PLATFORM_SCOPE_PREFIX));
     default:
