@@ -172,7 +172,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`TENANT_ALREADY_EXISTS` — a tenant with this name already exists (case-insensitive).'
+          description: |
+            `TENANT_ALREADY_EXISTS` — a tenant with this name already exists
+            (case-insensitive); or `EMAIL_UNAVAILABLE` — the owner email is
+            already registered to a user owned by another tenant (`details` is
+            exactly `{}`; IC-1 PR-1 — refused before any Cognito side effect).
           content:
             application/json:
               schema:
@@ -252,14 +256,18 @@ paths:
       summary: Invite a user into a tenant.
       description: |
         Invite a user into an existing tenant with one or more AUTHZ-1 tenant
-        roles. Idempotency (Lead ruling 8): an existing user + existing
-        membership with the same role set → 409 `INVITATION_ALREADY_EXISTS`; a
-        different role set → the membership roles are reconciled (200-shaped
-        `roles_updated`); no membership → a new membership (`membership_added`);
-        drift (Cognito has the user, identity does not) → identity rows are
-        written against the existing sub (`invitation_sent`). An invertible role
-        union is refused (400 `VALIDATION_ERROR`, `details.reason`
-        `invertible_role_union`).
+        roles. The email is normalized (trim + lowercase) before every probe.
+        Idempotency (Lead ruling 8, as amended by IC-1 PR-1 — one User, one
+        tenant): an existing user + existing membership in THIS tenant with the
+        same role set → 409 `INVITATION_ALREADY_EXISTS`; a different role set →
+        the membership roles are reconciled (`roles_updated`); an existing user
+        with NO membership in this tenant is owned by another tenant → 409
+        `EMAIL_UNAVAILABLE` with exactly `details: {}` (no tenant, user, role or
+        Cognito ownership detail; the former `membership_added` outcome is
+        retired and no second membership is ever created); drift (Cognito has
+        the user, identity does not) → identity rows are written against the
+        existing sub (`invitation_sent`). An invertible role union is refused
+        (400 `VALIDATION_ERROR`, `details.reason` `invertible_role_union`).
 
         Requires scope `platform:tenant:provision`.
       security:
@@ -293,7 +301,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`INVITATION_ALREADY_EXISTS` — the user already holds this membership with the same role set.'
+          description: |
+            `INVITATION_ALREADY_EXISTS` — the user already holds this membership
+            in this tenant with the same role set; or `EMAIL_UNAVAILABLE` — the
+            email is already registered to a user owned by another tenant
+            (`details` is exactly `{}`; IC-1 PR-1).
           content:
             application/json:
               schema:
@@ -540,7 +552,11 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
         '409':
-          description: '`INVITATION_ALREADY_EXISTS` — the admin already holds a platform membership.'
+          description: |
+            `INVITATION_ALREADY_EXISTS` — the admin already holds a platform
+            membership with the same role set; or `EMAIL_UNAVAILABLE` — the
+            email is already registered to a user owned by another tenant
+            (`details` is exactly `{}`; IC-1 PR-1).
           content:
             application/json:
               schema:
@@ -1712,10 +1728,11 @@ components:
             type: string
         status:
           type: string
+          # IC-1 PR-1: `membership_added` RETIRED — an existing user owned by
+          # another tenant is refused with 409 EMAIL_UNAVAILABLE.
           enum:
             - invitation_sent
             - roles_updated
-            - membership_added
 
     ResendOwnerInviteResponse:
       type: object

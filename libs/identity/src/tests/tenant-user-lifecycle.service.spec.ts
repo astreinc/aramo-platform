@@ -288,6 +288,46 @@ describe('TenantUserLifecycleService.inviteTenantUser', () => {
   });
 });
 
+// IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — the one-User-one-
+// tenant refusal fires INSIDE createInvitedUserNoSub (real proof: identity.
+// service.spec.ts + ic1-cardinality.integration.spec.ts). The lifecycle
+// surfaces it UNCHANGED: no email is sent, no Cognito call is made, and the
+// governed 409 (details {}) reaches the controller as-is.
+describe('TenantUserLifecycleService.inviteTenantUser — IC-1 PR-1 cross-tenant refusal surfaces unchanged', () => {
+  it('EMAIL_UNAVAILABLE from createInvitedUserNoSub → rethrown as-is (409, details {}); no email, no Cognito', async () => {
+    const { service, cognito, identitySvc, mailer } = makeMocks();
+    identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['rid-1']);
+    identitySvc.createInvitedUserNoSub.mockRejectedValue(
+      Object.assign(new Error('This email address is not available for invitation'), {
+        code: 'EMAIL_UNAVAILABLE',
+        statusCode: 409,
+        context: { requestId: REQUEST_ID, details: {} },
+      }),
+    );
+    await expect(
+      service.inviteTenantUser({
+        tenant_id: TENANT_ID,
+        email: ' Owned@Elsewhere.IO ',
+        display_name: null,
+        role_keys: ['rA'],
+        actor_user_id: ACTOR_ID,
+        request_id: REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({
+      code: 'EMAIL_UNAVAILABLE',
+      statusCode: 409,
+      context: { details: {} },
+    });
+    // The lifecycle handed the NORMALIZED email to the guarded create.
+    expect(identitySvc.createInvitedUserNoSub).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'owned@elsewhere.io' }),
+    );
+    expect(mailer.send).not.toHaveBeenCalled();
+    expect(cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(cognito.adminDeleteUser).not.toHaveBeenCalled();
+  });
+});
+
 // Domain-Enforcement P1 — the invite domain-lock (§3) + invited-email
 // normalization (§4). The lock loads the tenant's allowed_domain via
 // IdentityService.getTenantAllowedDomain and enforces an EXACT-match (no

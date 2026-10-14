@@ -2877,6 +2877,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // (User/Role/Membership/Team/Invitation) must supply updated_at.
     const ATSW_USER_A = '00000000-0000-7000-8000-05e100000001';
     const ATSW_USER_B = '00000000-0000-7000-8000-05e100000002';
+    // IC-1 PR-1 — a second tenant that OWNS a user (cross-tenant invite refusal).
+    const ATSW_OTHER_TENANT_ID = '22222222-2222-7222-8222-222222222222';
     const ATSW_MEMBERSHIP_ID = '00000000-0000-7000-8000-33b000000001';
     const ATSW_ROLE_ID = '00000000-0000-7000-8000-401e00000001';
     const ATSW_ITEAM_ID = '00000000-0000-7000-8000-77ea00000001';
@@ -8758,6 +8760,32 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await resetAllRows(c);
           await seedAtsWebTenant(c);
           await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+        });
+      },
+      // IC-1 PR-1 (Amendment A1 §4) — the invited email already belongs to a
+      // User whose single membership is in a DIFFERENT tenant. The provider
+      // must refuse with the governed 409 EMAIL_UNAVAILABLE (details {}).
+      'an ats-web admin and a user owned by another tenant exist': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTenant(c);
+          await seedAtsWebRole(c, { id: ATSW_ROLE_ID, key: 'recruiter' });
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, updated_at)
+             VALUES ($1,'Other Co',NOW()) ON CONFLICT (id) DO NOTHING`,
+            [ATSW_OTHER_TENANT_ID],
+          );
+          await seedAtsWebUser(c, {
+            id: ATSW_USER_B,
+            email: 'owned.elsewhere@other.example',
+            displayName: 'Owned Elsewhere',
+          });
+          await c.query(
+            `INSERT INTO identity."UserTenantMembership"
+               (id, user_id, tenant_id, is_active, invite_status, updated_at)
+             VALUES ($1,$2,$3,true,'ACTIVE',NOW()) ON CONFLICT (id) DO NOTHING`,
+            ['00000000-0000-7000-8000-33b000000002', ATSW_USER_B, ATSW_OTHER_TENANT_ID],
+          );
         });
       },
       'an ats-web admin and an inactive tenant user exist': async () => {

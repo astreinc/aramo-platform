@@ -2970,6 +2970,8 @@
     "libs/identity/src/tests/email-domain.spec.ts",
     "libs/identity/src/tests/financials-gate-binding.di.spec.ts",
     "libs/identity/src/tests/hf-auth-1-authz-version.integration.spec.ts",
+    "libs/identity/src/tests/ic1-cardinality.integration.spec.ts",
+    "libs/identity/src/tests/ic1-user-create-sites.spec.ts",
     "libs/identity/src/tests/identity-audit-cursor.spec.ts",
     "libs/identity/src/tests/identity-audit.repository.spec.ts",
     "libs/identity/src/tests/identity-audit.service.spec.ts",

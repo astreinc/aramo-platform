@@ -81,8 +81,10 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings D3: +1 tenant_profile.updated (26 -> 27).
   // Settings D4: +3 site.created + site.updated + site.deactivated (27 -> 30).
   // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (30 -> 32).
-  it('EVENT_TYPES contains 41 values (32 + 9 PC-Inc2 tenant-lifecycle) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(41);
+  // IC-1 PR-1: +1 invitation.rejected_cross_tenant (41 -> 42).
+  it('EVENT_TYPES contains 42 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(42);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.invitation.rejected_cross_tenant')).toBe(true);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -118,6 +120,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.session.reuse_detected',
       'identity.invitation.created',
       'identity.invitation.accepted',
+      // IC-1 PR-1 — cross-tenant invitation refusal (scoped to the target tenant).
+      'identity.invitation.rejected_cross_tenant',
       // AUTHZ-D4a — 9 team-model substrate events.
       'identity.management_edge.set',
       'identity.management_edge.cleared',
@@ -155,7 +159,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'tenant.closed',
       'tenant.lifecycle_transition_rejected',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(36);
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(37);
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

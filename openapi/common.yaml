@@ -1712,9 +1712,19 @@ components:
         INVITATION_ALREADY_EXISTS (HTTP 409) — re-invite refusal for
         the (email, tenant_id) pair when the User already holds a
         membership with the same role set. AdminGetUser is the
-        idempotency check; Cognito is NOT re-created. The other three
-        re-invite cases (same-tenant-different-roles, new-tenant,
-        Cognito-identity-drift) reconcile rather than raise.
+        idempotency check; Cognito is NOT re-created. The
+        same-tenant-different-roles and Cognito-identity-drift cases
+        reconcile rather than raise.
+        IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §2/§4) retires
+        the former new-tenant case (`membership_added`) and adds
+        EMAIL_UNAVAILABLE (HTTP 409) — at BOTH invite tiers, an email
+        (normalized trim+lowercase) already registered to an
+        identity.User owned by a different tenant is refused. The public
+        envelope carries exactly `details: {}` (no tenant, user, role or
+        Cognito ownership detail); the tenant-scoped internal audit event
+        identity.invitation.rejected_cross_tenant retains the reason. A
+        User.email uniqueness race lost between pre-check and insert maps
+        to the same governed 409, never a raw P2002 / HTTP 500.
         AUTHZ-D4a adds one code for the team-model substrate.
         MANAGEMENT_CYCLE_REJECTED (HTTP 409) — set-management-edge
         refusal: the proposed (manager_user_id, report_user_id) edge
@@ -1973,6 +1983,7 @@ components:
         - MICROSOFT_PROVIDER_ERROR
         - MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT
         - MICROSOFT_SCHEDULING_IN_PROGRESS
+        - EMAIL_UNAVAILABLE
 
     ErrorObject:
       type: object

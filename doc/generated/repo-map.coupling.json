@@ -21994,6 +21994,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ic1-user-create-sites.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/lib/identity.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/identity-audit-cursor.spec.ts",
       "status": "excluded",
       "to": "libs/consent/src/tests/history-cursor.spec.ts"

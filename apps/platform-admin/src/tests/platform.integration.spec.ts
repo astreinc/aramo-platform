@@ -32,6 +32,8 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import {
   IdentityCoreModule,
+  IdentityRepository,
+  IdentityService,
   PrismaService as IdentityPrismaService,
 } from '@aramo/identity';
 
@@ -785,6 +787,314 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { email: 'new-platform-admin@aramo.platform' },
       });
       expect(admin).not.toBeNull();
+    });
+
+    // -------------------------------------------------------------------
+    // IC-1 PR-1 — D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 (one User, one
+    // tenant) at the HTTP surface, real Postgres, mocked Cognito.
+    // -------------------------------------------------------------------
+    async function snapshotCounts(): Promise<Record<string, number>> {
+      return {
+        users: await identityPrisma.user.count(),
+        memberships: await identityPrisma.userTenantMembership.count(),
+        external_identities: await identityPrisma.externalIdentity.count(),
+        invitations: await identityPrisma.invitation.count(),
+        tenants: await identityPrisma.tenant.count(),
+      };
+    }
+
+    function clearCognitoCalls(): void {
+      cognitoMock.adminCreateUser.mockClear();
+      cognitoMock.adminGetUser.mockClear();
+      cognitoMock.adminDeleteUser.mockClear();
+    }
+
+    it('IC-1 PR-1 — inviting an email owned by ANOTHER tenant → 409 EMAIL_UNAVAILABLE, details {}, no ownership detail, ZERO rows, ZERO Cognito calls, audit reason retained (former membership_added RETIRED)', async () => {
+      const provToken = await platformJwt();
+      const alpha = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Alpha Co', owner_email: 'owner@alpha.co' });
+      expect(alpha.status).toBe(201);
+      const alphaTenantId: string = alpha.body.tenant_id;
+      const alphaOwnerUserId: string = alpha.body.owner_user_id;
+      const beta = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Beta Co', owner_email: 'owner@beta.co' });
+      expect(beta.status).toBe(201);
+      const betaTenantId: string = beta.body.tenant_id;
+
+      const before = await snapshotCounts();
+      clearCognitoCalls();
+
+      // Mixed case on purpose — the probe must normalize before the lookup.
+      const res = await request(app.getHttpServer())
+        .post(`/platform/tenants/${betaTenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'Owner@Alpha.CO', role_keys: ['recruiter'] });
+
+      expect(res.status).toBe(409);
+      expect(res.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
+      // EXACTLY `details: {}` inside the standard envelope.
+      expect(res.body?.error?.details).toEqual({});
+      expect(typeof res.body?.error?.request_id).toBe('string');
+      const serialized = JSON.stringify(res.body);
+      expect(serialized).not.toContain(alphaTenantId);
+      expect(serialized).not.toContain(alphaOwnerUserId);
+      expect(serialized).not.toContain('Alpha Co');
+      expect(serialized).not.toContain('recruiter');
+
+      // Nothing persisted — no User, membership, ExternalIdentity, Invitation
+      // or Tenant row changed; the owner still has exactly ONE membership.
+      expect(await snapshotCounts()).toEqual(before);
+      expect(
+        await identityPrisma.userTenantMembership.count({
+          where: { user_id: alphaOwnerUserId },
+        }),
+      ).toBe(1);
+      expect(
+        await identityPrisma.userTenantMembership.findUnique({
+          where: {
+            user_id_tenant_id: { user_id: alphaOwnerUserId, tenant_id: betaTenantId },
+          },
+        }),
+      ).toBeNull();
+
+      // No Cognito side effect of any kind (no probe, no create, no delete).
+      expect(cognitoMock.adminGetUser).not.toHaveBeenCalled();
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(cognitoMock.adminDeleteUser).not.toHaveBeenCalled();
+
+      // The internal audit entry, scoped to the ATTEMPTED target tenant,
+      // retains the actual reason + caller; never the email.
+      const audit = await identityPrisma.identityAuditEvent.findMany({
+        where: {
+          tenant_id: betaTenantId,
+          event_type: 'identity.invitation.rejected_cross_tenant',
+        },
+      });
+      expect(audit).toHaveLength(1);
+      expect(audit[0]?.actor_id).toBe(SUPER_ADMIN_USER_ID);
+      // Gate-5 G5-08 — no foreign-tenant identifier anywhere in the stored row.
+      expect(audit[0]?.subject_id).toBe(betaTenantId);
+      expect(audit[0]?.event_payload).toEqual({
+        reason: 'existing_user_owned_by_other_tenant',
+        tier: 'platform',
+        attempted_tenant_id: betaTenantId,
+        request_id: expect.any(String),
+      });
+      const storedRow = JSON.stringify(audit[0]);
+      expect(storedRow).not.toContain(alphaOwnerUserId);
+      expect(storedRow).not.toContain(alphaTenantId);
+      expect(storedRow).not.toContain('owner@alpha.co');
+      expect(
+        await identityPrisma.identityAuditEvent.count({
+          where: {
+            tenant_id: alphaTenantId,
+            event_type: 'identity.invitation.rejected_cross_tenant',
+          },
+        }),
+      ).toBe(0);
+    });
+
+    it('IC-1 PR-1 — Cognito-absent / identity-present in the SAME tenant → preserved 409 INVITATION_ALREADY_EXISTS (same roles) / roles_updated (different roles); NEVER AdminCreateUser', async () => {
+      const provToken = await platformJwt();
+      const prov = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'NoSub Co', owner_email: 'owner@nosub.co' });
+      expect(prov.status).toBe(201);
+      const tenantId: string = prov.body.tenant_id;
+
+      // Simulate a tenant-tier (Pattern-2, no-sub) invitee: User + INVITED
+      // membership + recruiter role, NO ExternalIdentity, NO Cognito user.
+      const noSubUserId = uuidv7();
+      const noSubMembershipId = uuidv7();
+      await identityPrisma.user.create({
+        data: { id: noSubUserId, email: 'nosub@nosub.co', display_name: 'No Sub', is_active: true },
+      });
+      await identityPrisma.userTenantMembership.create({
+        data: {
+          id: noSubMembershipId,
+          user_id: noSubUserId,
+          tenant_id: tenantId,
+          is_active: true,
+          invite_status: 'INVITED',
+        },
+      });
+      await identityPrisma.userTenantMembershipRole.create({
+        data: { id: uuidv7(), membership_id: noSubMembershipId, role_id: RECRUITER_ROLE_ID },
+      });
+      const before = await snapshotCounts();
+      clearCognitoCalls();
+
+      // Same role set → the preserved same-tenant 409 (never EMAIL_UNAVAILABLE).
+      const same = await request(app.getHttpServer())
+        .post(`/platform/tenants/${tenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'NoSub@NoSub.CO', role_keys: ['recruiter'] });
+      expect(same.status).toBe(409);
+      expect(same.body?.error?.code).toBe('INVITATION_ALREADY_EXISTS');
+
+      // Different role set → the preserved reconcile (roles_updated).
+      const diff = await request(app.getHttpServer())
+        .post(`/platform/tenants/${tenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'nosub@nosub.co', role_keys: ['recruiter', 'account_manager'] });
+      expect(diff.status).toBe(201);
+      expect(diff.body?.status).toBe('roles_updated');
+      expect(diff.body?.membership_id).toBe(noSubMembershipId);
+
+      // Pre-IC-1 this state fell through to AdminCreateUser + a P2002 500 +
+      // AdminDeleteUser. Now: no Cognito call on either branch, no new rows.
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(cognitoMock.adminDeleteUser).not.toHaveBeenCalled();
+      expect(await snapshotCounts()).toEqual(before);
+      expect(
+        await identityPrisma.identityAuditEvent.count({
+          where: { tenant_id: tenantId, event_type: 'identity.invitation.rejected_cross_tenant' },
+        }),
+      ).toBe(0);
+    });
+
+    it('IC-1 PR-1 — provisioning a tenant whose owner email is already registered → 409 EMAIL_UNAVAILABLE (details {}) BEFORE Cognito; no tenant created', async () => {
+      const provToken = await platformJwt();
+      const before = await snapshotCounts();
+      clearCognitoCalls();
+      const res = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Gamma Co', owner_email: 'Owner@Alpha.CO' });
+      expect(res.status).toBe(409);
+      expect(res.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
+      expect(res.body?.error?.details).toEqual({});
+      expect(await snapshotCounts()).toEqual(before);
+      expect(
+        await identityPrisma.tenant.findFirst({ where: { name: 'Gamma Co' } }),
+      ).toBeNull();
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(cognitoMock.adminDeleteUser).not.toHaveBeenCalled();
+    });
+
+    // -------------------------------------------------------------------
+    // IC-1 PR-1 Gate-5 FIX_NOW-2 — Cognito compensation isolation under a
+    // concurrent-registration race (real Postgres, real unique index, mocked
+    // Cognito store). The race is reproduced by making the identity pre-checks
+    // MISS once each (the platform-service classification and the in-service
+    // guard), so the insert hits the real User.email unique index.
+    // -------------------------------------------------------------------
+    async function forceRaceOnNextInvite(): Promise<() => void> {
+      const repo = module.get(IdentityRepository);
+      const spy = vi
+        .spyOn(repo, 'findUserByEmail')
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      return () => spy.mockRestore();
+    }
+
+    it('FIX_NOW-2 (drift branch) — a lost race against a PRE-EXISTING Cognito identity never deletes it: 409 EMAIL_UNAVAILABLE, AdminCreateUser/AdminDeleteUser not called, identity intact', async () => {
+      const provToken = await platformJwt();
+      const alpha = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Race Alpha Co', owner_email: 'owner@racealpha.co' });
+      expect(alpha.status).toBe(201);
+      const beta = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Race Beta Co', owner_email: 'owner@racebeta.co' });
+      expect(beta.status).toBe(201);
+      const subBefore = cognitoStore.get('owner@racealpha.co');
+      expect(subBefore).toBeDefined();
+      const before = await snapshotCounts();
+      clearCognitoCalls();
+
+      const restore = await forceRaceOnNextInvite();
+      try {
+        // Pre-checks miss → identity "absent" → Cognito has the user → the
+        // drift branch mirrors against the EXISTING sub → the real unique
+        // index refuses the insert → governed 409. No compensation runs on
+        // the drift branch, and the established Cognito identity survives.
+        const res = await request(app.getHttpServer())
+          .post(`/platform/tenants/${beta.body.tenant_id}/invitations`)
+          .set('Authorization', `Bearer ${provToken}`)
+          .send({ email: 'owner@racealpha.co', role_keys: ['recruiter'] });
+        expect(res.status).toBe(409);
+        expect(res.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
+        expect(res.body?.error?.details).toEqual({});
+      } finally {
+        restore();
+      }
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(cognitoMock.adminDeleteUser).not.toHaveBeenCalled();
+      expect(cognitoStore.get('owner@racealpha.co')).toBe(subBefore);
+      expect(await snapshotCounts()).toEqual(before);
+    });
+
+    it('FIX_NOW-2 (greenfield branch) — a lost race compensates ONLY the Cognito identity this operation created; the established identity of the email owner (no Cognito) is unaffected', async () => {
+      const provToken = await platformJwt();
+      const prov = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'Race Gamma Co', owner_email: 'owner@racegamma.co' });
+      expect(prov.status).toBe(201);
+      const tenantId: string = prov.body.tenant_id;
+      // A tenant-tier (no-sub) user owned by ANOTHER tenant: identity.User +
+      // membership elsewhere, NO Cognito identity at all.
+      const ownedUserId = uuidv7();
+      await identityPrisma.user.create({
+        data: { id: ownedUserId, email: 'nosub@racegamma.co', display_name: 'No Sub', is_active: true },
+      });
+      await identityPrisma.userTenantMembership.create({
+        data: {
+          id: uuidv7(),
+          user_id: ownedUserId,
+          tenant_id: PLATFORM_TENANT_SENTINEL_ID,
+          is_active: true,
+          invite_status: 'INVITED',
+        },
+      });
+      const before = await snapshotCounts();
+      clearCognitoCalls();
+      expect(cognitoStore.has('nosub@racegamma.co')).toBe(false);
+
+      const restore = await forceRaceOnNextInvite();
+      try {
+        // Pre-checks miss → Cognito absent → GREENFIELD: AdminCreateUser mints
+        // a sub for this operation → the real unique index refuses the mirror
+        // → governed 409 → compensation deletes exactly the identity it minted.
+        const res = await request(app.getHttpServer())
+          .post(`/platform/tenants/${tenantId}/invitations`)
+          .set('Authorization', `Bearer ${provToken}`)
+          .send({ email: 'nosub@racegamma.co', role_keys: ['recruiter'] });
+        expect(res.status).toBe(409);
+        expect(res.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
+        expect(res.body?.error?.details).toEqual({});
+      } finally {
+        restore();
+      }
+      expect(cognitoMock.adminCreateUser).toHaveBeenCalledTimes(1);
+      expect(cognitoMock.adminDeleteUser).toHaveBeenCalledTimes(1);
+      expect(cognitoMock.adminDeleteUser).toHaveBeenCalledWith(
+        expect.objectContaining({ pool: 'tenant', email: 'nosub@racegamma.co' }),
+      );
+      // The minted identity is gone; no identity rows changed; the owner
+      // still holds exactly one membership (elsewhere).
+      expect(cognitoStore.has('nosub@racegamma.co')).toBe(false);
+      expect(await snapshotCounts()).toEqual(before);
+      expect(
+        await identityPrisma.userTenantMembership.count({ where: { user_id: ownedUserId } }),
+      ).toBe(1);
+      // Every other Cognito identity in the store is untouched.
+      expect(cognitoStore.get('owner@racegamma.co')).toBeDefined();
+    });
+
+    it('IC-1 PR-1 — the retired AUTHZ-2 entry points are absent from the live module graph', () => {
+      const identitySvc = module.get(IdentityService) as unknown as Record<string, unknown>;
+      expect(identitySvc['addMembershipForExistingUser']).toBeUndefined();
+      const repo = module.get(IdentityRepository) as unknown as Record<string, unknown>;
+      expect(repo['createMembershipForExistingUser']).toBeUndefined();
     });
   },
 );

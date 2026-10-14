@@ -59,5 +59,7 @@ export interface InviteUserResponseDto {
   user_id: string;
   membership_id: string;
   role_keys: string[];
-  status: 'invitation_sent' | 'roles_updated' | 'membership_added';
+  // IC-1 PR-1 (Amendment A1 §2): `membership_added` is RETIRED — an email owned
+  // by another tenant is refused (409 EMAIL_UNAVAILABLE), never re-membered.
+  status: 'invitation_sent' | 'roles_updated';
 }

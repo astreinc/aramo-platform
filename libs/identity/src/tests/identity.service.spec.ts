@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { IdentityAuditService } from '../lib/audit/identity-audit.service.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
-import { IdentityService } from '../lib/identity.service.js';
+import {
+  IdentityService,
+  isUserEmailUniqueViolation,
+} from '../lib/identity.service.js';
 import type { UserDto } from '../lib/dto/user.dto.js';
 import type { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
@@ -192,9 +195,13 @@ interface InServiceFixture {
   identitySvc: IdentityService;
   repoSpies: {
     createUserWithExternalIdentityAndMembership: ReturnType<typeof vi.fn>;
-    createMembershipForExistingUser: ReturnType<typeof vi.fn>;
+    createUserWithMembership: ReturnType<typeof vi.fn>;
+    createInvitation: ReturnType<typeof vi.fn>;
     replaceMembershipRoles: ReturnType<typeof vi.fn>;
     findMembership: ReturnType<typeof vi.fn>;
+    // IC-1 PR-1 — the ownership reads behind the one-User-one-tenant guard.
+    findUserByEmail: ReturnType<typeof vi.fn>;
+    findMembershipTenantIdsForUser: ReturnType<typeof vi.fn>;
   };
   auditSpies: {
     writeGlobalEvent: ReturnType<typeof vi.fn>;
@@ -233,9 +240,14 @@ function buildInServiceFixture(
 
   const repoSpies = {
     createUserWithExternalIdentityAndMembership: vi.fn(),
-    createMembershipForExistingUser: vi.fn(),
+    createUserWithMembership: vi.fn(),
+    createInvitation: vi.fn(),
     replaceMembershipRoles: vi.fn(),
     findMembership: vi.fn(),
+    // Defaults: the email is unregistered (the pre-IC-1 proofs proceed to
+    // the write exactly as before); guard tests override per case.
+    findUserByEmail: vi.fn().mockResolvedValue(null),
+    findMembershipTenantIdsForUser: vi.fn().mockResolvedValue([]),
   };
   const repo = repoSpies as unknown as IdentityRepository;
 
@@ -366,29 +378,289 @@ describe('IdentityService.createUserFromInvitation — D5 in-service safe-by-con
   });
 });
 
-describe('IdentityService.addMembershipForExistingUser — D5 in-service safe-by-construction', () => {
-  it('invertible union → VALIDATION_ERROR; ZERO DB writes; ZERO audit emissions; existence check NEVER reached', async () => {
-    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(
-      INVERTIBLE_ROLES,
-    );
+// IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §2): the former
+// addMembershipForExistingUser suite is retired with the method. The retired
+// entry point (and its repository writer) must be ABSENT from the surface.
+describe('IdentityService — IC-1 PR-1 retired entry points', () => {
+  it('addMembershipForExistingUser / createMembershipForExistingUser are not on the service / repository surface', () => {
+    const { identitySvc } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    expect(
+      (identitySvc as unknown as Record<string, unknown>)['addMembershipForExistingUser'],
+    ).toBeUndefined();
+    expect(
+      (IdentityRepository.prototype as unknown as Record<string, unknown>)[
+        'createMembershipForExistingUser'
+      ],
+    ).toBeUndefined();
+  });
+});
+
+// IC-1 PR-1 (Amendment A1 §3/§4) — the in-service one-User-one-tenant guard,
+// shared by BOTH User-creating write methods. Fires AFTER D5 and BEFORE any
+// DB write; same-tenant → preserved 409 INVITATION_ALREADY_EXISTS; owned by
+// another tenant → tenant-scoped audit (reason retained) + 409
+// EMAIL_UNAVAILABLE with EXACTLY `details: {}`; a User.email P2002 lost
+// between pre-check and insert maps to the same governed 409s.
+const TARGET_TENANT = '01900000-0000-7000-8000-0000000000b1';
+const OTHER_TENANT = '01900000-0000-7000-8000-0000000000b2';
+const OWNED_USER: UserDto = {
+  id: '01900000-0000-7000-8000-0000000000c1',
+  email: 'owned@elsewhere.io',
+  display_name: 'Owned Elsewhere',
+  is_active: true,
+  deactivated_at: null,
+  created_at: '',
+  updated_at: '',
+};
+const OWNED_MEMBERSHIP_IN_TARGET = {
+  id: '01900000-0000-7000-8000-0000000000d1',
+  user_id: OWNED_USER.id,
+  tenant_id: TARGET_TENANT,
+  site_id: null,
+  is_active: true,
+  invite_status: 'INVITED',
+  joined_at: '',
+  deactivated_at: null,
+  created_at: '',
+  updated_at: '',
+};
+
+function platformCreateArgs(email: string) {
+  return {
+    email,
+    display_name: null,
+    provider: 'cognito',
+    provider_subject: 'cog-owned-1',
+    tenant_id: TARGET_TENANT,
+    role_keys: ['recruiter'],
+    role_ids: ['role-recruiter'],
+    actor_user_id: 'super-admin-1',
+    request_id: REQUEST_ID,
+  };
+}
+
+function tenantCreateArgs(email: string) {
+  return {
+    email,
+    display_name: null,
+    tenant_id: TARGET_TENANT,
+    role_keys: ['recruiter'],
+    role_ids: ['role-recruiter'],
+    actor_user_id: 'tenant-admin-1',
+    request_id: REQUEST_ID,
+  };
+}
+
+describe('IdentityService — IC-1 PR-1 one-User-one-tenant guard (in-service, both tiers)', () => {
+  it('createUserFromInvitation (platform tier): email owned by ANOTHER tenant → 409 EMAIL_UNAVAILABLE, details {}, audit reason retained, ZERO writes', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.findUserByEmail.mockResolvedValue(OWNED_USER);
+    repoSpies.findMembership.mockResolvedValue(null);
+    repoSpies.findMembershipTenantIdsForUser.mockResolvedValue([OTHER_TENANT]);
+
+    const err = await identitySvc
+      .createUserFromInvitation(platformCreateArgs('owned@elsewhere.io'))
+      .then(() => null, (e: unknown) => e as { code: string; statusCode: number; context?: { details?: unknown } });
+    expect(err).toMatchObject({ code: 'EMAIL_UNAVAILABLE', statusCode: 409 });
+    expect(err?.context?.details).toEqual({});
+    const serialized = JSON.stringify(err?.context ?? {});
+    expect(serialized).not.toContain(OTHER_TENANT);
+    expect(serialized).not.toContain(OWNED_USER.id);
+    expect(serialized).not.toContain('owned@elsewhere.io');
+
+    // ZERO writes, ZERO audit-on-success emissions.
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+    expect(auditSpies.writeGlobalEvent).not.toHaveBeenCalled();
+    // EXACTLY one internal audit event, scoped to the ATTEMPTED target tenant,
+    // retaining the actual reason + tier + caller + request id — and (Gate-5
+    // G5-08) carrying NO foreign-tenant identifier anywhere in the row: the
+    // subject is the attempted tenant, the payload is exactly the four
+    // whitelisted keys, and neither the foreign user id, the owning tenant id
+    // nor the email appears in the serialized event.
+    expect(auditSpies.writeEvent).toHaveBeenCalledTimes(1);
+    const evt = auditSpies.writeEvent.mock.calls[0]![0] as {
+      event_type: string;
+      tenant_id: string;
+      actor_id: string;
+      subject_id: string;
+      payload: Record<string, unknown>;
+    };
+    expect(evt.event_type).toBe('identity.invitation.rejected_cross_tenant');
+    expect(evt.tenant_id).toBe(TARGET_TENANT);
+    expect(evt.actor_id).toBe('super-admin-1');
+    expect(evt.subject_id).toBe(TARGET_TENANT);
+    expect(evt.payload).toEqual({
+      reason: 'existing_user_owned_by_other_tenant',
+      tier: 'platform',
+      attempted_tenant_id: TARGET_TENANT,
+      request_id: REQUEST_ID,
+    });
+    const serializedEvent = JSON.stringify(evt);
+    expect(serializedEvent).not.toContain(OWNED_USER.id);
+    expect(serializedEvent).not.toContain(OTHER_TENANT);
+    expect(serializedEvent).not.toContain('owned@elsewhere.io');
+  });
+
+  it('createInvitedUserNoSub (tenant tier): email owned by ANOTHER tenant → 409 EMAIL_UNAVAILABLE; no User / membership / Invitation write; tier=tenant', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.findUserByEmail.mockResolvedValue(OWNED_USER);
+    repoSpies.findMembership.mockResolvedValue(null);
+    repoSpies.findMembershipTenantIdsForUser.mockResolvedValue([OTHER_TENANT]);
+
     await expect(
-      identitySvc.addMembershipForExistingUser({
-        user_id: '01900000-0000-7000-8000-000000000002',
-        tenant_id: '01900000-0000-7000-8000-000000000001',
+      identitySvc.createInvitedUserNoSub(tenantCreateArgs('owned@elsewhere.io')),
+    ).rejects.toMatchObject({
+      code: 'EMAIL_UNAVAILABLE',
+      statusCode: 409,
+      context: { details: {} },
+    });
+    expect(repoSpies.createUserWithMembership).not.toHaveBeenCalled();
+    expect(repoSpies.createInvitation).not.toHaveBeenCalled();
+    expect(auditSpies.writeGlobalEvent).not.toHaveBeenCalled();
+    expect(auditSpies.writeEvent).toHaveBeenCalledTimes(1);
+    expect(auditSpies.writeEvent.mock.calls[0]![0]).toMatchObject({
+      event_type: 'identity.invitation.rejected_cross_tenant',
+      tenant_id: TARGET_TENANT,
+      payload: expect.objectContaining({ tier: 'tenant' }),
+    });
+  });
+
+  it('same tenant (both tiers): already a member → preserved 409 INVITATION_ALREADY_EXISTS; NEVER converted into EMAIL_UNAVAILABLE; no write, no refusal audit', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.findUserByEmail.mockResolvedValue(OWNED_USER);
+    repoSpies.findMembership.mockResolvedValue(OWNED_MEMBERSHIP_IN_TARGET);
+
+    await expect(
+      identitySvc.createInvitedUserNoSub(tenantCreateArgs('owned@elsewhere.io')),
+    ).rejects.toMatchObject({ code: 'INVITATION_ALREADY_EXISTS', statusCode: 409 });
+    await expect(
+      identitySvc.createUserFromInvitation(platformCreateArgs('owned@elsewhere.io')),
+    ).rejects.toMatchObject({ code: 'INVITATION_ALREADY_EXISTS', statusCode: 409 });
+    expect(repoSpies.createUserWithMembership).not.toHaveBeenCalled();
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+    expect(repoSpies.findMembershipTenantIdsForUser).not.toHaveBeenCalled();
+    expect(auditSpies.writeEvent).not.toHaveBeenCalled();
+  });
+
+  it('normalization: the identity lookup and the stored email use trim()+toLowerCase() at both tiers', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.createUserWithMembership.mockResolvedValue({
+      user: { ...OWNED_USER, id: 'u-new', email: 'new@tenant.io' },
+      membership_id: 'mem-new',
+      membership_role_ids: ['mr-1'],
+    });
+    repoSpies.createInvitation.mockResolvedValue({
+      id: 'inv-1',
+      user_id: 'u-new',
+      tenant_id: TARGET_TENANT,
+      membership_id: 'mem-new',
+      token_hash: 'h',
+      expires_at: '2026-12-31T00:00:00.000Z',
+      accepted_at: null,
+      revoked_at: null,
+      created_at: '',
+      updated_at: '',
+    });
+    await identitySvc.createInvitedUserNoSub(tenantCreateArgs('  New@Tenant.IO '));
+    expect(repoSpies.findUserByEmail).toHaveBeenCalledWith('new@tenant.io');
+    expect(repoSpies.createUserWithMembership).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'new@tenant.io' }),
+    );
+
+    repoSpies.createUserWithExternalIdentityAndMembership.mockResolvedValue({
+      user: { ...OWNED_USER, id: 'u-new2', email: 'new2@tenant.io' },
+      external_identity_id: 'ext-1',
+      membership_id: 'mem-new2',
+      membership_role_ids: ['mr-2'],
+    });
+    await identitySvc.createUserFromInvitation(platformCreateArgs(' New2@Tenant.IO'));
+    expect(repoSpies.findUserByEmail).toHaveBeenCalledWith('new2@tenant.io');
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'new2@tenant.io' }),
+    );
+  });
+
+  it('ordering: the D5 gate fires BEFORE the ownership lookup (an invertible bundle is rejected without revealing whether the email exists)', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(INVERTIBLE_ROLES);
+    repoSpies.findUserByEmail.mockResolvedValue(OWNED_USER);
+    await expect(
+      identitySvc.createInvitedUserNoSub({
+        ...tenantCreateArgs('owned@elsewhere.io'),
         role_keys: ['pay_holder', 'spread_holder'],
         role_ids: ['role-pay_holder', 'role-spread_holder'],
-        actor_user_id: 'super-admin-1',
-        request_id: REQUEST_ID,
       }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    expect(repoSpies.findUserByEmail).not.toHaveBeenCalled();
+  });
+
+  it('race backstop: a User.email P2002 raised AFTER the pre-check passed is re-probed and mapped to 409 EMAIL_UNAVAILABLE (reason email_uniqueness_race_lost) — never a raw P2002', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    // Pre-check misses (the concurrent writer has not committed yet) ...
+    repoSpies.findUserByEmail
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(OWNED_USER);
+    repoSpies.findMembership.mockResolvedValue(null);
+    repoSpies.findMembershipTenantIdsForUser.mockResolvedValue([OTHER_TENANT]);
+    // ... then the insert loses the unique race on User.email.
+    repoSpies.createUserWithMembership.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed on the fields: (`email`)'), {
+        code: 'P2002',
+        meta: { target: ['email'] },
+      }),
+    );
+    await expect(
+      identitySvc.createInvitedUserNoSub(tenantCreateArgs('owned@elsewhere.io')),
     ).rejects.toMatchObject({
-      code: 'VALIDATION_ERROR',
-      context: { details: { reason: 'invertible_role_union' } },
+      code: 'EMAIL_UNAVAILABLE',
+      statusCode: 409,
+      context: { details: {} },
     });
-    // Validator fires BEFORE findMembership (no membership-existence leak)
-    // and BEFORE createMembershipForExistingUser.
-    expect(repoSpies.findMembership).not.toHaveBeenCalled();
-    expect(repoSpies.createMembershipForExistingUser).not.toHaveBeenCalled();
-    expect(auditSpies.writeEvent).not.toHaveBeenCalled();
+    expect(repoSpies.createInvitation).not.toHaveBeenCalled();
+    expect(auditSpies.writeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'identity.invitation.rejected_cross_tenant',
+        payload: expect.objectContaining({ reason: 'email_uniqueness_race_lost', tier: 'tenant' }),
+      }),
+    );
+  });
+
+  it('race backstop: a lost race where the winner is in the SAME tenant maps to 409 INVITATION_ALREADY_EXISTS', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    repoSpies.findUserByEmail
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue(OWNED_USER);
+    repoSpies.findMembership.mockResolvedValue(OWNED_MEMBERSHIP_IN_TARGET);
+    repoSpies.createUserWithExternalIdentityAndMembership.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: 'User_email_key' },
+      }),
+    );
+    await expect(
+      identitySvc.createUserFromInvitation(platformCreateArgs('owned@elsewhere.io')),
+    ).rejects.toMatchObject({ code: 'INVITATION_ALREADY_EXISTS', statusCode: 409 });
+  });
+
+  it('race backstop: a P2002 on a DIFFERENT key is rethrown unchanged (never silently absorbed)', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    const foreign = Object.assign(new Error('Unique constraint failed'), {
+      code: 'P2002',
+      meta: { target: ['provider', 'provider_subject'] },
+    });
+    repoSpies.createUserWithExternalIdentityAndMembership.mockRejectedValue(foreign);
+    await expect(
+      identitySvc.createUserFromInvitation(platformCreateArgs('fresh@tenant.io')),
+    ).rejects.toBe(foreign);
+  });
+
+  it('isUserEmailUniqueViolation: P2002 keyed on email (field list, constraint name or target-less) matches; other keys and other codes do not', () => {
+    expect(isUserEmailUniqueViolation({ code: 'P2002', meta: { target: ['email'] } })).toBe(true);
+    expect(isUserEmailUniqueViolation({ code: 'P2002', meta: { target: 'User_email_key' } })).toBe(true);
+    expect(isUserEmailUniqueViolation({ code: 'P2002' })).toBe(true);
+    expect(isUserEmailUniqueViolation({ code: 'P2002', meta: { target: ['user_id', 'tenant_id'] } })).toBe(false);
+    expect(isUserEmailUniqueViolation({ code: 'P2025' })).toBe(false);
+    expect(isUserEmailUniqueViolation(new Error('boom'))).toBe(false);
+    expect(isUserEmailUniqueViolation(null)).toBe(false);
   });
 });
 

@@ -31,6 +31,17 @@ export const EVENT_TYPES = [
   // successful /callback (the existing resolve seam now finds them).
   'identity.invitation.created',
   'identity.invitation.accepted',
+  // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — an invitation
+  // (either tier) was REFUSED because the normalized email already belongs
+  // to an identity.User owned by a different tenant. Tenant-scoped on the
+  // ATTEMPTED TARGET tenant; subject_id is the attempted tenant_id (NOT the
+  // foreign user — the tenant audit read surfaces subject_id raw); payload
+  // carries ONLY { reason, tier, attempted_tenant_id, request_id } (the
+  // caller is actor_id). NO email, NO foreign user id, NO foreign tenant ids
+  // anywhere in the row (Gate-5 G5-08). The public HTTP 409 EMAIL_UNAVAILABLE
+  // carries `details: {}`; the cross-tenant correlation lives only in the
+  // structured server log keyed by request_id.
+  'identity.invitation.rejected_cross_tenant',
   // AUTHZ-D4a — 9 team-model substrate event_types (all tenant-scoped;
   // emitted by the assign-to-client / set-management-edge / manage-pod
   // mechanisms). D4a is WRITE-SIDE only — these events record substrate
@@ -143,6 +154,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // tenant).
   'identity.invitation.created',
   'identity.invitation.accepted',
+  // IC-1 PR-1: the cross-tenant refusal is scoped to the attempted target tenant.
+  'identity.invitation.rejected_cross_tenant',
   // AUTHZ-D4a: all 9 team-model events are tenant-scoped (carry the
   // tenant_id the substrate write happened in).
   'identity.management_edge.set',

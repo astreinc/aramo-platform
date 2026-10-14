@@ -11,6 +11,7 @@ import {
   IdentityService,
   TenantService,
   deriveAllowedDomainOrThrow,
+  normalizeEmail,
 } from '@aramo/identity';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
@@ -41,16 +42,24 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
 //     routes; the SessionOrchestrator refuses to issue tokens for an
 //     inactive tenant).
 //
-// Idempotency / re-invite (Lead ruling 8 — the 4 cases):
-//   - existing User + existing membership in this tenant => 409
-//     INVITATION_ALREADY_EXISTS (no Cognito recreate).
-//   - existing User + no membership in this tenant => add membership,
-//     reuse Cognito + User + ExternalIdentity.
-//   - same-tenant role replacement => reconcile UserTenantMembershipRole
-//     (not yet wired through this service in this PR -- handled at the
-//     service layer if a controller later exposes PATCH role_keys).
+// Idempotency / re-invite (Lead ruling 8, as amended by IC-1 PR-1 —
+// D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §2/§3/§4; one User, one tenant):
+//   - existing User + existing membership in this tenant, same role set =>
+//     409 INVITATION_ALREADY_EXISTS (no Cognito call at all).
+//   - existing User + existing membership in this tenant, different role
+//     set => reconcile UserTenantMembershipRole (roles_updated).
+//   - existing User + NO membership in this tenant => the User is owned by
+//     ANOTHER tenant: tenant-scoped audit identity.invitation.rejected_
+//     cross_tenant + 409 EMAIL_UNAVAILABLE with `details: {}` — BEFORE any
+//     Cognito call. The former `membership_added` outcome is RETIRED.
 //   - drift (Cognito has user, identity does not) => recover by writing
-//     identity rows against the existing Cognito sub.
+//     identity rows against the existing Cognito sub (invitation_sent).
+//   - greenfield (neither store) => Cognito-first AdminCreateUser, then the
+//     identity mirror (invitation_sent).
+// The identity probe is the FIRST probe and runs on the NORMALIZED email
+// (trim + lowercase), so a Cognito-absent / identity-present state is
+// resolved by the same-tenant / other-tenant branches without ever calling
+// AdminCreateUser (and so without an AdminDeleteUser compensation).
 
 export interface ProvisionResult {
   tenant_id: string;
@@ -69,7 +78,8 @@ export interface InviteResult {
   user_id: string;
   membership_id: string;
   role_keys: string[];
-  status: 'invitation_sent' | 'roles_updated' | 'membership_added';
+  // IC-1 PR-1: `membership_added` RETIRED (Amendment A1 §2).
+  status: 'invitation_sent' | 'roles_updated';
 }
 
 @Injectable()
@@ -129,6 +139,30 @@ export class PlatformInvitationService {
     // runs) prevents that email entirely — mirrors the 0a name pre-check that
     // avoids a Cognito side-effect for an obvious conflict.
     deriveAllowedDomainOrThrow(args.owner_email, 'platform.provision');
+
+    // 0a-ter. IC-1 PR-1 (Amendment A1 §4) — one User, one tenant. The tenant
+    // being provisioned does not exist yet, so ANY existing identity.User for
+    // the (normalized) owner email is owned by another tenant. Refuse BEFORE
+    // the Cognito side effect (AdminCreateUser would email a temp password to
+    // an address we then revoke). The in-service guard inside
+    // createUserFromInvitation is the authoritative backstop (it also covers
+    // the pre-check/insert race); this pre-check only avoids the Cognito
+    // round-trip + compensation. No target tenant exists yet, so the
+    // tenant-scoped rejected_cross_tenant audit event cannot be written here;
+    // the refusal is logged at warn with the request id instead.
+    const ownerEmail = normalizeEmail(args.owner_email);
+    const ownerExisting = await this.identitySvc.findUserByEmail(ownerEmail);
+    if (ownerExisting !== null) {
+      this.logger.warn(
+        `provision refused (request ${args.request_id}): owner email already registered to an existing user`,
+      );
+      throw new AramoError(
+        'EMAIL_UNAVAILABLE',
+        'This email address is not available for invitation',
+        409,
+        { requestId: args.request_id, details: {} },
+      );
+    }
 
     // 0b. Resolve role IDs (the Tenant-Owner-first invite hard-fixes
     // the role to 'tenant_owner').
@@ -203,7 +237,11 @@ export class PlatformInvitationService {
       owner_user_id = created.user.id;
       membership_id = created.membership_id;
     } catch (err) {
-      await this.compensateCognito(args.owner_email, 'tenant').catch(
+      await this.compensateCognito({
+        email: args.owner_email,
+        pool: 'tenant',
+        expected_sub: cognito_sub,
+      }).catch(
         (compErr: unknown) => {
           this.logger.warn(
             `cognito rollback failed: ${(compErr as Error).message}`,
@@ -342,89 +380,101 @@ export class PlatformInvitationService {
   }): Promise<InviteResult> {
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(args.role_keys);
 
-    // Idempotency: AdminGetUser is the existence probe at the Cognito
-    // boundary (Lead ruling 8).
-    const cognitoExisting = await this.cognito.adminGetUser({
-      pool: args.pool,
-      email: args.email,
-    });
-    const identityExisting = await this.identitySvc.findUserByEmail(args.email);
+    // IC-1 PR-1 (Amendment A1 §4) — normalize ONCE (trim + lowercase) and use
+    // the normalized form for the identity probe, the Cognito probe, the
+    // Cognito create and the identity mirror (the raw email was previously
+    // used for the probes while the tenant tier normalized — the
+    // inconsistency this closes). Cognito's Username=email convention is
+    // honored with the normalized form on every call below.
+    const email = normalizeEmail(args.email);
 
-    if (cognitoExisting !== null && identityExisting !== null) {
-      // Cases 1 (409) + 2 (200 reconcile) + 3 (201 new membership) — the
-      // user already exists in both stores. Branch on whether they hold a
-      // membership in this tenant.
-      const membership = await this.identitySvc.findMembership({
-        user_id: identityExisting.id,
+    // Identity is the FIRST probe (one User, one tenant). An existing User is
+    // resolved by its membership in THIS tenant (same-tenant contracts) or
+    // refused (owned by another tenant) BEFORE any Cognito call — so the
+    // Cognito-absent / identity-present state never reaches AdminCreateUser.
+    const ownership = await this.identitySvc.classifyInviteEmailOwnership({
+      email,
+      tenant_id: args.tenant_id,
+    });
+
+    if (ownership.kind === 'other_tenant') {
+      // Cross-tenant collision (Amendment A1 §4): tenant-scoped audit with
+      // the actual reason + 409 EMAIL_UNAVAILABLE, `details: {}`. The former
+      // "new tenant for existing user" (membership_added) branch is RETIRED.
+      await this.identitySvc.rejectCrossTenantInvitation({
         tenant_id: args.tenant_id,
+        actor_user_id: args.actor_user_id,
+        request_id: args.request_id,
+        tier: 'platform',
+        existing: ownership,
+        reason:
+          ownership.membership_tenant_ids.length === 0
+            ? 'existing_user_without_membership'
+            : 'existing_user_owned_by_other_tenant',
       });
-      if (membership !== null) {
-        const existingRoleIds = new Set(
-          await this.identitySvc.findRoleIdsForMembership(membership.id),
-        );
-        const wantSet = new Set(role_ids);
-        const sameSet =
-          existingRoleIds.size === wantSet.size &&
-          [...existingRoleIds].every((id) => wantSet.has(id));
-        if (sameSet) {
-          throw new AramoError(
-            'INVITATION_ALREADY_EXISTS',
-            'User already holds a membership in this tenant with the same role set',
-            409,
-            {
-              requestId: 'platform.invite',
-              details: {
-                email: args.email,
-                tenant_id: args.tenant_id,
-                existing_membership_id: membership.id,
-              },
+    }
+
+    if (ownership.kind === 'same_tenant') {
+      // Cases 1 (409) + 2 (reconcile) — the user already holds a membership
+      // in THIS tenant. Branch on the role set. No Cognito call on either
+      // branch (preserved same-tenant contracts, Amendment A1 §3).
+      const membership = ownership.membership;
+      const existingRoleIds = new Set(
+        await this.identitySvc.findRoleIdsForMembership(membership.id),
+      );
+      const wantSet = new Set(role_ids);
+      const sameSet =
+        existingRoleIds.size === wantSet.size &&
+        [...existingRoleIds].every((id) => wantSet.has(id));
+      if (sameSet) {
+        throw new AramoError(
+          'INVITATION_ALREADY_EXISTS',
+          'User already holds a membership in this tenant with the same role set',
+          409,
+          {
+            requestId: 'platform.invite',
+            details: {
+              email,
+              tenant_id: args.tenant_id,
+              existing_membership_id: membership.id,
             },
-          );
-        }
-        // Same-tenant role replacement (Lead ruling 8 case 2).
-        // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
-        // the in-service D5 union-non-invertibility check.
-        await this.identitySvc.replaceMembershipRoles({
-          membership_id: membership.id,
-          role_keys: args.role_keys,
-          role_ids,
-          request_id: args.request_id,
-        });
-        return {
-          tenant_id: args.tenant_id,
-          user_id: identityExisting.id,
-          membership_id: membership.id,
-          role_keys: [...args.role_keys],
-          status: 'roles_updated',
-        };
+          },
+        );
       }
-      // New-tenant for existing user (Lead ruling 8 case 3).
+      // Same-tenant role replacement (Lead ruling 8 case 2).
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
-      const added = await this.identitySvc.addMembershipForExistingUser({
-        user_id: identityExisting.id,
-        tenant_id: args.tenant_id,
+      await this.identitySvc.replaceMembershipRoles({
+        membership_id: membership.id,
         role_keys: args.role_keys,
         role_ids,
-        actor_user_id: args.actor_user_id,
         request_id: args.request_id,
       });
       return {
         tenant_id: args.tenant_id,
-        user_id: identityExisting.id,
-        membership_id: added.membership_id,
+        user_id: ownership.user.id,
+        membership_id: membership.id,
         role_keys: [...args.role_keys],
-        status: 'membership_added',
+        status: 'roles_updated',
       };
     }
 
-    if (cognitoExisting !== null && identityExisting === null) {
+    // Identity has no User for this email. AdminGetUser is the existence
+    // probe at the Cognito boundary (Lead ruling 8) — normalized email.
+    const cognitoExisting = await this.cognito.adminGetUser({
+      pool: args.pool,
+      email,
+    });
+
+    if (cognitoExisting !== null) {
       // Drift recovery (Lead ruling 8 case 4). Reuse the existing
-      // Cognito sub; write identity rows mirror-style.
+      // Cognito sub; write identity rows mirror-style. The in-service
+      // guard re-checks ownership (and maps a lost email race) before
+      // the write.
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
       const created = await this.identitySvc.createUserFromInvitation({
-        email: args.email,
+        email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
         provider_subject: cognitoExisting.cognito_sub,
@@ -448,7 +498,7 @@ export class PlatformInvitationService {
     try {
       const out = await this.cognito.adminCreateUser({
         pool: args.pool,
-        email: args.email,
+        email,
         display_name: args.display_name ?? null,
       });
       cognito_sub = out.cognito_sub;
@@ -460,7 +510,7 @@ export class PlatformInvitationService {
         {
           requestId: 'platform.invite',
           details: {
-            email: args.email,
+            email,
             pool: args.pool,
             error_message: (err as Error).message,
           },
@@ -474,9 +524,12 @@ export class PlatformInvitationService {
       // the in-service D5 union-non-invertibility check. An invertible
       // bundle throws VALIDATION_ERROR inside createUserFromInvitation —
       // the catch block below rolls back the Cognito user so neither
-      // store retains the invertible state.
+      // store retains the invertible state. IC-1 PR-1: a User.email race
+      // lost between the probe above and the insert surfaces from inside
+      // createUserFromInvitation as the governed 409 (EMAIL_UNAVAILABLE /
+      // INVITATION_ALREADY_EXISTS) — the same rollback applies.
       created = await this.identitySvc.createUserFromInvitation({
-        email: args.email,
+        email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
         provider_subject: cognito_sub,
@@ -487,7 +540,11 @@ export class PlatformInvitationService {
         request_id: args.request_id,
       });
     } catch (err) {
-      await this.compensateCognito(args.email, args.pool).catch(
+      await this.compensateCognito({
+        email,
+        pool: args.pool,
+        expected_sub: cognito_sub,
+      }).catch(
         (compErr: unknown) => {
           this.logger.warn(
             `cognito rollback failed: ${(compErr as Error).message}`,
@@ -609,10 +666,37 @@ export class PlatformInvitationService {
     });
   }
 
-  private async compensateCognito(
-    email: string,
-    pool: 'tenant' | 'platform',
-  ): Promise<void> {
-    await this.cognito.adminDeleteUser({ pool, email });
+  // Lead ruling 7 compensation, hardened at IC-1 PR-1 Gate-5 (FIX_NOW-2):
+  // compensation may delete ONLY the Cognito identity THIS operation created.
+  // Cognito's Username=email convention means AdminDeleteUser is addressed by
+  // email, so before deleting we re-read the identity and require its `sub`
+  // to equal the `sub` AdminCreateUser returned to us. A missing identity is
+  // a no-op; a DIFFERENT sub (an established identity that was not ours) is
+  // left untouched and logged. AdminCreateUser itself refuses an existing
+  // username (UsernameExistsException → 502 COGNITO_PROVISION_FAILED before
+  // any compensation), so a pre-existing Cognito identity never reaches this
+  // path with a matching sub.
+  private async compensateCognito(args: {
+    email: string;
+    pool: 'tenant' | 'platform';
+    expected_sub: string;
+  }): Promise<void> {
+    const current = await this.cognito.adminGetUser({
+      pool: args.pool,
+      email: args.email,
+    });
+    if (current === null || current === undefined) {
+      this.logger.warn(
+        'cognito rollback skipped: no identity found for the created username',
+      );
+      return;
+    }
+    if (current.cognito_sub !== args.expected_sub) {
+      this.logger.warn(
+        'cognito rollback skipped: the identity at this username is not the one this operation created',
+      );
+      return;
+    }
+    await this.cognito.adminDeleteUser({ pool: args.pool, email: args.email });
   }
 }

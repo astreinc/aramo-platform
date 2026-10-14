@@ -315,6 +315,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MICROSOFT_PROVIDER_ERROR',
       'MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT',
       'MICROSOFT_SCHEDULING_IN_PROGRESS',
+      // IC-1 PR-1 (Amendment A1 §4) — cross-tenant invitation refusal (appended LAST).
+      'EMAIL_UNAVAILABLE',
     ]);
   });
 });

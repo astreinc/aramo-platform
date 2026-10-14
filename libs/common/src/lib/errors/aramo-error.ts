@@ -290,6 +290,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   MICROSOFT_PROVIDER_ERROR: 502,
   MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT: 409,
   MICROSOFT_SCHEDULING_IN_PROGRESS: 409,
+  // IC-1 PR-1 (Amendment A1 §4) — cross-tenant invitation refusal (both tiers).
+  EMAIL_UNAVAILABLE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

@@ -7,6 +7,13 @@ export { IdentityModule } from './lib/identity.module.js';
 // forRoot IdentityModule used to collide with.
 export { IdentityCoreModule } from './lib/identity-core.module.js';
 export { IdentityService } from './lib/identity.service.js';
+// IC-1 PR-1 (Amendment A1 §4) — the invite-email ownership classification the
+// platform tier runs BEFORE any Cognito side effect, plus the audit vocabulary.
+export type {
+  InviteEmailOwnership,
+  InviteTier,
+  CrossTenantRejectionReason,
+} from './lib/identity.service.js';
 export { TenantService } from './lib/tenant.service.js';
 // Inc-3 PR-3.8 (A) — the operator dashboard payload shape.
 export type {

@@ -121,6 +121,13 @@ export class TenantUserLifecycleService {
   //   step 2: no-sub identity create + token issue via
   //           createInvitedUserNoSub (the D5 union-non-invertibility gate
   //           runs INSIDE it, BEFORE any write; no Cognito user is minted).
+  //           IC-1 PR-1 (Amendment A1 §4): the one-User-one-tenant guard
+  //           ALSO runs inside it, after D5 and before the write, on the
+  //           normalized email — same-tenant → 409 INVITATION_ALREADY_EXISTS;
+  //           owned by another tenant → tenant-scoped audit + 409
+  //           EMAIL_UNAVAILABLE (details {}); a User.email P2002 lost
+  //           between pre-check and insert maps to the same governed 409s.
+  //           A refused invite persists nothing and sends no email.
   //   step 3: send the invite email (S1 mailer) with the raw token link.
   // The audit events (identity.user.created / membership.created /
   // invitation.created) are emitted from inside createInvitedUserNoSub —
