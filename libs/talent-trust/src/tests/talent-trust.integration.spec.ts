@@ -73,6 +73,12 @@ const PROPOSAL_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
 );
+// G1 — ResolutionSubject.trust_recompute_requested_at (the regenerated client
+// SELECTs it on every subject read). Hand-curated apply sequence: targeted append.
+const G1_RECOMPUTE_REQUEST_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -146,7 +152,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
       const verifiedStaleSql = readFileSync(VERIFIED_STALE_MIGRATION_PATH, 'utf8');
       const proposalSql = readFileSync(PROPOSAL_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql, verifiedStaleSql, proposalSql]) {
+      const g1RequestSql = readFileSync(G1_RECOMPUTE_REQUEST_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql, verifiedStaleSql, proposalSql, g1RequestSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;

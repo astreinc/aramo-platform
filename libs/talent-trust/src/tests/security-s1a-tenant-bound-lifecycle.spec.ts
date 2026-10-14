@@ -27,9 +27,8 @@ function build(over: Partial<Record<keyof TalentTrustRepository, unknown>> = {})
     findEvidenceByIdForTenant: vi.fn(async () => null),
     applyTenantBoundTransition: vi.fn(async () => true),
     appendResolvedThenRevoked: vi.fn(async () => undefined),
-    clusterMembers: vi.fn(async () => [SUBJ]),
-    listEvidenceBySubjects: vi.fn(async () => []),
-    upsertTrustState: vi.fn(async () => ({})),
+    // G1 — recompute runs through the cluster-locked repository transaction.
+    recomputeUnderLock: vi.fn(async () => ({ kind: 'RECOMPUTED', survivor_subject_id: SUBJ, cleared_requests: 0 })),
     advancePortalWorkItemStatus: vi.fn(async () => undefined),
     findTenantWorkItemsForDispute: vi.fn(async () => []),
     findAllWorkItemsForDispute: vi.fn(async () => []),
@@ -63,7 +62,7 @@ describe('Security S1a — tenant-bound evidence lifecycle (unit)', () => {
     expect(repo.findEvidenceById).not.toHaveBeenCalled();
     expect(repo.applyTenantBoundTransition).not.toHaveBeenCalled();
     expect(repo.appendResolvedThenRevoked).not.toHaveBeenCalled();
-    expect(repo.upsertTrustState).not.toHaveBeenCalled();
+    expect(repo.recomputeUnderLock).not.toHaveBeenCalled();
   });
 
   it('the NOT_FOUND refusal carries no status and no evidence id', async () => {
@@ -87,7 +86,7 @@ describe('Security S1a — tenant-bound evidence lifecycle (unit)', () => {
     expect(repo.applyTenantBoundTransition).toHaveBeenCalledWith(
       expect.objectContaining({ evidence_id: EV, tenant_id: ACTING, expected_status: 'VALID', next_status: 'DISPUTED', event_type: 'DISPUTED' }),
     );
-    expect(repo.upsertTrustState).toHaveBeenCalledTimes(1);
+    expect(repo.recomputeUnderLock).toHaveBeenCalledTimes(1);
   });
 
   it('a lost race (no row matched) re-reads and classifies without re-writing', async () => {
@@ -98,7 +97,7 @@ describe('Security S1a — tenant-bound evidence lifecycle (unit)', () => {
     });
     await expect(svc.dispute(ACTING, EV, 'u', 'g', 'r')).resolves.toEqual({ status: 'DISPUTED' });
     expect(repo.applyTenantBoundTransition).toHaveBeenCalledTimes(1);
-    expect(repo.upsertTrustState).not.toHaveBeenCalled();
+    expect(repo.recomputeUnderLock).not.toHaveBeenCalled();
   });
 
   it('upheld: a stale transition is classified as EVIDENCE_NOT_DISPUTED; any other error propagates', async () => {
@@ -113,7 +112,7 @@ describe('Security S1a — tenant-bound evidence lifecycle (unit)', () => {
     expect(stale.repo.appendResolvedThenRevoked).toHaveBeenCalledWith(
       expect.objectContaining({ evidence_id: EV, tenant_id: ACTING }),
     );
-    expect(stale.repo.upsertTrustState).not.toHaveBeenCalled();
+    expect(stale.repo.recomputeUnderLock).not.toHaveBeenCalled();
 
     const boom = build({
       findEvidenceByIdForTenant: vi.fn(async () => row('DISPUTED')),

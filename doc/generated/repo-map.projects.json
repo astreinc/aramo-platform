@@ -352,6 +352,7 @@
       "ReleaseIdentityService",
       "RequestId",
       "RequestIdMiddleware",
+      "TALENT_TRUST_MIGRATIONS",
       "agingDaysInTimeZone",
       "assertModuleHasNoLlmImports",
       "civilDayUtcMs",
@@ -373,7 +374,8 @@
       "resolveAppTimeZone",
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
-      "resolveReleaseRevision"
+      "resolveReleaseRevision",
+      "resolveTalentTrustMigrations"
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",
@@ -8792,6 +8794,12 @@
       { "project": "talent-reconcile", "status": "production" }
     ],
     "@aramo/talent-trust": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/g1-trust-recompute-ordering-recovery.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
