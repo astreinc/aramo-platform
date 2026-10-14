@@ -16,6 +16,10 @@ import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.const
 import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
 import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
+import {
+  RECOMPUTE_REPAIR_QUEUE_NAME,
+  RECOMPUTE_REPAIR_INTERVAL_MS,
+} from '../talent-identity/recompute-repair.queue.constants.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distribution-sync.queue.constants.js';
 import {
@@ -174,6 +178,16 @@ const SCHEDULES = [
     job_name: 'tick',
     job_id: 'trust-recompute-sweep-daily',
     repeat: { pattern: '0 7 * * *', tz: 'UTC' as const },
+  },
+  // G1 — the TrustState recomputation-repair tick (every 2 minutes). Drains the
+  // durable per-subject requests a failed post-commit recompute left pending.
+  // Distinct from the daily decay sweep above; the cadence is a polling interval,
+  // not a recovery SLA.
+  {
+    queue_name: RECOMPUTE_REPAIR_QUEUE_NAME,
+    job_name: 'tick',
+    job_id: 'trust-recompute-repair-2min',
+    repeat: { every: RECOMPUTE_REPAIR_INTERVAL_MS },
   },
   // TR-2b B2a (Directive §PR-1.3) — the daily identity-index lifecycle sweep.
   // Orphan purge (LIVE: clusters failing R4 liveness past ORPHAN_GRACE_DAYS) +
