@@ -159,6 +159,15 @@ const IDENTITY_USER_TENANT_OWNER_BACKFILL = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
 );
+// IC-1 PR-3 — restrict + immutability trigger (applied whole-file through pg).
+const IDENTITY_USER_TENANT_CARDINALITY = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+);
+const IDENTITY_USER_TENANT_IMMUTABLE = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+);
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
@@ -473,10 +482,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // admin token's version read is authoritative (not a fallback). ----
     async function seedAdminPrincipal(): Promise<void> {
       await db.query(
-        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
-         VALUES ($1::uuid, $2, $3, true, CURRENT_TIMESTAMP)
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, true, $4::uuid, CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO NOTHING`,
-        [TENANT_ADMIN, 'tenant.admin.d1@aramo.dev', 'D1 Tenant Admin'],
+        [TENANT_ADMIN, 'tenant.admin.d1@aramo.dev', 'D1 Tenant Admin', TENANT_ATS],
       );
       const membershipId = uuidv7();
       await db.query(
@@ -679,6 +688,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_AUTHZ_VERSION,
         IDENTITY_USER_TENANT_OWNER_EXPAND,
         IDENTITY_USER_TENANT_OWNER_BACKFILL,
+        IDENTITY_USER_TENANT_CARDINALITY,
+        IDENTITY_USER_TENANT_IMMUTABLE,
         ENTITLEMENT_INIT,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
@@ -908,9 +919,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [OTHER_TENANT],
       );
       await db.query(
-        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
-         VALUES ($1::uuid, $2, $3, true, CURRENT_TIMESTAMP)`,
-        [ownedUserId, 'owned.elsewhere@aramo.dev', 'Owned Elsewhere'],
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, true, $4::uuid, CURRENT_TIMESTAMP)`,
+        [ownedUserId, 'owned.elsewhere@aramo.dev', 'Owned Elsewhere', OTHER_TENANT],
       );
       await db.query(
         `INSERT INTO identity."UserTenantMembership"

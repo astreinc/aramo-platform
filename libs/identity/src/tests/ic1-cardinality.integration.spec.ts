@@ -338,9 +338,72 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(rows).toHaveLength(0);
     });
 
+    // ── IC-1 PR-3 (Amendment A1 §1; Invite-S2 Amendment A1) — the DATABASE now
+    // enforces: owner mandatory (NOT NULL), AT MOST one membership per User
+    // (UNIQUE user_id), membership tenant = owner tenant (composite FK), owner
+    // immutable (trigger). AT LEAST one membership is NOT a database rule — it is
+    // the transactional writers' guarantee (L18 above). The tests below keep the
+    // two halves distinct (readiness v1.2 §11 C-3).
+    it('PR-3 L3 — a SECOND membership for an owned User is REFUSED by the database (UNIQUE user_id)', async () => {
+      await expect(
+        prisma.userTenantMembership.create({
+          data: { id: uuidv7(), user_id: ownedByA, tenant_id: TENANT_B },
+        }),
+      ).rejects.toThrow(/UserTenantMembership_user_id_key|UserTenantMembership_user_id_tenant_id_fkey|Unique constraint|Foreign key constraint/);
+      expect(await prisma.userTenantMembership.count({ where: { user_id: ownedByA } })).toBe(1);
+    });
+
+    it('PR-3 L4 — a membership whose tenant differs from the owner tenant is REFUSED (composite FK), even for a User that has no membership yet', async () => {
+      // A User owned by A with NO membership (allowed by the DB — at-least-one is not a DB rule).
+      const orphanOwnedByA = uuidv7();
+      await prisma.user.create({
+        data: { id: orphanOwnedByA, email: 'orphan.owned.by.a@example.test', tenant_id: TENANT_A },
+      });
+      expect(await prisma.userTenantMembership.count({ where: { user_id: orphanOwnedByA } })).toBe(0);
+      // Membership in B for a User owned by A → composite FK violation.
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at)
+           VALUES ('${uuidv7()}'::uuid, '${orphanOwnedByA}'::uuid, '${TENANT_B}'::uuid, now())`,
+        ),
+      ).rejects.toThrow(/UserTenantMembership_user_id_tenant_id_fkey/);
+      // Membership in A (the owner tenant) is accepted — the same-tenant lifecycle is intact.
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at)
+         VALUES ('${uuidv7()}'::uuid, '${orphanOwnedByA}'::uuid, '${TENANT_A}'::uuid, now())`,
+      );
+      expect(await prisma.userTenantMembership.count({ where: { user_id: orphanOwnedByA } })).toBe(1);
+    });
+
+    it('PR-3 L4b — re-pointing User.tenant_id is REFUSED by the immutability trigger; unrelated User updates still succeed', async () => {
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE identity."User" SET tenant_id = '${TENANT_B}'::uuid WHERE id = '${ownedByA}'::uuid`,
+        ),
+      ).rejects.toThrow(/User\.tenant_id is immutable/);
+      expect((await prisma.user.findUnique({ where: { id: ownedByA } }))?.tenant_id).toBe(TENANT_A);
+      // A same-value assignment is a no-op (IS DISTINCT FROM) and an unrelated column update passes.
+      await prisma.$executeRawUnsafe(
+        `UPDATE identity."User" SET tenant_id = '${TENANT_A}'::uuid, display_name = 'Renamed' WHERE id = '${ownedByA}'::uuid`,
+      );
+      expect((await prisma.user.findUnique({ where: { id: ownedByA } }))?.display_name).toBe('Renamed');
+    });
+
+    it('PR-3 — an owner-less User is REFUSED by the database (NOT NULL); the retired AUTHZ-2 second-membership shape is unreachable from persisted data', async () => {
+      await expect(
+        prisma.$executeRawUnsafe(
+          `INSERT INTO identity."User" (id, email, updated_at) VALUES ('${uuidv7()}'::uuid, 'ownerless@example.test', now())`,
+        ),
+      ).rejects.toThrow(/null value in column "tenant_id"/);
+    });
+
     it('IC-1 PR-2 invariant snapshot — after the whole run, every User created by a saga is OWNED and its owner equals its membership tenant (0 NULL, 0 mismatches)', async () => {
-      const nulls = await prisma.user.count({ where: { tenant_id: null } });
-      expect(nulls).toBe(0);
+      // PR-3: tenant_id is non-null in the client type (NOT NULL in the DB), so the
+      // NULL probe is a raw count — it must be 0 by construction now.
+      const nulls = await prisma.$queryRawUnsafe<Array<{ n: bigint }>>(
+        `SELECT count(*)::bigint AS n FROM identity."User" WHERE tenant_id IS NULL`,
+      );
+      expect(Number(nulls[0]?.n ?? -1)).toBe(0);
       const mismatches = await prisma.$queryRawUnsafe<Array<{ id: string }>>(
         `SELECT u.id FROM identity."User" u
            JOIN identity."UserTenantMembership" m ON m.user_id = u.id

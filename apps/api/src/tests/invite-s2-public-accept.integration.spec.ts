@@ -52,6 +52,9 @@ const MIGRATIONS = [
   // table here (no-op). (Interleaved entitlement + identity list → stays hand-listed.)
   'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
   'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  // IC-1 PR-3 — restrict + immutability trigger (whole-file through pg).
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT = '01900000-0000-7000-8000-0000000000a1';
@@ -87,9 +90,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const invitationId = uuidv7();
       const rawToken = randomBytes(32).toString('base64url');
       await db.query(
-        `INSERT INTO identity."User" (id, email, is_active, created_at, updated_at)
-         VALUES ($1::uuid, $2, true, now(), now())`,
-        [userId, args.email],
+        `INSERT INTO identity."User" (id, email, is_active, tenant_id, created_at, updated_at)
+         VALUES ($1::uuid, $2, true, $3::uuid, now(), now())`,
+        [userId, args.email, TENANT],
       );
       await db.query(
         `INSERT INTO identity."UserTenantMembership"

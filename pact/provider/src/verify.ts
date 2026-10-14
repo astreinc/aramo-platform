@@ -101,6 +101,17 @@ const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
 );
+// IC-1 PR-3 — restrict + immutability trigger (single-quoted body; the regex splitter
+// below keeps it intact because the only terminators followed by a newline are the
+// statement ends).
+const IDENTITY_USER_TENANT_CARDINALITY_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+);
+const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+);
 const AUTH_STORAGE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql',
@@ -151,6 +162,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_AUTHZ_VERSION_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_USER_TENANT_CARDINALITY_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
       ]) {

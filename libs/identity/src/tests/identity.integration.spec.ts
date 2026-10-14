@@ -2002,6 +2002,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'authz1-multirole@aramo.dev',
           display_name: 'AUTHZ-1 multirole',
           is_active: true,
+          // IC-1 PR-3: born OWNED by the membership tenant below.
+          tenant_id: SEED_IDS.tenant,
         },
       });
       await prisma.userTenantMembership.upsert({
@@ -2082,6 +2084,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'dup-test-user@aramo.dev',
           display_name: 'dup test',
           is_active: true,
+          // IC-1 PR-3: NOT NULL owner (this fixture has no membership — the DB
+          // enforces at MOST one; at LEAST one is the writers' job, not the DB's).
+          tenant_id: SEED_IDS.tenant,
         },
       });
 
@@ -2125,6 +2130,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'link-test-user@aramo.dev',
           display_name: 'link test',
           is_active: true,
+          tenant_id: SEED_IDS.tenant,
         },
       });
 

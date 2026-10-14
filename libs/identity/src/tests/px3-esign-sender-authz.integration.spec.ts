@@ -37,7 +37,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
     const userId = nextId();
     const membershipId = nextId();
     const assignId = nextId();
-    await prisma.user.upsert({ where: { id: userId }, update: {}, create: { id: userId, email: `px3-${label}@aramo.dev`, display_name: `px3 ${label}`, is_active: true } });
+    await prisma.user.upsert({ where: { id: userId }, update: {}, create: { id: userId, email: `px3-${label}@aramo.dev`, display_name: `px3 ${label}`, is_active: true, tenant_id: SEED_IDS.tenant } });
     await prisma.userTenantMembership.upsert({
       where: { user_id_tenant_id: { user_id: userId, tenant_id: SEED_IDS.tenant } },
       update: {},

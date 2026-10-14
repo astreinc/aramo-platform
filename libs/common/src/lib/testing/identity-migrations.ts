@@ -26,7 +26,7 @@ import { resolve } from 'node:path';
 // ── Scope (PR-1.5 ruling: bounded + documented). ──────────────────────────────
 // The 23 curated sites do NOT share one identity set — recon found ≥6 distinct
 // (subset, order) signatures; each spec applies only the migrations its scenario
-// needs. This helper carries the FULL ordered set (14 as of IC-1 PR-2); sites that apply a
+// needs. This helper carries the FULL ordered set (16 as of IC-1 PR-3); sites that apply a
 // pure-identity subset are retrofitted to consume it (the extra additive tables
 // are behavior-neutral). Sites that interleave the identity set with other
 // schema stacks (entitlement / talent-trust / talent-record / …) stay
@@ -64,6 +64,14 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // reads only UserTenantMembership (init) — Invariant 2 holds.
   'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
   'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  // IC-1 PR-3 — RESTRICT. `cardinality` re-runs the backfill, pre-validates (no unowned
+  // User, no multi-membership User, no membership/owner tenant mismatch — each a
+  // single-statement raise), then SET NOT NULL + UNIQUE(user_id) on membership + the
+  // composite membership→owner FK. `immutable` adds the single-quoted plpgsql trigger
+  // (no `$$`). From here every fixture that inserts a User MUST supply tenant_id and
+  // may hold at most ONE membership, in that tenant.
+  'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
+  'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

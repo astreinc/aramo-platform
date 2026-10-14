@@ -670,6 +670,11 @@ const IDENTITY_AUTHZ_VERSION_MIGRATION = resolve(ROOT, 'libs/identity/prisma/mig
 // User table here and is a no-op).
 const IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql');
 const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql');
+// IC-1 PR-3 — restrict (NOT NULL + UNIQUE(user_id) + composite FK) and the immutability
+// trigger. The provider DB must match post-PR-3 production; every pact User seed below
+// supplies tenant_id and holds at most one membership, in that tenant.
+const IDENTITY_USER_TENANT_CARDINALITY_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql');
+const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -2894,14 +2899,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_IMPORT_BATCH_ID = '00000000-0000-7000-8000-1ba700000001';
     const ATSW_EDGE_ID = '00000000-0000-7000-8000-ed6e00000001';
 
+    // IC-1 PR-3: every User is born OWNED (NOT NULL tenant_id); the owner defaults to
+    // the pact tenant and must equal the tenant of the user's (single) membership.
     async function seedAtsWebUser(
       c: Client,
-      params: { id: string; email: string; displayName?: string },
+      params: { id: string; email: string; displayName?: string; tenantId?: string },
     ): Promise<void> {
       await c.query(
-        `INSERT INTO identity."User" (id, email, display_name, updated_at)
-         VALUES ($1,$2,$3,NOW()) ON CONFLICT (id) DO NOTHING`,
-        [params.id, params.email, params.displayName ?? null],
+        `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+         VALUES ($1,$2,$3,$4,NOW()) ON CONFLICT (id) DO NOTHING`,
+        [params.id, params.email, params.displayName ?? null, params.tenantId ?? TENANT_ID],
       );
     }
     async function seedAtsWebMembership(
@@ -3758,6 +3765,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_AUTHZ_VERSION_MIGRATION,
         IDENTITY_USER_TENANT_OWNER_EXPAND_MIGRATION,
         IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION,
+        IDENTITY_USER_TENANT_CARDINALITY_MIGRATION,
+        IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,
@@ -5586,10 +5595,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               [pipeline, TENANT_ID, talent, requisition],
             );
             await c.query(
-              `INSERT INTO identity."User" (id, email, display_name, updated_at)
-               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+              `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',$2,NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [RECRUITER_ID],
+              [RECRUITER_ID, TENANT_ID],
             );
           });
         },
@@ -5607,10 +5616,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               [PACT_TALENT_ID, TENANT_ID],
             );
             await c.query(
-              `INSERT INTO identity."User" (id, email, display_name, updated_at)
-               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',NOW())
+              `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+               VALUES ($1,'recruiter-pact@example.test','Purush Pichaimuthu',$2,NOW())
                ON CONFLICT (id) DO NOTHING`,
-              [RECRUITER_ID],
+              [RECRUITER_ID, TENANT_ID],
             );
           });
         },
@@ -8788,6 +8797,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             id: ATSW_USER_B,
             email: 'owned.elsewhere@other.example',
             displayName: 'Owned Elsewhere',
+            tenantId: ATSW_OTHER_TENANT_ID,
           });
           await c.query(
             `INSERT INTO identity."UserTenantMembership"

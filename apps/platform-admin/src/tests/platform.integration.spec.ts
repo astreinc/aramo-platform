@@ -319,6 +319,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           email: 'sa@aramo.platform',
           display_name: 'Super Admin',
           is_active: true,
+          // IC-1 PR-3: the platform operator is OWNED by the sentinel tenant.
+          tenant_id: PLATFORM_TENANT_SENTINEL_ID,
         },
       });
       const memId = uuidv7();
@@ -912,7 +914,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const noSubUserId = uuidv7();
       const noSubMembershipId = uuidv7();
       await identityPrisma.user.create({
-        data: { id: noSubUserId, email: 'nosub@nosub.co', display_name: 'No Sub', is_active: true },
+        data: { id: noSubUserId, email: 'nosub@nosub.co', display_name: 'No Sub', is_active: true, tenant_id: tenantId },
       });
       await identityPrisma.userTenantMembership.create({
         data: {
@@ -1044,7 +1046,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // membership elsewhere, NO Cognito identity at all.
       const ownedUserId = uuidv7();
       await identityPrisma.user.create({
-        data: { id: ownedUserId, email: 'nosub@racegamma.co', display_name: 'No Sub', is_active: true },
+        data: { id: ownedUserId, email: 'nosub@racegamma.co', display_name: 'No Sub', is_active: true, tenant_id: PLATFORM_TENANT_SENTINEL_ID },
       });
       await identityPrisma.userTenantMembership.create({
         data: {

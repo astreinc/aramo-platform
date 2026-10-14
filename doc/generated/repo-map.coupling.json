@@ -2268,6 +2268,30 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/identity/src/tests/identity.integration.spec.ts"
     },
     {
@@ -2494,6 +2518,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4-assignable-users.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -2563,6 +2611,30 @@
       "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/auth-hardening-d4b-name-resolver.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -4345,6 +4417,30 @@
       "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -21308,6 +21404,26 @@
       "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/types/consent-scope-status.ts",
       "status": "production",
       "to": "doc/02-claude-code-discipline.md"
@@ -21853,9 +21969,24 @@
       "to": "libs/identity-index/tsconfig.lib.json"
     },
     {
+      "from": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
       "from": "libs/identity/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
+    },
+    {
+      "from": "libs/identity/prisma/schema.prisma",
+      "status": "unscoped",
+      "to": "libs/company/prisma/schema.prisma"
     },
     {
       "from": "libs/identity/prisma/seed-astre.ts",
@@ -21937,6 +22068,12 @@
       "from": "libs/identity/src/tests/displayed-status.spec.ts",
       "status": "excluded",
       "to": "apps/ats-web/src/users/user-status.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ic1-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "tools/db-sync-local.sh"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -23909,6 +24046,26 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/import/prisma/migrations/20260603140000_init_import_model/migration.sql"
     },
     {
@@ -24745,6 +24902,26 @@
       "from": "pact/provider/src/verify.ts",
       "status": "unscoped",
       "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
     },
     { "from": "prisma.config.ts", "status": "unscoped", "to": "libs/consent/prisma/schema.prisma" },
     { "from": "redocly.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },

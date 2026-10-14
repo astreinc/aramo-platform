@@ -68,12 +68,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let prisma: PrismaService;
     let repo: IdentityRepository;
 
+    // IC-1 PR-3: a User is born OWNED (NOT NULL tenant_id, FK → Tenant). This proof
+    // never needed a tenant before; both users now belong to one seeded tenant.
+    const OWNER_TENANT = '01900000-0000-7000-8000-0000000000d2';
     async function seedUser(id: string, email: string): Promise<void> {
       await db.query(
-        `INSERT INTO identity."User" (id, email, display_name, is_active, updated_at)
-         VALUES ($1::uuid, $2, $3, true, CURRENT_TIMESTAMP)
+        `INSERT INTO identity."Tenant" (id, name, updated_at)
+         VALUES ($1::uuid, 'D2 Reconcile Tenant', CURRENT_TIMESTAMP)
          ON CONFLICT (id) DO NOTHING`,
-        [id, email, email],
+        [OWNER_TENANT],
+      );
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, is_active, tenant_id, updated_at)
+         VALUES ($1::uuid, $2, $3, true, $4::uuid, CURRENT_TIMESTAMP)
+         ON CONFLICT (id) DO NOTHING`,
+        [id, email, email, OWNER_TENANT],
       );
     }
 

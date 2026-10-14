@@ -386,6 +386,8 @@ async function seedSiteAxisFixture(prisma: IdentityPrismaService): Promise<void>
       email: 'site-user@aramo.dev',
       display_name: 'Site User',
       is_active: true,
+      // IC-1 PR-3: a User is born OWNED by its single membership tenant.
+      tenant_id: TENANT_ID,
     },
   });
   await prisma.user.upsert({
@@ -396,6 +398,7 @@ async function seedSiteAxisFixture(prisma: IdentityPrismaService): Promise<void>
       email: 'tenant-wide-user@aramo.dev',
       display_name: 'Tenant Wide User',
       is_active: true,
+      tenant_id: TENANT_ID,
     },
   });
   await prisma.externalIdentity.upsert({
