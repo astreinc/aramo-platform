@@ -270,9 +270,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
-    it('registration order — the four IC-1 files are the LAST four entries of IDENTITY_MIGRATIONS, in PR order', () => {
-      const n = IDENTITY_MIGRATIONS.length;
-      expect(IDENTITY_MIGRATIONS.slice(n - 4)).toEqual([EXPAND, BACKFILL, CARDINALITY, IMMUTABLE]);
+    it('registration order — the four IC-1 files are contiguous in PR order, after every pre-IC migration; only the IC-4 Tenant.kind migration follows them', () => {
+      const i = IDENTITY_MIGRATIONS.indexOf(EXPAND);
+      expect(i).toBeGreaterThan(0);
+      expect(IDENTITY_MIGRATIONS.slice(i, i + 4)).toEqual([EXPAND, BACKFILL, CARDINALITY, IMMUTABLE]);
+      // IC-4 PR-9 — the additive Tenant.kind migration is registered LAST (it
+      // depends on nothing in IC-1 and nothing depends on it).
+      const after = IDENTITY_MIGRATIONS.slice(i + 4);
+      expect(after).toHaveLength(1);
+      expect(after[0]).toMatch(/20261017000000_ic4_tenant_kind\/migration\.sql$/);
     });
 
     it('splitter safety (PR-2) — both files survive the regex splitter (4 + 2 statements) AND a split-on-every-semicolon scanner (no inner terminator, no $$)', () => {

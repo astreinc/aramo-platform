@@ -98,7 +98,7 @@ export function ProvisionTenantView() {
           <div style={{ display: 'flex', gap: 16 }}>
             {TENANT_KINDS.map((k) => (
               <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <input
+                <Input unstyled
                   type="radio"
                   name="tenant-kind"
                   checked={kind === k}

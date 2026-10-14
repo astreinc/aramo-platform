@@ -16,12 +16,17 @@ import {
   SEED_POOL_ID,
   DEFAULT_PLATFORM_HOST,
   DEFAULT_PORTAL_HOST,
+  DEFAULT_PRODUCT_HOST,
 } from '../lib/host-auth-profile.seed.js';
 
 // Auth-Decoupling PR-1 — proves the new migration DDL matches the generated
 // HostAuthProfile model and that seed → read round-trips against real Postgres:
-// the seed upserts three class rows, the store returns them indexed by class,
+// the seed upserts the class rows, the store returns them indexed by class,
 // and re-seeding stays idempotent (host_class UNIQUE).
+// IC-2 PR-4 (F-3) added the FOURTH class row — PRODUCT (esign.aramo.ai), a dark
+// scaffold (no login served on it; host-binding refuses PRODUCT) — so the seeded
+// set is four rows. (Reconciled at the IC-4 PR-9 final validation: this gated
+// root was not in PR-4's targeted set.)
 
 const MIGRATION_PATHS = [
   resolve(__dirname, '../../prisma/migrations/20260512100000_init_auth_storage/migration.sql'),
@@ -76,12 +81,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await prisma.hostAuthProfile.deleteMany({});
     });
 
-    it('seed upserts the three class rows; store indexes them by class', async () => {
+    it('seed upserts the four class rows (TENANT, PLATFORM, PORTAL + the dark PRODUCT scaffold); store indexes them by class', async () => {
       await seedHostAuthProfiles(prisma, SEED_ENV);
       const byClass = await store.activeByClass();
-      expect([...byClass.keys()].sort()).toEqual(['PLATFORM', 'PORTAL', 'TENANT']);
+      expect([...byClass.keys()].sort()).toEqual(['PLATFORM', 'PORTAL', 'PRODUCT', 'TENANT']);
       expect(byClass.get('PLATFORM')?.host_pattern).toBe(DEFAULT_PLATFORM_HOST);
       expect(byClass.get('PORTAL')?.host_pattern).toBe(DEFAULT_PORTAL_HOST);
+      expect(byClass.get('PRODUCT')?.host_pattern).toBe(DEFAULT_PRODUCT_HOST);
       expect(byClass.get('TENANT')?.host_pattern).toBe('*.aramo.ai');
       for (const row of byClass.values()) {
         expect(row.pool_id).toBe(SEED_POOL_ID);
@@ -90,11 +96,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
-    it('re-seeding is idempotent — still exactly three rows', async () => {
+    it('re-seeding is idempotent — still exactly four rows', async () => {
       await seedHostAuthProfiles(prisma, SEED_ENV);
       await seedHostAuthProfiles(prisma, SEED_ENV);
       const count = await prisma.hostAuthProfile.count();
-      expect(count).toBe(3);
+      expect(count).toBe(4);
     });
 
     it('inactive rows are excluded from the store read', async () => {
@@ -105,7 +111,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       const byClass = await store.activeByClass();
       expect(byClass.has('PORTAL')).toBe(false);
-      expect(byClass.size).toBe(2);
+      expect(byClass.size).toBe(3);
     });
   },
 );
