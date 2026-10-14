@@ -3,6 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import {
+  afterEach,
   afterAll,
   beforeAll,
   describe,
@@ -76,6 +77,12 @@ function splitDdl(sql: string): string[] {
 
 const FIXED_USER_ID = uuidv7();
 const FIXED_TENANT_ID = uuidv7();
+// IC-2 PR-4 (L6) — a SECOND tenant that owns another subdomain; the fixed user
+// is NOT a member of it. Logging in on its host must never mint a session for
+// FIXED_TENANT_ID under enforce.
+const OTHER_TENANT_ID = uuidv7();
+const OWN_HOST = 'tenanta.aramo.ai';
+const OTHER_HOST = 'tenantb.aramo.ai';
 const COGNITO_SUB = 'integration-cognito-sub';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -124,7 +131,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_POST_LOGIN_REDIRECT: process.env['AUTH_POST_LOGIN_REDIRECT'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
+        // IC-2 PR-4 — host binding flags + the apex the slug parse anchors to.
+        AUTH_HOST_TENANT_BINDING: process.env['AUTH_HOST_TENANT_BINDING'],
+        AUTH_ALLOW_UNBOUND_HOST: process.env['AUTH_ALLOW_UNBOUND_HOST'],
+        APP_ROOT_DOMAIN: process.env['APP_ROOT_DOMAIN'],
       };
+      delete process.env['AUTH_HOST_TENANT_BINDING'];
+      delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+      process.env['APP_ROOT_DOMAIN'] = 'aramo.ai';
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = 'aramo-test-audience';
       process.env['AUTH_PRIVATE_KEY'] = privatePem;
@@ -200,6 +214,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
               updated_at: '',
             },
           ]),
+          // IC-2 PR-4 (L6) — the host→tenant read behind HostContextDirectory:
+          // two slugged tenants; the fixed user belongs to tenanta only.
+          findActiveBySlug: vi.fn(async (slug: string) =>
+            slug === 'tenanta'
+              ? { id: FIXED_TENANT_ID, name: 'Integration Tenant', is_active: true, identity_provider: null, status: 'ACTIVE' }
+              : slug === 'tenantb'
+                ? { id: OTHER_TENANT_ID, name: 'Other Tenant', is_active: true, identity_provider: null, status: 'ACTIVE' }
+                : null,
+          ),
         })
         .overrideProvider(RoleService)
         .useValue({
@@ -255,8 +278,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     async function prepareLogin(
       consumer: string,
+      host?: string,
     ): Promise<{ pkceCookie: string; state: string }> {
-      const res = await request(app.getHttpServer()).get(`/auth/${consumer}/login`);
+      let req = request(app.getHttpServer()).get(`/auth/${consumer}/login`);
+      if (host !== undefined) req = req.set('Host', host);
+      const res = await req;
       expect(res.status).toBe(302);
       const setCookies = res.headers['set-cookie'] as unknown as string[];
       const cookieHeader = (Array.isArray(setCookies) ? setCookies : [setCookies as string])
@@ -301,6 +327,103 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // Test 40
+    // IC-2 PR-4 — L6 (host-bound login) and F-8 (legacy PKCE cookies), real
+    // HTTP through the real HostBaseResolver → IdentityHostContextAdapter →
+    // the stubbed findActiveBySlug, with the real PKCE sealing.
+    describe('IC-2 PR-4 — session tenant binding (L6) + legacy PKCE (F-8)', () => {
+      afterEach(() => {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+        delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+        unstubCognito();
+      });
+
+      async function callbackOn(host: string, pkceCookie: string, state: string) {
+        return request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${state}`)
+          .set('Host', host)
+          .set('Cookie', pkceCookie);
+      }
+
+      it('L6 enforce — login on ANOTHER tenant\'s host cannot mint a session: 302 /login?error=TENANT_ACCESS_DENIED, no cookies, no refresh row', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+        expect(cookies.some((c) => c.startsWith('aramo_access_token=') && !c.includes('Max-Age=0'))).toBe(false);
+        expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(false);
+      });
+
+      it('L6 enforce — login on the user\'s OWN tenant host mints normally (302 to that host)', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const res = await callbackOn(OWN_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/`);
+        const cookies = res.headers['set-cookie'] as unknown as string[];
+        expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
+      });
+
+      it('L6 log (default) — login on ANOTHER tenant\'s host keeps today\'s outcome (302 success)', async () => {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/`);
+      });
+
+      it('L6 enforce — a cookie sealed on one tenant host presented at another host is refused BEFORE the code exchange', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+      });
+
+      it('F-8 — a LEGACY PKCE cookie (no sealed host) on the dev host: allowed under log, refused under enforce, allowed again with AUTH_ALLOW_UNBOUND_HOST=true', async () => {
+        const pkce = module.get(PkceService);
+        const legacy = (): { pkceCookie: string; state: string } => {
+          const pair = pkce.generate();
+          const cipher = pkce.encryptState({
+            verifier: pair.verifier,
+            state: pair.state,
+            consumer: 'recruiter',
+            issued_at: Math.floor(Date.now() / 1000),
+          });
+          return { pkceCookie: `aramo_pkce_state=${cipher}`, state: pair.state };
+        };
+        stubCognitoVerifyOnly();
+        // log (default): unchanged outcome on the dev host.
+        let c = legacy();
+        let res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+        // enforce: unbound → refused.
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        c = legacy();
+        res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/\/login\?error=TENANT_ACCESS_DENIED$/);
+        // enforce + the explicit dev exception: allowed.
+        process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+        c = legacy();
+        res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
+          .set('Cookie', c.pkceCookie);
+        expect(res.status).toBe(302);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+      });
+    });
+
     it('test 40 — /refresh rotates: old revoked + linked, new row created, audit row', async () => {
       stubCognitoVerifyOnly();
       const { pkceCookie, state } = await prepareLogin('recruiter');

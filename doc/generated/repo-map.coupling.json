@@ -20955,11 +20955,6 @@
       "to": "openapi/auth.yaml"
     },
     {
-      "from": "libs/auth-core/src/lib/dto/tenant-selection-error.dto.ts",
-      "status": "production",
-      "to": "openapi/auth.yaml"
-    },
-    {
       "excludedBy": "src/tests/**/*",
       "from": "libs/auth-core/src/tests/auth-negative-control.spec.ts",
       "status": "excluded",

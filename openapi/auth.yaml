@@ -146,15 +146,14 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
-        '409':
-          description: |
-            Tenant selection required — user has >1 active membership.
-            `error.details.tenants` carries the list of selectable
-            tenants per `TenantSelectionRequiredDetails`.
-          content:
-            application/json:
-              schema:
-                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        # IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 2): the HTTP 409
+        # TENANT_SELECTION_REQUIRED response is RETIRED — a User belongs to exactly
+        # one tenant (IC-1), so no selection can be required. The code remains in
+        # the ErrorCode enum as COMPATIBILITY_RESERVED. A defensive multi-tenant
+        # resolution and every host-binding denial (host_tenant_mismatch,
+        # host_class_consumer_mismatch, host_unbound under
+        # AUTH_HOST_TENANT_BINDING=enforce) surface as 403 TENANT_ACCESS_DENIED
+        # with `error.details.reason`, naming no tenant.
         '500':
           description: |
             Internal error. Triggers (carried in `error.details.reason`):
@@ -466,11 +465,16 @@ components:
     TenantSelectionRequiredDetails:
       type: object
       additionalProperties: false
+      deprecated: true
       description: |
-        Embedded in `error.details` of a 409 TENANT_SELECTION_REQUIRED
-        response from /callback when the resolved user has more than
-        one active membership. Carries the list of selectable
-        tenants per CB.2 lock.
+        RETIRED (IC-2 PR-4, Auth-Decoupling PR-4 Amendment A1): no
+        /callback response carries this shape any more — a User belongs
+        to exactly one tenant (IC-1), so TENANT_SELECTION_REQUIRED (409)
+        is never emitted. Kept, deprecated, for historical contract
+        readers only.
+        Historically: embedded in `error.details` of a 409
+        TENANT_SELECTION_REQUIRED response from /callback when the
+        resolved user had more than one active membership (CB.2 lock).
       required:
         - tenants
       properties:

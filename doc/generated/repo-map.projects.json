@@ -159,6 +159,7 @@
     "@aramo/auth-core": [
       "ACCESS_TOKEN_TTL_SECONDS",
       "ALG",
+      "ALLOW_UNBOUND_HOST_ENV",
       "AUDIT_SINK",
       "AuthController",
       "CognitoVerificationError",
@@ -166,6 +167,7 @@
       "CookieVerifierService",
       "ELIGIBILITY_POLICY",
       "EMAIL_SENDER",
+      "HOST_BINDING_MODE_ENV",
       "HOST_CONTEXT_DIRECTORY",
       "HostAuthProfileService",
       "HostBaseResolver",
@@ -182,15 +184,20 @@
       "PortalLoginService",
       "RefreshOrchestratorService",
       "SessionOrchestratorService",
+      "TENANT_ACCESS_DENIED_REASONS",
+      "allowUnboundHost",
       "buildPortalLoginUrl",
+      "classifyHostByEnv",
       "computeKid",
       "deriveBaseFromHost",
       "derivePostLoginRedirect",
       "deriveRedirectUri",
       "deriveSignoutRedirect",
+      "evaluateHostBinding",
       "isDevHostname",
       "isDevPosture",
       "parseHost",
+      "readHostBindingMode",
       "renderPortalLoginEmail",
       "resolvePublicBaseUrl"
     ],
@@ -199,6 +206,7 @@
       "AuthStorageModule",
       "DEFAULT_PLATFORM_HOST",
       "DEFAULT_PORTAL_HOST",
+      "DEFAULT_PRODUCT_HOST",
       "HOST_CLASSES",
       "HostAuthProfileStore",
       "RefreshTokenService",
@@ -2304,6 +2312,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/host-auth-profile.behaviour-parity.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/identity-principal-directory.adapter.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },

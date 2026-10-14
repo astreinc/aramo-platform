@@ -546,6 +546,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(invitationAudit).not.toBeNull();
     });
 
+    // IC-2 PR-4 (F-4) — optional validated slug at console provisioning (real
+    // graph): supplied → normalized + persisted on Tenant.slug (UNIQUE); a
+    // reserved slug is refused at the single-source gate BEFORE Cognito; omitted
+    // → slug NULL (the pre-PR-4 shape). Never derived from the name.
+    it('IC-2 PR-4 (F-4) — POST /platform/tenants with a slug persists it normalized; a reserved slug → 400 reserved_slug, no tenant, no Cognito user', async () => {
+      const token = await platformJwt();
+      const ok = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Slugged Corp', owner_email: 'owner@slugged.corp', slug: 'Slugged-Corp' });
+      expect(ok.status).toBe(201);
+      const slugged = await identityPrisma.tenant.findUnique({ where: { id: ok.body.tenant_id } });
+      expect(slugged?.slug).toBe('slugged-corp');
+
+      const callsBefore = cognitoMock.adminCreateUser.mock.calls.length;
+      const reserved = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Reserved Corp', owner_email: 'owner@reserved.corp', slug: 'admin' });
+      expect(reserved.status).toBe(400);
+      expect(reserved.body.error.code).toBe('VALIDATION_ERROR');
+      expect(reserved.body.error.details.reason).toBe('reserved_slug');
+      expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(callsBefore);
+      expect(await identityPrisma.tenant.findFirst({ where: { name: 'Reserved Corp' } })).toBeNull();
+
+      const noSlug = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Unslugged Corp', owner_email: 'owner@unslugged.corp' });
+      expect(noSlug.status).toBe(201);
+      const unslugged = await identityPrisma.tenant.findUnique({ where: { id: noSlug.body.tenant_id } });
+      expect(unslugged?.slug).toBeNull();
+    });
+
     // Domain-Enforcement P1 — reject-personal at provision (real-graph proof
     // of §2). A personal/free owner domain is rejected with a 4xx
     // VALIDATION_ERROR (reason personal_email_not_allowed) and NO tenant /

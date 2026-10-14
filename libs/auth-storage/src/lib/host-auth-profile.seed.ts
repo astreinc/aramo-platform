@@ -23,6 +23,9 @@ export const SEED_POOL_ID = 'us-east-1_4fKlnGfaW';
 // (see the tenant-slug.ts precedent + the paired vocabulary-exemption entries).
 export const DEFAULT_PLATFORM_HOST = 'admin.aramo.ai';
 export const DEFAULT_PORTAL_HOST = 'candidate.aramo.ai';
+// IC-2 PR-4 (F-3) — the DARK product-console host (PX-V1 D-4). Overridable via
+// AUTH_PRODUCT_HOSTS; no nginx auth route / Cognito callback exists for it yet.
+export const DEFAULT_PRODUCT_HOST = 'esign.aramo.ai';
 
 // Fixed ids so re-seeding is deterministic (mirrors the identity seed's
 // hardcoded UUIDs); the upsert keys on host_class (UNIQUE), so id only matters
@@ -31,6 +34,7 @@ const SEED_IDS: Readonly<Record<HostClass, string>> = {
   TENANT: '01900000-0000-7000-8000-0000000a0001',
   PLATFORM: '01900000-0000-7000-8000-0000000a0002',
   PORTAL: '01900000-0000-7000-8000-0000000a0003',
+  PRODUCT: '01900000-0000-7000-8000-0000000a0004',
 };
 
 export interface HostAuthProfileSeedRow {
@@ -65,7 +69,7 @@ function firstHost(raw: string | undefined, fallback: string): string {
   return first ?? fallback;
 }
 
-// Build the three seed rows from an environment. Pure (no I/O) so the parity
+// Build the seed rows (one per HOST_CLASSES entry) from an environment. Pure (no I/O) so the parity
 // guard can run it directly. Defaults reproduce the .env.prod.example posture:
 // PLATFORM admin.aramo.ai, PORTAL candidate.aramo.ai, TENANT *.<APP_ROOT_DOMAIN>.
 export function buildHostAuthProfileSeedRows(
@@ -95,6 +99,8 @@ export function buildHostAuthProfileSeedRows(
   return [
     base('PLATFORM', firstHost(env['AUTH_PLATFORM_HOSTS'], DEFAULT_PLATFORM_HOST)),
     base('PORTAL', firstHost(env['AUTH_PORTAL_HOSTS'], DEFAULT_PORTAL_HOST)),
+    // IC-2 PR-4 (F-3) — PRODUCT row, dark scaffold (see HOST_CLASSES).
+    base('PRODUCT', firstHost(env['AUTH_PRODUCT_HOSTS'], DEFAULT_PRODUCT_HOST)),
     base('TENANT', `*.${rootDomain}`),
   ];
 }
@@ -111,7 +117,7 @@ export interface HostAuthProfileSeedClient {
   };
 }
 
-// Idempotent upsert of the three rows, keyed on host_class (UNIQUE). Re-running
+// Idempotent upsert of the seed rows, keyed on host_class (UNIQUE). Re-running
 // produces no duplicates and refreshes the profile columns to current env — so a
 // redeploy that rotates a Cognito value keeps the registry current.
 export async function seedHostAuthProfiles(

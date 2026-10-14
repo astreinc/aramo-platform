@@ -319,6 +319,12 @@ services:
       # (exact-match allowlist for candidate.aramo.ai) + the magic-link base.
       - AUTH_PORTAL_HOSTS
       - PORTAL_LOGIN_BASE_URL
+      # IC-2 PR-4 — session tenant binding mode (log|enforce; default log when
+      # unset), the explicit dev exception for unbound hosts under enforce, and
+      # the DARK product-console host class allow-list (F-3). All optional.
+      - AUTH_HOST_TENANT_BINDING
+      - AUTH_ALLOW_UNBOUND_HOST
+      - AUTH_PRODUCT_HOSTS
       # Eligibility rides aperture 1 (the PII-free fingerprint → ClusterFingerprint
       # lookup), so auth-service needs the SAME pepper as api. Single-sourced via
       # the *identity_pepper YAML anchor (defined on api's entry) — one var name,

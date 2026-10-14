@@ -84,6 +84,8 @@ export class PlatformController {
       actor_user_id: authCtx.sub,
       request_id: requestId,
       invite_owner,
+      // IC-2 PR-4 (F-4) — optional, validated downstream; never derived.
+      slug: body.slug,
     });
     return {
       tenant_id: result.tenant_id,

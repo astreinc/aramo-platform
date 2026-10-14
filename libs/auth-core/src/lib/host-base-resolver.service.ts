@@ -5,7 +5,19 @@ import {
   type HostContextDirectory,
 } from './host-context-directory.port.js';
 import { HostAuthProfileService } from './host-auth-profile.service.js';
-import { deriveBaseFromHost } from './redirect-uri.js';
+import type { HostBindingClass } from './host-binding.js';
+import { classifyHostByEnv } from './redirect-uri.js';
+
+// IC-2 PR-4 — the resolver's return shape, widened ADDITIVELY with the host
+// CLASS and the resolved host CONTEXT (tenant id for a TENANT host) so login can
+// seal them into the PKCE state and the callback can bind the resolved identity
+// to them. derivedBase / identityProvider are byte-identical to before.
+export interface HostResolution {
+  readonly derivedBase: string | null;
+  readonly identityProvider: string | null;
+  readonly hostClass: HostBindingClass | null;
+  readonly contextId: string | null;
+}
 
 // Increment-3 PR-3.1 (§3a) — resolves a request host to BOTH its derived auth
 // base (redirect/base resolution) AND its tenant's pinned Cognito
@@ -40,10 +52,7 @@ export class HostBaseResolver {
     private readonly hostAuthProfiles: HostAuthProfileService,
   ) {}
 
-  async resolve(host: string | undefined): Promise<{
-    derivedBase: string | null;
-    identityProvider: string | null;
-  }> {
+  async resolve(host: string | undefined): Promise<HostResolution> {
     // Registry FIRST. A hit yields the same { derivedBase, identityProvider }
     // the legacy path would; a null (miss/error, incl. an empty registry) falls
     // through to the unchanged derivation below.
@@ -52,26 +61,36 @@ export class HostBaseResolver {
       return {
         derivedBase: registry.derivedBase,
         identityProvider: registry.identityProvider,
+        hostClass: registry.hostClass,
+        contextId: registry.contextId,
       };
     }
 
     let isTenantHost = false;
     let identityProvider: string | null = null;
+    let tenantContextId: string | null = null;
     try {
       if (host !== undefined && host.length > 0) {
         const ctx = await this.hostContext.resolveByHost(host);
         if (ctx !== null) {
           isTenantHost = true;
           identityProvider = ctx.identity_provider;
+          tenantContextId = ctx.context_id ?? null;
         }
       }
     } catch {
-      // Fail-open. dev/platform hosts don't need the DB, so deriveBaseFromHost
+      // Fail-open. dev/platform hosts don't need the DB, so classifyHostByEnv
       // below can still return a base; the caller falls back to the env chain.
       isTenantHost = false;
       identityProvider = null;
+      tenantContextId = null;
     }
-    const derivedBase = deriveBaseFromHost(host, { isTenantHost });
-    return { derivedBase, identityProvider };
+    const { hostClass, derivedBase } = classifyHostByEnv(host, { isTenantHost });
+    return {
+      derivedBase,
+      identityProvider,
+      hostClass,
+      contextId: hostClass === 'TENANT' ? tenantContextId : null,
+    };
   }
 }

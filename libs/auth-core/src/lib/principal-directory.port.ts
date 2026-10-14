@@ -11,17 +11,28 @@
 // the ADAPTER decides the platform-sentinel status-gate exemption (computing that
 // flag auth-side would leak the policy back into auth).
 
+import type { HostBindingClass } from './host-binding.js';
+
 export interface ResolveSessionInput {
   provider: string;
   provider_subject: string;
   // The IdP-VERIFIED email (the adapter normalises it for reconcile-by-email).
   verified_email: string;
   consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
+  // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 4) — OPTIONAL host
+  // classification + host context sealed at login. Auth passes them through;
+  // the ADAPTER applies the binding rules (host-binding.ts) after tenant
+  // selection and before the status gate. undefined = unbound (legacy cookie).
+  host_class?: HostBindingClass | null;
+  context_id?: string | null;
 }
 
 // `principal_id` / `context_id` are opaque to auth (they happen to be a user id and
 // a tenant id). `claims` carries optional session claims — today just `site_id`
 // when a site-scoped membership stamps one.
+// IC-2 PR-4 (Amendment A1 §2 item 1) — the union is `resolved | denied`. A
+// defensive multi-tenant resolution (unreachable against the IC-1 PR-3 database)
+// is `denied` with reason `tenant_resolution_ambiguous`; there is no chooser.
 export type ResolveSessionResult =
   | {
       kind: 'resolved';
@@ -36,7 +47,6 @@ export type ResolveSessionResult =
       authz_version: number;
       claims?: Record<string, string>;
     }
-  | { kind: 'ambiguous'; choices: { id: string; name: string }[] }
   | { kind: 'denied'; reason: string };
 
 export interface ResolveScopesInput {

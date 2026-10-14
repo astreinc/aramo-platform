@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   DEFAULT_PLATFORM_HOST,
   DEFAULT_PORTAL_HOST,
+  DEFAULT_PRODUCT_HOST,
   HOST_CLASSES,
   type HostClass,
 } from '@aramo/auth-storage';
@@ -27,6 +28,8 @@ const permissiveTenants = {
 const HOST_FOR_CLASS: Readonly<Record<HostClass, string>> = {
   PLATFORM: DEFAULT_PLATFORM_HOST,
   PORTAL: DEFAULT_PORTAL_HOST,
+  // IC-2 PR-4 (F-3) — the dark PRODUCT row must be reachable too.
+  PRODUCT: DEFAULT_PRODUCT_HOST,
   TENANT: 'astre.aramo.ai',
 };
 
@@ -38,10 +41,12 @@ describe('Auth-Decoupling PR-1 §3.3 — resolver ≡ seed reachability', () => 
       APP_ROOT_DOMAIN: process.env['APP_ROOT_DOMAIN'],
       AUTH_PLATFORM_HOSTS: process.env['AUTH_PLATFORM_HOSTS'],
       AUTH_PORTAL_HOSTS: process.env['AUTH_PORTAL_HOSTS'],
+      AUTH_PRODUCT_HOSTS: process.env['AUTH_PRODUCT_HOSTS'],
     };
     process.env['APP_ROOT_DOMAIN'] = 'aramo.ai';
     process.env['AUTH_PLATFORM_HOSTS'] = DEFAULT_PLATFORM_HOST;
     process.env['AUTH_PORTAL_HOSTS'] = DEFAULT_PORTAL_HOST;
+    process.env['AUTH_PRODUCT_HOSTS'] = DEFAULT_PRODUCT_HOST;
   });
 
   afterEach(() => {

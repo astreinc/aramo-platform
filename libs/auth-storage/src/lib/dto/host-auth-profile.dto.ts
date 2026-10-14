@@ -6,7 +6,12 @@
 // resolves a request host to exactly one of these, or misses (→ legacy path).
 // The seed and the classifier both anchor to this set; the seed-parity guard
 // (§3.3) asserts every class the resolver can produce has a seeded row.
-export const HOST_CLASSES = ['TENANT', 'PLATFORM', 'PORTAL'] as const;
+//
+// IC-2 PR-4 (F-3) — PRODUCT: the product-console host class (Sign sender
+// console, PX-V1 D-4 `esign.aramo.ai`). A DARK scaffold: the row is seeded and
+// the classifier recognises it, but no product-host login is operational
+// (binding denies it under enforce; consumer→product mapping is IC-2 PR-6).
+export const HOST_CLASSES = ['TENANT', 'PLATFORM', 'PORTAL', 'PRODUCT'] as const;
 export type HostClass = (typeof HOST_CLASSES)[number];
 
 export interface HostAuthProfileDto {

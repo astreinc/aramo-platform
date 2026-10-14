@@ -45,4 +45,14 @@ export class ProvisionTenantRequestDto {
   @IsOptional()
   @IsBoolean()
   invite_owner?: boolean;
+
+  // IC-2 PR-4 (F-4) — OPTIONAL subdomain slug for the new tenant. Validated by
+  // the single-source gate deriveSlugOrThrow (DNS-safe label, reserved-slug
+  // refusal) and UNIQUE at the database; NEVER derived from the name. Omitted →
+  // the tenant is created without a subdomain (slug NULL, the pre-PR-4 shape).
+  // Production host-binding enforcement (AUTH_HOST_TENANT_BINDING=enforce)
+  // requires every tenant that logs in on a tenant host to carry a slug.
+  @IsOptional()
+  @IsString()
+  slug?: string;
 }

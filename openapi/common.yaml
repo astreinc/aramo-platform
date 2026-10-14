@@ -1606,7 +1606,9 @@ components:
 
         PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409)
         and REFRESH_TOKEN_INVALID (HTTP 401) for the auth-service
-        /callback and /refresh endpoints respectively. M3 PR-8 adds
+        /callback and /refresh endpoints respectively.
+        TENANT_SELECTION_REQUIRED is COMPATIBILITY_RESERVED since
+        IC-2 PR-4 (never emitted; one User = one tenant). M3 PR-8 adds
         INVALID_REQUEST (HTTP 400) for malformed match-list request
         input and INSUFFICIENT_PERMISSIONS (HTTP 403) for per-route
         consumer_type checks on the recruiter-facing match-list

@@ -11,6 +11,7 @@ export {
   SEED_POOL_ID,
   DEFAULT_PLATFORM_HOST,
   DEFAULT_PORTAL_HOST,
+  DEFAULT_PRODUCT_HOST,
   buildHostAuthProfileSeedRows,
   seedHostAuthProfiles,
 } from './lib/host-auth-profile.seed.js';

@@ -11,6 +11,7 @@ import {
   IdentityService,
   TenantService,
   deriveAllowedDomainOrThrow,
+  deriveSlugOrThrow,
   normalizeEmail,
 } from '@aramo/identity';
 
@@ -107,6 +108,9 @@ export class PlatformInvitationService {
     // Cognito owner is created SUPPRESSed, no email; the send happens later via
     // the resend-owner-invite endpoint). Either way the tenant lands PROVISIONED.
     invite_owner: boolean;
+    // IC-2 PR-4 (F-4) — optional subdomain slug, forwarded verbatim to
+    // TenantService.provisionTenant (deriveSlugOrThrow validates it there).
+    slug?: string;
   }): Promise<ProvisionResult> {
     // 0. Validate capability set (default = core,ats,portal).
     const desired: readonly Capability[] =
@@ -139,6 +143,17 @@ export class PlatformInvitationService {
     // runs) prevents that email entirely — mirrors the 0a name pre-check that
     // avoids a Cognito side-effect for an obvious conflict.
     deriveAllowedDomainOrThrow(args.owner_email, 'platform.provision');
+
+    // 0a-bis-2. IC-2 PR-4 (F-4) — validate a supplied slug BEFORE the Cognito
+    // side-effect with the SAME single-source gate provisionTenant runs
+    // (deriveSlugOrThrow: DNS-safe label, reserved-slug refusal). A reserved or
+    // malformed slug is an obvious 400 that must not cost an AdminCreateUser +
+    // compensation round-trip (and a temp-password email). Uniqueness stays
+    // with the database (Tenant.slug UNIQUE) inside provisionTenant. Never
+    // derived from the name.
+    if (args.slug !== undefined) {
+      deriveSlugOrThrow(args.slug, args.request_id);
+    }
 
     // 0a-ter. IC-1 PR-1 (Amendment A1 §4) — one User, one tenant. The tenant
     // being provisioned does not exist yet, so ANY existing identity.User for
@@ -216,6 +231,8 @@ export class PlatformInvitationService {
         actor_user_id: args.actor_user_id,
         // B2 — record on the provision event whether the invite went out.
         invitation_sent: args.invite_owner,
+        // IC-2 PR-4 (F-4) — only forwarded when supplied (slug NULL otherwise).
+        ...(args.slug === undefined ? {} : { slug: args.slug }),
       });
       tenant_id = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the

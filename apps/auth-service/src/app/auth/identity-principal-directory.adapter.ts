@@ -6,12 +6,15 @@ import {
   RoleService,
   TenantService,
 } from '@aramo/identity';
-import type {
-  PrincipalDirectory,
-  ResolveScopesInput,
-  ResolveScopesResult,
-  ResolveSessionInput,
-  ResolveSessionResult,
+import {
+  allowUnboundHost,
+  evaluateHostBinding,
+  readHostBindingMode,
+  type PrincipalDirectory,
+  type ResolveScopesInput,
+  type ResolveScopesResult,
+  type ResolveSessionInput,
+  type ResolveSessionResult,
 } from '@aramo/auth-core';
 
 type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['event_type'];
@@ -37,6 +40,15 @@ type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['e
 //  (5) status gate applies to TENANT consumers only; `platform` is exempt
 //      (sentinel tenant has no lifecycle). PROVISIONED/ACTIVE/OFFBOARDING mint.
 //  (6) site_id === null → tenant-wide scopes; otherwise → site-scoped scopes.
+//
+// IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1): the result union is
+// resolved | denied — a defensive multi-tenant read (unreachable against the
+// IC-1 PR-3 database) is `denied tenant_resolution_ambiguous`, never a chooser;
+// and the HOST BINDING check (F-5) runs AFTER tenant selection and BEFORE the
+// status gate, comparing selectedTenant.id (F-2 — equal to User.tenant_id by the
+// PR-3 composite FK) with the host context sealed at login. Under
+// AUTH_HOST_TENANT_BINDING=log (default) a failure is logged and the outcome is
+// unchanged; under enforce it is denied and no session is minted.
 @Injectable()
 export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   private readonly logger = new Logger(IdentityPrincipalDirectoryAdapter.name);
@@ -107,12 +119,40 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       return { kind: 'denied', reason: 'no_active_tenant' };
     }
     if (tenants.length > 1) {
-      return {
-        kind: 'ambiguous',
-        choices: tenants.map((t) => ({ id: t.id, name: t.name })),
-      };
+      // IC-1 made this unreachable at the database (UNIQUE membership per User);
+      // kept as a FAIL-CLOSED guard (Amendment A1 §2 item 1). No tenant named.
+      return { kind: 'denied', reason: 'tenant_resolution_ambiguous' };
     }
     const selectedTenant = tenants[0]!;
+
+    // IC-2 PR-4 (F-5) — host binding: AFTER tenant selection, BEFORE the status
+    // gate, so a mismatched host never learns another tenant's lifecycle state.
+    const binding = evaluateHostBinding({
+      host_class: input.host_class,
+      context_id: input.context_id,
+      consumer: input.consumer,
+      resolved_context_id: selectedTenant.id,
+      allow_unbound: allowUnboundHost(),
+    });
+    if (!binding.ok) {
+      const mode = readHostBindingMode();
+      // Structured diagnostic (F-6 log mode). Deliberately carries NO tenant or
+      // user identifiers — nothing here can disclose a foreign tenant.
+      this.logger.warn(
+        JSON.stringify({
+          event: 'auth.host_binding',
+          stage: 'principal_resolution',
+          mode,
+          outcome: binding.reason,
+          consumer: input.consumer,
+          host_class: input.host_class ?? null,
+          legacy_pkce: input.host_class === undefined,
+        }),
+      );
+      if (mode === 'enforce') {
+        return { kind: 'denied', reason: binding.reason };
+      }
+    }
 
     // Invariant 5: tenant-status mint gate — TENANT consumers only. The platform
     // consumer's sentinel tenant has no lifecycle and is exempt. SUSPENDED/CLOSED

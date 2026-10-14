@@ -15,7 +15,9 @@
 // dependency violations on /consent/check (PR-4).
 //
 // PR-8.0a-Reground adds TENANT_SELECTION_REQUIRED (HTTP 409) for /callback
-// when a user has >1 active membership, and REFRESH_TOKEN_INVALID (HTTP 401)
+// when a user has >1 active membership (COMPATIBILITY_RESERVED since IC-2 PR-4:
+// one User = one tenant, so it is never emitted; the registry is append-only),
+// and REFRESH_TOKEN_INVALID (HTTP 401)
 // for /refresh failures (cookie missing, token expired/revoked, consumer
 // mismatch, reuse detected, rotation race). Total: 9 codes.
 //

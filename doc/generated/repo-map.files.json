@@ -2056,7 +2056,6 @@
     "libs/auth-core/src/lib/cognito-verifier.service.ts",
     "libs/auth-core/src/lib/cookie-verifier.service.ts",
     "libs/auth-core/src/lib/dto/session-response.dto.ts",
-    "libs/auth-core/src/lib/dto/tenant-selection-error.dto.ts",
     "libs/auth-core/src/lib/eligibility-policy.port.ts",
     "libs/auth-core/src/lib/email-sender.port.ts",
     "libs/auth-core/src/lib/host-auth-profile.service.ts",

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CONSUMER_TYPES } from '@aramo/auth';
-import { DEFAULT_PLATFORM_HOST, DEFAULT_PORTAL_HOST } from '@aramo/auth-storage';
+import { DEFAULT_PLATFORM_HOST, DEFAULT_PORTAL_HOST, DEFAULT_PRODUCT_HOST } from '@aramo/auth-storage';
 import { deriveRedirectUri } from '@aramo/auth-core';
 
 import {
@@ -20,6 +20,7 @@ import {
 const ENV_KEYS = [
   'AUTH_PLATFORM_HOSTS',
   'AUTH_PORTAL_HOSTS',
+  'AUTH_PRODUCT_HOSTS',
   'APP_ROOT_DOMAIN',
   'NODE_ENV',
   'AUTH_ALLOW_INSECURE_COOKIES',
@@ -41,6 +42,8 @@ const HOSTS: ReadonlyArray<{
 }> = [
   { label: 'PLATFORM', host: DEFAULT_PLATFORM_HOST, expectBase: `https://${DEFAULT_PLATFORM_HOST}`, expectIdp: null },
   { label: 'PORTAL', host: DEFAULT_PORTAL_HOST, expectBase: `https://${DEFAULT_PORTAL_HOST}`, expectIdp: null },
+  // IC-2 PR-4 (F-3) — the dark PRODUCT class resolves identically on both paths.
+  { label: 'PRODUCT (dark)', host: DEFAULT_PRODUCT_HOST, expectBase: `https://${DEFAULT_PRODUCT_HOST}`, expectIdp: null },
   { label: 'TENANT (idp set)', host: 'astre.aramo.ai', expectBase: 'https://astre.aramo.ai', expectIdp: 'AstreSAML' },
   { label: 'TENANT (idp null)', host: 'noidp.aramo.ai', expectBase: 'https://noidp.aramo.ai', expectIdp: null },
   { label: 'TENANT-shaped, no active tenant', host: 'ghost.aramo.ai', expectBase: null, expectIdp: null },
@@ -57,6 +60,7 @@ describe('Auth-Decoupling PR-1 §3.1 — host auth-profile behaviour preservatio
     for (const k of ENV_KEYS) saved[k] = process.env[k];
     process.env['AUTH_PLATFORM_HOSTS'] = DEFAULT_PLATFORM_HOST;
     process.env['AUTH_PORTAL_HOSTS'] = DEFAULT_PORTAL_HOST;
+    process.env['AUTH_PRODUCT_HOSTS'] = DEFAULT_PRODUCT_HOST;
     process.env['APP_ROOT_DOMAIN'] = 'aramo.ai';
     // Dev posture (for the localhost cases): non-prod + insecure cookies.
     process.env['NODE_ENV'] = 'test';
@@ -87,7 +91,9 @@ describe('Auth-Decoupling PR-1 §3.1 — host auth-profile behaviour preservatio
       const after = await resolverWithRegistry(t).resolve(host);
 
       // Anchor: the expected pre-PR-1 behaviour (guards against both-broken).
-      expect(before).toEqual({ derivedBase: expectBase, identityProvider: expectIdp });
+      // (IC-2 PR-4 widened the shape additively with hostClass/contextId; the
+      // anchor checks the two legacy signals, the bar below checks the WHOLE shape.)
+      expect(before).toMatchObject({ derivedBase: expectBase, identityProvider: expectIdp });
       // The acceptance bar: registry path is byte-identical.
       expect(after).toEqual(before);
     });

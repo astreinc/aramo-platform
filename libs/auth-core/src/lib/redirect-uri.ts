@@ -86,6 +86,14 @@ function portalHostSet(): ReadonlySet<string> {
   return hostSetFromEnv(process.env['AUTH_PORTAL_HOSTS']);
 }
 
+// IC-2 PR-4 (F-3) — the PRODUCT host class env allow-list (AUTH_PRODUCT_HOSTS),
+// mirroring platform/portal exactly. Empty when unset: the env chain never
+// classifies a PRODUCT host unless an operator lists one; the seeded registry
+// row (DEFAULT_PRODUCT_HOST) is the dark-scaffold home of that host string.
+function productHostSet(): ReadonlySet<string> {
+  return hostSetFromEnv(process.env['AUTH_PRODUCT_HOSTS']);
+}
+
 // Shared parse for an exact-match host allowlist env var: comma-split, trim,
 // lowercase, strip port, drop empties; empty set when unset.
 function hostSetFromEnv(raw: string | undefined): ReadonlySet<string> {
@@ -115,22 +123,48 @@ export function deriveBaseFromHost(
   rawHost: string | undefined,
   opts: { readonly isTenantHost: boolean },
 ): string | null {
+  return classifyHostByEnv(rawHost, opts).derivedBase;
+}
+
+// IC-2 PR-4 — the env-chain host CLASS, alongside the base. `deriveBaseFromHost`
+// above is this function's `derivedBase` projection (behaviour-preserving: the
+// branch order and every returned base are unchanged). 'DEV' is the dev-posture
+// localhost class (not a registry class); null = unvalidated host.
+//   dev host under dev posture → DEV      → http://<host:port>
+//   AUTH_PLATFORM_HOSTS exact  → PLATFORM → https://<hostname>
+//   AUTH_PORTAL_HOSTS exact    → PORTAL   → https://<hostname>
+//   AUTH_PRODUCT_HOSTS exact   → PRODUCT  → https://<hostname>   (F-3, dark)
+//   tenant host (caller-validated) → TENANT → https://<hostname>
+//   anything else              → null     → null (env fallback)
+export type EnvHostClass = 'DEV' | 'PLATFORM' | 'PORTAL' | 'PRODUCT' | 'TENANT';
+
+export function classifyHostByEnv(
+  rawHost: string | undefined,
+  opts: { readonly isTenantHost: boolean },
+): { readonly hostClass: EnvHostClass | null; readonly derivedBase: string | null } {
   const parsed = parseHost(rawHost);
-  if (parsed === null) return null;
+  if (parsed === null) return { hostClass: null, derivedBase: null };
   if (isDevHostname(parsed.hostname)) {
-    return isDevPosture() ? `http://${parsed.raw}` : null;
+    return isDevPosture()
+      ? { hostClass: 'DEV', derivedBase: `http://${parsed.raw}` }
+      : { hostClass: null, derivedBase: null };
   }
   if (platformHostSet().has(parsed.hostname)) {
-    return `https://${parsed.hostname}`;
+    return { hostClass: 'PLATFORM', derivedBase: `https://${parsed.hostname}` };
   }
   // Portal P1 — portal host class, sibling to platform (exact-match allowlist).
   if (portalHostSet().has(parsed.hostname)) {
-    return `https://${parsed.hostname}`;
+    return { hostClass: 'PORTAL', derivedBase: `https://${parsed.hostname}` };
+  }
+  // IC-2 PR-4 (F-3) — PRODUCT precedes the generic TENANT slug match so an
+  // exact product host is never read as a tenant slug.
+  if (productHostSet().has(parsed.hostname)) {
+    return { hostClass: 'PRODUCT', derivedBase: `https://${parsed.hostname}` };
   }
   if (opts.isTenantHost) {
-    return `https://${parsed.hostname}`;
+    return { hostClass: 'TENANT', derivedBase: `https://${parsed.hostname}` };
   }
-  return null;
+  return { hostClass: null, derivedBase: null };
 }
 
 // Base URL resolution (§3c precedence): validated-host derivation FIRST →

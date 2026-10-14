@@ -204,6 +204,57 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     });
   });
 
+  // IC-2 PR-4 (F-4) — the optional slug is forwarded VERBATIM to
+  // TenantService.provisionTenant (deriveSlugOrThrow validates it there) and is
+  // ABSENT from the call when omitted (slug NULL, the pre-PR-4 shape). Never
+  // derived from the name.
+  it('IC-2 PR-4 (F-4): slug supplied → forwarded verbatim; omitted → not passed (never derived)', async () => {
+    const run = async (slug: string | undefined) => {
+      const mocks = makeMocks();
+      mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+      mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-tenant-owner']);
+      mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-123' });
+      mocks.tenantSvc.provisionTenant.mockResolvedValue({ id: 'tenant-x', name: 'AcmeCo', is_active: true, created_at: '', updated_at: '' });
+      mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+        user: { id: 'owner-u', email: 'owner@acme.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+        membership_id: 'mem-1',
+      });
+      mocks.entitlementRepo.grantCapabilities.mockResolvedValue(undefined);
+      await buildService(mocks).provisionTenantAndInviteOwner({
+        name: 'AcmeCo',
+        owner_email: 'owner@acme.io',
+        actor_user_id: 'super-admin-1',
+        request_id: TEST_REQUEST_ID,
+        invite_owner: true,
+        ...(slug === undefined ? {} : { slug }),
+      });
+      return mocks.tenantSvc.provisionTenant.mock.calls[0]![0] as Record<string, unknown>;
+    };
+    const withSlug = await run('Acme-Co');
+    expect(withSlug['slug']).toBe('Acme-Co'); // verbatim — normalization lives in deriveSlugOrThrow
+    const without = await run(undefined);
+    expect('slug' in without).toBe(false);
+  });
+
+  it('IC-2 PR-4 (F-4): a reserved / malformed slug is refused 400 BEFORE Cognito (no AdminCreateUser, no provisionTenant)', async () => {
+    for (const [slug, reason] of [['admin', 'reserved_slug'], ['Bad Slug!', 'invalid_slug']] as const) {
+      const mocks = makeMocks();
+      mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+      await expect(
+        buildService(mocks).provisionTenantAndInviteOwner({
+          name: 'AcmeCo',
+          owner_email: 'owner@acme.io',
+          actor_user_id: 'super-admin-1',
+          request_id: TEST_REQUEST_ID,
+          invite_owner: true,
+          slug,
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason } } });
+      expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+      expect(mocks.tenantSvc.provisionTenant).not.toHaveBeenCalled();
+    }
+  });
+
   it('step 4 (ADR-0024 PR-4a-2): a policy-package publish failure soft-disables the tenant and throws INTERNAL_ERROR (created-and-flagged, not deleted)', async () => {
     const mocks = makeMocks();
     mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);

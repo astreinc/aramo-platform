@@ -458,6 +458,44 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     }
   });
 
+  // IC-2 PR-4 (F-5): the callback threads the CALLBACK host's class + context
+  // into the orchestrator (compared there with the sealed login context).
+  it('threads the callback host class + context into handleCallback', async () => {
+    const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
+    process.env['AUTH_POST_LOGIN_REDIRECT'] = 'https://app.example/';
+    try {
+      const handleCallback = vi.fn().mockResolvedValue({
+        kind: 'success',
+        accessJwt: 'a.b.c',
+        refreshTokenPlaintext: 'rt-plain',
+      });
+      const hostBase = {
+        resolve: vi.fn().mockResolvedValue({
+          derivedBase: 'https://acme.aramo.ai',
+          identityProvider: null,
+          hostClass: 'TENANT',
+          contextId: TENANT_ID,
+        }),
+      } as unknown as HostBaseResolver;
+      const ctl = makeController({
+        sessionOrch: { handleCallback } as unknown as SessionOrchestratorService,
+        hostBase,
+      });
+      const req = {
+        cookies: { aramo_pkce_state: 'cipher' },
+        requestId: 'r',
+        get: () => 'acme.aramo.ai',
+      } as never;
+      await ctl.callback('recruiter', 'code', 'state', undefined, undefined, req, makeRes() as never);
+      expect(handleCallback).toHaveBeenCalledWith(
+        expect.objectContaining({ consumer: 'recruiter', hostClass: 'TENANT', contextId: TENANT_ID }),
+      );
+    } finally {
+      if (prev === undefined) delete process.env['AUTH_POST_LOGIN_REDIRECT'];
+      else process.env['AUTH_POST_LOGIN_REDIRECT'] = prev;
+    }
+  });
+
   it('on success WITHOUT AUTH_POST_LOGIN_REDIRECT configured: throws 500 (no hardcoded fallback)', async () => {
     const prev = process.env['AUTH_POST_LOGIN_REDIRECT'];
     delete process.env['AUTH_POST_LOGIN_REDIRECT'];
@@ -538,11 +576,17 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
     }
 
     const CASES: ReadonlyArray<readonly [string, unknown, string]> = [
+      // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1): the 409 tenant-selection
+      // path is RETIRED — a defensive multi-tenant resolution and every
+      // host-binding denial map to the EXISTING 403 TENANT_ACCESS_DENIED (F-5).
       [
-        'tenant_selection_required',
-        { kind: 'tenant_selection_required', tenants: [{ id: TENANT_ID, name: 'T1' }] },
-        'TENANT_SELECTION_REQUIRED',
+        'tenant_resolution_ambiguous',
+        { kind: 'auth_error', reason: 'tenant_resolution_ambiguous' },
+        'TENANT_ACCESS_DENIED',
       ],
+      ['host_tenant_mismatch', { kind: 'auth_error', reason: 'host_tenant_mismatch' }, 'TENANT_ACCESS_DENIED'],
+      ['host_class_consumer_mismatch', { kind: 'auth_error', reason: 'host_class_consumer_mismatch' }, 'TENANT_ACCESS_DENIED'],
+      ['host_unbound', { kind: 'auth_error', reason: 'host_unbound' }, 'TENANT_ACCESS_DENIED'],
       ['tenant_suspended', { kind: 'auth_error', reason: 'tenant_suspended' }, 'TENANT_SUSPENDED'],
       ['tenant_closed', { kind: 'auth_error', reason: 'tenant_closed' }, 'TENANT_CLOSED'],
       ['email_not_verified', { kind: 'auth_error', reason: 'email_not_verified' }, 'INVALID_TOKEN'],
@@ -749,6 +793,35 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     const res = makeRes();
     await ctl.login('recruiter', reqWithHost('acme.aramo.ai'), res as never);
     expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
+  });
+
+  // IC-2 PR-4 (F-5): login SEALS the host class + context into the PKCE state
+  // next to the consumer, so the callback can bind the resolved identity to the
+  // host the user actually logged in on.
+  it('seals host_class + context_id from resolve into the PKCE state', async () => {
+    const pkce = fakePkce();
+    const hostBase = {
+      resolve: vi.fn().mockResolvedValue({
+        derivedBase: 'https://astre.aramo.ai',
+        identityProvider: null,
+        hostClass: 'TENANT',
+        contextId: TENANT_ID,
+      }),
+    } as unknown as HostBaseResolver;
+    const ctl = makeController({ pkce, hostBase });
+    await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), makeRes() as never);
+    expect(pkce.encryptState).toHaveBeenCalledWith(
+      expect.objectContaining({ consumer: 'recruiter', host_class: 'TENANT', context_id: TENANT_ID }),
+    );
+  });
+
+  it('seals host_class null + context_id null for an UNVALIDATED host (unbound under F-6)', async () => {
+    const pkce = fakePkce();
+    const ctl = makeController({ pkce, hostBase: hostBaseYielding(null) });
+    await ctl.login('recruiter', reqWithHost('evil.com'), makeRes() as never);
+    expect(pkce.encryptState).toHaveBeenCalledWith(
+      expect.objectContaining({ host_class: null, context_id: null }),
+    );
   });
 
   it('derivedBase from resolve WINS the redirect_uri (host-derived callback)', async () => {

@@ -35,6 +35,8 @@ const REGISTRY_SITES = [
 // Each MUST carry a reason. This is the machine-detectable exemption the Architect
 // requires (not a prose comment the guard would have to interpret).
 export const RESERVED_CODES: Record<string, string> = {
+  TENANT_SELECTION_REQUIRED:
+    'RESERVED (IC-2 PR-4, Auth-Decoupling PR-4 Amendment A1 §2 item 3): the /callback 409 tenant-selection response was retired because a User belongs to exactly one tenant (IC-1 PR-3 database cardinality); a defensive multi-tenant resolution is now 403 TENANT_ACCESS_DENIED (reason tenant_resolution_ambiguous). Kept because the error-code registry is APPEND-ONLY; classified deprecated/reserved with no throw-site.',
   DOCUMENT_TYPE_NOT_FOUND:
     'RESERVED (DOC-1a/DOC-2): documented in openapi/common.yaml as the DocumentType-lookup refusal; the create/associate paths currently surface an unknown type via the FK/validation layer, so no AramoError emitter is wired yet. Registered + documented for the DOC surface; throw-site pending.',
   DOCUMENT_RENDER_FAILED:

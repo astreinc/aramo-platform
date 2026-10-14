@@ -24,6 +24,7 @@ import type { Request, Response } from 'express';
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
+import { TENANT_ACCESS_DENIED_REASONS } from './host-binding.js';
 import { PkceService } from './pkce.service.js';
 import {
   deriveRedirectUri,
@@ -164,9 +165,8 @@ export class AuthController {
     // callback redirect_uri, §3d.1) AND the tenant's pinned IdP (HRD hint, §3a
     // sharing choice). derivedBase is null for an unvalidated host → the redirect
     // falls back to the env chain (never the raw host — the §2 invariant).
-    const { derivedBase, identityProvider } = await this.hostBase.resolve(
-      req.get('host'),
-    );
+    const { derivedBase, identityProvider, hostClass, contextId } =
+      await this.hostBase.resolve(req.get('host'));
     // Amendment v1.2 (Workstream D): derive the callback URL from the login-path
     // consumer `c` (the same value sealed into the PKCE state cookie below), so
     // the login-time and callback-time consumers cannot diverge by construction.
@@ -185,11 +185,16 @@ export class AuthController {
       );
     }
     const pair = this.pkce.generate();
+    // IC-2 PR-4 (F-5): seal the login host's class + context alongside the
+    // consumer, so the callback binds the resolved identity to the host the
+    // user actually logged in on. null = unvalidated host (unbound under F-6).
     const cipher = this.pkce.encryptState({
       verifier: pair.verifier,
       state: pair.state,
       consumer: c,
       issued_at: Math.floor(Date.now() / 1000),
+      host_class: hostClass ?? null,
+      context_id: contextId ?? null,
     });
     setPkceCookie(res, cipher);
     const url = new URL(`https://${domain}/oauth2/authorize`);
@@ -232,7 +237,9 @@ export class AuthController {
     // thread it into the exchange leg — same browser host as login (via the front door),
     // so the exchange redirect_uri == authorize redirect_uri by construction.
     // The derivedBase is also used for the post-login redirect (§3d.2) below.
-    const { derivedBase } = await this.hostBase.resolve(req.get('host'));
+    const { derivedBase, hostClass, contextId } = await this.hostBase.resolve(
+      req.get('host'),
+    );
     const result: CallbackResult = await this.sessionOrch.handleCallback({
       consumer: c,
       code,
@@ -241,6 +248,10 @@ export class AuthController {
       cognitoErrorDescription,
       pkceStateCipher: pkceCookie,
       derivedBase,
+      // IC-2 PR-4: the callback host's class/context, compared with the sealed
+      // login context inside the orchestrator (F-5).
+      hostClass,
+      contextId,
     });
 
     // Always clear pkce_state on /callback completion (success or error).
@@ -280,18 +291,8 @@ export class AuthController {
       res.redirect(302, postLogin);
       return;
     }
-    if (result.kind === 'tenant_selection_required') {
-      return this.redirectCallbackErrorOrJson(
-        res,
-        derivedBase,
-        new AramoError(
-          'TENANT_SELECTION_REQUIRED',
-          'User has multiple active tenants; selection required',
-          409,
-          { requestId, details: { tenants: result.tenants } },
-        ),
-      );
-    }
+    // IC-2 PR-4 (Amendment A1 §2 item 2): the 409 TENANT_SELECTION_REQUIRED
+    // branch is RETIRED (the code stays registered as COMPATIBILITY_RESERVED).
     if (result.kind === 'validation_error') {
       const details: Record<string, unknown> = { reason: result.reason };
       if (result.cognitoError !== undefined) {
@@ -316,7 +317,11 @@ export class AuthController {
       // 4xx with details.reason (debuggable first login), not a blank 500.
       //   - token-content rejections (email_not_verified, missing_email,
       //     missing_sub, wrong_token_use) → 401 INVALID_TOKEN.
-      //   - no_active_tenant → 403 TENANT_ACCESS_DENIED.
+      //   - no_active_tenant → 403 TENANT_ACCESS_DENIED; IC-2 PR-4 maps the
+      //     host-binding denials (host_tenant_mismatch,
+      //     host_class_consumer_mismatch, host_unbound) and the defensive
+      //     tenant_resolution_ambiguous to the SAME existing code (F-5) —
+      //     the response names no foreign tenant.
       //   - user_not_provisioned (+ default) → 403 INSUFFICIENT_PERMISSIONS.
       // Existing ERROR_CODES only — no new code is registered. The reasons
       // are surfaced ONLY to a caller who already completed IdP auth (proven
@@ -339,13 +344,15 @@ export class AuthController {
           }),
         );
       }
-      if (result.reason === 'no_active_tenant') {
+      if (TENANT_ACCESS_DENIED_REASONS.has(result.reason)) {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
           new AramoError(
             'TENANT_ACCESS_DENIED',
-            'No active tenant membership',
+            result.reason === 'no_active_tenant'
+              ? 'No active tenant membership'
+              : 'Tenant access denied for this host',
             403,
             { requestId, details },
           ),

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import type {
   AuthorizationVersionService,
   IdentityAuditService,
@@ -122,7 +123,10 @@ describe('resolveSession — the three result kinds (§3.5)', () => {
     expect(r.claims).toBeUndefined();
   });
 
-  it('AMBIGUOUS: >1 active tenant → choices', async () => {
+  // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 1): INVERTED — the
+  // multi-tenant read is unreachable against the IC-1 PR-3 database; as a
+  // defensive guard it is DENIED (fail-closed), never a chooser, naming no tenant.
+  it('DEFENSIVE multi-tenant read → denied tenant_resolution_ambiguous (no chooser, no tenant named)', async () => {
     const d = makeDeps({
       tenants: [
         { id: TENANT_ID, name: 'Tenant One' },
@@ -130,12 +134,8 @@ describe('resolveSession — the three result kinds (§3.5)', () => {
       ],
     });
     const r = await adapter(d).resolveSession(SESSION_INPUT);
-    expect(r.kind).toBe('ambiguous');
-    if (r.kind !== 'ambiguous') return;
-    expect(r.choices).toEqual([
-      { id: TENANT_ID, name: 'Tenant One' },
-      { id: TENANT_ID_2, name: 'Tenant Two' },
-    ]);
+    expect(r).toEqual({ kind: 'denied', reason: 'tenant_resolution_ambiguous' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
   });
 
   it('DENIED no_active_tenant: 0 tenants', async () => {
@@ -263,5 +263,124 @@ describe('§2.4 invariant 6 — site-stamp scope selection (resolveSession + res
     const d = makeDeps({ site: null });
     const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
     expect(r).toEqual({ scopes: ['auth:session:read'], authz_version: 1 });
+  });
+});
+
+// IC-2 PR-4 (F-2/F-5/F-6/F-8) — HOST BINDING in the adapter: after tenant
+// selection, before the status gate; comparand = selectedTenant.id (F-2).
+describe('IC-2 PR-4 — host binding (after tenant selection, before the status gate)', () => {
+  const BINDING_ENV = ['AUTH_HOST_TENANT_BINDING', 'AUTH_ALLOW_UNBOUND_HOST'] as const;
+  let saved: Partial<Record<string, string | undefined>> = {};
+  beforeEach(() => {
+    saved = {};
+    for (const k of BINDING_ENV) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of BINDING_ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+  const enforce = () => { process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce'; };
+
+  describe('enforce', () => {
+    it('TENANT host whose context equals the selected tenant → resolved', async () => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID });
+      expect(r.kind).toBe('resolved');
+    });
+
+    it('TENANT host of ANOTHER tenant → denied host_tenant_mismatch; the status gate is never consulted (no foreign lifecycle leak)', async () => {
+      enforce();
+      // The user\'s tenant is SUSPENDED: a mismatched host must see the binding
+      // denial, NOT tenant_suspended (F-5 ordering: binding BEFORE the status gate).
+      const d = makeDeps({ status: 'SUSPENDED' });
+      const r = await adapter(d).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID_2 });
+      expect(r).toEqual({ kind: 'denied', reason: 'host_tenant_mismatch' });
+      expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    });
+
+    it('TENANT host with a null context → denied host_tenant_mismatch', async () => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: null });
+      expect(r).toEqual({ kind: 'denied', reason: 'host_tenant_mismatch' });
+    });
+
+    it('PLATFORM host + platform consumer + sentinel tenant → resolved', async () => {
+      enforce();
+      const d = makeDeps({ tenants: [{ id: PLATFORM_TENANT_SENTINEL_ID, name: 'Aramo Platform', status: 'PROVISIONED' }] });
+      const r = await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'platform', host_class: 'PLATFORM', context_id: null });
+      expect(r.kind).toBe('resolved');
+    });
+
+    it('PLATFORM host + recruiter consumer → denied host_class_consumer_mismatch', async () => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'PLATFORM', context_id: null });
+      expect(r).toEqual({ kind: 'denied', reason: 'host_class_consumer_mismatch' });
+    });
+
+    it('PLATFORM host + platform consumer but a NON-sentinel tenant → denied host_tenant_mismatch', async () => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, consumer: 'platform', host_class: 'PLATFORM', context_id: null });
+      expect(r).toEqual({ kind: 'denied', reason: 'host_tenant_mismatch' });
+    });
+
+    it.each(['PORTAL', 'PRODUCT'] as const)('%s host → denied host_class_consumer_mismatch (portal = passwordless only; product = DARK scaffold)', async (cls) => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: cls, context_id: null });
+      expect(r).toEqual({ kind: 'denied', reason: 'host_class_consumer_mismatch' });
+    });
+
+    it('LEGACY cookie (no host fields) → denied host_unbound (F-8)', async () => {
+      enforce();
+      const r = await adapter(makeDeps()).resolveSession(SESSION_INPUT);
+      expect(r).toEqual({ kind: 'denied', reason: 'host_unbound' });
+    });
+
+    it.each([null, 'DEV'] as const)('unvalidated/dev host (%s) → denied host_unbound unless AUTH_ALLOW_UNBOUND_HOST=true', async (cls) => {
+      enforce();
+      const r1 = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: cls, context_id: null });
+      expect(r1).toEqual({ kind: 'denied', reason: 'host_unbound' });
+      process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+      const r2 = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: cls, context_id: null });
+      expect(r2.kind).toBe('resolved');
+    });
+
+    it('AUTH_ALLOW_UNBOUND_HOST never overrides an explicit tenant or platform mismatch', async () => {
+      enforce();
+      process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+      const r1 = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID_2 });
+      expect(r1).toEqual({ kind: 'denied', reason: 'host_tenant_mismatch' });
+      const r2 = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'PLATFORM', context_id: null });
+      expect(r2).toEqual({ kind: 'denied', reason: 'host_class_consumer_mismatch' });
+    });
+
+    it('a matched binding still runs the status gate (SUSPENDED → tenant_suspended)', async () => {
+      enforce();
+      const r = await adapter(makeDeps({ status: 'SUSPENDED' })).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID });
+      expect(r).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+    });
+  });
+
+  describe('log (default)', () => {
+    it.each([
+      ['TENANT mismatch', { host_class: 'TENANT', context_id: TENANT_ID_2 }],
+      ['PLATFORM + recruiter', { host_class: 'PLATFORM', context_id: null }],
+      ['PRODUCT (dark)', { host_class: 'PRODUCT', context_id: null }],
+      ['unvalidated host', { host_class: null, context_id: null }],
+      ['legacy cookie', {}],
+    ] as const)('%s → outcome UNCHANGED (resolved)', async (_label, extra) => {
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, ...extra });
+      expect(r.kind).toBe('resolved');
+    });
+
+    it('a typo in the mode value is NOT enforce (fail-closed parse → log)', async () => {
+      process.env['AUTH_HOST_TENANT_BINDING'] = 'Enforce';
+      const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID_2 });
+      expect(r.kind).toBe('resolved');
+    });
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PLATFORM_HOST,
   DEFAULT_PORTAL_HOST,
+  DEFAULT_PRODUCT_HOST,
   HOST_CLASSES,
   SEED_POOL_ID,
   buildHostAuthProfileSeedRows,
@@ -23,6 +24,7 @@ const ENV = {
   APP_ROOT_DOMAIN: 'aramo.ai',
   AUTH_PLATFORM_HOSTS: DEFAULT_PLATFORM_HOST,
   AUTH_PORTAL_HOSTS: DEFAULT_PORTAL_HOST,
+  AUTH_PRODUCT_HOSTS: DEFAULT_PRODUCT_HOST,
 } as const;
 
 describe('Auth-Decoupling PR-1 §3.3 — host-auth-profile seed parity', () => {
@@ -58,6 +60,8 @@ describe('Auth-Decoupling PR-1 §3.3 — host-auth-profile seed parity', () => {
     const byClass = new Map(buildHostAuthProfileSeedRows({}).map((r) => [r.host_class, r]));
     expect(byClass.get('PLATFORM')?.host_pattern).toBe(DEFAULT_PLATFORM_HOST);
     expect(byClass.get('PORTAL')?.host_pattern).toBe(DEFAULT_PORTAL_HOST);
+    // IC-2 PR-4 (F-3) — the dark PRODUCT row defaults to the PX-V1 D-4 host.
+    expect(byClass.get('PRODUCT')?.host_pattern).toBe(DEFAULT_PRODUCT_HOST);
     expect(byClass.get('TENANT')?.host_pattern).toBe('*.aramo.ai');
   });
 

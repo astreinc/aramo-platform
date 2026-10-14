@@ -1463,6 +1463,18 @@ components:
             suppressed (no email) and the tenant still lands PROVISIONED; the operator
             sends the invite when ready via POST .../resend-owner-invite. Omitting the
             field preserves the pre-3.4 behavior exactly.
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 63
+          pattern: '^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$'
+          description: >-
+            IC-2 PR-4 (F-4) — OPTIONAL subdomain slug (<slug>.aramo.ai). Validated as a
+            DNS-safe label (lowercase letters, digits, internal hyphens), refused when
+            reserved (400 VALIDATION_ERROR reason invalid_slug / reserved_slug), unique
+            across tenants. Never derived from the name; omitted → no subdomain (slug
+            null). Host-bound login enforcement requires every tenant that signs in on a
+            tenant host to carry a slug.
 
     ProvisionTenantResponse:
       type: object

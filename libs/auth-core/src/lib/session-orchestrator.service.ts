@@ -5,7 +5,7 @@ import { RefreshTokenService } from '@aramo/auth-storage';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
-import type { TenantSelectionTenantDto } from './dto/tenant-selection-error.dto.js';
+import { readHostBindingMode, type HostBindingClass } from './host-binding.js';
 import {
   CognitoVerifierService,
   CognitoVerificationError,
@@ -65,6 +65,12 @@ export interface CallbackInput {
   // env chain). The controller computes it (sharing one lookup) and threads it
   // here so the exchange redirect_uri == the authorize redirect_uri.
   derivedBase?: string | null;
+  // IC-2 PR-4 — the CALLBACK request's host class + host context (from the same
+  // HostBaseResolver call that yields derivedBase). Compared with the context
+  // sealed into the PKCE state at login; the SEALED context is what the port
+  // binds against. undefined/null = unvalidated host.
+  hostClass?: HostBindingClass | null;
+  contextId?: string | null;
 }
 
 export type CallbackResult =
@@ -79,10 +85,10 @@ export type CallbackResult =
       cognitoError?: string;
       cognitoErrorDescription?: string;
     }
-  | {
-      kind: 'tenant_selection_required';
-      tenants: TenantSelectionTenantDto[];
-    }
+  // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 2): the historical
+  // `tenant_selection_required` member (HTTP 409 TENANT_SELECTION_REQUIRED) is
+  // RETIRED — a User has exactly one tenant (IC-1); the defensive multi-tenant
+  // case is an auth_error (`tenant_resolution_ambiguous`), never a chooser.
   // §5 Auth-Hardening D2 P4: user/config-class failures (a rejected IdP
   // token, an identity that is not provisioned, no active membership) — the
   // controller maps these to a clean 4xx with details.reason so the first
@@ -148,6 +154,37 @@ export class SessionOrchestratorService {
       return { kind: 'validation_error', reason: 'cognito_code_missing' };
     }
 
+    // IC-2 PR-4 (F-5/F-8) — host-context agreement between login and callback.
+    // A cookie minted before PR-4 carries no host_class (LEGACY → unbound; the
+    // port receives undefined and the adapter's unbound rule applies, F-8). A
+    // sealed cookie must agree with the callback host (same browser host by
+    // construction via the host-only cookie); a disagreement is a binding
+    // failure: denied under enforce BEFORE the code exchange, logged under log.
+    const legacyPkce = payload.host_class === undefined;
+    const sealedHostClass: HostBindingClass | null = payload.host_class ?? null;
+    const sealedContextId: string | null = payload.context_id ?? null;
+    if (!legacyPkce) {
+      const callbackHostClass = input.hostClass ?? null;
+      const callbackContextId = input.contextId ?? null;
+      if (sealedHostClass !== callbackHostClass || sealedContextId !== callbackContextId) {
+        const mode = readHostBindingMode();
+        this.logger.warn(
+          JSON.stringify({
+            event: 'auth.host_binding',
+            stage: 'callback_agreement',
+            mode,
+            outcome: 'host_tenant_mismatch',
+            consumer: input.consumer,
+            sealed_host_class: sealedHostClass,
+            callback_host_class: callbackHostClass,
+          }),
+        );
+        if (mode === 'enforce') {
+          return { kind: 'auth_error', reason: 'host_tenant_mismatch' };
+        }
+      }
+    }
+
     let idToken: string;
     try {
       // Amendment v1.2 (Workstream D): derive the exchange redirect_uri from the
@@ -187,18 +224,22 @@ export class SessionOrchestratorService {
     // goes TO the port; the adapter decides the platform status-gate exemption.
     // The mapping below is mechanical — CallbackResult + every HTTP response are
     // UNCHANGED (behaviour-preserving, R-P4-3).
+    // IC-2 PR-4: the SEALED (login-time) host context rides to the port; a
+    // legacy cookie passes undefined (unbound) so the adapter's F-8 rule applies.
     const resolution = await this.principals.resolveSession({
       provider: 'cognito',
       provider_subject: cognito.sub,
       verified_email: cognito.email,
       consumer: input.consumer,
+      ...(legacyPkce
+        ? {}
+        : { host_class: sealedHostClass, context_id: sealedContextId }),
     });
     if (resolution.kind === 'denied') {
       // user_not_provisioned · no_active_tenant · tenant_suspended · tenant_closed
+      // · tenant_resolution_ambiguous · host_tenant_mismatch ·
+      // host_class_consumer_mismatch · host_unbound (IC-2 PR-4)
       return { kind: 'auth_error', reason: resolution.reason };
-    }
-    if (resolution.kind === 'ambiguous') {
-      return { kind: 'tenant_selection_required', tenants: resolution.choices };
     }
     // resolved → mint. principal_id/context_id are opaque (a user id / tenant id);
     // site_id rides in claims when a site-scoped membership stamped one.

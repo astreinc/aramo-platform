@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { PkceService } from '../lib/pkce.service.js';
 
@@ -71,4 +71,58 @@ describe('PkceService.encryptState', () => {
 
 afterEach(() => {
   // No teardown needed; env stays set.
+});
+
+// IC-2 PR-4 (F-8) — the sealed host context rides inside the SAME cookie format
+// (AES-256-GCM, same TTL); a payload without it (minted before PR-4) still
+// decrypts and is distinguishable (host_class undefined = LEGACY/unbound).
+describe('IC-2 PR-4 — host context in the PKCE state (same format, legacy-compatible)', () => {
+  const KEY = 'AUTH_PKCE_STATE_KEY';
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env[KEY];
+    process.env[KEY] = Buffer.alloc(32, 7).toString('base64url');
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env[KEY];
+    else process.env[KEY] = saved;
+  });
+
+  it('sealed host_class + context_id round-trip', () => {
+    const svc = new PkceService();
+    const cipher = svc.encryptState({
+      verifier: 'v',
+      state: 's',
+      consumer: 'recruiter',
+      issued_at: 1,
+      host_class: 'TENANT',
+      context_id: '01900000-0000-7000-8000-0000000000aa',
+    });
+    expect(svc.decryptState(cipher)).toEqual({
+      verifier: 'v',
+      state: 's',
+      consumer: 'recruiter',
+      issued_at: 1,
+      host_class: 'TENANT',
+      context_id: '01900000-0000-7000-8000-0000000000aa',
+    });
+  });
+
+  it('a LEGACY payload (no host fields) decrypts with host_class undefined (unbound marker)', () => {
+    const svc = new PkceService();
+    const cipher = svc.encryptState({ verifier: 'v', state: 's', consumer: 'recruiter', issued_at: 1 });
+    const out = svc.decryptState(cipher);
+    expect(out.host_class).toBeUndefined();
+    expect(out.context_id).toBeUndefined();
+    expect(out).toEqual({ verifier: 'v', state: 's', consumer: 'recruiter', issued_at: 1 });
+  });
+
+  it('an UNVALIDATED host seals explicit nulls (sealed-but-unbound, distinct from legacy)', () => {
+    const svc = new PkceService();
+    const out = svc.decryptState(
+      svc.encryptState({ verifier: 'v', state: 's', consumer: 'recruiter', issued_at: 1, host_class: null, context_id: null }),
+    );
+    expect(out.host_class).toBeNull();
+    expect(out.context_id).toBeNull();
+  });
 });
