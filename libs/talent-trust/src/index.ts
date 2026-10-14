@@ -43,6 +43,9 @@ export type {
   SourcedPoolRow,
   DisplayIdentityEvidenceRow,
   TrustStateRow,
+  // G1 — the cluster-locked recompute's derivation + outcome shapes.
+  TrustStateDerived,
+  RecomputeUnderLockResult,
   InsertEvidenceInput,
   SubjectAnchorRow,
   InsertAnchorInput,

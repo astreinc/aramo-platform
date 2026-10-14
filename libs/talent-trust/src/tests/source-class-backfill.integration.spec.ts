@@ -26,6 +26,10 @@ const PRE_MIGRATIONS = [
   '20260711120000_tr5_b2_thinness_flags',
   '20260712120000_tr8_b1_verified_control_stale',
   '20260713120000_tr12_b1_verification_proposal',
+  // G1 — ResolutionSubject.trust_recompute_requested_at (the regenerated client
+  // SELECTs it on subject reads). Staged-backfill spec: targeted append, not the
+  // shared full set (its later migration is applied mid-test on purpose).
+  '20261014120000_g1_trust_recompute_requested_at',
 ];
 const SOURCE_CLASS_MIGRATION = '20260706170000_tr2a_b1_subject_anchor_source_class';
 

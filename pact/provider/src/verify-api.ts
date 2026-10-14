@@ -1095,6 +1095,12 @@ const TALENT_TRUST_P3B_DISPUTE_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql',
 );
+// G1 — ResolutionSubject.trust_recompute_requested_at (additive; the durable
+// TrustState recomputation request written with every evidence write).
+const TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-trust/prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -3875,6 +3881,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // Portal P3a — the dispute substrate tables (verification/dispute pacts).
         TALENT_TRUST_P3A_DISPUTE_MIGRATION,
         TALENT_TRUST_P3B_DISPUTE_MIGRATION,
+        TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,

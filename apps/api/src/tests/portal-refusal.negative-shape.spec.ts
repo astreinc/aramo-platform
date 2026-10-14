@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -108,31 +108,8 @@ const IDENTITY_TENANT_MIGRATIONS = [
 // ResolutionSubjectRef, the PERSON_CLUSTER → ATS_TALENT_RECORD graph) and
 // portal_identity (PortalUser). Full talent_trust set so the regenerated client's
 // SELECTs resolve every column.
-const TALENT_TRUST_MIGRATIONS = [
-  '20260628000000_init_talent_trust',
-  '20260703120000_tr2a1_subject_anchor',
-  '20260703130000_tr2a2_match_advisory',
-  '20260703140000_tr2a3_advisory_resolution',
-  '20260705120000_add_reconcile_watermark_to_resolution_subject',
-  '20260706120000_ats_ref_partial_unique',
-  '20260706160000_sourcing_pool_keyset_index',
-  '20260706170000_tr2a_b1_subject_anchor_source_class',
-  '20260706180000_tr2a_b1_subject_anchor_source_class_unique',
-  '20260706200000_tr2a_b2_advisory_reopen_provenance',
-  '20260706230000_tr2a_b3b_subject_merge_operation',
-  '20260707120000_tr6_b1_last_matched_at',
-  '20260707130000_tr6_b1_merge_operation_kind',
-  '20260708120000_tr3_b1_verification_request',
-  '20260709120000_tr4_b1_evidence_link_unique',
-  '20260710120000_tr4_b3_last_consistency_at',
-  '20260711120000_tr5_b2_thinness_flags',
-  '20260712120000_tr8_b1_verified_control_stale',
-  '20260713120000_tr12_b1_verification_proposal',
-  // Portal P3a — the dispute substrate (verification view + dispute routes).
-  '20260715120000_p3a_portal_dispute_substrate',
-  // Portal P3b — the tenant-side disposition column (no_transition_reason).
-  '20260716120000_p3b_dispute_disposition',
-].map((n) => resolve(ROOT, `libs/talent-trust/prisma/migrations/${n}/migration.sql`));
+// G1 — the shared, complete talent-trust set (@aramo/common).
+const TALENT_TRUST_MIGRATION_PATHS = resolveTalentTrustMigrations(ROOT);
 const PORTAL_IDENTITY_MIGRATION = resolve(
   ROOT,
   'libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql',
@@ -266,7 +243,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await applyTalentRecordMigrations(setup);
 
       // Portal P1 PR-2a — the OPEN-4 chain schemas.
-      for (const migrationPath of [...TALENT_TRUST_MIGRATIONS, PORTAL_IDENTITY_MIGRATION]) {
+      for (const migrationPath of [...TALENT_TRUST_MIGRATION_PATHS, PORTAL_IDENTITY_MIGRATION]) {
         await setup.query(readFileSync(migrationPath, 'utf8'));
       }
 

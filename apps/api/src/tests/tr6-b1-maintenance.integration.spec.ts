@@ -5,7 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { Client } from 'pg';
@@ -41,26 +41,7 @@ const MIGRATIONS = [
   // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
   'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
-  // Portal P3a/P3b — the PortalDispute substrate + disposition column; the TR-6
-  // daily report's SLA-breach detector queries PortalDispute, so its DB needs both.
-  'libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql',
-  'libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql',
+  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/talent-record/prisma/migrations/20260603020000_add_core_talent_link_to_talent_record/migration.sql',
   'libs/talent-record/prisma/migrations/20260603140100_add_import_batch_id_to_talent_record/migration.sql',

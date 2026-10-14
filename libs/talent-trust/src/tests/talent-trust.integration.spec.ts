@@ -73,6 +73,12 @@ const PROPOSAL_MIGRATION_PATH = resolve(
   __dirname,
   '../../prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
 );
+// G1 — ResolutionSubject.trust_recompute_requested_at (the regenerated client
+// SELECTs it on every subject read). Hand-curated apply sequence: targeted append.
+const G1_RECOMPUTE_REQUEST_MIGRATION_PATH = resolve(
+  __dirname,
+  '../../prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
+);
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const REF_A = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
@@ -146,7 +152,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const thinnessFlagsSql = readFileSync(THINNESS_FLAGS_MIGRATION_PATH, 'utf8');
       const verifiedStaleSql = readFileSync(VERIFIED_STALE_MIGRATION_PATH, 'utf8');
       const proposalSql = readFileSync(PROPOSAL_MIGRATION_PATH, 'utf8');
-      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql, verifiedStaleSql, proposalSql]) {
+      const g1RequestSql = readFileSync(G1_RECOMPUTE_REQUEST_MIGRATION_PATH, 'utf8');
+      for (const sql of [migrationSql, watermarkSql, atsRefUniqueSql, ...tr6Sqls, linkUniqueSql, consistencyWatermarkSql, thinnessFlagsSql, verifiedStaleSql, proposalSql, g1RequestSql]) {
         for (const stmt of splitDdl(sql)) {
           const trimmed = stmt.trim();
           if (trimmed.length === 0) continue;
@@ -240,7 +247,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const pre = await service.getTrustState(subjectRefA);
       expect(pre?.eligibility_band).toBe('INDEPENDENTLY_VERIFIED');
 
-      await service.contradict(authoritative.id, contradicting.id, 'registry vs vendor conflict');
+      await service.contradict(TENANT, authoritative.id, contradicting.id, 'registry vs vendor conflict');
 
       const post = await service.getTrustState(subjectRefA);
       expect(post?.eligibility_band).toBe('CORROBORATED'); // capped
@@ -281,7 +288,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_by: 'tr-7-continuity',
       });
 
-      await service.supersede(oldEv.id, newEv.id);
+      await service.supersede(TENANT, oldEv.id, newEv.id);
 
       const oldRow = await repo.findEvidenceById(oldEv.id);
       const newRow = await repo.findEvidenceById(newEv.id);
@@ -309,25 +316,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         created_by: 'tr-8-cert',
       });
 
-      // TR-15 B1 — new arm signatures (evidenceId, actor, grounds/outcome, …).
-      await service.dispute(ev.id, 'tr-15-reviewer', 'talent disputes expiry date');
+      // TR-15 B1 — arm signatures; Security S1 prepends the acting tenant (tenantId, evidenceId, actor, grounds/outcome, …).
+      await service.dispute(TENANT, ev.id, 'tr-15-reviewer', 'talent disputes expiry date');
       let state = await service.getTrustState(subjectRefB);
       expect(state?.has_open_dispute).toBe(true);
       expect(state?.claims_band).toBe('NOT_ESTABLISHED'); // disputed → non-contributing
 
       // rejected → the record returns to VALID (the upheld→REVOKED retirement
       // path is exercised in tr15-b1-dispute-resolution.integration.spec.ts).
-      await service.resolveDispute(ev.id, 'tr-15-reviewer', 'rejected', 'reviewer restored the record');
+      await service.resolveDispute(TENANT, ev.id, 'tr-15-reviewer', 'rejected', 'reviewer restored the record');
       state = await service.getTrustState(subjectRefB);
       expect(state?.has_open_dispute).toBe(false);
       // Back to VALID — AUTHORITATIVE_ISSUER via API_REGISTRY is an authoritative source.
       expect(state?.claims_band).toBe('AUTHORITATIVE');
 
-      await service.markStale(ev.id);
+      await service.markStale(TENANT, ev.id);
       state = await service.getTrustState(subjectRefB);
       expect(state?.stale_evidence_count).toBe(1);
 
-      await service.revoke(ev.id, 'cert revoked by issuer');
+      await service.revoke(TENANT, ev.id, 'cert revoked by issuer');
       const revoked = await repo.findEvidenceById(ev.id);
       expect(revoked?.current_status).toBe('REVOKED');
     });
@@ -353,8 +360,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ),
       ).rejects.toThrow(/immutable/i);
 
-      // Updating only current_status is permitted (the lifecycle path).
-      await expect(repo.updateEvidenceStatus(ev.id, 'STALE')).resolves.toBeTruthy();
+      // Updating only current_status is permitted (the lifecycle path) — proven
+      // directly against the trigger (Security S1b removed the id-only
+      // updateEvidenceStatus primitive; lifecycle writes are tenant-bound).
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE talent_trust."EvidenceRecord" SET current_status = 'STALE' WHERE id = $1`,
+          ev.id,
+        ),
+      ).resolves.toBe(1);
     });
 
     it('EvidenceEvent is append-only (UPDATE rejected by trigger)', async () => {

@@ -33,6 +33,7 @@ interface DrainResult {
   attempted: number;
   contradicted: number;
   no_incumbent: number;
+  refused: number;
   transient_retry: number;
 }
 
@@ -66,6 +67,7 @@ export class ContradictionDetectionProcessor
       attempted: result.attempted,
       contradicted: result.contradicted,
       no_incumbent: result.no_incumbent,
+      refused: result.refused,
       transient_retry: result.transient_retry,
     });
   }
@@ -79,20 +81,22 @@ export class ContradictionDetectionProcessor
 
     if (pending.length === 0) {
       this.logger.debug({ event: 'contradiction_detection_tick_empty', job_id: args.jobId });
-      return { attempted: 0, contradicted: 0, no_incumbent: 0, transient_retry: 0 };
+      return { attempted: 0, contradicted: 0, no_incumbent: 0, refused: 0, transient_retry: 0 };
     }
 
     let contradicted = 0;
     let no_incumbent = 0;
+    let refused = 0;
     let transient_retry = 0;
     for (const row of pending) {
       const result = await this.service.resolvePending(row);
       if (result.outcome === 'contradicted') contradicted += 1;
       else if (result.outcome === 'no_incumbent') no_incumbent += 1;
+      else if (result.outcome === 'refused') refused += 1;
       else transient_retry += 1;
     }
 
-    return { attempted: pending.length, contradicted, no_incumbent, transient_retry };
+    return { attempted: pending.length, contradicted, no_incumbent, refused, transient_retry };
   }
 
   onApplicationBootstrap(): void {

@@ -24,6 +24,9 @@ import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.con
 import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
 import { RecomputeSweepProcessor } from '../talent-identity/recompute-sweep.processor.js';
 import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
+import { RecomputeRepairService } from '../talent-identity/recompute-repair.service.js';
+import { RecomputeRepairProcessor } from '../talent-identity/recompute-repair.processor.js';
+import { RECOMPUTE_REPAIR_QUEUE_NAME } from '../talent-identity/recompute-repair.queue.constants.js';
 import { IdentityLifecycleSweepService } from '../talent-identity/identity-lifecycle-sweep.service.js';
 import { DormantNoticeService } from '../talent-identity/dormant-notice.service.js';
 import { IdentityLifecycleSweepProcessor } from '../talent-identity/identity-lifecycle-sweep.processor.js';
@@ -88,6 +91,8 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     BullModule.registerQueue({ name: CONSISTENCY_QUEUE_NAME }),
     // TR-5 B1 — the daily decay-recompute sweep (same wiring as the others).
     BullModule.registerQueue({ name: RECOMPUTE_SWEEP_QUEUE_NAME }),
+    // G1 — the 2-minute TrustState recomputation-repair job (same wiring).
+    BullModule.registerQueue({ name: RECOMPUTE_REPAIR_QUEUE_NAME }),
     // TR-2b B2a — the daily identity-index lifecycle sweep (same wiring).
     BullModule.registerQueue({ name: IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME }),
   ],
@@ -100,6 +105,8 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     ConsistencyProcessor,
     RecomputeSweepService,
     RecomputeSweepProcessor,
+    RecomputeRepairService,
+    RecomputeRepairProcessor,
     IdentityLifecycleSweepService,
     IdentityLifecycleSweepProcessor,
     DormantNoticeService,
@@ -140,6 +147,14 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
       useFactory: () => createAramoLogger(RecomputeSweepProcessor.name),
     },
     {
+      provide: 'RecomputeRepairServiceLogger',
+      useFactory: () => createAramoLogger(RecomputeRepairService.name),
+    },
+    {
+      provide: 'RecomputeRepairProcessorLogger',
+      useFactory: () => createAramoLogger(RecomputeRepairProcessor.name),
+    },
+    {
       provide: 'IdentityLifecycleSweepServiceLogger',
       useFactory: () => createAramoLogger(IdentityLifecycleSweepService.name),
     },
@@ -153,6 +168,7 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     IdentityDetectionService,
     ConsistencyService,
     RecomputeSweepService,
+    RecomputeRepairService,
     IdentityLifecycleSweepService,
   ],
 })

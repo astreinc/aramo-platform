@@ -76,7 +76,8 @@ export interface EvidenceRecordRow {
 }
 
 // TR-14 B1 (DDR §2.2) — the EvidenceLink graph, made readable for the dossier
-// (its first reader — previously only appendLink + the existence guard). One
+// (its first reader — previously only the link writer + the existence guard; the
+// writer is now applyTenantBoundTransition's in-transaction link, Security S1b). One
 // row per (from, to, relation) semantic fact: CONTRADICTS pairs, SUPERSEDES chains.
 export interface EvidenceLinkRow {
   id: string;
@@ -364,6 +365,35 @@ export interface SubjectMergeOperationRow {
   reversal_justification: string | null;
   post_merge_accretions: unknown | null;
 }
+
+// Security S1 (R2.2) — a tenant-keyed, expected-status lifecycle write matched no
+// row (the record is not the acting tenant's, or its status moved concurrently).
+// Thrown INSIDE the transaction so it rolls back; the service re-reads the bound
+// row to classify it (NOT_FOUND vs the domain refusal).
+export class StaleEvidenceTransitionError extends Error {
+  constructor(readonly evidenceId: string) {
+    super(`evidence ${evidenceId} did not match the expected tenant/status for this transition`);
+    this.name = 'StaleEvidenceTransitionError';
+  }
+}
+
+// G1 (Aramo-G1-TrustState-Recompute-Ordering-and-Recovery-Directive-v1_0-LOCKED
+// §3.2) — the advisory-lock key namespace for per-cluster TrustState work. The key
+// is derived from the ACTIVE SURVIVOR's id, so one lock serializes one cluster and
+// unrelated subjects never contend (no global, no cross-tenant lock).
+const TRUST_CLUSTER_LOCK_NAMESPACE = 'aramo:trust-cluster:';
+
+// Prisma's interactive-transaction client (the `tx` handed to $transaction(fn)).
+type TrustTx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
+
+// G1 — a recompute's derivation input/output, kept structural so the repository
+// stays derivation-agnostic (the service owns deriveTrustState).
+export type TrustStateDerived = Omit<TrustStateRow, 'subject_id' | 'tenant_id' | 'last_recomputed_at'>;
+
+export type RecomputeUnderLockResult =
+  | { kind: 'RECOMPUTED'; survivor_subject_id: string; cleared_requests: number }
+  | { kind: 'TENANT_MISMATCH' }
+  | { kind: 'NOT_FOUND' };
 
 @Injectable()
 export class TalentTrustRepository {
@@ -678,22 +708,207 @@ export class TalentTrustRepository {
     }));
   }
 
-  async setSubjectMergeState(
-    subjectId: string,
-    status: ResolutionSubjectStatus,
-    mergedIntoSubjectId: string | null,
-  ): Promise<ResolutionSubjectRow> {
-    const updated = await this.prisma.resolutionSubject.update({
-      where: { id: subjectId },
-      data: { status, merged_into_subject_id: mergedIntoSubjectId },
+  // ---- G1 — cluster-locked TrustState work --------------------------------
+
+  // Acquire the per-cluster advisory locks for a set of ACTIVE survivors, in a
+  // consistent (sorted) order so concurrent multi-cluster operations never
+  // deadlock. Transaction-scoped: released at commit/rollback.
+  private async lockClusters(tx: TrustTx, survivorIds: string[]): Promise<void> {
+    for (const id of [...new Set(survivorIds)].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${TRUST_CLUSTER_LOCK_NAMESPACE + id}, 0))`;
+    }
+  }
+
+  // The active fixpoint, read inside a transaction (bounded + cycle-safe).
+  private async fixpointTx(tx: TrustTx, startSubjectId: string): Promise<{ id: string; tenant_id: string } | null> {
+    const seen = new Set<string>();
+    let currentId = startSubjectId;
+    for (let hops = 0; hops <= 64; hops++) {
+      if (seen.has(currentId)) return null;
+      seen.add(currentId);
+      const subject = await tx.resolutionSubject.findUnique({
+        where: { id: currentId },
+        select: { id: true, tenant_id: true, status: true, merged_into_subject_id: true },
+      });
+      if (subject === null) return null;
+      if (subject.status === 'ACTIVE') return { id: subject.id, tenant_id: subject.tenant_id };
+      if (subject.merged_into_subject_id === null) return null;
+      currentId = subject.merged_into_subject_id;
+    }
+    return null;
+  }
+
+  // Cluster members of a survivor, read inside a transaction and TENANT-BOUND.
+  private async clusterMembersTx(tx: TrustTx, survivorId: string, tenantId: string): Promise<string[]> {
+    const members = new Set<string>([survivorId]);
+    let frontier = [survivorId];
+    while (frontier.length > 0 && members.size <= 4096) {
+      const children = await tx.resolutionSubject.findMany({
+        where: { merged_into_subject_id: { in: frontier }, tenant_id: tenantId },
+        select: { id: true },
+      });
+      const next: string[] = [];
+      for (const c of children) {
+        if (!members.has(c.id)) {
+          members.add(c.id);
+          next.push(c.id);
+        }
+      }
+      frontier = next;
+    }
+    return [...members];
+  }
+
+  // G1-1/G1-2/G1-3 (directive §3.1–§3.3) — the serialized, authoritative
+  // recompute. One transaction: lock the ACTIVE survivor's cluster; re-resolve the
+  // survivor UNDER the lock (a merge that moved it forces a bounded retry); assert
+  // the tenant; lock the cluster's subject rows (FOR NO KEY UPDATE — evidence
+  // inserts proceed, but a concurrent request-flag write waits, so clearing below
+  // can never drop a newer request); read the cluster's evidence tenant-bound;
+  // derive; upsert the SURVIVOR's TrustState; clear the covered requests. The lock
+  // holder that commits last read every evidence change committed before it —
+  // an older snapshot can no longer overwrite a newer one.
+  async recomputeUnderLock(input: {
+    subject_id: string;
+    tenant_id: string;
+    now: Date;
+    // May be async: the concurrency tests pause a recompute deterministically here
+    // (inside the locked transaction, between the snapshot read and the write).
+    derive: (evidence: EvidenceRecordRow[]) => TrustStateDerived | Promise<TrustStateDerived>;
+  }): Promise<RecomputeUnderLockResult> {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const result = await this.prisma.$transaction(
+        async (tx): Promise<RecomputeUnderLockResult | 'RETRY'> => {
+          const before = await this.fixpointTx(tx, input.subject_id);
+          if (before === null) return { kind: 'NOT_FOUND' };
+          if (before.tenant_id !== input.tenant_id) return { kind: 'TENANT_MISMATCH' };
+          await this.lockClusters(tx, [before.id]);
+          const after = await this.fixpointTx(tx, input.subject_id);
+          if (after === null) return { kind: 'NOT_FOUND' };
+          if (after.id !== before.id) return 'RETRY'; // a merge moved the survivor
+          const members = await this.clusterMembersTx(tx, after.id, input.tenant_id);
+          await tx.$queryRaw`
+            SELECT "id" FROM "talent_trust"."ResolutionSubject"
+             WHERE "id" = ANY(${members}::uuid[]) AND "tenant_id" = ${input.tenant_id}::uuid
+             ORDER BY "id" FOR NO KEY UPDATE`;
+          const evidence = (await tx.evidenceRecord.findMany({
+            where: { subject_id: { in: members }, tenant_id: input.tenant_id },
+            orderBy: { created_at: 'asc' },
+          })) as EvidenceRecordRow[];
+          const derived = await input.derive(evidence);
+          const row = { ...derived, subject_id: after.id, tenant_id: input.tenant_id, last_recomputed_at: input.now };
+          await tx.trustState.upsert({
+            where: { subject_id: after.id },
+            create: row,
+            update: { ...derived, last_recomputed_at: input.now },
+          });
+          const cleared = await tx.resolutionSubject.updateMany({
+            where: { id: { in: members }, tenant_id: input.tenant_id, trust_recompute_requested_at: { not: null } },
+            data: { trust_recompute_requested_at: null },
+          });
+          return { kind: 'RECOMPUTED', survivor_subject_id: after.id, cleared_requests: cleared.count };
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      );
+      if (result !== 'RETRY') return result;
+    }
+    throw new Error(`recompute for subject ${input.subject_id}: survivor kept moving (merge contention)`);
+  }
+
+  // G1-2 (directive §3.2) — the merge/un-merge topology write, coordinated with
+  // recompute: inside ONE transaction, lock the clusters of every affected
+  // survivor (sorted) BEFORE writing, assert a single tenant, write the merge
+  // state, and request recomputation for both sides. Returns null when either
+  // subject is missing or the subjects belong to different tenants (the service
+  // refuses — a cross-tenant merge is never written).
+  async setSubjectMergeStateLocked(input: {
+    subject_id: string;
+    status: ResolutionSubjectStatus;
+    merged_into_subject_id: string | null;
+    involved_subject_ids: string[];
+  }): Promise<ResolutionSubjectRow | null> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        const involved = await tx.resolutionSubject.findMany({
+          where: { id: { in: input.involved_subject_ids } },
+          select: { id: true, tenant_id: true },
+        });
+        if (involved.length !== new Set(input.involved_subject_ids).size) return null;
+        const tenants = new Set(involved.map((r) => r.tenant_id));
+        if (tenants.size !== 1) return null;
+        const tenantId = involved[0]!.tenant_id;
+        const survivors: string[] = [];
+        for (const id of input.involved_subject_ids) {
+          const fp = await this.fixpointTx(tx, id);
+          survivors.push(fp?.id ?? id);
+        }
+        await this.lockClusters(tx, survivors);
+        const updated = await tx.resolutionSubject.update({
+          where: { id: input.subject_id },
+          data: { status: input.status, merged_into_subject_id: input.merged_into_subject_id },
+        });
+        for (const id of input.involved_subject_ids) await this.requestRecompute(tx, id, tenantId);
+        return updated as ResolutionSubjectRow;
+      },
+      { timeout: 60_000, maxWait: 10_000 },
+    );
+  }
+
+  // G1-3 — the repair queue: subjects with a pending recomputation request,
+  // oldest first (the migration-owned partial index), optionally tenant-scoped.
+  async listSubjectsRequestingRecompute(
+    limit: number,
+    tenantId?: string,
+  ): Promise<Array<{ subject_id: string; tenant_id: string }>> {
+    const rows = await this.prisma.resolutionSubject.findMany({
+      where: { trust_recompute_requested_at: { not: null }, ...(tenantId ? { tenant_id: tenantId } : {}) },
+      orderBy: { trust_recompute_requested_at: 'asc' },
+      take: limit,
+      select: { id: true, tenant_id: true },
     });
-    return updated as ResolutionSubjectRow;
+    return rows.map((r) => ({ subject_id: r.id, tenant_id: r.tenant_id }));
+  }
+
+  // G1-3 — back-off for a failed repair: keep the request pending but move it to
+  // the back of the queue (never cleared on failure).
+  async deferRecomputeRequest(subjectId: string, tenantId: string): Promise<void> {
+    await this.prisma.resolutionSubject.updateMany({
+      where: { id: subjectId, tenant_id: tenantId, trust_recompute_requested_at: { not: null } },
+      data: { trust_recompute_requested_at: new Date() },
+    });
   }
 
   // ---- EvidenceRecord -------------------------------------------------
 
-  async insertEvidence(input: InsertEvidenceInput): Promise<EvidenceRecordRow> {
-    const created = await this.prisma.evidenceRecord.create({
+  // G1-4 (directive §3.4) — evidence creation is ONE transaction: the
+  // EvidenceRecord, its immutable CREATED event (same tenant, same occurred_at the
+  // caller recompute uses) and the durable recomputation request on its origin
+  // subject commit or roll back together — no crash window between them.
+  async insertEvidence(
+    input: InsertEvidenceInput,
+    created: { actor: string; occurred_at: Date },
+  ): Promise<EvidenceRecordRow> {
+    return this.prisma.$transaction(async (tx) => {
+      const row = await this.createEvidenceRow(tx, input);
+      await tx.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: row.id,
+          tenant_id: input.tenant_id,
+          event_type: 'CREATED',
+          reason: null,
+          linked_evidence_id: null,
+          actor: created.actor,
+          occurred_at: created.occurred_at,
+        },
+      });
+      await this.requestRecompute(tx, input.subject_id, input.tenant_id);
+      return row;
+    });
+  }
+
+  private async createEvidenceRow(tx: TrustTx, input: InsertEvidenceInput): Promise<EvidenceRecordRow> {
+    const created = await tx.evidenceRecord.create({
       data: {
         id: uuidv7(),
         subject_id: input.subject_id,
@@ -716,9 +931,96 @@ export class TalentTrustRepository {
     return created as EvidenceRecordRow;
   }
 
+  // G1-3 — mark a subject's TrustState as needing recomputation, inside the
+  // caller's transaction (tenant-bound: a subject of another tenant is untouched).
+  private async requestRecompute(tx: TrustTx, subjectId: string, tenantId: string): Promise<void> {
+    await tx.resolutionSubject.updateMany({
+      where: { id: subjectId, tenant_id: tenantId },
+      data: { trust_recompute_requested_at: new Date() },
+    });
+  }
+
+  // G1-3 — the same request, keyed by an evidence row (its origin subject).
+  private async requestRecomputeForEvidence(tx: TrustTx, evidenceId: string, tenantId: string): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE "talent_trust"."ResolutionSubject" s
+         SET "trust_recompute_requested_at" = now()
+        FROM "talent_trust"."EvidenceRecord" e
+       WHERE e."id" = ${evidenceId}::uuid
+         AND e."tenant_id" = ${tenantId}::uuid
+         AND s."id" = e."subject_id"
+         AND s."tenant_id" = ${tenantId}::uuid`;
+  }
+
   async findEvidenceById(id: string): Promise<EvidenceRecordRow | null> {
     const row = await this.prisma.evidenceRecord.findUnique({ where: { id } });
     return (row as EvidenceRecordRow | null) ?? null;
+  }
+
+  // Security S1 (R1) — the tenant-bound evidence read. A row owned by another
+  // tenant and a non-existent id are indistinguishable (both null). Mirrors the
+  // in-lib tenant-bound by-id reads (findProposalById / findAnchorById /
+  // findMatchAdvisoryById / findMergeOperationById).
+  async findEvidenceByIdForTenant(tenantId: string, id: string): Promise<EvidenceRecordRow | null> {
+    const row = await this.prisma.evidenceRecord.findFirst({ where: { id, tenant_id: tenantId } });
+    return (row as EvidenceRecordRow | null) ?? null;
+  }
+
+  // Security S1 (R2) — one lifecycle transition, atomic and tenant-keyed. In ONE
+  // interactive transaction: the status flips ONLY on a row matching
+  // { id, tenant_id, current_status: expected } (count must be 1), then the event
+  // is appended with the SAME acting tenant. No match → nothing is written and
+  // false is returned (the caller re-reads to classify a concurrent change); an
+  // error after the update rolls the update back (no status change, no event).
+  // Security S1b — relational transitions (contradict / supersede) pass `link`:
+  // the EvidenceLink is inserted in the SAME transaction, with the same acting
+  // tenant, so a link never exists without its status flip + event (and vice
+  // versa). A concurrent duplicate link violates @@unique(from, to, relation) and
+  // rolls the whole transaction back.
+  async applyTenantBoundTransition(input: {
+    evidence_id: string;
+    tenant_id: string;
+    expected_status: EvidenceStatus;
+    next_status: EvidenceStatus;
+    event_type: EvidenceEventType;
+    reason?: string | null;
+    actor?: string | null;
+    occurred_at?: Date;
+    linked_evidence_id?: string | null;
+    link?: { from_evidence_id: string; to_evidence_id: string; relation: EvidenceLinkRelation };
+  }): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const flipped = await tx.evidenceRecord.updateMany({
+        where: { id: input.evidence_id, tenant_id: input.tenant_id, current_status: input.expected_status },
+        data: { current_status: input.next_status },
+      });
+      if (flipped.count !== 1) return false;
+      await this.requestRecomputeForEvidence(tx, input.evidence_id, input.tenant_id);
+      if (input.link) {
+        await tx.evidenceLink.create({
+          data: {
+            id: uuidv7(),
+            from_evidence_id: input.link.from_evidence_id,
+            to_evidence_id: input.link.to_evidence_id,
+            relation: input.link.relation,
+            tenant_id: input.tenant_id,
+          },
+        });
+      }
+      await tx.evidenceEvent.create({
+        data: {
+          id: uuidv7(),
+          evidence_id: input.evidence_id,
+          tenant_id: input.tenant_id,
+          event_type: input.event_type,
+          reason: input.reason ?? null,
+          linked_evidence_id: input.linked_evidence_id ?? null,
+          actor: input.actor ?? null,
+          ...(input.occurred_at ? { occurred_at: input.occurred_at } : {}),
+        },
+      });
+      return true;
+    });
   }
 
   async listEvidenceBySubject(
@@ -757,48 +1059,19 @@ export class TalentTrustRepository {
     return rows as EvidenceRecordRow[];
   }
 
-  // The ONLY mutable column on EvidenceRecord (the immutability trigger
-  // rejects any other change). Set exclusively by applying an EvidenceEvent.
-  async updateEvidenceStatus(id: string, status: EvidenceStatus): Promise<EvidenceRecordRow> {
-    const updated = await this.prisma.evidenceRecord.update({
-      where: { id },
-      data: { current_status: status },
-    });
-    return updated as EvidenceRecordRow;
-  }
-
   // ---- EvidenceEvent (append-only) -----------------------------------
 
-  async appendEvent(input: {
-    evidence_id: string;
-    tenant_id: string;
-    event_type: EvidenceEventType;
-    reason?: string | null;
-    linked_evidence_id?: string | null;
-    actor?: string | null;
-    occurred_at?: Date;
-  }): Promise<void> {
-    await this.prisma.evidenceEvent.create({
-      data: {
-        id: uuidv7(),
-        evidence_id: input.evidence_id,
-        tenant_id: input.tenant_id,
-        event_type: input.event_type,
-        reason: input.reason ?? null,
-        linked_evidence_id: input.linked_evidence_id ?? null,
-        actor: input.actor ?? null,
-        ...(input.occurred_at ? { occurred_at: input.occurred_at } : {}),
-      },
-    });
-  }
-
   // TR-15 B1 (DDR §2) — the upheld-dispute atomic pair. Appends DISPUTE_RESOLVED
-  // then REVOKED and flips current_status to REVOKED in ONE transaction (array
-  // form, the insertAnchor precedent): a mid-tx failure leaves NEITHER event and
-  // no status change (§5c atomicity). occurred_at is monotonic (REVOKED 1ms after
-  // RESOLVED) so the timeline reads the honest order resolved-then-revoked. Both
-  // events carry the actor + justification. current_status projects to REVOKED
-  // (the last event) — the record is retired and drops out of accrual.
+  // then REVOKED and flips current_status to REVOKED in ONE transaction: a mid-tx
+  // failure leaves NEITHER event and no status change (§5c atomicity). occurred_at
+  // is monotonic (REVOKED 1ms after RESOLVED) so the timeline reads the honest
+  // order resolved-then-revoked. Both events carry the actor + justification.
+  // current_status projects to REVOKED (the last event) — the record is retired
+  // and drops out of accrual.
+  // Security S1 (R2.2) — tenant-keyed: the status flip matches ONLY
+  // { id, tenant_id, current_status: 'DISPUTED' } and runs FIRST; anything other
+  // than exactly one row throws StaleEvidenceTransitionError inside the
+  // transaction, so neither event is written. Both events carry the acting tenant.
   async appendResolvedThenRevoked(input: {
     evidence_id: string;
     tenant_id: string;
@@ -807,8 +1080,14 @@ export class TalentTrustRepository {
   }): Promise<void> {
     const resolvedAt = new Date();
     const revokedAt = new Date(resolvedAt.getTime() + 1);
-    await this.prisma.$transaction([
-      this.prisma.evidenceEvent.create({
+    await this.prisma.$transaction(async (tx) => {
+      const flipped = await tx.evidenceRecord.updateMany({
+        where: { id: input.evidence_id, tenant_id: input.tenant_id, current_status: 'DISPUTED' },
+        data: { current_status: 'REVOKED' },
+      });
+      if (flipped.count !== 1) throw new StaleEvidenceTransitionError(input.evidence_id);
+      await this.requestRecomputeForEvidence(tx, input.evidence_id, input.tenant_id);
+      await tx.evidenceEvent.create({
         data: {
           id: uuidv7(),
           evidence_id: input.evidence_id,
@@ -818,8 +1097,8 @@ export class TalentTrustRepository {
           actor: input.actor,
           occurred_at: resolvedAt,
         },
-      }),
-      this.prisma.evidenceEvent.create({
+      });
+      await tx.evidenceEvent.create({
         data: {
           id: uuidv7(),
           evidence_id: input.evidence_id,
@@ -829,32 +1108,11 @@ export class TalentTrustRepository {
           actor: input.actor,
           occurred_at: revokedAt,
         },
-      }),
-      this.prisma.evidenceRecord.update({
-        where: { id: input.evidence_id },
-        data: { current_status: 'REVOKED' },
-      }),
-    ]);
+      });
+    });
   }
 
   // ---- EvidenceLink (append-only) ------------------------------------
-
-  async appendLink(input: {
-    from_evidence_id: string;
-    to_evidence_id: string;
-    relation: EvidenceLinkRelation;
-    tenant_id: string;
-  }): Promise<void> {
-    await this.prisma.evidenceLink.create({
-      data: {
-        id: uuidv7(),
-        from_evidence_id: input.from_evidence_id,
-        to_evidence_id: input.to_evidence_id,
-        relation: input.relation,
-        tenant_id: input.tenant_id,
-      },
-    });
-  }
 
   // TR-4 B1 (DDR §2.4) — existence check backing the service-side no-op: is this
   // exact semantic link (from, to, relation) already recorded? Keyed on the new
@@ -897,9 +1155,9 @@ export class TalentTrustRepository {
 
   // TR-14 B1 (DDR §2.2) — the event-timeline READ for the dossier: the lifecycle
   // events of every evidence row across a subject's CLUSTER-UNION, keyset-paged
-  // NEWEST-FIRST (the ledger can be long). EvidenceEvent has no FK to
-  // EvidenceRecord (UUID-only by design), so this resolves the cluster's evidence
-  // ids first, then pages events over them. Keyset on (occurred_at, id) desc —
+  // NEWEST-FIRST (the ledger can be long). EvidenceEvent carries evidence_id (an
+  // FK to EvidenceRecord — init_talent_trust migration), not subject_id, so this
+  // resolves the cluster's evidence ids first, then pages events over them. Keyset on (occurred_at, id) desc —
   // the same (timestamp, id) tuple convention as the sourcing/worklist cursors.
   async listEvidenceEventsBySubjects(
     subjectIds: string[],
@@ -1279,6 +1537,11 @@ export class TalentTrustRepository {
           event_type: 'CREATED',
           actor: ev.created_by,
         },
+      }),
+      // G1-3 — the durable recomputation request, atomic with the evidence.
+      this.prisma.resolutionSubject.updateMany({
+        where: { id: ev.subject_id, tenant_id: ev.tenant_id },
+        data: { trust_recompute_requested_at: new Date() },
       }),
     ]);
     return {

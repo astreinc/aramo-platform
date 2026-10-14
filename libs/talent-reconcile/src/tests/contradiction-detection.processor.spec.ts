@@ -33,7 +33,7 @@ describe('ContradictionDetectionProcessor.drainBatch', () => {
   it('empty → zeroed, no service calls', async () => {
     const { processor, resolvePending } = make({ pending: [] });
     const result = await processor.drainBatch({ batchSize: 100, jobId: 'j1' });
-    expect(result).toEqual({ attempted: 0, contradicted: 0, no_incumbent: 0, transient_retry: 0 });
+    expect(result).toEqual({ attempted: 0, contradicted: 0, no_incumbent: 0, refused: 0, transient_retry: 0 });
     expect(resolvePending).not.toHaveBeenCalled();
   });
 
@@ -43,7 +43,7 @@ describe('ContradictionDetectionProcessor.drainBatch', () => {
       outcomes: [{ outcome: 'contradicted' }, { outcome: 'no_incumbent' }, { outcome: 'transient_retry' }],
     });
     const result = await processor.drainBatch({ batchSize: 100, jobId: 'j1' });
-    expect(result).toEqual({ attempted: 3, contradicted: 1, no_incumbent: 1, transient_retry: 1 });
+    expect(result).toEqual({ attempted: 3, contradicted: 1, no_incumbent: 1, refused: 0, transient_retry: 1 });
     expect(findPendingContradictions).toHaveBeenCalledWith({ limit: 100 });
   });
 });
