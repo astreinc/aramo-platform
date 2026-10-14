@@ -667,6 +667,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(failTenant).toBeNull();
     });
 
+    // IC-2 PR-5 — a platform operator cannot grant platform-operator authority
+    // to a non-sentinel tenant membership: super_admin is refused at the DTO
+    // allow-list (400 VALIDATION_ERROR), no invite rows, no Cognito call.
+    it('IC-2 PR-5 — inviting super_admin INTO a non-sentinel tenant → 400, zero rows, zero Cognito calls', async () => {
+      const provToken = await platformJwt();
+      const provRes = await request(app.getHttpServer())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ name: 'NoSuperCo', owner_email: 'owner@nosuper.co' });
+      expect(provRes.status).toBe(201);
+      const tenantId = provRes.body.tenant_id;
+      const callsBefore = cognitoMock.adminCreateUser.mock.calls.length;
+      const res = await request(app.getHttpServer())
+        .post(`/platform/tenants/${tenantId}/invitations`)
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'ops@nosuper.co', role_keys: ['recruiter', 'super_admin'] });
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+      expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(callsBefore);
+      expect(await identityPrisma.user.findUnique({ where: { email: 'ops@nosuper.co' } })).toBeNull();
+    });
+
     // -------------------------------------------------------------------
     // Proof 5 — Multi-role invite uses the staffing catalog.
     // -------------------------------------------------------------------

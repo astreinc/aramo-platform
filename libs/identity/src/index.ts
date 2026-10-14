@@ -88,6 +88,8 @@ export { IdentityAuditService } from './lib/audit/identity-audit.service.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   SEED_ROLE_KEYS,
+  PLATFORM_ROLE_KEYS,
+  TENANT_ASSIGNABLE_ROLE_KEYS,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';

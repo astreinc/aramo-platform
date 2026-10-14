@@ -28,6 +28,8 @@ export {
   readHostBindingMode,
   allowUnboundHost,
   evaluateHostBinding,
+  evaluateSessionHostBinding,
+  REFRESH_ELIGIBILITY_REASONS,
 } from './lib/host-binding.js';
 export type { HostBindingClass, HostBindingMode, HostBindingReason, HostBindingInput, HostBindingVerdict } from './lib/host-binding.js';
 export { HOST_CONTEXT_DIRECTORY } from './lib/host-context-directory.port.js';

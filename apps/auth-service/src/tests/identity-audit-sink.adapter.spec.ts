@@ -132,7 +132,11 @@ it('§3.3 REFRESH succeeds despite a throwing audit', async () => {
     getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
     getScopesByUserTenantAndSite: vi.fn(),
   } as unknown as RoleService;
-  const principals = new IdentityPrincipalDirectoryAdapter({} as IdentityService, {} as TenantService, role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService);
+  // IC-2 PR-5 — resolveScopes re-proves eligibility through identity + tenant.
+  const principals = new IdentityPrincipalDirectoryAdapter(
+    { findUserById: async () => ({ id: USER_ID, is_active: true }) } as unknown as IdentityService,
+    { getTenantsByUser: async () => [{ id: TENANT_ID, name: 'T', status: 'ACTIVE' }] } as unknown as TenantService,
+    role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService);
   const svc = new RefreshOrchestratorService(
     {
       findByHash: vi.fn().mockResolvedValue(dto),

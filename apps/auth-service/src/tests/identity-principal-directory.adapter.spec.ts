@@ -32,6 +32,8 @@ interface Deps {
 function makeDeps(over: {
   resolveUser?: unknown;
   findUserByEmail?: unknown;
+  // IC-2 PR-5 — the refresh-path user read (null = no such user).
+  userById?: unknown;
   tenants?: unknown[];
   status?: string;
   activateImpl?: () => Promise<unknown>;
@@ -55,6 +57,9 @@ function makeDeps(over: {
   const findUserByEmail = vi
     .fn()
     .mockResolvedValue(over.findUserByEmail === undefined ? null : over.findUserByEmail);
+  const findUserById = vi
+    .fn()
+    .mockResolvedValue(over.userById === undefined ? { id: USER_ID, is_active: true } : over.userById);
   const linkExternalIdentity = vi.fn().mockImplementation(async () => {
     order?.push('link');
     return { id: 'ext-1' };
@@ -76,6 +81,7 @@ function makeDeps(over: {
   const identity = {
     resolveUser,
     findUserByEmail,
+    findUserById,
     linkExternalIdentity,
     activateAcceptedMembershipsOnSession: activate,
   } as unknown as IdentityService;
@@ -256,13 +262,13 @@ describe('§2.4 invariant 6 — site-stamp scope selection (resolveSession + res
     const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
     // HF-AUTH-1 — resolveScopes now also carries the current authorization version
     // (stamped into the re-minted compact token on refresh).
-    expect(r).toEqual({ scopes: ['talent:read'], authz_version: 1, claims: { site_id: SITE_ID } });
+    expect(r).toEqual({ kind: 'resolved', scopes: ['talent:read'], authz_version: 1, claims: { site_id: SITE_ID } });
   });
 
   it('resolveScopes tenant-wide → { scopes } (no claims)', async () => {
     const d = makeDeps({ site: null });
     const r = await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID });
-    expect(r).toEqual({ scopes: ['auth:session:read'], authz_version: 1 });
+    expect(r).toEqual({ kind: 'resolved', scopes: ['auth:session:read'], authz_version: 1 });
   });
 });
 
@@ -382,5 +388,55 @@ describe('IC-2 PR-4 — host binding (after tenant selection, before the status 
       const r = await adapter(makeDeps()).resolveSession({ ...SESSION_INPUT, host_class: 'TENANT', context_id: TENANT_ID_2 });
       expect(r.kind).toBe('resolved');
     });
+  });
+});
+
+// IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — refresh ELIGIBILITY re-proven
+// at the identity boundary; User.is_active (N-6) at login AND refresh.
+describe('IC-2 PR-5 — resolveScopes eligibility (refresh) + User.is_active at login', () => {
+  const INPUT = { principal_id: USER_ID, context_id: TENANT_ID };
+
+  it('eligible: active user, active membership in the stored tenant, ACTIVE tenant → resolved', async () => {
+    const r = await adapter(makeDeps()).resolveScopes(INPUT);
+    expect(r.kind).toBe('resolved');
+  });
+  it('unknown user → denied user_inactive (no scope read)', async () => {
+    const d = makeDeps({ userById: null });
+    expect(await adapter(d).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'user_inactive' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+  });
+  it('deactivated user (User.is_active=false) → denied user_inactive', async () => {
+    const d = makeDeps({ userById: { id: USER_ID, is_active: false } });
+    expect(await adapter(d).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'user_inactive' });
+  });
+  it('no ACTIVE membership in the stored tenant → denied membership_inactive (re-mint cannot change tenant ownership)', async () => {
+    // The user's only active membership is in ANOTHER tenant: a stored token for
+    // TENANT_ID must never re-mint it.
+    const d = makeDeps({ tenants: [{ id: TENANT_ID_2, name: 'Other', status: 'ACTIVE' }] });
+    expect(await adapter(d).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'membership_inactive' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    // And no membership at all (disabled) → same denial.
+    const d2 = makeDeps({ tenants: [] });
+    expect(await adapter(d2).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'membership_inactive' });
+  });
+  it('SUSPENDED tenant → denied tenant_suspended; CLOSED → tenant_closed (tenant consumers)', async () => {
+    expect(await adapter(makeDeps({ status: 'SUSPENDED' })).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+    expect(await adapter(makeDeps({ status: 'CLOSED' })).resolveScopes(INPUT)).toEqual({ kind: 'denied', reason: 'tenant_closed' });
+    expect(await adapter(makeDeps({ status: 'SUSPENDED' })).resolveScopes({ ...INPUT, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+  });
+  it('platform consumer is EXEMPT from the status gate at refresh (sentinel has no lifecycle)', async () => {
+    const r = await adapter(makeDeps({ status: 'SUSPENDED' })).resolveScopes({ ...INPUT, consumer: 'platform' });
+    expect(r.kind).toBe('resolved');
+  });
+  it('login: a deactivated User (is_active=false) → denied user_inactive before activation/selection', async () => {
+    const d = makeDeps({ resolveUser: { id: USER_ID, is_active: false } });
+    expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'user_inactive' });
+    expect(d.activate).not.toHaveBeenCalled();
+    expect(d.getTenantsByUser).not.toHaveBeenCalled();
+  });
+  it('login: reconcile-by-email to a deactivated User → denied user_inactive (link still created, nothing minted)', async () => {
+    const d = makeDeps({ resolveUser: null, findUserByEmail: { id: USER_ID, is_active: false } });
+    expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'user_inactive' });
+    expect(d.getTenantsByUser).not.toHaveBeenCalled();
   });
 });

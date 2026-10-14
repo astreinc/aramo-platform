@@ -9,6 +9,7 @@ import {
 } from '@aramo/entitlement';
 import {
   IdentityService,
+  PLATFORM_ROLE_KEYS,
   TenantService,
   deriveAllowedDomainOrThrow,
   deriveSlugOrThrow,
@@ -395,6 +396,26 @@ export class PlatformInvitationService {
     pool: 'tenant' | 'platform';
     request_id: string;
   }): Promise<InviteResult> {
+    // IC-2 PR-5 — platform-tier role keys (super_admin) are assignable ONLY
+    // against the platform pool/sentinel. Refuse BEFORE any Cognito side effect
+    // (the greenfield branch is Cognito-first) and before the DB; the in-service
+    // guard inside the identity writes is the authoritative backstop.
+    if (args.pool !== 'platform') {
+      const platformKeys = args.role_keys.filter((k) =>
+        (PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
+      );
+      if (platformKeys.length > 0) {
+        throw new AramoError(
+          'VALIDATION_ERROR',
+          'Platform-tier roles cannot be assigned to a tenant membership',
+          400,
+          {
+            requestId: args.request_id,
+            details: { reason: 'platform_role_not_assignable', role_keys: platformKeys },
+          },
+        );
+      }
+    }
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys(args.role_keys);
 
     // IC-1 PR-1 (Amendment A1 §4) — normalize ONCE (trim + lowercase) and use
@@ -466,6 +487,8 @@ export class PlatformInvitationService {
         role_keys: args.role_keys,
         role_ids,
         request_id: args.request_id,
+        // IC-2 PR-5 — platform-tier keys only for the platform pool/sentinel.
+        allow_platform_roles: args.pool === 'platform',
       });
       return {
         tenant_id: args.tenant_id,
@@ -500,6 +523,7 @@ export class PlatformInvitationService {
         role_ids,
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
+        allow_platform_roles: args.pool === 'platform',
       });
       return {
         tenant_id: args.tenant_id,
@@ -555,6 +579,7 @@ export class PlatformInvitationService {
         role_ids,
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
+        allow_platform_roles: args.pool === 'platform',
       });
     } catch (err) {
       await this.compensateCognito({

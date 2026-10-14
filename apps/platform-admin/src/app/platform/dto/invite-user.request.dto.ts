@@ -6,7 +6,7 @@ import {
   IsOptional,
   IsString,
 } from 'class-validator';
-import { SEED_ROLE_KEYS } from '@aramo/identity';
+import { TENANT_ASSIGNABLE_ROLE_KEYS } from '@aramo/identity';
 
 // POST /platform/tenants/:tenant_id/invitations — invite a user into an
 // existing tenant with one or more AUTHZ-1 tenant roles. Lead ruling 8
@@ -25,7 +25,10 @@ import { SEED_ROLE_KEYS } from '@aramo/identity';
 // the IdentityService.resolveRoleIdsByKeys existence-check would have
 // caught it on. The in-service D5 union-non-invertibility check (the
 // primary fix) runs second; this guard is the cheaper first layer.
-const ALLOWED_ROLE_KEYS: readonly string[] = [...SEED_ROLE_KEYS];
+// IC-2 PR-5 — the allow-list is the TENANT-assignable partition: platform-tier
+// keys (super_admin) are refused at the DTO (400) and again in-service, so a
+// non-sentinel tenant membership can never carry platform-operator authority.
+const ALLOWED_ROLE_KEYS: readonly string[] = [...TENANT_ASSIGNABLE_ROLE_KEYS];
 
 export class InviteUserRequestDto {
   @IsEmail()

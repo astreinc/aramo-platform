@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { InvitationDto } from './dto/invitation.dto.js';
@@ -470,6 +471,33 @@ export class IdentityService {
   // threaded in so the D5 union-non-invertibility check runs HERE, BEFORE
   // the DB write and BEFORE any audit emission. Every caller is covered;
   // the prior caller-side contract is retired.
+  // IC-2 PR-5 — platform-tier role keys (super_admin) are NEVER assignable
+  // through a tenant-side path. Only a caller that explicitly asserts the
+  // platform tier (apps/platform-admin's platform-admin invite against the
+  // sentinel tenant) may pass allow_platform_roles=true; absence denies.
+  // Fires BEFORE the D5 bundle check and before any write (safe-by-default).
+  private assertRoleKeysAssignable(args: {
+    role_keys: readonly string[];
+    allow_platform_roles?: boolean;
+    request_id: string;
+  }): void {
+    if (args.allow_platform_roles === true) return;
+    const platformKeys = args.role_keys.filter((k) =>
+      (PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
+    );
+    if (platformKeys.length > 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Platform-tier roles cannot be assigned to a tenant membership',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'platform_role_not_assignable', role_keys: platformKeys },
+        },
+      );
+    }
+  }
+
   async createUserFromInvitation(args: {
     email: string;
     display_name: string | null;
@@ -480,7 +508,10 @@ export class IdentityService {
     role_ids: readonly string[];
     actor_user_id: string;
     request_id: string;
+    // IC-2 PR-5 — only the platform-admin invite (sentinel tenant) sets this.
+    allow_platform_roles?: boolean;
   }): Promise<{ user: UserDto; membership_id: string }> {
+    this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR (details.reason=
     // 'invertible_role_union'); see-all-tier bypass derived internally.
@@ -599,6 +630,8 @@ export class IdentityService {
     raw_token: string;
     expires_at: string;
   }> {
+    // IC-2 PR-5 — tenant-tier invite: platform roles are never assignable.
+    this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
     // invertible union with VALIDATION_ERROR before any write.
     await this.roleBundle.assertUnionNonInvertible({
@@ -873,7 +906,10 @@ export class IdentityService {
     role_keys: readonly string[];
     role_ids: readonly string[];
     request_id: string;
+    // IC-2 PR-5 — only the platform-admin flow (sentinel tenant) sets this.
+    allow_platform_roles?: boolean;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
+    this.assertRoleKeysAssignable(args);
     await this.roleBundle.assertUnionNonInvertible({
       role_keys: args.role_keys,
       request_id: args.request_id,

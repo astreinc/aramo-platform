@@ -154,7 +154,9 @@
       "CONSUMER_TYPES",
       "EFFECTIVE_AUTHORIZATION_RESOLVER",
       "JwtAuthGuard",
-      "PLATFORM_TENANT_SENTINEL_ID"
+      "PLATFORM_TENANT_SENTINEL_ID",
+      "assertTierTripwire",
+      "isPlatformRoutePath"
     ],
     "@aramo/auth-core": [
       "ACCESS_TOKEN_TTL_SECONDS",
@@ -182,6 +184,7 @@
       "PortalAuthController",
       "PortalLoginBudget",
       "PortalLoginService",
+      "REFRESH_ELIGIBILITY_REASONS",
       "RefreshOrchestratorService",
       "SessionOrchestratorService",
       "TENANT_ACCESS_DENIED_REASONS",
@@ -194,6 +197,7 @@
       "deriveRedirectUri",
       "deriveSignoutRedirect",
       "evaluateHostBinding",
+      "evaluateSessionHostBinding",
       "isDevHostname",
       "isDevPosture",
       "parseHost",
@@ -819,6 +823,7 @@
       "MINT_DENYING_STATUSES",
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
+      "PLATFORM_ROLE_KEYS",
       "PrismaService",
       "RedisScopeCache",
       "RoleBundleValidator",
@@ -831,6 +836,7 @@
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
       "StubTenantCognitoAdapter",
+      "TENANT_ASSIGNABLE_ROLE_KEYS",
       "TENANT_COGNITO_PORT",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
@@ -2296,6 +2302,12 @@
         "status": "unscoped"
       },
       { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-core/src/tests/host-binding.spec.ts",
+        "project": "auth-core",
+        "status": "excluded"
+      },
       { "project": "auth-core", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

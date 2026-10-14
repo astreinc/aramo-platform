@@ -21,6 +21,7 @@ type VerifyKey = CryptoKey | KeyObject;
 import {
   ACTOR_KINDS,
   CONSUMER_TYPES,
+  PLATFORM_TENANT_SENTINEL_ID,
   type ActorKind,
   type AuthContext,
   type ConsumerType,
@@ -131,6 +132,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const ctx = await this.toAuthContext(payload, requestId);
+    assertTierTripwire(ctx, request.path ?? request.url ?? '', requestId);
     request.authContext = ctx;
     return true;
   }
@@ -287,6 +289,48 @@ export class JwtAuthGuard implements CanActivate {
       exp,
       ...(site_id !== undefined ? { site_id } : {}),
     };
+  }
+}
+
+// IC-2 PR-5 — the GENERIC both-direction tier tripwire (AUTHZ-2 DDR §13.1;
+// IC-0 §F.2 rule 2 / J-10). Replaces reliance on per-route hand-placed
+// assertions (which stay as defence in depth):
+//   (a) a `platform` token is accepted ONLY on a platform route (`/platform/…`)
+//       — a platform operator can never act through a tenant-facing route;
+//   (b) a non-platform token is NEVER accepted on a platform route — a tenant
+//       session cannot acquire platform-operator authority;
+//   (c) the platform SENTINEL tenant id is legitimate only for the `platform`
+//       consumer (operators) and the `portal` consumer (portal sessions carry the
+//       sentinel by design) — any other consumer presenting it is refused.
+// Existing error contract: 403 INSUFFICIENT_PERMISSIONS (the code every
+// hand-placed tripwire already emits), reason in details, no tenant named.
+export function isPlatformRoutePath(path: string): boolean {
+  return path === '/platform' || path.startsWith('/platform/');
+}
+
+export function assertTierTripwire(
+  ctx: Pick<AuthContext, 'consumer_type' | 'tenant_id'>,
+  path: string,
+  requestId: string,
+): void {
+  const platformRoute = isPlatformRoutePath(path);
+  let reason: string | null = null;
+  if (ctx.consumer_type === 'platform' && !platformRoute) {
+    reason = 'platform_token_on_tenant_route';
+  } else if (ctx.consumer_type !== 'platform' && platformRoute) {
+    reason = 'tenant_token_on_platform_route';
+  } else if (
+    ctx.tenant_id === PLATFORM_TENANT_SENTINEL_ID &&
+    ctx.consumer_type !== 'platform' &&
+    ctx.consumer_type !== 'portal'
+  ) {
+    reason = 'sentinel_tenant_requires_platform_consumer';
+  }
+  if (reason !== null) {
+    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Tier boundary violation', 403, {
+      requestId,
+      details: { reason },
+    });
   }
 }
 

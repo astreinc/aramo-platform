@@ -255,6 +255,58 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     }
   });
 
+  // IC-2 PR-5 — only the platform-admin invite (platform pool, sentinel tenant)
+  // asserts the platform tier to the identity service; tenant-pool invites
+  // never do, so super_admin is refused in-service for non-sentinel tenants.
+  it('IC-2 PR-5: invitePlatformAdmin passes allow_platform_roles=true; a tenant-pool invite passes false', async () => {
+    const mocks = makeMocks();
+    mocks.cognito.adminGetUser = vi.fn().mockResolvedValue(null);
+    mocks.identitySvc.findUserByEmail.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-super-admin']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'cog-sub-sa' });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'sa-u', email: 'sa@aramo.ai', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'mem-sa',
+    });
+    const svc = buildService(mocks);
+    await svc.invitePlatformAdmin({ email: 'sa@aramo.ai', actor_user_id: 'super-admin-1', request_id: TEST_REQUEST_ID });
+    expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ role_keys: ['super_admin'], allow_platform_roles: true }),
+    );
+    mocks.identitySvc.createUserFromInvitation.mockClear();
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['role-id-recruiter']);
+    await svc.inviteUserIntoTenant({
+      tenant_id: 'tenant-x',
+      email: 'rec@acme.io',
+      role_keys: ['recruiter'],
+      display_name: null,
+      actor_user_id: 'super-admin-1',
+      pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
+    });
+    expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
+      expect.objectContaining({ role_keys: ['recruiter'], allow_platform_roles: false }),
+    );
+  });
+
+  it('IC-2 PR-5: inviteUserIntoTenant (tenant pool) with super_admin → 400 platform_role_not_assignable BEFORE Cognito and before any identity call', async () => {
+    const mocks = makeMocks();
+    await expect(
+      buildService(mocks).inviteUserIntoTenant({
+        tenant_id: 'tenant-x',
+        email: 'ops@acme.io',
+        role_keys: ['recruiter', 'super_admin'],
+        display_name: null,
+        actor_user_id: 'super-admin-1',
+        pool: 'tenant',
+        request_id: TEST_REQUEST_ID,
+      }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable', role_keys: ['super_admin'] } } });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
+    expect(mocks.identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
+  });
+
   it('step 4 (ADR-0024 PR-4a-2): a policy-package publish failure soft-disables the tenant and throws INTERNAL_ERROR (created-and-flagged, not deleted)', async () => {
     const mocks = makeMocks();
     mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
@@ -681,6 +733,8 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
       role_keys: ['recruiter', 'account_manager'],
       role_ids: ['r-rec', 'r-am'],
       request_id: TEST_REQUEST_ID,
+      // IC-2 PR-5 — a tenant-pool invite never asserts the platform tier.
+      allow_platform_roles: false,
     });
     expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
     expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();

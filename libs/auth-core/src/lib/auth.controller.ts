@@ -5,6 +5,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Logger,
   Param,
   Post,
   Query,
@@ -24,7 +25,12 @@ import type { Request, Response } from 'express';
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import { CookieVerifierService } from './cookie-verifier.service.js';
 import { HostBaseResolver } from './host-base-resolver.service.js';
-import { TENANT_ACCESS_DENIED_REASONS } from './host-binding.js';
+import {
+  TENANT_ACCESS_DENIED_REASONS,
+  allowUnboundHost,
+  evaluateSessionHostBinding,
+  readHostBindingMode,
+} from './host-binding.js';
 import { PkceService } from './pkce.service.js';
 import {
   deriveRedirectUri,
@@ -133,8 +139,15 @@ function sha256Base64Url(s: string): string {
   return createHash('sha256').update(s).digest('base64url');
 }
 
+// The request Host as HostBaseResolver wants it (undefined when absent).
+function requestHost(req: RequestWithCookies): string | undefined {
+  return typeof req.get === 'function' ? req.get('host') : undefined;
+}
+
 @Controller('auth/:consumer')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(
     private readonly pkce: PkceService,
     private readonly sessionOrch: SessionOrchestratorService,
@@ -449,9 +462,14 @@ export class AuthController {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
     const refreshCookie = req.cookies?.[REFRESH_COOKIE];
+    // IC-2 PR-5 — the refresh request's host class/context ride to the
+    // orchestrator (bound against the STORED token tenant; F-5/F-6 posture).
+    const { hostClass, contextId } = await this.hostBase.resolve(requestHost(req));
     const result = await this.refreshOrch.handleRefresh({
       consumer: c,
       refreshCookie,
+      hostClass,
+      contextId,
     });
     if (result.kind === 'success') {
       setAccessCookie(res, result.accessJwt);
@@ -493,6 +511,36 @@ export class AuthController {
       const tokenHash = sha256Base64Url(refreshCookie);
       const found = await this.refreshTokens.findByHash({ token_hash: tokenHash });
       if (found !== null && found.consumer_type === c) {
+        // IC-2 PR-5 — reconcile the logout host against the token's tenant. A
+        // mismatch NEVER strands the user: the presented token is revoked and
+        // the host-only cookies are cleared regardless (a token presented on
+        // the wrong host is the more suspicious case, so killing it is the
+        // safe outcome). The audit reason records the mismatch; nothing in the
+        // 204 discloses any tenant. Cognito logout (GET) is untouched (HF3).
+        const { hostClass, contextId } = await this.hostBase.resolve(requestHost(req));
+        const binding = evaluateSessionHostBinding({
+          host_class: hostClass,
+          context_id: contextId,
+          consumer: c,
+          resolved_context_id: found.tenant_id,
+          allow_unbound: allowUnboundHost(),
+        });
+        let reason = 'logout';
+        if (!binding.ok) {
+          // An unbound/dev host is diagnostic noise, not a mismatch: keep the
+          // plain reason. A genuine tenant/class mismatch is recorded.
+          if (binding.reason !== 'host_unbound') reason = `logout_${binding.reason}`;
+          this.logger.warn(
+            JSON.stringify({
+              event: 'auth.host_binding',
+              stage: 'logout',
+              mode: readHostBindingMode(),
+              outcome: binding.reason,
+              consumer: c,
+              host_class: hostClass ?? null,
+            }),
+          );
+        }
         await this.refreshTokens.revoke({ id: found.id });
         // session.revoked — emitted by AUTH via AuditSink (PR-4 §7.4 Ruling 3).
         await this.auditSink.record({
@@ -500,7 +548,7 @@ export class AuthController {
           actor_id: found.user_id,
           context_id: found.tenant_id,
           subject_id: found.user_id,
-          payload: { reason: 'logout' },
+          payload: { reason },
         });
       }
     }
@@ -615,6 +663,40 @@ export class AuthController {
         401,
         { requestId },
       );
+    }
+    // IC-2 PR-5 — /session host/tenant binding (closes the PR-4 residual gap
+    // G-1). The token's tenant is compared with the request host under the
+    // PR-4 session-surface policy BEFORE any authorization detail is returned:
+    // enforce → 403 TENANT_ACCESS_DENIED (details.reason only, no tenant named);
+    // log → structured diagnostic, outcome unchanged.
+    const { hostClass, contextId } = await this.hostBase.resolve(requestHost(req));
+    const binding = evaluateSessionHostBinding({
+      host_class: hostClass,
+      context_id: contextId,
+      consumer: payload.consumer_type,
+      resolved_context_id: payload.tenant_id,
+      allow_unbound: allowUnboundHost(),
+    });
+    if (!binding.ok) {
+      const mode = readHostBindingMode();
+      this.logger.warn(
+        JSON.stringify({
+          event: 'auth.host_binding',
+          stage: 'session',
+          mode,
+          outcome: binding.reason,
+          consumer: payload.consumer_type,
+          host_class: hostClass ?? null,
+        }),
+      );
+      if (mode === 'enforce') {
+        throw new AramoError(
+          'TENANT_ACCESS_DENIED',
+          'Tenant access denied for this host',
+          403,
+          { requestId, details: { reason: binding.reason } },
+        );
+      }
     }
     // HF-AUTH-1 — resolve the effective scopes server-side for the response body
     // (the compact cookie carries none). Same resolver as the api guard: portal

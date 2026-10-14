@@ -213,6 +213,13 @@ paths:
             consumer mismatch; reuse detected (after R.2 cascade);
             rotation race (conditional update failed). On 401, BOTH
             access and refresh cookies are cleared via Max-Age=0.
+            IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2): eligibility is
+            re-proven before any re-mint — `error.details.reason` is one of
+            `user_inactive`, `membership_inactive`, `tenant_suspended`,
+            `tenant_closed` (the presented token is revoked server-side), or,
+            under AUTH_HOST_TENANT_BINDING=enforce, a host-binding reason
+            (`host_tenant_mismatch`, `host_class_consumer_mismatch`,
+            `host_unbound`). No tenant is named.
           content:
             application/json:
               schema:
@@ -362,6 +369,20 @@ paths:
             Invalid token. Triggers: cookie missing; JWT
             invalid/expired/signature-bad/claim-missing; consumer
             mismatch (path vs JWT claim).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: |
+            IC-2 PR-5 — tenant access denied for this host. Under
+            AUTH_HOST_TENANT_BINDING=enforce the token's tenant is bound to
+            the request host (session-surface host policy); a mismatch or an
+            unbound host context is refused BEFORE any authorization detail
+            is returned. `error.details.reason` is `host_tenant_mismatch`,
+            `host_class_consumer_mismatch` or `host_unbound`; no tenant is
+            named. Under the default `log` posture this response is never
+            emitted.
           content:
             application/json:
               schema:

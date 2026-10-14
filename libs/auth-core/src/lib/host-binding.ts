@@ -99,6 +99,29 @@ export function evaluateHostBinding(input: HostBindingInput): HostBindingVerdict
   }
 }
 
+// IC-2 PR-5 — the SESSION-SURFACE binding (/session, /refresh, /logout): the
+// SAME rules as the callback binding above, with ONE additive clause the
+// callback never needs: a `portal` consumer is served ONLY on the PORTAL host
+// class (its sessions carry the platform sentinel as tenant_id, so the tenant
+// comparison does not apply), and a PORTAL host serves ONLY the portal
+// consumer. PRODUCT stays DARK (refused). Everything else delegates to
+// evaluateHostBinding — the PR-4 policy is not rewritten.
+export function evaluateSessionHostBinding(input: HostBindingInput): HostBindingVerdict {
+  const hostClass = input.host_class ?? null;
+  if (input.consumer === 'portal') {
+    if (hostClass === null || hostClass === 'DEV') {
+      return input.allow_unbound
+        ? { ok: true, bound: false }
+        : { ok: false, reason: 'host_unbound' };
+    }
+    return hostClass === 'PORTAL' &&
+      input.resolved_context_id === (input.platform_sentinel_id ?? PLATFORM_TENANT_SENTINEL_ID)
+      ? { ok: true, bound: true }
+      : { ok: false, reason: 'host_class_consumer_mismatch' };
+  }
+  return evaluateHostBinding(input);
+}
+
 // The closed set of denial reasons the controller maps to 403 TENANT_ACCESS_DENIED
 // (existing code; F-5). Shared so the controller and the adapter cannot drift.
 export const TENANT_ACCESS_DENIED_REASONS: ReadonlySet<string> = new Set([
@@ -107,4 +130,15 @@ export const TENANT_ACCESS_DENIED_REASONS: ReadonlySet<string> = new Set([
   'host_tenant_mismatch',
   'host_class_consumer_mismatch',
   'host_unbound',
+]);
+
+// IC-2 PR-5 — refresh eligibility denial reasons (adapter.resolveScopes). Each
+// is a 401 REFRESH_TOKEN_INVALID on the refresh path (cookies cleared) and the
+// presented refresh token is REVOKED so a retained copy cannot resume the
+// session once eligibility is restored without re-authenticating.
+export const REFRESH_ELIGIBILITY_REASONS: ReadonlySet<string> = new Set([
+  'user_inactive',
+  'membership_inactive',
+  'tenant_suspended',
+  'tenant_closed',
 ]);

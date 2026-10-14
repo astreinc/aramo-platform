@@ -17,11 +17,13 @@ import {
 } from '@testcontainers/postgresql';
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 import {
   ARAMO_POSTGRES_TEST_IMAGE,
+  AramoExceptionFilter,
   CommonModule,
   resolveIdentityMigrations,
   resolveAuthStorageMigrations,
@@ -189,6 +191,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
           HostAuthProfileService,
           HostBaseResolver,
+          // IC-2 PR-5 — the PRODUCTION exception filter (auth.module.ts binds the
+          // same APP_FILTER), so error BODIES assert the real contract shape
+          // ({ error: { code, details } }) and not Nest's default envelope.
+          { provide: APP_FILTER, useClass: AramoExceptionFilter },
         ],
       })
         .overrideProvider(IdentityService)
@@ -202,6 +208,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             created_at: '',
             updated_at: '',
           }),
+          // IC-2 PR-5 — the refresh-path eligibility read (User.is_active).
+          findUserById: vi.fn().mockResolvedValue({ id: FIXED_USER_ID, is_active: true }),
         })
         .overrideProvider(TenantService)
         .useValue({
@@ -210,6 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
               id: FIXED_TENANT_ID,
               name: 'Integration Tenant',
               is_active: true,
+              status: 'ACTIVE',
               created_at: '',
               updated_at: '',
             },
@@ -421,6 +430,145 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .set('Cookie', c.pkceCookie);
         expect(res.status).toBe(302);
         expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+      });
+    });
+
+    // IC-2 PR-5 — session security: /session + /refresh + /logout host binding,
+    // refresh eligibility (disabled user, suspended tenant, foreign-tenant token),
+    // real HTTP + real refresh-token storage + real PKCE + the stubbed reads.
+    describe('IC-2 PR-5 — session, refresh and logout hardening', () => {
+      afterEach(() => {
+        delete process.env['AUTH_HOST_TENANT_BINDING'];
+        delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+        unstubCognito();
+      });
+
+      async function loginOn(host: string): Promise<{ access: string; refresh: string }> {
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('recruiter', host);
+        const res = await request(app.getHttpServer())
+          .get(`/auth/recruiter/callback?code=c&state=${state}`)
+          .set('Host', host)
+          .set('Cookie', pkceCookie);
+        expect(res.status).toBe(302);
+        const cookies = res.headers['set-cookie'] as unknown as string[];
+        const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`))!.split(';')[0]!;
+        return { access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+      }
+      const tenantSvc = () => module.get(TenantService) as unknown as { getTenantsByUser: ReturnType<typeof vi.fn> };
+      const identitySvc = () => module.get(IdentityService) as unknown as { findUserById: ReturnType<typeof vi.fn> };
+
+      it('1. /session on ANOTHER tenant\'s host: enforce → 403 TENANT_ACCESS_DENIED (no scopes); log → 200', async () => {
+        const { access } = await loginOn(OWN_HOST);
+        const logRes = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access);
+        expect(logRes.status).toBe(200);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access);
+        expect(res.status).toBe(403);
+        expect(res.body.error.code).toBe('TENANT_ACCESS_DENIED');
+        expect(res.body.error.details.reason).toBe('host_tenant_mismatch');
+        expect(JSON.stringify(res.body)).not.toContain(OTHER_TENANT_ID);
+        expect(JSON.stringify(res.body)).not.toContain(FIXED_TENANT_ID);
+        const own = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', access);
+        expect(own.status).toBe(200);
+        expect(own.body.tenant_id).toBe(FIXED_TENANT_ID);
+      });
+
+      it('2. /refresh under a mismatched host (enforce) → 401 REFRESH_TOKEN_INVALID host_tenant_mismatch, both cookies cleared, token NOT rotated; missing host context → host_unbound', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.code).toBe('REFRESH_TOKEN_INVALID');
+        expect(res.body.error.details.reason).toBe('host_tenant_mismatch');
+        const cleared = res.headers['set-cookie'] as unknown as string[];
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        // 8/10. the same token still refreshes on the OWN host (not rotated by the refusal)
+        const ok = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(ok.status).toBe(200);
+        // unbound dev host (127.0.0.1) under enforce → host_unbound; with the dev exception → 200
+        const { refresh: r2 } = await loginOn(OWN_HOST);
+        const unbound = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Cookie', r2);
+        expect(unbound.status).toBe(401);
+        expect(unbound.body.error.details.reason).toBe('host_unbound');
+      });
+
+      it('3. SUSPENDED tenant refresh → 401 tenant_suspended; token revoked server-side (a retained copy cannot resume after reactivation)', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        tenantSvc().getTenantsByUser.mockResolvedValueOnce([{ id: FIXED_TENANT_ID, name: 'Integration Tenant', is_active: true, status: 'SUSPENDED', created_at: '', updated_at: '' }]);
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('tenant_suspended');
+        // tenant back to ACTIVE: the revoked token is still refused (explicitly_revoked)
+        const again = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(again.status).toBe(401);
+        expect(again.body.error.details.reason).toBe('explicitly_revoked');
+        // Deterministic: match the audit row by its payload reason (several
+        // session.revoked rows share a second in this file).
+        const revokedAudit = await identityPrisma.identityAuditEvent.findFirst({
+          where: {
+            event_type: 'identity.session.revoked',
+            actor_id: FIXED_USER_ID,
+            event_payload: { path: ['reason'], equals: 'refresh_denied:tenant_suspended' },
+          },
+        });
+        expect(revokedAudit).not.toBeNull();
+      });
+
+      it('4. disabled User (is_active=false) refresh → 401 user_inactive; and login mint refused (user_inactive)', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        identitySvc().findUserById.mockResolvedValueOnce({ id: FIXED_USER_ID, is_active: false });
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('user_inactive');
+        // login mint for a deactivated identity
+        stubCognitoVerifyOnly();
+        const idSvc = module.get(IdentityService) as unknown as { resolveUser: ReturnType<typeof vi.fn> };
+        idSvc.resolveUser.mockResolvedValueOnce({ id: FIXED_USER_ID, email: 'integration@aramo.dev', display_name: null, is_active: false, deactivated_at: '2026-10-14T00:00:00.000Z', created_at: '', updated_at: '' });
+        const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
+        const cb = await request(app.getHttpServer()).get(`/auth/recruiter/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
+        expect(cb.status).toBe(302);
+        expect(cb.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
+      });
+
+      it('7. logout on ANOTHER tenant\'s host (enforce): 204, cookies cleared, token revoked, audit records the mismatch — never strands', async () => {
+        const { refresh } = await loginOn(OWN_HOST);
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/logout').set('Host', OTHER_HOST).set('Cookie', refresh);
+        expect(res.status).toBe(204);
+        const cleared = res.headers['set-cookie'] as unknown as string[];
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        const after = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
+        expect(after.status).toBe(401);
+        expect(after.body.error.details.reason).toBe('explicitly_revoked');
+        const audit = await identityPrisma.identityAuditEvent.findFirst({
+          where: {
+            event_type: 'identity.session.revoked',
+            actor_id: FIXED_USER_ID,
+            event_payload: { path: ['reason'], equals: 'logout_host_tenant_mismatch' },
+          },
+        });
+        expect(audit).not.toBeNull();
+      });
+
+      it('10. a stored refresh token for a tenant the user does NOT own cannot re-mint that tenant → 401 membership_inactive', async () => {
+        const plain = randomBytes(32).toString('base64url');
+        await refreshTokens.create({
+          user_id: FIXED_USER_ID,
+          tenant_id: OTHER_TENANT_ID,
+          consumer_type: 'recruiter',
+          token_hash: createHash('sha256').update(plain).digest('base64url'),
+          expires_at: new Date(Date.now() + 60_000),
+        });
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', `aramo_refresh_token=${plain}`);
+        expect(res.status).toBe(401);
+        expect(res.body.error.details.reason).toBe('membership_inactive');
+      });
+
+      it('9. log (default): mismatched-host refresh and session keep today\'s outcome', async () => {
+        const { access, refresh } = await loginOn(OWN_HOST);
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OTHER_HOST).set('Cookie', access)).status).toBe(200);
+        expect((await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', refresh)).status).toBe(200);
       });
     });
 

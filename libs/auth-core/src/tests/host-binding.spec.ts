@@ -7,6 +7,8 @@ import {
   TENANT_ACCESS_DENIED_REASONS,
   allowUnboundHost,
   evaluateHostBinding,
+  evaluateSessionHostBinding,
+  REFRESH_ELIGIBILITY_REASONS,
   readHostBindingMode,
 } from '../lib/host-binding.js';
 
@@ -113,5 +115,39 @@ describe('flag parsing (fail-closed)', () => {
     expect([...TENANT_ACCESS_DENIED_REASONS].sort()).toEqual(
       ['host_class_consumer_mismatch', 'host_tenant_mismatch', 'host_unbound', 'no_active_tenant', 'tenant_resolution_ambiguous'],
     );
+  });
+});
+
+// IC-2 PR-5 — the SESSION-SURFACE binding (/session, /refresh, /logout): PR-4
+// rules unchanged for every Cognito consumer; ONE additive clause for `portal`.
+describe('evaluateSessionHostBinding — session surface (PR-5)', () => {
+  const base = { context_id: null, consumer: 'portal', resolved_context_id: PLATFORM_TENANT_SENTINEL_ID, allow_unbound: false } as const;
+  it('portal consumer on the PORTAL host with the sentinel tenant → ok (bound)', () => {
+    expect(evaluateSessionHostBinding({ ...base, host_class: 'PORTAL' })).toEqual({ ok: true, bound: true });
+  });
+  it('portal consumer on the PORTAL host with a NON-sentinel tenant → host_class_consumer_mismatch', () => {
+    expect(evaluateSessionHostBinding({ ...base, host_class: 'PORTAL', resolved_context_id: T1 })).toEqual({
+      ok: false,
+      reason: 'host_class_consumer_mismatch',
+    });
+  });
+  it.each(['TENANT', 'PLATFORM', 'PRODUCT'] as const)('portal consumer on a %s host → host_class_consumer_mismatch', (cls) => {
+    expect(evaluateSessionHostBinding({ ...base, host_class: cls, context_id: T1 })).toEqual({
+      ok: false,
+      reason: 'host_class_consumer_mismatch',
+    });
+  });
+  it.each([null, 'DEV'] as const)('portal consumer unbound (%s) → host_unbound unless allow_unbound', (cls) => {
+    expect(evaluateSessionHostBinding({ ...base, host_class: cls })).toEqual({ ok: false, reason: 'host_unbound' });
+    expect(evaluateSessionHostBinding({ ...base, host_class: cls, allow_unbound: true })).toEqual({ ok: true, bound: false });
+  });
+  it('non-portal consumers delegate to the PR-4 policy unchanged (TENANT match / mismatch / PORTAL refused)', () => {
+    expect(evaluateSessionHostBinding({ host_class: 'TENANT', context_id: T1, consumer: 'recruiter', resolved_context_id: T1, allow_unbound: false })).toEqual({ ok: true, bound: true });
+    expect(evaluateSessionHostBinding({ host_class: 'TENANT', context_id: T2, consumer: 'recruiter', resolved_context_id: T1, allow_unbound: false })).toEqual({ ok: false, reason: 'host_tenant_mismatch' });
+    expect(evaluateSessionHostBinding({ host_class: 'PORTAL', context_id: null, consumer: 'recruiter', resolved_context_id: T1, allow_unbound: false })).toEqual({ ok: false, reason: 'host_class_consumer_mismatch' });
+    expect(evaluateSessionHostBinding({ host_class: 'PLATFORM', context_id: null, consumer: 'platform', resolved_context_id: PLATFORM_TENANT_SENTINEL_ID, allow_unbound: false })).toEqual({ ok: true, bound: true });
+  });
+  it('the refresh eligibility reason set is closed and complete', () => {
+    expect([...REFRESH_ELIGIBILITY_REASONS].sort()).toEqual(['membership_inactive', 'tenant_closed', 'tenant_suspended', 'user_inactive']);
   });
 });

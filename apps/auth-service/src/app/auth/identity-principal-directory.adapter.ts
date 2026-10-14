@@ -103,6 +103,14 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       user = existing;
     }
 
+    // IC-2 PR-5 (N-6 wired) — the GLOBAL User.is_active flag is an eligibility
+    // gate at mint: a deactivated identity never mints, whatever its
+    // membership rows say. Checked before activation/selection so nothing is
+    // written for it.
+    if (user.is_active === false) {
+      return { kind: 'denied', reason: 'user_inactive' };
+    }
+
     // Invariant 1+2: the SINGLE membership-activation seam. AFTER reconcile/link,
     // BEFORE tenant resolution; best-effort (an activation write must not break an
     // otherwise-valid sign-in).
@@ -188,6 +196,33 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
   }
 
   async resolveScopes(input: ResolveScopesInput): Promise<ResolveScopesResult> {
+    // IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — ELIGIBILITY is re-proven
+    // at every refresh, at the authoritative identity boundary, BEFORE anything
+    // is re-minted:
+    //  (1) the User exists and is globally active (N-6 wired);
+    //  (2) the principal holds an ACTIVE membership in an ACTIVE tenant and that
+    //      tenant IS the stored context — one User, one tenant (IC-1): the
+    //      stored token can never re-mint a tenant the principal does not own;
+    //  (3) the tenant status gate (SUSPENDED/CLOSED deny; `platform` exempt),
+    //      the same gate resolveSession applies.
+    const user = await this.identity.findUserById(input.principal_id);
+    if (user === null || user.is_active === false) {
+      return { kind: 'denied', reason: 'user_inactive' };
+    }
+    const tenants = await this.tenant.getTenantsByUser({ user_id: input.principal_id });
+    const stored = tenants.find((t) => t.id === input.context_id);
+    if (stored === undefined) {
+      return { kind: 'denied', reason: 'membership_inactive' };
+    }
+    if (input.consumer !== 'platform') {
+      if (stored.status === 'SUSPENDED') {
+        return { kind: 'denied', reason: 'tenant_suspended' };
+      }
+      if (stored.status === 'CLOSED') {
+        return { kind: 'denied', reason: 'tenant_closed' };
+      }
+    }
+
     const { scopes, site_id } = await this.resolveScopesInternal({
       user_id: input.principal_id,
       tenant_id: input.context_id,
@@ -198,7 +233,12 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       tenant_id: input.context_id,
       principal_id: input.principal_id,
     });
-    return { scopes, authz_version, ...(site_id !== null ? { claims: { site_id } } : {}) };
+    return {
+      kind: 'resolved',
+      scopes,
+      authz_version,
+      ...(site_id !== null ? { claims: { site_id } } : {}),
+    };
   }
 
   // Invariant 6: site-stamp scope selection, shared by resolveSession and

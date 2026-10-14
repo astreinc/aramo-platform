@@ -52,17 +52,29 @@ export type ResolveSessionResult =
 export interface ResolveScopesInput {
   principal_id: string;
   context_id: string;
+  // IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — OPTIONAL consumer so the
+  // adapter applies the same platform-sentinel status-gate exemption at refresh
+  // that it applies at login. undefined = tenant consumer (gate applies).
+  consumer?: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
 }
 
 // The re-mint path (refresh): re-resolve a known principal's authz_version + site
 // claim in a context, reusing the SAME site-stamp logic resolveSession performs.
 // `scopes` remains for server-side use (e.g. any response body); the re-minted
 // compact token carries `authz_version`, not scopes.
-export interface ResolveScopesResult {
-  scopes: string[];
-  authz_version: number;
-  claims?: Record<string, string>;
-}
+// IC-2 PR-5 (Amendment A2): the result is `resolved | denied` — the adapter
+// re-proves ELIGIBILITY (User active, active membership in the context, tenant
+// not SUSPENDED/CLOSED for tenant consumers) before a session is re-minted;
+// `denied` reasons: user_inactive · membership_inactive · tenant_suspended ·
+// tenant_closed. Auth never trusts the stored token's tenant on its own.
+export type ResolveScopesResult =
+  | {
+      kind: 'resolved';
+      scopes: string[];
+      authz_version: number;
+      claims?: Record<string, string>;
+    }
+  | { kind: 'denied'; reason: string };
 
 export const PRINCIPAL_DIRECTORY = 'PRINCIPAL_DIRECTORY';
 

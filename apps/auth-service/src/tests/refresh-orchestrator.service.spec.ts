@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   AuthorizationVersionService,
   IdentityAuditService,
@@ -45,6 +45,9 @@ interface Mocks {
   role: RoleService;
   jwtIssuer: JwtIssuerService;
   audit: IdentityAuditService;
+  // IC-2 PR-5 — resolveScopes now re-proves eligibility through identity + tenant.
+  identity: IdentityService;
+  tenant: TenantService;
 }
 
 function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
@@ -81,14 +84,20 @@ function makeMocks(overrides: Partial<Mocks> = {}): Mocks {
     audit: {
       writeEvent: vi.fn().mockResolvedValue(undefined),
     } as unknown as IdentityAuditService,
+    identity: {
+      findUserById: vi.fn().mockResolvedValue({ id: USER_ID, is_active: true }),
+    } as unknown as IdentityService,
+    tenant: {
+      getTenantsByUser: vi.fn().mockResolvedValue([{ id: TENANT_ID, name: 'Tenant One', status: 'ACTIVE' }]),
+    } as unknown as TenantService,
     ...overrides,
   };
 }
 
 function makeSvc(mocks: Mocks): RefreshOrchestratorService {
   const principals = new IdentityPrincipalDirectoryAdapter(
-    {} as IdentityService, // resolveScopes never touches identity/tenant/audit
-    {} as TenantService,
+    mocks.identity, // IC-2 PR-5: resolveScopes re-proves eligibility (user + membership + status)
+    mocks.tenant,
     mocks.role,
     {} as IdentityAuditService,
     { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService,
@@ -283,5 +292,104 @@ describe('RefreshOrchestratorService.handleRefresh', () => {
     expect(mocks.role.getScopesByUserTenantAndSite).not.toHaveBeenCalled();
     const signCall = (mocks.jwtIssuer.sign as ReturnType<typeof vi.fn>).mock.calls[0]![0]!;
     expect('site_id' in signCall).toBe(false);
+  });
+});
+
+// IC-2 PR-5 — refresh security: host binding (session surface) + eligibility
+// re-proven before any re-mint; the presented token is revoked on a denial.
+describe('IC-2 PR-5 — refresh host binding + eligibility', () => {
+  const BINDING_ENV = ['AUTH_HOST_TENANT_BINDING', 'AUTH_ALLOW_UNBOUND_HOST'] as const;
+  let saved: Partial<Record<string, string | undefined>> = {};
+  beforeEach(() => {
+    saved = {};
+    for (const k of BINDING_ENV) {
+      saved[k] = process.env[k];
+      delete process.env[k];
+    }
+  });
+  afterEach(() => {
+    for (const k of BINDING_ENV) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+  const input = { consumer: 'recruiter' as const, refreshCookie: 'plain' };
+
+  it('log (default): a mismatched host keeps today\'s outcome (success)', async () => {
+    const mocks = makeMocks();
+    const r = await makeSvc(mocks).handleRefresh({ ...input, hostClass: 'TENANT', contextId: 'other-tenant' });
+    expect(r.kind).toBe('success');
+  });
+
+  it('enforce: host of ANOTHER tenant → token_invalid host_tenant_mismatch; no rotation, no re-mint', async () => {
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    const mocks = makeMocks();
+    const r = await makeSvc(mocks).handleRefresh({ ...input, hostClass: 'TENANT', contextId: 'other-tenant' });
+    expect(r).toEqual({ kind: 'token_invalid', reason: 'host_tenant_mismatch' });
+    expect(mocks.refreshTokens.rotate).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
+  });
+
+  it('enforce: missing/unbound host → token_invalid host_unbound unless AUTH_ALLOW_UNBOUND_HOST=true', async () => {
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    const r1 = await makeSvc(makeMocks()).handleRefresh(input);
+    expect(r1).toEqual({ kind: 'token_invalid', reason: 'host_unbound' });
+    process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
+    const r2 = await makeSvc(makeMocks()).handleRefresh(input);
+    expect(r2.kind).toBe('success');
+  });
+
+  it('enforce: same-tenant host → success (valid same-tenant refresh)', async () => {
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    const mocks = makeMocks();
+    const r = await makeSvc(mocks).handleRefresh({ ...input, hostClass: 'TENANT', contextId: TENANT_ID });
+    expect(r.kind).toBe('success');
+    expect(mocks.jwtIssuer.sign).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: TENANT_ID }));
+  });
+
+  it('enforce: platform token on the PLATFORM host → success; on a TENANT host → host_class_consumer_mismatch', async () => {
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    const sentinel = '01900000-0000-7000-8000-000000000100';
+    const platformMocks = () =>
+      makeMocks({
+        refreshTokens: {
+          ...makeMocks().refreshTokens,
+          findByHash: vi.fn().mockResolvedValue(makeDto({ consumer_type: 'platform', tenant_id: sentinel })),
+        } as unknown as RefreshTokenService,
+        tenant: { getTenantsByUser: vi.fn().mockResolvedValue([{ id: sentinel, name: 'Aramo Platform', status: 'PROVISIONED' }]) } as unknown as TenantService,
+      });
+    const ok = await makeSvc(platformMocks()).handleRefresh({ consumer: 'platform', refreshCookie: 'p', hostClass: 'PLATFORM', contextId: null });
+    expect(ok.kind).toBe('success');
+    const bad = await makeSvc(platformMocks()).handleRefresh({ consumer: 'platform', refreshCookie: 'p', hostClass: 'TENANT', contextId: TENANT_ID });
+    expect(bad).toEqual({ kind: 'token_invalid', reason: 'host_tenant_mismatch' });
+  });
+
+  it.each([
+    ['disabled User', { identity: { findUserById: vi.fn().mockResolvedValue({ id: USER_ID, is_active: false }) } }, 'user_inactive'],
+    ['no active membership in the stored tenant', { tenant: { getTenantsByUser: vi.fn().mockResolvedValue([]) } }, 'membership_inactive'],
+    ['SUSPENDED tenant', { tenant: { getTenantsByUser: vi.fn().mockResolvedValue([{ id: TENANT_ID, name: 'T', status: 'SUSPENDED' }]) } }, 'tenant_suspended'],
+    ['CLOSED tenant', { tenant: { getTenantsByUser: vi.fn().mockResolvedValue([{ id: TENANT_ID, name: 'T', status: 'CLOSED' }]) } }, 'tenant_closed'],
+  ] as const)('%s → token_invalid %s; presented token REVOKED; session.revoked audited; nothing re-minted', async (_l, over, reason) => {
+    const mocks = makeMocks(over as unknown as Partial<Mocks>);
+    const r = await makeSvc(mocks).handleRefresh(input);
+    expect(r).toEqual({ kind: 'token_invalid', reason });
+    expect(mocks.refreshTokens.revoke).toHaveBeenCalledWith({ id: TOKEN_ID });
+    expect(mocks.refreshTokens.rotate).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
+    expect(mocks.audit.writeEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ event_type: 'identity.session.revoked', payload: expect.objectContaining({ reason: `refresh_denied:${reason}` }) }),
+    );
+  });
+
+  it('a stored token whose tenant is NOT the user\'s owning tenant cannot re-mint that tenant (membership_inactive)', async () => {
+    const mocks = makeMocks({
+      refreshTokens: {
+        ...makeMocks().refreshTokens,
+        findByHash: vi.fn().mockResolvedValue(makeDto({ tenant_id: 'foreign-tenant' })),
+      } as unknown as RefreshTokenService,
+    });
+    const r = await makeSvc(mocks).handleRefresh(input);
+    expect(r).toEqual({ kind: 'token_invalid', reason: 'membership_inactive' });
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
   });
 });

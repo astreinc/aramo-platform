@@ -13,7 +13,8 @@ import {
 } from 'jose';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { JwtAuthGuard } from '../lib/jwt-auth.guard.js';
+import { JwtAuthGuard, assertTierTripwire, isPlatformRoutePath } from '../lib/jwt-auth.guard.js';
+import { PLATFORM_TENANT_SENTINEL_ID } from '../lib/auth-context.types.js';
 import type {
   EffectiveAuthorizationResolution,
   EffectiveAuthorizationResolver,
@@ -38,6 +39,7 @@ const ALG = 'RS256';
 interface MutableRequest {
   headers: Record<string, string>;
   cookies: Record<string, string>;
+  path?: string;
   requestId?: string;
   authContext?: unknown;
   header(name: string): string | undefined;
@@ -46,6 +48,7 @@ interface MutableRequest {
 function makeRequest(
   headers: Record<string, string>,
   cookies: Record<string, string> = {},
+  path = '/v1/consents',
 ): MutableRequest {
   const lower = Object.fromEntries(
     Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
@@ -53,6 +56,7 @@ function makeRequest(
   return {
     headers: lower,
     cookies,
+    path,
     requestId: 'test-req',
     header(name: string): string | undefined {
       return lower[name.toLowerCase()];
@@ -377,5 +381,86 @@ describe('JwtAuthGuard', () => {
     );
     const source = await readFile(authController, 'utf8');
     expect(source).toContain("'aramo_access_token'");
+  });
+});
+
+// IC-2 PR-5 — the GENERIC both-direction tier tripwire (AUTHZ-2 DDR §13.1;
+// IC-0 §F.2 rule 2). Replaces reliance on per-route hand-placed assertions.
+describe('JwtAuthGuard — generic tier tripwire (PR-5)', () => {
+  let guard: JwtAuthGuard;
+  let resolver: StubResolver;
+  const originalEnv = { ...process.env };
+  beforeEach(() => {
+    resolver = new StubResolver();
+    guard = new JwtAuthGuard(resolver);
+    process.env['AUTH_PUBLIC_KEY'] = keyPair.publicPem;
+    process.env['AUTH_AUDIENCE'] = AUDIENCE;
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('a platform token on a tenant-facing route → 403 INSUFFICIENT_PERMISSIONS (platform_token_on_tenant_route)', async () => {
+    const token = await makeToken({ consumer_type: 'platform', tenant_id: PLATFORM_TENANT_SENTINEL_ID });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/v1/tenant/users');
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'platform_token_on_tenant_route' } },
+    });
+    expect(request.authContext).toBeUndefined();
+  });
+
+  it('a platform token on a platform route → allowed', async () => {
+    const token = await makeToken({ consumer_type: 'platform', tenant_id: PLATFORM_TENANT_SENTINEL_ID });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/platform/tenants');
+    expect(await guard.canActivate(makeContext(request))).toBe(true);
+  });
+
+  it('a tenant (recruiter) token on a platform route → 403 INSUFFICIENT_PERMISSIONS (tenant_token_on_platform_route)', async () => {
+    const token = await makeToken();
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/platform/tenants');
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'tenant_token_on_platform_route' } },
+    });
+  });
+
+  it('a non-platform, non-portal token carrying the platform SENTINEL tenant → 403 (sentinel_tenant_requires_platform_consumer)', async () => {
+    const token = await makeToken({ consumer_type: 'recruiter', tenant_id: PLATFORM_TENANT_SENTINEL_ID });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/v1/consents');
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'sentinel_tenant_requires_platform_consumer' } },
+    });
+  });
+
+  it('a portal token carrying the sentinel tenant on a portal route → allowed (portal sessions carry the sentinel by design)', async () => {
+    resolver.next = { status: 'ok', scopes: ['portal:profile:read'] };
+    const token = await makeToken({ consumer_type: 'portal', tenant_id: PLATFORM_TENANT_SENTINEL_ID });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/v1/portal/profile');
+    expect(await guard.canActivate(makeContext(request))).toBe(true);
+  });
+
+  it('isPlatformRoutePath: exact prefix only', () => {
+    expect(isPlatformRoutePath('/platform')).toBe(true);
+    expect(isPlatformRoutePath('/platform/tenants')).toBe(true);
+    expect(isPlatformRoutePath('/platforms')).toBe(false);
+    expect(isPlatformRoutePath('/v1/platform')).toBe(false);
+    expect(isPlatformRoutePath('')).toBe(false);
+  });
+
+  it('assertTierTripwire is pure: the matrix', () => {
+    const ok = (c: string, t: string, p: string) => assertTierTripwire({ consumer_type: c as never, tenant_id: t }, p, 'r');
+    expect(() => ok('recruiter', 't-1', '/v1/x')).not.toThrow();
+    expect(() => ok('esign', 't-1', '/v1/esign/sender')).not.toThrow();
+    expect(() => ok('platform', PLATFORM_TENANT_SENTINEL_ID, '/platform/x')).not.toThrow();
+    expect(() => ok('portal', PLATFORM_TENANT_SENTINEL_ID, '/v1/portal/x')).not.toThrow();
+    expect(() => ok('platform', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
+    expect(() => ok('recruiter', 't-1', '/platform/x')).toThrow();
+    expect(() => ok('esign', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
+    expect(() => ok('ingestion', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
   });
 });

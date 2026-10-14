@@ -703,3 +703,52 @@ describe('IdentityService.replaceMembershipRoles — D5 in-service safe-by-const
     });
   });
 });
+
+// IC-2 PR-5 — platform-tier role keys are NEVER assignable through a tenant-side
+// path; only an explicit allow_platform_roles (platform-admin invite against the
+// sentinel tenant) admits them. Fires BEFORE the D5 gate and any write.
+describe('IdentityService — platform-tier roles not assignable tenant-side (IC-2 PR-5)', () => {
+  const base = {
+    email: 'ops@acme.io',
+    display_name: null,
+    provider: 'cognito',
+    provider_subject: 'cog-ops-1',
+    tenant_id: '01900000-0000-7000-8000-000000000001',
+    role_keys: ['super_admin'],
+    role_ids: ['role-super_admin'],
+    actor_user_id: 'super-admin-1',
+    request_id: REQUEST_ID,
+  } as const;
+  it('createUserFromInvitation with super_admin (no allow flag) → VALIDATION_ERROR platform_role_not_assignable; ZERO writes', async () => {
+    const { identitySvc, repoSpies, auditSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    await expect(identitySvc.createUserFromInvitation({ ...base })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 400,
+      context: { details: { reason: 'platform_role_not_assignable', role_keys: ['super_admin'] } },
+    });
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+    expect(auditSpies.writeGlobalEvent).not.toHaveBeenCalled();
+  });
+  it('createInvitedUserNoSub (tenant-tier invite) with super_admin → refused before any write', async () => {
+    const { identitySvc, repoSpies } = buildInServiceFixture(SAFE_MULTI_ROLES);
+    await expect(
+      identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['recruiter', 'super_admin'], role_ids: ['r', 's'], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable' } } });
+    expect(repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+  });
+  it('replaceMembershipRoles with super_admin → refused; with allow_platform_roles=true → proceeds', async () => {
+    const refused = buildInServiceFixture(SAFE_MULTI_ROLES);
+    await expect(
+      refused.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', role_keys: ['super_admin'], role_ids: ['role-super_admin'], request_id: REQUEST_ID }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable' } } });
+    const allowed = buildInServiceFixture(SAFE_MULTI_ROLES);
+    await allowed.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', role_keys: ['super_admin'], role_ids: ['role-super_admin'], request_id: REQUEST_ID, allow_platform_roles: true });
+    expect(allowed.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-super_admin'] });
+  });
+  it('the tenant-assignable partition excludes exactly the platform keys', async () => {
+    const { PLATFORM_ROLE_KEYS, SEED_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
+    expect([...PLATFORM_ROLE_KEYS]).toEqual(['super_admin']);
+    expect(TENANT_ASSIGNABLE_ROLE_KEYS).not.toContain('super_admin');
+    expect(TENANT_ASSIGNABLE_ROLE_KEYS.length).toBe(SEED_ROLE_KEYS.length - PLATFORM_ROLE_KEYS.length);
+  });
+});

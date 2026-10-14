@@ -68,6 +68,18 @@ export const SEED_ROLE_KEYS = [
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 
+// IC-2 PR-5 (IC-0 §F.2 rule 2 / L10) — the PLATFORM-TIER partition of the
+// catalog. These keys are grantable ONLY against the platform sentinel tenant
+// (apps/platform-admin's own invite flow, which passes allow_platform_roles);
+// every tenant-side assignment path (tenant invite, PATCH roles, platform-tier
+// invite INTO a tenant) refuses them with VALIDATION_ERROR
+// `platform_role_not_assignable`. TENANT_ASSIGNABLE_ROLE_KEYS is the DTO-level
+// allow-list for tenant-facing surfaces (SEED minus the platform partition).
+export const PLATFORM_ROLE_KEYS = ['super_admin'] as const;
+export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter(
+  (k) => !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
+);
+
 // RoleDto — public shape of the Role entity.
 export interface RoleDto {
   id: string;
