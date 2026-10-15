@@ -161,6 +161,24 @@ NOT compare recorded-vs-on-disk counts, so an orphan ledger row (a migration del
 still recorded — e.g. a retired net-zero pair) can never false-FATAL the deploy; only a genuinely
 unapplied on-disk migration blocks. On ERROR, **STOP** — do NOT build/recreate on a half-migrated DB.
 
+**Bounded apply — `--until` (expand-before-restrict releases).** When a release carries a
+*restrict* migration (`SET NOT NULL`, a new uniqueness constraint, a trigger) that may only be
+applied AFTER the upgraded writers are the running image, the migrate step is split in two:
+```
+bash deploy/migrate-prod.sh --until <migration-dir-name>   # Release A: expand + backfill ONLY
+```
+The name is the exact migration directory name (e.g. `--until 20261015000001_ic1_user_tenant_owner_backfill`).
+The runner resolves it against the ordered on-disk manifest — exactly one match, or it refuses with
+nothing applied — applies every pending migration at-or-before that position, and verifies against
+the ledger that nothing beyond it was applied. The gate for a bounded run passes iff
+`db:sync:local pending-before-stop — 0 …`; the `deferred — N` migrations stay pending **on purpose**.
+Continue with STEP 5–8 and the release's verification queries, then apply the remainder:
+```
+bash deploy/migrate-prod.sh                                 # Release B: the deferred restrict files
+```
+(or a later `--until` to bound Release B too). A plain run's behaviour is unchanged. Precedent:
+IC-1 (PR #937), Lead Architect ruling 2026-10-14 — the two-release sequence is MANDATORY there.
+
 ### STEP 4 — SEED (only if RUN_SEED=yes)
 > ⚠ **ORDER (v2.3):** STAGE C runs the policy seed from the **built api image**, so
 > **STEP 5 (BUILD) MUST complete before this step.** Run order for a RUN_SEED=yes

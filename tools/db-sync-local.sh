@@ -17,15 +17,28 @@
 #   Existing already-synced DB:  tools/db-sync-local.sh --baseline  # stamp current state ONCE
 #                                tools/db-sync-local.sh             # then applies only NEW migrations
 #   Status:                      tools/db-sync-local.sh --status
+#   Bounded apply (stop point):  tools/db-sync-local.sh --until <migration-dir-name>
+#                                tools/db-sync-local.sh --status --until <migration-dir-name>
+#
+# --until <migration-dir-name> (IC-1 expand-before-restrict, Lead Architect ruling
+# 2026-10-14): a BOUNDED apply that stops AFTER the named migration. The stop point
+# is resolved against the ORDERED manifest (mig_list), not a bare directory-exists
+# check: exactly one on-disk migration whose directory name equals the argument, at
+# a known manifest position; the apply loop walks the manifest in order and stops
+# after that position. Nothing before the stop point can be skipped; nothing after
+# it is applied, and the run VERIFIES that against the ledger before exiting 0. A
+# later run WITHOUT --until applies the deferred remainder — that remainder IS the
+# next release's zero-pending gate. --until never changes what a plain run does.
 #
 # DATABASE_URL is read from the environment or .env (the ?schema= suffix is
 # stripped — psql rejects it).
 #
-# STRUCTURE (testability): the pure helpers mig_list() and compute_pending() are
-# defined at top level and have NO side effects on definition, so a unit test can
-# `source` this file and exercise them WITHOUT running any psql/DDL. Everything
-# with side effects lives in main(), guarded behind BASH_SOURCE==$0. See
-# tools/db-sync-local.test.sh.
+# STRUCTURE (testability): the pure helpers mig_list(), compute_pending(),
+# parse_args(), until_resolve() and compute_pending_split() are defined at top
+# level and have NO side effects on definition, so a unit test can `source` this
+# file and exercise them WITHOUT running any psql/DDL. Everything with side effects
+# lives in main(), guarded behind BASH_SOURCE==$0. See tools/db-sync-local.test.sh
+# (pure) and tools/db-sync-local.pg-integration.sh (real PostgreSQL).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -65,9 +78,78 @@ compute_pending() {
   printf '%s\n' "$out" | wc -l | tr -d ' '
 }
 
+# parse_args "$@" → sets PARSED_MODE (apply | --status | --baseline) and
+# PARSED_UNTIL (migration dir name, or empty). Returns 2 (message on stderr) on an
+# unknown argument, a missing --until value, or --baseline combined with --until:
+# stamping a PREFIX of the manifest as applied is a different operation and is
+# deliberately not offered (it would hide unapplied migrations from the gate).
+# Pure: no side effects beyond the two PARSED_* variables.
+parse_args() {
+  PARSED_MODE="apply"
+  PARSED_UNTIL=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --status|--baseline) PARSED_MODE="$1" ;;
+      --until)
+        if [ -z "${2:-}" ]; then
+          echo "db:sync:local: --until needs a migration directory name (nothing applied)" >&2
+          return 2
+        fi
+        PARSED_UNTIL="$2"
+        shift ;;
+      --until=*) PARSED_UNTIL="${1#--until=}" ;;
+      *)
+        echo "db:sync:local: unknown argument '$1' (nothing applied)" >&2
+        return 2 ;;
+    esac
+    shift
+  done
+  if [ "$PARSED_MODE" = "--baseline" ] && [ -n "$PARSED_UNTIL" ]; then
+    echo "db:sync:local: --until cannot be combined with --baseline (refused; nothing stamped)" >&2
+    return 2
+  fi
+  return 0
+}
+
+# until_resolve <ordered-on-disk-list> <name> → prints "<position>\t<dir>" for the
+# UNIQUE migration whose directory name equals <name> EXACTLY; position is the
+# 1-based index in the ordered manifest. A prefix, a substring or a path never
+# matches. Returns 2 (message on stderr) when 0 or more than 1 entries match, so a
+# typo can never widen the run and a duplicated name across libs is refused.
+until_resolve() {
+  local on_disk="${1:-}" name="${2:-}" hits n
+  if [ -z "$name" ]; then
+    echo "db:sync:local: --until requires a migration directory name" >&2
+    return 2
+  fi
+  hits="$(printf '%s\n' "$on_disk" | sed '/^[[:space:]]*$/d' \
+    | awk -F/ -v want="$name" '{ if ($(NF-1) == want) print NR "\t" $0 }')"
+  n="$(printf '%s' "$hits" | grep -c . || true)"
+  case "$n" in
+    1) printf '%s\n' "$hits"; return 0 ;;
+    0) echo "db:sync:local: --until '${name}' matches NO on-disk migration (exact directory name required; nothing applied)" >&2
+       return 2 ;;
+    *) echo "db:sync:local: --until '${name}' is AMBIGUOUS (${n} on-disk migrations carry that name; nothing applied)" >&2
+       return 2 ;;
+  esac
+}
+
+# compute_pending_split <ordered-on-disk-list> <recorded> <stop-position> → echoes
+# "<pending at-or-before stop> <pending after stop>". The split is by MANIFEST
+# POSITION (the order the apply loop walks), so "before" is exactly what a bounded
+# run may apply and "after" is exactly what it must leave alone.
+compute_pending_split() {
+  local on_disk="${1:-}" recorded="${2:-}" stop="${3:-0}" clean before after
+  clean="$(printf '%s\n' "$on_disk" | sed '/^[[:space:]]*$/d')"
+  before="$(printf '%s\n' "$clean" | awk -v s="$stop" 'NR<=s')"
+  after="$(printf '%s\n' "$clean" | awk -v s="$stop" 'NR>s')"
+  printf '%s %s' "$(compute_pending "$before" "$recorded")" "$(compute_pending "$after" "$recorded")"
+}
+
 main() {
   cd "$ROOT"
-  local MODE="${1:-apply}"
+  parse_args "$@" || exit 2
+  local MODE="$PARSED_MODE" UNTIL="$PARSED_UNTIL"
 
   # Locate psql (homebrew libpq is keg-only and often off PATH).
   local PSQL_BIN
@@ -83,11 +165,22 @@ main() {
 
   q() { "$PSQL_BIN" "$URL" -v ON_ERROR_STOP=1 -q -t -A "$@"; }
 
+  # The ordered manifest, read ONCE: the stop point is resolved against it BEFORE
+  # any DB access, so a bad --until fails with nothing touched (exit 2).
+  local on_disk_all tot STOP_POS=0 STOP_DIR="" resolved
+  on_disk_all="$(mig_list)"
+  tot="$(printf '%s\n' "$on_disk_all" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
+  if [ -n "$UNTIL" ]; then
+    resolved="$(until_resolve "$on_disk_all" "$UNTIL")" || exit 2
+    STOP_POS="$(printf '%s' "$resolved" | cut -f1)"
+    STOP_DIR="$(printf '%s' "$resolved" | cut -f2)"
+  fi
+
   # --status is READ-ONLY (R-STATUS-READONLY): report the ledger count with NO DDL. If the
   # ledger table is absent, report 0 — never CREATE it in status mode, so a read-only recon
   # is safe to run against any environment (including production).
   if [ "$MODE" = "--status" ]; then
-    local rec recorded_names tot on_disk pending
+    local rec recorded_names pending split
     if [ "$(q -c "SELECT to_regclass('public._local_migrations') IS NOT NULL;")" = "t" ]; then
       rec="$(q -c "SELECT count(*) FROM public._local_migrations;")"
       recorded_names="$(q -c "SELECT name FROM public._local_migrations;")"
@@ -95,12 +188,16 @@ main() {
       rec=0
       recorded_names=""
     fi
-    on_disk="$(mig_list)"
-    tot="$(printf '%s\n' "$on_disk" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')"
     # Membership is an exact match on the relative dir path (the ledger key), read-only.
-    pending="$(compute_pending "$on_disk" "$recorded_names")"
+    pending="$(compute_pending "$on_disk_all" "$recorded_names")"
     echo "db:sync:local status — ${rec}/${tot} migrations recorded as applied"
     echo "db:sync:local pending — ${pending} on-disk migration(s) not yet applied"
+    if [ -n "$UNTIL" ]; then
+      split="$(compute_pending_split "$on_disk_all" "$recorded_names" "$STOP_POS")"
+      echo "db:sync:local stop — ${UNTIL} at manifest position ${STOP_POS}/${tot}"
+      echo "db:sync:local pending-before-stop — ${split%% *} on-disk migration(s) not yet applied"
+      echo "db:sync:local deferred — ${split##* } on-disk migration(s) after the stop point (not applied by a bounded run)"
+    fi
     exit 0
   fi
 
@@ -115,9 +212,21 @@ main() {
   # empty engagement schema shell). Removing the guard leaves no obsolete engagement-path
   # reference in the tooling.
 
-  local applied=0 baselined=0 skipped=0 d f name err
+  # Ledger snapshot BEFORE the walk: the bounded run's post-verification compares
+  # against it to prove nothing beyond the stop point was recorded by this run.
+  local recorded_before=""
+  [ -n "$UNTIL" ] && recorded_before="$(q -c "SELECT name FROM public._local_migrations;")"
+
+  local applied=0 baselined=0 skipped=0 pos=0 d f name err
   while IFS= read -r d; do
     [ -n "$d" ] || continue
+    pos=$((pos + 1))
+    # The bounded walk ends AFTER the stop position; positions are manifest
+    # positions (every entry counts, migration.sql present or not), the same
+    # numbering until_resolve reported.
+    if [ "$STOP_POS" -gt 0 ] && [ "$pos" -gt "$STOP_POS" ]; then
+      break
+    fi
     f="${d}migration.sql"
     [ -f "$f" ] || continue
     name="$(basename "$d")"
@@ -145,17 +254,53 @@ main() {
       echo "db:sync:local: aborted on ${name} (nothing further applied)"
       exit 1
     fi
-  done < <(mig_list)
+  done < <(printf '%s\n' "$on_disk_all")
 
   if [ "$MODE" = "--baseline" ]; then
     echo "db:sync:local --baseline — stamped ${baselined} migrations as already-applied (${skipped} already recorded)"
-  else
-    echo "db:sync:local — ${applied} applied, ${skipped} already present"
+    exit 0
   fi
+
+  if [ -z "$UNTIL" ]; then
+    echo "db:sync:local — ${applied} applied, ${skipped} already present"
+    exit 0
+  fi
+
+  # Bounded run: VERIFY against the ledger before claiming success.
+  #   (1) every manifest entry at-or-before the stop point is now recorded;
+  #   (2) NO entry after the stop point was recorded by THIS run (newly recorded
+  #       set ∩ after-stop set must be empty). Either failing is exit 1 — the
+  #       deploy gate must never read a bounded run as "safe" on a false premise.
+  local recorded_after split before after after_list newly newly_after
+  recorded_after="$(q -c "SELECT name FROM public._local_migrations;")"
+  split="$(compute_pending_split "$on_disk_all" "$recorded_after" "$STOP_POS")"
+  before="${split%% *}"
+  after="${split##* }"
+  after_list="$(printf '%s\n' "$on_disk_all" | sed '/^[[:space:]]*$/d' | awk -v s="$STOP_POS" 'NR>s')"
+  newly="$(comm -13 \
+    <(printf '%s\n' "$recorded_before" | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u) \
+    <(printf '%s\n' "$recorded_after"  | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u))"
+  newly_after="$(comm -12 \
+    <(printf '%s\n' "$after_list" | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u) \
+    <(printf '%s\n' "$newly"      | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u))"
+  if [ -n "$newly_after" ]; then
+    echo "db:sync:local: FATAL — bounded run recorded migration(s) BEYOND the stop point:" >&2
+    printf '%s\n' "$newly_after" | sed 's/^/    /' >&2
+    exit 1
+  fi
+  if [ "$before" != "0" ]; then
+    echo "db:sync:local: FATAL — ${before} migration(s) at-or-before the stop point remain unapplied" >&2
+    exit 1
+  fi
+  echo "db:sync:local — ${applied} applied, ${skipped} already present"
+  echo "db:sync:local stop — ${UNTIL} at manifest position ${STOP_POS}/${tot}"
+  echo "db:sync:local pending-before-stop — 0 on-disk migration(s) not yet applied"
+  echo "db:sync:local deferred — ${after} on-disk migration(s) after the stop point (not applied by a bounded run)"
+  echo "db:sync:local verified — no migration beyond the stop point was applied by this run"
 }
 
 # Run only when executed directly; a `source` (the unit test) reaches the pure
-# mig_list()/compute_pending() helpers without running any psql/DDL.
+# helpers without running any psql/DDL.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
   main "$@"
 fi

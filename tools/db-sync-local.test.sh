@@ -15,6 +15,13 @@
 # dangerously, a false "0 pending"). compute_pending uses `comm`, which reads BOTH
 # streams to EOF (no early close), so the count is deterministic.
 #
+# Also locks the --until (bounded apply) pure helpers: parse_args(),
+# until_resolve() and compute_pending_split() — the stop point is resolved
+# against the ORDERED manifest by exact directory name, a prefix or a duplicate
+# never matches, --baseline + --until is refused, and the before/after split is
+# by manifest position. The real-PostgreSQL behaviour (apply, ledger, abort) is
+# proven by tools/db-sync-local.pg-integration.sh.
+#
 # Run:  bash tools/db-sync-local.test.sh   (exit 0 = all cases correct)
 
 set -uo pipefail
@@ -67,6 +74,69 @@ for i in 1 2 3 4 5 6 7 8; do
     fail=$((fail + 1))
   fi
 done
+
+# --- --until (bounded apply): the pure helpers ----------------------------
+ok()  { echo "  ok    $1"; pass=$((pass + 1)); }
+bad() { echo "  FAIL  $1"; fail=$((fail + 1)); }
+LIST="$A"$'\n'"$B"$'\n'"$C"$'\n'"$D"
+
+# U1 parse_args accepts --status --until <name> and lands both values.
+if parse_args --status --until 20260102000000_b 2>/dev/null \
+   && [ "$PARSED_MODE" = "--status" ] && [ "$PARSED_UNTIL" = "20260102000000_b" ] \
+   && parse_args --until=20260102000000_b 2>/dev/null && [ "$PARSED_MODE" = "apply" ] && [ "$PARSED_UNTIL" = "20260102000000_b" ] \
+   && parse_args 2>/dev/null && [ "$PARSED_MODE" = "apply" ] && [ "$PARSED_UNTIL" = "" ]; then
+  ok "U1 parse_args: --status --until <name> / --until=<name> / no args → mode + stop point land"
+else
+  bad "U1 parse_args: --status --until <name> / --until=<name> / no args"
+fi
+
+# U2 parse_args refuses --baseline+--until, a missing --until value, an unknown flag (rc 2 each).
+r1=0; parse_args --baseline --until 20260102000000_b >/dev/null 2>&1 || r1=$?
+r2=0; parse_args --until >/dev/null 2>&1 || r2=$?
+r3=0; parse_args --bogus >/dev/null 2>&1 || r3=$?
+if [ "$r1" = 2 ] && [ "$r2" = 2 ] && [ "$r3" = 2 ]; then
+  ok "U2 parse_args: --baseline+--until, missing --until value, unknown flag → each refused (rc 2)"
+else
+  bad "U2 parse_args refusals (got rc ${r1}/${r2}/${r3}, expected 2/2/2)"
+fi
+
+# U3 until_resolve: an exact, unique name resolves to its MANIFEST POSITION + dir.
+got="$(until_resolve "$LIST" 20260103000000_c 2>/dev/null)"
+if [ "$got" = "3"$'\t'"$C" ]; then
+  ok "U3 until_resolve: exact unique name → position 3 + dir (ordered manifest)"
+else
+  bad "U3 until_resolve exact match (got '${got}')"
+fi
+
+# U4 until_resolve: no such name → rc 2, prints nothing.
+r=0; got="$(until_resolve "$LIST" 20260199000000_zz 2>/dev/null)" || r=$?
+if [ "$r" = 2 ] && [ -z "$got" ]; then
+  ok "U4 until_resolve: unknown name → refused (rc 2), nothing printed"
+else
+  bad "U4 until_resolve unknown name (rc ${r}, out '${got}')"
+fi
+
+# U5 until_resolve: a PREFIX never matches; a name duplicated across libs is AMBIGUOUS.
+r1=0; until_resolve "$LIST" 20260103000000 >/dev/null 2>&1 || r1=$?
+r2=0; until_resolve "$LIST" c >/dev/null 2>&1 || r2=$?
+DUP="$LIST"$'\n''libs/z/prisma/migrations/20260103000000_c/'
+r3=0; until_resolve "$DUP" 20260103000000_c >/dev/null 2>&1 || r3=$?
+if [ "$r1" = 2 ] && [ "$r2" = 2 ] && [ "$r3" = 2 ]; then
+  ok "U5 until_resolve: timestamp prefix / bare suffix / duplicated name → each refused (rc 2)"
+else
+  bad "U5 until_resolve prefix+ambiguity (got rc ${r1}/${r2}/${r3}, expected 2/2/2)"
+fi
+
+# U6 compute_pending_split splits by MANIFEST POSITION: pending at-or-before vs after the stop.
+if [ "$(compute_pending_split "$LIST" "" 2)" = "2 2" ] \
+   && [ "$(compute_pending_split "$LIST" "$A" 2)" = "1 2" ] \
+   && [ "$(compute_pending_split "$LIST" "$A"$'\n'"$B"$'\n'"$C" 2)" = "0 1" ] \
+   && [ "$(compute_pending_split "$LIST" "$D" 4)" = "3 0" ] \
+   && [ "$(compute_pending_split "$LIST" "$LIST" 2)" = "0 0" ]; then
+  ok "U6 compute_pending_split: before/after counts follow manifest position, not the ledger"
+else
+  bad "U6 compute_pending_split (got '$(compute_pending_split "$LIST" "" 2)' '$(compute_pending_split "$LIST" "$A" 2)' '$(compute_pending_split "$LIST" "$A"$'\n'"$B"$'\n'"$C" 2)' '$(compute_pending_split "$LIST" "$D" 4)')"
+fi
 
 echo "db-sync-local.test — ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]

@@ -36,6 +36,16 @@
 # Provable LOCALLY (against a running prod-style stack) with overrides:
 #   ARAMO_DIR=$PWD ARAMO_ENV_FILE=$PWD/.env deploy/migrate-prod.sh
 # The gate parse is unit-checked (no docker/DB) by deploy/migrate-prod.test.sh.
+#
+# BOUNDED apply — `deploy/migrate-prod.sh --until <migration-dir-name>` (IC-1
+# expand-before-restrict, Lead Architect ruling 2026-10-14). Passed through to
+# tools/db-sync-local.sh, which resolves the name against the ORDERED manifest
+# (exactly one match or it refuses with nothing applied), applies every pending
+# migration at-or-before that position, and verifies against the ledger that
+# nothing beyond it was applied. The GATE for a bounded run reads the
+# `pending-before-stop — K` line (K must be 0); the `deferred — N` migrations
+# stay pending on purpose and are the NEXT release's gate. Without --until this
+# script's behaviour is unchanged.
 
 set -euo pipefail
 
@@ -61,6 +71,8 @@ ENV_FILE="${ARAMO_ENV_FILE:-${ARAMO_DIR}/.env}"
 COMPOSE_PROJECT="${ARAMO_COMPOSE_PROJECT:-aramo-singlebox}"
 NETWORK="${ARAMO_MIGRATE_NETWORK:-${COMPOSE_PROJECT}_default}"
 MIGRATE_IMAGE="${ARAMO_MIGRATE_IMAGE:-postgres:17}"
+# Stop point of a bounded run (empty = plain run). Set by main() from --until.
+UNTIL=""
 
 # --- helpers --------------------------------------------------------------
 
@@ -86,14 +98,19 @@ build_dburl() {
 
 # Run the idempotent runner in a postgres:17 container on the compose network.
 # $1 = mode: empty → apply; '--status' → read-only count. DATABASE_URL is passed
-# from the already-resolved shell variable, so its '$' is NOT re-expanded.
+# from the already-resolved shell variable, so its '$' is NOT re-expanded. A
+# bounded run appends `--until <name>` to BOTH the status reads and the apply, so
+# the pre-status, the apply and the gate all see the same stop point.
 run_runner() {
+  local args=()
+  [ -n "${1:-}" ] && args+=("$1")
+  [ -n "${UNTIL:-}" ] && args+=(--until "$UNTIL")
   docker run --rm \
     --network "$NETWORK" \
     -v "$ARAMO_DIR":/repo -w /repo \
     -e DATABASE_URL="$DBURL" \
     "$MIGRATE_IMAGE" \
-    bash tools/db-sync-local.sh ${1:-}
+    bash tools/db-sync-local.sh ${args[@]+"${args[@]}"}
 }
 
 # THE GATE — PENDING-SET based (orphan-immune). db:sync:local --status prints:
@@ -104,8 +121,21 @@ run_runner() {
 # net-zero pair) makes recorded > on-disk and would false-FATAL a count gate,
 # even though nothing is actually pending. Only a genuinely unapplied on-disk
 # migration (K > 0) must block. Missing/garbage 'pending' line → 1 (fail closed).
+#
+# $2 = 1 for a BOUNDED run: the verdict then comes ONLY from the
+#   'db:sync:local pending-before-stop — K on-disk migration(s) not yet applied'
+# line (K must be 0); the total 'pending' line is expected to be > 0 (the
+# deferred remainder) and is ignored. A bounded run whose status carries no
+# pending-before-stop line fails closed. $2 absent/0 = the legacy verdict, which
+# reads the total 'pending' line only — a stray before-stop line never changes it.
 gate_passes() {
-  local status="$1" pending
+  local status="$1" bounded="${2:-0}" pending before
+  if [ "$bounded" = "1" ]; then
+    before="$(printf '%s' "$status" | sed -nE 's/^db:sync:local pending-before-stop — ([0-9]+) on-disk.*/\1/p' | head -n1)"
+    [ -n "$before" ] || return 1
+    [ "$before" -eq 0 ] 2>/dev/null
+    return
+  fi
   pending="$(printf '%s' "$status" | sed -nE 's/^db:sync:local pending — ([0-9]+) on-disk.*/\1/p' | head -n1)"
   [ -n "$pending" ] || return 1
   [ "$pending" -eq 0 ] 2>/dev/null
@@ -115,6 +145,19 @@ gate_passes() {
 
 main() {
   trap on_exit EXIT
+  # Arguments: only `--until <migration-dir-name>` is accepted; anything else is
+  # refused before docker is touched (fail closed — a typo must not become a
+  # plain full apply by accident).
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --until)
+        [ -n "${2:-}" ] || { echo "[migrate] FATAL: --until needs a migration directory name." >&2; exit 2; }
+        UNTIL="$2"; shift ;;
+      --until=*) UNTIL="${1#--until=}" ;;
+      *) echo "[migrate] FATAL: unknown argument '$1' (accepted: --until <migration-dir-name>)." >&2; exit 2 ;;
+    esac
+    shift
+  done
   command -v docker >/dev/null 2>&1 || {
     echo "[migrate] FATAL: docker not found on this host." >&2; exit 2; }
   [ -f "$ENV_FILE" ] || {
@@ -123,17 +166,33 @@ main() {
   DBURL="$(build_dburl)"
 
   echo "[migrate] network=${NETWORK} repo=${ARAMO_DIR} image=${MIGRATE_IMAGE}"
+  if [ -n "$UNTIL" ]; then
+    echo "[migrate] BOUNDED apply — stop point: ${UNTIL}"
+    echo "[migrate] Migrations after the stop point are DEFERRED on purpose (expand-before-restrict);"
+    echo "[migrate] they remain pending and are the next release's gate."
+  fi
   echo "[migrate] pre-apply status:"
   run_runner --status
 
   echo "[migrate] applying pending migrations…"
   run_runner
 
-  # GATE: re-read status; N must equal M or the deploy ABORTS (containers are
-  # NOT recreated — exit non-zero stops the deploy sequence at this step).
+  # GATE: re-read status; the deploy ABORTS unless the gate passes (containers
+  # are NOT recreated — exit non-zero stops the deploy sequence at this step).
   local status
   status="$(run_runner --status)"
   echo "[migrate] post-apply status: ${status}"
+
+  if [ -n "$UNTIL" ]; then
+    if gate_passes "$status" 1; then
+      echo "[migrate] OK — zero pending on-disk migrations at-or-before the stop point '${UNTIL}'."
+      echo "[migrate] Deferred migrations after the stop point stay pending (see status above). Safe to build + recreate containers."
+    else
+      echo "[migrate] FATAL: migrations at-or-before the stop point remain unapplied, or the runner reported no stop-point status (see above)." >&2
+      exit 1
+    fi
+    return 0
+  fi
 
   if gate_passes "$status"; then
     echo "[migrate] OK — zero pending on-disk migrations. Safe to build + recreate containers."
