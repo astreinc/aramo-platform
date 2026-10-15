@@ -43,8 +43,6 @@ export const RESERVED_CODES: Record<string, string> = {
     'RESERVED (DOC-2): the RenderFailedError domain error (libs/documents-rendering) maps here; rendering runs inside the RTR/Offer orchestrators and is not yet exposed on a throwing HTTP path, so no controller emitter is seen. Registered + documented; HTTP mapping pending.',
   DOCUMENT_UPLOAD_UNSAFE:
     'RESERVED (DOC-2): the UnsafePdfError domain error (libs/documents-rendering) maps here; the upload-safety scan is DARK/unwired, so no emitter exists yet. Registered + documented; throw-site pending.',
-  ENVELOPE_ALREADY_EXECUTED:
-    'RESERVED (DOC-3): the EnvelopeAlreadyExecutedError domain error (libs/esign) maps here — the re-execution guard on an already-executed envelope; not yet exercised on a wired HTTP transition, so no emitter is seen. Registered + documented; throw-site pending.',
   REQUISITION_NO_OPENINGS:
     'RESERVED (T4-B2 §7): the pipeline over-capacity refusal was retired (capacity is now derived), but the code is kept for compatibility — still mapped by the ats-web pipeline error-message map.',
   PIPELINE_SUBMIT_REQUIRES_SUBMITTAL:

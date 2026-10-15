@@ -4,6 +4,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
+  EnvelopeAlreadyExecutedError,
   EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
   EnvelopeNotFoundError,
@@ -39,6 +40,8 @@ import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.
 function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof EnvelopeNotFoundError) return new AramoError('ENVELOPE_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof EnvelopeIllegalTransitionError) return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', e.message, 409, { requestId });
+  // ES-1 — any signer action on a terminal (COMPLETED|DECLINED|VOIDED|EXPIRED) envelope.
+  if (e instanceof EnvelopeAlreadyExecutedError) return new AramoError('ENVELOPE_ALREADY_EXECUTED', e.message, 409, { requestId });
   if (e instanceof SignerNotFoundError) return new AramoError('SIGNER_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof SigningSessionExpiredError) return new AramoError('SIGNING_SESSION_EXPIRED', e.message, 401, { requestId });
   if (e instanceof SigningSessionInvalidError) return new AramoError('SIGNING_SESSION_INVALID', e.message, 401, { requestId });
@@ -279,7 +282,7 @@ export class EsignSignerController {
     validate(typeof body?.reason === 'string' && body.reason.length > 0, 'reason is required', requestId);
     try {
       const ctx = await this.service.resolveSession(body.token);
-      await this.service.decline(ctx.tenant_id, ctx.envelope_id, ctx.signer_id, body.reason);
+      await this.service.decline(ctx.tenant_id, ctx.envelope_id, ctx.signer_id, body.reason, ctx.session_id);
       return { declined: true };
     } catch (e) {
       throw toHttp(e, requestId);

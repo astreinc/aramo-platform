@@ -4489,6 +4489,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-lifecycle-guard.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-reminder.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
