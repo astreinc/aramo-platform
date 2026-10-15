@@ -68,6 +68,7 @@ import { TalentCreateView } from './talent/TalentCreateView';
 import { DraftsLegacyRedirect } from './talent/DraftsLegacyRedirect';
 import { Talent360View } from './talent-360/Talent360View';
 import { TalentEditView } from './talent/TalentEditView';
+import { TalentRequisition360View } from './requisitions/talent-requisition-360/TalentRequisition360View';
 import { RecruiterShell } from './shell/RecruiterShell';
 import { TalentListView } from './talent/TalentListView';
 import { TeamMembersView } from './teams/TeamMembersView';
@@ -276,6 +277,24 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <RequisitionDetailView />
+                        </RouteGuard>
+                      }
+                    />
+                    {/* Talent × Requisition 360 — one talent on one requisition, full page
+                        (replaces the former talent drawer). Needs both reads. */}
+                    <Route
+                      path="requisitions/:reqId/talent/:talentId"
+                      element={
+                        <RouteGuard
+                          requireScope="requisition:read"
+                          sessionStateOverride={state}
+                        >
+                          <RouteGuard
+                            requireScope="talent:read"
+                            sessionStateOverride={state}
+                          >
+                            <TalentRequisition360View />
+                          </RouteGuard>
                         </RouteGuard>
                       }
                     />

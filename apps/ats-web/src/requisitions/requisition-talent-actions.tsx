@@ -1,6 +1,9 @@
 import { ApiError } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 
+import { RecordTalentResponseModal } from '../communications/RecordTalentResponseModal';
+import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
 import { voidPipelineEpisode } from '../pipeline/pipeline-api';
 import type { PipelineView } from '../pipeline/types';
 import type { PlacementView } from '../placement/types';
@@ -11,12 +14,11 @@ import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import type { TalentRecordView } from '../talent/types';
 
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
-import { TalentDetailPanel } from './TalentDetailPanel';
-import { getRequisitionTalentBoard } from './requisition-talent-board-api';
+import { getRequisitionTalentBoard, type BoardCardView } from './requisition-talent-board-api';
+import { talentRequisition360Path, type Tr360NavState } from './talent-requisition-360/route';
 import {
   placementFor,
   summarizePreStart,
-  talentLabel,
   type JourneyCells,
 } from './requisition-journey-helpers';
 import type { RequisitionView } from './types';
@@ -31,8 +33,12 @@ const PRE_START_READ = 'pre_start_requirement:read';
 const RTR_INITIATE = 'document:create';
 
 export interface RequisitionTalentActions {
-  // Open a talent → the owning side panel + lazy CLIENT/PRE-START hydration.
-  readonly openRow: (p: PipelineView) => void;
+  // Open a talent → the Talent × Requisition 360 page (same tab; Back returns here).
+  readonly openTalent: (talentId: string) => void;
+  // Run a card/row's one-step action in place: "Send email" opens the email composer,
+  // "Record response" opens the evidence modal; any other governed action opens the
+  // Talent × Requisition 360 page, where the owning domain's action lives.
+  readonly runCardAction: (card: BoardCardView, talentName: string) => void;
   // Open the governed "Remove from requisition" (VOID) confirmation.
   readonly requestVoid: (pipelineId: string, talentName: string) => void;
   // Open the compose-driven Send RTR panel (SEAM 4) for a not-yet-requested RTR.
@@ -54,12 +60,30 @@ export interface RequisitionTalentActions {
   readonly bumpBoardRefresh: () => void;
   // The per-talent lazy cell cache (CLIENT / PRE-START).
   readonly cells: Record<string, JourneyCells>;
-  // The drawer + VOID modal, rendered once; place next to the surface.
+  // The card-action dialogs + VOID modal + Send RTR panel, rendered once; place next to the surface.
   readonly portals: ReactNode;
 }
 
-// The ONE talent action context — drawer (TalentDetailPanel) + VOID flow
-// (RemoveFromRequisitionModal) + lazy CLIENT/PRE-START reads + board-refresh +
+// The governed VOID refusals, mapped to recruiter copy. Shared by the requisition
+// surfaces and the Talent × Requisition 360 page.
+export function voidErrorMessage(e: unknown): string {
+  const code = e instanceof ApiError ? e.code : '';
+  return code === 'PIPELINE_VOID_HAS_ENGAGEMENT'
+    ? 'This Talent already has engagement on this requisition, so it can no longer be removed as an accidental add.'
+    : code === 'PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY'
+      ? 'This Talent has downstream activity on this requisition and can no longer be removed as an accidental add.'
+      : code === 'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE'
+        ? 'This Talent has progressed past the initial stage and can no longer be removed as an accidental add.'
+        : code === 'PIPELINE_TRANSITION_CONFLICT'
+          ? 'This Talent was updated in another session; refresh and try again.'
+          : e instanceof Error
+            ? e.message
+            : 'Could not remove the Talent from this requisition.';
+}
+
+// The ONE talent action context — open the Talent × Requisition 360 page + in-place
+// card actions (email composer / record response) + VOID flow
+// (RemoveFromRequisitionModal) + CLIENT/PRE-START reads + board-refresh +
 // VOID eligibility. Shared verbatim by the Talent tab (list + board) and the
 // Workspace board embed so neither duplicates a handler nor re-implements the
 // board. Backend/action authority is UNCHANGED: every mutation still rides the
@@ -71,12 +95,11 @@ export function useRequisitionTalentActions({
   talents,
   placements,
   scopes,
-  canEditHot,
   canReadPlacements,
   userNames,
-  onToggleHot,
-  onPipelineUpdated,
   onPipelineRemoved,
+  eagerCells = false,
+  onBeforeOpenTalent,
 }: {
   readonly req: RequisitionView;
   /** Client display name — a read-only field on the Send RTR panel. */
@@ -85,15 +108,18 @@ export function useRequisitionTalentActions({
   readonly talents: Record<string, TalentRecordView>;
   readonly placements: readonly PlacementView[];
   readonly scopes: readonly string[];
-  readonly canEditHot: boolean;
   readonly canReadPlacements: boolean;
   /** User directory display names keyed by user_id (best-effort; for recruiter initials). */
   readonly userNames?: Record<string, string>;
-  readonly onToggleHot: (talentId: string, next: boolean) => Promise<void>;
-  readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
+  /** Hydrate every row's CLIENT / PRE-START cells on mount (the Talent tab List). */
+  readonly eagerCells?: boolean;
+  /** Called right before navigating to the 360 page (the origin saves its view state). */
+  readonly onBeforeOpenTalent?: () => void;
 }): RequisitionTalentActions {
-  const [selected, setSelected] = useState<PipelineView | null>(null);
+  const navigate = useNavigate();
+  const [composerTarget, setComposerTarget] = useState<{ talentId: string; pipelineId: string } | null>(null);
+  const [responseTarget, setResponseTarget] = useState<{ pipelineId: string; talentName: string } | null>(null);
   const [cells, setCells] = useState<Record<string, JourneyCells>>({});
   const [voidTarget, setVoidTarget] = useState<{ pipelineId: string; talentName: string } | null>(null);
   const [voidBusy, setVoidBusy] = useState(false);
@@ -107,8 +133,8 @@ export function useRequisitionTalentActions({
   const canReadPreStart = scopes.includes(PRE_START_READ);
   const canSendRtr = scopes.includes(RTR_INITIATE);
 
-  // Fetch ONE talent's authoritative CLIENT + PRE-START values. No cross-row
-  // fan-out, no speculative values; failures + absences collapse to "—".
+  // Fetch ONE talent's authoritative CLIENT + PRE-START values (one read pair per
+  // talent, cached). No speculative values; failures + absences collapse to "—".
   const fetchCells = useCallback(
     (talentId: string) => {
       setCells((m) => ({ ...m, [talentId]: { status: 'loading' } }));
@@ -131,15 +157,41 @@ export function useRequisitionTalentActions({
     [canReadClient, canReadPreStart, canReadPlacements, placements, req.id],
   );
 
-  // Open a talent row → open the panel + hydrate its cells (cache hit ⇒ no
-  // refetch). The ONLY entry point for the per-talent reads.
-  const openRow = useCallback(
-    (p: PipelineView) => {
-      setSelected(p);
-      if (cells[p.talent_record_id] === undefined) fetchCells(p.talent_record_id);
+  // Open a talent → the Talent × Requisition 360 page, in the same tab. The origin
+  // surface persists its own view state so Back restores it.
+  const openTalent = useCallback(
+    (talentId: string) => {
+      onBeforeOpenTalent?.();
+      const state: Tr360NavState = { tr360From: 'requisition' };
+      navigate(talentRequisition360Path(req.id, talentId), { state });
     },
-    [cells, fetchCells],
+    [navigate, req.id, onBeforeOpenTalent],
   );
+
+  const runCardAction = useCallback(
+    (card: BoardCardView, talentName: string) => {
+      const action = card.next_actions.find((a) => a.key !== 'pipeline.void' && scopes.includes(a.required_scope));
+      if (action?.key === 'pipeline.contact_talent' && scopes.includes('communication:email:send')) {
+        setComposerTarget({ talentId: card.talent_record_id, pipelineId: card.pipeline_id });
+        return;
+      }
+      if (action?.key === 'pipeline.record_talent_response') {
+        setResponseTarget({ pipelineId: card.pipeline_id, talentName });
+        return;
+      }
+      openTalent(card.talent_record_id);
+    },
+    [scopes, openTalent],
+  );
+
+  // CLIENT / PRE-START cells — the Talent tab List hydrates each row once (cache
+  // hit ⇒ no refetch). The row-open that used to trigger this now navigates away.
+  useEffect(() => {
+    if (!eagerCells) return;
+    for (const p of pipelines) {
+      if (cells[p.talent_record_id] === undefined) fetchCells(p.talent_record_id);
+    }
+  }, [eagerCells, pipelines, cells, fetchCells]);
 
   // Talent display names for the Board (keyed by talent_record_id). Reuses the
   // requisition's already-loaded `talents`; the Board never re-fetches per card.
@@ -213,52 +265,42 @@ export function useRequisitionTalentActions({
     try {
       await voidPipelineEpisode(episode.id, { reason: 'ADDED_BY_MISTAKE', expected_version: episode.version });
       onPipelineRemoved(episode.id);
-      if (selected?.id === episode.id) setSelected(null);
       setBoardRefresh((n) => n + 1);
       setVoidTarget(null);
     } catch (e) {
-      const code = e instanceof ApiError ? e.code : '';
-      setVoidError(
-        code === 'PIPELINE_VOID_HAS_ENGAGEMENT'
-          ? 'This Talent already has engagement on this requisition, so it can no longer be removed as an accidental add.'
-          : code === 'PIPELINE_VOID_HAS_DOWNSTREAM_ACTIVITY'
-            ? 'This Talent has downstream activity on this requisition and can no longer be removed as an accidental add.'
-            : code === 'PIPELINE_VOID_NOT_ALLOWED_FROM_STATE'
-              ? 'This Talent has progressed past the initial stage and can no longer be removed as an accidental add.'
-              : code === 'PIPELINE_TRANSITION_CONFLICT'
-                ? 'This Talent was updated in another session; refresh and try again.'
-                : e instanceof Error
-                  ? e.message
-                  : 'Could not remove the Talent from this requisition.',
-      );
+      setVoidError(voidErrorMessage(e));
     } finally {
       setVoidBusy(false);
     }
-  }, [voidTarget, pipelines, selected, onPipelineRemoved]);
+  }, [voidTarget, pipelines, onPipelineRemoved]);
 
   const bumpBoardRefresh = useCallback(() => setBoardRefresh((n) => n + 1), []);
 
   const portals: ReactNode = (
     <>
-      {selected !== null ? (
-        <TalentDetailPanel
-          entry={selected}
-          talentName={talentLabel(talents, selected.talent_record_id)}
-          isNew={false}
-          reqTitle={req.title}
-          reqCode={`REQ-${req.requisition_number}`}
-          scopes={scopes}
-          isHot={talents[selected.talent_record_id]?.is_hot ?? false}
-          canEditHot={canEditHot}
-          onToggleHot={(next) => void onToggleHot(selected.talent_record_id, next)}
-          onClose={() => setSelected(null)}
-          onTransitioned={(u) => {
-            onPipelineUpdated(u);
-            setSelected(u);
-            fetchCells(u.talent_record_id);
+      {composerTarget !== null ? (
+        <RequisitionContactEmailComposer
+          open
+          onOpenChange={(open) => {
+            if (!open) setComposerTarget(null);
           }}
-          canVoid={voidEligibleIds.has(selected.id)}
-          onRequestVoid={requestVoid}
+          talentId={composerTarget.talentId}
+          requisitionId={req.id}
+          pipelineId={composerTarget.pipelineId}
+          onSent={() => setBoardRefresh((n) => n + 1)}
+        />
+      ) : null}
+      {responseTarget !== null ? (
+        <RecordTalentResponseModal
+          open
+          pipelineId={responseTarget.pipelineId}
+          talentName={responseTarget.talentName}
+          reqCode={`REQ-${req.requisition_number}`}
+          onRecorded={() => {
+            setResponseTarget(null);
+            setBoardRefresh((n) => n + 1);
+          }}
+          onClose={() => setResponseTarget(null)}
         />
       ) : null}
       {voidTarget !== null ? (
@@ -292,7 +334,8 @@ export function useRequisitionTalentActions({
   );
 
   return {
-    openRow,
+    openTalent,
+    runCardAction,
     requestVoid,
     requestSendRtr,
     canSendRtr,

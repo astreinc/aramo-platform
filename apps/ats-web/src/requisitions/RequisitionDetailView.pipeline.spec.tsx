@@ -125,6 +125,10 @@ function mountDetail() {
               path="/requisitions/:reqId"
               element={<RequisitionDetailView sessionOverride={SESSION} />}
             />
+            <Route
+              path="/requisitions/:reqId/talent/:talentId"
+              element={<div data-testid="tr360-route" />}
+            />
           </Routes>
         </MemoryRouter>
       </BreadcrumbProvider>
@@ -200,7 +204,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.getByText('· Remote ok')).toBeInTheDocument();
   });
 
-  it('Option A: HOT triage moved OFF the grid INTO the side panel; read-only (disabled) without talent:edit', async () => {
+  it('HOT triage is not on the journey grid; the talent opens the Talent × Requisition 360 page (owning surface)', async () => {
     mockApi();
     mountDetail();
     await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
@@ -208,14 +212,10 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
     // No inline hot toggle on the journey grid.
     expect(screen.queryByRole('button', { name: /is marked hot|Mark .* as hot/ })).toBeNull();
-    // Open the talent row → the side panel owns the HOT toggle.
+    // Open the talent row → same-tab navigation to the 360 page (HOT lives in its ⋯ menu).
     fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
-    const marcusHot = await screen.findByRole('button', {
-      name: /Marcus Adeyemi is marked hot/,
-    });
-    expect(marcusHot).toHaveAttribute('aria-pressed', 'true');
-    // No talent:edit scope → the panel toggle is read-only (disabled).
-    expect(marcusHot).toBeDisabled();
+    expect(await screen.findByTestId('tr360-route')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('parity: Attachments tab present with count', async () => {
@@ -246,19 +246,14 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     // Pipeline cell = status pill (human label + tone); no funnel ribbon.
     expect(screen.getByText('Qualified')).toBeInTheDocument();
     expect(screen.getByText('Qualifying')).toBeInTheDocument();
-    // Talent cell is a button (opens the side panel), not a router link.
+    // Talent cell is a button (opens the Talent × Requisition 360 page).
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /Marcus Adeyemi/ })).toBeInTheDocument(),
     );
     expect(screen.getByRole('button', { name: /Sofia Ramos/ })).toBeInTheDocument();
-    // Drill-through: clicking the talent opens the owning side panel, which
-    // renders the backend-owned journey rail (scoped to the dialog to avoid the
-    // grid's own "Talent journey" heading).
+    // Drill-through: clicking the talent opens the Talent × Requisition 360 page.
     fireEvent.click(screen.getByRole('button', { name: /Marcus Adeyemi/ }));
-    const dialog = await screen.findByRole('dialog');
-    expect(
-      await within(dialog).findByRole('list', { name: 'Talent journey' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId('tr360-route')).toBeInTheDocument();
   });
 
   it('Talent tab: Email (mailto) + Phone cells + RTR action per row', async () => {
@@ -323,74 +318,6 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     expect(screen.queryByRole('region', { name: 'Match insight' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'All stages' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Move' })).toBeNull();
-  });
-
-  it('editable Hot (talent:edit): clicking the toggle PATCHes /v1/talent-records/:id is_hot', async () => {
-    const calls: { url: string; method: string; body: unknown }[] = [];
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const url = urlOf(input);
-      const method = init?.method ?? 'GET';
-      let body: unknown;
-      try {
-        body = init?.body != null ? JSON.parse(String(init.body)) : undefined;
-      } catch {
-        body = undefined;
-      }
-      calls.push({ url, method, body });
-      const json = (b: unknown, s = 200) =>
-        new Response(JSON.stringify(b), {
-          status: s,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      const m = url.match(/\/v1\/talent-records\/(tal-\d)/);
-      if (m?.[1] !== undefined && method === 'PATCH') {
-        return json({ ...TALENTS[m[1]], ...(body as object) });
-      }
-      if (url.includes('/v1/requisitions/req-1')) return json(REQ);
-      if (url.includes('/v1/pipelines')) return json(PIPELINES);
-      if (url.includes('/v1/companies/co-1')) return json({ id: 'co-1', name: 'Northwind Robotics' });
-      if (url.includes('/v1/tenant/users')) return json(ROSTER);
-      if (m?.[1] !== undefined) return json(TALENTS[m[1]]);
-      return json({ items: [] });
-    });
-
-    const editorSession: Session = {
-      ...SESSION,
-      scopes: ['requisition:read', 'pipeline:read', 'talent:edit'],
-    };
-    render(
-      <ToastProvider>
-        <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
-            <Routes>
-              <Route
-                path="/requisitions/:reqId"
-                element={<RequisitionDetailView sessionOverride={editorSession} />}
-              />
-            </Routes>
-          </MemoryRouter>
-        </BreadcrumbProvider>
-      </ToastProvider>,
-    );
-    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
-    fireEvent.click(screen.getByRole('tab', { name: /Talent/ }));
-    // Option A — the move IS the panel: open Sofia's row, then toggle HOT there.
-    fireEvent.click(await screen.findByRole('button', { name: /Sofia Ramos/ }));
-    const sofiaHot = await screen.findByRole('button', {
-      name: /Mark Sofia Ramos as hot/,
-    });
-    expect(sofiaHot).not.toBeDisabled();
-    fireEvent.click(sofiaHot);
-    await waitFor(() =>
-      expect(
-        calls.some(
-          (c) =>
-            c.method === 'PATCH' &&
-            c.url.includes('/v1/talent-records/tal-2') &&
-            (c.body as { is_hot?: boolean })?.is_hot === true,
-        ),
-      ).toBe(true),
-    );
   });
 
   it('publishes the requisition title to the breadcrumb', async () => {

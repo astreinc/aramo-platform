@@ -23,4 +23,11 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  // Per-tab session state (e.g. the Talent × Requisition 360 origin snapshot)
+  // must not leak between tests.
+  try {
+    window.sessionStorage.clear();
+  } catch {
+    /* jsdom always provides sessionStorage */
+  }
 });

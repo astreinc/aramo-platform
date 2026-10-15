@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
@@ -8,10 +10,14 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 
+// The card ⋯ menu carries a router Link ("View talent" → Talent 360).
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter });
+
 // TB-2 — the read-only Board surface. The backend is authoritative for column placement,
 // owner attribution, Closed derivation, resume linkage and Qualified band; these tests pin the
 // PRESENTATION: column counts, card labels, the Qualified two-band split, the resume-locked
-// indicator, the collapsed Closed panel, drawer hand-off by pipeline_id, and load/error states.
+// indicator, the collapsed Closed panel, the card hand-off by pipeline_id (→ Talent × Requisition 360),
+// in-place card actions, and load/error states.
 vi.mock('./requisition-talent-board-api', async (importActual) => {
   const actual = await importActual<typeof import('./requisition-talent-board-api')>();
   return { ...actual, getRequisitionTalentBoard: vi.fn() };
@@ -138,7 +144,7 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(screen.getByText('Offer declined')).toBeInTheDocument();
   });
 
-  it('hands a card click back to the drawer by pipeline_id', async () => {
+  it('hands a card click back by pipeline_id (opens the Talent × Requisition 360 page)', async () => {
     const onSelectCard = vi.fn();
     mockGet.mockResolvedValue(
       board({
@@ -149,6 +155,32 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={onSelectCard} />);
     const cardBtn = await screen.findByRole('button', { name: 'Open Ada Lovelace' });
     fireEvent.click(cardBtn);
+    expect(onSelectCard).toHaveBeenCalledWith('pipe-42');
+  });
+
+  it('runs the card action in place via onCardAction — never a card navigation', async () => {
+    const onSelectCard = vi.fn();
+    const onCardAction = vi.fn();
+    const c = card({
+      talent_record_id: 't1', pipeline_id: 'pipe-7', column: 'pipeline', owner: 'pipeline', owner_state: 'no_contact',
+      next_actions: [{ key: 'pipeline.contact_talent', label: 'Contact Talent', owner: 'pipeline', command_route: 'POST /x', required_scope: 'pipeline:change-status' }],
+    });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'pipeline', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={onSelectCard} onCardAction={onCardAction} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send email' }));
+    expect(onCardAction).toHaveBeenCalledWith(expect.objectContaining({ pipeline_id: 'pipe-7' }), 'Ada Lovelace');
+    expect(onSelectCard).not.toHaveBeenCalled();
+  });
+
+  it('⋯ menu: "Open full view" opens the 360 page; "View talent" links to Talent 360', async () => {
+    const onSelectCard = vi.fn();
+    mockGet.mockResolvedValue(
+      board({ total_active: 1, columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card({ talent_record_id: 't1', pipeline_id: 'pipe-42' })] }] }),
+    );
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={onSelectCard} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Ada Lovelace' }));
+    expect(screen.getByRole('link', { name: 'View talent' })).toHaveAttribute('href', '/talent/t1');
+    fireEvent.click(screen.getByRole('button', { name: 'Open full view' }));
     expect(onSelectCard).toHaveBeenCalledWith('pipe-42');
   });
 
