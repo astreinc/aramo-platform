@@ -73,7 +73,9 @@ model EnvelopeDocument {
   @@schema("esign")
 }
 
-/// A party who must sign/acknowledge. Signer order enforced by signing_order.
+/// A party who must sign/acknowledge. Signing is PARALLEL: every signer receives a
+/// live session at send and may complete in any order. signing_order is a stable
+/// per-envelope sequence number (unique per envelope); it is NOT enforced (ES-1).
 model Signer {
   id            String    @id @db.Uuid
   tenant_id     String    @db.Uuid

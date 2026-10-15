@@ -4,7 +4,17 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { computeEventHash } from './hash-chain.js';
-import { EnvelopeNotFoundError, SignerNotFoundError } from './domain/errors.js';
+import {
+  EnvelopeAlreadyExecutedError,
+  EnvelopeIllegalTransitionError,
+  EnvelopeNotFoundError,
+  SignerNotFoundError,
+} from './domain/errors.js';
+import {
+  LIVE_SESSION_STATUSES,
+  isTerminalEnvelopeStatus,
+  predecessorsOf,
+} from './domain/envelope-lifecycle.js';
 import { type EnvelopeDocumentSourceMode } from './ports/document-source-provider.port.js';
 
 // DOC-3 boundary 1-2 — E-Sign persistence + append-only hash-chained event
@@ -12,6 +22,20 @@ import { type EnvelopeDocumentSourceMode } from './ports/document-source-provide
 // client works for the transactional helpers.
 
 type Tx = Pick<PrismaService, 'signatureEnvelope' | 'signer' | 'signatureField' | 'signatureEvent' | 'envelopeDocument' | 'signingSession' | 'signerDisclosureAcceptance' | 'outboxEvent' | 'idempotencyKey'>;
+
+// ES-1 — an interactive-transaction client that can also take a row lock.
+export type LockingTx = Tx & Pick<PrismaService, '$queryRaw'>;
+
+export interface TransitionEnvelopeInput {
+  tenant_id: string;
+  envelope_id: string;
+  to: string;
+  event_type: string;
+  actor_type: string;
+  actor_ref?: string;
+  timestampField?: 'sent_at' | 'completed_at' | 'declined_at' | 'voided_at';
+  payload?: unknown;
+}
 
 export interface CreateEnvelopeInput {
   tenant_id: string;
@@ -206,31 +230,73 @@ export class EsignRepository {
     return this.prisma.signatureField.findMany({ where: { tenant_id, signer_id, required: true } });
   }
 
-  // Transactional envelope status change + single hash-chained event.
-  async transitionEnvelope(input: {
-    tenant_id: string;
-    envelope_id: string;
-    to: string;
-    event_type: string;
-    actor_type: string;
-    actor_ref?: string;
-    timestampField?: 'sent_at' | 'completed_at' | 'declined_at' | 'voided_at';
-    payload?: unknown;
-  }) {
-    return this.prisma.$transaction(async (tx) => {
-      const data: Record<string, unknown> = { status: input.to };
-      if (input.timestampField) data[input.timestampField] = new Date();
-      await tx.signatureEnvelope.update({ where: { id: input.envelope_id }, data });
-      await this.appendEvent(tx, {
-        tenant_id: input.tenant_id,
-        envelope_id: input.envelope_id,
-        event_type: input.event_type,
-        actor_type: input.actor_type,
-        actor_ref: input.actor_ref,
-        payload: input.payload,
-      });
-      return tx.signatureEnvelope.findFirstOrThrow({ where: { id: input.envelope_id } });
+  // ES-1 — transactional envelope status change + single hash-chained event.
+  // The status write is a COMPARE-AND-SET against the lifecycle predecessors of
+  // `to`: `UPDATE … WHERE status IN (predecessors)` takes the row lock and
+  // re-checks the predicate atomically, so of two racing transitions exactly one
+  // matches and the other fails with EnvelopeIllegalTransitionError (its
+  // transaction rolls back). Entering a terminal state revokes every live signing
+  // session of the envelope in the SAME transaction.
+  async transitionEnvelope(input: TransitionEnvelopeInput) {
+    return this.prisma.$transaction((tx) => this.transitionEnvelopeIn(tx, input));
+  }
+
+  async transitionEnvelopeIn(tx: Tx, input: TransitionEnvelopeInput) {
+    const now = new Date();
+    const data: Record<string, unknown> = { status: input.to };
+    if (input.timestampField) data[input.timestampField] = now;
+    const won = await tx.signatureEnvelope.updateMany({
+      where: { id: input.envelope_id, tenant_id: input.tenant_id, status: { in: predecessorsOf(input.to) } },
+      data,
     });
+    if (won.count !== 1) {
+      const current = await tx.signatureEnvelope.findFirst({
+        where: { id: input.envelope_id, tenant_id: input.tenant_id },
+        select: { status: true },
+      });
+      if (current === null) throw new EnvelopeNotFoundError(input.envelope_id);
+      throw new EnvelopeIllegalTransitionError(current.status, input.to);
+    }
+    if (isTerminalEnvelopeStatus(input.to)) {
+      await tx.signingSession.updateMany({
+        where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id, status: { in: [...LIVE_SESSION_STATUSES] } },
+        data: { status: 'REVOKED', revoked_at: now },
+      });
+    }
+    await this.appendEvent(tx, {
+      tenant_id: input.tenant_id,
+      envelope_id: input.envelope_id,
+      event_type: input.event_type,
+      actor_type: input.actor_type,
+      actor_ref: input.actor_ref,
+      payload: input.payload,
+    });
+    return tx.signatureEnvelope.findFirstOrThrow({ where: { id: input.envelope_id, tenant_id: input.tenant_id } });
+  }
+
+  // ES-1 — take the envelope row lock (SELECT … FOR UPDATE) for the rest of the
+  // transaction and return the status read UNDER that lock. Every signer-side
+  // mutation and every status change locks the same row, so they serialize per
+  // envelope: a signer action can never interleave with void / decline / expiry
+  // / completion, and the hash-chained events it appends stay linear.
+  async lockEnvelope(tx: LockingTx, tenant_id: string, envelope_id: string): Promise<string> {
+    const rows = await tx.$queryRaw<{ status: string }[]>`
+      SELECT status FROM "esign"."SignatureEnvelope"
+      WHERE id = ${envelope_id}::uuid AND tenant_id = ${tenant_id}::uuid
+      FOR UPDATE`;
+    const row = rows[0];
+    if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
+    return row.status;
+  }
+
+  // ES-1 — lock the envelope and require that a signer may still act on it.
+  // Terminal → EnvelopeAlreadyExecutedError(status); any other non-signable
+  // status (DRAFT) → EnvelopeIllegalTransitionError.
+  async lockSignableEnvelope(tx: LockingTx, tenant_id: string, envelope_id: string): Promise<'SENT' | 'IN_PROGRESS'> {
+    const status = await this.lockEnvelope(tx, tenant_id, envelope_id);
+    if (status === 'SENT' || status === 'IN_PROGRESS') return status;
+    if (isTerminalEnvelopeStatus(status)) throw new EnvelopeAlreadyExecutedError(envelope_id, status);
+    throw new EnvelopeIllegalTransitionError(status, 'SIGN');
   }
 
   async listEvents(tenant_id: string, envelope_id: string) {

@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
-import { EsignRepository } from './esign.repository.js';
+import { EsignRepository, type LockingTx } from './esign.repository.js';
 import { EXECUTION_PRODUCER_PORT, type ExecutionProducerPort } from './ports/execution-producer.port.js';
 import { generateSigningToken, hashSigningToken, signingSessionExpiresAt } from './signing-token.js';
+import { LIVE_SESSION_STATUSES, isTerminalEnvelopeStatus as isTerminal } from './domain/envelope-lifecycle.js';
 import {
   DisclosureNotAcceptedError,
+  EnvelopeAlreadyExecutedError,
   EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
   ReminderNotAllowedError,
@@ -29,22 +31,9 @@ import {
 
 const SERVICE_VERSION = 'doc3';
 
-// Envelope lifecycle transition guard (§10 / R-3-3).
-const ENVELOPE_TRANSITIONS: Record<string, readonly string[]> = {
-  DRAFT: ['SENT', 'VOIDED'],
-  SENT: ['IN_PROGRESS', 'DECLINED', 'VOIDED', 'EXPIRED'],
-  IN_PROGRESS: ['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED'],
-  COMPLETED: [],
-  DECLINED: [],
-  VOIDED: [],
-  EXPIRED: [],
-};
-
-function assertTransition(from: string, to: string): void {
-  if (!(ENVELOPE_TRANSITIONS[from] ?? []).includes(to)) {
-    throw new EnvelopeIllegalTransitionError(from, to);
-  }
-}
+// Envelope lifecycle: the transition table, terminal/signable sets and the
+// compare-and-set transition live in domain/envelope-lifecycle.ts and
+// EsignRepository.transitionEnvelopeIn (ES-1).
 
 export interface IssuedSession {
   session_id: string;
@@ -112,115 +101,143 @@ export class EsignService {
   }
 
   // ── Send: DRAFT -> SENT. Issues a signing session per signer (raw tokens
-  // returned ONCE). Requires >=1 signer and >=1 document. ──
+  // returned ONCE). Requires >=1 signer and >=1 document. ES-1: the transition
+  // and the session mint commit together — a lost race mints nothing. ──
   async send(tenant_id: string, envelope_id: string, actor_ref: string): Promise<{ envelope: unknown; sessions: IssuedSession[] }> {
-    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    assertTransition(env.status, 'SENT');
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     if (full.signers.length === 0) throw new SigningSessionInvalidError('envelope has no signers');
     if (full.documents.length === 0) throw new SigningSessionInvalidError('envelope has no documents');
 
-    const sessions: IssuedSession[] = [];
     const now = new Date();
-    for (const signer of full.signers) {
-      const minted = generateSigningToken();
-      const sessionId = randomUUID();
-      await this.prisma.signingSession.create({
-        data: {
-          id: sessionId,
-          tenant_id,
-          envelope_id,
-          signer_id: signer.id,
-          token_hash: minted.hash,
-          status: 'ISSUED',
-          expires_at: signingSessionExpiresAt(now),
-        },
+    return this.prisma.$transaction(async (tx) => {
+      const envelope = await this.repo.transitionEnvelopeIn(tx, {
+        tenant_id,
+        envelope_id,
+        to: 'SENT',
+        event_type: 'ENVELOPE_SENT',
+        actor_type: 'SERVICE',
+        actor_ref,
+        timestampField: 'sent_at',
       });
-      sessions.push({ session_id: sessionId, signer_id: signer.id, raw_token: minted.raw });
-    }
-    const envelope = await this.repo.transitionEnvelope({
-      tenant_id,
-      envelope_id,
-      to: 'SENT',
-      event_type: 'ENVELOPE_SENT',
-      actor_type: 'SERVICE',
-      actor_ref,
-      timestampField: 'sent_at',
+      const sessions: IssuedSession[] = [];
+      for (const signer of full.signers) {
+        const minted = generateSigningToken();
+        const sessionId = randomUUID();
+        await tx.signingSession.create({
+          data: {
+            id: sessionId,
+            tenant_id,
+            envelope_id,
+            signer_id: signer.id,
+            token_hash: minted.hash,
+            status: 'ISSUED',
+            expires_at: signingSessionExpiresAt(now),
+          },
+        });
+        sessions.push({ session_id: sessionId, signer_id: signer.id, raw_token: minted.raw });
+      }
+      return { envelope, sessions };
     });
-    return { envelope, sessions };
   }
 
   // ── Exchange a raw capability token for an active session context (R17).
   // Validates hash match, not expired/revoked/consumed. Tenant resolved FROM
-  // the session, never the client. ──
+  // the session, never the client. ES-1: runs under the envelope row lock; a
+  // terminal envelope is refused before any write. ──
   async exchangeToken(rawToken: string): Promise<SessionContext> {
-    const hash = hashSigningToken(rawToken);
-    const session = await this.prisma.signingSession.findUnique({ where: { token_hash: hash } });
-    if (session === null) throw new SigningSessionInvalidError('unknown token');
-    if (session.status === 'REVOKED' || session.status === 'EXPIRED' || session.status === 'COMPLETED') {
-      throw new SigningSessionExpiredError(session.id);
-    }
-    if (session.expires_at.getTime() < Date.now()) {
-      await this.prisma.signingSession.update({ where: { id: session.id }, data: { status: 'EXPIRED' } });
-      throw new SigningSessionExpiredError(session.id);
-    }
-    await this.prisma.signingSession.update({
-      where: { id: session.id },
-      data: { status: 'ACTIVE', first_accessed_at: session.first_accessed_at ?? new Date(), last_accessed_at: new Date() },
-    });
-    await this.prisma.$transaction((tx) =>
-      this.repo.appendEvent(tx, {
+    const found = await this.findSessionByToken(rawToken);
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      const envelopeStatus = await this.repo.lockSignableEnvelope(tx, found.tenant_id, found.envelope_id);
+      const session = await tx.signingSession.findUniqueOrThrow({ where: { id: found.id } });
+      if (!LIVE_SESSION_STATUSES.includes(session.status)) return 'spent' as const;
+      if (session.expires_at.getTime() < Date.now()) {
+        await tx.signingSession.update({ where: { id: session.id }, data: { status: 'EXPIRED' } });
+        return 'spent' as const;
+      }
+      await tx.signingSession.update({
+        where: { id: session.id },
+        data: { status: 'ACTIVE', first_accessed_at: session.first_accessed_at ?? new Date(), last_accessed_at: new Date() },
+      });
+      await this.repo.appendEvent(tx, {
         tenant_id: session.tenant_id,
         envelope_id: session.envelope_id,
         signer_id: session.signer_id,
         event_type: 'SESSION_EXCHANGED',
         actor_type: 'SIGNER',
         actor_ref: session.signer_id,
-      }),
-    );
-    // Mark signer VIEWED + envelope IN_PROGRESS (first activity).
-    await this.prisma.signer.update({ where: { id: session.signer_id }, data: { status: 'VIEWED', viewed_at: new Date() } });
-    const env = await this.repo.getEnvelope(session.tenant_id, session.envelope_id);
-    if (env.status === 'SENT') {
-      await this.repo.transitionEnvelope({
-        tenant_id: session.tenant_id,
-        envelope_id: session.envelope_id,
-        to: 'IN_PROGRESS',
-        event_type: 'ENVELOPE_IN_PROGRESS',
-        actor_type: 'SIGNER',
-        actor_ref: session.signer_id,
       });
-    }
-    return { session_id: session.id, tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id };
+      // Mark signer VIEWED + envelope IN_PROGRESS (first activity).
+      await tx.signer.updateMany({
+        where: { id: session.signer_id, tenant_id: session.tenant_id, status: { in: ['PENDING', 'VIEWED'] } },
+        data: { status: 'VIEWED', viewed_at: new Date() },
+      });
+      if (envelopeStatus === 'SENT') {
+        await this.repo.transitionEnvelopeIn(tx, {
+          tenant_id: session.tenant_id,
+          envelope_id: session.envelope_id,
+          to: 'IN_PROGRESS',
+          event_type: 'ENVELOPE_IN_PROGRESS',
+          actor_type: 'SIGNER',
+          actor_ref: session.signer_id,
+        });
+      }
+      return 'exchanged' as const;
+    });
+    if (outcome === 'spent') throw new SigningSessionExpiredError(found.id);
+    return { session_id: found.id, tenant_id: found.tenant_id, envelope_id: found.envelope_id, signer_id: found.signer_id };
   }
 
   // ── Read-only session resolution for subsequent signer ops (no side effects).
-  // Validates hash match + not expired/revoked/consumed; tenant FROM the session. ──
+  // Validates hash match + not expired/revoked; tenant FROM the session. ES-1: a
+  // terminal envelope is refused first, whatever the session's own state. Every
+  // signer mutation re-checks eligibility under the envelope row lock. ──
   async resolveSession(rawToken: string): Promise<SessionContext> {
-    const hash = hashSigningToken(rawToken);
-    const session = await this.prisma.signingSession.findUnique({ where: { token_hash: hash } });
-    if (session === null) throw new SigningSessionInvalidError('unknown token');
+    const session = await this.findSessionByToken(rawToken);
+    const envelope = await this.repo.getEnvelope(session.tenant_id, session.envelope_id);
+    if (isTerminal(envelope.status)) throw new EnvelopeAlreadyExecutedError(session.envelope_id, envelope.status);
     if (session.status === 'REVOKED' || session.status === 'EXPIRED') throw new SigningSessionExpiredError(session.id);
     if (session.expires_at.getTime() < Date.now()) throw new SigningSessionExpiredError(session.id);
     return { session_id: session.id, tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id };
   }
 
-  // ── Accept the e-sign disclosure (R16). Versioned frozen text + hash. ──
-  async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string }): Promise<void> {
-    await this.prisma.signerDisclosureAcceptance.create({
-      data: {
-        id: randomUUID(),
-        tenant_id: ctx.tenant_id,
-        signer_id: ctx.signer_id,
-        disclosure_version: input.disclosure_version,
-        disclosure_text_hash: input.disclosure_text_hash,
-        ip_address: input.ip_address ?? null,
-        user_agent: input.user_agent ?? null,
-        session_id: ctx.session_id,
-      },
+  private async findSessionByToken(rawToken: string) {
+    const session = await this.prisma.signingSession.findUnique({ where: { token_hash: hashSigningToken(rawToken) } });
+    if (session === null) throw new SigningSessionInvalidError('unknown token');
+    return session;
+  }
+
+  // ES-1 — inside a locked transaction: the session still carries signing
+  // authority (not COMPLETED / REVOKED / EXPIRED, not past its TTL).
+  private async assertLiveSession(tx: LockingTx, ctx: SessionContext): Promise<void> {
+    const session = await tx.signingSession.findFirst({
+      where: { id: ctx.session_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id },
+      select: { status: true, expires_at: true },
     });
-    await this.prisma.$transaction((tx) =>
-      this.repo.appendEvent(tx, {
+    if (session === null) throw new SigningSessionInvalidError('unknown session');
+    if (!LIVE_SESSION_STATUSES.includes(session.status) || session.expires_at.getTime() < Date.now()) {
+      throw new SigningSessionExpiredError(ctx.session_id);
+    }
+  }
+
+  // ── Accept the e-sign disclosure (R16). Versioned frozen text + hash. ES-1:
+  // under the envelope row lock, with a live session. ──
+  async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string }): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      await tx.signerDisclosureAcceptance.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: ctx.tenant_id,
+          signer_id: ctx.signer_id,
+          disclosure_version: input.disclosure_version,
+          disclosure_text_hash: input.disclosure_text_hash,
+          ip_address: input.ip_address ?? null,
+          user_agent: input.user_agent ?? null,
+          session_id: ctx.session_id,
+        },
+      });
+      await this.repo.appendEvent(tx, {
         tenant_id: ctx.tenant_id,
         envelope_id: ctx.envelope_id,
         signer_id: ctx.signer_id,
@@ -230,23 +247,29 @@ export class EsignService {
         payload: { disclosure_version: input.disclosure_version },
         ip_address: input.ip_address,
         user_agent: input.user_agent,
-      }),
-    );
+      });
+    });
   }
 
-  private async hasAcceptedDisclosure(tenant_id: string, signer_id: string): Promise<boolean> {
-    const n = await this.prisma.signerDisclosureAcceptance.count({ where: { tenant_id, signer_id } });
+  private async hasAcceptedDisclosure(tenant_id: string, signer_id: string, client: Pick<LockingTx, 'signerDisclosureAcceptance'> = this.prisma): Promise<boolean> {
+    const n = await client.signerDisclosureAcceptance.count({ where: { tenant_id, signer_id } });
     return n > 0;
   }
 
-  // ── Fill a signature field (requires disclosure accepted). ──
+  // ── Fill a signature field (requires disclosure accepted). ES-1: under the
+  // envelope row lock, with a live session — a signer who has completed, or a
+  // signer on a terminal envelope, can no longer alter a field value. ──
   async fillField(ctx: SessionContext, fieldId: string, input: { value: string; signature_method?: string }): Promise<void> {
-    if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
-    const field = await this.prisma.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
-    if (field === null) throw new SignerNotFoundError(ctx.signer_id);
-    await this.prisma.signatureField.update({
-      where: { id: fieldId },
-      data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
+    await this.prisma.$transaction(async (tx) => {
+      await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+      const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
+      if (field === null) throw new SignerNotFoundError(ctx.signer_id);
+      await tx.signatureField.update({
+        where: { id: fieldId },
+        data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
+      });
     });
   }
 
@@ -296,30 +319,45 @@ export class EsignService {
   }
 
   // ── Complete a signer: all required fields filled -> SIGNED; if all signers
-  // signed -> envelope COMPLETED (build + sign evidence manifest). ──
+  // signed -> envelope COMPLETED (build + sign evidence manifest). ES-1: one
+  // transaction under the envelope row lock, so racing completions serialize and
+  // exactly one of them performs the COMPLETED transition — and only that one
+  // produces executed artifacts, after commit. Parallel signing is unchanged:
+  // signers complete in any order; signing_order is not enforced. ──
   async completeSigner(ctx: SessionContext): Promise<{ envelope_status: string }> {
-    if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
-    const required = await this.repo.listSignerRequiredFields(ctx.tenant_id, ctx.signer_id);
-    const unfilled = required.filter((f) => f.filled_at === null);
-    if (unfilled.length > 0) throw new SignatureFieldIncompleteError(ctx.signer_id);
+    const completed = await this.prisma.$transaction(async (tx) => {
+      const envelopeStatus = await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
+      await this.assertLiveSession(tx, ctx);
+      if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
+      const required = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, required: true } });
+      if (required.some((f) => f.filled_at === null)) throw new SignatureFieldIncompleteError(ctx.signer_id);
 
-    await this.prisma.signer.update({ where: { id: ctx.signer_id }, data: { status: 'SIGNED', signed_at: new Date() } });
-    await this.prisma.signingSession.update({ where: { id: ctx.session_id }, data: { status: 'COMPLETED', completed_at: new Date() } });
-    await this.prisma.$transaction((tx) =>
-      this.repo.appendEvent(tx, {
+      await tx.signer.update({ where: { id: ctx.signer_id }, data: { status: 'SIGNED', signed_at: new Date() } });
+      await tx.signingSession.update({ where: { id: ctx.session_id }, data: { status: 'COMPLETED', completed_at: new Date() } });
+      await this.repo.appendEvent(tx, {
         tenant_id: ctx.tenant_id,
         envelope_id: ctx.envelope_id,
         signer_id: ctx.signer_id,
         event_type: 'SIGNER_SIGNED',
         actor_type: 'SIGNER',
         actor_ref: ctx.signer_id,
-      }),
-    );
+      });
 
-    const signers = await this.prisma.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id } });
-    const allSigned = signers.every((s) => s.status === 'SIGNED');
-    if (allSigned) {
-      await this.repo.transitionEnvelope({
+      const signers = await tx.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true } });
+      if (!signers.every((s) => s.status === 'SIGNED')) return false;
+      // A signer may complete without a prior exchange (SENT); the lifecycle
+      // only reaches COMPLETED through IN_PROGRESS, so record that step first.
+      if (envelopeStatus === 'SENT') {
+        await this.repo.transitionEnvelopeIn(tx, {
+          tenant_id: ctx.tenant_id,
+          envelope_id: ctx.envelope_id,
+          to: 'IN_PROGRESS',
+          event_type: 'ENVELOPE_IN_PROGRESS',
+          actor_type: 'SIGNER',
+          actor_ref: ctx.signer_id,
+        });
+      }
+      await this.repo.transitionEnvelopeIn(tx, {
         tenant_id: ctx.tenant_id,
         envelope_id: ctx.envelope_id,
         to: 'COMPLETED',
@@ -327,34 +365,39 @@ export class EsignService {
         actor_type: 'SERVICE',
         timestampField: 'completed_at',
       });
-      // DOC-4 (R-4-3) — produce executed bytes + completion notification when a
-      // producer is bound (apps/esign-service composition root).
-      await this.executionProducer?.produce(ctx.tenant_id, ctx.envelope_id);
-      return { envelope_status: 'COMPLETED' };
-    }
-    return { envelope_status: 'IN_PROGRESS' };
+      return true;
+    });
+    if (!completed) return { envelope_status: 'IN_PROGRESS' };
+    // DOC-4 (R-4-3) — produce executed bytes + completion notification when a
+    // producer is bound (apps/esign-service composition root). Runs only for the
+    // transaction that won the COMPLETED transition.
+    await this.executionProducer?.produce(ctx.tenant_id, ctx.envelope_id);
+    return { envelope_status: 'COMPLETED' };
   }
 
-  async decline(tenant_id: string, envelope_id: string, signer_id: string, reason: string): Promise<void> {
-    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    assertTransition(env.status, 'DECLINED');
-    await this.prisma.signer.update({ where: { id: signer_id }, data: { status: 'DECLINED', declined_at: new Date(), decline_reason: reason } });
-    await this.repo.transitionEnvelope({
-      tenant_id, envelope_id, to: 'DECLINED', event_type: 'ENVELOPE_DECLINED', actor_type: 'SIGNER', actor_ref: signer_id, timestampField: 'declined_at', payload: { reason },
+  // ES-1 — decline is a terminal transition: the CAS, the signer's DECLINED
+  // status and the revocation of every live session commit together. When the
+  // signer surface passes its session, that session must still be live (a signer
+  // who has already completed cannot decline).
+  async decline(tenant_id: string, envelope_id: string, signer_id: string, reason: string, session_id?: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+      if (status !== 'SENT' && status !== 'IN_PROGRESS') throw new EnvelopeIllegalTransitionError(status, 'DECLINED');
+      if (session_id !== undefined) await this.assertLiveSession(tx, { session_id, tenant_id, envelope_id, signer_id });
+      await tx.signer.update({ where: { id: signer_id }, data: { status: 'DECLINED', declined_at: new Date(), decline_reason: reason } });
+      await this.repo.transitionEnvelopeIn(tx, {
+        tenant_id, envelope_id, to: 'DECLINED', event_type: 'ENVELOPE_DECLINED', actor_type: 'SIGNER', actor_ref: signer_id, timestampField: 'declined_at', payload: { reason },
+      });
     });
   }
 
   async voidEnvelope(tenant_id: string, envelope_id: string, actor_ref: string, reason: string): Promise<void> {
-    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    assertTransition(env.status, 'VOIDED');
     await this.repo.transitionEnvelope({
       tenant_id, envelope_id, to: 'VOIDED', event_type: 'ENVELOPE_VOIDED', actor_type: 'SERVICE', actor_ref, timestampField: 'voided_at', payload: { reason },
     });
   }
 
   async expireEnvelope(tenant_id: string, envelope_id: string): Promise<void> {
-    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    assertTransition(env.status, 'EXPIRED');
     await this.repo.transitionEnvelope({
       tenant_id, envelope_id, to: 'EXPIRED', event_type: 'ENVELOPE_EXPIRED', actor_type: 'SYSTEM',
     });
@@ -420,17 +463,21 @@ export class EsignService {
     envelope_id: string,
     actor_ref: string,
   ): Promise<{ sessions: IssuedSession[] }> {
-    const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') {
-      throw new ReminderNotAllowedError(`envelope status ${env.status} is not remindable`);
-    }
-    const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
-    const incomplete = full.signers.filter((s) => s.status === 'PENDING' || s.status === 'VIEWED');
-    if (incomplete.length === 0) {
-      throw new ReminderNotAllowedError('no incomplete signer to remind');
-    }
     const now = new Date();
+    // ES-1 — status check and re-mint under the envelope row lock, so a reminder
+    // can never mint a live capability for an envelope voided concurrently.
     const sessions = await this.prisma.$transaction(async (tx) => {
+      const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+      if (status !== 'SENT' && status !== 'IN_PROGRESS') {
+        throw new ReminderNotAllowedError(`envelope status ${status} is not remindable`);
+      }
+      const incomplete = await tx.signer.findMany({
+        where: { tenant_id, envelope_id, status: { in: ['PENDING', 'VIEWED'] } },
+        orderBy: { signing_order: 'asc' },
+      });
+      if (incomplete.length === 0) {
+        throw new ReminderNotAllowedError('no incomplete signer to remind');
+      }
       const minted: IssuedSession[] = [];
       for (const signer of incomplete) {
         // Revoke prior live sessions FIRST → one live capability per signer.

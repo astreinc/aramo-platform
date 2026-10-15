@@ -25,9 +25,12 @@ export class EnvelopeIllegalTransitionError extends Error {
   }
 }
 
+// ES-1 — raised for ANY signer action (exchange, resolve, disclosure, fill,
+// complete, decline) on an envelope in a terminal state (COMPLETED | DECLINED |
+// VOIDED | EXPIRED). `status` names the terminal state for the caller.
 export class EnvelopeAlreadyExecutedError extends Error {
-  constructor(public readonly envelopeId: string) {
-    super(`SignatureEnvelope ${envelopeId} is already in a terminal state`);
+  constructor(public readonly envelopeId: string, public readonly status?: string) {
+    super(`SignatureEnvelope ${envelopeId} is already in a terminal state${status !== undefined ? ` (${status})` : ''}`);
     this.name = 'EnvelopeAlreadyExecutedError';
   }
 }

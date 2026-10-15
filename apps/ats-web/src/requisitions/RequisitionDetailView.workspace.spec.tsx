@@ -491,8 +491,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     },
   ];
 
-  it('opening a Talent row LAZILY populates the Client + Pre-Start cells with that talent\'s own reads, and caches them (reopen does NOT refetch)', async () => {
-    // The talent surface defaults to Board now; this spec opens a LIST row.
+  it('Talent tab List hydrates each row\'s Client + Pre-Start cells once, and a talent click opens the Talent × Requisition 360 page', async () => {
+    // The talent surface defaults to Board now; this spec uses the LIST.
     try {
       localStorage.setItem('aramo.req.talentView.v2', 'list');
     } catch {
@@ -520,6 +520,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
                   />
                 }
               />
+              <Route path="/requisitions/:reqId/talent/:talentId" element={<div data-testid="tr360-route" />} />
             </Routes>
           </MemoryRouter>
         </BreadcrumbProvider>
@@ -533,22 +534,16 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     const preStartCalls = () =>
       cap.urls.filter((u) => u.includes('/pre-start-requirement/placements/pl-1/requirements')).length;
 
-    // First paint (row NOT opened) → no per-talent reads.
-    expect(submittalCalls()).toBe(0);
-    expect(preStartCalls()).toBe(0);
-
-    // Open the row → exactly this talent's submittal + pre-start reads fire.
-    fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
+    // The List hydrates this talent's submittal + pre-start reads exactly once.
     await waitFor(() => expect(submittalCalls()).toBe(1));
     await waitFor(() => expect(preStartCalls()).toBe(1));
-    // Cells populated with the authoritative summaries.
     expect(await screen.findByText('Confirmed')).toBeInTheDocument();
     expect(await screen.findByText('Blocked · 2')).toBeInTheDocument();
 
-    // Close + reopen the SAME row → cache hit, NO refetch.
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    // A talent click navigates (same tab) to the Talent × Requisition 360 page — no drawer.
     fireEvent.click(await screen.findByRole('button', { name: /Marcus Adeyemi/ }));
-    await screen.findByRole('list', { name: 'Talent journey' }); // panel reopened
+    expect(await screen.findByTestId('tr360-route')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(submittalCalls()).toBe(1);
     expect(preStartCalls()).toBe(1);
   });
