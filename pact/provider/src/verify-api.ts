@@ -1592,7 +1592,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // TIP-E2E INC-3 — technical screening (UUID-only refs → not cascaded by
       // TalentRecord). Truncate so a session opened by one interaction never
       // leaks into the next screening read.
-      await c.query('TRUNCATE TABLE technical_screening."ScreeningEvent", technical_screening."ScreeningEvidencePublication", technical_screening."ScreeningFinding", technical_screening."ScreeningSession"');
+      // INC-3 A1 — the A1 tables too, so a note added by one interaction never
+      // leaks into another interaction's DRAFT detail.
+      await c.query('TRUNCATE TABLE technical_screening."ScreeningEvent", technical_screening."ScreeningEvidencePublication", technical_screening."ScreeningFindingCitation", technical_screening."ScreeningAssistSuggestion", technical_screening."ScreeningNote", technical_screening."ScreeningQuestion", technical_screening."ScreeningAiGeneration", technical_screening."ScreeningTranscriptLink", technical_screening."ScreeningFinding", technical_screening."ScreeningSession"');
       // TALENT-INTEL-1 TI-1D-C — the resume-edition substrate (talent_evidence,
       // UUID-only refs → not cascaded by TalentRecord). Truncate so fixed-id
       // edition/document fixtures don't collide across interactions.

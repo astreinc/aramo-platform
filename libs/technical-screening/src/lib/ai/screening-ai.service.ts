@@ -19,6 +19,7 @@ import {
   type ScreeningSuggestionRow,
 } from '../technical-screening.repository.js';
 import { SCREENING_QUESTION_MAX } from '../screening-vocab.js';
+
 import {
   SCREENING_AI_CONSENT,
   type ScreeningAiConsentPort,

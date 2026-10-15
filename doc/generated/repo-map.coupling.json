@@ -9205,6 +9205,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
       "status": "excluded",
+      "to": "apps/api/src/tests/technical-screening/screening-erasure.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
       "to": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts"
     },
     {
@@ -9229,7 +9235,19 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/technical-screening/src/lib/technical-screening.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/src/tests/inc3-a1-domain.integration.spec.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9248,6 +9266,24 @@
       "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
       "status": "excluded",
       "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/live-screening-assist.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/technical-screening/live-screening-assist.coordinator.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/live-screening-assist.spec.ts",
+      "status": "excluded",
+      "to": "libs/conversation-transcript/src/index.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/live-screening-assist.spec.ts",
+      "status": "excluded",
+      "to": "libs/conversation-transcript/src/lib/live/fake-external-capture.provider.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -9734,6 +9770,12 @@
       "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
       "status": "excluded",
       "to": "libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -22180,6 +22222,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/communications/prisma/migrations/20261016140000_inc3_a1_screening_meetings/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
     },
     {
@@ -22246,6 +22293,21 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/contact/prisma/migrations/20260914120000_add_contact_primary_flag/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/prisma/migrations/20260907130000_ci_requisition_analysis_context_init/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/prisma/migrations/20260909120000_ci_b6_processing_run/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/conversation-intelligence/prisma/migrations/20261016150000_inc3_a1_ci_screening_profile/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -23136,6 +23198,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

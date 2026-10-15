@@ -638,17 +638,20 @@ export class MicrosoftSchedulingService {
 
   private requestFingerprint(args: ScheduleMeetingArgs, effectiveConnectionId: string): string {
     // Pipe-joined immutable request identity (FIX-3). '|' (never a space → NUL trap).
-    return [
+    // The recruiting-meeting format is UNCHANGED (an op persisted before INC-3 A1
+    // must still match its own retry); only a screening meeting (A1 Part F)
+    // appends its session — and only it may carry a null Requisition.
+    const base = [
       args.recruiter_id,
       args.talent_record_id,
       args.requisition_id ?? '',
-      args.screening_session_id ?? '',
       args.subject,
       args.start_date_time,
       args.end_date_time,
       args.time_zone,
       effectiveConnectionId,
     ].join('|');
+    return args.screening_session_id === undefined ? base : `${base}|screening:${args.screening_session_id}`;
   }
 
   async listUpcoming(args: {

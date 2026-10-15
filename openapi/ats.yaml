@@ -942,6 +942,455 @@ paths:
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
+  # ── TIP-E2E INC-3 A1 — AI-assisted screening (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED) ──
+  # Recruiter-controlled assistance: question plans, follow-up suggestions from
+  # recruiter notes, Teams scheduling, post-meeting Teams transcripts and
+  # AI-drafted findings the recruiter accepts, edits or rejects. Talent content
+  # reaches the tenant's configured AI provider only with `ai_processing`
+  # consent (403 INSUFFICIENT_PERMISSIONS, fail closed); no key is 422
+  # LLM_PROVIDER_NOT_CONFIGURED; a provider outage is 503 SCREENING_AI_UNAVAILABLE.
+  /v1/screening-sessions/{id}/questions/generate:
+    post:
+      operationId: generateScreeningQuestions
+      summary: Generate (or regenerate) the AI question plan of a DRAFT session.
+      description: >-
+        Requires `screening:edit`. Uses the session's optional Requisition (under
+        the caller's requisition visibility) and, unless include_talent_profile is
+        false, the minimized talent profile — which requires `ai_processing`
+        consent. Unselected AI questions from a previous plan are retired.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateScreeningQuestionsRequest'
+      responses:
+        '200':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '503':
+          description: The tenant AI provider is temporarily unavailable (SCREENING_AI_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/questions:
+    post:
+      operationId: addScreeningQuestion
+      summary: Add a recruiter-authored question to the plan of a DRAFT session.
+      description: Requires `screening:edit`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddScreeningQuestionRequest'
+      responses:
+        '201':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/questions/{questionId}:
+    patch:
+      operationId: updateScreeningQuestion
+      summary: Edit, select, deselect or remove a question of a DRAFT session.
+      description: Requires `screening:edit`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: questionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScreeningQuestionRequest'
+      responses:
+        '200':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/notes:
+    post:
+      operationId: addScreeningNote
+      summary: Add an append-only interview note to a DRAFT session.
+      description: Requires `screening:edit`. Note content never enters event payloads.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddScreeningNoteRequest'
+      responses:
+        '201':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/suggestions:
+    post:
+      operationId: requestScreeningSuggestions
+      summary: Request advisory AI follow-up suggestions from one recruiter note.
+      description: Requires `screening:edit` and the talent's `ai_processing` consent. Suggestions are advisory and never findings.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestScreeningSuggestionsRequest'
+      responses:
+        '201':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '503':
+          description: The tenant AI provider is temporarily unavailable (SCREENING_AI_UNAVAILABLE).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/suggestions/{suggestionId}:
+    patch:
+      operationId: actionScreeningSuggestion
+      summary: Record the recruiter's action on a suggestion (once).
+      description: Requires `screening:edit`. A second action is 409 SCREENING_SESSION_VERSION_CONFLICT.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: suggestionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionScreeningSuggestionRequest'
+      responses:
+        '200':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/findings/{findingId}/review:
+    post:
+      operationId: reviewScreeningFinding
+      summary: Accept (CONFIRMED) or reject (REJECTED) an AI-drafted finding.
+      description: >-
+        Requires `screening:edit`. Version CAS. Editing an AI draft uses the
+        finding PATCH (review status EDITED, AI original retained). Every AI
+        draft must be reviewed before the session can be confirmed; rejected
+        drafts are never published.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: findingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewScreeningFindingRequest'
+      responses:
+        '200':
+          description: The screening session with its findings, question plan, notes, suggestions, transcripts and AI provenance.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/meeting:
+    post:
+      operationId: scheduleScreeningMeeting
+      summary: Schedule the screening interview as a Teams meeting (existing Outlook scheduling).
+      description: >-
+        Requires `screening:edit` and `communication:meeting:create`. The
+        organizer is the caller. Associations are Talent × ScreeningSession with
+        the Requisition optional; the invitation follows contacting consent and
+        the idempotency ledger. One meeting per session (422 with reason
+        meeting_already_linked, before any Outlook call). Automatic recording is
+        requested only under `recording` consent and the meeting-artifacts
+        capability.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleScreeningMeetingRequest'
+      responses:
+        '201':
+          description: The scheduled meeting and the updated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleScreeningMeetingResponse'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '502':
+          description: Microsoft provider error (MICROSOFT_PROVIDER_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/capture-modes:
+    get:
+      operationId: getScreeningCaptureModes
+      summary: The honest availability of each capture mode for the caller.
+      description: Requires `screening:read`. No external live capture provider is approved, so live suggestions are always no_approved_provider.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The capture-mode statuses.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningCaptureModes'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/transcripts/check:
+    post:
+      operationId: checkScreeningTranscripts
+      summary: Retrieve the post-meeting Teams transcript of the linked meeting (organizer only).
+      description: >-
+        Requires `screening:edit` and `screening:transcript:read`. Order: a
+        linked meeting (422 no_meeting_linked), the caller is the organizer
+        (403 MICROSOFT_MEETING_NOT_ORGANIZER), `transcription` consent (403
+        transcription_not_authorized), the delegated meeting-artifacts
+        capability and tenant transcript access (409
+        MEETING_ARTIFACT_ACCESS_UNAVAILABLE). Transcripts enter the existing
+        acquisition and normalization pipeline; each linked transcript reports
+        the asynchronous AI-drafting scheduling outcome.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The transcripts found and the updated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckScreeningTranscriptsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+        '502':
+          description: Microsoft provider error (MICROSOFT_PROVIDER_ERROR).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/citations/{citationId}/excerpt:
+    get:
+      operationId: getScreeningCitationExcerpt
+      summary: The transcript excerpt behind one finding citation.
+      description: >-
+        Requires `screening:read` and `screening:transcript:read`. Reads the
+        stored, hash-verified normalized transcript; a deleted or unverifiable
+        transcript is 404 with the reason (never reconstructed).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: citationId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The cited excerpt.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningCitationExcerpt'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   # ── Pipeline Accidental-Add Correction Directive v1.0 (VOID) ──
   # Remove a Talent from a requisition when added by mistake — an administrative
   # correction, NOT a recruiting disposition and NOT a delete. Governed + strict:
@@ -8637,6 +9086,10 @@ components:
           type: [string, 'null']
           format: uuid
           description: Optional informational reference to a Communications interaction.
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+          description: Optional Requisition (visibility-checked, 404 when not visible); it tailors the question plan only.
     ScreeningFindingRequest:
       type: object
       additionalProperties: false
@@ -8677,11 +9130,12 @@ components:
     ScreeningSession:
       type: object
       additionalProperties: false
-      required: [id, talent_record_id, interaction_id, state, version, created_at, updated_at, created_by_actor_id, confirmed_by_actor_id, confirmed_at, confirmed_version, voided_by_actor_id, voided_at, void_reason]
+      required: [id, talent_record_id, interaction_id, requisition_id, state, version, created_at, updated_at, created_by_actor_id, confirmed_by_actor_id, confirmed_at, confirmed_version, voided_by_actor_id, voided_at, void_reason]
       properties:
         id: { type: string, format: uuid }
         talent_record_id: { type: string, format: uuid }
         interaction_id: { type: [string, 'null'], format: uuid }
+        requisition_id: { type: [string, 'null'], format: uuid }
         state: { type: string, enum: [DRAFT, CONFIRMED, VOIDED] }
         version: { type: integer }
         created_at: { type: string, format: date-time }
@@ -8696,7 +9150,7 @@ components:
     ScreeningFinding:
       type: object
       additionalProperties: false
-      required: [id, skill_raw, basis, observation_raw, demonstration_raw, limitations_raw, created_at, updated_at]
+      required: [id, skill_raw, basis, observation_raw, demonstration_raw, limitations_raw, origin, review_status, evidence_source, ai_original, reviewed_by_actor_id, reviewed_at, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         skill_raw: { type: string }
@@ -8704,6 +9158,23 @@ components:
         observation_raw: { type: string }
         demonstration_raw: { type: [string, 'null'] }
         limitations_raw: { type: [string, 'null'] }
+        origin: { type: string, enum: [RECRUITER_AUTHORED, AI_DRAFTED] }
+        review_status:
+          type: [string, 'null']
+          enum: [DRAFT, EDITED, CONFIRMED, REJECTED, null]
+          description: AI drafts only (null for recruiter-authored findings).
+        evidence_source: { type: string, enum: [RECRUITER_OBSERVATION, MEETING_TRANSCRIPT, RECRUITER_NOTES] }
+        ai_original:
+          type: [object, 'null']
+          additionalProperties: false
+          description: The retained AI text of an AI draft, shown beside any recruiter edit.
+          properties:
+            skill_raw: { type: string }
+            basis: { type: string }
+            observation_raw: { type: string }
+            limitations_raw: { type: [string, 'null'] }
+        reviewed_by_actor_id: { type: [string, 'null'], format: uuid }
+        reviewed_at: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     ScreeningPublication:
@@ -8726,7 +9197,7 @@ components:
     ScreeningSessionDetail:
       type: object
       additionalProperties: false
-      required: [session, findings, publications]
+      required: [session, findings, publications, citations, questions, notes, suggestions, generations, transcripts, analyses]
       properties:
         session:
           $ref: '#/components/schemas/ScreeningSession'
@@ -8738,6 +9209,261 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ScreeningPublication'
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningCitation'
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningQuestion'
+        notes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningNote'
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningSuggestion'
+        generations:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningGeneration'
+        transcripts:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningTranscriptLink'
+        analyses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningAnalysis'
+    # ── TIP-E2E INC-3 A1 — AI-assisted screening schemas ──
+    ScreeningCitation:
+      type: object
+      additionalProperties: false
+      description: Transcript citation COORDINATES only; the excerpt needs screening:transcript:read.
+      required: [id, finding_id, conversation_transcript_id, utterance_id, start_offset, end_offset]
+      properties:
+        id: { type: string, format: uuid }
+        finding_id: { type: string, format: uuid }
+        conversation_transcript_id: { type: string, format: uuid }
+        utterance_id: { type: string }
+        start_offset: { type: integer, minimum: 0 }
+        end_offset: { type: integer, minimum: 0 }
+    ScreeningQuestion:
+      type: object
+      additionalProperties: false
+      required: [id, text, skill_ref, intent, origin, status, edited, position, generation_id]
+      properties:
+        id: { type: string, format: uuid }
+        text: { type: string }
+        skill_ref: { type: [string, 'null'] }
+        intent: { type: string, enum: [PROBE, FOLLOW_UP] }
+        origin: { type: string, enum: [AI_GENERATED, RECRUITER_AUTHORED] }
+        status: { type: string, enum: [PROPOSED, SELECTED, REMOVED] }
+        edited: { type: boolean }
+        position: { type: integer }
+        generation_id: { type: [string, 'null'], format: uuid }
+    ScreeningNote:
+      type: object
+      additionalProperties: false
+      required: [id, body, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+    ScreeningSuggestion:
+      type: object
+      additionalProperties: false
+      description: An advisory AI follow-up suggestion; never a finding.
+      required: [id, generation_id, text, trigger_kind, trigger_ref, action, actioned_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        generation_id: { type: string, format: uuid }
+        text: { type: string }
+        trigger_kind: { type: string, enum: [NOTE, TRANSCRIPT_SEGMENTS] }
+        trigger_ref:
+          type: object
+          additionalProperties: false
+          description: The triggering input — a note id (NOTE) or transcript segment ids (TRANSCRIPT_SEGMENTS).
+          properties:
+            note_id: { type: string, format: uuid }
+            segment_ids:
+              type: array
+              items: { type: string }
+        action: { type: [string, 'null'], enum: [USED, DISMISSED, null] }
+        actioned_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+    ScreeningGeneration:
+      type: object
+      additionalProperties: false
+      description: Provenance of one model call — the provider and model actually used; no prompt or completion text.
+      required: [id, kind, provider, model, prompt_version, used_talent_profile, used_requisition, used_transcript, output_count, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [QUESTION_PLAN, FOLLOW_UP, FINDINGS_DRAFT] }
+        provider: { type: string }
+        model: { type: string }
+        prompt_version: { type: string }
+        used_talent_profile: { type: boolean }
+        used_requisition: { type: boolean }
+        used_transcript: { type: boolean }
+        output_count: { type: integer }
+        created_at: { type: string, format: date-time }
+    ScreeningTranscriptLink:
+      type: object
+      additionalProperties: false
+      required: [conversation_transcript_id, source, created_at]
+      properties:
+        conversation_transcript_id: { type: string, format: uuid }
+        source: { type: string, enum: [TEAMS_GRAPH, EXTERNAL_PROVIDER] }
+        created_at: { type: string, format: date-time }
+    ScreeningAnalysis:
+      type: object
+      additionalProperties: false
+      description: The asynchronous AI-drafting run status for one linked transcript.
+      required: [run_id, conversation_transcript_id, status, last_error_code, model_provider, model_name, created_at, completed_at]
+      properties:
+        run_id: { type: string, format: uuid }
+        conversation_transcript_id: { type: string, format: uuid }
+        status: { type: string }
+        last_error_code: { type: [string, 'null'] }
+        model_provider: { type: string }
+        model_name: { type: string }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+    GenerateScreeningQuestionsRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        include_talent_profile:
+          type: boolean
+          description: Default true. When true the minimized talent profile is used, which requires ai_processing consent.
+    AddScreeningQuestionRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 1000 }
+        skill_ref: { type: [string, 'null'], maxLength: 200 }
+    UpdateScreeningQuestionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        text: { type: string, minLength: 1, maxLength: 1000 }
+        status: { type: string, enum: [PROPOSED, SELECTED, REMOVED] }
+    AddScreeningNoteRequest:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 1, maxLength: 4000 }
+    RequestScreeningSuggestionsRequest:
+      type: object
+      additionalProperties: false
+      required: [note_id]
+      properties:
+        note_id: { type: string, format: uuid }
+    ActionScreeningSuggestionRequest:
+      type: object
+      additionalProperties: false
+      required: [action]
+      properties:
+        action: { type: string, enum: [USED, DISMISSED] }
+    ReviewScreeningFindingRequest:
+      type: object
+      additionalProperties: false
+      required: [version, outcome]
+      properties:
+        version: { type: integer, minimum: 1 }
+        outcome: { type: string, enum: [CONFIRMED, REJECTED] }
+    ScheduleScreeningMeetingRequest:
+      type: object
+      additionalProperties: false
+      required: [subject, start_date_time, end_date_time, time_zone, idempotency_key]
+      properties:
+        subject: { type: string, minLength: 1, maxLength: 1024 }
+        start_date_time: { type: string, format: date-time }
+        end_date_time: { type: string, format: date-time }
+        time_zone: { type: string, minLength: 1, maxLength: 100 }
+        idempotency_key: { type: string, minLength: 8, maxLength: 200 }
+        connection_id: { type: string, format: uuid }
+    ScheduleScreeningMeetingResponse:
+      type: object
+      additionalProperties: false
+      required: [meeting, session]
+      properties:
+        meeting:
+          type: object
+          additionalProperties: false
+          required: [interaction_id, join_url, idempotent_replay, artifact_preparation, record_automatically]
+          properties:
+            interaction_id: { type: string, format: uuid }
+            join_url: { type: [string, 'null'] }
+            idempotent_replay: { type: boolean }
+            artifact_preparation:
+              type: string
+              enum: [prepared, not_granted, meeting_not_resolved, provider_error]
+            record_automatically:
+              type: boolean
+              description: True only when recording consent allowed requesting automatic recording.
+        session:
+          $ref: '#/components/schemas/ScreeningSessionDetail'
+    ScreeningCaptureModes:
+      type: object
+      additionalProperties: false
+      required: [recruiter_notes, teams_post_meeting, live_external_provider]
+      properties:
+        recruiter_notes:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, enum: [available] }
+        teams_post_meeting:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, enum: [available, not_granted, not_connected, reauth_required] }
+        live_external_provider:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, enum: [no_approved_provider] }
+    CheckScreeningTranscriptsResponse:
+      type: object
+      additionalProperties: false
+      required: [items, session]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [conversation_transcript_id, provider_transcript_id, state, linked, analysis]
+            properties:
+              conversation_transcript_id: { type: string, format: uuid }
+              provider_transcript_id: { type: string }
+              state: { type: string }
+              linked: { type: boolean }
+              analysis:
+                type: [string, 'null']
+                description: The AI-drafting scheduling outcome (queued, disabled, config_invalid, transcript_not_ready); null when not linked.
+        session:
+          $ref: '#/components/schemas/ScreeningSessionDetail'
+    ScreeningCitationExcerpt:
+      type: object
+      additionalProperties: false
+      required: [citation_id, conversation_transcript_id, utterance_id, speaker_role, excerpt, utterance_text]
+      properties:
+        citation_id: { type: string, format: uuid }
+        conversation_transcript_id: { type: string, format: uuid }
+        utterance_id: { type: string }
+        speaker_role: { type: string }
+        excerpt: { type: string }
+        utterance_text: { type: string }
     # ── Durable Async Résumé-First Talent Intake ──────────────────────────────
     CreateTalentIntakeDraftRequest:
       type: object
