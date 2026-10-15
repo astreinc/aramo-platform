@@ -1,8 +1,21 @@
+import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { apiClient } from '../api/client';
 
-import { fetchSession, logout, LOGOUT_PATH, type Session } from './session';
+import {
+  fetchSession,
+  LOGIN_PATH,
+  loginUrl,
+  logout,
+  LOGOUT_PATH,
+  MICROSOFT_SIGN_OUT_URL,
+  redirectToAccessDenied,
+  redirectToLogin,
+  TENANT_ACCESS_DENIED_PATH,
+  useSession,
+  type Session,
+} from './session';
 
 const sample: Session = {
   sub: '00000000-0000-0000-0000-000000000001',
@@ -88,5 +101,64 @@ describe('logout', () => {
         value: original,
       });
     }
+  });
+});
+
+// Host-binding SSO recovery — the account-picker login and the wrong-account
+// session state.
+describe('host-binding SSO recovery', () => {
+  function withAssign(fn: (assign: ReturnType<typeof vi.fn>) => void): void {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', { configurable: true, value: { assign } });
+    try {
+      fn(assign);
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: original });
+    }
+  }
+
+  it('loginUrl: default is the plain login path; selectAccount adds ?select_account=1 (same path, no other change)', () => {
+    expect(loginUrl()).toBe(LOGIN_PATH);
+    expect(loginUrl({ selectAccount: false })).toBe(LOGIN_PATH);
+    expect(loginUrl({ selectAccount: true })).toBe(`${LOGIN_PATH}?select_account=1`);
+  });
+
+  it('redirectToLogin({ selectAccount: true }) navigates to the account-picker login', () => {
+    withAssign((assign) => {
+      redirectToLogin({ selectAccount: true });
+      expect(assign).toHaveBeenCalledWith(`${LOGIN_PATH}?select_account=1`);
+    });
+  });
+
+  it('redirectToAccessDenied navigates to the same-origin recovery page', () => {
+    withAssign((assign) => {
+      redirectToAccessDenied();
+      expect(assign).toHaveBeenCalledWith('/login?error=TENANT_ACCESS_DENIED');
+    });
+    expect(TENANT_ACCESS_DENIED_PATH.startsWith('/')).toBe(true);
+  });
+
+  it('MICROSOFT_SIGN_OUT_URL is a fixed Microsoft endpoint with no parameters (no open redirect)', () => {
+    const url = new URL(MICROSOFT_SIGN_OUT_URL);
+    expect(url.origin).toBe('https://login.microsoftonline.com');
+    expect(url.search).toBe('');
+  });
+
+  it('useSession → "denied" on 403 TENANT_ACCESS_DENIED; any other 403 stays "unauthenticated"', async () => {
+    const respond = (code: string) =>
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({ error: { code, message: 'x', request_id: 'r' } }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      );
+    respond('TENANT_ACCESS_DENIED');
+    const denied = renderHook(() => useSession());
+    await waitFor(() => expect(denied.result.current.status).toBe('denied'));
+    vi.restoreAllMocks();
+    respond('SOMETHING_ELSE');
+    const other = renderHook(() => useSession());
+    await waitFor(() => expect(other.result.current.status).toBe('unauthenticated'));
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Card, InlineAlert, redirectToLogin } from '@aramo/fe-foundation';
+import { Button, Card, InlineAlert, WrongAccountRecovery, redirectToLogin } from '@aramo/fe-foundation';
 
 // Inc-3 PR-3.5 (Workstream B) — the login landing.
 //
@@ -72,6 +72,17 @@ export function LoginPage({ onMount }: LoginPageProps) {
     return (
       <section className="aramo-login">
         <p>Redirecting to sign-in…</p>
+      </section>
+    );
+  }
+
+  // Host-binding SSO recovery — the signed-in Microsoft account does not belong
+  // to this host. Account-recovery actions, not a plain retry (a retry would let
+  // Microsoft SSO silently pick the same account again).
+  if (error === 'TENANT_ACCESS_DENIED') {
+    return (
+      <section className="aramo-login">
+        <WrongAccountRecovery />
       </section>
     );
   }
