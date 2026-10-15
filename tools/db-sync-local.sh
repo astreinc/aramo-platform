@@ -68,7 +68,7 @@ mig_list() {
 # sort on both sides (comm requires identically-sorted inputs).
 compute_pending() {
   local on_disk="${1:-}" recorded="${2:-}" out
-  out="$(comm -23 \
+  out="$(LC_ALL=C comm -23 \
     <(printf '%s\n' "$on_disk"  | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u) \
     <(printf '%s\n' "$recorded" | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u))"
   if [ -z "$out" ]; then
@@ -277,10 +277,10 @@ main() {
   before="${split%% *}"
   after="${split##* }"
   after_list="$(printf '%s\n' "$on_disk_all" | sed '/^[[:space:]]*$/d' | awk -v s="$STOP_POS" 'NR>s')"
-  newly="$(comm -13 \
+  newly="$(LC_ALL=C comm -13 \
     <(printf '%s\n' "$recorded_before" | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u) \
     <(printf '%s\n' "$recorded_after"  | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u))"
-  newly_after="$(comm -12 \
+  newly_after="$(LC_ALL=C comm -12 \
     <(printf '%s\n' "$after_list" | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u) \
     <(printf '%s\n' "$newly"      | sed '/^[[:space:]]*$/d' | LC_ALL=C sort -u))"
   if [ -n "$newly_after" ]; then
