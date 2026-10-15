@@ -23,8 +23,9 @@
 //      geometry.json, metrics.json, report.md
 // Env: T360_BASE (default http://localhost:4201), T360_PROTO (prototype file path),
 //      T360_OUT_DIR (default /tmp/t360-parity).
-import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+
+import { chromium } from 'playwright-core';
 
 const BASE = process.env.T360_BASE || 'http://localhost:4201';
 const PROTO_PATH =
@@ -248,7 +249,7 @@ await apage.route('**/v1/**/dossier**', (r) => r.fulfill({ status: 200, contentT
 await apage.goto(`${BASE}/talent/${TALENT_ID}`, { waitUntil: 'networkidle' }).catch((e) => console.log('actual goto:', String(e)));
 await apage.addStyleTag({ content: NO_ANIM });
 await apage.waitForTimeout(800);
-try { await apage.evaluate(() => document.fonts && document.fonts.ready); } catch {}
+try { await apage.evaluate(() => document.fonts && document.fonts.ready); } catch { /* fonts API optional — capture anyway */ }
 console.log('ACTUAL tabs:', await apage.locator('.t360-tab').count());
 
 // ── prototype (file://) context (only in full compare mode) ───────────────────
@@ -260,7 +261,7 @@ if (STATE === 'full') {
   await ppage.goto(PROTO_URL, { waitUntil: 'networkidle' }).catch((e) => console.log('proto goto:', String(e)));
   await ppage.addStyleTag({ content: NO_ANIM });
   await ppage.waitForTimeout(800);
-  try { await ppage.evaluate(() => document.fonts && document.fonts.ready); } catch {}
+  try { await ppage.evaluate(() => document.fonts && document.fonts.ready); } catch { /* fonts API optional — capture anyway */ }
 }
 // Sparse/empty states are captured actual-only into a sub-directory.
 const STATE_OUT = STATE === 'full' ? OUT : `${OUT}/${STATE}`;
@@ -287,7 +288,7 @@ for (const tab of TABS) {
   // Deterministic expand: first opportunity on Overview/Opportunities.
   if (tab.key === 'overview' || tab.key === 'opportunities') {
     const row = apage.locator('.t360-opp-row').first();
-    if (await row.count()) { await row.click({ force: true }).catch(() => {}); await apage.waitForTimeout(300); }
+    if (await row.count()) { await row.click({ force: true }).catch(() => undefined); await apage.waitForTimeout(300); }
     // prototype auto-expands opp 1001 on Overview and all on Opportunities.
   }
   await apage.evaluate(() => window.scrollTo(0, 0));
