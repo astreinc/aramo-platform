@@ -972,7 +972,12 @@ export class TalentTrustService {
       collected_at: input.collected_at,
       decay_profile: 'MODERATE',
       portability_class: 'TENANT_ONLY',
-      ai_derived: false,
+      // INC-3 A1 (Part C) — ai_derived is DERIVED from provenance.origin and
+      // stays true for an AI-drafted finding after any recruiter edit or
+      // confirmation; a recruiter-authored finding (or one with no provenance)
+      // is false. Never caller-supplied. Pinned by the replay identity.
+      ai_derived:
+        (canonical['provenance'] as { origin?: unknown } | undefined)?.origin === 'AI_DRAFTED',
       current_status: EVENT_TO_STATUS.CREATED,
       created_by: SCREENING_CREATED_BY,
     };

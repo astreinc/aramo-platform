@@ -207,6 +207,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await prisma.evidenceRecord.count({ where: { tenant_id: TENANT_B } })).toBe(0);
     });
 
+    it('A1: an AI-drafted finding publishes with ai_derived=true; a provenance change is a conflicting replay', async () => {
+      const evidenceId = uuidv7();
+      const record = uuidv7();
+      const sessionId = uuidv7();
+      const findingId = uuidv7();
+      const ai = findingPayload(sessionId, findingId, {
+        basis: 'SELF_REPORTED',
+        provenance: { origin: 'AI_DRAFTED', review_outcome: 'EDITED', evidence_source: 'RECRUITER_NOTES' },
+      });
+      await service.recordScreeningFindingIfAbsent(input(TENANT_A, record, evidenceId, ai));
+      const row = await prisma.evidenceRecord.findUniqueOrThrow({ where: { id: evidenceId } });
+      expect(row.ai_derived).toBe(true);
+      expect(row.source_class).toBe('SELF'); // a self-reported statement stays SELF
+      // Same id, provenance stripped (would flip ai_derived) → conflict, unchanged.
+      await expect(
+        service.recordScreeningFindingIfAbsent(input(TENANT_A, record, evidenceId, findingPayload(sessionId, findingId, { basis: 'SELF_REPORTED' }))),
+      ).rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_CONFLICT' });
+      expect((await prisma.evidenceRecord.findUniqueOrThrow({ where: { id: evidenceId } })).ai_derived).toBe(true);
+    });
+
+    it('A1: a recruiter-authored finding stays ai_derived=false', async () => {
+      const evidenceId = uuidv7();
+      await service.recordScreeningFindingIfAbsent(input(TENANT_A, uuidv7(), evidenceId, findingPayload(uuidv7(), uuidv7(), {
+        provenance: { origin: 'RECRUITER_AUTHORED', evidence_source: 'RECRUITER_OBSERVATION' },
+      })));
+      expect((await prisma.evidenceRecord.findUniqueOrThrow({ where: { id: evidenceId } })).ai_derived).toBe(false);
+    });
+
     it('an invalid shape is refused with CLAIM_SHAPE_INVALID before any write (row 16)', async () => {
       const evidenceId = uuidv7();
       await expect(

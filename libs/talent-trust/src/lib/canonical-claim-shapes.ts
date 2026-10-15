@@ -550,6 +550,21 @@ export const SCREENING_FINDING_BASES = [
 ] as const;
 export type ScreeningFindingBasis = (typeof SCREENING_FINDING_BASES)[number];
 
+// INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED Part C, §B.2) — the three
+// independent provenance axes. Optional on the shape (a recruiter-authored
+// finding may omit it); when present it is CLOSED and validated. origin decides
+// ai_derived (Talent Trust derives the flag — it is never caller-supplied).
+export const SCREENING_FINDING_ORIGINS = ['RECRUITER_AUTHORED', 'AI_DRAFTED'] as const;
+export type ScreeningFindingOrigin = (typeof SCREENING_FINDING_ORIGINS)[number];
+// The recruiter's review outcome of an AI-drafted finding at publication time.
+// REJECTED / DRAFT findings are never published, so they are not valid here.
+export const SCREENING_REVIEW_OUTCOMES = ['CONFIRMED', 'EDITED'] as const;
+export const SCREENING_EVIDENCE_SOURCES = [
+  'RECRUITER_OBSERVATION',
+  'MEETING_TRANSCRIPT',
+  'RECRUITER_NOTES',
+] as const;
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const screeningFindingShape: ClaimShape = (p) => {
@@ -595,6 +610,62 @@ const screeningFindingShape: ClaimShape = (p) => {
   if (typeof r['screening_finding_id'] !== 'string' || !UUID_RE.test(r['screening_finding_id'])) {
     errors.push('screening_ref.screening_finding_id must be a uuid');
   }
+  const provenanceIn = p['provenance'];
+  let provenance: Record<string, unknown> | null = null;
+  if (provenanceIn !== undefined) {
+    const pr = (typeof provenanceIn === 'object' && provenanceIn !== null ? provenanceIn : {}) as Record<string, unknown>;
+    const origin = pr['origin'];
+    if (typeof origin !== 'string' || !(SCREENING_FINDING_ORIGINS as readonly string[]).includes(origin)) {
+      errors.push(`provenance.origin must be one of ${SCREENING_FINDING_ORIGINS.join('|')}`);
+    }
+    const source = pr['evidence_source'];
+    if (typeof source !== 'string' || !(SCREENING_EVIDENCE_SOURCES as readonly string[]).includes(source)) {
+      errors.push(`provenance.evidence_source must be one of ${SCREENING_EVIDENCE_SOURCES.join('|')}`);
+    }
+    const outcome = pr['review_outcome'];
+    if (origin === 'AI_DRAFTED') {
+      if (typeof outcome !== 'string' || !(SCREENING_REVIEW_OUTCOMES as readonly string[]).includes(outcome)) {
+        errors.push(`provenance.review_outcome must be one of ${SCREENING_REVIEW_OUTCOMES.join('|')} for an AI-drafted finding`);
+      }
+    } else if (outcome !== undefined && outcome !== null) {
+      errors.push('provenance.review_outcome is only permitted for an AI-drafted finding');
+    }
+    const citations: Array<Record<string, unknown>> = [];
+    const refs = pr['citation_refs'];
+    if (refs !== undefined) {
+      if (!Array.isArray(refs)) {
+        errors.push('provenance.citation_refs must be an array');
+      } else {
+        for (const ref of refs) {
+          const r = (typeof ref === 'object' && ref !== null ? ref : {}) as Record<string, unknown>;
+          const tid = r['conversation_transcript_id'];
+          const uid = r['utterance_id'];
+          const start = r['start'];
+          const end = r['end'];
+          if (
+            typeof tid !== 'string' || !UUID_RE.test(tid) ||
+            typeof uid !== 'string' || uid.length === 0 ||
+            typeof start !== 'number' || !Number.isInteger(start) || start < 0 ||
+            typeof end !== 'number' || !Number.isInteger(end) || end < start
+          ) {
+            errors.push('provenance.citation_refs entries must be { conversation_transcript_id: uuid, utterance_id, start, end } coordinates');
+            break;
+          }
+          // Coordinates only — never quoted text (Part C).
+          citations.push({ conversation_transcript_id: tid.toLowerCase(), utterance_id: uid, start, end });
+        }
+      }
+    }
+    if (source === 'MEETING_TRANSCRIPT' && citations.length === 0) {
+      errors.push('provenance.evidence_source MEETING_TRANSCRIPT requires at least one citation_ref');
+    }
+    provenance = {
+      origin,
+      evidence_source: source,
+      ...(origin === 'AI_DRAFTED' ? { review_outcome: outcome } : {}),
+      ...(citations.length > 0 ? { citation_refs: citations } : {}),
+    };
+  }
   if (errors.length > 0) return { ok: false, errors };
 
   const skillRaw = (p['skill_raw'] as string).trim();
@@ -619,6 +690,7 @@ const screeningFindingShape: ClaimShape = (p) => {
   if (nonEmptyString(p['limitations_raw'])) {
     canonical['limitations_raw'] = (p['limitations_raw'] as string).trim();
   }
+  if (provenance !== null) canonical['provenance'] = provenance;
   return { ok: true, canonical };
 };
 

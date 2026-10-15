@@ -37,7 +37,11 @@ export type {
 // TR-SCREEN-1 DDR §2.1 — the SCREENING_FINDING basis vocabulary.
 export {
   SCREENING_FINDING_BASES,
+  SCREENING_FINDING_ORIGINS,
+  SCREENING_REVIEW_OUTCOMES,
+  SCREENING_EVIDENCE_SOURCES,
   type ScreeningFindingBasis,
+  type ScreeningFindingOrigin,
 } from './lib/canonical-claim-shapes.js';
 export type {
   EvidenceRecordRow,

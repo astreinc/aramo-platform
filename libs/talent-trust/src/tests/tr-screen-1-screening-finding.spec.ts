@@ -93,6 +93,40 @@ describe('TR-SCREEN-1 §2.1 — SCREENING_FINDING canonical shape', () => {
     ).toBe(false);
   });
 
+  // INC-3 A1 Part C — the closed provenance block (origin / review outcome /
+  // evidence source / citation coordinates).
+  const TID = '0192f000-0000-7000-8000-0000000000aa';
+  it('A1: accepts AI-drafted provenance with transcript citations (coordinates only)', () => {
+    const r = validateClaimShape('SCREENING_FINDING', payload({
+      basis: 'SELF_REPORTED',
+      provenance: {
+        origin: 'AI_DRAFTED',
+        review_outcome: 'EDITED',
+        evidence_source: 'MEETING_TRANSCRIPT',
+        citation_refs: [{ conversation_transcript_id: TID, utterance_id: 'u-3', start: 0, end: 42, text: 'quoted' }],
+      },
+    }));
+    expect(r.ok).toBe(true);
+    expect(r.canonical?.['provenance']).toEqual({
+      origin: 'AI_DRAFTED',
+      evidence_source: 'MEETING_TRANSCRIPT',
+      review_outcome: 'EDITED',
+      citation_refs: [{ conversation_transcript_id: TID, utterance_id: 'u-3', start: 0, end: 42 }],
+    });
+    expect(JSON.stringify(r.canonical)).not.toContain('quoted');
+  });
+
+  it('A1: refuses an unknown origin, a missing review outcome for AI drafts, and transcript evidence without citations', () => {
+    const bad = (provenance: Record<string, unknown>) =>
+      validateClaimShape('SCREENING_FINDING', payload({ provenance })).ok;
+    expect(bad({ origin: 'MODEL', evidence_source: 'RECRUITER_NOTES' })).toBe(false);
+    expect(bad({ origin: 'AI_DRAFTED', evidence_source: 'RECRUITER_NOTES' })).toBe(false);
+    expect(bad({ origin: 'AI_DRAFTED', review_outcome: 'REJECTED', evidence_source: 'RECRUITER_NOTES' })).toBe(false);
+    expect(bad({ origin: 'RECRUITER_AUTHORED', review_outcome: 'EDITED', evidence_source: 'RECRUITER_OBSERVATION' })).toBe(false);
+    expect(bad({ origin: 'AI_DRAFTED', review_outcome: 'CONFIRMED', evidence_source: 'MEETING_TRANSCRIPT' })).toBe(false);
+    expect(bad({ origin: 'RECRUITER_AUTHORED', evidence_source: 'RECRUITER_OBSERVATION' })).toBe(true);
+  });
+
   it('keeps optional limitations_raw', () => {
     const r = validateClaimShape('SCREENING_FINDING', payload({ limitations_raw: ' No replication topics covered. ' }));
     expect(r.canonical?.['limitations_raw']).toBe('No replication topics covered.');
