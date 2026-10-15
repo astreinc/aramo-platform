@@ -634,8 +634,17 @@ paths:
   /v1/documents/revisions/{id}/source:
     get:
       operationId: getRevisionSource
-      summary: Source PDF bytes (base64) for a frozen revision — pulled by esign-service for executed-document production (DOC-4).
-      description: Authorized service-to-service read; esign-service holds no document storage binding.
+      summary: Source PDF bytes (base64) for a frozen revision — pulled by esign-service for executed-document production and the signer document view (DOC-4).
+      description: >
+        Service-to-service read callable ONLY by esign-service (ES-2). Every request carries
+        `X-Aramo-Esign-S2S-Timestamp` (unix seconds) and `X-Aramo-Esign-S2S-Signature`:
+        base64 HMAC-SHA256, keyed by the shared E-Sign secret, over the newline-joined
+        canonical string `aramo-esign-s2s-v1`, the upper-case method, the exact request path,
+        the normalized query (pairs sorted by key, each component percent-encoded, joined by
+        `&`; a repeated key is rejected) and the timestamp. The tag domain-separates it from
+        the lifecycle-webhook signature. Core verifies it in constant time within ±300s. It
+        authenticates the caller only; it is not a signer authorization. Residual: an
+        identical captured request is replayable inside the window (no nonce store).
       parameters:
         - name: id
           in: path
@@ -649,6 +658,18 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: X-Aramo-Esign-S2S-Timestamp
+          in: header
+          required: true
+          description: Unix epoch seconds when the request was signed. Rejected if outside ±300s of now.
+          schema:
+            type: string
+        - name: X-Aramo-Esign-S2S-Signature
+          in: header
+          required: true
+          description: base64(HMAC-SHA256(secret, canonical aramo-esign-s2s-v1 string)).
+          schema:
+            type: string
       responses:
         '200':
           description: The base64 source PDF.
@@ -660,39 +681,22 @@ paths:
                 properties:
                   revision_id: { type: string, format: uuid }
                   source_base64: { type: string }
-        '404':
-          $ref: '#/components/responses/NotFound'
-  /v1/documents/esign-writeback:
-    post:
-      operationId: esignWriteBack
-      summary: Idempotent executed-artifact write-back — pulls executed bytes + certificate from esign-service and stores the permanent EXECUTED + EXECUTION_CERTIFICATE artifacts (DOC-4).
-      description: Invoked by the executed-envelope event consumer; idempotent on (tenant, envelope, document).
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [tenant_id, envelope_id]
-              properties:
-                tenant_id: { type: string, format: uuid }
-                envelope_id: { type: string, format: uuid }
-                correlation_id: { type: string }
-      responses:
-        '200':
-          description: The write-back result.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Missing, malformed, stale or invalid esign-service request signature (AUTH_REQUIRED).
           content:
             application/json:
               schema:
-                type: object
-                required: [envelope_id, documents_written]
-                properties:
-                  envelope_id: { type: string, format: uuid }
-                  documents_written: { type: integer }
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '422':
-          $ref: '#/components/responses/BadRequest'
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: esign-service request authentication is not configured (ESIGN_SERVICE_AUTH_UNAVAILABLE); fails closed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/integrations/esign/events:
     post:
       operationId: receiveEsignLifecycleEvent
@@ -704,8 +708,8 @@ paths:
         request body}`, keyed by the shared webhook secret). Core verifies the signature and a
         bounded timestamp window (±300s) before processing, then interprets the event
         idempotently (dedup by `event_id`). Delivery is at-least-once; a 2xx is returned ONLY
-        after durable acceptance. This is the canonical callback contract; the transitional
-        `/v1/documents/esign-writeback` endpoint is retained for internal compatibility only.
+        after durable acceptance. This is the canonical (and only) E-Sign → Core callback; the
+        transitional `/v1/documents/esign-writeback` HTTP endpoint was retired in ES-2.
       parameters:
         - name: X-Aramo-Esign-Timestamp
           in: header
