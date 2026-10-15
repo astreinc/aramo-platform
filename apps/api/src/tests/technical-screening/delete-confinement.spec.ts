@@ -22,17 +22,28 @@ const ROOT = resolve(__dirname, '../../../../..');
 const SCHEMA = ['technical', 'screening'].join('_');
 const SQL_TABLE = new RegExp(`"?${SCHEMA}"?\\.\\s*"Screening`);
 const PRISMA_DELETE = new RegExp(
-  ['screening', '(Session|Finding|EvidencePublication|Event)', '\\.delete'].join(''),
+  [
+    'screening',
+    // INC-3 A1 adds FindingCitation, AiGeneration, Question, Note, AssistSuggestion, TranscriptLink.
+    '(Session|Finding|FindingCitation|EvidencePublication|Event|AiGeneration|Question|Note|AssistSuggestion|TranscriptLink)',
+    '\\.delete',
+  ].join(''),
 );
 
 const PRISMA_DELETE_ALLOWLIST = new Set<string>([
-  // DRAFT finding removal — version-guarded, in the same tx as FINDING_REMOVED.
+  // DRAFT finding removal — version-guarded, in the same tx as FINDING_REMOVED —
+  // and the INC-3 A1 R-B retention delete of AI content (questions, notes,
+  // suggestions) once a session is CONFIRMED or VOIDED (deleteSessionAiContent).
   'libs/technical-screening/src/lib/technical-screening.repository.ts',
 ]);
 
 const SQL_TABLE_ALLOWLIST = new Set<string>([
   // The init migration — DEFINES the tables and their UPDATE-immutability triggers.
   'libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
+  // INC-3 A1 migration — DEFINES the A1 tables and triggers (no DELETE).
+  'libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql',
+  // INC-3 A1 domain integration proof — exercises the A1 UPDATE triggers.
+  'libs/technical-screening/src/tests/inc3-a1-domain.integration.spec.ts',
   // The repository — SELECT … FOR UPDATE on an intent and the merge re-key UPDATE
   // (no DELETE in raw SQL; Rule 1 covers its one Prisma delete).
   'libs/technical-screening/src/lib/technical-screening.repository.ts',

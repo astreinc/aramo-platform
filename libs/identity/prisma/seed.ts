@@ -450,6 +450,9 @@ export const SEED_IDS = {
     'screening:create': '01900000-0000-7000-8000-000000001406',
     'screening:edit': '01900000-0000-7000-8000-000000001407',
     'screening:confirm': '01900000-0000-7000-8000-000000001408',
+    // TIP-E2E INC-3 A1 (§B.7) — transcript excerpt read. Dedicated clear node
+    // 0x1409 (append-don't-renumber; verified free).
+    'screening:transcript:read': '01900000-0000-7000-8000-000000001409',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2416,6 +2419,32 @@ const SCREENING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.7) — the transcript
+// excerpt read scope, granted to the SAME three recruiter-tier roles only (no
+// authority from administrative status). A DEDICATED bundle so the INC-3
+// screening RoleScope ids (0x1700..0x170b) are not renumbered. 3 grants,
+// range 0x1710..0x1712.
+export const SCREENING_TRANSCRIPT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = [
+  ['recruiter', ['screening:transcript:read']],
+  ['lead_recruiter', ['screening:transcript:read']],
+  ['recruiting_manager', ['screening:transcript:read']],
+];
+
+const SCREENING_TRANSCRIPT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1710;
+  for (const [role, scopes] of SCREENING_TRANSCRIPT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] =
+        `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // COMM PART A — Engagement Policy OVERRIDE grants. engagement:policy:override ->
 // tenant_admin + tenant_owner (the authorized-user/manager tier; recruiter/
 // account_manager excluded). A DEDICATED, DISJOINT bundle (range 0xf40+,
@@ -3096,6 +3125,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['screening:create'], 'screening:create', 'Create a manual technical screening session (INC-3; recruiter-tier).');
   await upsertScope(prisma, SEED_IDS.scopes['screening:edit'], 'screening:edit', 'Edit a draft manual technical screening session (INC-3; recruiter-tier).');
   await upsertScope(prisma, SEED_IDS.scopes['screening:confirm'], 'screening:confirm', 'Confirm a manual technical screening session (INC-3; recruiter-tier; self-confirmation permitted).');
+  // TIP-E2E INC-3 A1 (§B.7) — transcript excerpt read, separate from screening:read.
+  await upsertScope(prisma, SEED_IDS.scopes['screening:transcript:read'], 'screening:transcript:read', 'Read screening meeting transcript excerpts (INC-3 A1; recruiter-tier).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create'], 'requisition:create', 'Create a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:edit'], 'requisition:edit', 'Edit a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:delete'], 'requisition:delete', 'Delete a requisition (tenant_admin only — Ruling 1)');
@@ -3907,6 +3938,24 @@ export async function runIdentitySeed(
       const rsId = SCREENING_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`INC-3 Screening-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // TIP-E2E INC-3 A1 (§B.7) — screening transcript-read grants (3 rows, range
+  // 0x1710+) per SCREENING_TRANSCRIPT_SEED_BUNDLES.
+  for (const [roleKey, scopeKeys] of SCREENING_TRANSCRIPT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = SCREENING_TRANSCRIPT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`INC-3 A1 Screening-Transcript-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

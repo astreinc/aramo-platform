@@ -4,21 +4,31 @@ import { AramoError } from '@aramo/common';
 import {
   ScreeningGuardError,
   TechnicalScreeningRepository,
+  type ScreeningCitationRow,
   type ScreeningEventRow,
   type ScreeningFindingFields,
   type ScreeningFindingRow,
+  type ScreeningGenerationRow,
+  type ScreeningNoteRow,
   type ScreeningPublicationRow,
+  type ScreeningQuestionRow,
   type ScreeningSessionRow,
+  type ScreeningSuggestionRow,
+  type ScreeningTranscriptLinkRow,
 } from './technical-screening.repository.js';
 import {
   SCREENING_EVIDENCE_PUBLISHER,
   type ScreeningEvidencePublisher,
 } from './screening-publisher.port.js';
 import {
+  QUESTION_STATUSES,
   SCREENING_BASES,
+  SCREENING_NOTE_MAX,
+  SCREENING_QUESTION_MAX,
   SCREENING_SKILL_MAX,
   SCREENING_TEXT_MAX,
   SCREENING_VOID_REASON_MAX,
+  SUGGESTION_ACTIONS,
 } from './screening-vocab.js';
 
 // TIP-E2E INC-3 — the Technical Screening domain service
@@ -39,6 +49,13 @@ export interface ScreeningSessionDetail {
   session: ScreeningSessionRow;
   findings: ScreeningFindingRow[];
   publications: ScreeningPublicationRow[];
+  // INC-3 A1.
+  citations: ScreeningCitationRow[];
+  questions: ScreeningQuestionRow[];
+  notes: ScreeningNoteRow[];
+  suggestions: ScreeningSuggestionRow[];
+  generations: ScreeningGenerationRow[];
+  transcripts: ScreeningTranscriptLinkRow[];
 }
 
 export interface PublicationAttemptResult {
@@ -68,11 +85,18 @@ export class TechnicalScreeningService {
   async getDetail(tenantId: string, sessionId: string, requestId: string): Promise<ScreeningSessionDetail> {
     const session = await this.repo.findSession(tenantId, sessionId);
     if (session === null) throw notFound(requestId);
-    const [findings, publications] = await Promise.all([
-      this.repo.listFindings(tenantId, sessionId),
-      this.repo.listPublications(tenantId, sessionId),
-    ]);
-    return { session, findings, publications };
+    const [findings, publications, citations, questions, notes, suggestions, generations, transcripts] =
+      await Promise.all([
+        this.repo.listFindings(tenantId, sessionId),
+        this.repo.listPublications(tenantId, sessionId),
+        this.repo.listCitations(tenantId, sessionId),
+        this.repo.listQuestions(tenantId, sessionId),
+        this.repo.listNotes(tenantId, sessionId),
+        this.repo.listSuggestions(tenantId, sessionId),
+        this.repo.listGenerations(tenantId, sessionId),
+        this.repo.listTranscriptLinks(tenantId, sessionId),
+      ]);
+    return { session, findings, publications, citations, questions, notes, suggestions, generations, transcripts };
   }
 
   async listEvents(tenantId: string, sessionId: string): Promise<ScreeningEventRow[]> {
@@ -86,9 +110,149 @@ export class TechnicalScreeningService {
     site_id: string | null;
     talent_record_id: string;
     interaction_id: string | null;
+    requisition_id?: string | null;
     actor_id: string;
   }): Promise<ScreeningSessionRow> {
     return this.repo.createSession(input);
+  }
+
+  // ---- INC-3 A1 — question plan, notes, suggestions, AI-draft review -------
+
+  async addQuestion(input: {
+    tenant_id: string;
+    session_id: string;
+    actor_id: string;
+    text: unknown;
+    skill_ref?: unknown;
+    requestId: string;
+  }): Promise<ScreeningQuestionRow> {
+    const text = boundedText(input.text, SCREENING_QUESTION_MAX);
+    if (text === null) throw validation(input.requestId, `text must be 1..${SCREENING_QUESTION_MAX} characters`);
+    const skill = input.skill_ref === undefined || input.skill_ref === null ? null : boundedText(input.skill_ref, SCREENING_SKILL_MAX);
+    return this.guarded(input.requestId, () =>
+      this.repo.addQuestion({ tenant_id: input.tenant_id, session_id: input.session_id, actor_id: input.actor_id, text, skill_ref: skill }),
+    );
+  }
+
+  async updateQuestion(input: {
+    tenant_id: string;
+    session_id: string;
+    question_id: string;
+    actor_id: string;
+    text?: unknown;
+    status?: unknown;
+    requestId: string;
+  }): Promise<ScreeningQuestionRow> {
+    let text: string | undefined;
+    if (input.text !== undefined) {
+      const t = boundedText(input.text, SCREENING_QUESTION_MAX);
+      if (t === null) throw validation(input.requestId, `text must be 1..${SCREENING_QUESTION_MAX} characters`);
+      text = t;
+    }
+    let status: string | undefined;
+    if (input.status !== undefined) {
+      if (typeof input.status !== 'string' || !(QUESTION_STATUSES as readonly string[]).includes(input.status)) {
+        throw validation(input.requestId, `status must be one of ${QUESTION_STATUSES.join('|')}`);
+      }
+      status = input.status;
+    }
+    if (text === undefined && status === undefined) throw validation(input.requestId, 'nothing to update');
+    return this.guarded(input.requestId, () =>
+      this.repo.updateQuestion({
+        tenant_id: input.tenant_id,
+        session_id: input.session_id,
+        question_id: input.question_id,
+        actor_id: input.actor_id,
+        ...(text !== undefined ? { text } : {}),
+        ...(status !== undefined ? { status } : {}),
+      }),
+    );
+  }
+
+  async addNote(input: {
+    tenant_id: string;
+    session_id: string;
+    actor_id: string;
+    body: unknown;
+    requestId: string;
+  }): Promise<ScreeningNoteRow> {
+    const body = boundedText(input.body, SCREENING_NOTE_MAX);
+    if (body === null) throw validation(input.requestId, `body must be 1..${SCREENING_NOTE_MAX} characters`);
+    return this.guarded(input.requestId, () =>
+      this.repo.addNote({ tenant_id: input.tenant_id, session_id: input.session_id, actor_id: input.actor_id, body }),
+    );
+  }
+
+  async actionSuggestion(input: {
+    tenant_id: string;
+    session_id: string;
+    suggestion_id: string;
+    actor_id: string;
+    action: unknown;
+    requestId: string;
+  }): Promise<ScreeningSuggestionRow> {
+    if (typeof input.action !== 'string' || !(SUGGESTION_ACTIONS as readonly string[]).includes(input.action)) {
+      throw validation(input.requestId, `action must be one of ${SUGGESTION_ACTIONS.join('|')}`);
+    }
+    const action = input.action as 'USED' | 'DISMISSED';
+    return this.guarded(input.requestId, () =>
+      this.repo.actionSuggestion({
+        tenant_id: input.tenant_id,
+        session_id: input.session_id,
+        suggestion_id: input.suggestion_id,
+        actor_id: input.actor_id,
+        action,
+      }),
+    );
+  }
+
+  // §B.2 — accept an AI draft as drafted (CONFIRMED) or reject it. Editing an
+  // AI draft goes through editFinding and records EDITED.
+  async reviewAiFinding(input: {
+    tenant_id: string;
+    session_id: string;
+    finding_id: string;
+    version: unknown;
+    outcome: unknown;
+    actor_id: string;
+    requestId: string;
+  }): Promise<{ finding: ScreeningFindingRow; version: number }> {
+    const version = requireVersion(input.version, input.requestId);
+    if (input.outcome !== 'CONFIRMED' && input.outcome !== 'REJECTED') {
+      throw validation(input.requestId, 'outcome must be CONFIRMED or REJECTED');
+    }
+    const outcome = input.outcome;
+    return this.guarded(input.requestId, () =>
+      this.repo.reviewAiFinding({
+        tenant_id: input.tenant_id,
+        session_id: input.session_id,
+        finding_id: input.finding_id,
+        expected_version: version,
+        actor_id: input.actor_id,
+        outcome,
+      }),
+    );
+  }
+
+  async linkMeeting(input: {
+    tenant_id: string;
+    session_id: string;
+    interaction_id: string;
+    actor_id: string;
+    requestId: string;
+  }): Promise<ScreeningSessionRow> {
+    return this.guarded(input.requestId, () => this.repo.linkMeeting(input));
+  }
+
+  async linkTranscript(input: {
+    tenant_id: string;
+    session_id: string;
+    conversation_transcript_id: string;
+    source: 'TEAMS_GRAPH' | 'EXTERNAL_PROVIDER';
+    actor_id: string;
+    requestId: string;
+  }): Promise<{ linked: boolean }> {
+    return this.guarded(input.requestId, () => this.repo.linkTranscript(input));
   }
 
   async addFinding(input: {
@@ -287,6 +451,29 @@ export class TechnicalScreeningService {
             422,
             { requestId },
           );
+        case 'question_not_found':
+        case 'suggestion_not_found':
+          throw notFound(requestId);
+        case 'ai_finding_not_removable':
+          throw new AramoError(
+            'SCREENING_SESSION_STATE_INVALID',
+            'an AI-drafted finding is reviewed (accepted, edited or rejected), never removed',
+            422,
+            { requestId },
+          );
+        case 'not_ai_finding':
+          throw validation(requestId, 'only an AI-drafted finding has a review outcome');
+        case 'unreviewed_ai_findings':
+          throw validation(requestId, 'every AI-drafted finding must be reviewed before confirmation');
+        case 'suggestion_already_actioned':
+          throw new AramoError(
+            'SCREENING_SESSION_VERSION_CONFLICT',
+            'this suggestion already has a recruiter action',
+            409,
+            { requestId },
+          );
+        case 'question_limit':
+          throw validation(requestId, 'the question plan is full');
         case 'version_conflict':
         case 'finding_set_mismatch':
           throw new AramoError(

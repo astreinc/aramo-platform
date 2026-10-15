@@ -11,21 +11,31 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { IdempotencyService } from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
+  ScreeningAiService,
   TechnicalScreeningService,
+  type ScreeningCitationRow,
   type ScreeningFindingRow,
+  type ScreeningGenerationRow,
+  type ScreeningNoteRow,
   type ScreeningPublicationRow,
+  type ScreeningQuestionRow,
   type ScreeningSessionRow,
+  type ScreeningSuggestionRow,
+  type ScreeningTranscriptLinkRow,
 } from '@aramo/technical-screening';
 
 import { ScreeningAccessService } from './screening-access.service.js';
+import { ScreeningContextReader } from './screening-context.reader.js';
 
 // TIP-E2E INC-3 — Manual Technical Screening HTTP surface
 // (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8/§9). Every route: JwtAuthGuard +
@@ -41,6 +51,7 @@ export interface ScreeningSessionView {
   id: string;
   talent_record_id: string;
   interaction_id: string | null;
+  requisition_id: string | null;
   state: string;
   version: number;
   created_at: string;
@@ -61,8 +72,75 @@ export interface ScreeningFindingView {
   observation_raw: string;
   demonstration_raw: string | null;
   limitations_raw: string | null;
+  // INC-3 A1 §B.2 — the three provenance axes; ai_original is the retained AI
+  // text of an AI draft (shown beside any recruiter edit).
+  origin: string;
+  review_status: string | null;
+  evidence_source: string;
+  ai_original: unknown | null;
+  reviewed_by_actor_id: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// INC-3 A1 — citation COORDINATES only; excerpt text needs screening:transcript:read.
+export interface ScreeningCitationView {
+  id: string;
+  finding_id: string;
+  conversation_transcript_id: string;
+  utterance_id: string;
+  start_offset: number;
+  end_offset: number;
+}
+
+export interface ScreeningQuestionView {
+  id: string;
+  text: string;
+  skill_ref: string | null;
+  intent: string;
+  origin: string;
+  status: string;
+  edited: boolean;
+  position: number;
+  generation_id: string | null;
+}
+
+export interface ScreeningNoteView {
+  id: string;
+  body: string;
+  created_at: string;
+}
+
+export interface ScreeningSuggestionView {
+  id: string;
+  generation_id: string;
+  text: string;
+  trigger_kind: string;
+  trigger_ref: unknown;
+  action: string | null;
+  actioned_at: string | null;
+  created_at: string;
+}
+
+// Provenance of each model call: provider + model ACTUALLY used.
+export interface ScreeningGenerationView {
+  id: string;
+  kind: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  used_talent_profile: boolean;
+  used_requisition: boolean;
+  used_transcript: boolean;
+  output_count: number;
+  created_at: string;
+}
+
+export interface ScreeningTranscriptLinkView {
+  conversation_transcript_id: string;
+  source: string;
+  created_at: string;
 }
 
 export interface ScreeningPublicationView {
@@ -84,6 +162,73 @@ export interface ScreeningSessionDetailView {
   session: ScreeningSessionView;
   findings: ScreeningFindingView[];
   publications: ScreeningPublicationView[];
+  citations: ScreeningCitationView[];
+  questions: ScreeningQuestionView[];
+  notes: ScreeningNoteView[];
+  suggestions: ScreeningSuggestionView[];
+  generations: ScreeningGenerationView[];
+  transcripts: ScreeningTranscriptLinkView[];
+}
+
+function citationView(c: ScreeningCitationRow): ScreeningCitationView {
+  return {
+    id: c.id,
+    finding_id: c.finding_id,
+    conversation_transcript_id: c.conversation_transcript_id,
+    utterance_id: c.utterance_id,
+    start_offset: c.start_offset,
+    end_offset: c.end_offset,
+  };
+}
+
+function questionView(q: ScreeningQuestionRow): ScreeningQuestionView {
+  return {
+    id: q.id,
+    text: q.text,
+    skill_ref: q.skill_ref,
+    intent: q.intent,
+    origin: q.origin,
+    status: q.status,
+    edited: q.edited,
+    position: q.position,
+    generation_id: q.generation_id,
+  };
+}
+
+function noteView(n: ScreeningNoteRow): ScreeningNoteView {
+  return { id: n.id, body: n.body, created_at: n.created_at.toISOString() };
+}
+
+function suggestionView(x: ScreeningSuggestionRow): ScreeningSuggestionView {
+  return {
+    id: x.id,
+    generation_id: x.generation_id,
+    text: x.text,
+    trigger_kind: x.trigger_kind,
+    trigger_ref: x.trigger_ref,
+    action: x.action,
+    actioned_at: x.actioned_at === null ? null : x.actioned_at.toISOString(),
+    created_at: x.created_at.toISOString(),
+  };
+}
+
+function generationView(g: ScreeningGenerationRow): ScreeningGenerationView {
+  return {
+    id: g.id,
+    kind: g.kind,
+    provider: g.provider,
+    model: g.model,
+    prompt_version: g.prompt_version,
+    used_talent_profile: g.used_talent_profile,
+    used_requisition: g.used_requisition,
+    used_transcript: g.used_transcript,
+    output_count: g.output_count,
+    created_at: g.created_at.toISOString(),
+  };
+}
+
+function transcriptLinkView(t: ScreeningTranscriptLinkRow): ScreeningTranscriptLinkView {
+  return { conversation_transcript_id: t.conversation_transcript_id, source: t.source, created_at: t.created_at.toISOString() };
 }
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
@@ -93,6 +238,7 @@ function sessionView(s: ScreeningSessionRow): ScreeningSessionView {
     id: s.id,
     talent_record_id: s.talent_record_id,
     interaction_id: s.interaction_id,
+    requisition_id: s.requisition_id,
     state: s.state,
     version: s.version,
     created_at: s.created_at.toISOString(),
@@ -115,6 +261,12 @@ function findingView(f: ScreeningFindingRow): ScreeningFindingView {
     observation_raw: f.observation_raw,
     demonstration_raw: f.demonstration_raw,
     limitations_raw: f.limitations_raw,
+    origin: f.origin,
+    review_status: f.review_status,
+    evidence_source: f.evidence_source,
+    ai_original: f.ai_original,
+    reviewed_by_actor_id: f.reviewed_by_actor_id,
+    reviewed_at: iso(f.reviewed_at),
     created_at: f.created_at.toISOString(),
     updated_at: f.updated_at.toISOString(),
   };
@@ -160,6 +312,7 @@ export class TalentScreeningSessionsController {
   constructor(
     private readonly screening: TechnicalScreeningService,
     private readonly access: ScreeningAccessService,
+    private readonly context: ScreeningContextReader,
   ) {}
 
   @Post()
@@ -170,6 +323,7 @@ export class TalentScreeningSessionsController {
     @Body() body: Body,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<ScreeningSessionView> {
     this.access.assertRecruiter(auth, requestId);
     const talent = await this.access.talentFor(auth, talentId, requestId);
@@ -181,11 +335,28 @@ export class TalentScreeningSessionsController {
         details: { invalid_field: 'interaction_id' },
       });
     }
+    // INC-3 A1 §B.1 :71 — OPTIONAL requisition, used ONLY for question
+    // tailoring; must be inside the actor's requisition visibility (else 404).
+    const requisition = body?.['requisition_id'];
+    let requisitionId: string | null = null;
+    if (requisition !== undefined && requisition !== null) {
+      if (typeof requisition !== 'string' || !UUID_RE.test(requisition)) {
+        throw new AramoError('VALIDATION_ERROR', 'requisition_id must be a UUID', 400, {
+          requestId,
+          details: { invalid_field: 'requisition_id' },
+        });
+      }
+      const visibility = await req.resolveVisibility!();
+      const ctx = await this.context.requisitionContext({ tenant_id: auth.tenant_id, visibility, requisition_id: requisition });
+      if (ctx === null) throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
+      requisitionId = requisition;
+    }
     const session = await this.screening.createSession({
       tenant_id: auth.tenant_id,
       site_id: talent.site_id,
       talent_record_id: talent.id,
       interaction_id: typeof interaction === 'string' ? interaction : null,
+      requisition_id: requisitionId,
       actor_id: auth.sub,
     });
     return sessionView(session);
@@ -213,7 +384,194 @@ export class ScreeningSessionController {
     private readonly screening: TechnicalScreeningService,
     private readonly access: ScreeningAccessService,
     private readonly idempotency: IdempotencyService,
+    private readonly ai: ScreeningAiService,
+    private readonly context: ScreeningContextReader,
   ) {}
+
+  // ---- INC-3 A1-2/A1-3 — question plan -----------------------------------
+
+  // G-1/G-2 — generate (or regenerate) the AI question plan from the optional
+  // requisition and, when include_talent_profile is not false, the minimized
+  // talent profile (which requires ai_processing — R-A, fail closed).
+  @Post(':id/questions/generate')
+  @RequireScopes('screening:edit')
+  async generateQuestions(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    const { session, talent } = await this.access.sessionFor(auth, id, requestId);
+    const includeTalent = body?.['include_talent_profile'] !== false;
+    let requisition = null;
+    if (session.requisition_id !== null) {
+      const visibility = await req.resolveVisibility!();
+      requisition = await this.context.requisitionContext({
+        tenant_id: auth.tenant_id,
+        visibility,
+        requisition_id: session.requisition_id,
+      });
+    }
+    const talentContext = includeTalent
+      ? await this.context.talentContext({ tenant_id: auth.tenant_id, talent_record_id: talent.id })
+      : null;
+    await this.ai.generateQuestionPlan({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      talent_record_id: talent.id,
+      actor_id: auth.sub,
+      requisition,
+      talent: talentContext,
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
+
+  @Post(':id/questions')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('screening:edit')
+  async addQuestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    await this.screening.addQuestion({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      actor_id: auth.sub,
+      text: body?.['text'],
+      skill_ref: body?.['skill_ref'],
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
+
+  // Edit text, select, deselect (PROPOSED) or remove (REMOVED) a question.
+  @Patch(':id/questions/:questionId')
+  @RequireScopes('screening:edit')
+  async updateQuestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('questionId', ParseUUIDPipe) questionId: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    await this.screening.updateQuestion({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      question_id: questionId,
+      actor_id: auth.sub,
+      ...(body?.['text'] !== undefined ? { text: body['text'] } : {}),
+      ...(body?.['status'] !== undefined ? { status: body['status'] } : {}),
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
+
+  // ---- INC-3 A1-2/A1-3 — interview notes and assistance ------------------
+
+  @Post(':id/notes')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('screening:edit')
+  async addNote(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    await this.screening.addNote({ tenant_id: auth.tenant_id, session_id: id, actor_id: auth.sub, body: body?.['body'], requestId });
+    return this.detail(auth, id, requestId);
+  }
+
+  // G-4 — AI follow-up suggestions from a recruiter note (recruiter-notes mode;
+  // no transcript involved). ai_processing-gated, fail closed.
+  @Post(':id/suggestions')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('screening:edit')
+  async suggest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    const { talent } = await this.access.sessionFor(auth, id, requestId);
+    const noteId = body?.['note_id'];
+    if (typeof noteId !== 'string' || !UUID_RE.test(noteId)) {
+      throw new AramoError('VALIDATION_ERROR', 'note_id must be a UUID', 400, { requestId, details: { invalid_field: 'note_id' } });
+    }
+    const d = await this.screening.getDetail(auth.tenant_id, id, requestId);
+    const note = d.notes.find((n) => n.id === noteId);
+    if (note === undefined) throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
+    const plan = d.questions.filter((q) => q.status === 'SELECTED').map((q) => q.text);
+    await this.ai.suggestFollowUps({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      talent_record_id: talent.id,
+      actor_id: auth.sub,
+      trigger: { kind: 'NOTE', note_id: note.id, text: note.body },
+      plan,
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
+
+  @Patch(':id/suggestions/:suggestionId')
+  @RequireScopes('screening:edit')
+  async actionSuggestion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('suggestionId', ParseUUIDPipe) suggestionId: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    await this.screening.actionSuggestion({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      suggestion_id: suggestionId,
+      actor_id: auth.sub,
+      action: body?.['action'],
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
+
+  // §B.2 — accept an AI draft as drafted (CONFIRMED) or reject it (REJECTED).
+  // Editing an AI draft uses PATCH :id/findings/:findingId (→ EDITED).
+  @Post(':id/findings/:findingId/review')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('screening:edit')
+  async reviewFinding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('findingId', ParseUUIDPipe) findingId: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningSessionDetailView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    await this.screening.reviewAiFinding({
+      tenant_id: auth.tenant_id,
+      session_id: id,
+      finding_id: findingId,
+      version: body?.['version'],
+      outcome: body?.['outcome'],
+      actor_id: auth.sub,
+      requestId,
+    });
+    return this.detail(auth, id, requestId);
+  }
 
   @Get(':id')
   @RequireScopes('screening:read')
@@ -397,6 +755,12 @@ export class ScreeningSessionController {
       session: sessionView(d.session),
       findings: d.findings.map(findingView),
       publications: d.publications.map((p) => publicationView(p, statuses.get(p.id) ?? null)),
+      citations: d.citations.map(citationView),
+      questions: d.questions.map(questionView),
+      notes: d.notes.map(noteView),
+      suggestions: d.suggestions.map(suggestionView),
+      generations: d.generations.map(generationView),
+      transcripts: d.transcripts.map(transcriptLinkView),
     };
   }
 }

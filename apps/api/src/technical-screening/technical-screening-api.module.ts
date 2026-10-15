@@ -1,13 +1,18 @@
 import { Module } from '@nestjs/common';
+import { AiDraftModule } from '@aramo/ai-draft';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
+import { JobDomainModule } from '@aramo/job-domain';
+import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TechnicalScreeningModule } from '@aramo/technical-screening';
 
 import { ScreeningTrustPublisherAdapter } from './screening-trust-publisher.adapter.js';
 import { ScreeningAccessService } from './screening-access.service.js';
+import { ScreeningAiConsentAdapter } from './screening-ai-consent.adapter.js';
+import { ScreeningContextReader } from './screening-context.reader.js';
 import {
   ScreeningSessionController,
   TalentScreeningSessionsController,
@@ -20,13 +25,24 @@ import {
 // for the talent-merge re-key (§10.3).
 const ScreeningDomain = TechnicalScreeningModule.register({
   publisher: ScreeningTrustPublisherAdapter,
-  imports: [TalentTrustModule],
+  // INC-3 A1-3 — the existing ai_processing consent operation, fail closed.
+  aiConsent: ScreeningAiConsentAdapter,
+  imports: [TalentTrustModule, AiDraftModule, ConsentModule],
 });
 
 @Module({
-  imports: [AuthModule, ConsentModule, EntitlementModule, TalentRecordModule, TalentTrustModule, ScreeningDomain],
+  imports: [
+    AuthModule,
+    ConsentModule,
+    EntitlementModule,
+    TalentRecordModule,
+    TalentTrustModule,
+    JobDomainModule,
+    TalentEvidenceModule,
+    ScreeningDomain,
+  ],
   controllers: [TalentScreeningSessionsController, ScreeningSessionController],
-  providers: [ScreeningAccessService],
+  providers: [ScreeningAccessService, ScreeningContextReader],
   exports: [ScreeningDomain],
 })
 export class TechnicalScreeningApiModule {}

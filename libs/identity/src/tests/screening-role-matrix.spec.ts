@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { runIdentitySeed, SCREENING_SEED_BUNDLES, SEED_IDS } from '../../prisma/seed.js';
+import {
+  runIdentitySeed,
+  SCREENING_SEED_BUNDLES,
+  SCREENING_TRANSCRIPT_SEED_BUNDLES,
+  SEED_IDS,
+} from '../../prisma/seed.js';
 import { PLATFORM_SCOPE_KEYS, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 
 // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8; directive tests 6 + 41) —
@@ -28,6 +33,10 @@ const SCREENING_SCOPES = [
   'screening:read',
 ] as const;
 const SCREENING_HOLDERS = ['lead_recruiter', 'recruiter', 'recruiting_manager'];
+// INC-3 A1 (§B.7) — the transcript excerpt read scope, held by the same three
+// roles; the full screening:* set each holder carries is therefore 5 scopes.
+const TRANSCRIPT_SCOPE = 'screening:transcript:read';
+const ALL_HELD = [...SCREENING_SCOPES, TRANSCRIPT_SCOPE].sort();
 
 type SeedPrisma = Parameters<typeof runIdentitySeed>[0];
 
@@ -101,10 +110,10 @@ describe('screening:* role matrix — dedicated grant table (unit)', () => {
 });
 
 describe('screening:* role matrix — effective seed grants (unit, directive tests 6 + 41)', () => {
-  it('recruiter, lead_recruiter, recruiting_manager hold all 4 screening scopes', async () => {
+  it('recruiter, lead_recruiter, recruiting_manager hold all 4 screening scopes plus transcript read (A1)', async () => {
     const { byRole } = await effectiveGrants();
     for (const role of SCREENING_HOLDERS) {
-      expect(screeningScopesOf(byRole, role), role).toEqual([...SCREENING_SCOPES]);
+      expect(screeningScopesOf(byRole, role), role).toEqual(ALL_HELD);
     }
   });
 
@@ -153,5 +162,26 @@ describe('screening:* — scope-catalog parity (unit)', () => {
     ]);
     const all = Object.values(SEED_IDS.scopes);
     expect(new Set(all).size).toBe(all.length);
+  });
+});
+
+describe('screening:transcript:read — INC-3 A1 §B.7 (unit)', () => {
+  it('the dedicated bundle grants it to EXACTLY the three recruiter-tier roles (3 grants)', () => {
+    expect(SCREENING_TRANSCRIPT_SEED_BUNDLES.map(([r]) => r).sort()).toEqual(SCREENING_HOLDERS);
+    expect(SCREENING_TRANSCRIPT_SEED_BUNDLES.flatMap(([, s]) => s)).toEqual([TRANSCRIPT_SCOPE, TRANSCRIPT_SCOPE, TRANSCRIPT_SCOPE]);
+  });
+
+  it('exactly 3 rows are seeded with ids 0x1710..0x1712; scope node 0x1409; not platform-tier', async () => {
+    const { rows } = await effectiveGrants();
+    const id = SEED_IDS.scopes[TRANSCRIPT_SCOPE] as string;
+    expect(id).toBe('01900000-0000-7000-8000-000000001409');
+    const tRows = rows.filter((r) => r.scope_id === id);
+    expect(tRows.map((r) => r.id).sort()).toEqual([
+      '01900000-0000-7000-8000-000000001710',
+      '01900000-0000-7000-8000-000000001711',
+      '01900000-0000-7000-8000-000000001712',
+    ]);
+    expect(SEED_SCOPE_KEYS.filter((k) => k === TRANSCRIPT_SCOPE)).toHaveLength(1);
+    expect((PLATFORM_SCOPE_KEYS as readonly string[]).includes(TRANSCRIPT_SCOPE)).toBe(false);
   });
 });

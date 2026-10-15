@@ -320,6 +320,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // TIP-E2E INC-3 (directive §9, D6) — screening session lifecycle refusals.
       'SCREENING_SESSION_STATE_INVALID',
       'SCREENING_SESSION_VERSION_CONFLICT',
+      // TIP-E2E INC-3 A1 (§B.6).
+      'LLM_PROVIDER_NOT_CONFIGURED',
+      'SCREENING_AI_UNAVAILABLE',
+      'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
     ]);
   });
 });

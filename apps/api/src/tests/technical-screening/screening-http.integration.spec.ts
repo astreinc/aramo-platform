@@ -12,6 +12,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
+import {
+  STRUCTURED_GENERATION_PROVIDER,
+  type StructuredGenerationOutcome,
+  type StructuredGenerationProvider,
+  type StructuredGenerationRequest,
+} from '@aramo/ai-draft';
 
 import { AppModule } from '../../app.module.js';
 import { ConfigurableTestResolver } from '../support/test-auth-harness.js';
@@ -24,6 +30,36 @@ import { ensureWriteFreezeTenant } from '../write-freeze-tenant.js';
 // 42, 44, 45, 51.
 
 const __authz = new ConfigurableTestResolver();
+
+// INC-3 A1-3 — a deterministic stand-in for the tenant LLM (no provider key in
+// tests). It answers by schema name and records every request it receives.
+class FakeTenantLlm implements StructuredGenerationProvider {
+  requests: StructuredGenerationRequest[] = [];
+  providerKey(): string {
+    return 'anthropic';
+  }
+  async generateStructured(request: StructuredGenerationRequest): Promise<StructuredGenerationOutcome> {
+    this.requests.push(request);
+    const transport = { model_used: 'claude-sonnet-4-6', input_tokens: 1, output_tokens: 1, provider_request_id: 'fake-req' };
+    if (request.schema_name === 'screening_question_plan') {
+      return {
+        kind: 'ok',
+        parsed: {
+          questions: [
+            { text: 'Walk me through a rollback you ran.', skill_ref: 'Kubernetes' },
+            { text: 'How do you size node pools?', skill_ref: 'Kubernetes' },
+          ],
+        },
+        transport,
+      };
+    }
+    if (request.schema_name === 'screening_follow_up') {
+      return { kind: 'ok', parsed: { suggestions: ['Which storage class did you choose, and why?'] }, transport };
+    }
+    return { kind: 'terminal', category: 'invalid_request' };
+  }
+}
+const fakeLlm = new FakeTenantLlm();
 type SignKey = CryptoKey | KeyObject;
 const ROOT = resolve(__dirname, '../../../../..');
 const ISSUER = 'Aramo Core Auth';
@@ -176,6 +212,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
         .useValue(__authz)
+        .overrideProvider(STRUCTURED_GENERATION_PROVIDER)
+        .useValue(fakeLlm)
         .compile();
       app = module.createNestApplication();
       app.use(cookieParser());
@@ -403,6 +441,100 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((voided.body['session'] as Record<string, unknown>)['state']).toBe('VOIDED');
       const list = await call('GET', SESSIONS((voided.body['session'] as { talent_record_id: string }).talent_record_id), token);
       expect((list.body['items'] as unknown[]).length).toBe(1);
+    });
+
+    // ---- INC-3 A1-2 / A1-3 ---------------------------------------------------
+
+    async function grantAiProcessing(talentId: string, tenant: string = TENANT): Promise<void> {
+      await db.query(
+        `INSERT INTO consent."TalentConsentEvent" (id, talent_record_id, tenant_id, scope, action, captured_method, consent_version, occurred_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'ai_processing','granted','recruiter_attestation','ai-processing-notice-v1',now())`,
+        [uuidv7(), talentId, tenant],
+      );
+    }
+
+    it('A1: an optional requisition outside visibility (absent) is a 404 at create', async () => {
+      const token = await jwt({ scopes: ALL });
+      const r = await call('POST', SESSIONS(await talent()), token, { requisition_id: uuidv7() });
+      expect([r.status, codeOf(r.body)]).toEqual([404, 'NOT_FOUND']);
+    });
+
+    it('A1 R-A: question generation with the talent profile fails closed without ai_processing (no model call); requisition-less + profile-less is 400', async () => {
+      const token = await jwt({ scopes: ALL });
+      const { id } = await draftWithFinding(token, await talent());
+      const before = fakeLlm.requests.length;
+      const denied = await call('POST', S(id, '/questions/generate'), token, {});
+      expect([denied.status, codeOf(denied.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
+      expect(fakeLlm.requests.length).toBe(before);
+      const nothing = await call('POST', S(id, '/questions/generate'), token, { include_talent_profile: false });
+      expect([nothing.status, codeOf(nothing.body)]).toEqual([400, 'VALIDATION_ERROR']);
+    });
+
+    it('A1: with ai_processing granted the plan is generated with honest provenance; the recruiter edits, selects, removes and adds questions', async () => {
+      const token = await jwt({ scopes: ALL });
+      const talentId = await talent();
+      await grantAiProcessing(talentId);
+      const { id } = await draftWithFinding(token, talentId);
+      const gen = await call('POST', S(id, '/questions/generate'), token, {});
+      expect(gen.status).toBe(201);
+      const questions = gen.body['questions'] as Array<Record<string, unknown>>;
+      expect(questions.map((q) => [q['origin'], q['status']])).toEqual([
+        ['AI_GENERATED', 'PROPOSED'],
+        ['AI_GENERATED', 'PROPOSED'],
+      ]);
+      const generations = gen.body['generations'] as Array<Record<string, unknown>>;
+      expect(generations[0]).toMatchObject({ kind: 'QUESTION_PLAN', model: 'claude-sonnet-4-6', used_talent_profile: true });
+      // The talent profile sent to the model carries no contact or name data.
+      expect(fakeLlm.requests.at(-1)!.user_content).not.toContain('Lovelace');
+      const q1 = questions[0]!['id'] as string;
+      const q2 = questions[1]!['id'] as string;
+      const edited = await call('PATCH', S(id, `/questions/${q1}`), token, { text: 'Walk me through the last rollback you ran.', status: 'SELECTED' });
+      expect((edited.body['questions'] as Array<Record<string, unknown>>).find((q) => q['id'] === q1)).toMatchObject({ edited: true, status: 'SELECTED' });
+      const removed = await call('PATCH', S(id, `/questions/${q2}`), token, { status: 'REMOVED' });
+      expect((removed.body['questions'] as Array<Record<string, unknown>>).find((q) => q['id'] === q2)?.['status']).toBe('REMOVED');
+      const own = await call('POST', S(id, '/questions'), token, { text: 'What did you own end to end?' });
+      expect(own.status).toBe(201);
+      expect((own.body['questions'] as Array<Record<string, unknown>>).some((q) => q['origin'] === 'RECRUITER_AUTHORED')).toBe(true);
+    });
+
+    it('A1 G-4: recruiter-notes mode — a note drives AI follow-up suggestions (consent-gated); an action is recorded once', async () => {
+      const token = await jwt({ scopes: ALL });
+      const noConsent = await talent();
+      const s1 = await draftWithFinding(token, noConsent);
+      const n1 = await call('POST', S(s1.id, '/notes'), token, { body: 'Vague on storage.' });
+      expect(n1.status).toBe(201);
+      const deniedSuggest = await call('POST', S(s1.id, '/suggestions'), token, { note_id: (n1.body['notes'] as Array<{ id: string }>)[0]!.id });
+      expect([deniedSuggest.status, codeOf(deniedSuggest.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
+
+      const consented = await talent();
+      await grantAiProcessing(consented);
+      const s2 = await draftWithFinding(token, consented);
+      const n2 = await call('POST', S(s2.id, '/notes'), token, { body: 'Vague on storage.' });
+      const sug = await call('POST', S(s2.id, '/suggestions'), token, { note_id: (n2.body['notes'] as Array<{ id: string }>)[0]!.id });
+      expect(sug.status).toBe(201);
+      const suggestion = (sug.body['suggestions'] as Array<Record<string, unknown>>)[0]!;
+      expect(suggestion).toMatchObject({ trigger_kind: 'NOTE', action: null });
+      const used = await call('PATCH', S(s2.id, `/suggestions/${suggestion['id']}`), token, { action: 'USED' });
+      expect((used.body['suggestions'] as Array<Record<string, unknown>>)[0]!['action']).toBe('USED');
+      const again = await call('PATCH', S(s2.id, `/suggestions/${suggestion['id']}`), token, { action: 'DISMISSED' });
+      expect(again.status).toBe(409);
+    });
+
+    it('A1: the new routes keep tenant concealment and per-route scopes', async () => {
+      const token = await jwt({ scopes: ALL });
+      const { id } = await draftWithFinding(token, await talent());
+      const foreign = await jwt({ scopes: ALL, tenant: OTHER_TENANT, sub: FOREIGN_ADMIN });
+      for (const [method, path, body] of [
+        ['POST', S(id, '/questions'), { text: 'x' }],
+        ['POST', S(id, '/notes'), { body: 'x' }],
+        ['POST', S(id, '/questions/generate'), {}],
+      ] as const) {
+        const r = await call(method, path, foreign, body);
+        expect([r.status, codeOf(r.body)], path).toEqual([404, 'NOT_FOUND']);
+      }
+      const readOnly = await jwt({ scopes: ['screening:read'] });
+      const r = await call('POST', S(id, '/notes'), readOnly, { body: 'x' });
+      expect([r.status, codeOf(r.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
     });
   },
 );

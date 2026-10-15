@@ -5,6 +5,8 @@ import {
   SCREENING_EVIDENCE_PUBLISHER,
   type ScreeningEvidencePublisher,
 } from './screening-publisher.port.js';
+import { SCREENING_AI_CONSENT, type ScreeningAiConsentPort } from './ai/screening-ai.ports.js';
+import { ScreeningAiService } from './ai/screening-ai.service.js';
 import { TechnicalScreeningRepository } from './technical-screening.repository.js';
 import { TechnicalScreeningService } from './technical-screening.service.js';
 
@@ -18,6 +20,9 @@ import { TechnicalScreeningService } from './technical-screening.service.js';
 export class TechnicalScreeningModule {
   static register(options: {
     publisher: Type<ScreeningEvidencePublisher>;
+    // INC-3 A1-3 — the REQUIRED ai_processing consent adapter (fail closed).
+    // The importing root must also import AiDraftModule (STRUCTURED_GENERATION_PROVIDER).
+    aiConsent: Type<ScreeningAiConsentPort>;
     imports?: ModuleMetadata['imports'];
   }): DynamicModule {
     return {
@@ -27,9 +32,11 @@ export class TechnicalScreeningModule {
         PrismaService,
         TechnicalScreeningRepository,
         TechnicalScreeningService,
+        ScreeningAiService,
         { provide: SCREENING_EVIDENCE_PUBLISHER, useClass: options.publisher },
+        { provide: SCREENING_AI_CONSENT, useClass: options.aiConsent },
       ],
-      exports: [TechnicalScreeningService, TechnicalScreeningRepository],
+      exports: [TechnicalScreeningService, TechnicalScreeningRepository, ScreeningAiService],
     };
   }
 }

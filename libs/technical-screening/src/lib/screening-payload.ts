@@ -15,11 +15,23 @@ export interface ScreeningPayloadFinding {
   observation_raw: string;
   demonstration_raw: string | null;
   limitations_raw: string | null;
+  // INC-3 A1 §B.2 / Part C — provenance axes.
+  origin: string;
+  review_status: string | null;
+  evidence_source: string;
+}
+
+export interface ScreeningPayloadCitation {
+  conversation_transcript_id: string;
+  utterance_id: string;
+  start_offset: number;
+  end_offset: number;
 }
 
 export function buildScreeningFindingPayload(args: {
   session_id: string;
   finding: ScreeningPayloadFinding;
+  citations?: readonly ScreeningPayloadCitation[];
   confirmed_at: Date;
   confirmed_version: number;
 }): Record<string, unknown> {
@@ -44,6 +56,21 @@ export function buildScreeningFindingPayload(args: {
   if (finding.limitations_raw !== null && finding.limitations_raw.length > 0) {
     payload['limitations_raw'] = finding.limitations_raw;
   }
+  // INC-3 A1 Part C — provenance: origin decides ai_derived in Talent Trust;
+  // an AI draft carries its review outcome (CONFIRMED as drafted, or EDITED);
+  // transcript evidence carries citation COORDINATES only.
+  const citations = (args.citations ?? []).map((c) => ({
+    conversation_transcript_id: c.conversation_transcript_id,
+    utterance_id: c.utterance_id,
+    start: c.start_offset,
+    end: c.end_offset,
+  }));
+  payload['provenance'] = {
+    origin: finding.origin,
+    evidence_source: finding.evidence_source,
+    ...(finding.origin === 'AI_DRAFTED' ? { review_outcome: finding.review_status } : {}),
+    ...(citations.length > 0 ? { citation_refs: citations } : {}),
+  };
   return payload;
 }
 

@@ -21,10 +21,11 @@ import type {
 // serialized attempts, lost-ack convergence) and the merge re-key.
 // Directive §13 rows 8–15, 36–39, 46, 48, 50 (domain layer; HTTP in apps/api).
 
-const MIGRATION = resolve(
-  __dirname,
-  '../../prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
-);
+const MIGRATIONS = [
+  resolve(__dirname, '../../prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql'),
+  // INC-3 A1 — AI-assisted screening (additive).
+  resolve(__dirname, '../../prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql'),
+];
 const TENANT = '0192f111-aaaa-7000-8000-00000000000a';
 const OTHER_TENANT = '0192f111-bbbb-7000-8000-00000000000b';
 const ACTOR = '0192f111-cccc-7000-8000-00000000000c';
@@ -91,8 +92,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       const setup = new PrismaService(url);
       await setup.$connect();
-      for (const stmt of splitDdl(readFileSync(MIGRATION, 'utf8'))) {
-        if (stmt.trim().length > 0) await setup.$executeRawUnsafe(stmt.trim());
+      for (const m of MIGRATIONS) {
+        for (const stmt of splitDdl(readFileSync(m, 'utf8'))) {
+          if (stmt.trim().length > 0) await setup.$executeRawUnsafe(stmt.trim());
+        }
       }
       await setup.$disconnect();
       prisma = new PrismaService(url);

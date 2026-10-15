@@ -1734,6 +1734,12 @@ components:
         no longer DRAFT) and SCREENING_SESSION_VERSION_CONFLICT (HTTP 409 —
         a stale session version, or a confirmed finding set that does not
         match the session's findings).
+        TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.6) adds three:
+        LLM_PROVIDER_NOT_CONFIGURED (HTTP 422 — no tenant AI provider key is
+        configured), SCREENING_AI_UNAVAILABLE (HTTP 503 — a retryable model or
+        provider failure during screening AI assistance) and
+        MEETING_ARTIFACT_ACCESS_UNAVAILABLE (HTTP 409 — the client Microsoft
+        365 tenant prerequisites for meeting transcripts are not met).
         MANAGEMENT_CYCLE_REJECTED (HTTP 409) — set-management-edge
         refusal: the proposed (manager_user_id, report_user_id) edge
         would create a cycle in the management graph. The cycle check
@@ -1994,6 +2000,9 @@ components:
         - EMAIL_UNAVAILABLE
         - SCREENING_SESSION_STATE_INVALID
         - SCREENING_SESSION_VERSION_CONFLICT
+        - LLM_PROVIDER_NOT_CONFIGURED
+        - SCREENING_AI_UNAVAILABLE
+        - MEETING_ARTIFACT_ACCESS_UNAVAILABLE
 
     ErrorObject:
       type: object

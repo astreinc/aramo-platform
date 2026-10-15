@@ -1107,6 +1107,12 @@ const TECHNICAL_SCREENING_INIT_MIGRATION = resolve(
   ROOT,
   'libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
 );
+// TIP-E2E INC-3 A1 — AI-assisted screening columns/tables (the regenerated
+// client SELECTs ScreeningSession.requisition_id and the finding provenance).
+const TECHNICAL_SCREENING_A1_MIGRATION = resolve(
+  ROOT,
+  'libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -3898,6 +3904,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION,
         // TIP-E2E INC-3 — technical_screening (self-contained; no cross-schema FK).
         TECHNICAL_SCREENING_INIT_MIGRATION,
+        TECHNICAL_SCREENING_A1_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,

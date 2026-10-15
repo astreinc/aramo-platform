@@ -37,8 +37,12 @@ model ScreeningSession {
   // Re-keyable on talent merge (directive §10.3); the publication intents keep
   // their own pinned talent_record_id_at_confirm.
   talent_record_id      String    @db.Uuid
-  // Informational Communications reference; drives no derivation (D1).
+  // The linked Communications meeting interaction (INC-3 A1 §B.1 :57 amended):
+  // transcript → interaction → session resolution, exactly-one matching.
   interaction_id        String?   @db.Uuid
+  // INC-3 A1 §B.1 :71 amended — OPTIONAL requisition used ONLY as question-plan
+  // context. Never feeds findings, evidence, ordering or any fit output.
+  requisition_id        String?   @db.Uuid
   state                 String
   version               Int       @default(1)
   created_by_actor_id   String    @db.Uuid
@@ -67,10 +71,124 @@ model ScreeningFinding {
   observation_raw   String
   demonstration_raw String?
   limitations_raw   String?
+  // INC-3 A1 §B.2 — the three independent provenance axes. origin, ai_original,
+  // generation_id and evidence_source are immutable (trigger).
+  origin               String    @default("RECRUITER_AUTHORED")
+  review_status        String?
+  evidence_source      String    @default("RECRUITER_OBSERVATION")
+  ai_original          Json?
+  generation_id        String?   @db.Uuid
+  reviewed_by_actor_id String?   @db.Uuid
+  reviewed_at          DateTime? @db.Timestamptz(3)
   created_at        DateTime @default(now()) @db.Timestamptz(3)
   updated_at        DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 — transcript citation coordinates for an AI-drafted finding (never
+// quoted text). Append-only.
+model ScreeningFindingCitation {
+  id                         String   @id @db.Uuid
+  tenant_id                  String   @db.Uuid
+  finding_id                 String   @db.Uuid
+  conversation_transcript_id String   @db.Uuid
+  utterance_id               String
+  start_offset               Int
+  end_offset                 Int
+  normalized_sha256          String
+  created_at                 DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([finding_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 — one row per model call: provider and model ACTUALLY used, the
+// fixed prompt version and an input hash. No raw prompt or completion.
+model ScreeningAiGeneration {
+  id                  String   @id @db.Uuid
+  tenant_id           String   @db.Uuid
+  session_id          String   @db.Uuid
+  kind                String
+  provider            String
+  model               String
+  provider_request_id String?
+  prompt_version      String
+  input_sha256        String
+  used_talent_profile Boolean
+  used_requisition    Boolean
+  used_transcript     Boolean
+  output_count        Int
+  actor_id            String
+  created_at          DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 §B.3 — the per-session question plan (no cross-session bank).
+model ScreeningQuestion {
+  id            String   @id @db.Uuid
+  tenant_id     String   @db.Uuid
+  session_id    String   @db.Uuid
+  text          String
+  skill_ref     String?
+  intent        String
+  origin        String
+  status        String
+  edited        Boolean  @default(false)
+  position      Int
+  generation_id String?  @db.Uuid
+  created_at    DateTime @default(now()) @db.Timestamptz(3)
+  updated_at    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 §B.4 — recruiter notes taken during the screening (append-only).
+model ScreeningNote {
+  id         String   @id @db.Uuid
+  tenant_id  String   @db.Uuid
+  session_id String   @db.Uuid
+  body       String
+  actor_id   String
+  created_at DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 §B.4 — advisory AI follow-up suggestions; only a first recruiter
+// action may be recorded.
+model ScreeningAssistSuggestion {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  session_id           String    @db.Uuid
+  generation_id        String    @db.Uuid
+  text                 String
+  trigger_kind         String
+  trigger_ref          Json
+  action               String?
+  actioned_by_actor_id String?
+  actioned_at          DateTime? @db.Timestamptz(3)
+  created_at           DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// INC-3 A1 — links a session to an acquired conversation transcript.
+model ScreeningTranscriptLink {
+  id                         String   @id @db.Uuid
+  tenant_id                  String   @db.Uuid
+  session_id                 String   @db.Uuid
+  conversation_transcript_id String   @db.Uuid
+  source                     String
+  created_at                 DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([session_id, conversation_transcript_id])
   @@schema("technical_screening")
 }
 

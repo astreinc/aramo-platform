@@ -971,6 +971,16 @@ export const ERROR_CODES = [
   // TIP-E2E INC-3 — the session version (CAS token, held in the write predicate)
   // is stale, or the confirmed finding set does not match the session's. HTTP 409.
   'SCREENING_SESSION_VERSION_CONFLICT',
+  // TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.6) — no tenant LLM
+  // key is configured, surfaced honestly instead of a raw provider error. HTTP 422.
+  'LLM_PROVIDER_NOT_CONFIGURED',
+  // TIP-E2E INC-3 A1 §B.6 — a retryable model/provider failure during screening
+  // AI assistance (question plan, follow-up, findings draft). HTTP 503.
+  'SCREENING_AI_UNAVAILABLE',
+  // TIP-E2E INC-3 A1 §B.6 — the client tenant's Microsoft 365 prerequisites
+  // (§10.1) are not met, e.g. Graph transcript access disabled or the
+  // meeting_artifacts capability not consented. HTTP 409.
+  'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
