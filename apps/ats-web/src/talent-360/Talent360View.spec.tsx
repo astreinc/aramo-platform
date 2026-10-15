@@ -255,6 +255,21 @@ describe('Talent360View — renders the composed contract, owns only presentatio
     expect(screen.getByText('Client interview today')).toBeInTheDocument();
   });
 
+  // TIP-E2E INC-3 (directive §11) — the header "More" control opens the manual
+  // Technical Screening workspace only for a screening:read holder.
+  it('links "More" to Technical screening only when screening:read is held', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    h.scopes = [...BASE_SCOPES, 'screening:read'];
+    const { unmount } = renderView();
+    const link = await screen.findByRole('link', { name: 'Technical screening' });
+    expect(link.getAttribute('href')).toMatch(/\/talent\/[^/]+\/screening$/);
+    unmount();
+    h.scopes = [...BASE_SCOPES];
+    renderView();
+    await screen.findByText('Divya Vasudevan', { selector: '.t360-name' });
+    expect(screen.queryByRole('link', { name: 'Technical screening' })).toBeNull();
+  });
+
   it('expands an opportunity to reveal its journey step strip on click', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();

@@ -587,9 +587,18 @@ function Header({
                 Edit profile
               </Link>
             )}
-            <Button unstyled type="button" className="t360-btn t360-btn--ghost" title="More">
-              ⋯
-            </Button>
+            {/* TIP-E2E INC-3 (directive §11) — the header "More" control opens the
+                manual Technical Screening workspace when the caller holds
+                screening:read; otherwise it stays the inert overflow control. */}
+            {session !== null && hasScope(session, 'screening:read') ? (
+              <Link to={`/talent/${h.talent_id}/screening`} className="t360-btn t360-btn--ghost" title="More">
+                Technical screening
+              </Link>
+            ) : (
+              <Button unstyled type="button" className="t360-btn t360-btn--ghost" title="More">
+                ⋯
+              </Button>
+            )}
           </div>
         </div>
       </div>

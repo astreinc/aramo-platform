@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 80 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 81 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -79,6 +79,7 @@
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
     "@aramo/talent-trust": "./libs/talent-trust/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
+    "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
     "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
     "@aramo/visibility": "./libs/visibility/src/index.ts"
   },
@@ -1623,6 +1624,7 @@
       "RESOLUTION_SUBJECT_REF_TYPES",
       "RESOLUTION_SUBJECT_STATUSES",
       "RecordEvidenceDto",
+      "SCREENING_FINDING_BASES",
       "SEED_ASSERTION_TYPES",
       "SOURCE_CLASSES",
       "STATEMENT_CLASS_DIMENSION",
@@ -1675,6 +1677,16 @@
       "isTaskSource",
       "isTaskStatus",
       "isTaskType"
+    ],
+    "@aramo/technical-screening": [
+      "SCREENING_EVIDENCE_PUBLISHER",
+      "ScreeningGuardError",
+      "TechnicalScreeningModule",
+      "TechnicalScreeningPrismaService",
+      "TechnicalScreeningRepository",
+      "TechnicalScreeningService",
+      "buildScreeningFindingPayload",
+      "screeningPayloadHash"
     ],
     "@aramo/tenant-reset": [
       "ACTIVITY_SCOPE_PREDICATE",
@@ -2269,6 +2281,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4010,6 +4028,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5527,6 +5551,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/tr-screen-1-publication.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-trust/src/tests/tr2a-b3a-fixpoint-cluster.integration.spec.ts",
         "project": "talent-trust",
         "status": "excluded"
@@ -5556,7 +5586,14 @@
         "project": "task",
         "status": "excluded"
       },
-      { "project": "task", "status": "production" }
+      { "project": "task", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/technical-screening/src/tests/technical-screening.integration.spec.ts",
+        "project": "technical-screening",
+        "status": "excluded"
+      },
+      { "project": "technical-screening", "status": "production" }
     ],
     "@aramo/communications": [
       {
@@ -6856,6 +6893,12 @@
       {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/ats-web/src/teams/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/technical-screening/TechnicalScreeningView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -9027,6 +9070,7 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/technical-screening": [{ "project": "api", "status": "production" }],
     "@aramo/tenant-reset": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9687,6 +9731,13 @@
       "name": "task",
       "root": "libs/task",
       "sourceRoot": "libs/task/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "technical-screening",
+      "root": "libs/technical-screening",
+      "sourceRoot": "libs/technical-screening/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

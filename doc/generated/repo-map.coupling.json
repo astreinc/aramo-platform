@@ -9197,6 +9197,60 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/talent-identity/talent-erasure.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/tenant-reset.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/tr15-b2-erasure.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/src/lib/technical-screening.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/src/tests/technical-screening.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/tenant-reset/src/lib/tenant-reset.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/technical-screening/delete-confinement.spec.ts",
+      "status": "excluded",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -9674,6 +9728,12 @@
       "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
       "status": "excluded",
       "to": "libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11018,6 +11078,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/talent-journey/talent-journey.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/technical-screening/technical-screening.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -21599,6 +21664,16 @@
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/src/index.ts" },
     { "from": "libs/task/project.json", "status": "unscoped", "to": "libs/task/tsconfig.lib.json" },
     {
+      "from": "libs/technical-screening/project.json",
+      "status": "unscoped",
+      "to": "libs/technical-screening/src/index.ts"
+    },
+    {
+      "from": "libs/technical-screening/project.json",
+      "status": "unscoped",
+      "to": "libs/technical-screening/tsconfig.lib.json"
+    },
+    {
       "from": "libs/tenant-reset/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -21839,6 +21914,11 @@
     {
       "from": "package.json",
       "status": "unscoped",
+      "to": "libs/technical-screening/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
       "to": "libs/tenant-reset/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "openapi/ats.yaml" },
@@ -21919,6 +21999,11 @@
     },
     {
       "from": "pact/consumers/ats-web/src/talent-360.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "pact/consumers/ats-web/src/technical-screening.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
@@ -23050,6 +23135,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "pact/consumers/ats-web/src/communications.consumer.test.ts"
     },
     {
@@ -23076,6 +23166,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "pact/consumers/ats-web/src/placement.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/ats-web/src/technical-screening.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-esign.ts",
@@ -23997,6 +24092,11 @@
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/talent-trust/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/task/src/index.ts" },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "libs/technical-screening/src/index.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -24164,6 +24264,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent-record/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/talent-trust/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/task/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/technical-screening/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" }
