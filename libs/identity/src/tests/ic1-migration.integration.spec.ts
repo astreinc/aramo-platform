@@ -270,15 +270,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
-    it('registration order — the four IC-1 files are contiguous in PR order, after every pre-IC migration; only the IC-4 Tenant.kind migration follows them', () => {
+    it('registration order — expand, backfill, IC-4 Tenant.kind, then the restrict pair; nothing follows; after every pre-IC migration', () => {
       const i = IDENTITY_MIGRATIONS.indexOf(EXPAND);
       expect(i).toBeGreaterThan(0);
-      expect(IDENTITY_MIGRATIONS.slice(i, i + 4)).toEqual([EXPAND, BACKFILL, CARDINALITY, IMMUTABLE]);
-      // IC-4 PR-9 — the additive Tenant.kind migration is registered LAST (it
-      // depends on nothing in IC-1 and nothing depends on it).
-      const after = IDENTITY_MIGRATIONS.slice(i + 4);
-      expect(after).toHaveLength(1);
-      expect(after[0]).toMatch(/20261017000000_ic4_tenant_kind\/migration\.sql$/);
+      // IC-4 PR-9 Tenant.kind (additive, defaulted) sits BETWEEN backfill and the
+      // restrict pair: the single release image reads `kind`, so Release A
+      // (`migrate-prod.sh --until <kind>`) must carry it before the image is
+      // recreated, while cardinality/immutable stay deferred to Release B.
+      const KIND = IDENTITY_MIGRATIONS[i + 2];
+      expect(KIND).toMatch(/20261015000002_ic4_tenant_kind\/migration\.sql$/);
+      expect(IDENTITY_MIGRATIONS.slice(i)).toEqual([EXPAND, BACKFILL, KIND, CARDINALITY, IMMUTABLE]);
+      // Timestamp order agrees with registration order (the prod runner sorts by dir name).
+      const stamps = IDENTITY_MIGRATIONS.slice(i).map((p) => p.split('/').at(-2) ?? '');
+      expect([...stamps].sort()).toEqual(stamps);
     });
 
     it('splitter safety (PR-2) — both files survive the regex splitter (4 + 2 statements) AND a split-on-every-semicolon scanner (no inner terminator, no $$)', () => {

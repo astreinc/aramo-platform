@@ -24,7 +24,7 @@ import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js
 import { runIdentitySeed, SEED_IDS } from '../../prisma/seed.js';
 
 // IC-4 PR-9 — PERSONAL tenancy on the REAL identity spine (Postgres 17, the
-// full identity migration set incl. 20261017000000_ic4_tenant_kind, the seed,
+// full identity migration set incl. 20261015000002_ic4_tenant_kind, the seed,
 // the real TenantService / IdentityService / effective resolver) PLUS the
 // Talent Portal namespace (portal_identity migration applied alongside):
 //   §6 #1  personal Tenant → one owning User + one membership + authz baseline

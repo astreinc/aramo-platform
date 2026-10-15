@@ -29,7 +29,7 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
   // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
-  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
+  'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql',
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
   // talent_trust (full).
   ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
