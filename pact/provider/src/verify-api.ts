@@ -52,6 +52,11 @@ import { MICROSOFT_CALENDAR_PORT, MICROSOFT_GRAPH_PORT, DelegatedAuthorizationSe
 // different hash. Single source of truth keeps the hash semantics
 // aligned between seed + lookup.
 import { hashCanonicalizedBody } from '@aramo/common';
+import {
+  ESIGN_S2S_SIGNATURE_HEADER,
+  ESIGN_S2S_TIMESTAMP_HEADER,
+  signEsignServiceRequest,
+} from '@aramo/documents-contracts';
 
 import { PactConfigurableResolver } from './auth-helpers.js';
 
@@ -9443,6 +9448,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // 'Bearer eyJfake.token' (recruiter → accessJwt) so the controller's
         // consumer_type==='platform' assertion returns 403.
         req.headers['authorization'] = `Bearer ${platformJwt}`;
+      }
+      // ES-2 — re-sign the esign-service source pull (aramo-esign-s2s-v1) with a
+      // FRESH timestamp over the replayed method + path + query, so the recorded
+      // (dynamic) signature is verified by the STRICT, unchanged production guard
+      // (EsignServiceRequestGuard) — no tolerance weakening, no mode downgrade.
+      if (req.headers[ESIGN_S2S_SIGNATURE_HEADER] !== undefined) {
+        const resigned = signEsignServiceRequest({
+          method: req.method,
+          url: `http://pact-provider${req.url}`,
+          secret: 'pact-test-esign-webhook-secret',
+          nowSec: Math.floor(Date.now() / 1000),
+        });
+        req.headers[ESIGN_S2S_TIMESTAMP_HEADER] = resigned[ESIGN_S2S_TIMESTAMP_HEADER];
+        req.headers[ESIGN_S2S_SIGNATURE_HEADER] = resigned[ESIGN_S2S_SIGNATURE_HEADER];
       }
       // E-Sign OC v2 (B8) — re-sign the generic lifecycle webhook with a FRESH
       // timestamp over the EXACT bytes the proxy forwards to the provider

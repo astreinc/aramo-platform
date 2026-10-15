@@ -964,6 +964,11 @@ export const ERROR_CODES = [
   // identity.invitation.rejected_cross_tenant retains the reason). Also the
   // governed mapping for a User.email P2002 lost race on the create path.
   'EMAIL_UNAVAILABLE',
+  // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0)
+  // — a Core route that only esign-service may call cannot authenticate the
+  // service request because the shared signing secret is not configured. Fail
+  // closed (503) in every mode; never served unauthenticated.
+  'ESIGN_SERVICE_AUTH_UNAVAILABLE',
   // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9, D6) — a screening edit,
   // removal, void or confirm on a session that is not DRAFT (CONFIRMED/VOIDED
   // are terminal; the DB trigger also refuses). HTTP 422.
