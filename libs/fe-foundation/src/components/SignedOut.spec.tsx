@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // re-authentication — the headline HF3 invariant), and (b) it IS called only on
 // the explicit "Sign in again" action, reusing the canonical login entry.
 const redirectToLogin = vi.fn();
-vi.mock('../auth/session', () => ({ redirectToLogin: () => redirectToLogin() }));
+vi.mock('../auth/session', () => ({ redirectToLogin: (...args: unknown[]) => redirectToLogin(...args) }));
 
 import { SignedOut } from './SignedOut';
 
@@ -27,5 +27,18 @@ describe('SignedOut — public signed-out landing (T2-E1-HF3)', () => {
     expect(redirectToLogin).not.toHaveBeenCalled(); // still not called before the click
     fireEvent.click(button);
     expect(redirectToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  // Host-binding SSO recovery — the account-switch action is opt-in.
+  it('does NOT offer an account switch by default (portal-web stays unchanged)', () => {
+    render(<SignedOut />);
+    expect(screen.queryByRole('button', { name: /different account/i })).toBeNull();
+  });
+
+  it('offerAccountSwitch: an explicit "Sign in with a different account" → redirectToLogin({ selectAccount: true }), still nothing on mount', () => {
+    render(<SignedOut offerAccountSwitch />);
+    expect(redirectToLogin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /sign in with a different account/i }));
+    expect(redirectToLogin).toHaveBeenCalledWith({ selectAccount: true });
   });
 });

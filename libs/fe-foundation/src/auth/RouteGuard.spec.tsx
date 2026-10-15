@@ -99,3 +99,20 @@ describe('RouteGuard', () => {
     expect(screen.getByText('protected content')).toBeInTheDocument();
   });
 });
+
+// Host-binding SSO recovery — a wrong-account session goes to the recovery page,
+// never back into a login Microsoft SSO would answer with the same account.
+describe('RouteGuard — denied (403 TENANT_ACCESS_DENIED)', () => {
+  it('calls onDenied, NOT onRedirect, and renders no protected content', () => {
+    const onDenied = vi.fn();
+    const onRedirect = vi.fn();
+    render(
+      <RouteGuard sessionStateOverride={{ status: 'denied' }} onDenied={onDenied} onRedirect={onRedirect}>
+        <p>protected content</p>
+      </RouteGuard>,
+    );
+    expect(onDenied).toHaveBeenCalledTimes(1);
+    expect(onRedirect).not.toHaveBeenCalled();
+    expect(screen.queryByText('protected content')).toBeNull();
+  });
+});

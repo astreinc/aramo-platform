@@ -47,6 +47,18 @@ paths:
           schema:
             type: string
             enum: [recruiter, portal, ingestion, platform, esign]
+        - name: select_account
+          in: query
+          required: false
+          description: |
+            Host-binding SSO recovery. Exactly `1` adds the fixed value
+            `prompt=select_account` to the Cognito authorize URL, which Cognito
+            forwards to the Microsoft OIDC IdP so the user can pick a different
+            Microsoft account. Any other value is ignored; no caller-supplied
+            value is forwarded.
+          schema:
+            type: string
+            enum: ['1']
       responses:
         '302':
           description: Redirect to Cognito authorize endpoint; sets aramo_pkce_state cookie.

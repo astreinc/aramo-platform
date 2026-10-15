@@ -28,7 +28,28 @@ export interface Session {
 export type SessionState =
   | { status: 'loading' }
   | { status: 'authenticated'; session: Session }
-  | { status: 'unauthenticated' };
+  | { status: 'unauthenticated' }
+  // Host-binding SSO recovery — /session answered 403 TENANT_ACCESS_DENIED: the
+  // browser holds a session for an account that does not belong to this host
+  // (under AUTH_HOST_TENANT_BINDING=enforce). Distinct from 'unauthenticated' so
+  // RouteGuard shows the wrong-account recovery page instead of silently
+  // restarting a login that Microsoft SSO would answer with the same account.
+  | { status: 'denied' };
+
+// The same-origin landing for a wrong-account denial (the callback uses the same
+// `?error=` contract — auth.controller.ts → /login?error=TENANT_ACCESS_DENIED).
+export const TENANT_ACCESS_DENIED_PATH = '/login?error=TENANT_ACCESS_DENIED';
+
+// Microsoft's fixed sign-out endpoint — the last-resort recovery when the user's
+// Microsoft session keeps answering with the wrong account. A constant with NO
+// parameters: nothing caller-supplied, so it cannot become an open redirect.
+export const MICROSOFT_SIGN_OUT_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/logout';
+
+export interface LoginOptions {
+  // Ask Microsoft to show its account picker (auth-service `?select_account=1`
+  // → Cognito `prompt=select_account`, forwarded to the Microsoft OIDC IdP).
+  selectAccount?: boolean;
+}
 
 // The default-consumer ('recruiter') paths, retained as named exports for
 // backward compatibility. The functions below derive paths from the CONFIGURED
@@ -49,8 +70,16 @@ export async function fetchSession(): Promise<Session | null> {
   }
 }
 
-export function redirectToLogin(): void {
-  window.location.assign(authPath('login'));
+export function loginUrl(options: LoginOptions = {}): string {
+  return options.selectAccount === true ? `${authPath('login')}?select_account=1` : authPath('login');
+}
+
+export function redirectToLogin(options: LoginOptions = {}): void {
+  window.location.assign(loginUrl(options));
+}
+
+export function redirectToAccessDenied(): void {
+  window.location.assign(TENANT_ACCESS_DENIED_PATH);
 }
 
 // §5 Auth-Hardening D3 — the shared session logout (terminates BOTH sessions).
@@ -95,9 +124,13 @@ export function useSession(): SessionState {
             : { status: 'authenticated', session },
         );
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        setState({ status: 'unauthenticated' });
+        setState(
+          error instanceof ApiError && error.status === 403 && error.code === 'TENANT_ACCESS_DENIED'
+            ? { status: 'denied' }
+            : { status: 'unauthenticated' },
+        );
       });
     return () => {
       cancelled = true;

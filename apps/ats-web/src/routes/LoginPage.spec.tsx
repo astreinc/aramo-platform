@@ -49,4 +49,14 @@ describe('LoginPage', () => {
       screen.getByRole('button', { name: /try signing in again/i }),
     ).toBeInTheDocument();
   });
+
+  // Host-binding SSO recovery.
+  it('renders the wrong-account recovery for TENANT_ACCESS_DENIED — no auto-redirect, no plain retry', () => {
+    const onMount = renderAt('/login?error=TENANT_ACCESS_DENIED');
+    expect(onMount).not.toHaveBeenCalled();
+    expect(screen.getByText('Signed in with a different account')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /sign in with a different account/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /sign out of microsoft/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try signing in again/i })).toBeNull();
+  });
 });

@@ -18,16 +18,33 @@ import { Card } from './Card';
 // canonical login entry (redirectToLogin → /auth/<consumer>/login) unchanged.
 // The user's surviving Microsoft enterprise session may then satisfy SSO
 // silently — that is expected enterprise behavior, not a defect.
-export function SignedOut() {
+interface SignedOutProps {
+  // Host-binding SSO recovery — Microsoft-SSO surfaces (ats-web, platform-web)
+  // also offer "Sign in with a different account" (Microsoft's account picker).
+  // Opt-in: portal-web's passwordless login has no account to switch.
+  offerAccountSwitch?: boolean;
+}
+
+export function SignedOut({ offerAccountSwitch = false }: SignedOutProps = {}) {
   return (
     <section className="aramo-signed-out" role="status" aria-live="polite">
       <Card
         title="You're signed out"
         description="Your Aramo session has ended. You'll stay signed out until you choose to sign in again."
         footer={
-          <Button variant="primary" onClick={() => redirectToLogin()}>
-            Sign in again
-          </Button>
+          <>
+            <Button variant="primary" onClick={() => redirectToLogin()}>
+              Sign in again
+            </Button>
+            {offerAccountSwitch ? (
+              <>
+                {' '}
+                <Button variant="secondary" onClick={() => redirectToLogin({ selectAccount: true })}>
+                  Sign in with a different account
+                </Button>
+              </>
+            ) : null}
+          </>
         }
       >
         <p>
