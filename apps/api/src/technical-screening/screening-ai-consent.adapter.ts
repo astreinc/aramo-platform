@@ -11,11 +11,21 @@ export class ScreeningAiConsentAdapter implements ScreeningAiConsentPort {
   constructor(private readonly consent: ConsentService) {}
 
   async isAiProcessingAllowed(tenantId: string, talentRecordId: string): Promise<boolean> {
+    return this.isOperationAllowed(tenantId, talentRecordId, 'ai_processing');
+  }
+
+  // INC-3 A1 §5 — `recording` and `transcription` are each separately required
+  // for the Teams paths, evaluated the same fail-closed way.
+  async isOperationAllowed(
+    tenantId: string,
+    talentRecordId: string,
+    operation: 'ai_processing' | 'recording' | 'transcription',
+  ): Promise<boolean> {
     try {
       const decision = await this.consent.checkOperationForService({
         tenant_id: tenantId,
         talent_record_id: talentRecordId,
-        operation: 'ai_processing',
+        operation,
       });
       return decision.result === 'allowed';
     } catch {

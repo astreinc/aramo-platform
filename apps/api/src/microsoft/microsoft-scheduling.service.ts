@@ -19,7 +19,7 @@ import {
   CALENDAR_INVITE_CONSENT_GATE,
   type CalendarInviteConsentGate,
 } from './calendar-invite-consent-gate.port.js';
-import { MeetingAssociationValidator } from './meeting-association.validator.js';
+import { MeetingAssociationError, MeetingAssociationValidator } from './meeting-association.validator.js';
 import { MicrosoftConfigResolver } from './microsoft-config.resolver.js';
 
 // COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook calendar scheduling orchestration.
@@ -89,8 +89,12 @@ export interface ScheduleMeetingArgs {
   recruiter_id: string;
   connection_id?: string;
   talent_record_id: string;
-  requisition_id: string;
+  // INC-3 A1 Part F — null ONLY for a screening meeting with no Requisition.
+  requisition_id: string | null;
   pipeline_id?: string;
+  // INC-3 A1 Part F — a screening meeting: associates the screening session and
+  // replaces the live-pipeline check with the screening association check.
+  screening_session_id?: string;
   subject: string;
   start_date_time: string;
   end_date_time: string;
@@ -197,11 +201,22 @@ export class MicrosoftSchedulingService {
       // Authorization + association (C-4) THEN consent (R1) — fail closed, BEFORE any
       // provider side-effect. Validation runs AFTER the claim so a stuck pending op
       // never results: any throw below marks the op failed/unresolved (reclaimable).
-      await this.associations.assertRecruitingAssociation({
-        tenant_id: args.tenant_id,
-        talent_record_id: args.talent_record_id,
-        requisition_id: args.requisition_id,
-      });
+      if (args.screening_session_id !== undefined) {
+        await this.associations.assertScreeningAssociation({
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+        });
+      } else {
+        if (args.requisition_id === null) {
+          throw new MeetingAssociationError('association_invalid', `${args.talent_record_id}@none`);
+        }
+        await this.associations.assertRecruitingAssociation({
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+        });
+      }
       await this.consent.assertInvitationAllowed({
         tenant_id: args.tenant_id,
         talent_record_id: args.talent_record_id,
@@ -252,6 +267,7 @@ export class MicrosoftSchedulingService {
         talent_record_id: args.talent_record_id,
         requisition_id: args.requisition_id,
         pipeline_id: args.pipeline_id,
+        screening_session_id: args.screening_session_id ?? null,
       });
       await this.repo.markOperation(op.id, {
         status: 'succeeded',
@@ -625,7 +641,8 @@ export class MicrosoftSchedulingService {
     return [
       args.recruiter_id,
       args.talent_record_id,
-      args.requisition_id,
+      args.requisition_id ?? '',
+      args.screening_session_id ?? '',
       args.subject,
       args.start_date_time,
       args.end_date_time,

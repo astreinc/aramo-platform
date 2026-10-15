@@ -117,6 +117,8 @@ enum CommunicationSubjectType {
   talent_record
   requisition
   pipeline
+  // TIP-E2E INC-3 A1 Part F — a technical screening session (screening meetings).
+  screening_session
 
   @@schema("communications")
 }
@@ -475,7 +477,8 @@ model MeetingSchedulingOperation {
 
   organizer_id     String @db.Uuid // identity.User (JWT sub)
   talent_record_id String @db.Uuid
-  requisition_id   String @db.Uuid
+  // INC-3 A1 Part F — nullable ONLY for screening meetings (Requisition optional).
+  requisition_id   String? @db.Uuid
 
   last_error String?
 

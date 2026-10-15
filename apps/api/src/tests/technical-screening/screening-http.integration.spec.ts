@@ -536,5 +536,53 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r = await call('POST', S(id, '/notes'), readOnly, { body: 'x' });
       expect([r.status, codeOf(r.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
     });
+
+    it('A1-4/A1-5: meeting + transcript routes — honest capture modes, scope gates, concealment, fail closed without Microsoft', async () => {
+      const MEETING = ['communication:meeting:create'];
+      const token = await jwt({ scopes: [...ALL, ...MEETING, 'screening:transcript:read'] });
+      const { id } = await draftWithFinding(token, await talent());
+
+      // No Microsoft connection in this tenant: Teams is honestly unavailable and
+      // no external capture vendor is ever presented as live (R-C).
+      const modes = await call('GET', S(id, '/capture-modes'), token);
+      expect(modes.status).toBe(200);
+      expect(modes.body).toEqual({
+        recruiter_notes: { status: 'available' },
+        teams_post_meeting: { status: 'not_connected' },
+        live_external_provider: { status: 'no_approved_provider' },
+      });
+
+      const slot = { subject: 'Technical screening', start_date_time: '2026-11-01T10:00:00Z', end_date_time: '2026-11-01T10:30:00Z', time_zone: 'UTC', idempotency_key: uuidv7() };
+      // Both scopes are required (all-of).
+      const noMeetingScope = await call('POST', S(id, '/meeting'), await jwt({ scopes: ALL }), slot);
+      expect([noMeetingScope.status, codeOf(noMeetingScope.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
+      // Unconfigured provider fails closed with a governed code and links nothing.
+      const unconfigured = await call('POST', S(id, '/meeting'), token, slot);
+      expect(unconfigured.status).toBe(409);
+      expect(codeOf(unconfigured.body)).toMatch(/^MICROSOFT_/);
+      const linked = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM technical_screening."ScreeningEvent" WHERE session_id = $1::uuid AND event_type = 'MEETING_LINKED'`,
+        [id],
+      );
+      expect(linked.rows[0]!.n).toBe(0);
+      const invalid = await call('POST', S(id, '/meeting'), token, { ...slot, start_date_time: 'soon' });
+      expect([invalid.status, codeOf(invalid.body)]).toEqual([400, 'VALIDATION_ERROR']);
+
+      // Transcript retrieval needs screening:transcript:read, and a linked meeting.
+      const noTranscriptScope = await call('POST', S(id, '/transcripts/check'), await jwt({ scopes: ALL }));
+      expect([noTranscriptScope.status, codeOf(noTranscriptScope.body)]).toEqual([403, 'INSUFFICIENT_PERMISSIONS']);
+      const noMeeting = await call('POST', S(id, '/transcripts/check'), token);
+      expect([noMeeting.status, codeOf(noMeeting.body)]).toEqual([422, 'SCREENING_SESSION_STATE_INVALID']);
+
+      const foreign = await jwt({ scopes: [...ALL, ...MEETING, 'screening:transcript:read'], tenant: OTHER_TENANT, sub: FOREIGN_ADMIN });
+      for (const [method, path, body] of [
+        ['GET', S(id, '/capture-modes'), undefined],
+        ['POST', S(id, '/meeting'), slot],
+        ['POST', S(id, '/transcripts/check'), undefined],
+      ] as const) {
+        const r = await call(method, path, foreign, body);
+        expect([r.status, codeOf(r.body)], path).toEqual([404, 'NOT_FOUND']);
+      }
+    });
   },
 );

@@ -9,10 +9,14 @@ import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TechnicalScreeningModule } from '@aramo/technical-screening';
 
+import { ConversationTranscriptZoomModule } from '../conversation-transcript/conversation-transcript-zoom.module.js';
+import { MicrosoftModule } from '../microsoft/microsoft.module.js';
+
 import { ScreeningTrustPublisherAdapter } from './screening-trust-publisher.adapter.js';
 import { ScreeningAccessService } from './screening-access.service.js';
 import { ScreeningAiConsentAdapter } from './screening-ai-consent.adapter.js';
 import { ScreeningContextReader } from './screening-context.reader.js';
+import { ScreeningMeetingService } from './screening-meeting.service.js';
 import {
   ScreeningSessionController,
   TalentScreeningSessionsController,
@@ -39,10 +43,14 @@ const ScreeningDomain = TechnicalScreeningModule.register({
     TalentTrustModule,
     JobDomainModule,
     TalentEvidenceModule,
+    // INC-3 A1-4/A1-5 — the existing Outlook scheduling + Teams artifacts and
+    // the B3/B4 transcript services (Teams provider registered there).
+    MicrosoftModule,
+    ConversationTranscriptZoomModule,
     ScreeningDomain,
   ],
   controllers: [TalentScreeningSessionsController, ScreeningSessionController],
-  providers: [ScreeningAccessService, ScreeningContextReader],
+  providers: [ScreeningAccessService, ScreeningContextReader, ScreeningAiConsentAdapter, ScreeningMeetingService],
   exports: [ScreeningDomain],
 })
 export class TechnicalScreeningApiModule {}

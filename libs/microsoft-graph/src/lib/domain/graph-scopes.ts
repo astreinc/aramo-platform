@@ -25,6 +25,17 @@ export const MS_SCOPE_ONLINE_MEETINGS_RW = 'OnlineMeetings.ReadWrite';
  * baseline set; a recruiter who has not enabled scheduling never requests it.
  */
 export const MS_SCOPE_CALENDARS_RW = 'Calendars.ReadWrite';
+/**
+ * Read the transcripts / recordings of online meetings the signed-in user
+ * organized or was invited to — DELEGATED only, ONLY for the separately enabled
+ * `meeting_artifacts` capability (TIP-E2E INC-3 A1 Part E, Amendment A2 to C2B).
+ * Both require tenant admin consent even when delegated. They end in `.All`
+ * only by Microsoft's naming: they are admitted by EXACT name under this one
+ * capability; the `.All` pattern stays forbidden everywhere else (and
+ * application permissions stay forbidden entirely).
+ */
+export const MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ = 'OnlineMeetingTranscript.Read.All';
+export const MS_SCOPE_ONLINE_MEETING_RECORDING_READ = 'OnlineMeetingRecording.Read.All';
 
 /**
  * The COMPLETE authorized BASELINE delegated scope set for COMM-C2B — the only set
@@ -51,6 +62,19 @@ export const MICROSOFT_SCHEDULING_SCOPES = Object.freeze([
   MS_SCOPE_CALENDARS_RW,
 ] as const);
 
+/**
+ * TIP-E2E INC-3 A1 Part E — the meeting-artifacts capability set: the scheduling
+ * set (screening meetings are scheduled through it) PLUS exactly the two
+ * delegated transcript / recording read scopes. Requested only when a recruiter
+ * explicitly enables screening meeting artifacts; scheduling alone never
+ * implies it.
+ */
+export const MICROSOFT_MEETING_ARTIFACT_SCOPES = Object.freeze([
+  ...MICROSOFT_SCHEDULING_SCOPES,
+  MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ,
+  MS_SCOPE_ONLINE_MEETING_RECORDING_READ,
+] as const);
+
 export type MicrosoftDelegatedScope = (typeof MICROSOFT_DELEGATED_SCOPES)[number];
 
 /**
@@ -58,13 +82,29 @@ export type MicrosoftDelegatedScope = (typeof MICROSOFT_DELEGATED_SCOPES)[number
  * send-only + create-link-only posture (default); 'scheduling' additionally
  * authorizes Calendars.ReadWrite (Amendment A1, R4).
  */
-export type MicrosoftScopeCapability = 'baseline' | 'scheduling';
+export type MicrosoftScopeCapability = 'baseline' | 'scheduling' | 'meeting_artifacts';
 
 const AUTHORIZED_BASELINE = new Set<string>(MICROSOFT_DELEGATED_SCOPES);
 const AUTHORIZED_SCHEDULING = new Set<string>(MICROSOFT_SCHEDULING_SCOPES);
+const AUTHORIZED_MEETING_ARTIFACTS = new Set<string>(MICROSOFT_MEETING_ARTIFACT_SCOPES);
 
 function authorizedSetFor(capability: MicrosoftScopeCapability): ReadonlySet<string> {
+  if (capability === 'meeting_artifacts') return AUTHORIZED_MEETING_ARTIFACTS;
   return capability === 'scheduling' ? AUTHORIZED_SCHEDULING : AUTHORIZED_BASELINE;
+}
+
+export function scopesForCapability(capability: MicrosoftScopeCapability): readonly string[] {
+  if (capability === 'meeting_artifacts') return MICROSOFT_MEETING_ARTIFACT_SCOPES;
+  return capability === 'scheduling' ? MICROSOFT_SCHEDULING_SCOPES : MICROSOFT_DELEGATED_SCOPES;
+}
+
+/** INC-3 A1 — does a granted (space-delimited) scope string carry the meeting-artifact read scopes? */
+export function grantsMeetingArtifacts(grantedScope: string): boolean {
+  const granted = new Set(grantedScope.split(/\s+/).map((s) => s.toLowerCase()));
+  return (
+    granted.has(MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ.toLowerCase()) ||
+    granted.has(`https://graph.microsoft.com/${MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ}`.toLowerCase())
+  );
 }
 
 /**

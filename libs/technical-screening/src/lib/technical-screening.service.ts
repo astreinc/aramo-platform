@@ -472,6 +472,13 @@ export class TechnicalScreeningService {
             409,
             { requestId },
           );
+        case 'meeting_already_linked':
+          throw new AramoError(
+            'SCREENING_SESSION_STATE_INVALID',
+            'a meeting is already linked to this screening session',
+            422,
+            { requestId, details: { reason: 'meeting_already_linked' } },
+          );
         case 'question_limit':
           throw validation(requestId, 'the question plan is full');
         case 'version_conflict':

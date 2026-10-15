@@ -361,6 +361,12 @@ const COMMUNICATIONS_RECONCILIATION_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
 );
+// TIP-E2E INC-3 A1-4 — additive: CommunicationSubjectType 'screening_session'
+// and MeetingSchedulingOperation.requisition_id nullable (screening meetings only).
+const COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261016140000_inc3_a1_screening_meetings/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3770,6 +3776,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_SCHEDULING_MIGRATION,
         COMMUNICATIONS_MUTATION_FENCE_MIGRATION,
         COMMUNICATIONS_RECONCILIATION_MIGRATION,
+        COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,

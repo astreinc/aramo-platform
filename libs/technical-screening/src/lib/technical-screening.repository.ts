@@ -218,7 +218,9 @@ export type ScreeningGuardReason =
   | 'question_not_found'
   | 'suggestion_not_found'
   | 'suggestion_already_actioned'
-  | 'question_limit';
+  | 'question_limit'
+  // INC-3 A1-4 — a session links at most one meeting (re-linking is refused).
+  | 'meeting_already_linked';
 
 export class ScreeningGuardError extends Error {
   constructor(readonly reason: ScreeningGuardReason) {
@@ -808,7 +810,9 @@ export class TechnicalScreeningRepository {
     actor_id: string;
   }): Promise<ScreeningSessionRow> {
     return this.prisma.$transaction(async (tx) => {
-      await this.lockDraft(tx, input.tenant_id, input.session_id);
+      const locked = await this.lockDraft(tx, input.tenant_id, input.session_id);
+      if (locked.interaction_id === input.interaction_id) return locked;
+      if (locked.interaction_id !== null) throw new ScreeningGuardError('meeting_already_linked');
       await tx.screeningSession.updateMany({
         where: { id: input.session_id, tenant_id: input.tenant_id, state: 'DRAFT' },
         data: { interaction_id: input.interaction_id, updated_at: new Date() },

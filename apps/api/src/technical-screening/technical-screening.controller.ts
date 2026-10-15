@@ -36,6 +36,12 @@ import {
 
 import { ScreeningAccessService } from './screening-access.service.js';
 import { ScreeningContextReader } from './screening-context.reader.js';
+import {
+  ScreeningMeetingService,
+  type ScreeningCaptureModes,
+  type ScreeningMeetingScheduleResult,
+  type ScreeningTranscriptCheckItem,
+} from './screening-meeting.service.js';
 
 // TIP-E2E INC-3 — Manual Technical Screening HTTP surface
 // (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8/§9). Every route: JwtAuthGuard +
@@ -386,7 +392,58 @@ export class ScreeningSessionController {
     private readonly idempotency: IdempotencyService,
     private readonly ai: ScreeningAiService,
     private readonly context: ScreeningContextReader,
+    private readonly meetings: ScreeningMeetingService,
   ) {}
+
+  // ---- INC-3 A1-4 — Teams meeting (existing Outlook scheduling) -----------
+
+  // G-3 — schedule the screening interview through the EXISTING delegated
+  // Outlook scheduling integration (contacting consent, idempotency ledger,
+  // organizer = the acting recruiter). Associations: Talent × ScreeningSession,
+  // Requisition optional (A1 Part F).
+  @Post(':id/meeting')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('screening:edit', 'communication:meeting:create')
+  async scheduleMeeting(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Body,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ meeting: ScreeningMeetingScheduleResult; session: ScreeningSessionDetailView }> {
+    this.access.assertRecruiter(auth, requestId);
+    const { session } = await this.access.sessionFor(auth, id, requestId);
+    const meeting = await this.meetings.schedule({ auth, session, body, requestId });
+    return { meeting, session: await this.detail(auth, id, requestId) };
+  }
+
+  // §1.1 / R-C — the honest capture-mode statuses for this recruiter.
+  @Get(':id/capture-modes')
+  @RequireScopes('screening:read')
+  async captureModes(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningCaptureModes> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    return this.meetings.captureModes(auth);
+  }
+
+  // C-1 — post-meeting Teams transcript retrieval (organizer only; transcription
+  // consent and the meeting_artifacts capability, fail closed).
+  @Post(':id/transcripts/check')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('screening:edit', 'screening:transcript:read')
+  async checkTranscripts(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ items: ScreeningTranscriptCheckItem[]; session: ScreeningSessionDetailView }> {
+    this.access.assertRecruiter(auth, requestId);
+    const { session } = await this.access.sessionFor(auth, id, requestId);
+    const result = await this.meetings.checkTranscripts({ auth, session, requestId });
+    return { items: result.items, session: await this.detail(auth, id, requestId) };
+  }
 
   // ---- INC-3 A1-2/A1-3 — question plan -----------------------------------
 
