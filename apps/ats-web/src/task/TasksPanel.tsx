@@ -10,7 +10,7 @@ import {
 } from './task-api';
 import { taskListErrorMessage, taskMutateErrorMessage } from './error-messages';
 import { TaskDialog } from './TaskDialog';
-import { TaskList } from './TaskList';
+import { TaskCardRows, TaskList } from './TaskList';
 import type { TaskOwnerType, TaskView } from './types';
 
 // Tasks FE — the per-entity Tasks tab panel (Ruling 2). Lists the in-context
@@ -22,11 +22,22 @@ interface TasksPanelProps {
   readonly ownerType: TaskOwnerType;
   readonly ownerId: string;
   readonly canWrite: boolean;
+  // Opt-in card layout (Requisition Detail prototype): the title, "+ New task"
+  // and the footnote sit INSIDE one card with compact rows. Without a title the
+  // panel keeps its original list layout (other entity pages are unchanged).
+  readonly cardTitle?: string;
+  readonly cardFootnote?: string;
 }
 
 const EMPTY_ROSTER: readonly AssignableUser[] = [];
 
-export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
+export function TasksPanel({
+  ownerType,
+  ownerId,
+  canWrite,
+  cardTitle,
+  cardFootnote,
+}: TasksPanelProps) {
   const [items, setItems] = useState<readonly TaskView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +109,67 @@ export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
     }
   }
 
+  const dialogEl =
+    dialog !== null ? (
+      <TaskDialog
+        open
+        onOpenChange={(o) => {
+          if (!o) setDialog(null);
+        }}
+        mode={dialog.mode}
+        ownerType={ownerType}
+        ownerId={ownerId}
+        initial={dialog.mode === 'edit' ? dialog.task : undefined}
+        roster={roster}
+        onSaved={() => {
+          setDialog(null);
+          reload();
+        }}
+      />
+    ) : null;
+
+  if (cardTitle !== undefined) {
+    const names = Object.fromEntries(
+      roster.flatMap((u) => (u.display_name !== null ? [[u.user_id, u.display_name] as const] : [])),
+    );
+    return (
+      <div className="rc-card rc-tl tasks-panel">
+        <div className="rc-tl__head">
+          <h2>{cardTitle}</h2>
+          {canWrite ? (
+            <div className="rc-tl__actions">
+              <Button
+                unstyled
+                type="button"
+                className="rc-link"
+                onClick={() => setDialog({ mode: 'create' })}
+                data-testid="task-new"
+              >
+                + New task
+              </Button>
+            </div>
+          ) : null}
+        </div>
+        {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+        {loading ? (
+          <p className="rc-tl__empty">Loading tasks…</p>
+        ) : (
+          <TaskCardRows
+            items={items}
+            canWrite={canWrite}
+            assigneeNames={names}
+            onToggleStatus={(t) => void toggle(t)}
+            onEdit={(t) => setDialog({ mode: 'edit', task: t })}
+            onDelete={(t) => void remove(t)}
+            emptyMessage="No tasks on this requisition yet."
+          />
+        )}
+        {cardFootnote !== undefined ? <p className="rc-tl__foot">{cardFootnote}</p> : null}
+        {dialogEl}
+      </div>
+    );
+  }
+
   if (loading) return <p>Loading tasks…</p>;
 
   return (
@@ -123,23 +195,7 @@ export function TasksPanel({ ownerType, ownerId, canWrite }: TasksPanelProps) {
         onDelete={(t) => void remove(t)}
         emptyMessage="No tasks for this record yet."
       />
-      {dialog !== null ? (
-        <TaskDialog
-          open
-          onOpenChange={(o) => {
-            if (!o) setDialog(null);
-          }}
-          mode={dialog.mode}
-          ownerType={ownerType}
-          ownerId={ownerId}
-          initial={dialog.mode === 'edit' ? dialog.task : undefined}
-          roster={roster}
-          onSaved={() => {
-            setDialog(null);
-            reload();
-          }}
-        />
-      ) : null}
+      {dialogEl}
     </div>
   );
 }

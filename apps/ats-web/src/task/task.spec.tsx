@@ -270,3 +270,57 @@ describe('TaskDialog — create (Ruling 3)', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Requisition Detail — the opt-in card layout (prototype "Tasks on this
+// requisition"): title, "+ New task" and footnote INSIDE one card, compact rows.
+// ---------------------------------------------------------------------------
+describe('TasksPanel — card layout (Requisition Detail)', () => {
+  it('renders the title, rows with the assignee name, and the footnote inside one card', async () => {
+    vi.mocked(listTasksForOwner).mockResolvedValue({
+      items: [task({ title: 'Prepare client submittal', assignee_id: 'u2', due_date: null })],
+    });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([{ user_id: 'u2', display_name: 'Deepika' }]);
+    const { container } = render(
+      <TasksPanel
+        ownerType="requisition"
+        ownerId="req-1"
+        canWrite
+        cardTitle="Tasks on this requisition"
+        cardFootnote="Tasks consolidate actionable work across lifecycles."
+      />,
+    );
+    expect(await screen.findByText('Prepare client submittal')).toBeInTheDocument();
+    expect(await screen.findByText(/assigned to Deepika/)).toBeInTheDocument();
+    const card = container.querySelector('.rc-card');
+    expect(card).not.toBeNull();
+    expect(card?.textContent).toContain('Tasks on this requisition');
+    expect(card?.textContent).toContain('Tasks consolidate actionable work across lifecycles.');
+    expect(screen.getByRole('button', { name: '+ New task' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open →' })).toBeInTheDocument();
+  });
+
+  it('the checkbox completes a task via the authoritative update', async () => {
+    vi.mocked(listTasksForOwner).mockResolvedValue({ items: [task()] });
+    vi.mocked(fetchAssignableUsers).mockResolvedValue([]);
+    vi.mocked(updateTask).mockResolvedValue(task({ status: 'done' }));
+    render(<TasksPanel ownerType="requisition" ownerId="req-1" canWrite cardTitle="Tasks on this requisition" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Mark Call talent done' }));
+    await waitFor(() => expect(updateTask).toHaveBeenCalledWith('t1', { status: 'done' }));
+  });
+
+  it('a read-only actor sees rows and no controls', async () => {
+    vi.mocked(listTasksForOwner).mockResolvedValue({ items: [task()] });
+    render(<TasksPanel ownerType="requisition" ownerId="req-1" canWrite={false} cardTitle="Tasks on this requisition" />);
+    expect(await screen.findByText('Call talent')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ New task' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open →' })).toBeNull();
+    expect(screen.queryByTestId('task-toggle')).toBeNull();
+  });
+
+  it('shows the empty state inside the card', async () => {
+    vi.mocked(listTasksForOwner).mockResolvedValue({ items: [] });
+    render(<TasksPanel ownerType="requisition" ownerId="req-1" canWrite={false} cardTitle="Tasks on this requisition" />);
+    expect(await screen.findByText('No tasks on this requisition yet.')).toBeInTheDocument();
+  });
+});
