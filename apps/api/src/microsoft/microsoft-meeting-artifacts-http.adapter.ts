@@ -18,9 +18,13 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const VTT = 'text/vtt';
 const UNATTRIBUTED = 'application/vnd.microsoft.graph.transcript+text';
 
+// Graph carries these specific reasons in error.innerError.code (error.code is
+// the generic "Forbidden"); read the inner code first, the outer as fallback.
 async function errorCode(res: Response): Promise<string | null> {
   try {
-    const body = (await res.clone().json()) as { error?: { code?: unknown } };
+    const body = (await res.clone().json()) as { error?: { code?: unknown; innerError?: { code?: unknown } } };
+    const inner = body.error?.innerError?.code;
+    if (typeof inner === 'string') return inner;
     return typeof body.error?.code === 'string' ? body.error.code : null;
   } catch {
     return null;

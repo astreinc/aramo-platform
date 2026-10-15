@@ -38,12 +38,13 @@ function json(status: number, body: unknown): Response {
 describe('MicrosoftMeetingArtifactsHttpAdapter — Graph semantics (§10.1)', () => {
   it('maps 403 GraphAccessToTranscriptsDisabled to transcripts_disabled and other 403s to forbidden', async () => {
     const disabled = new MicrosoftMeetingArtifactsHttpAdapter(async () =>
-      json(403, { error: { code: 'GraphAccessToTranscriptsDisabled' } }),
+      json(403, { error: { code: 'Forbidden', innerError: { code: 'GraphAccessToTranscriptsDisabled' } } }),
     );
     await expect(disabled.listTranscripts({ accessToken: 'tok', onlineMeetingId: 'm' })).rejects.toMatchObject({
       kind: 'transcripts_disabled',
     });
-    const forbidden = new MicrosoftMeetingArtifactsHttpAdapter(async () => json(403, { error: { code: 'Forbidden' } }));
+    // The documented body (learn.microsoft.com calltranscript-get): the reason is the INNER code.
+    const forbidden = new MicrosoftMeetingArtifactsHttpAdapter(async () => json(403, { error: { code: 'Forbidden', innerError: { code: 'Unknown' } } }));
     await expect(forbidden.listTranscripts({ accessToken: 'tok', onlineMeetingId: 'm' })).rejects.toMatchObject({
       kind: 'forbidden',
     });
@@ -55,7 +56,7 @@ describe('MicrosoftMeetingArtifactsHttpAdapter — Graph semantics (§10.1)', ()
       const accept = (init?.headers as Record<string, string>)['accept'];
       accepts.push(accept);
       return accept === 'text/vtt'
-        ? json(403, { error: { code: 'SpeakerAttributionNotAllowed' } })
+        ? json(403, { error: { code: 'Forbidden', innerError: { code: 'SpeakerAttributionNotAllowed' } } })
         : new Response('00:00:01.000 --> 00:00:02.000\nhello', { status: 200 });
     });
     const content = await adapter.getTranscriptContent({ accessToken: 'tok', onlineMeetingId: 'm', transcriptId: 'x' });
