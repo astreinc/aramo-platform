@@ -25,6 +25,7 @@ export interface ScreeningSessionRow {
   talent_record_id: string;
   interaction_id: string | null;
   requisition_id: string | null;
+  meeting_recording_requested: boolean | null;
   state: string;
   version: number;
   created_by_actor_id: string;
@@ -822,6 +823,18 @@ export class TechnicalScreeningRepository {
         interaction_id: input.interaction_id,
       });
       return session;
+    });
+  }
+
+  // A1-4 — record whether automatic recording was requested for the linked
+  // meeting (DRAFT only; terminal sessions are immutable by trigger).
+  async recordMeetingPreparation(tenantId: string, sessionId: string, recordingRequested: boolean): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await this.lockDraft(tx, tenantId, sessionId);
+      await tx.screeningSession.updateMany({
+        where: { id: sessionId, tenant_id: tenantId, state: 'DRAFT' },
+        data: { meeting_recording_requested: recordingRequested },
+      });
     });
   }
 

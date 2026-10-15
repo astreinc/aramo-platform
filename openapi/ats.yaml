@@ -9412,8 +9412,34 @@ components:
     ScreeningCaptureModes:
       type: object
       additionalProperties: false
-      required: [recruiter_notes, teams_post_meeting, live_external_provider]
+      description: >-
+        The honest capture picture for one session. A requested recording is not
+        proof that recording happened; transcript availability is not attendance
+        or completion proof.
+      required: [recruiter_notes, teams_post_meeting, live_external_provider, meeting, recording, transcript]
       properties:
+        meeting:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status: { type: string, enum: [not_scheduled, scheduled] }
+        recording:
+          type: object
+          additionalProperties: false
+          required: [status]
+          properties:
+            status:
+              type: string
+              enum: [not_applicable, requested, not_requested]
+              description: Whether automatic recording was REQUESTED (recording consent + meeting-artifacts capability); never proof of a recording.
+        transcript:
+          type: object
+          additionalProperties: false
+          required: [status, count]
+          properties:
+            status: { type: string, enum: [none, linked] }
+            count: { type: integer, minimum: 0 }
         recruiter_notes:
           type: object
           additionalProperties: false

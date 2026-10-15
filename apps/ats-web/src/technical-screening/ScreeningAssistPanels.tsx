@@ -157,7 +157,16 @@ export const CAPTURE_STATUS_LABEL: Record<CaptureModeStatus, { text: string; ton
   no_approved_provider: { text: 'Not available — no approved live capture provider', tone: 'neutral' },
 };
 
-export function CaptureModes({ sessionId }: { sessionId: string }) {
+// The honest per-session capture picture: four independent states. A requested
+// recording is a request (Teams policy decides), never proof of a recording;
+// a linked transcript is not attendance or completion proof.
+export const RECORDING_LABEL: Record<ScreeningCaptureModes['recording']['status'], { text: string; tone: PillTone }> = {
+  not_applicable: { text: 'No meeting scheduled', tone: 'neutral' },
+  requested: { text: 'Automatic recording requested — Teams policy decides whether it records', tone: 'info' },
+  not_requested: { text: 'Not requested (recording consent or meeting-artifact access absent)', tone: 'neutral' },
+};
+
+export function CaptureModes({ sessionId, refreshKey }: { sessionId: string; refreshKey?: string }) {
   const [modes, setModes] = useState<ScreeningCaptureModes | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -168,19 +177,36 @@ export function CaptureModes({ sessionId }: { sessionId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, refreshKey]);
   if (failed) return <p className="ts-muted">Capture modes could not be loaded.</p>;
   if (modes === null) return <p className="ts-muted">Checking capture modes…</p>;
-  const row = (label: string, status: CaptureModeStatus) => (
-    <li>
-      <span>{label}</span> <StatusPill tone={CAPTURE_STATUS_LABEL[status].tone}>{CAPTURE_STATUS_LABEL[status].text}</StatusPill>
-    </li>
-  );
+  const pill = (text: string, tone: PillTone) => <StatusPill tone={tone}>{text}</StatusPill>;
+  const teams = CAPTURE_STATUS_LABEL[modes.teams_post_meeting.status];
+  const transcript =
+    modes.transcript.status === 'linked'
+      ? pill(`${modes.transcript.count} transcript(s) linked`, 'ok')
+      : modes.teams_post_meeting.status === 'available'
+        ? pill(modes.meeting.status === 'scheduled' ? 'None yet — available after the meeting' : 'None — no meeting scheduled', 'neutral')
+        : pill(teams.text, teams.tone);
   return (
     <ul className="ts-modes" aria-label="Capture modes">
-      {row('Recruiter notes', modes.recruiter_notes.status)}
-      {row('Teams transcript after the meeting', modes.teams_post_meeting.status)}
-      {row('Live transcript suggestions', modes.live_external_provider.status)}
+      <li>
+        <span>Teams meeting</span>{' '}
+        {modes.meeting.status === 'scheduled' ? pill('Scheduled', 'ok') : pill('Not scheduled', 'neutral')}
+      </li>
+      <li>
+        <span>Recording</span> {pill(RECORDING_LABEL[modes.recording.status].text, RECORDING_LABEL[modes.recording.status].tone)}
+      </li>
+      <li>
+        <span>Teams transcript (after the meeting)</span> {transcript}
+      </li>
+      <li>
+        <span>Recruiter notes</span> {pill(CAPTURE_STATUS_LABEL[modes.recruiter_notes.status].text, CAPTURE_STATUS_LABEL[modes.recruiter_notes.status].tone)}
+      </li>
+      <li>
+        <span>Live transcript suggestions</span>{' '}
+        {pill(CAPTURE_STATUS_LABEL[modes.live_external_provider.status].text, CAPTURE_STATUS_LABEL[modes.live_external_provider.status].tone)}
+      </li>
     </ul>
   );
 }
@@ -245,7 +271,10 @@ export function MeetingPanel(props: {
       ) : (
         <p className="ts-muted">No meeting linked.</p>
       )}
-      <CaptureModes sessionId={detail.session.id} />
+      <CaptureModes
+        sessionId={detail.session.id}
+        refreshKey={`${detail.session.interaction_id ?? ''}:${detail.transcripts.length}:${detail.session.version}`}
+      />
     </section>
   );
 }
@@ -366,11 +395,18 @@ export const ANALYSIS_LABEL: Record<string, string> = {
   blocked_not_authorized: 'Not drafted — AI processing consent missing',
 };
 
+// Run error codes with a recruiter-meaningful explanation.
+export const ANALYSIS_ERROR_LABEL: Record<string, string> = {
+  SCREENING_CONTEXT_CHANGED: 'Not drafted — the question plan or notes changed after the transcript was linked; check the transcript again',
+  SCREENING_SESSION_NOT_DRAFT: 'Not drafted — the screening was already confirmed or voided',
+};
+
 export const SCHEDULE_LABEL: Record<string, string> = {
   queued: 'AI drafting queued',
   disabled: 'AI drafting from transcripts is not enabled for this environment',
   config_invalid: 'AI drafting is not configured',
   transcript_not_ready: 'Transcript not ready yet',
+  session_unavailable: 'Not drafted — the screening is no longer a draft',
 };
 
 export function TranscriptPanel(props: {
@@ -419,7 +455,9 @@ export function TranscriptPanel(props: {
               <li key={t.conversation_transcript_id}>
                 <span>Teams transcript · {new Date(t.created_at).toLocaleString()}</span>{' '}
                 <StatusPill tone={a?.status === 'completed' ? 'ok' : 'neutral'}>
-                  {a !== undefined ? (ANALYSIS_LABEL[a.status] ?? a.status) : 'No AI drafting'}
+                  {a === undefined
+                    ? 'No AI drafting'
+                    : (a.last_error_code !== null ? ANALYSIS_ERROR_LABEL[a.last_error_code] : undefined) ?? ANALYSIS_LABEL[a.status] ?? a.status}
                 </StatusPill>
               </li>
             );

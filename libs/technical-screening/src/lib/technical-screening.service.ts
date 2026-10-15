@@ -244,6 +244,17 @@ export class TechnicalScreeningService {
     return this.guarded(input.requestId, () => this.repo.linkMeeting(input));
   }
 
+  async recordMeetingPreparation(input: {
+    tenant_id: string;
+    session_id: string;
+    recording_requested: boolean;
+    requestId: string;
+  }): Promise<void> {
+    return this.guarded(input.requestId, () =>
+      this.repo.recordMeetingPreparation(input.tenant_id, input.session_id, input.recording_requested),
+    );
+  }
+
   async linkTranscript(input: {
     tenant_id: string;
     session_id: string;

@@ -42,10 +42,16 @@ export type CaptureModeStatus =
   | 'reauth_required'
   | 'no_approved_provider';
 
+// §1.1 / R-C — the honest, per-session capture picture. Each state says only
+// what Aramo knows: a REQUESTED recording is not proof that recording happened,
+// and transcript availability is not attendance or completion proof.
 export interface ScreeningCaptureModes {
   recruiter_notes: { status: 'available' };
   teams_post_meeting: { status: CaptureModeStatus };
   live_external_provider: { status: 'no_approved_provider' };
+  meeting: { status: 'not_scheduled' | 'scheduled' };
+  recording: { status: 'not_applicable' | 'requested' | 'not_requested' };
+  transcript: { status: 'none' | 'linked'; count: number };
 }
 
 export interface ScreeningTranscriptCheckItem {
@@ -147,6 +153,14 @@ export class ScreeningMeetingService {
       recording_allowed: recordingAllowed,
     });
 
+    // Persist what was actually requested (shown as such; never as proof).
+    await this.screening.recordMeetingPreparation({
+      tenant_id: auth.tenant_id,
+      session_id: session.id,
+      recording_requested: prepared.record_automatically,
+      requestId,
+    });
+
     return {
       interaction_id: scheduled.interaction_id,
       join_url: scheduled.join_url,
@@ -156,13 +170,23 @@ export class ScreeningMeetingService {
     };
   }
 
-  async captureModes(auth: AuthContextType): Promise<ScreeningCaptureModes> {
+  async captureModes(auth: AuthContextType, session: ScreeningSessionRow, linkedTranscripts: number): Promise<ScreeningCaptureModes> {
     const status = await this.artifacts.capabilityStatus(auth.tenant_id, auth.sub);
+    const scheduled = session.interaction_id !== null;
     return {
       recruiter_notes: { status: 'available' },
       teams_post_meeting: { status: status === 'granted' ? 'available' : status },
       // R-C — no external capture vendor is approved or connected.
       live_external_provider: { status: 'no_approved_provider' },
+      meeting: { status: scheduled ? 'scheduled' : 'not_scheduled' },
+      recording: {
+        status: !scheduled || session.meeting_recording_requested === null
+          ? 'not_applicable'
+          : session.meeting_recording_requested
+            ? 'requested'
+            : 'not_requested',
+      },
+      transcript: { status: linkedTranscripts > 0 ? 'linked' : 'none', count: linkedTranscripts },
     };
   }
 

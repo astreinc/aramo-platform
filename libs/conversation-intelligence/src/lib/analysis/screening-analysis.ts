@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto';
 
 import { CI_PROCESSING_ERROR_CODES, CiAnalysisValidationError } from '../domain/errors.js';
+import type { ScreeningAnalysisContext } from '../ports/screening-analysis.port.js';
 
 import { PROTECTED_TRAIT_MARKERS } from './analysis-schema.js';
 
@@ -195,4 +196,37 @@ export function resolveScreeningCitations(
         : { utterance_id: c.utterance_id, start_offset: 0, end_offset: stored.length };
     }),
   );
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, canonical((value as Record<string, unknown>)[k])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * The run-identity hash of a screening context: the selected question plan, the
+ * recruiter notes, the minimized talent profile, the meeting interaction and the
+ * Requisition snapshot id, canonicalized (sorted keys). Any change → a new hash
+ * → a NEW run; processing refuses a run whose context no longer matches.
+ */
+export function screeningContextSha256(context: ScreeningAnalysisContext, snapshotId: string | null): string {
+  const body = JSON.stringify(
+    canonical({
+      session_id: context.session_id,
+      talent_record_id: context.talent_record_id,
+      interaction_id: context.interaction_id,
+      question_plan: context.question_plan,
+      recruiter_notes: context.recruiter_notes,
+      talent_profile: context.talent_profile,
+      requisition_snapshot_id: snapshotId,
+    }),
+  );
+  return createHash('sha256').update(body, 'utf8').digest('hex');
 }

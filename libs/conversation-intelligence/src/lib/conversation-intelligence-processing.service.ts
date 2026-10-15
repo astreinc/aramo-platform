@@ -52,6 +52,7 @@ import {
   CI_SCREENING_PROMPT_TEMPLATE_VERSION,
   CI_SCREENING_SCHEMA_VERSION,
   resolveScreeningCitations,
+  screeningContextSha256,
   validateScreeningAnalysisResult,
   type ScreeningAnalysisResultV1,
 } from './analysis/screening-analysis.js';
@@ -145,6 +146,11 @@ export class ConversationIntelligenceProcessingService {
     }
     if (ctx.context.interaction_id !== run.interaction_id) {
       return this.toState(tenant_id, processing, 'intervention_required', CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_MISMATCH);
+    }
+    // Replay binding: the run analyses EXACTLY the context it was scheduled with.
+    // A changed context is never processed under this run's identity.
+    if (screeningContextSha256(ctx.context, run.requisition_analysis_context_snapshot_id) !== run.screening_context_sha256) {
+      return this.toState(tenant_id, processing, 'failed_terminal', CI_PROCESSING_ERROR_CODES.SCREENING_CONTEXT_CHANGED);
     }
 
     // ai_processing — independent, fail closed, BEFORE any model call (D.2).

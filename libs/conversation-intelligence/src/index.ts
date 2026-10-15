@@ -146,6 +146,7 @@ export {
   CI_SCREENING_CLAIM_TYPE,
   validateScreeningAnalysisResult,
   resolveScreeningCitations,
+  screeningContextSha256,
   type CiAnalysisProfile,
   type ScreeningAnalysisResultV1,
   type ScreeningFindingV1,

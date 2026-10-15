@@ -7,7 +7,10 @@ import {
   CI_SCREENING_PROMPT_TEMPLATE_ID,
   CI_SCREENING_PROMPT_TEMPLATE_VERSION,
   CI_SCREENING_SCHEMA_VERSION,
+  SCREENING_ANALYSIS_CONTEXT_SOURCE,
   SCREENING_ANALYSIS_MODEL,
+  screeningContextSha256,
+  type ScreeningAnalysisContextSource,
   type ScreeningAnalysisModel,
   CI_PROMPT_TEMPLATE_ID,
   CI_PROMPT_TEMPLATE_SHA256,
@@ -45,7 +48,8 @@ export type CiScheduleReason =
   | 'no_talent'
   | 'ambiguous_talent'
   | 'no_requisition'
-  | 'ambiguous_requisition';
+  | 'ambiguous_requisition'
+  | 'session_unavailable';
 
 export interface CiScheduleCommand {
   readonly tenant_id: string;
@@ -75,6 +79,8 @@ export class NormalizedTranscriptReadyHandler {
     private readonly logger: AramoLogger,
     @Optional() @Inject(SCREENING_ANALYSIS_MODEL)
     private readonly screeningModel?: ScreeningAnalysisModel,
+    @Optional() @Inject(SCREENING_ANALYSIS_CONTEXT_SOURCE)
+    private readonly screeningContext?: ScreeningAnalysisContextSource,
   ) {}
 
   /**
@@ -94,7 +100,7 @@ export class NormalizedTranscriptReadyHandler {
   }): Promise<CiScheduleResult> {
     const { tenant_id, conversation_transcript_id } = command;
     if (!this.config.isEnabled()) return { scheduled: false, reason: 'disabled' };
-    if (!this.config.isReady() || this.screeningModel === undefined) {
+    if (!this.config.isReady() || this.screeningModel === undefined || this.screeningContext === undefined) {
       this.logger.warn({ event: 'ci_schedule_config_invalid', tenant_id });
       return { scheduled: false, reason: 'config_invalid' };
     }
@@ -114,11 +120,15 @@ export class NormalizedTranscriptReadyHandler {
             command.requisition_id,
             command.request_id !== undefined ? { request_id: command.request_id } : undefined,
           );
+    // The run identity binds the EXACT screening context (replay safety).
+    const ctx = await this.screeningContext.load(tenant_id, command.screening_session_id);
+    if (ctx.status !== 'ready') return { scheduled: false, reason: 'session_unavailable' };
     const identity = await this.screeningModel.modelIdentity(tenant_id);
     const run = await this.runs.createOrGetQueuedScreening({
       tenant_id,
       conversation_transcript_id,
       screening_session_id: command.screening_session_id,
+      screening_context_sha256: screeningContextSha256(ctx.context, snapshotId),
       requisition_analysis_context_snapshot_id: snapshotId,
       interaction_id: meta.interaction_id,
       normalized_sha256: meta.normalized_sha256,

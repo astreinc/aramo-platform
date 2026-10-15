@@ -120,6 +120,9 @@ export interface ScreeningCaptureModes {
   recruiter_notes: { status: 'available' };
   teams_post_meeting: { status: CaptureModeStatus };
   live_external_provider: { status: 'no_approved_provider' };
+  meeting: { status: 'not_scheduled' | 'scheduled' };
+  recording: { status: 'not_applicable' | 'requested' | 'not_requested' };
+  transcript: { status: 'none' | 'linked'; count: number };
 }
 
 export interface ScreeningTranscriptCheckItem {

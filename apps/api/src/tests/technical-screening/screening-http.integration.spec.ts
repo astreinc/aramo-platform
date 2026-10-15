@@ -550,6 +550,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         recruiter_notes: { status: 'available' },
         teams_post_meeting: { status: 'not_connected' },
         live_external_provider: { status: 'no_approved_provider' },
+        meeting: { status: 'not_scheduled' },
+        recording: { status: 'not_applicable' },
+        transcript: { status: 'none', count: 0 },
       });
 
       const slot = { subject: 'Technical screening', start_date_time: '2026-11-01T10:00:00Z', end_date_time: '2026-11-01T10:30:00Z', time_zone: 'UTC', idempotency_key: uuidv7() };

@@ -511,8 +511,9 @@ export class ScreeningSessionController {
     @RequestId() requestId: string,
   ): Promise<ScreeningCaptureModes> {
     this.access.assertRecruiter(auth, requestId);
-    await this.access.sessionFor(auth, id, requestId);
-    return this.meetings.captureModes(auth);
+    const { session } = await this.access.sessionFor(auth, id, requestId);
+    const d = await this.screening.getDetail(auth.tenant_id, id, requestId);
+    return this.meetings.captureModes(auth, session, d.transcripts.length);
   }
 
   // C-1 — post-meeting Teams transcript retrieval (organizer only; transcription

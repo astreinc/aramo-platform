@@ -8,6 +8,11 @@
 
 -- ---- ScreeningSession: optional requisition (question tailoring only) -------
 ALTER TABLE "technical_screening"."ScreeningSession" ADD COLUMN "requisition_id" UUID;
+-- A1-4 — whether automatic recording was REQUESTED for the linked Teams meeting
+-- (only under `recording` consent + the meeting-artifacts capability). A request,
+-- not proof that recording happened (the organizer's Teams policy decides).
+-- NULL until a meeting is scheduled through the screening route.
+ALTER TABLE "technical_screening"."ScreeningSession" ADD COLUMN "meeting_recording_requested" BOOLEAN;
 
 CREATE OR REPLACE FUNCTION "technical_screening".reject_screening_session_terminal_update()
 RETURNS TRIGGER AS $$
@@ -18,6 +23,7 @@ BEGIN
     OR NEW."site_id" IS DISTINCT FROM OLD."site_id"
     OR NEW."interaction_id" IS DISTINCT FROM OLD."interaction_id"
     OR NEW."requisition_id" IS DISTINCT FROM OLD."requisition_id"
+    OR NEW."meeting_recording_requested" IS DISTINCT FROM OLD."meeting_recording_requested"
     OR NEW."state" IS DISTINCT FROM OLD."state"
     OR NEW."version" IS DISTINCT FROM OLD."version"
     OR NEW."created_by_actor_id" IS DISTINCT FROM OLD."created_by_actor_id"

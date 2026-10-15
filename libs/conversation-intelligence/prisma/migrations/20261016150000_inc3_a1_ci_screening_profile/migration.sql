@@ -8,11 +8,15 @@
 -- A REQUISITION run keeps the exact prior invariants (snapshot required, no
 -- session). The SCREENING analysis identity converges through a partial unique
 -- index keyed on the session (NULL snapshots never collide in the original key).
--- The profile and session are immutable once written.
+-- screening_context_sha256 binds the run to the EXACT screening context it was
+-- scheduled with (selected question plan, notes, minimized profile, snapshot):
+-- changed inputs are a NEW run, never silently the same one.
+-- The profile, session, context hash and snapshot are immutable once written.
 
 ALTER TABLE "conversation_intelligence"."ConversationIntelligenceRun"
   ADD COLUMN "analysis_profile" TEXT NOT NULL DEFAULT 'REQUISITION',
-  ADD COLUMN "screening_session_id" UUID;
+  ADD COLUMN "screening_session_id" UUID,
+  ADD COLUMN "screening_context_sha256" TEXT;
 
 ALTER TABLE "conversation_intelligence"."ConversationIntelligenceRun"
   ALTER COLUMN "requisition_analysis_context_snapshot_id" DROP NOT NULL;
@@ -21,13 +25,15 @@ ALTER TABLE "conversation_intelligence"."ConversationIntelligenceRun"
   ADD CONSTRAINT "CIRun_analysis_profile_check" CHECK (
     ("analysis_profile" = 'REQUISITION'
        AND "requisition_analysis_context_snapshot_id" IS NOT NULL
-       AND "screening_session_id" IS NULL)
-    OR ("analysis_profile" = 'SCREENING' AND "screening_session_id" IS NOT NULL)
+       AND "screening_session_id" IS NULL
+       AND "screening_context_sha256" IS NULL)
+    OR ("analysis_profile" = 'SCREENING' AND "screening_session_id" IS NOT NULL
+        AND "screening_context_sha256" IS NOT NULL)
   );
 
 CREATE UNIQUE INDEX "CIRun_screening_analysis_identity_key"
   ON "conversation_intelligence"."ConversationIntelligenceRun" (
-    "tenant_id", "conversation_transcript_id", "screening_session_id",
+    "tenant_id", "conversation_transcript_id", "screening_session_id", "screening_context_sha256",
     "model_provider", "model_name", "prompt_template_version", "output_schema_version"
   )
   WHERE "analysis_profile" = 'SCREENING';
@@ -40,8 +46,9 @@ RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.analysis_profile IS DISTINCT FROM OLD.analysis_profile
      OR NEW.screening_session_id IS DISTINCT FROM OLD.screening_session_id
+     OR NEW.screening_context_sha256 IS DISTINCT FROM OLD.screening_context_sha256
      OR NEW.requisition_analysis_context_snapshot_id IS DISTINCT FROM OLD.requisition_analysis_context_snapshot_id THEN
-    RAISE EXCEPTION 'ConversationIntelligenceRun analysis profile, screening session and snapshot are immutable'
+    RAISE EXCEPTION 'ConversationIntelligenceRun analysis profile, screening session, context hash and snapshot are immutable'
       USING ERRCODE = 'check_violation';
   END IF;
   RETURN NEW;

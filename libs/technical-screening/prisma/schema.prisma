@@ -43,6 +43,8 @@ model ScreeningSession {
   // INC-3 A1 §B.1 :71 amended — OPTIONAL requisition used ONLY as question-plan
   // context. Never feeds findings, evidence, ordering or any fit output.
   requisition_id        String?   @db.Uuid
+  // A1-4 — automatic recording REQUESTED for the linked meeting (not proof).
+  meeting_recording_requested Boolean?
   state                 String
   version               Int       @default(1)
   created_by_actor_id   String    @db.Uuid

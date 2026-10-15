@@ -81,6 +81,9 @@ describe('TechnicalScreeningView', () => {
       recruiter_notes: { status: 'available' },
       teams_post_meeting: { status: 'not_connected' },
       live_external_provider: { status: 'no_approved_provider' },
+      meeting: { status: 'not_scheduled' },
+      recording: { status: 'not_applicable' },
+      transcript: { status: 'none', count: 0 },
     });
   });
 
@@ -209,6 +212,26 @@ describe('TechnicalScreeningView', () => {
     renderAt();
     expect(await screen.findByText('Unavailable — Microsoft 365 not connected')).toBeTruthy();
     expect(screen.getByText('Not available — no approved live capture provider')).toBeTruthy();
+  });
+
+  it('capture states are distinct and honest: meeting scheduled, recording REQUESTED (not proof), transcript linked, live unavailable', async () => {
+    const linked = session({ interaction_id: 'int-1' });
+    vi.mocked(api.getScreeningCaptureModes).mockResolvedValue({
+      recruiter_notes: { status: 'available' },
+      teams_post_meeting: { status: 'available' },
+      live_external_provider: { status: 'no_approved_provider' },
+      meeting: { status: 'scheduled' },
+      recording: { status: 'requested' },
+      transcript: { status: 'linked', count: 1 },
+    });
+    vi.mocked(api.listScreeningSessions).mockResolvedValue({ items: [linked] });
+    vi.mocked(api.getScreeningSession).mockResolvedValue(detailOf({ session: linked }));
+    renderAt();
+    expect(await screen.findByText('Scheduled')).toBeTruthy();
+    expect(screen.getByText('Automatic recording requested — Teams policy decides whether it records')).toBeTruthy();
+    expect(screen.getByText('1 transcript(s) linked')).toBeTruthy();
+    expect(screen.getByText('Not available — no approved live capture provider')).toBeTruthy();
+    expect(screen.queryByText(/\brecorded\b|\bis recording\b/i)).toBeNull();
   });
 
   it('scheduling needs communication:meeting:create; transcript retrieval and excerpts need screening:transcript:read', async () => {

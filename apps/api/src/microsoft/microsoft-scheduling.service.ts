@@ -168,6 +168,7 @@ export class MicrosoftSchedulingService {
       organizer_id: args.recruiter_id,
       talent_record_id: args.talent_record_id,
       requisition_id: args.requisition_id,
+      screening_session_id: args.screening_session_id ?? null,
       request_fingerprint: fingerprint,
     });
     if (claim.outcome === 'identity_conflict') {

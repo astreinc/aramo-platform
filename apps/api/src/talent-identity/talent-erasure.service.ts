@@ -53,7 +53,12 @@ interface ErasureStep {
 // PipelineStatusHistory → Pipeline; talent_record children → TalentRecord).
 // INC-3 A1-8 — the screening-linked id sets (every one record-keyspace: $1 = record ids).
 const SCREENING_SESSIONS = `SELECT ss.id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[])`;
-const SCREENING_INTERACTIONS = `SELECT ss.interaction_id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[]) AND ss.interaction_id IS NOT NULL`;
+// A screening meeting interaction is identified AUTHORITATIVELY: the session's
+// linked interaction, or the interaction's screening_session association (which
+// covers a meeting scheduled but not yet linked, e.g. a crash between steps).
+const SCREENING_INTERACTIONS =
+  `SELECT ss.interaction_id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[]) AND ss.interaction_id IS NOT NULL` +
+  ` UNION SELECT ca.interaction_id FROM communications."CommunicationAssociation" ca WHERE ca.subject_type = 'screening_session' AND ca.subject_id IN (${SCREENING_SESSIONS})`;
 const SCREENING_TRANSCRIPTS =
   `SELECT tl.conversation_transcript_id FROM technical_screening."ScreeningTranscriptLink" tl WHERE tl.session_id IN (${SCREENING_SESSIONS})` +
   ` UNION SELECT ct.id FROM conversation_transcript."ConversationTranscript" ct WHERE ct.interaction_id IN (${SCREENING_INTERACTIONS})`;
@@ -128,8 +133,7 @@ const INVENTORY: ErasureStep[] = [
   //      CI screening-profile runs (+ claims / citations / drafts) → the linked conversation
   //      transcripts (+ source AND normalized object-storage artifacts, collected in
   //      resolveScope) → the screening meeting interactions (provider events, scheduling
-  //      operations — requisition_id IS NULL marks a screening meeting, Part F — dispositions,
-  //      associations). Only screening-linked rows: the general communications / transcript /
+  //      operations by their explicit screening_session_id, dispositions, associations). Only screening-linked rows: the general communications / transcript /
   //      CI erasure gap stays on the separate S2 track. ----
   { label: 'conversation_intelligence."ConversationIntelligenceCitation"', keyspace: 'record-child', where: `claim_id IN (SELECT k.id FROM conversation_intelligence."ConversationIntelligenceClaim" k WHERE k.run_id IN (${SCREENING_CI_RUNS}))` },
   { label: 'conversation_intelligence."ConversationIntelligenceClaim"', keyspace: 'record-child', where: `run_id IN (${SCREENING_CI_RUNS})` },
@@ -137,10 +141,13 @@ const INVENTORY: ErasureStep[] = [
   { label: 'conversation_intelligence."ConversationIntelligenceRun"', keyspace: 'record-child', where: `id IN (${SCREENING_CI_RUNS})` },
   { label: 'conversation_transcript."ConversationTranscript"', keyspace: 'record-child', where: `id IN (${SCREENING_TRANSCRIPTS})`, s3RefColumn: 'source_artifact_ref' },
   { label: 'communications."CommunicationProviderEvent"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
-  { label: 'communications."MeetingSchedulingOperation"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS}) OR (talent_record_id = ANY($1::uuid[]) AND requisition_id IS NULL)` },
+  { label: 'communications."MeetingSchedulingOperation"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS}) OR screening_session_id IN (${SCREENING_SESSIONS})` },
+  // The interaction goes BEFORE its associations: the screening_session association is
+  // the evidence that identifies a scheduled-but-unlinked meeting (dispositions and
+  // associations cascade with it; their own steps then sweep any residue).
+  { label: 'communications."CommunicationInteraction"', keyspace: 'record-child', where: `id IN (${SCREENING_INTERACTIONS})` },
   { label: 'communications."CommunicationDisposition"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
   { label: 'communications."CommunicationAssociation"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
-  { label: 'communications."CommunicationInteraction"', keyspace: 'record-child', where: `id IN (${SCREENING_INTERACTIONS})` },
   // ---- INC-3 A1-8 — the A1 screening tables, child before parent through the session ----
   { label: 'technical_screening."ScreeningFindingCitation"', keyspace: 'record-child', where: `finding_id IN (SELECT f.id FROM technical_screening."ScreeningFinding" f WHERE f.session_id IN (${SCREENING_SESSIONS}))` },
   { label: 'technical_screening."ScreeningAssistSuggestion"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },

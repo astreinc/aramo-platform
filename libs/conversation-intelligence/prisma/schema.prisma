@@ -151,6 +151,8 @@ model ConversationIntelligenceRun {
   // exactly one screening session (cross-schema UUID reference, no FK).
   analysis_profile     String  @default("REQUISITION")
   screening_session_id String? @db.Uuid
+  // INC-3 A1-5 — canonical hash of the screening context the run is bound to.
+  screening_context_sha256 String?
 
   // The exact normalized-artifact hash this run was grounded on (evidence bind).
   normalized_sha256 String

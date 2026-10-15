@@ -21,6 +21,7 @@ import {
   CI_SCREENING_PROMPT_TEMPLATE_VERSION,
   CI_SCREENING_SCHEMA_VERSION,
   resolveScreeningCitations,
+  screeningContextSha256,
   validateScreeningAnalysisResult,
 } from '../lib/analysis/screening-analysis.js';
 import type { AiProcessingAuthorizationPort } from '../lib/ports/ai-processing-authorization.port.js';
@@ -191,6 +192,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT,
         conversation_transcript_id: transcriptId,
         screening_session_id: sessionId,
+        screening_context_sha256: hashOf(sessionId, interactionId, snapshot),
         requisition_analysis_context_snapshot_id: snapshot,
         interaction_id: interactionId,
         normalized_sha256: 'c'.repeat(64),
@@ -225,10 +227,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         opts.model,
       );
     }
-    const ready = (sessionId: string, interactionId: string): ScreeningContextLoad => ({
+    const TALENT = randomUUID();
+    const ready = (sessionId: string, interactionId: string, plan: string[] = ['Q1']): ScreeningContextLoad => ({
       status: 'ready',
-      context: { session_id: sessionId, talent_record_id: randomUUID(), interaction_id: interactionId, question_plan: ['Q1'], recruiter_notes: [], talent_profile: { skills: ['Go'] } },
+      context: { session_id: sessionId, talent_record_id: TALENT, interaction_id: interactionId, question_plan: plan, recruiter_notes: [], talent_profile: { skills: ['Go'] } },
     });
+    function hashOf(sessionId: string, interactionId: string, snapshot: string | null, plan: string[] = ['Q1']): string {
+      const r = ready(sessionId, interactionId, plan);
+      if (r.status !== 'ready') throw new Error('unreachable');
+      return screeningContextSha256(r.context, snapshot);
+    }
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -250,15 +258,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('migration: REQUISITION runs keep the snapshot requirement; SCREENING runs require a session', async () => {
       const base = `INSERT INTO conversation_intelligence."ConversationIntelligenceRun"
         (id, tenant_id, interaction_id, conversation_transcript_id, requisition_analysis_context_snapshot_id, analysis_profile, screening_session_id,
-         normalized_sha256, model_provider, model_name, prompt_template_id, prompt_template_version, prompt_sha256, output_schema_version)
-        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7::uuid, 'x', 'p', 'm', 't', 'v', 's', 'o')`;
+         screening_context_sha256, normalized_sha256, model_provider, model_name, prompt_template_id, prompt_template_version, prompt_sha256, output_schema_version)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6, $7::uuid, $8, 'x', 'p', 'm', 't', 'v', 's', 'o')`;
       const ids = () => [randomUUID(), TENANT, randomUUID(), randomUUID()];
-      await expect(db.query(base, [...ids(), null, 'REQUISITION', null])).rejects.toThrow(/CIRun_analysis_profile_check/);
-      await expect(db.query(base, [...ids(), randomUUID(), 'REQUISITION', randomUUID()])).rejects.toThrow(/CIRun_analysis_profile_check/);
-      await expect(db.query(base, [...ids(), null, 'SCREENING', null])).rejects.toThrow(/CIRun_analysis_profile_check/);
-      await expect(db.query(base, [...ids(), null, 'OTHER', randomUUID()])).rejects.toThrow(/CIRun_analysis_profile_check/);
-      await db.query(base, [...ids(), randomUUID(), 'REQUISITION', null]);
-      await db.query(base, [...ids(), null, 'SCREENING', randomUUID()]);
+      const h = 'e'.repeat(64);
+      await expect(db.query(base, [...ids(), null, 'REQUISITION', null, null])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await expect(db.query(base, [...ids(), randomUUID(), 'REQUISITION', randomUUID(), null])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await expect(db.query(base, [...ids(), randomUUID(), 'REQUISITION', null, h])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await expect(db.query(base, [...ids(), null, 'SCREENING', null, h])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await expect(db.query(base, [...ids(), null, 'SCREENING', randomUUID(), null])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await expect(db.query(base, [...ids(), null, 'OTHER', randomUUID(), h])).rejects.toThrow(/CIRun_analysis_profile_check/);
+      await db.query(base, [...ids(), randomUUID(), 'REQUISITION', null, null]);
+      await db.query(base, [...ids(), null, 'SCREENING', randomUUID(), h]);
     });
 
     it('identity converges on (transcript, session, model, prompt, schema); profile + session immutable', async () => {
@@ -353,6 +364,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect([r2.outcome, r2.error_code]).toEqual(['failed_retryable', CI_PROCESSING_ERROR_CODES.CITATION_SPAN_MISMATCH]);
       expect(saved).toHaveLength(0);
       expect(await repo.listClaims(TENANT, b.run.id)).toEqual([]);
+    });
+
+    it('replay binding: a context changed after scheduling is refused with NO model call; the changed context is a NEW run', async () => {
+      const interactionId = randomUUID();
+      const { run, prov, sessionId, transcriptId } = await queued(interactionId);
+      const model = new FakeScreeningModel(OK);
+      const { s, saved } = sink();
+      // The recruiter selected another question after the transcript was linked.
+      const changed = ready(sessionId, interactionId, ['Q1', 'Q2']);
+      const out = await service({ transcriptId, interactionId, context: changed, sinkPort: s, model }).processScreening({ tenant_id: TENANT, run_id: run.id });
+      expect([out.outcome, out.error_code]).toEqual(['failed_terminal', CI_PROCESSING_ERROR_CODES.SCREENING_CONTEXT_CHANGED]);
+      expect(model.calls).toHaveLength(0);
+      expect(saved).toHaveLength(0);
+      const rescheduled = await repo.createOrGetQueuedScreening({ ...prov, screening_context_sha256: hashOf(sessionId, interactionId, null, ['Q1', 'Q2']) });
+      expect(rescheduled.id).not.toBe(run.id);
+      expect(rescheduled.status).toBe('queued');
+      await expect(
+        db.query(`UPDATE conversation_intelligence."ConversationIntelligenceRun" SET screening_context_sha256 = 'x' WHERE id = $1::uuid`, [rescheduled.id]),
+      ).rejects.toThrow(/immutable/);
     });
 
     it('a REQUISITION-profile run is never processed as a screening run', async () => {

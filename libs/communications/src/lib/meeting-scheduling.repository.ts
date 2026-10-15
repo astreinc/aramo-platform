@@ -105,6 +105,8 @@ export class MeetingSchedulingRepository {
     talent_record_id: string;
     // INC-3 A1 Part F — null only for a screening meeting with no Requisition.
     requisition_id: string | null;
+    // INC-3 A1 — the authoritative screening association (screening meetings only).
+    screening_session_id?: string | null;
     request_fingerprint: string;
   }): Promise<{
     outcome: 'created' | 'replay' | 'in_progress' | 'needs_reconciliation' | 'identity_conflict';
@@ -121,6 +123,7 @@ export class MeetingSchedulingRepository {
           organizer_id: args.organizer_id,
           talent_record_id: args.talent_record_id,
           requisition_id: args.requisition_id,
+          screening_session_id: args.screening_session_id ?? null,
           request_fingerprint: args.request_fingerprint,
         },
       })) as MeetingOperationRow;

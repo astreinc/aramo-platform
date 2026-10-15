@@ -479,6 +479,9 @@ model MeetingSchedulingOperation {
   talent_record_id String @db.Uuid
   // INC-3 A1 Part F — nullable ONLY for screening meetings (Requisition optional).
   requisition_id   String? @db.Uuid
+  // INC-3 A1 — the authoritative screening association (DB CHECK: a Requisition
+  // or a screening session is always present).
+  screening_session_id String? @db.Uuid
 
   last_error String?
 
@@ -487,6 +490,7 @@ model MeetingSchedulingOperation {
 
   @@unique([tenant_id, idempotency_key])
   @@index([tenant_id, status])
+  @@index([tenant_id, screening_session_id], map: "MeetingSchedulingOperation_tenant_screening_session_idx")
   @@schema("communications")
 }
 

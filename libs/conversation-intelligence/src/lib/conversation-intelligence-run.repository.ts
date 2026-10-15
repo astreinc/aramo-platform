@@ -22,6 +22,7 @@ export interface CiRunRow {
   requisition_analysis_context_snapshot_id: string | null;
   analysis_profile: string;
   screening_session_id: string | null;
+  screening_context_sha256: string | null;
   normalized_sha256: string;
   model_provider: string;
   model_name: string;
@@ -67,6 +68,8 @@ export interface CiScreeningRunProvenance {
   tenant_id: string;
   conversation_transcript_id: string;
   screening_session_id: string;
+  /** Canonical hash of the screening context — part of the run identity. */
+  screening_context_sha256: string;
   requisition_analysis_context_snapshot_id: string | null;
   interaction_id: string;
   normalized_sha256: string;
@@ -176,6 +179,7 @@ export class ConversationIntelligenceRunRepository {
         tenant_id: prov.tenant_id,
         conversation_transcript_id: prov.conversation_transcript_id,
         screening_session_id: prov.screening_session_id,
+        screening_context_sha256: prov.screening_context_sha256,
         model_provider: prov.model_provider,
         model_name: prov.model_name,
         prompt_template_version: prov.prompt_template_version,
@@ -199,6 +203,7 @@ export class ConversationIntelligenceRunRepository {
           requisition_analysis_context_snapshot_id: prov.requisition_analysis_context_snapshot_id,
           analysis_profile: 'SCREENING',
           screening_session_id: prov.screening_session_id,
+          screening_context_sha256: prov.screening_context_sha256,
           normalized_sha256: prov.normalized_sha256,
           model_provider: prov.model_provider,
           model_name: prov.model_name,

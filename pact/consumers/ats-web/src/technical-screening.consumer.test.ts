@@ -178,6 +178,10 @@ describe('ats-web → technical screening (TIP-E2E INC-3)', () => {
           recruiter_notes: { status: 'available' },
           teams_post_meeting: { status: regex('^(available|not_granted|not_connected|reauth_required)$', 'not_connected') },
           live_external_provider: { status: 'no_approved_provider' },
+          // The provider-state DRAFT has no meeting, so nothing was requested or linked.
+          meeting: { status: 'not_scheduled' },
+          recording: { status: 'not_applicable' },
+          transcript: { status: 'none', count: 0 },
         });
       })
       .executeTest(async (mock) => {

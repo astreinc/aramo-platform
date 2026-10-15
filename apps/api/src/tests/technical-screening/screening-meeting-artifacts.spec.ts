@@ -272,7 +272,11 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
   const linked = { ...(draft as object), interaction_id: INTERACTION } as never;
 
   function composition(opts: { consent?: Record<string, boolean>; organizer?: string | null; capability?: string } = {}) {
-    const screening = { linkMeeting: vi.fn().mockResolvedValue(linked), linkTranscript: vi.fn().mockResolvedValue({ linked: true }) };
+    const screening = {
+      linkMeeting: vi.fn().mockResolvedValue(linked),
+      linkTranscript: vi.fn().mockResolvedValue({ linked: true }),
+      recordMeetingPreparation: vi.fn().mockResolvedValue(undefined),
+    };
     const scheduling = { scheduleMeeting: vi.fn().mockResolvedValue({ interaction_id: INTERACTION, join_url: 'https://teams/join', idempotent_replay: false }) };
     const artifacts = {
       prepareScreeningMeeting: vi.fn().mockResolvedValue({ status: 'prepared', record_automatically: false }),
@@ -303,6 +307,8 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
     expect(c.screening.linkMeeting).toHaveBeenCalledWith(expect.objectContaining({ interaction_id: INTERACTION }));
     expect(c.artifacts.prepareScreeningMeeting).toHaveBeenCalledWith(expect.objectContaining({ recording_allowed: false }));
     expect(r).toMatchObject({ interaction_id: INTERACTION, artifact_preparation: 'prepared', record_automatically: false });
+    // What was actually requested is persisted (shown as a request, never as proof).
+    expect(c.screening.recordMeetingPreparation).toHaveBeenCalledWith(expect.objectContaining({ session_id: SESSION_ID, recording_requested: false }));
   });
 
   it('refuses a second meeting BEFORE any Outlook side effect, and validates input', async () => {
@@ -312,13 +318,20 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
     expect(c.scheduling.scheduleMeeting).not.toHaveBeenCalled();
   });
 
-  it('capture modes are honest: notes always, Teams by capability, live provider never (no approved vendor)', async () => {
-    expect(await composition({ capability: 'not_granted' }).svc.captureModes(auth)).toEqual({
+  it('capture modes are honest: notes always, Teams by capability, live provider never, meeting / recording / transcript per session', async () => {
+    expect(await composition({ capability: 'not_granted' }).svc.captureModes(auth, draft, 0)).toEqual({
       recruiter_notes: { status: 'available' },
       teams_post_meeting: { status: 'not_granted' },
       live_external_provider: { status: 'no_approved_provider' },
+      meeting: { status: 'not_scheduled' },
+      recording: { status: 'not_applicable' },
+      transcript: { status: 'none', count: 0 },
     });
-    expect((await composition().svc.captureModes(auth)).teams_post_meeting.status).toBe('available');
+    const requested = { ...(linked as object), meeting_recording_requested: true } as never;
+    const notRequested = { ...(linked as object), meeting_recording_requested: false } as never;
+    const m1 = await composition().svc.captureModes(auth, requested, 1);
+    expect([m1.teams_post_meeting.status, m1.meeting.status, m1.recording.status, m1.transcript]).toEqual(['available', 'scheduled', 'requested', { status: 'linked', count: 1 }]);
+    expect((await composition().svc.captureModes(auth, notRequested, 0)).recording.status).toBe('not_requested');
   });
 
   it('transcript check: non-organizer 403 and missing transcription consent 403 — both before any Graph call', async () => {
