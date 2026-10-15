@@ -2,33 +2,57 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Dialog, InlineAlert, Input, Select, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
 
+import { listRequisitions } from '../requisitions/requisitions-api';
 import { AttestCheckbox, Button, EmptyState, ErrorState, LoadingState, StatusPill, safeErrorMessage } from '../ui';
 import type { PillTone } from '../ui/pills';
+
 import {
+  AiFindingReview,
+  ConsentHint,
+  InterviewPanel,
+  MeetingPanel,
+  QuestionPlanPanel,
+  TranscriptPanel,
+  provenanceLabel,
+} from './ScreeningAssistPanels';
+import {
+  actionScreeningSuggestion,
   addScreeningFinding,
+  addScreeningNote,
+  addScreeningQuestion,
+  checkScreeningTranscripts,
   confirmScreeningSession,
   createScreeningSession,
   editScreeningFinding,
+  generateScreeningQuestions,
   getScreeningSession,
   listScreeningSessions,
   removeScreeningFinding,
+  requestScreeningSuggestions,
   retryScreeningPublication,
+  reviewScreeningFinding,
+  scheduleScreeningMeeting,
+  updateScreeningQuestion,
   voidScreeningSession,
   type ScreeningBasis,
+  type ScreeningCitation,
   type ScreeningFinding,
   type ScreeningFindingInput,
   type ScreeningPublication,
   type ScreeningSession,
   type ScreeningSessionDetail,
+  type ScreeningTranscriptCheckItem,
 } from './technical-screening-api';
 import './technical-screening.css';
 
-// TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §11).
-// Route `talent/:talentId/screening`, entered from the Talent 360 header. The FE
-// OWNS ONLY PRESENTATION STATE: every lifecycle rule (DRAFT-only edits, version
-// CAS, attestation, exactly-once publication) is enforced server-side; a 409 here
-// means "someone changed it" and the view reloads. Copy is honest: this is a
-// MANUAL recruiter record — never AI, never live, never verification.
+// TIP-E2E INC-3 — Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §11, as
+// amended by ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED A1-7). Route
+// `talent/:talentId/screening`, entered from the Talent 360 header. The FE OWNS
+// ONLY PRESENTATION STATE: every lifecycle rule (DRAFT-only edits, version CAS,
+// consent, review-before-confirm, attestation, exactly-once publication) is
+// enforced server-side; a 409 here means "someone changed it" and the view
+// reloads. Copy is honest: AI output is a draft the recruiter accepts, edits or
+// rejects; confirmed findings are recruiter-attested, never verification.
 
 export const BASIS_LABEL: Record<ScreeningBasis, string> = {
   SELF_REPORTED: 'Self-reported by the talent',
@@ -63,6 +87,8 @@ export function TechnicalScreeningView() {
   const canCreate = auth !== null && hasScope(auth, 'screening:create');
   const canEdit = auth !== null && hasScope(auth, 'screening:edit');
   const canConfirm = auth !== null && hasScope(auth, 'screening:confirm');
+  const canSchedule = canEdit && auth !== null && hasScope(auth, 'communication:meeting:create');
+  const canReadTranscript = auth !== null && hasScope(auth, 'screening:transcript:read');
 
   const [sessions, setSessions] = useState<ScreeningSession[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -120,15 +146,31 @@ export function TechnicalScreeningView() {
     }
   };
 
-  const start = async () => {
+  // A mutation whose response wraps the detail (meeting / transcript check).
+  const mutateWith = async <T,>(
+    op: () => Promise<T & { session: ScreeningSessionDetail }>,
+    failure: string,
+  ): Promise<T | null> => {
+    let result: (T & { session: ScreeningSessionDetail }) | null = null;
+    const ok = await mutate(async () => {
+      result = await op();
+      return result.session;
+    }, failure);
+    return ok ? result : null;
+  };
+
+  const [startOpen, setStartOpen] = useState(false);
+  const start = async (requisitionId: string | null): Promise<boolean> => {
     setBusy(true);
     setNotice(null);
     try {
-      const created = await createScreeningSession(talentId);
+      const created = await createScreeningSession(talentId, requisitionId);
       setSessions((cur) => [created, ...(cur ?? [])]);
       setSelectedId(created.id);
+      return true;
     } catch (e) {
       setNotice(safeErrorMessage(e, 'We couldn’t start a screening.'));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -146,16 +188,26 @@ export function TechnicalScreeningView() {
           </Link>
           <h1 className="ts-title">Technical screening</h1>
           <p className="ts-sub">
-            Manual record of what a recruiter discussed or observed. Confirmed findings become
-            recruiter-attested evidence — not independent verification.
+            Prepare questions, interview, and record what the talent said or showed. AI suggestions and drafts are
+            yours to accept, edit or reject. Confirmed findings become recruiter-attested evidence — not independent
+            verification.
           </p>
         </div>
         {canCreate && (
-          <Button variant="primary" onClick={() => void start()} disabled={busy}>
+          <Button variant="primary" onClick={() => setStartOpen(true)} disabled={busy}>
             Start screening
           </Button>
         )}
       </div>
+      {startOpen && (
+        <StartDialog
+          busy={busy}
+          onClose={() => setStartOpen(false)}
+          onStart={async (reqId) => {
+            if (await start(reqId)) setStartOpen(false);
+          }}
+        />
+      )}
 
       {notice !== null && <InlineAlert variant="error">{notice}</InlineAlert>}
 
@@ -190,6 +242,42 @@ export function TechnicalScreeningView() {
                 busy={busy}
                 canEdit={canEdit}
                 canConfirm={canConfirm}
+                canSchedule={canSchedule}
+                canReadTranscript={canReadTranscript}
+                onGenerate={(includeProfile) =>
+                  mutate(() => generateScreeningQuestions(detail.session.id, includeProfile), 'We couldn’t generate questions.')
+                }
+                onAddQuestion={(text) => mutate(() => addScreeningQuestion(detail.session.id, text), 'We couldn’t add the question.')}
+                onUpdateQuestion={(questionId, patch) =>
+                  mutate(() => updateScreeningQuestion(detail.session.id, questionId, patch), 'We couldn’t update the question.')
+                }
+                onNote={(body) => mutate(() => addScreeningNote(detail.session.id, body), 'We couldn’t save the note.')}
+                onSuggest={(noteId) =>
+                  mutate(() => requestScreeningSuggestions(detail.session.id, noteId), 'We couldn’t get follow-up suggestions.')
+                }
+                onSuggestionAction={(suggestionId, action) =>
+                  mutate(() => actionScreeningSuggestion(detail.session.id, suggestionId, action), 'We couldn’t record that.')
+                }
+                onSchedule={async (slot) => {
+                  const r = await mutateWith<{ meeting: { join_url: string | null } }>(
+                    () => scheduleScreeningMeeting(detail.session.id, slot),
+                    'We couldn’t schedule the Teams meeting.',
+                  );
+                  return r === null ? null : r.meeting.join_url !== null ? 'invitation sent' : 'scheduled';
+                }}
+                onCheckTranscripts={async () => {
+                  const r = await mutateWith<{ items: ScreeningTranscriptCheckItem[] }>(
+                    () => checkScreeningTranscripts(detail.session.id),
+                    'We couldn’t retrieve the Teams transcript.',
+                  );
+                  return r === null ? null : r.items;
+                }}
+                onReview={(findingId, outcome) =>
+                  mutate(
+                    () => reviewScreeningFinding(detail.session.id, findingId, detail.session.version, outcome),
+                    'We couldn’t record your review.',
+                  )
+                }
                 onAdd={(input) =>
                   mutate(() => addScreeningFinding(detail.session.id, detail.session.version, input), 'We couldn’t add the finding.')
                 }
@@ -207,7 +295,7 @@ export function TechnicalScreeningView() {
                 }
                 onConfirm={() =>
                   mutate(
-                    () => confirmScreeningSession(detail.session.id, detail.session.version, detail.findings.map((f) => f.id)),
+                    () => confirmScreeningSession(detail.session.id, detail.session.version, confirmableIds(detail.findings)),
                     'We couldn’t confirm this screening.',
                   )
                 }
@@ -224,6 +312,14 @@ export function TechnicalScreeningView() {
   );
 }
 
+// A1 §B.2 — the confirmed set is every finding except rejected AI drafts.
+export function confirmableIds(findings: ScreeningFinding[]): string[] {
+  return findings.filter((f) => f.review_status !== 'REJECTED').map((f) => f.id);
+}
+
+const unreviewed = (findings: ScreeningFinding[]): number =>
+  findings.filter((f) => f.origin === 'AI_DRAFTED' && f.review_status === 'DRAFT').length;
+
 function stateLabel(s: ScreeningSession['state']): string {
   return s === 'DRAFT' ? 'Draft' : s === 'CONFIRMED' ? 'Confirmed' : 'Voided';
 }
@@ -233,6 +329,17 @@ function SessionDetail(props: {
   busy: boolean;
   canEdit: boolean;
   canConfirm: boolean;
+  canSchedule: boolean;
+  canReadTranscript: boolean;
+  onGenerate: (includeProfile: boolean) => Promise<boolean>;
+  onAddQuestion: (text: string) => Promise<boolean>;
+  onUpdateQuestion: (questionId: string, patch: { text?: string; status?: 'PROPOSED' | 'SELECTED' | 'REMOVED' }) => Promise<boolean>;
+  onNote: (body: string) => Promise<boolean>;
+  onSuggest: (noteId: string) => Promise<boolean>;
+  onSuggestionAction: (suggestionId: string, action: 'USED' | 'DISMISSED') => Promise<boolean>;
+  onSchedule: (slot: { subject: string; start_date_time: string; end_date_time: string; time_zone: string }) => Promise<string | null>;
+  onCheckTranscripts: () => Promise<ScreeningTranscriptCheckItem[] | null>;
+  onReview: (findingId: string, outcome: 'CONFIRMED' | 'REJECTED') => Promise<boolean>;
   onAdd: (input: ScreeningFindingInput) => Promise<boolean>;
   onEdit: (findingId: string, input: ScreeningFindingInput) => Promise<boolean>;
   onRemove: (findingId: string) => Promise<boolean>;
@@ -248,16 +355,51 @@ function SessionDetail(props: {
   const [voidOpen, setVoidOpen] = useState(false);
   const byFinding = new Map(publications.map((p) => [p.finding_id, p]));
   const hasPending = publications.some((p) => p.state === 'PENDING');
+  const citationsBy = new Map<string, ScreeningCitation[]>();
+  for (const c of detail.citations) citationsBy.set(c.finding_id, [...(citationsBy.get(c.finding_id) ?? []), c]);
+  const pendingReview = unreviewed(findings);
 
   return (
     <>
       <div className="ts-detail__head">
         <StatusPill tone={SESSION_TONE[session.state]}>{stateLabel(session.state)}</StatusPill>
-        <span className="ts-muted">Manual screening · version {session.version}</span>
+        <span className="ts-muted">Version {session.version}</span>
         {session.state === 'VOIDED' && session.void_reason !== null && (
           <span className="ts-muted">Reason: {session.void_reason}</span>
         )}
       </div>
+
+      {draft && <ConsentHint />}
+      <QuestionPlanPanel
+        detail={detail}
+        busy={busy}
+        canEdit={props.canEdit}
+        onGenerate={props.onGenerate}
+        onAdd={props.onAddQuestion}
+        onUpdate={props.onUpdateQuestion}
+      />
+      <MeetingPanel detail={detail} busy={busy} canSchedule={props.canSchedule} onSchedule={props.onSchedule} />
+      <InterviewPanel
+        detail={detail}
+        busy={busy}
+        canEdit={props.canEdit}
+        onNote={props.onNote}
+        onSuggest={props.onSuggest}
+        onAction={props.onSuggestionAction}
+      />
+      <TranscriptPanel
+        detail={detail}
+        busy={busy}
+        canCheck={props.canEdit && props.canReadTranscript}
+        onCheck={props.onCheckTranscripts}
+      />
+
+      <h2 className="ts-panel__title">5 · Findings</h2>
+      {pendingReview > 0 && draft && (
+        <p className="ts-muted" role="status">
+          {pendingReview} AI-drafted finding(s) await your review. Accept, edit or reject each before confirming.
+        </p>
+      )}
 
       {findings.length === 0 ? (
         <EmptyState message={draft ? 'Add the first finding.' : 'This screening has no findings.'} />
@@ -276,9 +418,23 @@ function SessionDetail(props: {
                 />
               </li>
             ) : (
-              <li key={f.id} className="ts-finding">
+              <li key={f.id} className={`ts-finding${f.review_status === 'REJECTED' ? ' ts-finding--rejected' : ''}`}>
                 <FindingCard finding={f} publication={byFinding.get(f.id)} />
-                {draft && props.canEdit && (
+                {f.origin === 'AI_DRAFTED' && (
+                  <AiFindingReview
+                    sessionId={session.id}
+                    finding={f}
+                    citations={citationsBy.get(f.id) ?? []}
+                    busy={busy}
+                    canEdit={props.canEdit}
+                    canReadTranscript={props.canReadTranscript}
+                    draft={draft}
+                    onAccept={() => void props.onReview(f.id, 'CONFIRMED')}
+                    onReject={() => void props.onReview(f.id, 'REJECTED')}
+                    onEdit={() => setEditing(f.id)}
+                  />
+                )}
+                {draft && props.canEdit && f.origin === 'RECRUITER_AUTHORED' && (
                   <div className="ts-finding__actions">
                     <Button variant="secondary" onClick={() => setEditing(f.id)} disabled={busy}>
                       Edit
@@ -310,8 +466,8 @@ function SessionDetail(props: {
             Add finding
           </Button>
         )}
-        {draft && props.canConfirm && findings.length > 0 && editing === null && (
-          <Button variant="primary" onClick={() => setConfirmOpen(true)} disabled={busy}>
+        {draft && props.canConfirm && confirmableIds(findings).length > 0 && editing === null && (
+          <Button variant="primary" onClick={() => setConfirmOpen(true)} disabled={busy || pendingReview > 0}>
             Review and confirm
           </Button>
         )}
@@ -329,7 +485,7 @@ function SessionDetail(props: {
 
       {confirmOpen && (
         <ConfirmDialog
-          findings={findings}
+          findings={findings.filter((f) => f.review_status !== 'REJECTED')}
           version={session.version}
           busy={busy}
           onClose={() => setConfirmOpen(false)}
@@ -368,6 +524,9 @@ function FindingCard({ finding, publication }: { finding: ScreeningFinding; publ
       <div className="ts-finding__top">
         <strong>{finding.skill_raw}</strong>
         <span className="ts-muted">{BASIS_LABEL[finding.basis]}</span>
+        <StatusPill tone={finding.origin === 'AI_DRAFTED' ? (finding.review_status === 'REJECTED' ? 'neutral' : 'info') : 'neutral'}>
+          {provenanceLabel(finding)}
+        </StatusPill>
         {pub !== null && <StatusPill tone={pub.tone}>{pub.text}</StatusPill>}
       </div>
       <p className="ts-finding__text">{finding.observation_raw}</p>
@@ -478,8 +637,8 @@ function ConfirmDialog(props: {
         ))}
       </ul>
       <AttestCheckbox checked={attested} onChange={setAttested}>
-        I confirm these findings accurately record what I discussed or observed. They are my manual record, not an
-        independent verification.
+        I confirm these findings accurately record what was discussed or observed, including any AI drafts I accepted or
+        edited. They are my record, not an independent verification.
       </AttestCheckbox>
       <div className="ts-form__actions">
         <Button variant="primary" onClick={() => void props.onConfirm()} disabled={!attested || props.busy}>
@@ -505,6 +664,45 @@ function VoidDialog(props: { busy: boolean; onClose: () => void; onVoid: (reason
       <div className="ts-form__actions">
         <Button variant="primary" onClick={() => void props.onVoid(reason.trim() === '' ? null : reason.trim())} disabled={props.busy}>
           Void screening
+        </Button>
+        <Button variant="secondary" onClick={props.onClose}>
+          Cancel
+        </Button>
+      </div>
+    </Dialog>
+  );
+}
+
+// INC-3 A1 — start a screening, optionally for a requisition (it only tailors
+// the generated questions; nothing is written to the pipeline).
+function StartDialog(props: { busy: boolean; onClose: () => void; onStart: (requisitionId: string | null) => void | Promise<void> }) {
+  const [reqs, setReqs] = useState<Array<{ id: string; title: string }> | null>(null);
+  const [reqId, setReqId] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    listRequisitions()
+      .then((r) => !cancelled && setReqs(r.items.filter((x) => x.status === 'open').map((x) => ({ id: x.id, title: x.title }))))
+      .catch(() => !cancelled && setReqs([]));
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <Dialog open onOpenChange={(o) => !o && props.onClose()} title="Start a technical screening">
+      <label className="ts-field">
+        <span>Requisition (optional — tailors the suggested questions)</span>
+        <Select value={reqId} onChange={(e) => setReqId(e.target.value)} aria-label="Requisition" disabled={reqs === null}>
+          <option value="">No requisition</option>
+          {(reqs ?? []).map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.title}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <div className="ts-form__actions">
+        <Button variant="primary" onClick={() => void props.onStart(reqId === '' ? null : reqId)} disabled={props.busy}>
+          Start screening
         </Button>
         <Button variant="secondary" onClick={props.onClose}>
           Cancel

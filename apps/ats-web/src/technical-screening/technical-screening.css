@@ -18,3 +18,18 @@
 .ts-field { display: flex; flex-direction: column; gap: 4px; font: 500 12px/1.4 var(--font-sans); }
 .ts-textarea { width: 100%; resize: vertical; border: 1px solid var(--c-border-strong); border-radius: 9px; padding: 10px 12px; font: 400 13px/1.55 var(--font-sans); box-sizing: border-box; }
 .ts-confirm-list { margin: 8px 0 12px; padding-left: 18px; font: 400 13px/1.6 var(--font-sans); }
+/* INC-3 A1-7 — the AI-assisted workflow panels. */
+.ts-panel { display: flex; flex-direction: column; gap: 10px; border: 1px solid var(--c-border); border-radius: 9px; padding: 14px; }
+.ts-panel__title { font: 600 15px/1.4 var(--font-sans); margin: 0; }
+.ts-check { display: inline-flex; align-items: flex-start; gap: 8px; font: 400 13px/1.5 var(--font-sans); }
+.ts-questions, .ts-checklist, .ts-notes, .ts-suggestions, .ts-modes, .ts-citations { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ts-question { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--c-border); }
+.ts-question__text { flex: 1 1 320px; font: 400 13px/1.5 var(--font-sans); }
+.ts-question__meta { display: inline-flex; gap: 6px; }
+.ts-note { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-left: 3px solid var(--c-border-strong); }
+.ts-ai-review { display: flex; flex-direction: column; gap: 6px; }
+.ts-original { color: var(--c-text-muted); }
+.ts-excerpt { margin: 0; padding: 6px 10px; border-left: 3px solid var(--c-brand); font: 400 13px/1.5 var(--font-sans); }
+.ts-link { color: var(--c-brand); font: 500 12px/1.4 var(--font-sans); cursor: pointer; text-align: left; }
+.ts-finding--rejected { opacity: 0.6; }
+.ts-hint { padding: 8px 12px; border: 1px dashed var(--c-border); border-radius: 9px; }
