@@ -9352,7 +9352,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     //     branch is conditional on the literal substring, so it's a
     //     no-op for those.
     async function requestFilter(
-      req: { headers: Record<string, string | string[] | undefined> },
+      // method + url are read by the ES-2 re-signing step (always present on the
+      // replayed Express request); typed here so the provider typechecks.
+      req: { headers: Record<string, string | string[] | undefined>; method: string; url: string },
       _res: unknown,
       next: () => void,
     ): Promise<void> {
