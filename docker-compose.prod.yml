@@ -189,6 +189,11 @@ services:
       # ESIGN_WEBHOOK_SIGNING_SECRET; unset ⇒ the receiver returns 503 (dark).
       # ES-2: the same secret verifies esign-service → Core source requests.
       - ESIGN_WEBHOOK_SIGNING_SECRET
+      # E-Sign production wiring — the esign-service origin Core calls (envelope
+      # create/send/remind/void for RTR + Offer, executed-artifact pull for the
+      # completion write-back). Box value: http://esign-service:3003 (compose service
+      # name + its PORT). Unset ⇒ the api defaults to its OWN localhost:3003 (dark).
+      - ESIGN_SERVICE_URL
       # ES-2 — source-route authentication mode: enforce (default) | log (temporary,
       # only with a future ESIGN_S2S_AUTH_LOG_UNTIL ≤ 7 days ahead).
       - ESIGN_S2S_AUTH_MODE
