@@ -169,7 +169,7 @@ const IDENTITY_USER_TENANT_IMMUTABLE = resolve(
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
 );
 // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
-const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
+const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
 const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',

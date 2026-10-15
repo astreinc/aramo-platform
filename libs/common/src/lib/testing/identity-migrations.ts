@@ -64,6 +64,14 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // reads only UserTenantMembership (init) — Invariant 2 holds.
   'libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql',
   'libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql',
+  // IC-4 PR-9 — Tenant.kind (BUSINESS | PERSONAL), additive with default. The
+  // regenerated client SELECTs `kind` on every Tenant read, so every consumer
+  // that reads Tenant through the client needs this applied (Invariant 2 holds:
+  // ALTER TABLE on identity.Tenant only). Ordered BEFORE the IC-1 restrict files
+  // (re-timestamped from 20261017000000): the single release image reads `kind`,
+  // so it must land in Release A (`--until` this file) with expand + backfill,
+  // before the image is recreated and before cardinality/immutable apply.
+  'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql',
   // IC-1 PR-3 — RESTRICT. `cardinality` re-runs the backfill, pre-validates (no unowned
   // User, no multi-membership User, no membership/owner tenant mismatch — each a
   // single-statement raise), then SET NOT NULL + UNIQUE(user_id) on membership + the
@@ -72,11 +80,6 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // may hold at most ONE membership, in that tenant.
   'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
-  // IC-4 PR-9 — Tenant.kind (BUSINESS | PERSONAL), additive with default. The
-  // regenerated client SELECTs `kind` on every Tenant read, so every consumer
-  // that reads Tenant through the client needs this applied (Invariant 2 holds:
-  // ALTER TABLE on identity.Tenant only).
-  'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

@@ -676,7 +676,7 @@ const IDENTITY_USER_TENANT_OWNER_BACKFILL_MIGRATION = resolve(ROOT, 'libs/identi
 const IDENTITY_USER_TENANT_CARDINALITY_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql');
 const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql');
 // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
-const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261017000000_ic4_tenant_kind/migration.sql');
+const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
