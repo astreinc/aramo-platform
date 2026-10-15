@@ -1,36 +1,28 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Param, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
-import {
-  DocumentIdempotencyConflictError,
-  DocumentNotFoundError,
-  ExecutedArtifactHashMismatchError,
-  RevisionSourceService,
-} from '@aramo/documents';
+import { RevisionSourceService } from '@aramo/documents';
 
-import { EsignWriteBackOrchestrator } from './esign-writeback.js';
+import { EsignServiceRequestGuard } from '../integrations/esign/esign-service-request.guard.js';
 
-// DOC-4 (R-4-7) — the apps/api endpoints for the executed-artifact seam.
-//   GET  /v1/documents/revisions/:id/source  — source PDF bytes esign pulls for
-//                                               executed-document production.
-//   POST /v1/documents/esign-writeback        — TRANSITIONAL / INTERNAL-COMPAT ONLY.
-// Service-to-service; tenant_id is passed authoritatively by the trusted caller.
+// DOC-4 (R-4-7) — the apps/api source-document seam for esign-service.
+//   GET /v1/documents/revisions/:id/source — source PDF bytes esign-service pulls
+//   for executed-document production and the signer document view.
 //
-// E-Sign OC v2 (Independent-Digital-Signature-Platform Directive sections 9, 11,
-// 31.10): `esign-writeback` is NO LONGER the canonical E-Sign -> Core callback. The
-// canonical contract is the authenticated generic lifecycle webhook
-// `POST /v1/integrations/esign/events` (EsignEventsController), which invokes the
-// SAME EsignWriteBackOrchestrator IN-PROCESS. This HTTP endpoint is retained only as
-// transitional/internal-compatibility substrate and may be retired in a later
-// increment; do not build new callers against it.
+// ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0):
+// - The route is authenticated as an esign-service request (EsignServiceRequestGuard,
+//   scheme aramo-esign-s2s-v1). tenant_id stays the caller-supplied scope — it is
+//   bound by the signature, and the read remains tenant-scoped below.
+// - The transitional POST /v1/documents/esign-writeback route is RETIRED: it never
+//   had an HTTP caller. The canonical E-Sign -> Core callback is the signed webhook
+//   POST /v1/integrations/esign/events, which drives EsignWriteBackOrchestrator
+//   in-process (unchanged).
 
 @Controller('v1/documents')
 export class DocumentsEsignController {
-  constructor(
-    private readonly source: RevisionSourceService,
-    private readonly orchestrator: EsignWriteBackOrchestrator,
-  ) {}
+  constructor(private readonly source: RevisionSourceService) {}
 
   @Get('revisions/:id/source')
+  @UseGuards(EsignServiceRequestGuard)
   @HttpCode(HttpStatus.OK)
   async getRevisionSource(@Param('id') revisionId: string, @Query('tenant_id') tenantId: string, @RequestId() requestId: string) {
     if (typeof tenantId !== 'string' || tenantId.length === 0) {
@@ -41,21 +33,5 @@ export class DocumentsEsignController {
       throw new AramoError('DOCUMENT_NOT_FOUND', `no source artifact for revision ${revisionId}`, 404, { requestId });
     }
     return { revision_id: revisionId, source_base64 };
-  }
-
-  @Post('esign-writeback')
-  @HttpCode(HttpStatus.OK)
-  async writeBack(@Body() body: { tenant_id: string; envelope_id: string; correlation_id?: string }, @RequestId() requestId: string) {
-    if (typeof body?.tenant_id !== 'string' || typeof body?.envelope_id !== 'string') {
-      throw new AramoError('VALIDATION_ERROR', 'tenant_id and envelope_id are required', 400, { requestId });
-    }
-    try {
-      return await this.orchestrator.writeBackEnvelope({ tenant_id: body.tenant_id, envelope_id: body.envelope_id, correlation_id: body.correlation_id, requestId });
-    } catch (e) {
-      if (e instanceof ExecutedArtifactHashMismatchError) throw new AramoError('DOCUMENT_EXECUTED_HASH_MISMATCH', e.message, 422, { requestId });
-      if (e instanceof DocumentIdempotencyConflictError) throw new AramoError('IDEMPOTENCY_KEY_CONFLICT', e.message, 409, { requestId });
-      if (e instanceof DocumentNotFoundError) throw new AramoError('DOCUMENT_NOT_FOUND', e.message, 404, { requestId });
-      throw e;
-    }
   }
 }
