@@ -116,6 +116,9 @@ describe('validateClaimShape — registered vs unregistered posture (§5a)', () 
       // comparability. IN AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY; elevation
       // gated on source_class (a THIRD_PARTY_UNVERIFIED declared claim can't elevate).
       'RIGHT_TO_WORK',
+      // TR-SCREEN-1 DDR §2 — manual Technical Screening finding (registered for
+      // comparability; NOT in AUTHORITATIVE_ASSERTION_TYPES — capped at SELF_ASSERTED).
+      'SCREENING_FINDING',
     ].sort());
   });
 

@@ -4,7 +4,11 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AramoError, hashCanonicalizedBody } from '@aramo/common';
 
 import { isConfirmingAnchor } from './anchor-confirmation.js';
-import { validateClaimShape, attesterDescriptorKey } from './canonical-claim-shapes.js';
+import {
+  validateClaimShape,
+  attesterDescriptorKey,
+  type ScreeningFindingBasis,
+} from './canonical-claim-shapes.js';
 import {
   computeConsistencyPlan,
   detectAttesterIdentityOverlap,
@@ -28,6 +32,7 @@ import {
 } from './continuity-derivers.js';
 import {
   deriveTrustState,
+  stableStringify,
   VERIFICATION_STALE_DAYS,
 } from './band-derivation.js';
 import { namesFlatlyConflict } from './name-guard.js';
@@ -45,6 +50,7 @@ import {
   StaleEvidenceTransitionError,
   TalentTrustRepository,
   type EvidenceRecordRow,
+  type InsertEvidenceInput,
   type EvidenceLinkRow,
   type EvidenceEventRow,
   type ResolutionSubjectRefRow,
@@ -214,6 +220,35 @@ export interface DeclaredEvidenceEntry {
   assertion_type: string;
   assertion_payload: unknown;
 }
+
+// TR-SCREEN-1 DDR §3 — the pinned publication-intent input for one confirmed
+// Technical Screening finding (TIP-E2E INC-3). Every value comes from the
+// screening domain's pinned intent; the mutable session is never re-read.
+export interface RecordScreeningFindingInput {
+  tenant_id: string;
+  // The TalentRecord id pinned at confirmation (talent_record_id_at_confirm).
+  talent_record_id: string;
+  // The preallocated UUIDv7 row id — the replay key.
+  evidence_id: string;
+  assertion_payload: Record<string, unknown>;
+  collected_at: Date;
+  requestId?: string;
+}
+
+// TR-SCREEN-1 DDR §2.2 — class × method are DERIVED from basis inside Talent
+// Trust (never caller-supplied). Every pair already exists in the closed sets.
+const SCREENING_BASIS_PROVENANCE: Record<
+  ScreeningFindingBasis,
+  { source_class: SourceClass; method: Method }
+> = {
+  SELF_REPORTED: { source_class: 'SELF', method: 'SELF_DECLARED' },
+  RECRUITER_OBSERVED: { source_class: 'THIRD_PARTY_UNVERIFIED', method: 'HUMAN_ATTESTED' },
+  DEMONSTRATED: { source_class: 'THIRD_PARTY_UNVERIFIED', method: 'HUMAN_ATTESTED' },
+};
+
+// The CREATED actor + created_by for every screening row (DDR §2.4: the slice
+// name, never the recruiter id).
+const SCREENING_CREATED_BY = 'technical-screening';
 
 // TR-4 B1 — the claim-shape gate is a lib-internal invariant (no HTTP request in
 // its call paths today — recordEvidence has no production caller;
@@ -888,6 +923,78 @@ export class TalentTrustService {
       created_by: 'reference-capture',
     });
     return { written: true, evidence_id: ev.id };
+  }
+
+  // TR-SCREEN-1 DDR §3 — publish ONE confirmed Technical Screening finding as
+  // canonical SCREENING_FINDING evidence, exactly once in effect. The row is
+  // written through the SAME single G1 atomic insert (record + CREATED event +
+  // durable recompute request, one transaction) keyed on the preallocated
+  // evidence_id. A primary-key hit is a replay: the stored row is loaded
+  // TENANT-BOUND (S1a — another tenant's id is indistinguishable from an absent
+  // one and is never compared or disclosed) and its logical replay identity is
+  // compared; identical → { written: false }, different → IDEMPOTENCY_KEY_CONFLICT
+  // (409) and nothing is written. In-process only — no HTTP surface.
+  async recordScreeningFindingIfAbsent(
+    input: RecordScreeningFindingInput,
+  ): Promise<{ written: boolean; evidence_id: string }> {
+    const requestId = input.requestId ?? CLAIM_SHAPE_REQUEST_ID;
+    const shape = validateClaimShape('SCREENING_FINDING', input.assertion_payload);
+    if (!shape.ok || shape.canonical === undefined) {
+      throw new AramoError(
+        'CLAIM_SHAPE_INVALID',
+        `SCREENING_FINDING payload invalid: ${(shape.errors ?? []).join('; ')}`,
+        422,
+        { requestId, details: { assertion_type: 'SCREENING_FINDING', errors: shape.errors ?? [] } },
+      );
+    }
+    const canonical = shape.canonical;
+    const provenance = SCREENING_BASIS_PROVENANCE[canonical['basis'] as ScreeningFindingBasis];
+    const screeningRef = canonical['screening_ref'] as { screening_finding_id: string };
+    const sourceRef = { screening_finding_id: screeningRef.screening_finding_id };
+
+    const subjectId = await this.repo.resolveOrCreateSubject(
+      input.tenant_id,
+      'ATS_TALENT_RECORD',
+      input.talent_record_id,
+      SCREENING_CREATED_BY,
+    );
+    const intended: InsertEvidenceInput = {
+      id: input.evidence_id,
+      subject_id: subjectId,
+      tenant_id: input.tenant_id,
+      dimension: 'CLAIMS',
+      assertion_type: 'SCREENING_FINDING',
+      assertion_payload: canonical,
+      source_class: provenance.source_class,
+      source_ref: sourceRef,
+      method: provenance.method,
+      strength: deriveStrength(provenance.source_class, provenance.method),
+      collected_at: input.collected_at,
+      decay_profile: 'MODERATE',
+      portability_class: 'TENANT_ONLY',
+      ai_derived: false,
+      current_status: EVENT_TO_STATUS.CREATED,
+      created_by: SCREENING_CREATED_BY,
+    };
+
+    const now = new Date();
+    try {
+      await this.repo.insertEvidence(intended, { actor: SCREENING_CREATED_BY, occurred_at: now });
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      const existing = await this.repo.findEvidenceByIdForTenant(input.tenant_id, input.evidence_id);
+      if (existing === null || !sameScreeningReplayIdentity(existing, intended)) {
+        throw new AramoError(
+          'IDEMPOTENCY_KEY_CONFLICT',
+          'screening finding publication conflicts with the recorded evidence',
+          409,
+          { requestId },
+        );
+      }
+      return { written: false, evidence_id: input.evidence_id };
+    }
+    await this.recompute(subjectId, input.tenant_id, now);
+    return { written: true, evidence_id: input.evidence_id };
   }
 
   // ---- Writes: lifecycle ops (§8) ------------------------------------
@@ -2736,3 +2843,29 @@ export const PORTAL_DISPUTE_OUTCOME_MAP = {
 // audit event reads as a talent withdrawal, never a resolver disposition.
 export const PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION =
   'talent withdrawal — dispute withdrawn by the portal principal';
+
+// TR-SCREEN-1 DDR §3 step 4 — the logical replay identity of a screening
+// publication. Every field must match for a primary-key hit to count as the same
+// publication; strength and current_status are deliberately excluded (strength is
+// derived from class × method, status is lifecycle state that may have moved on).
+function sameScreeningReplayIdentity(
+  existing: EvidenceRecordRow,
+  intended: InsertEvidenceInput,
+): boolean {
+  return (
+    existing.tenant_id === intended.tenant_id &&
+    existing.subject_id === intended.subject_id &&
+    existing.assertion_type === intended.assertion_type &&
+    existing.dimension === intended.dimension &&
+    existing.source_class === intended.source_class &&
+    existing.method === intended.method &&
+    existing.ai_derived === intended.ai_derived &&
+    existing.decay_profile === intended.decay_profile &&
+    existing.portability_class === intended.portability_class &&
+    existing.created_by === intended.created_by &&
+    existing.collected_at.getTime() === intended.collected_at.getTime() &&
+    stableStringify(existing.source_ref ?? null) === stableStringify(intended.source_ref ?? null) &&
+    hashCanonicalizedBody(existing.assertion_payload) ===
+      hashCanonicalizedBody(intended.assertion_payload)
+  );
+}

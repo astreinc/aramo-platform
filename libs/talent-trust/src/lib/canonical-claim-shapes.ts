@@ -534,6 +534,94 @@ const rightToWorkShape: ClaimShape = (p) => {
   return { ok: true, canonical };
 };
 
+// SCREENING_FINDING (TR-SCREEN-1 DDR §2.1, Aramo-TR-SCREEN-1-DDR-v1_0-LOCKED) —
+// a recruiter-confirmed manual Technical Screening finding (TIP-E2E INC-3).
+// CLOSED shape: unknown keys are dropped. R10 STRUCTURAL: no numeric rating,
+// tier, level or requisition-fit field. DEMONSTRATED means only that a recruiter
+// recorded observing the talent perform the described activity — never
+// validation, a proctored test, certification or verification of any kind
+// (`independently_verified` is the constant false). `confirmation` carries NO
+// actor identifier (DDR §2.4). DELIBERATELY ABSENT from
+// AUTHORITATIVE_ASSERTION_TYPES — screening never elevates past SELF_ASSERTED.
+export const SCREENING_FINDING_BASES = [
+  'SELF_REPORTED',
+  'RECRUITER_OBSERVED',
+  'DEMONSTRATED',
+] as const;
+export type ScreeningFindingBasis = (typeof SCREENING_FINDING_BASES)[number];
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const screeningFindingShape: ClaimShape = (p) => {
+  const errors: string[] = [];
+  if (!nonEmptyString(p['skill_raw'])) errors.push('skill_raw must be a non-empty string');
+  const basis = p['basis'];
+  const basisOk =
+    typeof basis === 'string' && (SCREENING_FINDING_BASES as readonly string[]).includes(basis);
+  if (!basisOk) errors.push(`basis must be one of ${SCREENING_FINDING_BASES.join('|')}`);
+  if (!nonEmptyString(p['observation_raw'])) errors.push('observation_raw must be a non-empty string');
+  if (basis === 'DEMONSTRATED') {
+    if (!nonEmptyString(p['demonstration_raw'])) {
+      errors.push('demonstration_raw is required when basis is DEMONSTRATED');
+    }
+  } else if (p['demonstration_raw'] !== undefined) {
+    errors.push('demonstration_raw is only permitted when basis is DEMONSTRATED');
+  }
+  if (!optionalString(p['limitations_raw'])) errors.push('limitations_raw must be a string when present');
+  if (p['independently_verified'] !== undefined && p['independently_verified'] !== false) {
+    errors.push('independently_verified must be false');
+  }
+  const confirmation = p['confirmation'];
+  const c = (typeof confirmation === 'object' && confirmation !== null ? confirmation : {}) as Record<
+    string,
+    unknown
+  >;
+  const confirmedAt = c['confirmed_at'];
+  if (typeof confirmedAt !== 'string' || Number.isNaN(Date.parse(confirmedAt))) {
+    errors.push('confirmation.confirmed_at must be an ISO-8601 timestamp');
+  }
+  const sessionVersion = c['session_version'];
+  if (typeof sessionVersion !== 'number' || !Number.isInteger(sessionVersion) || sessionVersion < 1) {
+    errors.push('confirmation.session_version must be a positive integer');
+  }
+  const screeningRef = p['screening_ref'];
+  const r = (typeof screeningRef === 'object' && screeningRef !== null ? screeningRef : {}) as Record<
+    string,
+    unknown
+  >;
+  if (typeof r['screening_session_id'] !== 'string' || !UUID_RE.test(r['screening_session_id'])) {
+    errors.push('screening_ref.screening_session_id must be a uuid');
+  }
+  if (typeof r['screening_finding_id'] !== 'string' || !UUID_RE.test(r['screening_finding_id'])) {
+    errors.push('screening_ref.screening_finding_id must be a uuid');
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  const skillRaw = (p['skill_raw'] as string).trim();
+  const canonical: Record<string, unknown> = {
+    skill_raw: skillRaw,
+    skill_id: deriveSkillIdCanonical(skillRaw),
+    basis: basis as string,
+    observation_raw: (p['observation_raw'] as string).trim(),
+    independently_verified: false,
+    confirmation: {
+      confirmed_at: new Date(confirmedAt as string).toISOString(),
+      session_version: sessionVersion as number,
+    },
+    screening_ref: {
+      screening_session_id: (r['screening_session_id'] as string).toLowerCase(),
+      screening_finding_id: (r['screening_finding_id'] as string).toLowerCase(),
+    },
+  };
+  if (basis === 'DEMONSTRATED') {
+    canonical['demonstration_raw'] = (p['demonstration_raw'] as string).trim();
+  }
+  if (nonEmptyString(p['limitations_raw'])) {
+    canonical['limitations_raw'] = (p['limitations_raw'] as string).trim();
+  }
+  return { ok: true, canonical };
+};
+
 // The registry: assertion_type → its canonical shape. Membership here IS the
 // "registered" predicate the write gate checks. Adding a type is a DDR-amendment-
 // level act (like AUTHORITATIVE_ASSERTION_TYPES), never a silent extension.
@@ -572,6 +660,10 @@ export const CANONICAL_CLAIM_SHAPES: Record<string, ClaimShape> = {
   // comparability. In AUTHORITATIVE_ASSERTION_TYPES.ELIGIBILITY; elevation gated
   // on source_class (a THIRD_PARTY_UNVERIFIED declared claim cannot elevate).
   RIGHT_TO_WORK: rightToWorkShape,
+  // TR-SCREEN-1 DDR §2 — manual Technical Screening finding (TIP-E2E INC-3).
+  // Registered for payload comparability; DELIBERATELY ABSENT from
+  // AUTHORITATIVE_ASSERTION_TYPES (its contribution is capped at SELF_ASSERTED).
+  SCREENING_FINDING: screeningFindingShape,
 };
 
 export function isRegisteredAssertionType(assertionType: string): boolean {
