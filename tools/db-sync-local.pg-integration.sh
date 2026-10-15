@@ -128,6 +128,10 @@ nullable() { "$PSQL" "$1" -tAc "SELECT is_nullable FROM information_schema.colum
 echo "  (P5: full replay of the real manifest up to ${EXPAND} — this takes a while)"
 out="$(run "$ROOT" "$U5" --until "$EXPAND")"; rc=$?
 pos="$(printf '%s' "$out" | sed -nE 's/^db:sync:local stop — .* at manifest position ([0-9]+)\/[0-9]+$/\1/p')"
+# Manifest length, so the deferred tail after the backfill stop is DERIVED (every
+# migration after the stop must stay unapplied) instead of a fixed count that any
+# later migration would break.
+total="$(printf '%s' "$out" | sed -nE 's/^db:sync:local stop — .* at manifest position [0-9]+\/([0-9]+)$/\1/p')"
 if [ "$rc" = 0 ] && [ -n "$pos" ] && [ "$(lcount "$U5")" = "$pos" ] && [ "$(nullable "$U5")" = "YES" ]; then
   ok "P5a real manifest --until expand: exit 0; ledger rows = manifest position ${pos}; User.tenant_id present and nullable"
 else
@@ -146,9 +150,9 @@ fi
 out="$(run "$ROOT" "$U5" --until "$BACKFILL")"; rc=$?
 st="$(run "$ROOT" "$U5" --status)"
 if [ "$rc" = 0 ] && [ "$(lcount "$U5")" = $((pos + 1)) ] && [ "$(nullable "$U5")" = "YES" ] \
-   && printf '%s' "$out" | grep -q "deferred — 3 on-disk" \
-   && printf '%s' "$st" | grep -q "pending — 3 on-disk"; then
-  ok "P5c orphan removed, same --until backfill completes: ledger +1; restrict files deferred (3 pending); still nullable"
+   && printf '%s' "$out" | grep -q "deferred — $((total - pos - 1)) on-disk" \
+   && printf '%s' "$st" | grep -q "pending — $((total - pos - 1)) on-disk"; then
+  ok "P5c orphan removed, same --until backfill completes: ledger +1; every later file deferred ($((total - pos - 1)) pending, incl. the restrict files); still nullable"
 else
   bad "P5c resume after fix (rc ${rc}; ledger $(lcount "$U5"); nullable '$(nullable "$U5")')"; printf '%s\n%s\n' "$out" "$st" | tail -8 | sed 's/^/        /'
 fi
