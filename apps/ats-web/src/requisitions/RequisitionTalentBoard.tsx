@@ -1,5 +1,6 @@
 import { Button } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { initialsOf } from '../ui';
 
@@ -22,10 +23,11 @@ import { rtrAffordanceKind } from './rtr-affordance';
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
 // surface only: it renders the backend-authoritative column placement, owner-attributed state,
 // Closed disposition, resume linkage and Qualified band. It owns NO lifecycle truth and issues
-// NO write — the governed next action + governed drag route to the owning drawer surface; the
-// VOID (Remove from requisition) opens the shared confirmation. Clicking a card opens the SAME
-// TalentDetailPanel drawer the List uses via `onSelectCard(pipeline_id)` (no second per-card
-// fetch). STATE ENUMS ONLY — no compensation/bill/pay field is presented (DTO excludes it).
+// NO write — the card's one-step action runs in place via `onCardAction` (email composer /
+// record-response modal) or routes to the Talent × Requisition 360 page; the governed drag routes
+// there too; the VOID (Remove from requisition) opens the shared confirmation. Clicking a card
+// (anywhere except its action button and ⋯) opens the Talent × Requisition 360 page via
+// `onSelectCard(pipeline_id)`. STATE ENUMS ONLY — no compensation/bill/pay field is presented (DTO excludes it).
 
 // The canonical left-to-right column order (mirrors the backend BOARD_COLUMN_ORDER).
 const COLUMN_ORDER: readonly BoardColumnKey[] = [
@@ -113,8 +115,11 @@ export interface RequisitionTalentBoardProps {
   readonly talentSubtitles?: Readonly<Record<string, string | undefined>>;
   /** User directory display names keyed by user_id — resolves the assigned recruiter to initials. */
   readonly recruiterNames?: Readonly<Record<string, string | undefined>>;
-  /** Open the shared TalentDetailPanel drawer for a card's pipeline episode. */
+  /** Open the Talent × Requisition 360 page for a card's pipeline episode. */
   readonly onSelectCard: (pipelineId: string) => void;
+  /** Run the card's one-step action in place (email composer / record response / …).
+   *  Absent ⇒ the action button falls back to `onSelectCard`. */
+  readonly onCardAction?: (card: BoardCardView, talentName: string) => void;
   /** The actor's scopes — the Board hides a next action the actor cannot perform (TB-3).
    *  UI hiding is never the boundary: the server re-authorizes every governed command. */
   readonly scopes?: readonly string[];
@@ -170,6 +175,7 @@ function BoardCard({
   scopes,
   reqCode,
   onSelect,
+  onAction,
   onSendRtr,
   onDragStart,
   onDragEnd,
@@ -182,6 +188,7 @@ function BoardCard({
   scopes: readonly string[];
   reqCode?: string;
   onSelect: () => void;
+  onAction: () => void;
   onSendRtr?: (talentId: string, talentName: string) => void;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -333,9 +340,15 @@ function BoardCard({
 
       <div className="rc-tboard__foot">
         {primary !== undefined ? (
-          // The governed command executes in the owning drawer surface (TB-3 routes there). The
-          // Board never re-implements an owner command.
-          <Button unstyled type="button" className="rc-tboard__act-btn" onClick={onSelect} title={primary.command_route}>
+          // The one-step action runs in place (composer / modal) or routes to the Talent ×
+          // Requisition 360 page; the Board never re-implements an owner command.
+          <Button
+            unstyled
+            type="button"
+            className="rc-tboard__act-btn"
+            onClick={(e) => { e.stopPropagation(); onAction(); }}
+            title={primary.command_route}
+          >
             {primary.key === 'pipeline.contact_talent' ? 'Send email' : primary.label}
           </Button>
         ) : waiting.length > 0 ? (
@@ -353,7 +366,7 @@ function BoardCard({
             aria-label={`More actions for ${name}`}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((o) => !o)}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <circle cx="5" cy="12" r="1.8" />
@@ -378,8 +391,15 @@ function BoardCard({
                   className="rc-tboard__menu-item"
                   onClick={() => { setMenuOpen(false); onSelect(); }}
                 >
-                  View talent
+                  Open full view
                 </Button>
+                <Link
+                  to={`/talent/${card.talent_record_id}`}
+                  className="rc-tboard__menu-item"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  View talent
+                </Link>
                 {voidAction !== undefined && onRequestVoid !== undefined && (
                   <>
                     <span className="rc-tboard__menu-div" />
@@ -412,6 +432,7 @@ function BoardColumn({
   scopes,
   reqCode,
   onSelectCard,
+  onCardAction,
   onSendRtr,
   isDropTarget,
   onDragStartCard,
@@ -426,6 +447,7 @@ function BoardColumn({
   scopes: readonly string[];
   reqCode?: string;
   onSelectCard: (pipelineId: string) => void;
+  onCardAction?: (card: BoardCardView, talentName: string) => void;
   onSendRtr?: (talentId: string, talentName: string) => void;
   isDropTarget: boolean;
   onDragStartCard: (card: BoardCardView) => void;
@@ -437,22 +459,26 @@ function BoardColumn({
   const isQualified = column.key === 'qualified';
   const ready = isQualified ? column.cards.filter((c) => c.readiness?.band === 'ready_to_submit') : [];
   const needs = isQualified ? column.cards.filter((c) => c.readiness?.band !== 'ready_to_submit') : [];
-  const renderCard = (c: BoardCardView): JSX.Element => (
+  const renderCard = (c: BoardCardView): JSX.Element => {
+    const name = talentLabel(talentNames, c.talent_record_id);
+    return (
     <BoardCard
       key={c.pipeline_id}
       card={c}
-      name={talentLabel(talentNames, c.talent_record_id)}
+      name={name}
       subtitle={talentSubtitles?.[c.talent_record_id]}
       recruiterName={c.assigned_recruiter_user_id !== null ? recruiterNames?.[c.assigned_recruiter_user_id] : undefined}
       scopes={scopes}
       reqCode={reqCode}
       onSelect={() => onSelectCard(c.pipeline_id)}
+      onAction={() => (onCardAction !== undefined ? onCardAction(c, name) : onSelectCard(c.pipeline_id))}
       onSendRtr={onSendRtr}
       onDragStart={() => onDragStartCard(c)}
       onDragEnd={onDragEndCard}
       onRequestVoid={onRequestVoid}
     />
-  );
+    );
+  };
 
   return (
     <section
@@ -497,7 +523,7 @@ function BoardColumn({
   );
 }
 
-export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, scopes = [], onRequestVoid, onSendRtr, reqCode, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
+export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, onCardAction, scopes = [], onRequestVoid, onSendRtr, reqCode, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -533,7 +559,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubti
     const move = resolveGovernedMove({ card: dragging, targetColumn, columnOrder: COLUMN_ORDER, scopes });
     const card = dragging;
     setDragging(null);
-    if (move.ok) onSelectCard(card.pipeline_id); // route to the governed command surface (TB-3 path)
+    if (move.ok) onSelectCard(card.pipeline_id); // route to the Talent × Requisition 360 page (owning action)
     // Rejected drops snap back (no-op) — the governance is the resolver, not the drop target.
   };
 
@@ -554,6 +580,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubti
             scopes={scopes}
             reqCode={reqCode}
             onSelectCard={onSelectCard}
+            onCardAction={onCardAction}
             onSendRtr={onSendRtr}
             isDropTarget={validTargets?.has(col.key) ?? false}
             onDragStartCard={setDragging}

@@ -27,6 +27,10 @@ import { createTask, updateTask } from '../task/task-api';
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 import { submittalEntryHref, entryActionLabel } from '../submittal-workspace/present';
 import { RecordConsentDialog } from '../consent/RecordConsentDialog';
+import {
+  talentRequisition360Path,
+  type Tr360NavState,
+} from '../requisitions/talent-requisition-360/route';
 
 import { getTalent360 } from './talent-360-api';
 import type {
@@ -875,6 +879,13 @@ function Opportunity({
                 {entryActionLabel(o.journey.sub_states.submittal_state)}
               </Link>
             )}
+            <Link
+              to={talentRequisition360Path(o.requisition_id, o.journey.talent_record_id)}
+              state={{ tr360From: 'talent-360' } satisfies Tr360NavState}
+              className="t360-btn--secondary-neutral"
+            >
+              Open full view
+            </Link>
             <Link to={o.open_journey_href} className="t360-btn--secondary-neutral">
               Open journey
             </Link>

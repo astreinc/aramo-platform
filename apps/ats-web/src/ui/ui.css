@@ -5330,6 +5330,8 @@ button.rc-snapcard:hover {
 }
 .rc-tip__lh--end { text-align: right; }
 .rc-tip__row { padding: 11px 18px; border-top: 1px solid #F2F4F6; }
+.rc-tip__row--open { cursor: pointer; }
+.rc-tip__row--open:hover { background: #FAFBFC; }
 .rc-tip__person { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .rc-ws .rc-avatar {
   width: 32px; height: 32px; border-radius: 50%; background: #5C6770; color: #fff;
@@ -6538,6 +6540,7 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 .rc-tboard__menu-pop { position: absolute; right: 0; bottom: 30px; z-index: 61; width: 210px; background: #fff; border: 1px solid #E5E9ED; border-radius: 10px; box-shadow: 0 16px 40px -16px rgba(11, 16, 34, 0.3); padding: 5px; display: flex; flex-direction: column; }
 .rc-tboard__menu-item { display: block; width: 100%; text-align: left; border: none; background: transparent; border-radius: 7px; padding: 8px 10px; font-size: 12.5px; font-weight: 600; color: #1B2730; cursor: pointer; }
 .rc-tboard__menu-item:hover { background: #E8EDFB; }
+a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-tboard__menu-item--danger { color: #B3402A; }
 .rc-tboard__menu-item--danger:hover { background: #FBE9E4; }
 .rc-tboard__menu-div { height: 1px; background: #EDF0F3; margin: 4px 2px; }

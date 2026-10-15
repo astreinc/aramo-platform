@@ -15393,11 +15393,6 @@
     {
       "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
       "status": "unscoped",
-      "to": "apps/ats-web/src/requisitions/TalentJourneySection.tsx"
-    },
-    {
-      "from": "doc/recon/as-built/D09-communications-activity-evidence.md",
-      "status": "unscoped",
       "to": "libs/activity/prisma/schema.prisma"
     },
     {

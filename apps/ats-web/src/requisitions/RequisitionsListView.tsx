@@ -7,7 +7,7 @@ import {
   type Session, Select,
 } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 import { listCompanies } from '../companies/companies-api';
 import { getTalentRecord, listAllPipelines } from '../pipeline/pipeline-api';
@@ -35,7 +35,12 @@ import {
   type FunnelBucketKey,
 } from '../ui';
 
-import { TalentDetailPanel } from './TalentDetailPanel';
+import {
+  saveOriginSnapshot,
+  useOriginSnapshot,
+  useRestoreScroll,
+} from './talent-requisition-360/origin-state';
+import { talentRequisition360Path, type Tr360NavState } from './talent-requisition-360/route';
 import { listRequisitions, setRequisitionBookmark } from './requisitions-api';
 import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import { listErrorMessage } from './error-messages';
@@ -113,9 +118,26 @@ interface RequisitionsListViewProps {
   readonly sessionOverride?: Session;
 }
 
+// The list's view state remembered across a Talent × Requisition 360 round trip
+// (restored on Back): filters, sort, query and the expanded row.
+interface ListViewSnapshot {
+  readonly expandedId: string | null;
+  readonly mode: FilterMode;
+  readonly client: string;
+  readonly statusFilter: RecruitingStatus | '';
+  readonly sort: SortKey;
+  readonly query: string;
+  readonly locationFilter: string;
+}
+const LIST_SNAPSHOT_KEY = 'requisitions-list';
+
 export function RequisitionsListView({
   sessionOverride,
 }: RequisitionsListViewProps = {}) {
+  const navigate = useNavigate();
+  const { key: entryKey } = useLocation();
+  const restored = useOriginSnapshot<ListViewSnapshot>(LIST_SNAPSHOT_KEY);
+  const snap = restored?.value ?? null;
   const [items, setItems] = useState<readonly RequisitionView[]>([]);
   const [companyNames, setCompanyNames] = useState<Record<string, string>>({});
   const [pipelineCounts, setPipelineCounts] = useState<
@@ -129,23 +151,22 @@ export function RequisitionsListView({
   const [pipelinesByReq, setPipelinesByReq] = useState<
     Record<string, readonly PipelineView[]>
   >({});
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  // The talent slide-in panel opened from a talent card in an expanded row.
-  const [selectedTalent, setSelectedTalent] = useState<OpenTalentPayload | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(snap?.expandedId ?? null);
   const [talentNames, setTalentNames] = useState<Record<string, string>>({});
   const [userNames, setUserNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // No secondary chip active by default — the default list is the server-scoped
   // payload (recruiter assignment enforced by the BE; the Owner dropdown narrows).
-  const [mode, setMode] = useState<FilterMode>('none');
-  const [client, setClient] = useState('');
-  const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>('');
-  const [sort, setSort] = useState<SortKey>('focus');
-  const [query, setQuery] = useState('');
+  const [mode, setMode] = useState<FilterMode>(snap?.mode ?? 'none');
+  const [client, setClient] = useState(snap?.client ?? '');
+  const [statusFilter, setStatusFilter] = useState<RecruitingStatus | ''>(snap?.statusFilter ?? '');
+  const [sort, setSort] = useState<SortKey>(snap?.sort ?? 'focus');
+  const [query, setQuery] = useState(snap?.query ?? '');
   // Prototype Location dropdown, additive to the wired chips. FE-derived from
   // the loaded set (city/state). (§0 — the Owner dropdown was removed.)
-  const [locationFilter, setLocationFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState(snap?.locationFilter ?? '');
+  useRestoreScroll(restored, !loading);
 
   const sessionState = useSession();
   const session: Session | null =
@@ -250,7 +271,13 @@ export function RequisitionsListView({
   // no fabricated data; the expander shows only real pipeline rows.
   const toggleExpand = (reqId: string): void => {
     setExpandedId((cur) => (cur === reqId ? null : reqId));
-    const missing = (pipelinesByReq[reqId] ?? [])
+  };
+  // Fetch the expanded row's missing talent names — on toggle, and when a
+  // restored (Back) expanded row's pipelines arrive.
+  const expandedEntries = expandedId !== null ? pipelinesByReq[expandedId] : undefined;
+  useEffect(() => {
+    if (expandedEntries === undefined) return;
+    const missing = expandedEntries
       .map((e) => e.talent_record_id)
       .filter((id) => !(id in talentNames));
     if (missing.length === 0) return;
@@ -268,7 +295,9 @@ export function RequisitionsListView({
         }
       },
     );
-  };
+    // talentNames is read only to skip known ids; re-running on its change would
+    // refetch nothing new, so the effect keys on the expanded entries.
+  }, [expandedEntries]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -315,41 +344,20 @@ export function RequisitionsListView({
   const readyCount = filtered.length;
   const capped = items.length >= LIST_CAP;
 
-  // A governed pipeline transition from the panel updates the entry in place so
-  // the talent card's stage pill reflects the new stage immediately.
-  const handleTransitioned = (updated: PipelineView): void => {
-    setPipelinesByReq((prev) => {
-      const list = prev[updated.requisition_id] ?? [];
-      return {
-        ...prev,
-        [updated.requisition_id]: list.map((x) => (x.id === updated.id ? updated : x)),
-      };
+  // Open a talent from the expanded row → the Talent × Requisition 360 page
+  // (same tab; Back restores this list's filters, expanded row and scroll).
+  const openTalent = (reqId: string, talentId: string): void => {
+    saveOriginSnapshot<ListViewSnapshot>(LIST_SNAPSHOT_KEY, entryKey, {
+      expandedId,
+      mode,
+      client,
+      statusFilter,
+      sort,
+      query,
+      locationFilter,
     });
-    setSelectedTalent((sel) => (sel ? { ...sel, entry: updated } : sel));
-  };
-
-  // A successful inline talent-field save in the side panel reports an
-  // enrichment-shaped patch; reflect it in the read-only extender (every row for
-  // that talent, across requisitions) + the open panel's entry — no refetch, so
-  // the just-entered value is visible immediately. The extender stays read-only.
-  const handleTalentFieldSaved = (
-    talentRecordId: string,
-    patch: Partial<PipelineView>,
-  ): void => {
-    setPipelinesByReq((prev) => {
-      const next: Record<string, readonly PipelineView[]> = {};
-      for (const [reqId, list] of Object.entries(prev)) {
-        next[reqId] = list.map((x) =>
-          x.talent_record_id === talentRecordId ? { ...x, ...patch } : x,
-        );
-      }
-      return next;
-    });
-    setSelectedTalent((sel) =>
-      sel && sel.entry.talent_record_id === talentRecordId
-        ? { ...sel, entry: { ...sel.entry, ...patch } }
-        : sel,
-    );
+    const state: Tr360NavState = { tr360From: 'requisitions' };
+    navigate(talentRequisition360Path(reqId, talentId), { state });
   };
 
   return (
@@ -507,38 +515,16 @@ export function RequisitionsListView({
                   onToggle={() => toggleExpand(r.id)}
                   entries={pipelinesByReq[r.id] ?? EMPTY_ENTRIES}
                   talentNames={talentNames}
-                  onOpenTalent={setSelectedTalent}
+                  onOpenTalent={(talentId) => openTalent(r.id, talentId)}
                 />
               ))}
             </div>
           </div>
         )}
       </Card>
-      {selectedTalent ? (
-        <TalentDetailPanel
-          entry={selectedTalent.entry}
-          talentName={selectedTalent.talentName}
-          isNew={selectedTalent.isNew}
-          reqTitle={selectedTalent.reqTitle}
-          reqCode={selectedTalent.reqCode}
-          scopes={session?.scopes ?? []}
-          onClose={() => setSelectedTalent(null)}
-          onTransitioned={handleTransitioned}
-          onTalentFieldSaved={handleTalentFieldSaved}
-        />
-      ) : null}
     </section>
   );
 }
-
-// Payload the talent card hands up to open the slide-in panel.
-type OpenTalentPayload = {
-  readonly entry: PipelineView;
-  readonly talentName: string | undefined;
-  readonly isNew: boolean;
-  readonly reqTitle: string;
-  readonly reqCode: string;
-};
 
 interface RequisitionRowProps {
   readonly req: RequisitionView;
@@ -549,7 +535,8 @@ interface RequisitionRowProps {
   readonly onToggle: () => void;
   readonly entries: readonly PipelineView[];
   readonly talentNames: Record<string, string>;
-  readonly onOpenTalent: (payload: OpenTalentPayload) => void;
+  /** Open the Talent × Requisition 360 page for a talent on this requisition. */
+  readonly onOpenTalent: (talentId: string) => void;
 }
 
 function RequisitionRow({
@@ -787,7 +774,7 @@ function RequisitionRow({
             // (Aramo-Requisition-Expander-Talent-Rate-Columns): email/phone/
             // location/work-auth (talent:read; email+phone suppressed on
             // do_not_contact) + desired_rate (talent-stated). Never fabricated —
-            // a genuinely absent value renders —. Each row opens the detail panel.
+            // a genuinely absent value renders —. Each row opens the Talent × Requisition 360 page.
             <div className="rc-texp__scroll">
               <div className="rc-texp__table" role="table">
                 <div className="rc-texp__thead" role="row">
@@ -808,15 +795,7 @@ function RequisitionRow({
                       key={e.id}
                       type="button"
                       className="rc-texp__row"
-                      onClick={() =>
-                        onOpenTalent({
-                          entry: e,
-                          talentName: name,
-                          isNew: isNewEntry(e),
-                          reqTitle: req.title,
-                          reqCode: `REQ-${req.requisition_number}`,
-                        })
-                      }
+                      onClick={() => onOpenTalent(e.talent_record_id)}
                     >
                       <span className="rc-texp__talent">
                         <Avatar name={name ?? '—'} size="sm" />

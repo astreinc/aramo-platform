@@ -1,6 +1,6 @@
 import { ApiError, InlineAlert, useSession, useToast, type Session } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
@@ -32,7 +32,7 @@ import { REQUIREMENT_STATUS_LABELS } from '../pre-start/types';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
-import { getTalent, updateTalent } from '../talent/talent-api';
+import { getTalent } from '../talent/talent-api';
 import type { AttachmentView, TalentRecordView } from '../talent/types';
 import { TasksPanel } from '../task/TasksPanel';
 import {
@@ -47,7 +47,6 @@ import {
 
 import { KnownTalentDrawer } from './KnownTalentDrawer';
 import { GuaranteeTermsPanel } from './GuaranteeTermsPanel';
-import { TalentDetailPanel } from './TalentDetailPanel';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { TalentViewToggle } from './TalentViewToggle';
 import { RemoveFromRequisitionModal } from './RemoveFromRequisitionModal';
@@ -61,6 +60,11 @@ import { selectOfferStartCards } from './offer-start-rows';
 import { AddTalentDialog } from './AddTalentDialog';
 import { WorkspacePanel } from './WorkspacePanel';
 import { useTalentViewPreference } from './useTalentViewPreference';
+import {
+  saveOriginSnapshot,
+  useOriginSnapshot,
+  useRestoreScroll,
+} from './talent-requisition-360/origin-state';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
 import {
   placementFor,
@@ -197,7 +201,18 @@ export function RequisitionDetailView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [tab, setTab] = useState<TabId | null>(null);
+  // Back from the Talent × Requisition 360 page restores the active tab + scroll.
+  const originKey = `requisition:${reqId ?? ''}`;
+  const { key: entryKey } = useLocation();
+  const restored = useOriginSnapshot<{ tab: TabId | null }>(originKey);
+  const [tab, setTab] = useState<TabId | null>(restored?.value.tab ?? null);
+  useRestoreScroll(restored, !loading);
+  // Called by the talent surfaces right before they open the Talent × Requisition
+  // 360 page, so Back lands on the same tab + scroll.
+  const rememberOrigin = useCallback(
+    () => saveOriginSnapshot(originKey, entryKey, { tab }),
+    [originKey, entryKey, tab],
+  );
   // G2.5b — whole-form Overview edit. Entered only via the header Edit button;
   // exited by the sticky edit bar's Cancel/Save.
   const [editing, setEditing] = useState(false);
@@ -213,7 +228,6 @@ export function RequisitionDetailView({
   // T7-P5 §3.1 — the Guarantee Terms tab is gated on the read scope AND applicability (a
   // PERMANENT-compensation requisition). Exact-string scope, no read issued without it.
   const canReadPermanentTerms = scopes.includes('placement:permanent:read');
-  const canEditHot = scopes.includes('talent:edit');
   const canAddTalent = scopes.includes('pipeline:add');
   const canLogNote = scopes.includes('activity:create');
   // FIX 1 (least-visibility) — the full whole-form Edit button is gated on
@@ -400,15 +414,6 @@ export function RequisitionDetailView({
 
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  // Option A — a governed pipeline transition executed inside the talent side
-  // panel returns the updated PipelineView; replace it in place (no full reload,
-  // the panel stays open on its talent).
-  const handlePipelineUpdated = useCallback((updated: PipelineView) => {
-    setPipelines((prev) =>
-      prev.map((p) => (p.id === updated.id ? updated : p)),
-    );
-  }, []);
-
   // G2.5 — retained ONLY for the governed status transition (lifecycle actions);
   // ordinary field edits now flow through the Overview form's whole-form save.
   const saveField = async (key: string, value: unknown): Promise<void> => {
@@ -454,19 +459,6 @@ export function RequisitionDetailView({
       await saveField('status', aff.toStatus);
     } catch (err) {
       toast.show(lifecycleActionErrorMessage(err));
-    }
-  };
-
-  // Row-level is_hot triage. Optimistic toggle on the talents map with
-  // rollback on failure (writes via the existing talent edit path).
-  const handleToggleHot = async (talentId: string, next: boolean) => {
-    const prev = talents[talentId];
-    if (prev === undefined) return;
-    setTalents((m) => ({ ...m, [talentId]: { ...prev, is_hot: next } }));
-    try {
-      await updateTalent(talentId, { is_hot: next });
-    } catch {
-      setTalents((m) => ({ ...m, [talentId]: prev }));
     }
   };
 
@@ -550,11 +542,9 @@ export function RequisitionDetailView({
         pipelines={pipelines}
         talents={talents}
         placements={placements}
-        canEditHot={canEditHot}
         canReadPlacements={canReadPlacements}
-        onToggleHot={handleToggleHot}
-        onPipelineUpdated={handlePipelineUpdated}
         onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
+          onBeforeOpenTalent={rememberOrigin}
         talentView={talentView}
         onTalentView={setTalentView}
         onNavigate={setTab}
@@ -594,12 +584,10 @@ export function RequisitionDetailView({
           offers={offers}
           placements={placements}
           scopes={scopes}
-          canEditHot={canEditHot}
           canReadOffers={canReadOffers}
           canReadPlacements={canReadPlacements}
-          onToggleHot={handleToggleHot}
-          onPipelineUpdated={handlePipelineUpdated}
           onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
+          onBeforeOpenTalent={rememberOrigin}
           onNavigate={setTab}
           talentView={talentView}
           onTalentView={setTalentView}
@@ -1215,12 +1203,12 @@ function AttentionRail({
 //
 // One row per pipeline episode. Each POPULATED cell is a summary that drills to
 // its OWNING surface; a "—" cell is non-actionable. NO cell hosts an inline
-// state machine: the pipeline move, HOT triage and log-activity all live in the
-// TalentDetailPanel (the owning surface), reached by clicking the talent /
-// pipeline / offer cells. Load model — TALENT + PIPELINE eager (PipelineView);
-// OFFER an eager JOIN over the requisition-grain offers-by-req list; CLIENT +
-// PRE-START lazy (rendered "—" at first paint — no per-talent submittal /
-// pre-start read is issued here, so the no-first-paint-fan-out invariant holds);
+// state machine: the pipeline move, HOT triage and log-activity all live on the
+// Talent × Requisition 360 page (the owning surface), reached by clicking the
+// talent / pipeline / offer cells. Load model — TALENT + PIPELINE eager
+// (PipelineView); OFFER an eager JOIN over the requisition-grain offers-by-req
+// list; CLIENT + PRE-START hydrated once per row after first paint (one cached
+// submittal / pre-start read pair per talent, List view only);
 // ASSIGNMENT an eager join over the requisition-grain placements-by-req list (no
 // per-placement fan-out). The prototype's "Full pipeline →" link has NO verified
 // route in this app and the grid already IS the full pipeline for the req, so it
@@ -1257,12 +1245,10 @@ function TalentJourney({
   offers,
   placements,
   scopes,
-  canEditHot,
   canReadOffers,
   canReadPlacements,
-  onToggleHot,
-  onPipelineUpdated,
   onPipelineRemoved,
+  onBeforeOpenTalent,
   onNavigate,
   talentView,
   onTalentView,
@@ -1275,12 +1261,10 @@ function TalentJourney({
   readonly offers: readonly OfferView[];
   readonly placements: readonly PlacementView[];
   readonly scopes: readonly string[];
-  readonly canEditHot: boolean;
   readonly canReadOffers: boolean;
   readonly canReadPlacements: boolean;
-  readonly onToggleHot: (talentId: string, next: boolean) => Promise<void>;
-  readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
+  readonly onBeforeOpenTalent: () => void;
   readonly onNavigate: (tab: TabId) => void;
   /** User directory display names keyed by user_id (for the board's recruiter initials). */
   readonly userNames: Record<string, string>;
@@ -1294,8 +1278,9 @@ function TalentJourney({
   const [knownTalentOpen, setKnownTalentOpen] = useState(false);
   const canSource = scopes.includes('talent:source');
 
-  // The shared talent action context — drawer (TalentDetailPanel) + VOID flow +
-  // lazy CLIENT/PRE-START reads + board-refresh + VOID eligibility. ONE
+  // The shared talent action context — open the Talent × Requisition 360 page +
+  // in-place card actions + VOID flow + CLIENT/PRE-START reads + board-refresh +
+  // VOID eligibility. ONE
   // implementation, reused verbatim by the Workspace board embed; no duplicated
   // handlers, no second board. Backend/action authority is unchanged.
   const actions = useRequisitionTalentActions({
@@ -1305,12 +1290,11 @@ function TalentJourney({
     talents,
     placements,
     scopes,
-    canEditHot,
     canReadPlacements,
     userNames,
-    onToggleHot,
-    onPipelineUpdated,
     onPipelineRemoved,
+    eagerCells: talentView === 'list',
+    onBeforeOpenTalent,
   });
 
   return (
@@ -1329,8 +1313,9 @@ function TalentJourney({
           scopes={scopes}
           onSelectCard={(pid) => {
             const p = pipelines.find((x) => x.id === pid);
-            if (p !== undefined) actions.openRow(p);
+            if (p !== undefined) actions.openTalent(p.talent_record_id);
           }}
+          onCardAction={actions.runCardAction}
           onRequestVoid={actions.requestVoid}
           onSendRtr={actions.canSendRtr ? actions.requestSendRtr : undefined}
           refreshToken={actions.boardRefresh}
@@ -1448,11 +1433,11 @@ function TalentJourney({
             const cell = actions.cells[p.talent_record_id];
             return (
               <div key={p.id} className="rc-tj__row" role="row">
-                {/* TALENT → the talent side panel (owning surface). */}
+                {/* TALENT → the Talent × Requisition 360 page. */}
                 <Button unstyled
                   type="button"
                   className="rc-tj__talent"
-                  onClick={() => actions.openRow(p)}
+                  onClick={() => actions.openTalent(p.talent_record_id)}
                 >
                   <span className="rc-tj__avatar" aria-hidden="true">
                     {initialsOf(name)}
@@ -1478,17 +1463,17 @@ function TalentJourney({
                 <span className="rc-tj__cell rc-tj__phone">
                   {phone !== null && phone !== '' ? phone : '—'}
                 </span>
-                {/* PIPELINE → the recruiting stepper in the side panel. */}
+                {/* PIPELINE → the stage stepper on the Talent × Requisition 360 page. */}
                 <Button unstyled
                   type="button"
                   className="rc-tj__cell"
-                  onClick={() => actions.openRow(p)}
+                  onClick={() => actions.openTalent(p.talent_record_id)}
                   aria-label={`Pipeline: ${PIPELINE_STATUS_LABELS[p.status]}`}
                 >
                   <StagePill status={p.status} />
                 </Button>
                 {/* CLIENT — authoritative submittal-state summary for this talent,
-                    populated LAZILY when the row is opened (the pipeline→submittal
+                    hydrated once per row (the pipeline→submittal
                     linkage read; never derived from the pipeline stage). SW-5: when a
                     submittal exists the cell opens its Submittal Workspace (the
                     workspace resolves the submittal from this talent + requisition). */}
@@ -1505,12 +1490,12 @@ function TalentJourney({
                     {journeyCellText(cell, 'client')}
                   </span>
                 )}
-                {/* OFFER → the offer surface in the side panel. */}
+                {/* OFFER → the Offer step on the Talent × Requisition 360 page. */}
                 {offer !== null ? (
                   <Button unstyled
                     type="button"
                     className="rc-tj__cell"
-                    onClick={() => actions.openRow(p)}
+                    onClick={() => actions.openTalent(p.talent_record_id)}
                   >
                     {RECRUITING_OFFER_STATE_LABELS[offer.state]}
                     {offer.offer_timing?.expiring_soon === true ? (
@@ -1523,7 +1508,7 @@ function TalentJourney({
                   <span className="rc-tj__cell rc-tj__empty">—</span>
                 )}
                 {/* PRE-START — authoritative readiness for this talent's placement,
-                    populated LAZILY when the row is opened. */}
+                    hydrated once per row. */}
                 <span className="rc-tj__cell rc-tj__empty">
                   {journeyCellText(cell, 'prestart')}
                 </span>
@@ -1578,7 +1563,7 @@ function TalentJourney({
         )}
       </div>
       )}
-      {/* Shared drawer (TalentDetailPanel) + VOID modal — rendered by the hook. */}
+      {/* Card-action dialogs + VOID modal + Send RTR — rendered by the hook. */}
       {actions.portals}
     </div>
   );

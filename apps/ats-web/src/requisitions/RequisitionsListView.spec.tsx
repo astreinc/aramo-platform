@@ -1,6 +1,6 @@
 import { ToastProvider } from '@aramo/fe-foundation';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { RequisitionsListView } from './RequisitionsListView';
@@ -139,6 +139,29 @@ function mockEndpoints(opts: {
       headers: { 'Content-Type': 'application/json' },
     });
   });
+}
+
+// The Talent × Requisition 360 route stand-in: shows where we landed + a Back.
+function Tr360Stub() {
+  const navigate = useNavigate();
+  return (
+    <div data-testid="tr360-route">
+      <button type="button" onClick={() => navigate(-1)}>
+        Back
+      </button>
+    </div>
+  );
+}
+
+function renderListWithRoutes() {
+  return render(
+    <MemoryRouter initialEntries={['/requisitions']}>
+      <Routes>
+        <Route path="/requisitions" element={<RequisitionsListView />} />
+        <Route path="/requisitions/:reqId/talent/:talentId" element={<Tr360Stub />} />
+      </Routes>
+    </MemoryRouter>,
+  );
 }
 
 function renderList(props = {}) {
@@ -300,7 +323,7 @@ describe('RequisitionsListView', () => {
         headers: { 'Content-Type': 'application/json' },
       });
     });
-    renderList();
+    renderListWithRoutes();
     const title = await screen.findByText('Senior Engineer');
     // Collapsed by default.
     expect(
@@ -317,17 +340,6 @@ describe('RequisitionsListView', () => {
     // Derived Next Action for the 'qualifying' stage.
     expect(screen.getByText('Confirm qualified')).toBeInTheDocument();
     expect(screen.getByText('NEW')).toBeInTheDocument();
-    // The talent card is a button that opens the slide-in detail panel.
-    const talentCard = screen
-      .getByText('Sarah Nolan')
-      .closest('button') as HTMLButtonElement;
-    fireEvent.click(talentCard);
-    expect(
-      screen.getByRole('dialog', { name: /talent detail/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText('Talent journey')).toBeInTheDocument();
-    // Close the panel before asserting the expander collapse.
-    fireEvent.click(screen.getByLabelText('Close'));
     // Click again collapses.
     fireEvent.click(article);
     expect(
@@ -335,24 +347,11 @@ describe('RequisitionsListView', () => {
     ).not.toBeInTheDocument();
   });
 
-  // The user's loop: an empty extender contact cell → edit in the SIDE PANEL →
-  // the read-only extender cell reflects the just-entered value (propagation),
-  // while the extender itself remains READ-ONLY (no editors in it).
-  it('a panel talent-field save propagates to the read-only extender cell (no editor in the extender)', async () => {
-    const patches: Array<{ url: string; body: unknown }> = [];
-    const json = (b: unknown) =>
-      new Response(JSON.stringify(b), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+  // The talent row opens the Talent × Requisition 360 page in the same tab (no
+  // drawer); Back restores the list's search filter and the expanded row.
+  it('a talent row opens the Talent × Requisition 360 page; Back restores filters + expanded row', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = typeof input === 'string' ? input : (input as Request).url;
-      const method = init?.method ?? 'GET';
-      if (url.includes('/v1/talent-records/tal-1') && method === 'PATCH') {
-        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        patches.push({ url, body });
-        return json({ id: 'tal-1', first_name: 'Sarah', last_name: 'Nolan', ...body });
-      }
       const body = url.includes('/v1/pipelines')
         ? {
             items: [
@@ -360,51 +359,34 @@ describe('RequisitionsListView', () => {
                 id: 'pl-1', tenant_id: 't', site_id: null, talent_record_id: 'tal-1',
                 requisition_id: 'req-open', status: 'qualifying',
                 created_at: '2026-08-01T00:00:00Z', updated_at: '2026-08-01T00:00:00Z',
-                // No email enrichment → the extender cell shows "—" until edited.
               },
             ],
           }
         : url.includes('/v1/talent-records/tal-1')
           ? { id: 'tal-1', first_name: 'Sarah', last_name: 'Nolan' }
           : url.includes('/v1/requisitions')
-            ? { items: [OPEN] }
+            ? { items: [OPEN, makeReq('req-other', 'Data Analyst', 'open')] }
             : { items: [] };
-      return json(body);
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     });
-
-    render(
-      <ToastProvider>
-        <MemoryRouter>
-          <RequisitionsListView
-            sessionOverride={{
-              sub: 'u1', consumer_type: 'recruiter', tenant_id: 't',
-              scopes: ['requisition:read', 'talent:edit'], iat: 0, exp: 0,
-            }}
-          />
-        </MemoryRouter>
-      </ToastProvider>,
-    );
-    const title = await screen.findByText('Senior Engineer');
-    fireEvent.click(title.closest('article') as Element); // expand
-    const table = await screen.findByRole('table');
-    // Extender is READ-ONLY: no inline "Edit …" affordances in the table.
-    expect(within(table).queryByRole('button', { name: /^Edit / })).toBeNull();
-    // Open the side panel and edit Email there.
+    renderListWithRoutes();
+    await screen.findByText('Data Analyst');
+    fireEvent.change(screen.getByPlaceholderText('Search requisitions'), { target: { value: 'senior' } });
+    await waitFor(() => expect(screen.queryByText('Data Analyst')).not.toBeInTheDocument());
+    fireEvent.click(screen.getByText('Senior Engineer').closest('article') as Element); // expand
     fireEvent.click((await screen.findByText('Sarah Nolan')).closest('button') as HTMLButtonElement);
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Email' }));
-    const input = screen.getByLabelText('Email') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'vinodhini@x.test' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    // The single-column PATCH fired…
-    await waitFor(() => expect(patches).toHaveLength(1));
-    expect(patches[0]?.body).toEqual({ email1: 'vinodhini@x.test' });
-    // …and the read-only extender cell now reflects the new value (propagation).
-    fireEvent.click(screen.getByLabelText('Close'));
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole('table')).getByText('vinodhini@x.test'),
-      ).toBeInTheDocument(),
-    );
+    // Same-tab navigation to the 360 route — never a drawer.
+    expect(await screen.findByTestId('tr360-route')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // Back → the list comes back with the query and the expanded row restored.
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(await screen.findByText('Talent on this requisition')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search requisitions')).toHaveValue('senior');
+    expect(screen.queryByText('Data Analyst')).not.toBeInTheDocument();
+    expect(await screen.findByText('Sarah Nolan')).toBeInTheDocument();
   });
 
   it('the ★ star click does not toggle the preview (stopPropagation)', async () => {
