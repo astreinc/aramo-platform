@@ -3965,6 +3965,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
       "status": "excluded",
       "to": "libs/documents/prisma/migrations/20260921180000_init_documents_model/migration.sql"

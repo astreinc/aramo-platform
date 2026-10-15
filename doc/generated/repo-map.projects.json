@@ -625,7 +625,18 @@
       "TemplateVersionNotFoundError",
       "TemplatesRepository"
     ],
-    "@aramo/documents-contracts": ["SIGNATURE_PROVIDER_PORT"],
+    "@aramo/documents-contracts": [
+      "ESIGN_S2S_SCHEME",
+      "ESIGN_S2S_SIGNATURE_HEADER",
+      "ESIGN_S2S_TIMESTAMP_HEADER",
+      "ESIGN_S2S_TIMESTAMP_TOLERANCE_SEC",
+      "SIGNATURE_PROVIDER_PORT",
+      "canonicalEsignS2sRequest",
+      "computeEsignS2sSignature",
+      "normalizeEsignS2sQuery",
+      "signEsignServiceRequest",
+      "verifyEsignServiceRequest"
+    ],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
       "PdfLibDocumentRenderingAdapter",
@@ -3433,6 +3444,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5869,6 +5886,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/helpers/rtr-readiness-harness.ts",
         "project": "api",
         "status": "excluded"
@@ -5945,6 +5968,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5969,6 +5998,17 @@
       },
       { "project": "api", "status": "production" },
       {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/document-source-http.adapter.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/envelope-field-mapper.spec.ts",
         "project": "esign-service",
@@ -5980,7 +6020,12 @@
         "project": "esign-service",
         "status": "excluded"
       },
-      { "project": "esign-service", "status": "production" }
+      { "project": "esign-service", "status": "production" },
+      {
+        "from": "pact/consumers/esign-source-consumer/src/source-pull.consumer.test.ts",
+        "project": "esign-source-consumer-pact",
+        "status": "unscoped"
+      }
     ],
     "@aramo/documents-rendering": [
       {

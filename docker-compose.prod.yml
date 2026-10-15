@@ -187,7 +187,12 @@ services:
       # E-Sign OC v2 — shared HMAC secret Core uses to VERIFY the E-Sign lifecycle
       # webhook (POST /v1/integrations/esign/events). Same value as esign-service's
       # ESIGN_WEBHOOK_SIGNING_SECRET; unset ⇒ the receiver returns 503 (dark).
+      # ES-2: the same secret verifies esign-service → Core source requests.
       - ESIGN_WEBHOOK_SIGNING_SECRET
+      # ES-2 — source-route authentication mode: enforce (default) | log (temporary,
+      # only with a future ESIGN_S2S_AUTH_LOG_UNTIL ≤ 7 days ahead).
+      - ESIGN_S2S_AUTH_MODE
+      - ESIGN_S2S_AUTH_LOG_UNTIL
       # DNS resolver for domain verification (Domain-Enforcement P2b): node|stub.
       # REQUIRED — loadDnsConfig fails LOUD if unset (api crash-loops). api-only;
       # auth-service does not load the DNS module.
