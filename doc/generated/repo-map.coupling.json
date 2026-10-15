@@ -90,12 +90,19 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
+    { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "scripts/audit-check.sh" },
     {
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
     },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.pg-integration.sh"
+    },
+    { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
@@ -23725,7 +23732,27 @@
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
     },
+    {
+      "from": "tools/db-sync-local.pg-integration.sh",
+      "status": "unscoped",
+      "to": "scripts/run-script-tests.sh"
+    },
+    {
+      "from": "tools/db-sync-local.pg-integration.sh",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "tools/db-sync-local.sh",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.pg-integration.sh"
+    },
     { "from": "tools/db-sync-local.sh", "status": "unscoped", "to": "tools/db-sync-local.test.sh" },
+    {
+      "from": "tools/db-sync-local.test.sh",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.pg-integration.sh"
+    },
     { "from": "tools/db-sync-local.test.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
       "from": "tools/link-e2e-recruiter-sub.ts",
@@ -24143,7 +24170,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 76,
+    "files": 77,
     "huskyPresent": false
   },
   "scripts": [
@@ -24235,6 +24262,7 @@
       "references": [
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },
+        { "kind": "prose", "path": "tools/db-sync-local.pg-integration.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "npm-run", "path": "tools/local-run-link.sh" }
       ]
@@ -24592,6 +24620,7 @@
         { "kind": "prose", "path": "scripts/run-script-tests.sh" },
         { "kind": "prose", "path": "scripts/verify-raw-element-guard.sh" },
         { "kind": "prose", "path": "scripts/verify-vocabulary.sh" },
+        { "kind": "prose", "path": "tools/db-sync-local.pg-integration.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.sh" },
         { "kind": "prose", "path": "tools/db-sync-local.test.sh" },
         { "kind": "prose", "path": "tools/link-e2e-recruiter-sub.ts" },

@@ -767,6 +767,34 @@ jobs:
   # unchanged, so the required check still reports success); full on other lanes.
   # ---------------------------------------------------------------------------
 
+  # IC-1 / PR #937 (Lead Architect ruling 2026-10-14) — the bounded migration apply
+  # (`tools/db-sync-local.sh --until`, surfaced by deploy/migrate-prod.sh) proven
+  # against a REAL PostgreSQL: a disposable pgvector/pgvector:pg17 container on this
+  # runner (the image every Postgres-backed integration spec starts), five cases
+  # including a full replay of the on-disk migration manifest. Standalone and
+  # unconditional on purpose: the `integration` matrix runs only for nx-affected
+  # roots, so a tooling-only change (deploy/, tools/) would never reach it. No
+  # `needs`, no outputs — nothing else depends on this job; it gates merges through
+  # deployment-gate.needs only. The pure shell suites stay under static-governance
+  # `scripts:test`. Touches nothing outside this runner.
+  migration-runner-pg:
+    name: migration-runner:pg
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install psql (postgresql-client)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Pre-pull pgvector/pgvector:pg17 (absorb Docker Hub transient 5xx)
+        run: |
+          for i in 1 2 3 4 5; do
+            if docker pull pgvector/pgvector:pg17; then break; fi
+            echo "::warning::docker pull pgvector/pgvector:pg17 attempt $i failed; backing off"
+            sleep $((i * 6))
+          done
+      - name: migration-runner:pg (tools/db-sync-local.pg-integration.sh)
+        run: bash tools/db-sync-local.pg-integration.sh
+
   terraform-fmt:
     name: terraform:fmt
     runs-on: ubuntu-latest
@@ -894,6 +922,7 @@ jobs:
       - pact-provider
       - test-unit
       - tests-integration # stable fan-in over the affected/full integration matrix
+      - migration-runner-pg # IC-1 — bounded migration apply (--until) proven on a real PostgreSQL
       - lint-nx-boundaries
       - docker-build
       - terraform-fmt
