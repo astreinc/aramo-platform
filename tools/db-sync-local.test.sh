@@ -138,5 +138,19 @@ else
   bad "U6 compute_pending_split (got '$(compute_pending_split "$LIST" "" 2)' '$(compute_pending_split "$LIST" "$A" 2)' '$(compute_pending_split "$LIST" "$A"$'\n'"$B"$'\n'"$C" 2)' '$(compute_pending_split "$LIST" "$D" 4)')"
 fi
 
+# U7 locale-independence: inputs are sorted under LC_ALL=C, so comm must compare
+# under LC_ALL=C too. Under a non-C locale (the box's postgres:17 container), GNU
+# comm otherwise warns "input is not in sorted order" and may mis-count. Mixed-case
+# names order differently in C vs en_US collation. Expect the exact count, no stderr.
+MIXED_DISK="$(printf '%s\n' x/20261015000001_b/ x/20261015000002_k/ x/2026_B/ x/2026_a/ x/2026_c/ | LC_ALL=C sort -u)"
+MIXED_REC="$(printf '%s\n' x/2026_B/ x/2026_c/ | LC_ALL=C sort -u)"
+err="$(LANG=en_US.UTF-8 LC_ALL= LC_COLLATE=en_US.UTF-8 bash -c 'source "$1"; compute_pending "$2" "$3"' _ "$DIR/db-sync-local.sh" "$MIXED_DISK" "$MIXED_REC" 2>&1 >/dev/null)"
+got="$(LANG=en_US.UTF-8 LC_ALL= LC_COLLATE=en_US.UTF-8 bash -c 'source "$1"; compute_pending "$2" "$3"' _ "$DIR/db-sync-local.sh" "$MIXED_DISK" "$MIXED_REC" 2>/dev/null)"
+if [ "$got" = "3" ] && [ -z "$err" ]; then
+  ok "U7 compute_pending under a non-C locale: exact count (3), no comm order warning"
+else
+  bad "U7 locale-independence (got '${got}', stderr '${err}')"
+fi
+
 echo "db-sync-local.test — ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]
