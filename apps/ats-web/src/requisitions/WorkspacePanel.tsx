@@ -1,5 +1,5 @@
 import { Button } from '@aramo/fe-foundation';
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ActivityView } from '../activity/types';
@@ -21,6 +21,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
+import { talentRequisition360Path } from './talent-requisition-360/route';
 import { rtrAffordanceKind, type RtrAffordanceKind } from './rtr-affordance';
 import type { TalentView } from './useTalentViewPreference';
 import type { RequisitionView } from './types';
@@ -72,11 +73,10 @@ interface WorkspacePanelProps {
   readonly pipelines: readonly PipelineView[];
   readonly talents: Record<string, TalentRecordView>;
   readonly placements: readonly PlacementView[];
-  readonly canEditHot: boolean;
   readonly canReadPlacements: boolean;
-  readonly onToggleHot: (talentId: string, next: boolean) => Promise<void>;
-  readonly onPipelineUpdated: (updated: PipelineView) => void;
   readonly onPipelineRemoved: (pipelineId: string) => void;
+  /** Save the requisition page's view state before opening the Talent × Requisition 360 page. */
+  readonly onBeforeOpenTalent?: () => void;
   readonly talentView: TalentView;
   readonly onTalentView: (next: TalentView) => void;
   readonly onNavigate: (tab: TabId) => void;
@@ -127,11 +127,9 @@ export function WorkspacePanel({
   pipelines,
   talents,
   placements,
-  canEditHot,
   canReadPlacements,
-  onToggleHot,
-  onPipelineUpdated,
   onPipelineRemoved,
+  onBeforeOpenTalent,
   talentView,
   onTalentView,
   onNavigate,
@@ -148,8 +146,9 @@ export function WorkspacePanel({
   const [findOpen, setFindOpen] = useState(false);
 
   // The SAME talent action context the Talent tab uses (shared hook) — so the
-  // embedded Board's card-click drawer + Remove-from-requisition VOID behave
-  // identically, with no duplicated handlers and no second board.
+  // embedded Board's card-click navigation, in-place card actions and
+  // Remove-from-requisition VOID behave identically, with no duplicated handlers
+  // and no second board.
   const talentActions = useRequisitionTalentActions({
     req,
     companyName,
@@ -157,12 +156,10 @@ export function WorkspacePanel({
     talents,
     placements,
     scopes,
-    canEditHot,
     canReadPlacements,
     userNames,
-    onToggleHot,
-    onPipelineUpdated,
     onPipelineRemoved,
+    onBeforeOpenTalent,
   });
 
   // Board-derived attention: a talent in a Qualified-band 'needs_action' card
@@ -418,7 +415,8 @@ export function WorkspacePanel({
         </div>
 
         {/* 2.3 Talent in play — Board (default) or List, sharing the same board
-            + drawer + VOID context as the Talent tab and the shared preference. */}
+            + navigation + VOID context as the Talent tab and the shared preference.
+            A card / row opens the Talent × Requisition 360 page. */}
         <div className="rc-card rc-tip">
           <div className="rc-tip__head">
             <h2>Talent in play</h2>
@@ -438,8 +436,9 @@ export function WorkspacePanel({
                 scopes={scopes}
                 onSelectCard={(pid) => {
                   const p = pipelines.find((x) => x.id === pid);
-                  if (p !== undefined) talentActions.openRow(p);
+                  if (p !== undefined) talentActions.openTalent(p.talent_record_id);
                 }}
+                onCardAction={talentActions.runCardAction}
                 onRequestVoid={talentActions.requestVoid}
                 onSendRtr={talentActions.canSendRtr ? talentActions.requestSendRtr : undefined}
                 refreshToken={talentActions.boardRefresh}
@@ -481,7 +480,9 @@ export function WorkspacePanel({
                     card={card}
                     name={nameOf(card.talent_record_id)}
                     scopes={scopes}
-                    onOpen={() => onNavigate('talent')}
+                    href={talentRequisition360Path(req.id, card.talent_record_id)}
+                    onOpen={() => talentActions.openTalent(card.talent_record_id)}
+                    onAction={() => talentActions.runCardAction(card, nameOf(card.talent_record_id))}
                     onSendRtr={
                       talentActions.canSendRtr
                         ? () => talentActions.requestSendRtr(card.talent_record_id, nameOf(card.talent_record_id))
@@ -650,13 +651,20 @@ function TalentInPlayRow({
   card,
   name,
   scopes,
+  href,
   onOpen,
+  onAction,
   onSendRtr,
 }: {
   readonly card: BoardCardView;
   readonly name: string;
+  /** The Talent × Requisition 360 path (the name link's href). */
+  readonly href: string;
   readonly scopes: readonly string[];
+  /** Open the Talent × Requisition 360 page (row click). */
   readonly onOpen: () => void;
+  /** Run the row's one-step action in place (composer / modal) — never a row navigation. */
+  readonly onAction: () => void;
   /** Open the compose-driven Send RTR panel; absent when the actor cannot initiate. */
   readonly onSendRtr?: () => void;
 }) {
@@ -678,14 +686,28 @@ function TalentInPlayRow({
   const cells = funnelCells(card);
   const rtrKind = rtrAffordanceKind(card);
 
+  // Inline controls stop propagation so they never trigger the row navigation.
+  const stop = (fn: () => void) => (e: MouseEvent) => {
+    e.stopPropagation();
+    fn();
+  };
+
   return (
-    <div className="rc-tip__row" role="row">
+    <div className="rc-tip__row rc-tip__row--open" role="row" onClick={onOpen}>
       <span className="rc-tip__person">
         <span className="rc-avatar" aria-hidden="true">
           {initials(name)}
         </span>
         <span className="rc-tip__id">
-          <Link to={`/talent/${card.talent_record_id}`} className="rc-tip__name">
+          <Link
+            to={href}
+            className="rc-tip__name"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpen();
+            }}
+          >
             {name}
           </Link>
           <span className="rc-tip__sub">
@@ -702,7 +724,7 @@ function TalentInPlayRow({
       {cells.map((c) =>
         c.label === 'RTR' ? (
           <span key={c.label} className="rc-tip__cell rc-tip__rtrcell">
-            <RtrCell kind={rtrKind} onSendRtr={onSendRtr} onOpen={onOpen} />
+            <RtrCell kind={rtrKind} onSendRtr={onSendRtr !== undefined ? stop(onSendRtr) : undefined} onOpen={stop(onOpen)} />
           </span>
         ) : (
           <span key={c.label} className="rc-tip__cell">
@@ -718,7 +740,7 @@ function TalentInPlayRow({
             unstyled
             type="button"
             className="rc-btn-primary rc-tip__cta"
-            onClick={onOpen}
+            onClick={stop(onAction)}
           >
             {actionLabel}
           </Button>
@@ -738,8 +760,8 @@ function RtrCell({
   onOpen,
 }: {
   readonly kind: RtrAffordanceKind;
-  readonly onSendRtr?: () => void;
-  readonly onOpen: () => void;
+  readonly onSendRtr?: (e: MouseEvent) => void;
+  readonly onOpen: (e: MouseEvent) => void;
 }) {
   if (kind === 'send' && onSendRtr !== undefined) {
     return (
