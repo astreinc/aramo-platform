@@ -57,6 +57,9 @@ const SQL_TABLE_ALLOWLIST = new Set<string>([
   'apps/api/src/tests/tr15-b2-erasure.integration.spec.ts',
   'apps/api/src/tests/tenant-reset.integration.spec.ts',
   'apps/api/src/tests/technical-screening/screening-http.integration.spec.ts',
+  // INC-3 A1-8 — the screening-linked erasure proof (seeds A1 rows; asserts the
+  // governed INVENTORY erases them and nothing else).
+  'apps/api/src/tests/technical-screening/screening-erasure.integration.spec.ts',
   // The Pact provider — its throwaway test database TRUNCATEs screening rows between
   // interactions and seeds the screening provider state (never a production path).
   'pact/provider/src/verify-api.ts',

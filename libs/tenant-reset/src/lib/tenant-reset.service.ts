@@ -193,6 +193,13 @@ const PRESERVE_INVENTORY: readonly PreserveStep[] = [
   { label: `technical_screening."ScreeningFinding"`, display: `technical_screening."ScreeningFinding"`, where: `tenant_id = $1::uuid` },
   { label: `technical_screening."ScreeningEvidencePublication"`, display: `technical_screening."ScreeningEvidencePublication"`, where: `tenant_id = $1::uuid` },
   { label: `technical_screening."ScreeningEvent"`, display: `technical_screening."ScreeningEvent"`, where: `tenant_id = $1::uuid` },
+  // INC-3 A1 §B.8 / Part H T0 — the A1 screening tables are PRESERVE likewise.
+  { label: `technical_screening."ScreeningFindingCitation"`, display: `technical_screening."ScreeningFindingCitation"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningAiGeneration"`, display: `technical_screening."ScreeningAiGeneration"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningQuestion"`, display: `technical_screening."ScreeningQuestion"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningNote"`, display: `technical_screening."ScreeningNote"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningAssistSuggestion"`, display: `technical_screening."ScreeningAssistSuggestion"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningTranscriptLink"`, display: `technical_screening."ScreeningTranscriptLink"`, where: `tenant_id = $1::uuid` },
   {
     label: `activity."Activity" (non-workflow)`,
     display: `activity."Activity" (talent/company/contact history)`,

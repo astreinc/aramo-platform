@@ -51,6 +51,16 @@ interface ErasureStep {
 // array, $2 = subject-id array (both uuid[]). GROUP-B trust rows use $2.
 // Same-schema cascades that fall away automatically are NOT listed (pipeline
 // PipelineStatusHistory → Pipeline; talent_record children → TalentRecord).
+// INC-3 A1-8 — the screening-linked id sets (every one record-keyspace: $1 = record ids).
+const SCREENING_SESSIONS = `SELECT ss.id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[])`;
+const SCREENING_INTERACTIONS = `SELECT ss.interaction_id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[]) AND ss.interaction_id IS NOT NULL`;
+const SCREENING_TRANSCRIPTS =
+  `SELECT tl.conversation_transcript_id FROM technical_screening."ScreeningTranscriptLink" tl WHERE tl.session_id IN (${SCREENING_SESSIONS})` +
+  ` UNION SELECT ct.id FROM conversation_transcript."ConversationTranscript" ct WHERE ct.interaction_id IN (${SCREENING_INTERACTIONS})`;
+const SCREENING_CI_RUNS =
+  `SELECT r.id FROM conversation_intelligence."ConversationIntelligenceRun" r WHERE r.screening_session_id IN (${SCREENING_SESSIONS})` +
+  ` OR r.conversation_transcript_id IN (${SCREENING_TRANSCRIPTS})`;
+
 const INVENTORY: ErasureStep[] = [
   // ---- GROUP A operational non-cascade EVENT children (delete before parents) ----
   { label: 'submittal."TalentSubmittalEvent"', keyspace: 'record-child', where: `submittal_id IN (SELECT id FROM submittal."TalentSubmittalRecord" WHERE talent_id = ANY($1::uuid[]))` },
@@ -113,6 +123,31 @@ const INVENTORY: ErasureStep[] = [
   //      last so the subselects still resolve; the husk chain covers merged sessions). Plain
   //      governed DELETEs — the screening tables carry NO delete trigger and NO marker (§10.1).
   //      The published trust evidence is erased by subject in GROUP B above. ----
+  // ---- TIP-E2E INC-3 A1-8 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED Part H, §B.8) — SCREENING-LINKED
+  //      conversation data, erased BEFORE the screening rows its subselects resolve through:
+  //      CI screening-profile runs (+ claims / citations / drafts) → the linked conversation
+  //      transcripts (+ source AND normalized object-storage artifacts, collected in
+  //      resolveScope) → the screening meeting interactions (provider events, scheduling
+  //      operations — requisition_id IS NULL marks a screening meeting, Part F — dispositions,
+  //      associations). Only screening-linked rows: the general communications / transcript /
+  //      CI erasure gap stays on the separate S2 track. ----
+  { label: 'conversation_intelligence."ConversationIntelligenceCitation"', keyspace: 'record-child', where: `claim_id IN (SELECT k.id FROM conversation_intelligence."ConversationIntelligenceClaim" k WHERE k.run_id IN (${SCREENING_CI_RUNS}))` },
+  { label: 'conversation_intelligence."ConversationIntelligenceClaim"', keyspace: 'record-child', where: `run_id IN (${SCREENING_CI_RUNS})` },
+  { label: 'conversation_intelligence."ConversationIntelligenceDraft"', keyspace: 'record-child', where: `run_id IN (${SCREENING_CI_RUNS})` },
+  { label: 'conversation_intelligence."ConversationIntelligenceRun"', keyspace: 'record-child', where: `id IN (${SCREENING_CI_RUNS})` },
+  { label: 'conversation_transcript."ConversationTranscript"', keyspace: 'record-child', where: `id IN (${SCREENING_TRANSCRIPTS})`, s3RefColumn: 'source_artifact_ref' },
+  { label: 'communications."CommunicationProviderEvent"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
+  { label: 'communications."MeetingSchedulingOperation"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS}) OR (talent_record_id = ANY($1::uuid[]) AND requisition_id IS NULL)` },
+  { label: 'communications."CommunicationDisposition"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
+  { label: 'communications."CommunicationAssociation"', keyspace: 'record-child', where: `interaction_id IN (${SCREENING_INTERACTIONS})` },
+  { label: 'communications."CommunicationInteraction"', keyspace: 'record-child', where: `id IN (${SCREENING_INTERACTIONS})` },
+  // ---- INC-3 A1-8 — the A1 screening tables, child before parent through the session ----
+  { label: 'technical_screening."ScreeningFindingCitation"', keyspace: 'record-child', where: `finding_id IN (SELECT f.id FROM technical_screening."ScreeningFinding" f WHERE f.session_id IN (${SCREENING_SESSIONS}))` },
+  { label: 'technical_screening."ScreeningAssistSuggestion"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },
+  { label: 'technical_screening."ScreeningNote"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },
+  { label: 'technical_screening."ScreeningQuestion"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },
+  { label: 'technical_screening."ScreeningAiGeneration"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },
+  { label: 'technical_screening."ScreeningTranscriptLink"', keyspace: 'record-child', where: `session_id IN (${SCREENING_SESSIONS})` },
   { label: 'technical_screening."ScreeningEvent"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
   { label: 'technical_screening."ScreeningEvidencePublication"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
   { label: 'technical_screening."ScreeningFinding"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
@@ -120,6 +155,14 @@ const INVENTORY: ErasureStep[] = [
   // ---- GROUP C the husk records (record keyspace) — cascades resume_text (S3) + provenance + contradiction ----
   { label: 'talent_record."TalentRecord"', keyspace: 'record', where: `id = ANY($1::uuid[])` },
 ];
+
+// INC-3 A1-8 — the NORMALIZED transcript artifact (the source artifact is the
+// ConversationTranscript step's s3RefColumn). Collected before any delete.
+const SCREENING_TRANSCRIPT_NORMALIZED_S3 = {
+  label: 'conversation_transcript."ConversationTranscript"',
+  s3RefColumn: 'normalized_artifact_ref',
+  where: `id IN (${SCREENING_TRANSCRIPTS})`,
+};
 
 // Same-schema S3-bearing cascade child collected separately (falls away with
 // TalentRecord, but its S3 object must be enumerated first).
@@ -223,6 +266,11 @@ export class TalentErasureService {
         where: s.where,
       })),
       { label: RESUME_TEXT_S3.label, col: RESUME_TEXT_S3.s3RefColumn, where: RESUME_TEXT_S3.where },
+      {
+        label: SCREENING_TRANSCRIPT_NORMALIZED_S3.label,
+        col: SCREENING_TRANSCRIPT_NORMALIZED_S3.s3RefColumn,
+        where: SCREENING_TRANSCRIPT_NORMALIZED_S3.where,
+      },
     ];
     const s3_keys: string[] = [];
     for (const src of s3Sources) {

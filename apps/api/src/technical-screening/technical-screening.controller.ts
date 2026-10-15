@@ -43,6 +43,7 @@ import {
 
 import { ScreeningAccessService } from './screening-access.service.js';
 import { ScreeningContextReader } from './screening-context.reader.js';
+import { ScreeningRetentionService } from './screening-retention.service.js';
 import {
   ScreeningMeetingService,
   type ScreeningCaptureModes,
@@ -439,6 +440,7 @@ export class ScreeningSessionController {
     private readonly meetings: ScreeningMeetingService,
     private readonly ciRuns: ConversationIntelligenceRunRepository,
     @Inject(NORMALIZED_TRANSCRIPT_SOURCE) private readonly transcriptSource: NormalizedTranscriptSource,
+    private readonly retention: ScreeningRetentionService,
   ) {}
 
   // A1-5 / D.3 — the transcript excerpt behind ONE citation of this session's
@@ -825,6 +827,8 @@ export class ScreeningSessionController {
       requestId,
     });
     await this.screening.publishPending({ tenant_id: auth.tenant_id, session_id: id, actor_id: auth.sub, requestId });
+    // A1-8 / R-B — terminal retention (AI content + linked transcript artifacts).
+    await this.retention.applyTerminalRetention(auth.tenant_id, id);
     const response = await this.detail(auth, id, requestId);
     await this.idempotency.persist({
       tenant_id: auth.tenant_id,
@@ -855,6 +859,8 @@ export class ScreeningSessionController {
       actor_id: auth.sub,
       requestId,
     });
+    // A1-8 / R-B — terminal retention (AI content + linked transcript artifacts).
+    await this.retention.applyTerminalRetention(auth.tenant_id, id);
     return this.detail(auth, id, requestId);
   }
 

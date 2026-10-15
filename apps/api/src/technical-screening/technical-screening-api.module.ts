@@ -16,6 +16,7 @@ import { ScreeningAiConsentAdapter } from './screening-ai-consent.adapter.js';
 import { ScreeningContextReader } from './screening-context.reader.js';
 import { ScreeningDomain } from './screening-domain.module.js';
 import { ScreeningMeetingService } from './screening-meeting.service.js';
+import { ScreeningRetentionService } from './screening-retention.service.js';
 import {
   ScreeningSessionController,
   TalentScreeningSessionsController,
@@ -43,7 +44,7 @@ import {
     ScreeningDomain,
   ],
   controllers: [TalentScreeningSessionsController, ScreeningSessionController],
-  providers: [ScreeningAccessService, ScreeningContextReader, ScreeningAiConsentAdapter, ScreeningMeetingService],
+  providers: [ScreeningAccessService, ScreeningContextReader, ScreeningAiConsentAdapter, ScreeningMeetingService, ScreeningRetentionService],
   exports: [ScreeningDomain],
 })
 export class TechnicalScreeningApiModule {}
