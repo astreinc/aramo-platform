@@ -1101,6 +1101,12 @@ const TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
 );
+// TIP-E2E INC-3 — the technical_screening schema (sessions, findings, publication
+// intents, events); the screening provider states query it.
+const TECHNICAL_SCREENING_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -1378,6 +1384,10 @@ const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
 // use; the recruiter actor uuid matches the audit-row value the pacts
 // assert with a regex matcher.
 const PACT_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+// TIP-E2E INC-3 — fixed technical-screening fixture ids (mirrored in
+// pact/consumers/ats-web/src/technical-screening.consumer.test.ts).
+const PACT_SCREENING_SESSION_ID = '0192f3c0-0000-7000-8000-00000000c501';
+const PACT_SCREENING_FINDING_ID = '0192f3c0-0000-7000-8000-00000000c502';
 const PACT_RECRUITER_ACTOR_ID = '00000000-0000-7000-8000-000000000bb1';
 
 // Migration files contain dollar-quoted PL/pgSQL bodies (the
@@ -1552,6 +1562,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds it (nothing reads it).
       // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
+      // TIP-E2E INC-3 — technical screening (UUID-only refs → not cascaded by
+      // TalentRecord). Truncate so a session opened by one interaction never
+      // leaks into the next screening read.
+      await c.query('TRUNCATE TABLE technical_screening."ScreeningEvent", technical_screening."ScreeningEvidencePublication", technical_screening."ScreeningFinding", technical_screening."ScreeningSession"');
       // TALENT-INTEL-1 TI-1D-C — the resume-edition substrate (talent_evidence,
       // UUID-only refs → not cascaded by TalentRecord). Truncate so fixed-id
       // edition/document fixtures don't collide across interactions.
@@ -3882,6 +3896,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_P3A_DISPUTE_MIGRATION,
         TALENT_TRUST_P3B_DISPUTE_MIGRATION,
         TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION,
+        // TIP-E2E INC-3 — technical_screening (self-contained; no cross-schema FK).
+        TECHNICAL_SCREENING_INIT_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
@@ -4090,6 +4106,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'offer:transition',
           'offer:read',
           'offer:read:financial',
+          // TIP-E2E INC-3 — Manual Technical Screening routes (screening:read gates
+          // the list/detail reads; screening:create gates opening a session).
+          // Additive; inert for prior interactions.
+          'screening:read',
+          'screening:create',
+          'screening:edit',
+          'screening:confirm',
           // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
           // @RequireScopes. company:read:all additionally short-circuits the
           // VisibilityInterceptor resolver to zero reads on the company/
@@ -5006,6 +5029,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               lastName: 'Vasudevan',
             });
             await seedAtsWebContactingConsent(c);
+          });
+        },
+      // TIP-E2E INC-3 — Manual Technical Screening: a live TalentRecord with ONE
+      // DRAFT session holding ONE recruiter-observed finding (fixed ids, so the
+      // detail read resolves). The create-session interaction reuses the record.
+      'an ats-web recruiter and a Talent with a draft technical screening exist':
+        async () => {
+          await withClient(async (c) => {
+            await seedAtsWebTalentRecord(c, {
+              id: PACT_TALENT_ID,
+              firstName: 'Divya',
+              lastName: 'Vasudevan',
+            });
+            await c.query(
+              `INSERT INTO technical_screening."ScreeningSession" (id, tenant_id, talent_record_id, state, version, created_by_actor_id)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'DRAFT',2,$4::uuid) ON CONFLICT (id) DO NOTHING`,
+              [PACT_SCREENING_SESSION_ID, TENANT_ID, PACT_TALENT_ID, RECRUITER_ID],
+            );
+            await c.query(
+              `INSERT INTO technical_screening."ScreeningFinding" (id, tenant_id, session_id, skill_raw, basis, observation_raw)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'Kubernetes','RECRUITER_OBSERVED','Explained pod disruption budgets.') ON CONFLICT (id) DO NOTHING`,
+              [PACT_SCREENING_FINDING_ID, TENANT_ID, PACT_SCREENING_SESSION_ID],
+            );
           });
         },
       // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====

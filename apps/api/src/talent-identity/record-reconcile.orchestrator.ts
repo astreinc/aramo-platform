@@ -11,6 +11,7 @@ import { SavedListRepository } from '@aramo/saved-list';
 import { AttachmentRepository } from '@aramo/attachment';
 import { ActivityRepository } from '@aramo/activity';
 import { TaskRepository } from '@aramo/task';
+import { TechnicalScreeningRepository } from '@aramo/technical-screening';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import {
   TalentTrustRepository,
@@ -97,6 +98,9 @@ export class RecordReconcileOrchestrator {
     private readonly attachment: AttachmentRepository,
     private readonly activity: ActivityRepository,
     private readonly task: TaskRepository,
+    // TIP-E2E INC-3 (directive §10.3) — re-keys ScreeningSession.talent_record_id;
+    // publication intents keep their pinned talent_record_id_at_confirm.
+    private readonly technicalScreening: TechnicalScreeningRepository,
   ) {}
 
   // The operational holders, in sweep order (consent's ledger/audit run FIRST,
@@ -113,6 +117,7 @@ export class RecordReconcileOrchestrator {
       { domain: 'attachment', repo: this.attachment as unknown as OperationalRepoint },
       { domain: 'activity', repo: this.activity as unknown as OperationalRepoint },
       { domain: 'task', repo: this.task as unknown as OperationalRepoint },
+      { domain: 'technical-screening', repo: this.technicalScreening as unknown as OperationalRepoint },
     ];
   }
 

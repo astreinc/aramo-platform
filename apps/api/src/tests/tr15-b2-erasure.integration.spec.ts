@@ -61,6 +61,7 @@ const REC = '01900000-0000-7000-8000-0000000000e2'; // live record
 const HUSK = '01900000-0000-7000-8000-0000000000e3'; // superseded husk of REC
 const SUBJ = '01900000-0000-7000-8000-0000000000e4'; // trust subject
 const EV = '01900000-0000-7000-8000-0000000000e5'; // evidence record
+const SCREENING_ACTOR = '01900000-0000-7000-8000-0000000000e6'; // TIP-E2E INC-3 recruiter
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'TR-15 B2 — erase-talent + data-inventory (real Postgres 17)',
@@ -140,6 +141,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [uuidv7(), TENANT, rid],
         );
       }
+      // TIP-E2E INC-3 (directive §10.2) — technical screening: a CONFIRMED session
+      // with a finding, a PUBLISHED intent and events on the live record, plus a
+      // DRAFT session with a finding on the HUSK (the husk chain must be reached).
+      // The tables carry NO delete trigger — erasure deletes them as plain rows.
+      for (const [rid, confirmed] of [[REC, true], [HUSK, false]] as const) {
+        const sessionId = uuidv7();
+        const findingId = uuidv7();
+        if (confirmed) {
+          await db.query(
+            `INSERT INTO technical_screening."ScreeningSession" (id, tenant_id, talent_record_id, state, version, created_by_actor_id, confirmed_by_actor_id, confirmed_at, confirmed_version, confirmation_attested)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,'CONFIRMED',3,$4::uuid,$4::uuid,now(),2,true)`,
+            [sessionId, TENANT, rid, SCREENING_ACTOR],
+          );
+        } else {
+          await db.query(
+            `INSERT INTO technical_screening."ScreeningSession" (id, tenant_id, talent_record_id, state, version, created_by_actor_id) VALUES ($1::uuid,$2::uuid,$3::uuid,'DRAFT',1,$4::uuid)`,
+            [sessionId, TENANT, rid, SCREENING_ACTOR],
+          );
+        }
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningFinding" (id, tenant_id, session_id, skill_raw, basis, observation_raw) VALUES ($1::uuid,$2::uuid,$3::uuid,'Go','RECRUITER_OBSERVED','observed')`,
+          [findingId, TENANT, sessionId],
+        );
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningEvent" (id, tenant_id, session_id, event_type, actor_id, session_version, payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'SESSION_CREATED',$4,1,'{}'::jsonb)`,
+          [uuidv7(), TENANT, sessionId, SCREENING_ACTOR],
+        );
+        if (confirmed) {
+          await db.query(
+            `INSERT INTO technical_screening."ScreeningEvidencePublication" (id, tenant_id, session_id, finding_id, evidence_record_id, talent_record_id_at_confirm, canonical_payload, payload_hash, collected_at, state, published_at)
+             VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'{}'::jsonb,'h',now(),'PUBLISHED',now())`,
+            [uuidv7(), TENANT, sessionId, findingId, EV, rid],
+          );
+        }
+      }
       // Consent ledger (record keyspace) + a RETAINED audit grant row.
       await db.query(
         `INSERT INTO consent."TalentConsentEvent" (id, talent_record_id, tenant_id, scope, action, captured_method, consent_version, occurred_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'profile_storage','granted','import','source-derived-v1',now())`,
@@ -174,6 +210,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(c('talent_evidence."TalentEducationEntry"')).toBe(2); // record + husk (the HALT-note holder, reached)
       expect(c('talent_embedding."TalentEmbedding"')).toBe(2); // GS-2A semantic index: record + husk, reached
       expect(c('consent."TalentConsentEvent"')).toBe(1);
+      // TIP-E2E INC-3 — screening holders reached through the session, husk included.
+      expect(c('technical_screening."ScreeningSession"')).toBe(2);
+      expect(c('technical_screening."ScreeningFinding"')).toBe(2);
+      expect(c('technical_screening."ScreeningEvent"')).toBe(2);
+      expect(c('technical_screening."ScreeningEvidencePublication"')).toBe(1);
       expect(c('talent_trust."EvidenceRecord"')).toBe(1);
       expect(c('talent_trust."EvidenceEvent"')).toBe(1);
       expect(c('talent_trust."SubjectAnchor"')).toBe(1);
@@ -223,6 +264,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('talent_trust."SubjectAnchor"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
       expect(await count('talent_trust."ResolutionSubject"', 'id = $1::uuid', [SUBJ])).toBe(0);
       expect(await count('talent_trust."ResolutionSubjectRef"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
+
+      // TIP-E2E INC-3 (§13 rows 25/47) — zero screening residue; every screening step
+      // reports 'deleted' (plain governed DELETEs; no trigger refused them).
+      for (const t of ['ScreeningEvent', 'ScreeningEvidencePublication', 'ScreeningFinding', 'ScreeningSession']) {
+        expect(await count(`technical_screening."${t}"`, 'tenant_id = $1::uuid', [TENANT])).toBe(0);
+        expect(report.steps.find((st) => st.table === `technical_screening."${t}"`)?.status).toBe('deleted');
+      }
 
       // S3 stub received the (zero, in this seed) blob keys — no doc/attachment seeded.
       expect(Array.isArray(s3Recorded)).toBe(true);

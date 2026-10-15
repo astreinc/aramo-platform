@@ -43,6 +43,7 @@
       "@aramo/common": ["./libs/common/src/index.ts"],
       "@aramo/communications": ["./libs/communications/src/index.ts"],
       "@aramo/conversation-intelligence": ["./libs/conversation-intelligence/src/index.ts"],
+      "@aramo/technical-screening": ["./libs/technical-screening/src/index.ts"],
       "@aramo/client-talent-restriction": ["./libs/client-talent-restriction/src/index.ts"],
       "@aramo/company": ["./libs/company/src/index.ts"],
       "@aramo/consent": ["./libs/consent/src/index.ts"],

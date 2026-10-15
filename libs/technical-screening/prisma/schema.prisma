@@ -1,0 +1,114 @@
+// Per-module Prisma schema for the `technical-screening` module.
+//
+// TIP-E2E INC-3 — Manual Technical Screening producer, per
+// ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §4 (vocabulary: Aramo-TR-SCREEN-1-DDR-v1_0-LOCKED).
+// A recruiter records findings in a DRAFT session, explicitly confirms them, and
+// each confirmed finding is published exactly once in effect as canonical
+// SCREENING_FINDING evidence in Talent Trust. Talent Trust stays the sole
+// evidence authority: ScreeningEvidencePublication tracks DELIVERY only.
+//
+// Architecture (v2.0/v2.1 §7.1 Schema-per-Module): schema `technical_screening`;
+// every cross-schema reference (talent_record_id, site_id, interaction_id,
+// evidence_record_id) is UUID-only without FK (§7.3); tenant_id replicated (§7.2).
+//
+// Database-enforced immutability (directive §4, D8 — UPDATE immutability, no new
+// session marker): ScreeningEvent rejects every UPDATE; ScreeningFinding rejects
+// UPDATE unless its session is DRAFT; a non-DRAFT ScreeningSession may change
+// only its merge re-key column. No DELETE trigger: deletion is confined in code to
+// the talent-erasure INVENTORY and DRAFT finding removal (directive §10.1).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["technical_screening"]
+}
+
+// One manual screening of one TalentRecord. state: DRAFT | CONFIRMED | VOIDED
+// (both targets terminal). No requisition_id — a screening report is not
+// requisition suitability (parent §1 item 4).
+model ScreeningSession {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  site_id               String?   @db.Uuid
+  // Re-keyable on talent merge (directive §10.3); the publication intents keep
+  // their own pinned talent_record_id_at_confirm.
+  talent_record_id      String    @db.Uuid
+  // Informational Communications reference; drives no derivation (D1).
+  interaction_id        String?   @db.Uuid
+  state                 String
+  version               Int       @default(1)
+  created_by_actor_id   String    @db.Uuid
+  created_at            DateTime  @default(now()) @db.Timestamptz(3)
+  updated_at            DateTime  @default(now()) @db.Timestamptz(3)
+  confirmed_by_actor_id String?   @db.Uuid
+  confirmed_at          DateTime? @db.Timestamptz(3)
+  confirmed_version     Int?
+  confirmation_attested Boolean?
+  voided_by_actor_id    String?   @db.Uuid
+  voided_at             DateTime? @db.Timestamptz(3)
+  void_reason           String?
+
+  @@index([tenant_id, talent_record_id])
+  @@schema("technical_screening")
+}
+
+// One recruiter-recorded finding. No rating, tier, fit, question-bank or
+// attachment field (directive §4).
+model ScreeningFinding {
+  id                String   @id @db.Uuid
+  tenant_id         String   @db.Uuid
+  session_id        String   @db.Uuid
+  skill_raw         String
+  basis             String
+  observation_raw   String
+  demonstration_raw String?
+  limitations_raw   String?
+  created_at        DateTime @default(now()) @db.Timestamptz(3)
+  updated_at        DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// The publication intent: every trust-write input is PINNED at confirmation, so
+// a retry rebuilds the call only from here (directive §7). state: PENDING |
+// PUBLISHED | CONFLICT (CONFLICT terminal).
+model ScreeningEvidencePublication {
+  id                          String    @id @db.Uuid
+  tenant_id                   String    @db.Uuid
+  session_id                  String    @db.Uuid
+  finding_id                  String    @unique @db.Uuid
+  evidence_record_id          String    @db.Uuid
+  talent_record_id_at_confirm String    @db.Uuid
+  canonical_payload           Json
+  payload_hash                String
+  collected_at                DateTime  @db.Timestamptz(3)
+  state                       String
+  attempt_count               Int       @default(0)
+  last_attempt_at             DateTime? @db.Timestamptz(3)
+  last_error_code             String?
+  published_at                DateTime? @db.Timestamptz(3)
+  created_at                  DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}
+
+// The append-only, content-free audit ledger (ids, enums, versions, counts only).
+model ScreeningEvent {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  session_id      String   @db.Uuid
+  event_type      String
+  actor_id        String
+  session_version Int
+  payload         Json
+  occurred_at     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([session_id])
+  @@schema("technical_screening")
+}

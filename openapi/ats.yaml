@@ -599,6 +599,349 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # ── TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9) ──
+  # A recruiter records findings in a DRAFT session and explicitly confirms them;
+  # each confirmed finding is published exactly once in effect as canonical
+  # SCREENING_FINDING evidence in Talent Trust. Manual only — no AI, no live
+  # capture; no write into Examination, Pipeline or Submittal. Every route needs
+  # the `ats` capability, a recruiter consumer and the listed screening scope; an
+  # absent, other-tenant or other-site Talent/session is the same 404.
+  /v1/talent-records/{talentId}/screening-sessions:
+    post:
+      operationId: createScreeningSession
+      summary: Open a DRAFT technical screening session for a live Talent.
+      description: Requires `screening:create`. A superseded Talent is 422 TALENT_RECORD_SUPERSEDED.
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScreeningSessionRequest'
+      responses:
+        '201':
+          description: The new DRAFT session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSession'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+    get:
+      operationId: listScreeningSessions
+      summary: List a Talent's technical screening sessions (newest first).
+      description: Requires `screening:read`.
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ScreeningSession'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}:
+    get:
+      operationId: getScreeningSession
+      summary: Read one screening session with findings and publication state.
+      description: Requires `screening:read`. Each publication carries the published evidence's current Talent Trust status.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/findings:
+    post:
+      operationId: addScreeningFinding
+      summary: Add a finding to a DRAFT session.
+      description: Requires `screening:edit`. Version CAS (409 SCREENING_SESSION_VERSION_CONFLICT); a non-DRAFT session is 422 SCREENING_SESSION_STATE_INVALID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreeningFindingRequest'
+      responses:
+        '201':
+          description: The updated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/findings/{findingId}:
+    patch:
+      operationId: editScreeningFinding
+      summary: Edit a finding of a DRAFT session.
+      description: Requires `screening:edit`. Version CAS; DRAFT only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: findingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreeningFindingRequest'
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: removeScreeningFinding
+      summary: Remove a finding from a DRAFT session.
+      description: Requires `screening:edit`. Version CAS (query `version`); DRAFT only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: findingId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: version
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/confirm:
+    post:
+      operationId: confirmScreeningSession
+      summary: Explicitly confirm a DRAFT session's findings (attested) and publish them.
+      description: |
+        Requires `screening:confirm`. One transaction moves the session to
+        CONFIRMED (terminal) and pins one PENDING publication intent per
+        finding; a synchronous publication attempt follows. A publication
+        failure never rolls the confirmation back (the intent stays PENDING).
+        Refusals: 400 VALIDATION_ERROR (no findings), 422 ATTESTATION_MISSING,
+        422 SCREENING_SESSION_STATE_INVALID, 409 SCREENING_SESSION_VERSION_CONFLICT
+        (stale version or finding-set mismatch), 422 TALENT_RECORD_SUPERSEDED.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: UUID. Same key + same body replays the original response; same key + different body is 409 IDEMPOTENCY_KEY_CONFLICT.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfirmScreeningSessionRequest'
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/void:
+    post:
+      operationId: voidScreeningSession
+      summary: Void a DRAFT session (terminal).
+      description: Requires `screening:edit`. DRAFT only; version CAS.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VoidScreeningSessionRequest'
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/screening-sessions/{id}/publish:
+    post:
+      operationId: publishScreeningSession
+      summary: Retry PENDING publication intents of a CONFIRMED session.
+      description: Requires `screening:confirm`. No re-attestation. PUBLISHED and CONFLICT intents are never re-sent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The screening session id.
+          schema: { type: string, format: uuid }
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: UUID. Same key + same body replays the original response; same key + different body is 409 IDEMPOTENCY_KEY_CONFLICT.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The screening session with its findings and publication state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScreeningSessionDetail'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   # ── Pipeline Accidental-Add Correction Directive v1.0 (VOID) ──
   # Remove a Talent from a requisition when added by mistake — an administrative
   # correction, NOT a recruiting disposition and NOT a delete. Governed + strict:
@@ -8285,6 +8628,116 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # ── TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §4/§9) ──
+    CreateScreeningSessionRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        interaction_id:
+          type: [string, 'null']
+          format: uuid
+          description: Optional informational reference to a Communications interaction.
+    ScreeningFindingRequest:
+      type: object
+      additionalProperties: false
+      required: [version, skill_raw, basis, observation_raw]
+      properties:
+        version: { type: integer, minimum: 1 }
+        skill_raw: { type: string, minLength: 1, maxLength: 200 }
+        basis:
+          type: string
+          enum: [SELF_REPORTED, RECRUITER_OBSERVED, DEMONSTRATED]
+          description: DEMONSTRATED means only that the recruiter recorded observing the activity — never verification.
+        observation_raw: { type: string, minLength: 1, maxLength: 4000 }
+        demonstration_raw:
+          type: [string, 'null']
+          maxLength: 4000
+          description: Required when basis is DEMONSTRATED; forbidden otherwise.
+        limitations_raw: { type: [string, 'null'], maxLength: 4000 }
+    ConfirmScreeningSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [version, confirmed_finding_ids, observations_confirmed]
+      properties:
+        version: { type: integer, minimum: 1 }
+        confirmed_finding_ids:
+          type: array
+          minItems: 1
+          items: { type: string, format: uuid }
+        observations_confirmed:
+          type: boolean
+          description: The recruiter's explicit attestation; must be true.
+    VoidScreeningSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version: { type: integer, minimum: 1 }
+        reason: { type: [string, 'null'], maxLength: 1000 }
+    ScreeningSession:
+      type: object
+      additionalProperties: false
+      required: [id, talent_record_id, interaction_id, state, version, created_at, updated_at, created_by_actor_id, confirmed_by_actor_id, confirmed_at, confirmed_version, voided_by_actor_id, voided_at, void_reason]
+      properties:
+        id: { type: string, format: uuid }
+        talent_record_id: { type: string, format: uuid }
+        interaction_id: { type: [string, 'null'], format: uuid }
+        state: { type: string, enum: [DRAFT, CONFIRMED, VOIDED] }
+        version: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        created_by_actor_id: { type: string, format: uuid }
+        confirmed_by_actor_id: { type: [string, 'null'], format: uuid }
+        confirmed_at: { type: [string, 'null'], format: date-time }
+        confirmed_version: { type: [integer, 'null'] }
+        voided_by_actor_id: { type: [string, 'null'], format: uuid }
+        voided_at: { type: [string, 'null'], format: date-time }
+        void_reason: { type: [string, 'null'] }
+    ScreeningFinding:
+      type: object
+      additionalProperties: false
+      required: [id, skill_raw, basis, observation_raw, demonstration_raw, limitations_raw, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        skill_raw: { type: string }
+        basis: { type: string, enum: [SELF_REPORTED, RECRUITER_OBSERVED, DEMONSTRATED] }
+        observation_raw: { type: string }
+        demonstration_raw: { type: [string, 'null'] }
+        limitations_raw: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ScreeningPublication:
+      type: object
+      additionalProperties: false
+      required: [id, finding_id, evidence_record_id, state, attempt_count, last_attempt_at, last_error_code, published_at, created_at, trust_status]
+      properties:
+        id: { type: string, format: uuid }
+        finding_id: { type: string, format: uuid }
+        evidence_record_id: { type: string, format: uuid }
+        state: { type: string, enum: [PENDING, PUBLISHED, CONFLICT] }
+        attempt_count: { type: integer }
+        last_attempt_at: { type: [string, 'null'], format: date-time }
+        last_error_code: { type: [string, 'null'] }
+        published_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        trust_status:
+          type: [string, 'null']
+          description: The published evidence's current Talent Trust status (VALID, DISPUTED, REVOKED, CONTRADICTED, STALE); null until published.
+    ScreeningSessionDetail:
+      type: object
+      additionalProperties: false
+      required: [session, findings, publications]
+      properties:
+        session:
+          $ref: '#/components/schemas/ScreeningSession'
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningFinding'
+        publications:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScreeningPublication'
     # ── Durable Async Résumé-First Talent Intake ──────────────────────────────
     CreateTalentIntakeDraftRequest:
       type: object

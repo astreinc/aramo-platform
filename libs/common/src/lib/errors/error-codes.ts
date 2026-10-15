@@ -964,6 +964,13 @@ export const ERROR_CODES = [
   // identity.invitation.rejected_cross_tenant retains the reason). Also the
   // governed mapping for a User.email P2002 lost race on the create path.
   'EMAIL_UNAVAILABLE',
+  // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9, D6) — a screening edit,
+  // removal, void or confirm on a session that is not DRAFT (CONFIRMED/VOIDED
+  // are terminal; the DB trigger also refuses). HTTP 422.
+  'SCREENING_SESSION_STATE_INVALID',
+  // TIP-E2E INC-3 — the session version (CAS token, held in the write predicate)
+  // is stale, or the confirmed finding set does not match the session's. HTTP 409.
+  'SCREENING_SESSION_VERSION_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

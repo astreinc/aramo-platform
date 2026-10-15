@@ -1728,6 +1728,12 @@ components:
         User.email uniqueness race lost between pre-check and insert maps
         to the same governed 409, never a raw P2002 / HTTP 500.
         AUTHZ-D4a adds one code for the team-model substrate.
+        TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9) adds two
+        screening-session lifecycle codes: SCREENING_SESSION_STATE_INVALID
+        (HTTP 422 — an edit, removal, void or confirm on a session that is
+        no longer DRAFT) and SCREENING_SESSION_VERSION_CONFLICT (HTTP 409 —
+        a stale session version, or a confirmed finding set that does not
+        match the session's findings).
         MANAGEMENT_CYCLE_REJECTED (HTTP 409) — set-management-edge
         refusal: the proposed (manager_user_id, report_user_id) edge
         would create a cycle in the management graph. The cycle check
@@ -1986,6 +1992,8 @@ components:
         - MICROSOFT_SCHEDULING_IDEMPOTENCY_CONFLICT
         - MICROSOFT_SCHEDULING_IN_PROGRESS
         - EMAIL_UNAVAILABLE
+        - SCREENING_SESSION_STATE_INVALID
+        - SCREENING_SESSION_VERSION_CONFLICT
 
     ErrorObject:
       type: object

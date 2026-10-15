@@ -108,6 +108,15 @@ const INVENTORY: ErasureStep[] = [
   //      holder, so erasure reaches it EXPLICITLY here (deleted before the husk record; the dry-run
   //      counts it) rather than via a cross-schema cascade this codebase does not use. ----
   { label: 'talent_embedding."TalentEmbedding"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
+  // ---- TIP-E2E INC-3 technical screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §10.2) — child before
+  //      parent THROUGH the session (children carry no talent_record_id; sessions are deleted
+  //      last so the subselects still resolve; the husk chain covers merged sessions). Plain
+  //      governed DELETEs — the screening tables carry NO delete trigger and NO marker (§10.1).
+  //      The published trust evidence is erased by subject in GROUP B above. ----
+  { label: 'technical_screening."ScreeningEvent"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
+  { label: 'technical_screening."ScreeningEvidencePublication"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
+  { label: 'technical_screening."ScreeningFinding"', keyspace: 'record-child', where: `session_id IN (SELECT id FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]))` },
+  { label: 'technical_screening."ScreeningSession"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
   // ---- GROUP C the husk records (record keyspace) — cascades resume_text (S3) + provenance + contradiction ----
   { label: 'talent_record."TalentRecord"', keyspace: 'record', where: `id = ANY($1::uuid[])` },
 ];
