@@ -391,6 +391,77 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(res.headers['location']).toBe(`https://${OTHER_HOST}/`);
       });
 
+      // Host-binding SSO recovery — the wrong-account → account-picker → correct-
+      // account round trip, end to end through real HTTP + real PKCE sealing.
+      it('recovery — wrong account denied, then ?select_account=1 on the right host carries prompt=select_account and the correct account mints', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        // 1. Microsoft SSO answered with an account that does not own OTHER_HOST.
+        const wrong = await prepareLogin('recruiter', OTHER_HOST);
+        const denied = await callbackOn(OTHER_HOST, wrong.pkceCookie, wrong.state);
+        expect(denied.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        // 2. The recovery login asks Microsoft for its account picker.
+        const pick = await request(app.getHttpServer())
+          .get('/auth/recruiter/login?select_account=1')
+          .set('Host', OWN_HOST);
+        expect(pick.status).toBe(302);
+        const authorize = new URL(pick.headers['location']!);
+        expect(authorize.pathname).toBe('/oauth2/authorize');
+        expect(authorize.searchParams.get('prompt')).toBe('select_account');
+        // 3. The user picks the account that owns the host → a normal session.
+        const pkceCookie = ((pick.headers['set-cookie'] as unknown as string[]) ?? [])
+          .find((c) => c.startsWith('aramo_pkce_state='))!
+          .split(';')[0]!;
+        const ok = await callbackOn(OWN_HOST, pkceCookie, authorize.searchParams.get('state')!);
+        expect(ok.status).toBe(302);
+        expect(ok.headers['location']).toBe(`https://${OWN_HOST}/`);
+        const cookies = ok.headers['set-cookie'] as unknown as string[];
+        expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
+      });
+
+      it('recovery — a ?select_account=1 login is host-sealed exactly like a normal one (presented at another host → refused before the code exchange)', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const pick = await request(app.getHttpServer())
+          .get('/auth/recruiter/login?select_account=1')
+          .set('Host', OWN_HOST);
+        const pkceCookie = ((pick.headers['set-cookie'] as unknown as string[]) ?? [])
+          .find((c) => c.startsWith('aramo_pkce_state='))!
+          .split(';')[0]!;
+        const state = new URL(pick.headers['location']!).searchParams.get('state')!;
+        const res = await callbackOn(OTHER_HOST, pkceCookie, state);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+      });
+
+      // No accidental platform access. A tenant user completing a PLATFORM-consumer
+      // login on a tenant host gets NO platform privilege: the credential carries
+      // zero scopes and is host-only (no Domain attribute), so it can never reach
+      // the platform host. (TYPED DIVERGENCE, escalated for a ruling: the TENANT
+      // host branch of evaluateHostBinding does not itself refuse the platform
+      // consumer — see the PR description. This spec pins today's safe outcome.)
+      it('no accidental platform access — a tenant user via a PLATFORM-consumer login gets zero scopes and a host-only cookie (enforce)', async () => {
+        process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+        stubCognitoVerifyOnly();
+        const { pkceCookie, state } = await prepareLogin('platform', OWN_HOST);
+        const res = await request(app.getHttpServer())
+          .get(`/auth/platform/callback?code=c&state=${state}`)
+          .set('Host', OWN_HOST)
+          .set('Cookie', pkceCookie);
+        const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
+        const access = cookies.find((c) => c.startsWith('aramo_access_token=') && !c.includes('Max-Age=0'));
+        if (access !== undefined) {
+          expect(access.toLowerCase()).not.toContain('domain=');
+          const session = await request(app.getHttpServer())
+            .get('/auth/platform/session')
+            .set('Host', OWN_HOST)
+            .set('Cookie', access.split(';')[0]!);
+          expect(session.status).toBe(200);
+          expect(session.body.scopes).toEqual([]);
+          expect((session.body.scopes as string[]).some((sc) => sc.startsWith('platform:'))).toBe(false);
+        }
+      });
+
       it('L6 enforce — a cookie sealed on one tenant host presented at another host is refused BEFORE the code exchange', async () => {
         process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
         stubCognitoVerifyOnly();

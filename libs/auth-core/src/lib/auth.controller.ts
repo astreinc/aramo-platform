@@ -169,6 +169,15 @@ export class AuthController {
     @Param('consumer') consumer: string,
     @Req() req: RequestWithCookies,
     @Res() res: Response,
+    // Host-binding SSO recovery — `?select_account=1` asks Microsoft to show its
+    // account picker instead of silently re-using the account already signed in
+    // on this browser (the wrong-account case host binding detects). Verified
+    // against PROD Cognito 2026-10-15: the Hosted UI forwards `prompt` to the
+    // Microsoft OIDC authorize URL, both with the identity_provider hint (tenant
+    // hosts) and from the chooser page's IdP buttons (platform host). Only the
+    // exact value '1' is honoured, and the forwarded prompt is a fixed constant —
+    // no caller-supplied value ever reaches the authorize URL.
+    @Query('select_account') selectAccount?: string,
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
@@ -228,6 +237,9 @@ export class AuthController {
     // callback/token-exchange/reconcile spine.
     if (identityProvider !== null) {
       url.searchParams.set('identity_provider', identityProvider);
+    }
+    if (selectAccount === '1') {
+      url.searchParams.set('prompt', 'select_account');
     }
     res.redirect(302, url.toString());
   }

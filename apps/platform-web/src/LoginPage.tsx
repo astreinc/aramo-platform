@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, Card, InlineAlert, redirectToLogin } from '@aramo/fe-foundation';
+import { Button, Card, InlineAlert, WrongAccountRecovery, redirectToLogin } from '@aramo/fe-foundation';
 
 // Inc-3 PR-3.5 (Workstream B) — platform-web's login landing.
 //
@@ -28,6 +28,16 @@ export function LoginPage({ onMount }: LoginPageProps) {
     return (
       <div className="pw-page" style={{ maxWidth: 480 }}>
         <p>Redirecting to sign-in…</p>
+      </div>
+    );
+  }
+
+  // Host-binding SSO recovery — e.g. a tenant (ATS) Microsoft account reached the
+  // platform console. Account-recovery actions, never a silent retry.
+  if (error === 'TENANT_ACCESS_DENIED') {
+    return (
+      <div className="pw-page" style={{ maxWidth: 480 }}>
+        <WrongAccountRecovery />
       </div>
     );
   }

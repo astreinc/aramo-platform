@@ -18,13 +18,17 @@ export type { ApiClientOptions } from './api/client';
 export {
   LOGIN_PATH,
   LOGOUT_PATH,
+  MICROSOFT_SIGN_OUT_URL,
   SESSION_PATH,
+  TENANT_ACCESS_DENIED_PATH,
   fetchSession,
+  loginUrl,
   logout,
+  redirectToAccessDenied,
   redirectToLogin,
   useSession,
 } from './auth/session';
-export type { Session, SessionState } from './auth/session';
+export type { LoginOptions, Session, SessionState } from './auth/session';
 // Inc-2 PR-2 — single auth-consumer bootstrap point (default 'recruiter';
 // platform-web calls this with 'platform'). Parameterizes the /auth/:consumer/*
 // paths in session.ts + api/client.ts.
@@ -53,6 +57,7 @@ export {
   PageHeader,
   RadioGroup,
   SignedOut,
+  WrongAccountRecovery,
   Switch,
   Table,
   Tabs,

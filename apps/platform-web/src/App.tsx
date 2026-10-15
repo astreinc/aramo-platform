@@ -51,7 +51,7 @@ export function App() {
   if (location.pathname === '/signed-out') {
     return (
       <ToastProvider>
-        <SignedOut />
+        <SignedOut offerAccountSwitch />
       </ToastProvider>
     );
   }

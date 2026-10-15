@@ -799,6 +799,54 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
     expect(locationOf(res).searchParams.has('identity_provider')).toBe(false);
   });
 
+  // Host-binding SSO recovery — `?select_account=1` → prompt=select_account.
+  describe('wrong-account recovery (?select_account=1)', () => {
+    it('default login sends NO prompt (silent SSO for the normal case is unchanged)', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding('microsoft') });
+      const res = makeRes();
+      await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never);
+      expect(locationOf(res).searchParams.has('prompt')).toBe(false);
+    });
+
+    it('select_account=1 on a tenant host → prompt=select_account WITH the identity_provider hint (forwarded to Microsoft)', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding('microsoft') });
+      const res = makeRes();
+      await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never, '1');
+      const url = locationOf(res);
+      expect(url.searchParams.get('prompt')).toBe('select_account');
+      expect(url.searchParams.get('identity_provider')).toBe('microsoft');
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256');
+    });
+
+    it('select_account=1 on the platform host (no IdP hint) → prompt=select_account on the chooser authorize', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding(null) });
+      const res = makeRes();
+      await ctl.login('platform', reqWithHost('admin.aramo.ai'), res as never, '1');
+      const url = locationOf(res);
+      expect(url.searchParams.get('prompt')).toBe('select_account');
+      expect(url.searchParams.has('identity_provider')).toBe(false);
+    });
+
+    it.each(['0', 'true', 'login', 'none', 'consent', '1 ', '', 'select_account'])(
+      'any value other than exactly "1" (%j) adds NO prompt — nothing caller-supplied is forwarded',
+      async (v) => {
+        const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding('microsoft') });
+        const res = makeRes();
+        await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never, v);
+        expect(locationOf(res).searchParams.has('prompt')).toBe(false);
+      },
+    );
+
+    it('the redirect target is always the configured Cognito authorize endpoint (no open redirect)', async () => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding('microsoft') });
+      const res = makeRes();
+      await ctl.login('recruiter', reqWithHost('astre.aramo.ai'), res as never, '1');
+      const url = locationOf(res);
+      expect(`${url.origin}${url.pathname}`).toMatch(/^https:\/\/[^/]+\/oauth2\/authorize$/);
+      expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT_URI);
+    });
+  });
+
   // IC-2 PR-4 (F-5): login SEALS the host class + context into the PKCE state
   // next to the consumer, so the callback can bind the resolved identity to the
   // host the user actually logged in on.

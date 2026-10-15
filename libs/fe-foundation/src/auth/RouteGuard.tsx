@@ -4,6 +4,7 @@ import { ForbiddenState } from '../components/ForbiddenState';
 
 import { hasScope } from './scopes';
 import {
+  redirectToAccessDenied,
   redirectToLogin,
   useSession,
   type SessionState,
@@ -22,6 +23,8 @@ interface RouteGuardProps {
   // the real fetch-driven hook.
   sessionStateOverride?: SessionState;
   onRedirect?: () => void;
+  // Test seam for the wrong-account (403 TENANT_ACCESS_DENIED) navigation.
+  onDenied?: () => void;
 }
 
 export function RouteGuard({
@@ -29,11 +32,19 @@ export function RouteGuard({
   requireScope,
   sessionStateOverride,
   onRedirect,
+  onDenied,
 }: RouteGuardProps) {
   const state = sessionStateOverride ?? useSession();
 
   if (state.status === 'loading') {
     return <p>Loading session…</p>;
+  }
+
+  // Wrong account for this host: show the recovery page. Never auto-restart the
+  // login — Microsoft SSO would silently answer with the same account (loop).
+  if (state.status === 'denied') {
+    (onDenied ?? redirectToAccessDenied)();
+    return null;
   }
 
   if (state.status === 'unauthenticated') {
