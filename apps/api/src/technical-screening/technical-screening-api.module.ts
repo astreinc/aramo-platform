@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { AiDraftModule } from '@aramo/ai-draft';
 import { AuthModule } from '@aramo/auth';
 import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -7,15 +6,15 @@ import { JobDomainModule } from '@aramo/job-domain';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
-import { TechnicalScreeningModule } from '@aramo/technical-screening';
 
 import { ConversationTranscriptZoomModule } from '../conversation-transcript/conversation-transcript-zoom.module.js';
+import { CiProcessingModule } from '../conversation-intelligence/ci-processing.module.js';
 import { MicrosoftModule } from '../microsoft/microsoft.module.js';
 
-import { ScreeningTrustPublisherAdapter } from './screening-trust-publisher.adapter.js';
 import { ScreeningAccessService } from './screening-access.service.js';
 import { ScreeningAiConsentAdapter } from './screening-ai-consent.adapter.js';
 import { ScreeningContextReader } from './screening-context.reader.js';
+import { ScreeningDomain } from './screening-domain.module.js';
 import { ScreeningMeetingService } from './screening-meeting.service.js';
 import {
   ScreeningSessionController,
@@ -23,17 +22,9 @@ import {
 } from './technical-screening.controller.js';
 
 // TIP-E2E INC-3 — the Technical Screening HTTP surface (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8/§9).
-// TechnicalScreeningModule is registered with the REQUIRED Talent Trust publisher
-// adapter (a missing adapter fails at bootstrap). The domain module is re-exported
-// so the record-reconcile orchestrator can inject TechnicalScreeningRepository
-// for the talent-merge re-key (§10.3).
-const ScreeningDomain = TechnicalScreeningModule.register({
-  publisher: ScreeningTrustPublisherAdapter,
-  // INC-3 A1-3 — the existing ai_processing consent operation, fail closed.
-  aiConsent: ScreeningAiConsentAdapter,
-  imports: [TalentTrustModule, AiDraftModule, ConsentModule],
-});
-
+// The domain registration lives in screening-domain.module.ts (shared with the
+// CI screening profile). It is re-exported so the record-reconcile orchestrator
+// can inject TechnicalScreeningRepository for the talent-merge re-key (§10.3).
 @Module({
   imports: [
     AuthModule,
@@ -47,6 +38,8 @@ const ScreeningDomain = TechnicalScreeningModule.register({
     // the B3/B4 transcript services (Teams provider registered there).
     MicrosoftModule,
     ConversationTranscriptZoomModule,
+    // INC-3 A1-5 — schedules the CI screening profile for linked transcripts.
+    CiProcessingModule,
     ScreeningDomain,
   ],
   controllers: [TalentScreeningSessionsController, ScreeningSessionController],

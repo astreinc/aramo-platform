@@ -6,7 +6,7 @@
 // is idempotent; the run's analysis-identity key makes replay converge and a
 // changed model/prompt/schema a NEW run.
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
 import {
   REQUISITION_SNAPSHOT_SOURCE,
@@ -45,6 +45,24 @@ import {
   CONVERSATION_INTELLIGENCE_MODEL_PROVIDER,
   type ConversationIntelligenceModelProvider,
 } from './model/conversation-intelligence-model-provider.port.js';
+import {
+  CI_SCREENING_CLAIM_TYPE,
+  CI_SCREENING_PROMPT_SHA256,
+  CI_SCREENING_PROMPT_TEMPLATE_ID,
+  CI_SCREENING_PROMPT_TEMPLATE_VERSION,
+  CI_SCREENING_SCHEMA_VERSION,
+  resolveScreeningCitations,
+  validateScreeningAnalysisResult,
+  type ScreeningAnalysisResultV1,
+} from './analysis/screening-analysis.js';
+import {
+  SCREENING_ANALYSIS_CONTEXT_SOURCE,
+  SCREENING_ANALYSIS_MODEL,
+  SCREENING_FINDING_DRAFT_SINK,
+  type ScreeningAnalysisContextSource,
+  type ScreeningAnalysisModel,
+  type ScreeningFindingDraftSink,
+} from './ports/screening-analysis.port.js';
 
 export const CI_MAX_PROCESSING_ATTEMPTS = 5;
 
@@ -52,6 +70,12 @@ export interface ProcessConversationIntelligenceCommand {
   readonly tenant_id: string;
   readonly conversation_transcript_id: string;
   readonly requisition_analysis_context_snapshot_id: string;
+}
+
+// INC-3 A1-5 — the SCREENING analysis profile command (Part D.1/D.2).
+export interface ProcessScreeningAnalysisCommand {
+  readonly tenant_id: string;
+  readonly run_id: string;
 }
 
 export type CiProcessingOutcome =
@@ -77,7 +101,162 @@ export class ConversationIntelligenceProcessingService {
     @Inject(NORMALIZED_TRANSCRIPT_SOURCE) private readonly transcripts: NormalizedTranscriptSource,
     @Inject(AI_PROCESSING_AUTHORIZATION) private readonly authz: AiProcessingAuthorizationPort,
     @Inject(CONVERSATION_INTELLIGENCE_MODEL_PROVIDER) private readonly model: ConversationIntelligenceModelProvider,
+    // INC-3 A1-5 — the screening-profile seams (bound at the composition root;
+    // absent → a screening run fails closed, never falls back to another path).
+    @Optional() @Inject(SCREENING_ANALYSIS_CONTEXT_SOURCE) private readonly screeningContext?: ScreeningAnalysisContextSource,
+    @Optional() @Inject(SCREENING_FINDING_DRAFT_SINK) private readonly screeningSink?: ScreeningFindingDraftSink,
+    @Optional() @Inject(SCREENING_ANALYSIS_MODEL) private readonly screeningModel?: ScreeningAnalysisModel,
   ) {}
+
+  /**
+   * INC-3 A1-5 — process one queued SCREENING-profile run. Same run state
+   * machine, same independent fail-closed ai_processing gate before any model
+   * call, same grounding-integrity and citation rules as process(). The
+   * snapshot is optional; exactly-one session (and through it exactly-one
+   * Talent) is required instead of exactly-one Requisition. Output lands as
+   * DRAFT findings in the screening domain (reviewed there, D.3) and as the
+   * run's immutable claims + coordinate-only citations here.
+   */
+  async processScreening(command: ProcessScreeningAnalysisCommand): Promise<CiProcessingResult> {
+    const { tenant_id } = command;
+    const run = await this.repo.findRunByIdInTenant(tenant_id, command.run_id);
+    if (run === null || run.analysis_profile !== 'SCREENING' || run.screening_session_id === null) {
+      return { outcome: 'transcript_not_found' };
+    }
+    if (run.status === 'completed') return { outcome: 'completed', run };
+    if (this.screeningContext === undefined || this.screeningSink === undefined || this.screeningModel === undefined) {
+      const processing = await this.transitionTo(tenant_id, run, 'processing', { started_at: new Date() });
+      return this.toState(tenant_id, processing, 'failed_terminal', CI_PROCESSING_ERROR_CODES.SCREENING_PROFILE_UNAVAILABLE);
+    }
+
+    const load = await this.transcripts.load(tenant_id, run.conversation_transcript_id);
+    if (load.status === 'not_found') return { outcome: 'transcript_not_found' };
+    if (load.status === 'not_ready') return { outcome: 'transcript_not_ready' };
+
+    const processing = await this.transitionTo(tenant_id, run, 'processing', { started_at: new Date() });
+
+    // Exactly-one session → exactly-one Talent; the session must still be a
+    // DRAFT and be linked to THIS transcript's meeting interaction.
+    const ctx = await this.screeningContext.load(tenant_id, run.screening_session_id);
+    if (ctx.status !== 'ready') {
+      return this.toState(tenant_id, processing, 'failed_terminal', ctx.status === 'not_draft'
+        ? CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_NOT_DRAFT
+        : CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_NOT_FOUND);
+    }
+    if (ctx.context.interaction_id !== run.interaction_id) {
+      return this.toState(tenant_id, processing, 'intervention_required', CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_MISMATCH);
+    }
+
+    // ai_processing — independent, fail closed, BEFORE any model call (D.2).
+    const decision = await this.authz.evaluate({ tenant_id, interaction_id: run.interaction_id });
+    if (!decision.allowed) {
+      if (decision.reason === 'no_talent') {
+        return this.park(tenant_id, processing, CI_PROCESSING_ERROR_CODES.TALENT_ASSOCIATION_MISSING);
+      }
+      if (decision.reason === 'ambiguous_talent') {
+        return this.toState(tenant_id, processing, 'intervention_required', CI_PROCESSING_ERROR_CODES.TALENT_ASSOCIATION_AMBIGUOUS);
+      }
+      return this.toState(tenant_id, processing, 'blocked_not_authorized', CI_PROCESSING_ERROR_CODES.AI_PROCESSING_NOT_AUTHORIZED);
+    }
+
+    if (load.status === 'artifact_not_found') {
+      return this.toState(tenant_id, processing, 'failed_terminal', CI_PROCESSING_ERROR_CODES.NORMALIZED_ARTIFACT_NOT_FOUND);
+    }
+    if (load.status === 'hash_mismatch') {
+      return this.toState(tenant_id, processing, 'failed_terminal', CI_PROCESSING_ERROR_CODES.NORMALIZED_HASH_MISMATCH);
+    }
+    const view: NormalizedTranscriptView = load.view;
+
+    // Optional immutable Requisition snapshot (captured only when the session
+    // carries a Requisition). A recorded-but-missing snapshot fails closed.
+    let requisitionContext: unknown | null = null;
+    if (run.requisition_analysis_context_snapshot_id !== null) {
+      const snapshot = await this.snapshots.getSnapshot(tenant_id, run.requisition_analysis_context_snapshot_id);
+      if (snapshot === null) {
+        return this.toState(tenant_id, processing, 'failed_terminal', CI_PROCESSING_ERROR_CODES.REQUISITION_SNAPSHOT_NOT_FOUND);
+      }
+      requisitionContext = snapshot.context;
+    }
+
+    const sent = this.screeningModel.redactUtterances(view);
+    const outcome = await this.screeningModel.generate({
+      tenant_id,
+      conversation_transcript_id: run.conversation_transcript_id,
+      utterances: sent,
+      context: ctx.context,
+      requisition_context: requisitionContext,
+    });
+    if (outcome.kind === 'retryable_failure') return this.retryOrPark(tenant_id, processing, outcome.error_code);
+    if (outcome.kind === 'terminal_failure') return this.toState(tenant_id, processing, 'failed_terminal', outcome.error_code);
+
+    let result: ScreeningAnalysisResultV1;
+    let spans: ReturnType<typeof resolveScreeningCitations>;
+    try {
+      result = validateScreeningAnalysisResult(outcome.raw_result);
+      spans = resolveScreeningCitations(
+        result,
+        new Map(sent.map((u) => [u.utterance_id, u.text])),
+        new Map(view.utterances.map((u) => [u.utterance_id, u.text])),
+      );
+    } catch (e) {
+      if (e instanceof CiAnalysisValidationError) return this.retryOrPark(tenant_id, processing, e.code);
+      throw e;
+    }
+
+    const cite = (i: number) =>
+      (spans[i] ?? []).map((sp) => ({
+        conversation_transcript_id: run.conversation_transcript_id,
+        normalized_sha256: view.normalized_sha256,
+        utterance_id: sp.utterance_id,
+        start_offset: sp.start_offset,
+        end_offset: sp.end_offset,
+      }));
+
+    // Drafts land in the screening domain FIRST, idempotent on the run id, so a
+    // crash before completeRun converges on replay (never drafts twice).
+    const sink = await this.screeningSink.saveDrafts({
+      tenant_id,
+      session_id: run.screening_session_id,
+      run_id: run.id,
+      provenance: {
+        provider: run.model_provider,
+        model: outcome.model_used,
+        provider_request_id: outcome.model_request_id ?? null,
+        prompt_version: `${CI_SCREENING_PROMPT_TEMPLATE_ID}.${CI_SCREENING_PROMPT_TEMPLATE_VERSION}`,
+        input_sha256: outcome.input_sha256,
+        used_talent_profile: ctx.context.talent_profile !== null,
+        used_requisition: requisitionContext !== null,
+      },
+      findings: result.findings.map((f, i) => ({
+        skill: f.skill,
+        observation: f.observation,
+        limitations: f.limitations,
+        citations: cite(i),
+      })),
+    });
+    if (sink === 'session_not_draft' || sink === 'session_not_found') {
+      return this.toState(tenant_id, processing, 'failed_terminal', sink === 'session_not_draft'
+        ? CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_NOT_DRAFT
+        : CI_PROCESSING_ERROR_CODES.SCREENING_SESSION_NOT_FOUND);
+    }
+
+    const claims: PersistClaimInput[] = result.findings.map((f, ordinal) => ({
+      ordinal,
+      claim_type: CI_SCREENING_CLAIM_TYPE,
+      context_ref: null,
+      statement: f.observation,
+      status: 'SUPPORTED_BY_STATEMENT',
+      citations: cite(ordinal),
+    }));
+    const completed = await this.repo.completeRun({
+      tenantId: tenant_id,
+      runId: processing.id,
+      claims,
+      draftSchemaVersion: CI_SCREENING_SCHEMA_VERSION,
+      draftContent: { findings: result.findings.map((f) => ({ skill: f.skill, observation: f.observation, limitations: f.limitations })) },
+    });
+    return { outcome: 'completed', run: completed };
+  }
 
   async process(command: ProcessConversationIntelligenceCommand): Promise<CiProcessingResult> {
     const { tenant_id, conversation_transcript_id, requisition_analysis_context_snapshot_id } = command;

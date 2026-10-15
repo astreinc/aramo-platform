@@ -38,6 +38,7 @@ export {
   ConversationIntelligenceProcessingService,
   CI_MAX_PROCESSING_ATTEMPTS,
   type ProcessConversationIntelligenceCommand,
+  type ProcessScreeningAnalysisCommand,
   type CiProcessingResult,
   type CiProcessingOutcome,
 } from './lib/conversation-intelligence-processing.service.js';
@@ -46,6 +47,7 @@ export {
   type CiRunRow,
   type CiAnalysisIdentity,
   type CiRunProvenance,
+  type CiScreeningRunProvenance,
   type PersistClaimInput,
 } from './lib/conversation-intelligence-run.repository.js';
 
@@ -129,3 +131,36 @@ export {
   type RequisitionSnapshotSource,
   type RequisitionSnapshotView,
 } from './lib/ports/requisition-snapshot-source.port.js';
+
+// TIP-E2E INC-3 A1-5 — the SCREENING analysis profile (Part D.1/D.2).
+export {
+  CI_ANALYSIS_PROFILE_REQUISITION,
+  CI_ANALYSIS_PROFILE_SCREENING,
+  CI_SCREENING_SCHEMA_VERSION,
+  CI_SCREENING_PROMPT_TEMPLATE_ID,
+  CI_SCREENING_PROMPT_TEMPLATE_VERSION,
+  CI_SCREENING_PROMPT_TEMPLATE_TEXT,
+  CI_SCREENING_PROMPT_SHA256,
+  CI_SCREENING_JSON_SCHEMA,
+  CI_SCREENING_JSON_SCHEMA_NAME,
+  CI_SCREENING_CLAIM_TYPE,
+  validateScreeningAnalysisResult,
+  resolveScreeningCitations,
+  type CiAnalysisProfile,
+  type ScreeningAnalysisResultV1,
+  type ScreeningFindingV1,
+} from './lib/analysis/screening-analysis.js';
+export {
+  SCREENING_ANALYSIS_CONTEXT_SOURCE,
+  SCREENING_FINDING_DRAFT_SINK,
+  SCREENING_ANALYSIS_MODEL,
+  type ScreeningAnalysisContext,
+  type ScreeningAnalysisContextSource,
+  type ScreeningContextLoad,
+  type ScreeningFindingDraft,
+  type ScreeningFindingDraftSink,
+  type ScreeningDraftSinkResult,
+  type ScreeningAnalysisModel,
+  type ScreeningModelInput,
+  type ScreeningModelOutcome,
+} from './lib/ports/screening-analysis.port.js';

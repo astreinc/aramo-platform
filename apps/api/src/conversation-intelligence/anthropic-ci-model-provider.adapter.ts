@@ -97,7 +97,7 @@ export class AnthropicConversationIntelligenceAdapter implements ConversationInt
   }
 }
 
-function mapCategoryToErrorCode(category: StructuredGenerationErrorCategory): string {
+export function mapCategoryToErrorCode(category: StructuredGenerationErrorCategory): string {
   switch (category) {
     case 'rate_limited':
       return CI_PROCESSING_ERROR_CODES.MODEL_RATE_LIMITED;

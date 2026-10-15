@@ -6,6 +6,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,6 +19,12 @@ import type { Request } from 'express';
 import { AramoError, RequestId, hashCanonicalizedBody } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import {
+  ConversationIntelligenceRunRepository,
+  NORMALIZED_TRANSCRIPT_SOURCE,
+  type CiRunRow,
+  type NormalizedTranscriptSource,
+} from '@aramo/conversation-intelligence';
 import { IdempotencyService } from '@aramo/consent';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import {
@@ -149,6 +156,29 @@ export interface ScreeningTranscriptLinkView {
   created_at: string;
 }
 
+// INC-3 A1-5 — the CI screening-profile run status per linked transcript
+// (provider + model as recorded on the run; never the transcript text).
+export interface ScreeningAnalysisView {
+  run_id: string;
+  conversation_transcript_id: string;
+  status: string;
+  last_error_code: string | null;
+  model_provider: string;
+  model_name: string;
+  created_at: string;
+  completed_at: string | null;
+}
+
+// INC-3 A1-5 — the cited transcript excerpt (screening:transcript:read only).
+export interface ScreeningCitationExcerptView {
+  citation_id: string;
+  conversation_transcript_id: string;
+  utterance_id: string;
+  speaker_role: string;
+  excerpt: string;
+  utterance_text: string;
+}
+
 export interface ScreeningPublicationView {
   id: string;
   finding_id: string;
@@ -174,6 +204,7 @@ export interface ScreeningSessionDetailView {
   suggestions: ScreeningSuggestionView[];
   generations: ScreeningGenerationView[];
   transcripts: ScreeningTranscriptLinkView[];
+  analyses: ScreeningAnalysisView[];
 }
 
 function citationView(c: ScreeningCitationRow): ScreeningCitationView {
@@ -230,6 +261,19 @@ function generationView(g: ScreeningGenerationRow): ScreeningGenerationView {
     used_transcript: g.used_transcript,
     output_count: g.output_count,
     created_at: g.created_at.toISOString(),
+  };
+}
+
+function analysisView(r: CiRunRow): ScreeningAnalysisView {
+  return {
+    run_id: r.id,
+    conversation_transcript_id: r.conversation_transcript_id,
+    status: r.status,
+    last_error_code: r.last_error_code,
+    model_provider: r.model_provider,
+    model_name: r.model_name,
+    created_at: r.created_at.toISOString(),
+    completed_at: r.completed_at === null ? null : r.completed_at.toISOString(),
   };
 }
 
@@ -393,7 +437,47 @@ export class ScreeningSessionController {
     private readonly ai: ScreeningAiService,
     private readonly context: ScreeningContextReader,
     private readonly meetings: ScreeningMeetingService,
+    private readonly ciRuns: ConversationIntelligenceRunRepository,
+    @Inject(NORMALIZED_TRANSCRIPT_SOURCE) private readonly transcriptSource: NormalizedTranscriptSource,
   ) {}
+
+  // A1-5 / D.3 — the transcript excerpt behind ONE citation of this session's
+  // findings. Requires screening:transcript:read (B.7). Reads the stored,
+  // hash-verified normalized artifact; a deleted or unverifiable transcript is
+  // never reconstructed (404 with the reason).
+  @Get(':id/citations/:citationId/excerpt')
+  @RequireScopes('screening:read', 'screening:transcript:read')
+  async citationExcerpt(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('citationId', ParseUUIDPipe) citationId: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<ScreeningCitationExcerptView> {
+    this.access.assertRecruiter(auth, requestId);
+    await this.access.sessionFor(auth, id, requestId);
+    const d = await this.screening.getDetail(auth.tenant_id, id, requestId);
+    const citation = d.citations.find((c) => c.id === citationId);
+    if (citation === undefined) throw new AramoError('NOT_FOUND', 'not found', 404, { requestId });
+    const load = await this.transcriptSource.load(auth.tenant_id, citation.conversation_transcript_id);
+    if (load.status !== 'ready') {
+      throw new AramoError('NOT_FOUND', 'the cited transcript is not available', 404, {
+        requestId,
+        details: { reason: `transcript_${load.status}` },
+      });
+    }
+    const utterance = load.view.utterances.find((u) => u.utterance_id === citation.utterance_id);
+    if (utterance === undefined) {
+      throw new AramoError('NOT_FOUND', 'the cited utterance is not available', 404, { requestId });
+    }
+    return {
+      citation_id: citation.id,
+      conversation_transcript_id: citation.conversation_transcript_id,
+      utterance_id: citation.utterance_id,
+      speaker_role: utterance.speaker_role,
+      excerpt: utterance.text.slice(citation.start_offset, citation.end_offset),
+      utterance_text: utterance.text,
+    };
+  }
 
   // ---- INC-3 A1-4 — Teams meeting (existing Outlook scheduling) -----------
 
@@ -818,6 +902,7 @@ export class ScreeningSessionController {
       suggestions: d.suggestions.map(suggestionView),
       generations: d.generations.map(generationView),
       transcripts: d.transcripts.map(transcriptLinkView),
+      analyses: (await this.ciRuns.listScreeningRuns(auth.tenant_id, id)).map(analysisView),
     };
   }
 }

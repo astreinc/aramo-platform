@@ -11,6 +11,7 @@ import {
   type ScreeningSessionRow,
 } from '@aramo/technical-screening';
 
+import { NormalizedTranscriptReadyHandler } from '../conversation-intelligence/normalized-transcript-ready.handler.js';
 import {
   MICROSOFT_TEAMS_PROVIDER_KEY,
   MICROSOFT_TEAMS_TRANSCRIPT_FORMAT,
@@ -52,6 +53,9 @@ export interface ScreeningTranscriptCheckItem {
   provider_transcript_id: string;
   state: string;
   linked: boolean;
+  // A1-5 — the CI screening-profile scheduling outcome ('queued' only when the
+  // dark-by-default CI processing is enabled and configured).
+  analysis: string | null;
 }
 
 export interface ScreeningMeetingScheduleResult {
@@ -73,6 +77,7 @@ export class ScreeningMeetingService {
     private readonly transcripts: ConversationTranscriptService,
     private readonly normalization: TranscriptNormalizationService,
     private readonly consent: ScreeningAiConsentAdapter,
+    private readonly analysis: NormalizedTranscriptReadyHandler,
   ) {}
 
   async schedule(args: {
@@ -237,6 +242,7 @@ export class ScreeningMeetingService {
         });
       }
       let linked = false;
+      let analysis: string | null = null;
       if (row.state === 'normalized') {
         await this.screening.linkTranscript({
           tenant_id: auth.tenant_id,
@@ -247,8 +253,18 @@ export class ScreeningMeetingService {
           requestId,
         });
         linked = true;
+        // Asynchronous CI screening profile (no model call on this thread);
+        // the worker re-checks ai_processing before any model call.
+        const scheduled = await this.analysis.scheduleScreening({
+          tenant_id: auth.tenant_id,
+          conversation_transcript_id: row.id,
+          screening_session_id: session.id,
+          requisition_id: session.requisition_id,
+          request_id: requestId,
+        });
+        analysis = scheduled.reason;
       }
-      items.push({ conversation_transcript_id: row.id, provider_transcript_id: ref.transcript_id, state: row.state, linked });
+      items.push({ conversation_transcript_id: row.id, provider_transcript_id: ref.transcript_id, state: row.state, linked, analysis });
     }
     return { items, normalized: items.filter((i) => i.linked) };
   }

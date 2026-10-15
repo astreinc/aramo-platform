@@ -287,10 +287,11 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
     const consent = {
       isOperationAllowed: vi.fn(async (_t: string, _r: string, op: string) => opts.consent?.[op] ?? true),
     };
+    const analysis = { scheduleScreening: vi.fn().mockResolvedValue({ scheduled: false, reason: 'disabled' }) };
     const svc = new ScreeningMeetingService(
-      screening as never, scheduling as never, artifacts as never, transcripts as never, normalization as never, consent as never,
+      screening as never, scheduling as never, artifacts as never, transcripts as never, normalization as never, consent as never, analysis as never,
     );
-    return { svc, screening, scheduling, artifacts, transcripts, normalization, consent };
+    return { svc, screening, scheduling, artifacts, transcripts, normalization, consent, analysis };
   }
   const body = { subject: 'Screen', start_date_time: '2026-11-01T10:00:00Z', end_date_time: '2026-11-01T10:30:00Z', time_zone: 'UTC', idempotency_key: 'idem-12345' };
 
@@ -346,7 +347,12 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
     expect(c.transcripts.acquire).toHaveBeenCalledWith(expect.objectContaining({ authorization: { transcription_authorized: true } }));
     expect(c.normalization.normalize).toHaveBeenCalledWith({ tenant_id: TENANT, transcript_id: 'ct-1', source_format: 'microsoft_teams_transcript' });
     expect(c.screening.linkTranscript).toHaveBeenCalledWith(expect.objectContaining({ conversation_transcript_id: 'ct-1', source: 'TEAMS_GRAPH' }));
-    expect(r.items).toEqual([{ conversation_transcript_id: 'ct-1', provider_transcript_id: 'tr-1', state: 'normalized', linked: true }]);
+    // A1-5 — the CI screening profile is scheduled for the linked transcript;
+    // with CI processing dark (the default) the status says so honestly.
+    expect(c.analysis.scheduleScreening).toHaveBeenCalledWith(expect.objectContaining({
+      conversation_transcript_id: 'ct-1', screening_session_id: SESSION_ID, requisition_id: null,
+    }));
+    expect(r.items).toEqual([{ conversation_transcript_id: 'ct-1', provider_transcript_id: 'tr-1', state: 'normalized', linked: true, analysis: 'disabled' }]);
   });
 
   it('a transcript that fails acquisition is reported, not linked', async () => {
@@ -355,6 +361,7 @@ describe('ScreeningMeetingService — composition gates (A1-4/A1-5, §5, R-C)', 
     const r = await c.svc.checkTranscripts({ auth, session: linked, requestId: 'rq' });
     expect(c.normalization.normalize).not.toHaveBeenCalled();
     expect(c.screening.linkTranscript).not.toHaveBeenCalled();
-    expect(r.items[0]).toMatchObject({ state: 'failed_terminal', linked: false });
+    expect(c.analysis.scheduleScreening).not.toHaveBeenCalled();
+    expect(r.items[0]).toMatchObject({ state: 'failed_terminal', linked: false, analysis: null });
   });
 });

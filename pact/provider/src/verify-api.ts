@@ -1119,6 +1119,21 @@ const TECHNICAL_SCREENING_A1_MIGRATION = resolve(
   ROOT,
   'libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql',
 );
+// TIP-E2E INC-3 A1-5 — the screening session detail reads the CI screening-
+// profile run status (conversation_intelligence schema: B2 init + B6 run +
+// the additive A1-5 profile columns the regenerated client SELECTs).
+const CI_REQUISITION_ANALYSIS_CONTEXT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20260907130000_ci_requisition_analysis_context_init/migration.sql',
+);
+const CI_B6_PROCESSING_RUN_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20260909120000_ci_b6_processing_run/migration.sql',
+);
+const CI_INC3_A1_SCREENING_PROFILE_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20261016150000_inc3_a1_ci_screening_profile/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -3912,6 +3927,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // TIP-E2E INC-3 — technical_screening (self-contained; no cross-schema FK).
         TECHNICAL_SCREENING_INIT_MIGRATION,
         TECHNICAL_SCREENING_A1_MIGRATION,
+        CI_REQUISITION_ANALYSIS_CONTEXT_INIT_MIGRATION,
+        CI_B6_PROCESSING_RUN_MIGRATION,
+        CI_INC3_A1_SCREENING_PROFILE_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,

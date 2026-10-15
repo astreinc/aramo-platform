@@ -128,6 +128,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { session: s, ids: drafted.finding_ids, version: drafted.version };
     }
 
+    it('A1-5: a system draft keyed on the CI run id converges on replay and never lands on a non-DRAFT session', async () => {
+      const s = await service.createSession({
+        tenant_id: TENANT, site_id: null, talent_record_id: uuidv7(), interaction_id: null, requisition_id: null, actor_id: ACTOR,
+      });
+      const runId = uuidv7();
+      const input = {
+        tenant_id: TENANT, session_id: s.id, actor_id: 'system:conversation-intelligence', generation_id: runId,
+        generation: { ...GEN, kind: 'FINDINGS_DRAFT', used_transcript: true },
+        findings: [{
+          skill_raw: 'Go', basis: 'SELF_REPORTED', observation_raw: 'Mentioned Go services.', limitations_raw: null,
+          evidence_source: 'MEETING_TRANSCRIPT',
+          citations: [{ conversation_transcript_id: TRANSCRIPT, utterance_id: 'u-1', start_offset: 0, end_offset: 5, normalized_sha256: 'b'.repeat(64) }],
+        }],
+      };
+      const first = await repo.saveAiDraftedFindings(input);
+      const replay = await repo.saveAiDraftedFindings(input);
+      expect(first.replayed).toBe(false);
+      expect(replay).toEqual({ version: first.version, finding_ids: first.finding_ids, replayed: true });
+      const detail = await service.getDetail(TENANT, s.id, RID);
+      expect(detail.findings).toHaveLength(1);
+      expect(detail.generations.map((g) => g.id)).toEqual([runId]);
+
+      await service.voidSession({ tenant_id: TENANT, session_id: s.id, version: first.version, reason: null, actor_id: ACTOR, requestId: RID });
+      await expect(repo.saveAiDraftedFindings({ ...input, generation_id: uuidv7() })).rejects.toMatchObject({ reason: 'state_invalid' });
+    });
+
     it('records the optional requisition on the session (question tailoring only)', async () => {
       const { session } = await draftWithAi();
       expect(session.requisition_id).not.toBeNull();

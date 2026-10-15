@@ -3,6 +3,7 @@ import { BullRegistrar, Processor, WorkerHost } from '@nestjs/bullmq';
 import type { Job } from 'bullmq';
 import { type AramoLogger, RedisConnectionConfig } from '@aramo/common';
 import {
+  CI_ANALYSIS_PROFILE_SCREENING,
   CI_RUN_TERMINAL_STATUSES,
   ConversationIntelligenceProcessingService,
   ConversationIntelligenceRunRepository,
@@ -74,11 +75,17 @@ export class CiProcessingProcessor extends WorkerHost implements OnApplicationBo
       return;
     }
 
-    const result = await this.processing.process({
-      tenant_id: run.tenant_id,
-      conversation_transcript_id: run.conversation_transcript_id,
-      requisition_analysis_context_snapshot_id: run.requisition_analysis_context_snapshot_id,
-    });
+    // INC-3 A1-5 — the profile discriminator routes a SCREENING run to the
+    // screening profile of the same engine; a REQUISITION run keeps the exact
+    // CI-B6 path (its snapshot is NOT NULL by DB CHECK).
+    const result =
+      run.analysis_profile === CI_ANALYSIS_PROFILE_SCREENING
+        ? await this.processing.processScreening({ tenant_id: run.tenant_id, run_id: run.id })
+        : await this.processing.process({
+            tenant_id: run.tenant_id,
+            conversation_transcript_id: run.conversation_transcript_id,
+            requisition_analysis_context_snapshot_id: run.requisition_analysis_context_snapshot_id as string,
+          });
     this.logger.log({
       event: 'ci_processing_processed',
       run_id: data.run_id,

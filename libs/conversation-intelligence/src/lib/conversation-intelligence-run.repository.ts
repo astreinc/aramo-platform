@@ -18,7 +18,10 @@ export interface CiRunRow {
   tenant_id: string;
   interaction_id: string;
   conversation_transcript_id: string;
-  requisition_analysis_context_snapshot_id: string;
+  // INC-3 A1-5 — null ONLY on a SCREENING-profile run (DB CHECK).
+  requisition_analysis_context_snapshot_id: string | null;
+  analysis_profile: string;
+  screening_session_id: string | null;
   normalized_sha256: string;
   model_provider: string;
   model_name: string;
@@ -53,6 +56,26 @@ export interface CiRunProvenance extends CiAnalysisIdentity {
   model_version: string | null;
   prompt_template_id: string;
   prompt_sha256: string;
+}
+
+/**
+ * INC-3 A1-5 — the SCREENING-profile analysis identity (partial unique index
+ * CIRun_screening_analysis_identity_key): the session replaces the snapshot as
+ * the binding key; the snapshot is recorded when the session carries one.
+ */
+export interface CiScreeningRunProvenance {
+  tenant_id: string;
+  conversation_transcript_id: string;
+  screening_session_id: string;
+  requisition_analysis_context_snapshot_id: string | null;
+  interaction_id: string;
+  normalized_sha256: string;
+  model_provider: string;
+  model_name: string;
+  prompt_template_id: string;
+  prompt_template_version: string;
+  prompt_sha256: string;
+  output_schema_version: string;
 }
 
 export interface PersistClaimInput {
@@ -144,6 +167,64 @@ export class ConversationIntelligenceRunRepository {
       if (again !== null) return again;
       throw new Error('CI run create failed');
     }
+  }
+
+  async findScreeningRun(prov: CiScreeningRunProvenance): Promise<CiRunRow | null> {
+    const row = await this.prisma.conversationIntelligenceRun.findFirst({
+      where: {
+        analysis_profile: 'SCREENING',
+        tenant_id: prov.tenant_id,
+        conversation_transcript_id: prov.conversation_transcript_id,
+        screening_session_id: prov.screening_session_id,
+        model_provider: prov.model_provider,
+        model_name: prov.model_name,
+        prompt_template_version: prov.prompt_template_version,
+        output_schema_version: prov.output_schema_version,
+      },
+    });
+    return (row as CiRunRow | null) ?? null;
+  }
+
+  /** INC-3 A1-5 — find-or-create a queued SCREENING-profile run (converges on the partial unique key). */
+  async createOrGetQueuedScreening(prov: CiScreeningRunProvenance): Promise<CiRunRow> {
+    const existing = await this.findScreeningRun(prov);
+    if (existing !== null) return existing;
+    try {
+      const row = await this.prisma.conversationIntelligenceRun.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: prov.tenant_id,
+          interaction_id: prov.interaction_id,
+          conversation_transcript_id: prov.conversation_transcript_id,
+          requisition_analysis_context_snapshot_id: prov.requisition_analysis_context_snapshot_id,
+          analysis_profile: 'SCREENING',
+          screening_session_id: prov.screening_session_id,
+          normalized_sha256: prov.normalized_sha256,
+          model_provider: prov.model_provider,
+          model_name: prov.model_name,
+          model_version: null,
+          prompt_template_id: prov.prompt_template_id,
+          prompt_template_version: prov.prompt_template_version,
+          prompt_sha256: prov.prompt_sha256,
+          output_schema_version: prov.output_schema_version,
+          status: 'queued',
+        },
+      });
+      return row as CiRunRow;
+    } catch {
+      const again = await this.findScreeningRun(prov);
+      if (again !== null) return again;
+      throw new Error('CI screening run create failed');
+    }
+  }
+
+  /** INC-3 A1-5 — the screening-profile runs of one session (status display, erasure). */
+  async listScreeningRuns(tenantId: string, sessionId: string): Promise<CiRunRow[]> {
+    const rows = await this.prisma.conversationIntelligenceRun.findMany({
+      where: { tenant_id: tenantId, analysis_profile: 'SCREENING', screening_session_id: sessionId },
+      orderBy: { created_at: 'asc' },
+    });
+    return rows as CiRunRow[];
   }
 
   /** Tenant-scoped status patch (pre-terminal transitions only; trigger blocks terminal). */

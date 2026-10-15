@@ -1,8 +1,14 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { type AramoLogger } from '@aramo/common';
 import { CommunicationsRepository } from '@aramo/communications';
 import {
   CI_ANALYSIS_SCHEMA_VERSION,
+  CI_SCREENING_PROMPT_SHA256,
+  CI_SCREENING_PROMPT_TEMPLATE_ID,
+  CI_SCREENING_PROMPT_TEMPLATE_VERSION,
+  CI_SCREENING_SCHEMA_VERSION,
+  SCREENING_ANALYSIS_MODEL,
+  type ScreeningAnalysisModel,
   CI_PROMPT_TEMPLATE_ID,
   CI_PROMPT_TEMPLATE_SHA256,
   CI_PROMPT_TEMPLATE_VERSION,
@@ -67,7 +73,65 @@ export class NormalizedTranscriptReadyHandler {
     private readonly producer: CiProcessingProducer,
     @Inject('NormalizedTranscriptReadyHandlerLogger')
     private readonly logger: AramoLogger,
+    @Optional() @Inject(SCREENING_ANALYSIS_MODEL)
+    private readonly screeningModel?: ScreeningAnalysisModel,
   ) {}
+
+  /**
+   * TIP-E2E INC-3 A1-5 (Part D.1/D.2) — schedule the SCREENING analysis profile
+   * for a normalized transcript linked to exactly one screening session.
+   * Identifiers only, no model call (request-thread safe). Same activation gate
+   * (dark by default) and run-before-enqueue as schedule(). The Requisition
+   * snapshot is captured only when the session carries a Requisition. The
+   * worker performs the ai_processing re-check right before the model call.
+   */
+  async scheduleScreening(command: {
+    tenant_id: string;
+    conversation_transcript_id: string;
+    screening_session_id: string;
+    requisition_id: string | null;
+    request_id?: string;
+  }): Promise<CiScheduleResult> {
+    const { tenant_id, conversation_transcript_id } = command;
+    if (!this.config.isEnabled()) return { scheduled: false, reason: 'disabled' };
+    if (!this.config.isReady() || this.screeningModel === undefined) {
+      this.logger.warn({ event: 'ci_schedule_config_invalid', tenant_id });
+      return { scheduled: false, reason: 'config_invalid' };
+    }
+    const load = await this.transcripts.load(tenant_id, conversation_transcript_id);
+    if (load.status === 'not_found' || load.status === 'not_ready') {
+      return { scheduled: false, reason: 'transcript_not_ready' };
+    }
+    const meta =
+      load.status === 'ready'
+        ? { interaction_id: load.view.interaction_id, normalized_sha256: load.view.normalized_sha256 }
+        : load.meta;
+    const snapshotId =
+      command.requisition_id === null
+        ? null
+        : await this.snapshotResolver.resolveSnapshotId(
+            tenant_id,
+            command.requisition_id,
+            command.request_id !== undefined ? { request_id: command.request_id } : undefined,
+          );
+    const identity = await this.screeningModel.modelIdentity(tenant_id);
+    const run = await this.runs.createOrGetQueuedScreening({
+      tenant_id,
+      conversation_transcript_id,
+      screening_session_id: command.screening_session_id,
+      requisition_analysis_context_snapshot_id: snapshotId,
+      interaction_id: meta.interaction_id,
+      normalized_sha256: meta.normalized_sha256,
+      model_provider: identity.provider,
+      model_name: identity.model,
+      prompt_template_id: CI_SCREENING_PROMPT_TEMPLATE_ID,
+      prompt_template_version: CI_SCREENING_PROMPT_TEMPLATE_VERSION,
+      prompt_sha256: CI_SCREENING_PROMPT_SHA256,
+      output_schema_version: CI_SCREENING_SCHEMA_VERSION,
+    });
+    await this.producer.enqueueRun(run.id, tenant_id);
+    return { scheduled: true, reason: 'queued', run_id: run.id };
+  }
 
   async schedule(command: CiScheduleCommand): Promise<CiScheduleResult> {
     const { tenant_id, conversation_transcript_id } = command;

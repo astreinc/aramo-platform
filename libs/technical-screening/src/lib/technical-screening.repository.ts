@@ -869,11 +869,36 @@ export class TechnicalScreeningRepository {
     actor_id: string;
     generation: AiGenerationInput;
     findings: AiDraftedFindingInput[];
-  }): Promise<{ version: number; finding_ids: string[] }> {
+    // A1-5 — the CI run id: the same run never drafts twice (replay converges).
+    generation_id?: string;
+  }): Promise<{ version: number; finding_ids: string[]; replayed: boolean }> {
     return this.prisma.$transaction(async (tx) => {
-      const current = await this.loadSession(tx, input.tenant_id, input.session_id);
+      // Lock first, then bump at the locked version: a system draft never loses
+      // a CAS race against a concurrent recruiter edit.
+      const current = await this.lockDraft(tx, input.tenant_id, input.session_id);
+      if (input.generation_id !== undefined) {
+        const prior = await tx.screeningAiGeneration.findFirst({
+          where: { id: input.generation_id, tenant_id: input.tenant_id, session_id: input.session_id },
+          select: { id: true },
+        });
+        if (prior !== null) {
+          const rows = await tx.screeningFinding.findMany({
+            where: { tenant_id: input.tenant_id, session_id: input.session_id, generation_id: prior.id },
+            select: { id: true },
+            orderBy: { created_at: 'asc' },
+          });
+          return { version: current.version, finding_ids: rows.map((r) => r.id), replayed: true };
+        }
+      }
       const session = await this.bumpDraft(tx, input.tenant_id, input.session_id, current.version);
-      const generationId = await this.insertGeneration(tx, session, input.actor_id, input.generation, input.findings.length);
+      const generationId = await this.insertGeneration(
+        tx,
+        session,
+        input.actor_id,
+        input.generation,
+        input.findings.length,
+        input.generation_id,
+      );
       const ids: string[] = [];
       for (const f of input.findings) {
         const id = uuidv7();
@@ -910,7 +935,7 @@ export class TechnicalScreeningRepository {
         generation_id: generationId,
         finding_count: ids.length,
       });
-      return { version: session.version, finding_ids: ids };
+      return { version: session.version, finding_ids: ids, replayed: false };
     });
   }
 
@@ -1118,8 +1143,9 @@ export class TechnicalScreeningRepository {
     actorId: string,
     g: AiGenerationInput,
     outputCount: number,
+    suppliedId?: string,
   ): Promise<string> {
-    const id = uuidv7();
+    const id = suppliedId ?? uuidv7();
     await tx.screeningAiGeneration.create({
       data: {
         id,
