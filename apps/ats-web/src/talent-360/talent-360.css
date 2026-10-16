@@ -1717,3 +1717,23 @@ body.t360-route .rc-content {
 .t360-tsrow__req { font-size: 11.5px; color: #5c6770; }
 .t360-tsrow__meta { display: block; margin-top: 2px; font-size: 12px; color: #5c6770; }
 .t360-tsrow .t360-btn { text-decoration: none; white-space: nowrap; }
+
+/* Document viewer: near full-screen (PO 2026-10-16 "can we have a big screen").
+   The shared Dialog has no className prop, so scope via :has(). */
+.tc-dialog__content--xl:has(.t360-dv__body) {
+  width: min(1320px, 96vw);
+  max-height: 94vh;
+  height: 94vh;
+  display: flex;
+  flex-direction: column;
+}
+.tc-dialog__content--xl:has(.t360-dv__body) .tc-dialog__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.t360-dv__body { flex: 1 1 auto; min-height: 0; }
+.t360-dv__page { overflow: auto; }
+.t360-dv__frame { height: 100%; min-height: 60vh; }
+.t360-dv__sheet { max-width: 860px; }
