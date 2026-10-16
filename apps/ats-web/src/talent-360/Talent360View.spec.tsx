@@ -602,6 +602,31 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(b1.textContent).not.toContain('divya@example.com');
   });
 
+  it('Key facts show canonical labels, stated free text as-is, and $ on compensation', async () => {
+    const base = makeModel();
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        header: { ...base.header, desired_compensation: '70/hr' },
+        profile: {
+          ...base.profile,
+          facts: [
+            { label: 'availability', value: 'available_now', source: null },
+            { label: 'compensation', value: '70/hr', source: null },
+            { label: 'location', value: 'Vienna, VA', source: null },
+            { label: 'engagement', value: 'contract_to_hire', source: null },
+          ],
+        },
+      }),
+    );
+    renderView();
+    await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
+    expect(screen.getAllByText('$70/hr').length).toBeGreaterThan(0);
+    const facts = document.querySelector('.t360-facts');
+    expect(facts).not.toBeNull();
+    const values = [...(facts as Element).querySelectorAll('.t360-fact__v')].map((e) => e.textContent);
+    expect(values).toEqual(['Available now', '$70/hr', 'Vienna, VA', 'Contract-to-hire']);
+  });
+
   it('per-field source lines come from the provenance read (A3)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');

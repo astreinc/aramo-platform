@@ -2,6 +2,7 @@ import { Button } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { withCurrency } from '../talent/stated-fields';
 import { initialsOf } from '../ui';
 
 import {
@@ -237,7 +238,7 @@ function BoardCard({
   // Defensive (?? '') — a version-skewed/malformed card with a missing desired_pay must never
   // throw and blank the board; an empty desired pay simply yields no pay chip.
   const wantsRaw = (card.desired_pay ?? '').trim();
-  const wants = wantsRaw.length > 0 ? `Wants ${wantsRaw}` : '';
+  const wants = wantsRaw.length > 0 ? `Wants ${withCurrency(wantsRaw)}` : '';
 
   const recruiterInitials =
     card.assigned_recruiter_user_id !== null && recruiterName !== undefined && recruiterName.trim().length > 0

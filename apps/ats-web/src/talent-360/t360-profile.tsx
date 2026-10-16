@@ -11,6 +11,8 @@ import {
   ENGAGEMENT_TYPE_VALUES,
   WORK_AUTHORIZATION_LABELS,
   WORK_AUTHORIZATION_VALUES,
+  PAY_FIELD_KEYS,
+  withCurrency,
 } from '../talent/stated-fields';
 import { getTalentWorkHistory, updateTalent } from '../talent/talent-api';
 import type { ProfileHydrationItem } from '../talent/profile-hydration';
@@ -80,6 +82,7 @@ const CARD_TITLES: Record<CardKey, string> = {
 };
 
 const HIDDEN_CONTACT = 'Hidden · do not contact';
+const isPayKey = (k: string): boolean => (PAY_FIELD_KEYS as readonly string[]).includes(k);
 
 interface Row {
   readonly l: string;
@@ -386,8 +389,8 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       { l: 'Availability', v: label(AVAILABILITY_LABELS, rec !== null ? rec.availability_status : h.availability.status), keys: ['availability_status'] },
       { l: 'Available from', v: dateLabel(rec?.date_available ?? null), keys: ['date_available'] },
       { l: 'Engagement', v: label(ENGAGEMENT_LABELS, rec !== null ? rec.engagement_type : h.engagement_type), keys: ['engagement_type'] },
-      { l: 'Desired rate', v: present(rec !== null ? rec.desired_pay : h.desired_compensation), mono: true, keys: ['desired_pay'] },
-      ...(canSeePay ? [{ l: 'Current pay', v: present(rec?.current_pay), mono: true, src: 'Visible to recruiters only', keys: ['current_pay'] }] : []),
+      { l: 'Desired rate', v: withCurrency(present(rec !== null ? rec.desired_pay : h.desired_compensation)), mono: true, keys: ['desired_pay'] },
+      ...(canSeePay ? [{ l: 'Current pay', v: withCurrency(present(rec?.current_pay)), mono: true, src: 'Visible to recruiters only', keys: ['current_pay'] }] : []),
       { l: 'Hot talent', v: rec === null ? null : rec.is_hot ? 'Yes' : 'No', keys: ['is_hot'] },
     ],
     '07': [
@@ -410,6 +413,7 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
           aria-label={l}
           value={d[key] as string}
           onChange={(e) => set(key, e.target.value)}
+          {...(isPayKey(key) ? { placeholder: '$70/hr', onBlur: () => set(key, withCurrency(d[key] as string)) } : {})}
         />
       </FieldRow>
     );

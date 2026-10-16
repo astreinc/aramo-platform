@@ -19,6 +19,7 @@ import { listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } 
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
+import { withCurrency } from '../../talent/stated-fields';
 import { getTalent, updateTalent } from '../../talent/talent-api';
 import type { TalentRecordView } from '../../talent/types';
 import { useCompactRailPage } from '../../shell/nav-collapse';
@@ -455,7 +456,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     key: 'rate',
     label: 'Rate & availability confirmed',
     sub: [
-      desired !== null && desired.trim() !== '' ? `Desired ${desired}` : null,
+      desired !== null && desired.trim() !== '' ? `Desired ${withCurrency(desired)}` : null,
       t360?.header.availability.detail ?? t360?.header.availability.status ?? null,
     ]
       .filter((s): s is string => s !== null && s !== '')

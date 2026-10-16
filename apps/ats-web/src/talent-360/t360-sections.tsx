@@ -13,7 +13,13 @@ import { getDossier, type DossierHead } from '../talent/dossier-api';
 import { EditResumePanel } from '../talent/TalentEditView';
 import { updateErrorMessage } from '../talent/error-messages';
 import { buildPatchBody, stateFromTalent, type IntakeState } from '../talent/intake-fields';
-import { WORK_AUTHORIZATION_LABELS, WORK_AUTHORIZATION_VALUES } from '../talent/stated-fields';
+import {
+  AVAILABILITY_LABELS,
+  ENGAGEMENT_LABELS,
+  WORK_AUTHORIZATION_LABELS,
+  WORK_AUTHORIZATION_VALUES,
+  withCurrency,
+} from '../talent/stated-fields';
 import { updateTalent } from '../talent/talent-api';
 import { listTalentMemberships, type SavedListVisibility } from '../talent/saved-list-api';
 import type { TalentRecordView, WorkAuthorizationStateView } from '../talent/types';
@@ -95,13 +101,29 @@ function ActivityRow({ a, full }: { a: RecentActivityItemView; full: boolean }):
   );
 }
 
+// Key-fact values arrive as stored: closed vocabularies map through their
+// canonical label maps; compensation defaults its currency to $; free text
+// ("Vienna, VA") is shown exactly as stated.
+const FACT_LABEL_MAPS: Record<string, Readonly<Record<string, string>>> = {
+  availability: AVAILABILITY_LABELS,
+  engagement: ENGAGEMENT_LABELS,
+  'work authorization': WORK_AUTHORIZATION_LABELS,
+};
+function factValue(label: string, value: string): string {
+  const key = label.replace(/_/g, ' ').toLowerCase();
+  if (key === 'compensation') return withCurrency(value);
+  const map = FACT_LABEL_MAPS[key];
+  if (map !== undefined) return map[value] ?? map[value.toLowerCase()] ?? map[value.toUpperCase()] ?? value;
+  return value;
+}
+
 function FactGrid({ facts, min }: { facts: readonly { label: string; value: string; source: string | null }[]; min: 170 | 190 }): JSX.Element {
   return (
     <div className={`t360-facts t360-facts--${min}`}>
       {orderFacts(facts).map((f) => (
         <div key={f.label} className="t360-fact">
           <div className="t360-fact__l">{f.label.replace(/_/g, ' ').toUpperCase()}</div>
-          <div className="t360-fact__v">{labelize(f.value)}</div>
+          <div className="t360-fact__v">{factValue(f.label, f.value)}</div>
           {f.source !== null ? <div className="t360-fact__s">{f.source}</div> : null}
         </div>
       ))}

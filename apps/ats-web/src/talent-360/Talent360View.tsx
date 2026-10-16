@@ -15,6 +15,7 @@ import { dismissAdvisory } from '../sourcing/sourcing-api';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
 import { AddToListDialog } from '../talent/components/AddToListDialog';
 import { indexHydration } from '../talent/profile-hydration';
+import { withCurrency } from '../talent/stated-fields';
 import { getTalent, getTalentProfileHydration, getTalentWorkAuthorizationState, getTalentWorkHistory } from '../talent/talent-api';
 import { updateTask } from '../task/task-api';
 import { Button, LoadingState, safeErrorMessage } from '../ui';
@@ -449,7 +450,7 @@ export function Talent360View(): JSX.Element | null {
                 ))}
                 {h.desired_compensation !== null ? (
                   <span>
-                    <span className="t360-mono t360-ink">{h.desired_compensation}</span> desired
+                    <span className="t360-mono t360-ink">{withCurrency(h.desired_compensation)}</span> desired
                     {h.engagement_type !== null ? ` · ${labelize(h.engagement_type)}` : ''}
                   </span>
                 ) : null}

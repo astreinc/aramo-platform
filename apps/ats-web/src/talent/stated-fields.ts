@@ -53,3 +53,16 @@ export const WORK_AUTHORIZATION_LABELS: Record<WorkAuthorization, string> = {
   OTHER: 'Other',
   NOT_DISCLOSED: 'Not disclosed',
 };
+
+// Talent pay fields (desired_pay / current_pay) are free text ("70/hr"). Default
+// the currency to $: prepend it when the stated value starts with a number and
+// carries no currency of its own ("€65/hr", "Negotiable" are left as entered).
+export const PAY_FIELD_KEYS = ['desired_pay', 'current_pay'] as const;
+export function withCurrency(raw: string): string;
+export function withCurrency(raw: string | null | undefined): string | null;
+export function withCurrency(raw: string | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  const t = raw.trim();
+  if (t === '') return raw;
+  return /^[0-9.]/.test(t) ? `$${t}` : t;
+}
