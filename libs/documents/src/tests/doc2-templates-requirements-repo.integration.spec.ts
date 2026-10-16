@@ -12,6 +12,8 @@ import {
   TemplatesRepository,
   RequirementsRepository,
   TemplateImmutableError,
+  TemplateNotFoundError,
+  TemplateVersionNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from '../index.js';
 
@@ -115,6 +117,71 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(
         templates.addField({ tenant_id: TENANT, template_version_id: v.id, field_key: 'sig', field_type: 'SIGNATURE', ordinal: 2 }),
       ).rejects.toBeInstanceOf(TemplateImmutableError);
+    });
+
+    // Document Templates slice 1 (A, PO ruling 2) — the template name is saved on the
+    // TEMPLATE; rename touches only name (status/current_version_id unchanged) and is
+    // tenant-isolated (a cross-tenant id is NOT FOUND and leaves the row unchanged).
+    it('renames a template (name only) and conceals a cross-tenant rename as NOT FOUND', async () => {
+      const typeId = await newDocumentType();
+      const t = await templates.createTemplate({ tenant_id: TENANT, document_type_id: typeId, name: 'Old Name', template_kind: 'GENERATED', created_by: ACTOR });
+      const v = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v.id, actor_id: ACTOR, require_preview: false });
+      const renamed = await templates.renameTemplate({ tenant_id: TENANT, id: t.id, name: 'Exclusive RTR' });
+      expect(renamed.name).toBe('Exclusive RTR');
+      expect(renamed.status).toBe('ACTIVE');
+      expect(renamed.current_version_id).toBe(v.id);
+      await expect(templates.renameTemplate({ tenant_id: OTHER_TENANT, id: t.id, name: 'Hijack' })).rejects.toBeInstanceOf(TemplateNotFoundError);
+      expect((await templates.getTemplate(TENANT, t.id)).name).toBe('Exclusive RTR');
+    });
+
+    // Document Templates slice 1 (B) — discard the open DRAFT. DRAFT-only; ACTIVE/RETIRED
+    // are immutable; current_version_id + the ACTIVE version are untouched; the one-DRAFT
+    // slot is freed (a new DRAFT can be opened); tenant-isolated.
+    it('discards a DRAFT (fields cascade), refuses ACTIVE/RETIRED, leaves current_version_id, frees the DRAFT slot', async () => {
+      const typeId = await newDocumentType();
+      const t = await templates.createTemplate({ tenant_id: TENANT, document_type_id: typeId, name: 'T', template_kind: 'GENERATED', created_by: ACTOR });
+      const v1 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', created_by: ACTOR });
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v1.id, actor_id: ACTOR, require_preview: false });
+      const draft = await templates.createDraftFromActive({ tenant_id: TENANT, template_id: t.id, created_by: ACTOR });
+      await templates.addField({ tenant_id: TENANT, template_version_id: draft.id, field_key: 'sig', field_type: 'SIGNATURE', ordinal: 1 });
+
+      // ACTIVE is immutable; cross-tenant is NOT FOUND.
+      await expect(templates.deleteDraftVersion({ tenant_id: TENANT, version_id: v1.id })).rejects.toBeInstanceOf(TemplateImmutableError);
+      await expect(templates.deleteDraftVersion({ tenant_id: OTHER_TENANT, version_id: draft.id })).rejects.toBeInstanceOf(TemplateVersionNotFoundError);
+
+      await templates.deleteDraftVersion({ tenant_id: TENANT, version_id: draft.id });
+      expect(await templates.findVersionById(TENANT, draft.id)).toBeNull();
+      const fields = await db.query(`SELECT count(*)::int AS n FROM "documents"."TemplateFieldDefinition" WHERE template_version_id = $1`, [draft.id]);
+      expect(fields.rows[0].n).toBe(0);
+      const after = await templates.getTemplate(TENANT, t.id);
+      expect(after.current_version_id).toBe(v1.id);
+      expect(after.status).toBe('ACTIVE');
+
+      // The one-DRAFT slot is free again; once activated, v1 becomes RETIRED and is refused.
+      const draft2 = await templates.createDraftFromActive({ tenant_id: TENANT, template_id: t.id, created_by: ACTOR });
+      await templates.activateVersion({ tenant_id: TENANT, version_id: draft2.id, actor_id: ACTOR, require_preview: false });
+      await expect(templates.deleteDraftVersion({ tenant_id: TENANT, version_id: v1.id })).rejects.toBeInstanceOf(TemplateImmutableError);
+    });
+
+    // Slice 1 B1 — TemplateVersion.internal_notes: DRAFT-editable, ≤500 (DB CHECK backstop),
+    // copied into a new DRAFT from the ACTIVE version, refused on a non-DRAFT version.
+    it('internal_notes: DRAFT edit, DB CHECK ≤500, copied by createDraftFromActive, immutable once ACTIVE', async () => {
+      const typeId = await newDocumentType();
+      const t = await templates.createTemplate({ tenant_id: TENANT, document_type_id: typeId, name: 'N', template_kind: 'GENERATED', created_by: ACTOR });
+      const v1 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'v1', field_schema: { a: 1 }, created_by: ACTOR });
+      await templates.recordPreview({ tenant_id: TENANT, version_id: v1.id });
+      const noted = await templates.updateDraftVersion({ tenant_id: TENANT, version_id: v1.id, internal_notes: 'Legal asked for clause 3' });
+      expect(noted.internal_notes).toBe('Legal asked for clause 3');
+      // Notes-only edit does not re-arm the preview gate.
+      expect(noted.previewed_fingerprint).toBe(noted.content_fingerprint);
+      await expect(
+        db.query(`UPDATE "documents"."TemplateVersion" SET internal_notes = $1 WHERE id = $2`, ['n'.repeat(501), v1.id]),
+      ).rejects.toThrow(/TemplateVersion_internal_notes_length_chk/);
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v1.id, actor_id: ACTOR, require_preview: false });
+      await expect(templates.updateDraftVersion({ tenant_id: TENANT, version_id: v1.id, internal_notes: 'late' })).rejects.toBeInstanceOf(TemplateImmutableError);
+      const draft = await templates.createDraftFromActive({ tenant_id: TENANT, template_id: t.id, created_by: ACTOR });
+      expect(draft.internal_notes).toBe('Legal asked for clause 3');
     });
 
     it('requirement satisfaction flips UNSATISFIED->SATISFIED when a document is linked, independent of any business transition', async () => {

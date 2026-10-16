@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -6,6 +6,8 @@ import {
   SafePdfPipeline,
   RenderFailedError,
   UnsafePdfError,
+  layoutSignatureBlock,
+  wrapTextToWidth,
   type RenderModel,
 } from '../index.js';
 
@@ -59,6 +61,127 @@ describe('PdfLibDocumentRenderingAdapter (GENERATED path)', () => {
     const a = await adapter.renderGenerated(MODEL);
     const b = await adapter.renderGenerated({ ...MODEL, title: 'Different Title' });
     expect(a.sha256).not.toBe(b.sha256);
+  });
+});
+
+// Document Templates slice 1 (F) — GENERATED-path word wrapping + page flow. Each
+// block is wrapped to the content width (612 - 2*54 = 504pt) with the embedded font's
+// widthOfTextAtSize; a line that would cross the bottom margin starts a new page.
+describe('PdfLibDocumentRenderingAdapter (GENERATED path — wrapping)', () => {
+  const CONTENT_WIDTH = 504;
+  const SENTENCE = 'The Talent authorizes the Recruiting Company to represent them exclusively for this requisition. ';
+
+  async function helveticaMeasure(size: number): Promise<(s: string) => number> {
+    const doc = await PDFDocument.create();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    return (s: string) => font.widthOfTextAtSize(s, size);
+  }
+
+  it('wraps a long paragraph into multiple lines, each within the content width, losing no words', async () => {
+    const measure = await helveticaMeasure(11);
+    const text = SENTENCE.repeat(6).trim();
+    const lines = wrapTextToWidth(text, measure, CONTENT_WIDTH);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) expect(measure(line)).toBeLessThanOrEqual(CONTENT_WIDTH);
+    expect(lines.join(' ')).toBe(text);
+  });
+
+  it('keeps a short paragraph on one line and honours explicit newlines', async () => {
+    const measure = await helveticaMeasure(11);
+    expect(wrapTextToWidth('Short line', measure, CONTENT_WIDTH)).toEqual(['Short line']);
+    expect(wrapTextToWidth('First\n\nThird', measure, CONTENT_WIDTH)).toEqual(['First', '', 'Third']);
+  });
+
+  it('hard-breaks a single word wider than the line so nothing overflows the margin', async () => {
+    const measure = await helveticaMeasure(11);
+    const lines = wrapTextToWidth('x'.repeat(400), measure, CONTENT_WIDTH);
+    expect(lines.length).toBeGreaterThan(1);
+    for (const line of lines) expect(measure(line)).toBeLessThanOrEqual(CONTENT_WIDTH);
+    expect(lines.join('')).toBe('x'.repeat(400));
+  });
+
+  it('a paragraph that overflows the page bottom flows onto a new page', async () => {
+    const short = await adapter.renderGenerated({ ...MODEL, blocks: [{ type: 'TEXT', text: SENTENCE }] });
+    expect(short.page_count).toBe(1);
+    // One single TEXT block long enough to need far more than one page of wrapped lines.
+    const long = await adapter.renderGenerated({ ...MODEL, blocks: [{ type: 'TEXT', text: SENTENCE.repeat(120) }] });
+    expect(long.page_count).toBeGreaterThan(1);
+  });
+
+  it('wrapped output stays hash-stable (deterministic layout)', async () => {
+    const m: RenderModel = { ...MODEL, blocks: [{ type: 'HEADING', text: 'Scope' }, { type: 'TEXT', text: SENTENCE.repeat(40) }] };
+    const a = await adapter.renderGenerated(m);
+    const b = await adapter.renderGenerated(m);
+    expect(a.sha256).toBe(b.sha256);
+  });
+});
+
+// Document Templates slice 1 (B2, spec §9.3 / A1 §2.3) — the fixed signature block the
+// renderer appends after the content: TALENT SIGNATURE · PRINTED NAME · DATE SIGNED.
+describe('PdfLibDocumentRenderingAdapter (GENERATED path — fixed signature block)', () => {
+  const SIGNED: RenderModel = { ...MODEL, signature_block: { printed_name: 'Ravi Shankar' } };
+
+  it('no signature_block → no block, no field placements (offer letter / legacy unchanged)', async () => {
+    const out = await adapter.renderGenerated(MODEL);
+    expect(out.signature_fields).toBeUndefined();
+  });
+
+  it('appends the block and returns SIGNATURE / SIGNER_NAME / SIGN_DATE placements in three columns on the last page', async () => {
+    const out = await adapter.renderGenerated(SIGNED);
+    expect(out.page_count).toBe(1);
+    const f = out.signature_fields ?? [];
+    expect(f.map((x) => x.field_type)).toEqual(['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE']);
+    for (const x of f) {
+      expect(x.page_number).toBe(0);
+      expect(x.x).toBeGreaterThanOrEqual(54);
+      expect(x.x + x.width).toBeLessThanOrEqual(612 - 54 + 0.001);
+      expect(x.y).toBeGreaterThanOrEqual(54);
+      expect(x.width).toBeGreaterThan(0);
+      expect(x.height).toBeGreaterThan(0);
+    }
+    // Columns left → right, non-overlapping.
+    expect((f[0] as { x: number; width: number }).x + (f[0] as { width: number }).width).toBeLessThan((f[1] as { x: number }).x);
+    expect((f[1] as { x: number; width: number }).x + (f[1] as { width: number }).width).toBeLessThan((f[2] as { x: number }).x);
+    // The block changes the bytes vs the same content without it.
+    expect(out.sha256).not.toBe((await adapter.renderGenerated(MODEL)).sha256);
+  });
+
+  it('the block is never split: when it does not fit above the bottom margin it starts a new page', async () => {
+    // Fill page 1 almost to the bottom, then the block must move to page 2.
+    const SENT = 'The Talent authorizes the Recruiting Company to represent them exclusively for this requisition. ';
+    let n = 1;
+    let out = await adapter.renderGenerated({ ...SIGNED, blocks: [{ type: 'TEXT', text: SENT.repeat(n) }] });
+    // Grow the paragraph until the block is pushed to a second page.
+    while ((out.signature_fields?.[0]?.page_number ?? 0) === 0 && n < 200) {
+      n += 1;
+      out = await adapter.renderGenerated({ ...SIGNED, blocks: [{ type: 'TEXT', text: SENT.repeat(n) }] });
+    }
+    expect(out.signature_fields?.[0]?.page_number).toBe(1);
+    expect(out.page_count).toBe(2);
+    // All three fields land on the same (new) page, near its top.
+    for (const x of out.signature_fields ?? []) {
+      expect(x.page_number).toBe(1);
+      expect(x.y).toBeGreaterThan(600);
+    }
+  });
+
+  it('layout wraps a long printed name inside the PRINTED NAME column (pure geometry)', () => {
+    const measure = (s: string) => s.length * 5; // 5pt per char
+    const layout = layoutSignatureBlock(700, 'Alexandria Catherine Montgomery-Wellington Fitzgerald', measure);
+    expect(layout.new_page).toBe(false);
+    expect(layout.printed_name_lines.length).toBeGreaterThan(1);
+    const col = layout.columns[1] as { width: number };
+    for (const l of layout.printed_name_lines) expect(measure(l.text)).toBeLessThanOrEqual(col.width);
+    // Lines sit above the rule (never over the label).
+    for (const l of layout.printed_name_lines) expect(l.y).toBeGreaterThan(layout.rule_y);
+    expect(layoutSignatureBlock(80, 'X', measure).new_page).toBe(true);
+  });
+
+  it('is hash-stable with the block', async () => {
+    const a = await adapter.renderGenerated(SIGNED);
+    const b = await adapter.renderGenerated(SIGNED);
+    expect(a.sha256).toBe(b.sha256);
+    expect(a.signature_fields).toEqual(b.signature_fields);
   });
 });
 

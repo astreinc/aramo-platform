@@ -44,8 +44,12 @@ export class RtrTemplateBindingService {
     private readonly identity: IdentityRepository,
   ) {}
 
-  async bind(input: RtrBindingInput): Promise<RenderModel> {
+  async bind(input: RtrBindingInput): Promise<RenderModel & { signature_block: { printed_name: string } }> {
     const used = this.collectTokens([input.content.title, ...input.content.blocks.map((b) => b.text)], input.requestId);
+    // B2 (spec §9.3) — the fixed signature block's PRINTED NAME is the bound
+    // talent.full_name for EVERY version, whether or not the content references it, so it
+    // is always resolved (fail closed when missing, like any other binding).
+    used.add('talent.full_name');
     const values = await this.resolveValues(used, input);
     return {
       template_version_id: input.template_version_id,
@@ -54,6 +58,7 @@ export class RtrTemplateBindingService {
       render_schema_version: 'v1',
       title: this.substitute(input.content.title, values, input.requestId),
       blocks: input.content.blocks.map((b) => ({ type: b.type, text: this.substitute(b.text, values, input.requestId) })),
+      signature_block: { printed_name: values.get('talent.full_name') as string },
     };
   }
 
@@ -86,22 +91,43 @@ export class RtrTemplateBindingService {
   private async resolveValues(used: Set<RtrBindingKey>, input: RtrBindingInput): Promise<Map<string, string>> {
     const values = new Map<string, string>();
     // Memoize the requisition read — title + reference both derive from it (one query).
-    let reqPromise: Promise<{ title: string; requisition_number: number } | null> | undefined;
-    const getReq = (): Promise<{ title: string; requisition_number: number } | null> => {
+    type ReqFacts = { title: string; requisition_number: number; description: string | null };
+    let reqPromise: Promise<ReqFacts | null> | undefined;
+    const getReq = (): Promise<ReqFacts | null> => {
       if (reqPromise === undefined) {
         reqPromise = this.requisitions
           .findByIdAdmin({ tenant_id: input.tenant_id, id: input.requisition_id })
-          .then((r) => (r === null ? null : { title: r.title, requisition_number: r.requisition_number }));
+          .then((r) =>
+            r === null
+              ? null
+              : { title: r.title, requisition_number: r.requisition_number, description: r.description ?? null },
+          );
       }
       return reqPromise;
+    };
+    // Memoize the talent read — full_name + desired_pay_rate both derive from it.
+    let talentPromise: ReturnType<TalentRecordRepository['findById']> | undefined;
+    const getTalent = (): ReturnType<TalentRecordRepository['findById']> => {
+      if (talentPromise === undefined) talentPromise = this.talent.findById({ tenant_id: input.tenant_id, id: input.talent_id });
+      return talentPromise;
     };
     for (const key of used) {
       switch (key) {
         case 'talent.full_name': {
-          const t = await this.talent.findById({ tenant_id: input.tenant_id, id: input.talent_id });
+          const t = await getTalent();
           const name = t === null ? '' : `${t.first_name} ${t.last_name}`.trim();
           if (name.length === 0) throw this.missing(key, input.requestId);
           values.set(key, name);
+          break;
+        }
+        case 'talent.desired_pay_rate': {
+          // Amendment A2 — TalentRecord.desired_pay printed as recorded (leading `$` when it
+          // starts with a digit or '.'). The talent's STATED desired rate — never an agreed
+          // rate, never agreed_pay_rate.*. Blank/null ⇒ MISSING (fail closed).
+          const t = await getTalent();
+          const pay = formatDesiredPayRate(t?.desired_pay ?? null);
+          if (pay === null) throw this.missing(key, input.requestId);
+          values.set(key, pay);
           break;
         }
         case 'client.name': {
@@ -127,11 +153,22 @@ export class RtrTemplateBindingService {
           values.set(key, `REQ-${req.requisition_number}`);
           break;
         }
+        case 'requisition.description': {
+          // Slice 1 B3 — the exact Requisition's description, flattened to plain text
+          // (markup stripped, whitespace normalised, paragraph breaks kept). Null/blank ⇒
+          // MISSING (fail closed); never substituted from another field.
+          const req = await getReq();
+          const text = flattenToPlainText(req?.description ?? '');
+          if (text.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, text);
+          break;
+        }
         case 'recruiting_company.name': {
-          const names = await this.tenants.findNamesByIds([input.tenant_id]);
-          const name = (names.get(input.tenant_id) ?? '').trim();
-          if (name.length === 0) throw this.missing(key, input.requestId);
-          values.set(key, name);
+          // PO ruling 2026-10-16 — the tenant's LEGAL name (Tenant.legal_name). Null ⇒
+          // MISSING (fail closed); never the workspace name or display_name.
+          const legal = ((await this.tenants.findLegalNameById(input.tenant_id)) ?? '').trim();
+          if (legal.length === 0) throw this.missing(key, input.requestId);
+          values.set(key, legal);
           break;
         }
         case 'recruiter.display_name': {
@@ -175,4 +212,37 @@ export class RtrTemplateBindingService {
       { requestId, details: { binding_key: key } },
     );
   }
+}
+
+// Slice 1 B3 — flatten a (possibly HTML / rich-text) description to plain text for the
+// PDF: block-level tags and <br> become line breaks, every other tag is dropped, the
+// common entities are decoded, runs of spaces/tabs collapse to one space per line, and
+// 3+ consecutive line breaks collapse to one blank line (paragraph break). Pure.
+export function flattenToPlainText(input: string): string {
+  const withBreaks = input
+    .replace(/\r\n?/g, '\n')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\s*\/\s*(p|div|h[1-6]|ul|ol|blockquote|table|section|article)\s*>/gi, '\n\n')
+    .replace(/<\s*\/\s*(li|tr)\s*>/gi, '\n')
+    .replace(/<\s*li(\s[^>]*)?>/gi, '\u2022 ')
+    .replace(/<[^>]*>/g, '');
+  const decoded = withBreaks
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&');
+  const lines = decoded.split('\n').map((l) => l.replace(/[ \t\f\v\u00a0]+/g, ' ').trim());
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// Amendment A2 — the app's desired-pay display rule: printed as recorded, with a leading
+// `$` when the trimmed value starts with a digit or '.'; a value that already carries a
+// currency/prefix (e.g. "$70/hr", "USD 70/hr", "INR 1,00,000") passes through unchanged.
+// Blank/null → null (the caller fails closed).
+export function formatDesiredPayRate(raw: string | null): string | null {
+  const v = (raw ?? '').trim();
+  if (v.length === 0) return null;
+  return /^[0-9.]/.test(v) ? `$${v}` : v;
 }

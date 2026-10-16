@@ -33,10 +33,18 @@ export interface RtrRequestInput {
   tenant_id: string;
   talent_id: string;
   requisition_id: string;
-  company_id: string;
+  // Optional (back-compat): when supplied it MUST equal the requisition's CLIENT
+  // company; when absent the requisition's company is used. The requisition is the
+  // authority for client.name and the COMPANY/CLIENT association (never the caller).
+  company_id?: string;
   created_by: string;
   requestId: string;
 }
+
+// Document Templates slice 1 (PO ruling 3, 2026-10-16) — Document.title and the
+// e-sign envelope subject follow the admin's document title (the ACTIVE version's
+// content title, bound). This literal is only the safe fallback for a blank title.
+export const RTR_FALLBACK_TITLE = 'Right to Represent';
 
 export interface RtrSendResult {
   document_id: string;
@@ -83,7 +91,8 @@ export interface RtrPreviewView {
 // same closed binding catalog the send path uses (resolved blocks, in-memory only).
 export interface RtrComposeView {
   template: RtrProvenanceView;
-  preview: { title: string; blocks: RenderBlock[] };
+  // B2 — the fixed signature block the renderer appends (printed name = bound talent name).
+  preview: { title: string; blocks: RenderBlock[]; signature_block: { printed_name: string | null } };
 }
 
 @Injectable()
@@ -119,6 +128,12 @@ export class RtrOrchestratorService {
       requestId: input.requestId,
     });
 
+    // 1b. Derive the CLIENT company from the requisition (the authority for client.name
+    //     and the COMPANY/CLIENT association). A caller-supplied company_id that differs
+    //     is refused — the preview (compose) and the frozen document must name the same
+    //     client. Fails closed before any write.
+    const company_id = await this.resolveRequestCompany(input);
+
     // 2. Resolve the closed binding catalog → a fully-resolved RenderModel pinned
     //    to the exact template version. Throws RTR_TEMPLATE_BINDING_MISSING /
     //    _CONFIGURATION_INVALID before any write; no raw {{token}} can be rendered.
@@ -128,7 +143,7 @@ export class RtrOrchestratorService {
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
       requisition_id: input.requisition_id,
-      company_id: input.company_id,
+      company_id,
       // §13 ruling — recruiter.display_name resolves to the SENDING recruiter.
       recruiter_user_id: input.created_by,
       requestId: input.requestId,
@@ -142,7 +157,8 @@ export class RtrOrchestratorService {
     const { document_id } = await this.signing.prepare({
       tenant_id: input.tenant_id,
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
-      title: 'Right to Represent',
+      // PO ruling 3 — the admin's (bound) document title; fallback only when blank.
+      title: rtrTitleOrFallback(model.title),
       execution_mode: 'SINGLE_SIGNATURE',
       source_kind: 'TEMPLATE_GENERATED',
       created_by: input.created_by,
@@ -150,7 +166,7 @@ export class RtrOrchestratorService {
       associations: [
         { resource_type: 'TALENT', resource_id: input.talent_id, relationship: 'SUBJECT' },
         { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' },
-        { resource_type: 'COMPANY', resource_id: input.company_id, relationship: 'CLIENT' },
+        { resource_type: 'COMPANY', resource_id: company_id, relationship: 'CLIENT' },
       ],
       render: model,
       template_version_id: template.template_version_id,
@@ -193,10 +209,14 @@ export class RtrOrchestratorService {
       throw new AramoError('VALIDATION_ERROR', 'talent has no email for RTR signing', 400, { requestId: input.requestId });
     }
     const name = `${talent.first_name} ${talent.last_name}`.trim();
+    // PO ruling 3 — the envelope subject is the FROZEN Document.title (set at request
+    // from the pinned version's title). Read, never re-resolved from today's template
+    // (INV-3). An unreadable document falls back; signing.send then fails as before.
+    const subject = await this.frozenTitle(input.tenant_id, input.document_id);
     return this.signing.send({
       tenant_id: input.tenant_id,
       document_id: input.document_id,
-      subject: 'Right to Represent',
+      subject,
       execution_mode: 'SINGLE_SIGNATURE',
       recipient: { email, name },
       created_by: input.created_by,
@@ -333,7 +353,11 @@ export class RtrOrchestratorService {
 
     return {
       template: { name: template.template_name, version_number: template.version_number },
-      preview: { title: model.title, blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })) },
+      preview: {
+        title: model.title,
+        blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })),
+        signature_block: { printed_name: model.signature_block.printed_name },
+      },
     };
   }
 
@@ -370,6 +394,36 @@ export class RtrOrchestratorService {
     return { url: access.url, expires_at: access.expires_at, content_sha256: artifact.sha256 };
   }
 
+  // request() company authority — the requisition's CLIENT company. Null (unknown
+  // requisition, or one with no client) fails closed; a supplied id that differs is a
+  // mismatch. Both are 422 VALIDATION_ERROR with a typed details.reason.
+  private async resolveRequestCompany(input: RtrRequestInput): Promise<string> {
+    const derived = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
+    if (derived === null) {
+      throw new AramoError('VALIDATION_ERROR', 'requisition has no client company; an RTR cannot be requested', 422, {
+        requestId: input.requestId,
+        details: { reason: 'requisition_company_unresolved', requisition_id: input.requisition_id },
+      });
+    }
+    if (input.company_id !== undefined && input.company_id !== derived) {
+      throw new AramoError('VALIDATION_ERROR', "company_id does not match the requisition's client company", 422, {
+        requestId: input.requestId,
+        details: { reason: 'company_requisition_mismatch', requisition_id: input.requisition_id },
+      });
+    }
+    return derived;
+  }
+
+  private async frozenTitle(tenant_id: string, document_id: string): Promise<string> {
+    try {
+      const doc = await this.documents.getDocument(tenant_id, document_id);
+      return rtrTitleOrFallback(doc.title);
+    } catch (e) {
+      if (e instanceof DocumentNotFoundError) return RTR_FALLBACK_TITLE;
+      throw e;
+    }
+  }
+
   // §15 current-selection precedence: a live (non-terminal) RTR wins; else the
   // most recent EXECUTED; else the most recent. `docs` is created_at desc.
   private selectCurrent<T extends { status: string }>(docs: readonly T[]): T {
@@ -392,4 +446,9 @@ export class RtrOrchestratorService {
     if (template === null) return null;
     return { name: template.name, version_number: version.version_number };
   }
+}
+
+function rtrTitleOrFallback(title: string | null | undefined): string {
+  const t = (title ?? '').trim();
+  return t.length > 0 ? t : RTR_FALLBACK_TITLE;
 }

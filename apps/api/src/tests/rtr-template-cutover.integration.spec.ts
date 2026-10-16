@@ -37,6 +37,7 @@ import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr
 
 const ROOT = resolve(__dirname, '../../../..');
 const ACTOR = randomUUID();
+const CLIENT_COMPANY = randomUUID();
 const MISSING_TALENT = randomUUID();
 
 function documentsMigrations(): string[] {
@@ -132,7 +133,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         findEnvelopeForDocument: async () => null,
       } as unknown as SignatureProviderPort;
 
-      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding);
+      // Slice 1 (C) — request() derives the CLIENT company from the requisition; the
+      // supplied company_id must match it.
+      const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY } as never;
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, {} as never, {} as never, fakeRequisitions);
     }, 180_000);
 
     afterAll(async () => {
@@ -148,7 +152,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: tenant,
         talent_id: randomUUID(),
         requisition_id: randomUUID(),
-        company_id: randomUUID(),
+        company_id: CLIENT_COMPANY,
         created_by: ACTOR,
         requestId: randomUUID(),
       });
@@ -172,7 +176,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: tenant,
         talent_id: talent,
         requisition_id: randomUUID(),
-        company_id: randomUUID(),
+        company_id: CLIENT_COMPANY,
         created_by: ACTOR,
         requestId: randomUUID(),
       });
@@ -215,7 +219,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           tenant_id: randomUUID(),
           talent_id: randomUUID(),
           requisition_id: randomUUID(),
-          company_id: randomUUID(),
+          company_id: CLIENT_COMPANY,
           created_by: ACTOR,
           requestId: randomUUID(),
         }),
@@ -231,7 +235,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           tenant_id: tenant,
           talent_id: MISSING_TALENT,
           requisition_id: randomUUID(),
-          company_id: randomUUID(),
+          company_id: CLIENT_COMPANY,
           created_by: ACTOR,
           requestId: randomUUID(),
         }),

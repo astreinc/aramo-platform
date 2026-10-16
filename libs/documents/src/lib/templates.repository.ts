@@ -62,6 +62,8 @@ export interface CreateVersionInput {
   binding_schema?: unknown;
   source_artifact_id?: string;
   effective_from?: Date;
+  // Slice 1 B1 — admin-only notes (≤500; never rendered). Caller validates.
+  internal_notes?: string | null;
   created_by: string;
 }
 
@@ -113,6 +115,19 @@ export class TemplatesRepository {
     return t;
   }
 
+  // Document Templates slice 1 (PO ruling 2, 2026-10-16) — the template NAME is saved
+  // on the TEMPLATE (DocumentTemplate.name), not per version. Tenant-scoped: an unknown
+  // or cross-tenant id is TemplateNotFoundError (404 concealment). Touches only `name`
+  // (never status/current_version_id/versions); the caller validates/trims the value.
+  async renameTemplate(input: { tenant_id: string; id: string; name: string }) {
+    const r = await this.prisma.documentTemplate.updateMany({
+      where: { tenant_id: input.tenant_id, id: input.id },
+      data: { name: input.name },
+    });
+    if (r.count === 0) throw new TemplateNotFoundError(input.id);
+    return this.getTemplate(input.tenant_id, input.id);
+  }
+
   // RTR-TEMPLATE-1 (§6) — the tenant-wide ACTIVE template for a DocumentType
   // (client_id IS NULL; client-scoped precedence is out of scope this slice).
   // Generic + workflow-neutral: returns the row or null. Resolution/validation of
@@ -160,6 +175,7 @@ export class TemplatesRepository {
           binding_schema: (input.binding_schema ?? undefined) as never,
           source_artifact_id: input.source_artifact_id ?? null,
           effective_from: input.effective_from ?? null,
+          internal_notes: input.internal_notes ?? null,
           created_by: input.created_by,
           // §18 — fingerprint the starting content so the preview gate is armed on create.
           content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
@@ -187,6 +203,8 @@ export class TemplatesRepository {
       template_id: input.template_id,
       render_schema_version: active?.render_schema_version ?? 'rtr-generated-v1',
       field_schema: active?.field_schema ?? undefined,
+      // Slice 1 B1 — the new DRAFT starts from the ACTIVE version's notes.
+      internal_notes: active?.internal_notes ?? null,
       created_by: input.created_by,
     });
   }
@@ -196,25 +214,59 @@ export class TemplatesRepository {
   // previewed_fingerprint so the §18 preview gate re-arms (editing invalidates a prior
   // preview). Never mutates version_number/status/tenant_id/template_id/created_by/
   // activated_*/retired_*.
+  //
+  // Slice 1 B1 — `internal_notes` (string|null; caller trims/validates ≤500) is also
+  // DRAFT-editable. Notes are NOT rendered content, so a notes-only update leaves the
+  // fingerprints (and therefore the §18 preview gate) untouched. `field_schema` is
+  // optional only when `internal_notes` is supplied (the controller enforces one-of).
   async updateDraftVersion(input: {
     tenant_id: string;
     version_id: string;
-    field_schema: unknown;
+    field_schema?: unknown;
     render_schema_version?: string;
+    internal_notes?: string | null;
   }) {
     const v = await this.getVersion(input.tenant_id, input.version_id);
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    const contentEdit = input.field_schema !== undefined || input.render_schema_version !== undefined;
     return this.prisma.templateVersion.update({
       where: { id: input.version_id },
       data: {
-        field_schema: (input.field_schema ?? undefined) as never,
+        ...(input.field_schema !== undefined ? { field_schema: (input.field_schema ?? undefined) as never } : {}),
         ...(input.render_schema_version !== undefined
           ? { render_schema_version: input.render_schema_version }
           : {}),
-        content_fingerprint: templateContentFingerprint(input.field_schema ?? null),
-        previewed_fingerprint: null, // re-arm the preview gate on any content edit
+        ...(input.internal_notes !== undefined ? { internal_notes: input.internal_notes } : {}),
+        ...(contentEdit
+          ? {
+              content_fingerprint: templateContentFingerprint(
+                input.field_schema !== undefined ? input.field_schema : (v.field_schema ?? null),
+              ),
+              previewed_fingerprint: null, // re-arm the preview gate on any content edit
+            }
+          : {}),
       },
     });
+  }
+
+  // Document Templates slice 1 (B) — discard the open DRAFT version. DRAFT-ONLY:
+  // ACTIVE/RETIRED → TemplateImmutableError (the same refusal as editing a non-DRAFT
+  // version). Tenant-scoped (unknown/cross-tenant → TemplateVersionNotFoundError).
+  // A DRAFT is never a template's current_version_id (only activation sets it), so
+  // current_version_id and the ACTIVE version are untouched. The status-guarded
+  // deleteMany is the race backstop: a version activated between the read and the
+  // delete matches 0 rows and is refused as immutable, never deleted.
+  async deleteDraftVersion(input: { tenant_id: string; version_id: string }): Promise<void> {
+    const v = await this.getVersion(input.tenant_id, input.version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      // FK is ON DELETE CASCADE; deleted explicitly so the intent is visible.
+      await tx.templateFieldDefinition.deleteMany({ where: { template_version_id: input.version_id } });
+      return tx.templateVersion.deleteMany({
+        where: { tenant_id: input.tenant_id, id: input.version_id, status: 'DRAFT' },
+      });
+    });
+    if (deleted.count === 0) throw new TemplateImmutableError(input.version_id);
   }
 
   // §18 — record that the CURRENT draft content has been previewed:

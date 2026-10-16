@@ -21,6 +21,27 @@ export interface RenderModel {
   render_schema_version: string;
   title: string;
   blocks: RenderBlock[];
+  // Document Templates slice 1 (B2, spec §9.3 / Amendment A1 §2.3) — when present, the
+  // renderer APPENDS the fixed signature block after the content: TALENT SIGNATURE ·
+  // PRINTED NAME · DATE SIGNED. Not template content (admins cannot remove it); the
+  // domain supplies the bound printed name. Absent ⇒ no block (offer letter, legacy).
+  signature_block?: SignatureBlockModel;
+}
+
+export interface SignatureBlockModel {
+  printed_name: string;
+}
+
+// Where the renderer drew each signature-block field (PDF user space: 0-based page,
+// bottom-left origin, points) — the geometry an e-sign envelope needs to place
+// SIGNATURE / SIGNER_NAME / SIGN_DATE fields over the frozen artifact.
+export interface SignatureFieldPlacement {
+  field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE';
+  page_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 // A resolved field placement for the UPLOADED_PDF overlay path.
@@ -61,6 +82,8 @@ export interface RenderedOutput {
   sha256: string;
   page_count: number;
   provenance: RenderProvenance;
+  // B2 — present iff the model carried a signature_block.
+  signature_fields?: SignatureFieldPlacement[];
 }
 
 export interface PrepareFromSourceOptions {

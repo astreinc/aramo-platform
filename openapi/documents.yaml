@@ -243,6 +243,33 @@ paths:
                 $ref: '#/components/schemas/DocumentTemplate'
         '404':
           $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: renameDocumentTemplate
+      summary: Rename a document template.
+      description: |
+        Saves the template name on the TEMPLATE (DocumentTemplate.name; shared by every
+        version — not draft content, so it does not re-arm the preview gate). The name is
+        trimmed and must be 1..120 characters. Tenant-scoped (unknown or cross-tenant ids
+        are 404). Returns the same template view as GET. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameTemplateRequest'
+      responses:
+        '200':
+          description: The renamed template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTemplate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/document-templates/{id}/versions:
     post:
       operationId: createTemplateVersion
@@ -361,6 +388,23 @@ paths:
                 $ref: '#/components/schemas/TemplateVersion'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: deleteTemplateDraftVersion
+      summary: Discard the open DRAFT version.
+      description: |
+        Deletes a DRAFT version (and its field definitions). DRAFT-only — ACTIVE/RETIRED
+        versions are immutable (409 TEMPLATE_IMMUTABLE). The template's current_version_id
+        and ACTIVE version are unchanged; the one-DRAFT slot is freed. Tenant-scoped
+        (unknown or cross-tenant ids are 404). Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '204':
+          description: The DRAFT version was discarded.
         '404':
           $ref: '#/components/responses/NotFound'
         '409':
@@ -1090,17 +1134,37 @@ components:
         activated_at:
           type: [string, 'null']
           format: date-time
+        internal_notes:
+          type: [string, 'null']
+          maxLength: 500
+          description: Admin-only notes for this version (Document Templates slice 1). Never rendered into any document.
+    RenameTemplateRequest:
+      type: object
+      description: Template rename (Document Templates slice 1). The name is trimmed server-side.
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
     UpdateVersionRequest:
       type: object
-      description: DRAFT-only content update (DOC-TEMPLATE-ADMIN-RTR-1 §9). Immutable fields are rejected by the repository, not accepted here.
-      required:
-        - field_schema
+      description: |
+        DRAFT-only update (DOC-TEMPLATE-ADMIN-RTR-1 §9). At least one of `field_schema` or
+        `internal_notes` is required. A content edit (`field_schema` / `render_schema_version`)
+        re-arms the preview gate; a notes-only edit does not (notes are never rendered).
+        Immutable fields are rejected by the repository, not accepted here.
       properties:
         field_schema:
           type: object
           additionalProperties: true
         render_schema_version:
           type: string
+        internal_notes:
+          type: [string, 'null']
+          maxLength: 500
+          description: Trimmed server-side; blank is stored as null.
     TemplateSamplePreview:
       type: object
       description: A fixed-sample preview (§17) — the draft content with every binding substituted by its safe sample value. Structured resolved blocks; no business document is created.
@@ -1122,6 +1186,20 @@ components:
                 type: string
               text:
                 type: string
+        signature_block:
+          $ref: '#/components/schemas/SignatureBlockPreview'
+    SignatureBlockPreview:
+      type: object
+      description: |
+        The fixed RTR signature block the renderer appends after the template content
+        (TALENT SIGNATURE · PRINTED NAME · DATE SIGNED). Not template content; admins cannot
+        remove it. `printed_name` is the bound talent full name (sample value in an admin
+        preview); DATE SIGNED is blank in the rendered document.
+      required:
+        - printed_name
+      properties:
+        printed_name:
+          type: [string, 'null']
     AllowedBindingsResponse:
       type: object
       description: The governed Insert-field binding catalog (§15) for a template's document type.

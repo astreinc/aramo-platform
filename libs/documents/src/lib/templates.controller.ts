@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -20,6 +21,7 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
 import { TEMPLATE_CAPABILITIES, type TemplateCapabilitiesPort } from './template-capabilities.port.js';
+import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import {
   DocumentNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
@@ -89,6 +91,12 @@ interface CreateTemplateBody {
   client_id?: string;
 }
 
+// Document Templates slice 1 (PO ruling 2) — rename a template (DocumentTemplate.name).
+interface RenameTemplateBody {
+  name: string;
+}
+const TEMPLATE_NAME_MAX_LENGTH = 120;
+
 interface CreateVersionBody {
   render_schema_version: string;
   field_schema?: unknown;
@@ -100,9 +108,12 @@ interface CreateVersionBody {
 // accepted; version_number/status/tenant_id/template_id/created_by/activated_*/retired_*
 // are NOT accepted here (immutable fields are enforced by the repo, not this DTO).
 interface UpdateVersionBody {
-  field_schema: unknown;
+  field_schema?: unknown;
   render_schema_version?: string;
+  // Slice 1 B1 — admin-only notes (string|null; trimmed; ≤500; never rendered).
+  internal_notes?: string | null;
 }
+const INTERNAL_NOTES_MAX_LENGTH = 500;
 
 interface AddFieldBody {
   field_key: string;
@@ -129,6 +140,9 @@ export class DocumentTemplatesController {
     // sample preview). Provided globally by apps/api (RTR impl); @Optional so the generic
     // CRUD still works where no capability is wired.
     @Optional() @Inject(TEMPLATE_CAPABILITIES) private readonly caps?: TemplateCapabilitiesPort,
+    // Amendment A1 §1 — the template audit seam (bound in apps/api). @Optional so generic
+    // CRUD works without it, but Discard draft REFUSES when it is absent (audit is a MUST).
+    @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
   ) {}
 
   // Load the document type for a version (version -> template -> document_type_id).
@@ -165,6 +179,28 @@ export class DocumentTemplatesController {
   async get(@AuthContext() auth: AuthContextType, @Param('id') id: string, @RequestId() requestId: string) {
     try {
       return await this.repo.getTemplate(auth.tenant_id, id);
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // Document Templates slice 1 (PO ruling 2) — save the template name on the TEMPLATE.
+  // Body { name } trimmed, 1..120 chars. Tenant-scoped (unknown/cross-tenant → 404
+  // TEMPLATE_NOT_FOUND). Returns the same template view GET :id returns.
+  @Patch(':id')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:manage')
+  async rename(
+    @AuthContext() auth: AuthContextType,
+    @Param('id') id: string,
+    @Body() body: RenameTemplateBody,
+    @RequestId() requestId: string,
+  ) {
+    const name = typeof body?.name === 'string' ? body.name.trim() : '';
+    validate(name.length > 0, 'name is required', requestId);
+    validate(name.length <= TEMPLATE_NAME_MAX_LENGTH, `name must be at most ${TEMPLATE_NAME_MAX_LENGTH} characters`, requestId);
+    try {
+      return await this.repo.renameTemplate({ tenant_id: auth.tenant_id, id, name });
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -246,14 +282,56 @@ export class DocumentTemplatesController {
     @Body() body: UpdateVersionBody,
     @RequestId() requestId: string,
   ) {
-    validate(body !== null && body !== undefined && 'field_schema' in body, 'field_schema is required', requestId);
+    const hasContent = body !== null && body !== undefined && 'field_schema' in body;
+    const hasNotes = body !== null && body !== undefined && 'internal_notes' in body;
+    validate(hasContent || hasNotes, 'field_schema or internal_notes is required', requestId);
+    let internal_notes: string | null | undefined;
+    if (hasNotes) {
+      const raw = body.internal_notes;
+      validate(raw === null || typeof raw === 'string', 'internal_notes must be a string or null', requestId);
+      const trimmed = raw === null || raw === undefined ? '' : raw.trim();
+      validate(trimmed.length <= INTERNAL_NOTES_MAX_LENGTH, `internal_notes must be at most ${INTERNAL_NOTES_MAX_LENGTH} characters`, requestId);
+      internal_notes = trimmed.length === 0 ? null : trimmed;
+    }
     try {
       return await this.repo.updateDraftVersion({
         tenant_id: auth.tenant_id,
         version_id: versionId,
-        field_schema: body.field_schema,
+        ...(hasContent ? { field_schema: body.field_schema } : {}),
         render_schema_version: body.render_schema_version,
+        ...(internal_notes !== undefined ? { internal_notes } : {}),
       });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // Document Templates slice 1 (B) / Amendment A1 §1 — discard the open DRAFT version
+  // (204). DRAFT-only (ACTIVE/RETIRED → 409 TEMPLATE_IMMUTABLE); tenant-scoped (404
+  // otherwise). The template's current_version_id / ACTIVE version are unchanged.
+  // A1 §1: the template audit event (actor, version, time) is written FIRST and must
+  // succeed — no audit, no discard. (A concurrent activation between the audit write and
+  // the status-guarded delete is refused 409; the audit row then records a discard
+  // request that did not complete — the only non-atomic edge of a cross-schema write.)
+  @Delete('versions/:versionId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('document_template:manage')
+  async deleteDraft(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string): Promise<void> {
+    try {
+      const v = await this.repo.getVersion(auth.tenant_id, versionId);
+      if (v.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
+      if (this.audit === undefined) {
+        throw new AramoError('INTERNAL_ERROR', 'template audit is not configured; draft discard refused', 500, { requestId });
+      }
+      await this.audit.recordDraftDiscarded({
+        tenant_id: auth.tenant_id,
+        actor_id: auth.sub,
+        template_id: v.template_id,
+        version_id: v.id,
+        version_number: v.version_number,
+        requestId,
+      });
+      await this.repo.deleteDraftVersion({ tenant_id: auth.tenant_id, version_id: versionId });
     } catch (e) {
       throw toHttp(e, requestId);
     }

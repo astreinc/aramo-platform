@@ -222,6 +222,20 @@ export class TenantRepository {
     return new Map(rows.map((r) => [r.id, r.name]));
   }
 
+  // Document Templates slice 1 (PO ruling 2026-10-16) — the tenant's LEGAL name
+  // (Tenant.legal_name), the authority for the RTR `recruiting_company.name`
+  // binding. Distinct from findNamesByIds (workspace `name`, used by the platform
+  // dashboard). Returns null when the tenant is unknown or has no legal name on
+  // record — callers must fail closed, never substitute name/display_name.
+  async findLegalNameById(id: string): Promise<string | null> {
+    const row = await this.prisma.tenant.findUnique({
+      where: { id },
+      select: { legal_name: true },
+    });
+    const legal = row?.legal_name?.trim() ?? '';
+    return legal.length > 0 ? legal : null;
+  }
+
   // Platform-Console Increment-2 PR-1 — the lifecycle status write. Sets status +
   // status_changed_at + reason columns + whatever milestone/retention columns the
   // caller computed for this transition. Transition legality is enforced by the

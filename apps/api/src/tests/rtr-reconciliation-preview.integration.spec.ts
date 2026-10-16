@@ -33,6 +33,7 @@ import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr
 
 const ROOT = resolve(__dirname, '../../../..');
 const ACTOR = randomUUID();
+const CLIENT_COMPANY = randomUUID();
 const OFFER_LETTER_TYPE_ID = 'd0c50006-0000-7000-8000-000000000001';
 const PRESIGNED_PREFIX = 'https://presigned.example/rtr/';
 
@@ -88,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: tenant,
         talent_id: talent,
         requisition_id: requisition,
-        company_id: randomUUID(),
+        company_id: CLIENT_COMPANY,
         created_by: ACTOR,
         requestId: randomUUID(),
       });
@@ -134,7 +135,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         findEnvelopeForDocument: async () => null,
       } as unknown as SignatureProviderPort;
 
-      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, templates, storageStub);
+      // Slice 1 (C) — request() derives the CLIENT company from the requisition; the
+      // supplied company_id must match it.
+      const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY } as never;
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, templates, storageStub, fakeRequisitions);
     }, 180_000);
 
     afterAll(async () => {

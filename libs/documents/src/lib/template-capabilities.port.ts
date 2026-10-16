@@ -27,6 +27,10 @@ export interface TemplateBindingDescriptor {
 export interface TemplateSamplePreview {
   readonly title: string;
   readonly blocks: ReadonlyArray<{ readonly type: string; readonly text: string }>;
+  // B2 — the fixed signature block the renderer appends after the content (not template
+  // content). printed_name = the sample talent name in an admin preview; null when the
+  // document type has no signature block.
+  readonly signature_block?: { readonly printed_name: string | null };
 }
 
 export interface TemplateCapabilitiesPort {

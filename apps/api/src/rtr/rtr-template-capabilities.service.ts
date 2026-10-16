@@ -54,7 +54,12 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     const content = this.parse(input);
     const sub = (text: string): string =>
       text.replace(TOKEN_RE, (_whole, key: string) => (isRtrBindingKey(key) ? RTR_BINDING_SAMPLE_VALUES[key as RtrBindingKey] : `{{${key}}}`));
-    return { title: sub(content.title), blocks: content.blocks.map((b) => ({ type: b.type, text: sub(b.text) })) };
+    return {
+      title: sub(content.title),
+      blocks: content.blocks.map((b) => ({ type: b.type, text: sub(b.text) })),
+      // B2 — the fixed signature block (PRINTED NAME = the talent.full_name sample).
+      signature_block: { printed_name: RTR_BINDING_SAMPLE_VALUES['talent.full_name'] },
+    };
   }
 
   // Parse + structurally validate the stored field_schema as RTR content V1.
