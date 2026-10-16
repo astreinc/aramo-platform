@@ -13,8 +13,9 @@
   --tr-row-2: #edf0f3;
   --tr-control: #d5dbe1;
   --tr-canvas: #f4f6fa;
+  --tr360-top: 0px;
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--tr360-top));
   background: var(--tr-canvas);
   font-family: 'Hanken Grotesk', system-ui, sans-serif;
   color: var(--tr-ink);
@@ -41,33 +42,12 @@
   font-weight: 500;
 }
 
-/* ── Route chrome: icon-only app nav (64px), no top bar, edge-to-edge content ── */
-body.tr360-route .rc-app {
-  grid-template-columns: 64px 1fr;
-}
-body.tr360-route .rc-rail {
-  padding: 18px 8px;
-}
-body.tr360-route .rc-nav__label,
-body.tr360-route .rc-nav__item span:not(.rc-nav__count),
-body.tr360-route .rc-nav__count,
-body.tr360-route .rc-rail__who,
-body.tr360-route .rc-rail__name,
-body.tr360-route .rc-rail__logout span,
-body.tr360-route .rc-nav__section-toggle,
-body.tr360-route .rc-rail-toggle,
-body.tr360-route .rc-topbar {
-  display: none;
-}
-body.tr360-route .rc-nav__item,
-body.tr360-route .rc-rail__user,
-body.tr360-route .rc-rail__brand,
-body.tr360-route .rc-rail__logout {
-  justify-content: center;
-}
-body.tr360-route .rc-nav__section--collapsed .rc-nav__group {
-  display: flex;
-}
+/* ── Route chrome ──
+   The app shell (main nav + top bar) stays exactly as on every other screen —
+   the main nav follows the user's own collapse preference. Only the content
+   padding is removed so the page runs edge-to-edge. --tr360-top is the shell
+   top bar's height (set by the view), so the sticky section nav and header sit
+   BELOW it. */
 body.tr360-route .rc-content {
   padding: 0;
 }
@@ -138,8 +118,8 @@ body.tr360-route .rc-content {
   background: #fff;
   border-right: 1px solid var(--tr-line);
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: var(--tr360-top);
+  height: calc(100vh - var(--tr360-top));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -316,8 +296,8 @@ body.tr360-route .rc-content {
   border-bottom: 1px solid var(--tr-line);
   padding: 14px 24px 0;
   position: sticky;
-  top: 0;
-  z-index: 20;
+  top: var(--tr360-top);
+  z-index: 4;
 }
 .tr360-crumbs {
   display: flex;

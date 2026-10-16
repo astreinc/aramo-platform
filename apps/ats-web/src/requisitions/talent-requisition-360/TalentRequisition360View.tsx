@@ -1,5 +1,5 @@
 import { Button, useOptionalToast, useSession, type Session } from '@aramo/fe-foundation';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { getCompany } from '../../companies/companies-api';
@@ -226,11 +226,24 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canEditTalent = scopes.includes('talent:edit');
   const canSendRtr = scopes.includes('document:create');
 
-  // Route chrome: icon-only app nav + no top bar while this page is mounted.
+  // Route chrome: edge-to-edge content (the app shell — main nav + top bar — is
+  // unchanged). The sticky section nav / header sit below the shell's sticky top
+  // bar, so its live height is mirrored into --tr360-top.
+  const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     document.body.classList.add('tr360-route');
     return () => document.body.classList.remove('tr360-route');
   }, []);
+  useLayoutEffect(() => {
+    const bar = document.querySelector<HTMLElement>('.rc-topbar');
+    const root = rootRef.current;
+    if (bar === null || root === null) return;
+    const apply = (): void => root.style.setProperty('--tr360-top', `${bar.offsetHeight}px`);
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [loadError]);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [reqId, talentId]);
@@ -739,7 +752,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const statusTone = req !== null ? UI_TONE[RECRUITING_STATUS_TONE[req.status]] ?? 'grey' : 'grey';
 
   return (
-    <div className="tr360" data-testid="tr360">
+    <div className="tr360" data-testid="tr360" ref={rootRef}>
       <aside className={`tr360-sec${secOpen ? '' : ' tr360-sec--collapsed'}`} aria-label="Talent sections">
         <div className="tr360-sec__top">
           {secOpen ? (
