@@ -294,7 +294,7 @@ export function LlmProvidersPanel({ sessionOverride, loadFn, setActiveFn, setKey
                 )}
               </div>
               <div className="set-llm__secure">
-                <IconShield />
+                <IconShield width={13} height={13} />
                 <span>
                   Keys are tenant-scoped and stored in the platform vault under your tenant. Switching
                   providers keeps the previous key in custody until you clear it; the switch is versioned

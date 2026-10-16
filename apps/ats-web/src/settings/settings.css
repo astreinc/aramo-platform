@@ -807,6 +807,10 @@
   line-height: 1.5;
 }
 .set-llm__secure > svg {
+  /* The shared icons carry no intrinsic size — without this the shield
+     expanded to the row width and squeezed the note into a sliver. */
+  width: 13px;
+  height: 13px;
   flex: none;
   margin-top: 1px;
   color: var(--ok);
