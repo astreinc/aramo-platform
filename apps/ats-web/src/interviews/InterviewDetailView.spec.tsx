@@ -127,6 +127,7 @@ describe('InterviewDetailView', () => {
     getMock.mockResolvedValue(detail());
     renderDetail();
     expect(await screen.findByText('Interview · Round 1')).toBeInTheDocument();
+    expect(screen.getByText('Onsite')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reschedule' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();

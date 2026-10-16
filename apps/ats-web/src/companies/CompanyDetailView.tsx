@@ -13,7 +13,7 @@ import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 import { listActivities } from '../activity/activity-api';
 import type { ActivityView } from '../activity/types';
 import { listRequisitions } from '../requisitions/requisitions-api';
-import { isClosedStatus, type RequisitionView } from '../requisitions/types';
+import { isClosedStatus, RECRUITING_STATUS_LABELS, type RequisitionView } from '../requisitions/types';
 import { useEntityCrumb } from '../shell/breadcrumb';
 import { resolveUserNames } from '../users/users-api';
 import { TasksPanel } from '../task/TasksPanel';
@@ -1015,7 +1015,7 @@ function JobsPanel({
                     </td>
                     <td>
                       <StatusPill tone="neutral" dot>
-                        {r.status}
+                        {RECRUITING_STATUS_LABELS[r.status]}
                       </StatusPill>
                     </td>
                     {/* In-pipeline count is a per-requisition pipeline read not

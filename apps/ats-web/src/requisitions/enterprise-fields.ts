@@ -78,7 +78,7 @@ export type SourceSystem = (typeof SOURCE_SYSTEM_VALUES)[number];
 export const ENTERPRISE_LABELS: Readonly<Record<string, string>> = {
   // job_type
   contract: 'Contract',
-  contract_to_hire: 'Contract to hire',
+  contract_to_hire: 'Contract-to-hire',
   contract_to_perm: 'Contract to permanent',
   direct_perm: 'Direct permanent',
   // role_family

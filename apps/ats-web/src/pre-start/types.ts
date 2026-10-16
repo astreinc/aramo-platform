@@ -8,6 +8,8 @@
 // execute here (the requisition workspace Pre-Start tab remains read-only and links
 // here). Read + write shapes are both hand-mirrored.
 
+import { codeLabel } from '../ui/code-label';
+
 export const REQUIREMENT_STATUS_VALUES = [
   'PENDING',
   'IN_PROGRESS',
@@ -26,6 +28,20 @@ export const REQUIREMENT_STATUS_LABELS: Record<RequirementStatus, string> = {
   WAIVED: 'Waived',
   CANCELED: 'Canceled',
 };
+export function requirementStatusLabel(code: string): string {
+  return codeLabel(REQUIREMENT_STATUS_LABELS, code);
+}
+
+// The requirement's owner_role (free string on the BE; these are the roles the seeded
+// definition sets use). An unknown role degrades to sentence case.
+export const REQUIREMENT_OWNER_ROLE_LABELS: Readonly<Record<string, string>> = {
+  recruiter: 'Recruiter',
+  account_manager: 'Account manager',
+  compliance: 'Compliance',
+};
+export function requirementOwnerRoleLabel(code: string): string {
+  return codeLabel(REQUIREMENT_OWNER_ROLE_LABELS, code);
+}
 
 // L5-P6 — the requirement's satisfaction policy (hand-mirrored from the BE vocab).
 export const SATISFACTION_POLICY_VALUES = ['SELF_ATTEST', 'VERIFICATION_REQUIRED'] as const;

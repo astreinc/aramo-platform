@@ -1,4 +1,4 @@
-import type { VoiceEngagementEvidence } from './types';
+import { dispositionOutcomeLabel, type VoiceEngagementEvidence } from './types';
 
 // COMM-C2A — a compact, TRUTHFUL voice-evidence summary for the recruiter drawer
 // (R12). It states what evidence exists — attempt vs a two-way conversation, and
@@ -51,7 +51,7 @@ export function VoiceEvidenceSummary({
       </ul>
       {evidence.latest_outcome !== null ? (
         <p className="rc-cdp__note" data-testid="voice-evidence-latest">
-          Latest outcome: {evidence.latest_outcome.replace(/_/g, ' ')}
+          Latest outcome: {dispositionOutcomeLabel(evidence.latest_outcome)}
         </p>
       ) : null}
     </div>

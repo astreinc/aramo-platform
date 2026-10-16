@@ -88,6 +88,8 @@ import {
 import { detailErrorMessage, lifecycleActionErrorMessage } from './error-messages';
 import { RECRUITING_STATUS_TONE as STATUS_TONE } from './status-tone';
 import {
+  clientSubmittalReasonLabel,
+  clientSubmittalStatusLabel,
   RECRUITING_STATUS_LABELS,
   type RequisitionView,
   type UpdateRequisitionRequest,
@@ -928,18 +930,6 @@ function SnapshotCard({
   );
 }
 
-function clientStatusValue(status: RequisitionView['client_submittal_status']): string {
-  // L8-B2 — null ⇒ OPEN (never "Unknown"). paused/closed are the actionable states.
-  switch (status) {
-    case 'paused':
-      return 'Paused';
-    case 'closed':
-      return 'Closed';
-    default:
-      return 'Open';
-  }
-}
-
 function SnapshotStrip({
   req,
   pipelines,
@@ -968,10 +958,12 @@ function SnapshotStrip({
   const activeOffers = offers.filter((o) => OPEN_OFFER_STATES.has(o.state)).length;
   const expiringOffers = offers.filter((o) => o.offer_timing?.expiring_soon === true).length;
   const startedPlacements = placements.filter((p) => p.state === 'STARTED').length;
-  const clientStatus = clientStatusValue(req.client_submittal_status ?? null);
+  // L8-B2 — null ⇒ OPEN (never "Unknown"). paused/closed are the actionable states.
+  const clientStatusCode = req.client_submittal_status ?? null;
+  const clientStatus = clientSubmittalStatusLabel(clientStatusCode);
   const clientReason =
     req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
-      ? req.client_submittal_reason.replace(/_/g, ' ')
+      ? clientSubmittalReasonLabel(req.client_submittal_reason)
       : undefined;
 
   return (
@@ -993,7 +985,7 @@ function SnapshotStrip({
         label="Client status"
         value={clientStatus}
         hint={clientReason}
-        warn={clientStatus !== 'Open'}
+        warn={clientStatusCode === 'paused' || clientStatusCode === 'closed'}
         onClick={() => onNavigate('overview')}
       />
       {canReadOffers ? (
@@ -1100,10 +1092,10 @@ function buildAttentionItems({
     items.push({
       key: 'client-status',
       tone: clientStatus === 'closed' ? 'red' : 'amber',
-      what: `Client submittals ${clientStatus}`,
+      what: `Client submittals ${clientSubmittalStatusLabel(clientStatus).toLowerCase()}`,
       detail:
         req.client_submittal_reason !== null && req.client_submittal_reason !== undefined
-          ? req.client_submittal_reason.replace(/_/g, ' ')
+          ? clientSubmittalReasonLabel(req.client_submittal_reason)
           : undefined,
       linkLabel: 'Details →',
       target: 'overview',

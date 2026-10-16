@@ -184,8 +184,11 @@ describe('SourcingPoolView — subject drawer', () => {
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
     // Evidence row: assertion type + source/method/date, never a strength number.
-    expect(await screen.findByText('FULL_NAME')).toBeInTheDocument();
-    expect(screen.getByText(/THIRD_PARTY_UNVERIFIED · DOCUMENT/)).toBeInTheDocument();
+    expect(await screen.findByText('Full name')).toBeInTheDocument();
+    expect(screen.getByText(/Third party \(unverified\) · Document/)).toBeInTheDocument();
+    expect(screen.getByText('Valid')).toBeInTheDocument();
+    expect(screen.getByText('Sourced talent')).toBeInTheDocument();
+    expect(screen.queryByText(/THIRD_PARTY_UNVERIFIED|SOURCED_TALENT/)).not.toBeInTheDocument();
     // No numeric strength leaked anywhere in the drawer.
     const drawer = screen.getByRole('dialog');
     expect(drawer.textContent ?? '').not.toMatch(/strength/i);
@@ -210,7 +213,7 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(saveToBench).mockResolvedValue({ status: 'deferred_unresolved_identity' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('FULL_NAME');
+    await screen.findByText('Full name');
     fireEvent.click(screen.getByRole('button', { name: /Save to pool/ }));
     expect(
       await screen.findByText('Resolve the pending identity flag below before promoting this subject.'),
@@ -223,7 +226,7 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(saveToBench).mockResolvedValue({ status: 'promoted', talent_record_id: 'r1', bench_id: 'b1' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('FULL_NAME');
+    await screen.findByText('Full name');
     expect(vi.mocked(getPool)).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: /Save to pool/ }));
     await waitFor(() => expect(vi.mocked(saveToBench)).toHaveBeenCalledWith({ ref_type: 'SOURCED_TALENT', ref_id: 'arr-1' }));
@@ -239,7 +242,7 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(addToPipeline).mockResolvedValue({ status: 'promoted', talent_record_id: 'r1', pipeline_id: 'p1' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('FULL_NAME');
+    await screen.findByText('Full name');
     fireEvent.click(screen.getByRole('button', { name: /Add to pipeline/ }));
     fireEvent.click(await screen.findByText('Senior Rust Engineer'));
     await waitFor(() =>

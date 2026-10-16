@@ -327,6 +327,9 @@ describe('RequisitionDetailView workspace — snapshot + attention (grounded onl
     const attn = await screen.findByRole('region', { name: 'Needs attention' });
     expect(within(attn).getByText(/Over capacity by 1/)).toBeInTheDocument();
     expect(within(attn).getByText(/Client submittals paused/)).toBeInTheDocument();
+    // the reason code renders through CLIENT_SUBMITTAL_REASON_LABELS, never raw / underscore-stripped
+    expect(within(attn).getByText('Manually held')).toBeInTheDocument();
+    expect(within(attn).queryByText(/manual[ _]hold/)).toBeNull();
     expect(within(attn).getByText(/offers? expiring soon/)).toBeInTheDocument();
     // The prototype's ungrounded values are OMITTED, never mocked.
     expect(within(attn).queryByText(/interviews today/i)).toBeNull();

@@ -51,6 +51,16 @@ const FAILURES: ImportFailureView[] = [
     original_row_data: {},
     created_at: '2026-06-10T10:00:30.000Z',
   },
+  {
+    id: 'f-2',
+    tenant_id: 't',
+    import_batch_id: 'imp-1',
+    row_number: 9,
+    failure_reason: 'INVALID_OPENINGS',
+    offending_fields: ['openings'],
+    original_row_data: {},
+    created_at: '2026-06-10T10:00:31.000Z',
+  },
 ];
 
 describe('ImportSection — live read surface', () => {
@@ -88,7 +98,10 @@ describe('ImportSection — live read surface', () => {
     fireEvent.click(screen.getByTestId('import-failures-toggle-imp-1'));
     await waitFor(() => expect(fetchFailures).toHaveBeenCalledWith('imp-1'));
     expect(await screen.findByText(/Row 7/)).toBeInTheDocument();
+    // human text passes through unchanged; a bounded token maps to its label
     expect(screen.getByText(/invalid email/)).toBeInTheDocument();
+    expect(screen.getByText(/Invalid number of openings · fields: openings/)).toBeInTheDocument();
+    expect(screen.queryByText(/INVALID_OPENINGS/)).toBeNull();
   });
 
   it('surfaces a load error honestly', async () => {

@@ -356,6 +356,9 @@ describe('CompanyDetailView (account hub)', () => {
     );
     expect(screen.getByText('Open Role')).toBeInTheDocument();
     expect(screen.queryByText('Closed Role')).toBeNull();
+    // status codes render through RECRUITING_STATUS_LABELS
+    expect(screen.getByText('On hold')).toBeInTheDocument();
+    expect(screen.queryByText('on_hold')).toBeNull();
     expect(screen.getByRole('link', { name: 'Senior Engineer' })).toHaveAttribute(
       'href',
       '/requisitions/r-1',

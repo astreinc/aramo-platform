@@ -6559,7 +6559,7 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-desk-reqcell { display: flex; flex-direction: column; min-width: 0; }
 .rc-desk-reqcell__t { font-weight: 700; font-size: 0.82rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rc-desk-reqcell__s { font-size: 0.72rem; color: var(--muted); }
-.rc-desk-status { font-size: 0.72rem; font-weight: 700; text-transform: capitalize; }
+.rc-desk-status { font-size: 0.72rem; font-weight: 700; }
 .rc-desk-signal { font-size: 0.76rem; font-weight: 600; color: var(--muted); }
 .rc-muted { color: var(--muted); }
 

@@ -64,3 +64,10 @@ export const DOMAIN_TITLES: Record<PolicyDomain, string> = {
   'client-submittal': 'Client Submittal Policy',
   'pre-start': 'Pre-Start Policy',
 };
+
+// Policy version status (policies-api PolicyVersionEntry.status).
+export const POLICY_VERSION_STATUS_LABELS: Readonly<Record<'current' | 'scheduled' | 'superseded', string>> = {
+  current: 'Current',
+  scheduled: 'Scheduled',
+  superseded: 'Superseded',
+};

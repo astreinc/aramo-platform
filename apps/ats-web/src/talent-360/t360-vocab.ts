@@ -45,20 +45,8 @@ export function dispositionReasonLabel(code: string): string {
   return from(DISPOSITION_REASON_LABELS, code);
 }
 
-// pipeline/talent-journey-api JourneyOwner.
-export const JOURNEY_OWNER_LABELS: Readonly<Record<string, string>> = {
-  pipeline: 'Recruiting',
-  submittal: 'Submittal',
-  'client-selection': 'Client selection',
-  interview: 'Interviews',
-  offer: 'Offer',
-  placement: 'Placement',
-  'pre-start': 'Pre-start',
-  assignment: 'Assignment',
-};
-export function journeyOwnerLabel(code: string): string {
-  return from(JOURNEY_OWNER_LABELS, code);
-}
+// Journey owners — the shared map (pipeline/journey-vocab).
+export { JOURNEY_OWNER_LABELS, journeyOwnerLabel } from '../pipeline/journey-vocab';
 
 // Communication interaction channels (the backend's channelNoun vocabulary).
 export const CHANNEL_LABELS: Readonly<Record<string, string>> = {

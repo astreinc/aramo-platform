@@ -153,6 +153,24 @@ describe('OfferStartJourneyView', () => {
     expect(screen.queryByTestId('os-action-remind')).toBeNull();
   });
 
+  it('history + stepper render stage / owner / step-status labels, never raw codes', async () => {
+    const j = journey({ offer_state: 'SENT' });
+    vi.mocked(getTalentJourney).mockResolvedValue({
+      ...j,
+      stages: [{ stage: 'CLIENT_REVIEW', owner: 'client-selection', source_object_id: 'cs1', occurred_at: '2026-10-01T00:00:00.000Z' }],
+    });
+    vi.mocked(listOffers).mockResolvedValue({ items: [] });
+    renderAt();
+
+    await waitFor(() => expect(screen.getByTestId('os-history')).toBeTruthy());
+    const history = screen.getByTestId('os-history');
+    expect(within(history).getByText('Client review')).toBeTruthy();
+    expect(within(history).getByText('Client selection')).toBeTruthy();
+    expect(within(history).queryByText('CLIENT_REVIEW')).toBeNull();
+    const stepper = screen.getByTestId('os-stepper');
+    expect(within(stepper).queryByText(/^(done|current|future|declined)$/)).toBeNull();
+  });
+
   // ---- §7 Pre-start Readiness ----
 
   it('pre-start section renders authoritative requirement rows + display-only N-of-M + onboarding deep-link', async () => {
@@ -165,6 +183,9 @@ describe('OfferStartJourneyView', () => {
     expect(within(screen.getByTestId('os-req-req-1')).getByText('Signed offer')).toBeTruthy();
     expect(screen.getByTestId('os-req-status-req-1').textContent).toBe('Satisfied');
     expect(screen.getByTestId('os-req-status-req-2').textContent).toBe('Pending');
+    // owner_role codes render through their labels, never raw.
+    expect(within(screen.getByTestId('os-req-req-1')).getByText('Recruiter')).toBeTruthy();
+    expect(within(screen.getByTestId('os-req-req-2')).getByText('Compliance')).toBeTruthy();
     // Remediation is governed in the onboarding workspace — deep-link uses the server-owned placement id.
     expect(screen.getByTestId('os-prestart-workspace').getAttribute('href')).toBe('/onboarding/pp1');
   });

@@ -4,6 +4,8 @@
 // stated-fields.drift.spec.ts asserts they never drift from the BE source.
 // R10-clean: these are talent-STATED categorical facts, never inferred.
 
+import { codeOrTextLabel } from '../ui/code-label';
+
 export const AVAILABILITY_STATUS_VALUES = [
   'available_now',
   'open_to_offers',
@@ -53,6 +55,11 @@ export const WORK_AUTHORIZATION_LABELS: Record<WorkAuthorization, string> = {
   OTHER: 'Other',
   NOT_DISCLOSED: 'Not disclosed',
 };
+// For a work_authorization read raw off a projection: a code maps; legacy free text
+// (pre-vocabulary rows) renders as entered.
+export function workAuthorizationLabel(value: string): string {
+  return codeOrTextLabel(WORK_AUTHORIZATION_LABELS, value);
+}
 
 // Talent pay fields (desired_pay / current_pay) are free text ("70/hr"). Default
 // the currency to $: prepend it when the stated value starts with a number and

@@ -6,6 +6,8 @@
 // own. If a backend field lands, this file follows in lock-step at the next FE
 // PR that binds it.
 
+import { codeLabel } from '../ui/code-label';
+
 // Mirror of libs/import dto/import-batch.view.ts (ImportBatchView).
 export type ImportTargetEntity =
   | 'talent_record'
@@ -75,3 +77,24 @@ export const IMPORT_ENTITY_LABEL: Record<ImportTargetEntity, string> = {
   contact: 'Contacts',
   requisition: 'Requisitions',
 };
+
+// ImportFailure.failure_reason is EITHER a bounded token (libs/import requisition-import
+// mapper failure tokens, or an AramoError code / IMPORT_ERROR from the requisition writer)
+// OR server-composed human text ("missing required field(s): title"). Tokens map (unknown
+// tokens degrade to sentence case); human text renders as written.
+export const IMPORT_FAILURE_REASON_LABELS: Readonly<Record<string, string>> = {
+  INVALID_EXTERNAL_IDENTITY: 'Invalid source system or external requisition ID',
+  MISSING_REQUIRED_FIELD: 'Missing a required field',
+  INVALID_OPENINGS: 'Invalid number of openings',
+  UNSUPPORTED_LIFECYCLE_STATUS: 'Unsupported status',
+  GATED_STATUS_NOT_IMPORTABLE: 'This status cannot be imported',
+  UNSUPPORTED_FIELD: 'Unsupported field',
+  INVALID_COMMERCIAL_VALUE: 'Invalid bill rate',
+  INVALID_DATE: 'Invalid date',
+  IMPORT_ERROR: 'Could not import this row',
+};
+const IMPORT_FAILURE_TOKEN = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$/;
+export function importFailureReasonLabel(reason: string): string {
+  const t = reason.trim();
+  return IMPORT_FAILURE_TOKEN.test(t) ? codeLabel(IMPORT_FAILURE_REASON_LABELS, t) : reason;
+}

@@ -61,6 +61,8 @@ describe('InterviewsView', () => {
       screen.getByText(/REQ-100 · Backend Eng · Acme/),
     ).toBeInTheDocument();
     expect(screen.getByText('Scheduled')).toBeInTheDocument();
+    // interview_type code renders through INTERVIEW_TYPE_LABELS.
+    expect(screen.getByText('Round 1 · Video')).toBeInTheDocument();
     const link = screen.getByRole('link', { name: /Ada Lovelace/ });
     expect(link).toHaveAttribute('href', '/interviews/iv1');
   });

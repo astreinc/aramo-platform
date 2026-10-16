@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useToast } from '@aramo/fe-foundation';
 
+import { INTERVIEW_STATE_LABEL } from '../interviews/interview-format';
 import { Button, Card, StatusPill } from '../ui';
+import { codeLabel } from '../ui/code-label';
 
 import {
   ClientSelectionActionDialog,
@@ -15,6 +17,7 @@ import {
   formatDate,
   formatDateTime,
   waitingLabel,
+  withdrawReasonLabel,
 } from './present';
 import type { SubmittalWorkspaceView } from './submittal-workspace-types';
 
@@ -82,7 +85,7 @@ export function ClientResponseSection({ view, onChanged }: { view: SubmittalWork
         <div className="sw-client__interview">
           <div className="sw-client__interview-line">
             <b>Interview</b>
-            <span>Round {cs.latest_interview.round} · {titleCaseState(cs.latest_interview.state)}{cs.latest_interview.scheduled_at ? ` · ${formatDateTime(cs.latest_interview.scheduled_at)}` : ''}</span>
+            <span>Round {cs.latest_interview.round} · {codeLabel(INTERVIEW_STATE_LABEL, cs.latest_interview.state)}{cs.latest_interview.scheduled_at ? ` · ${formatDateTime(cs.latest_interview.scheduled_at)}` : ''}</span>
           </div>
           <Link className="sw-link" to={`/interviews/${cs.latest_interview.id}`}>Open interview →</Link>
         </div>
@@ -92,8 +95,8 @@ export function ClientResponseSection({ view, onChanged }: { view: SubmittalWork
       {latestFeedback !== null ? (
         <div className="sw-client__fb">
           <span className="sw-client__fb-k">LATEST FEEDBACK</span>
-          <span className="sw-client__fb-note">{latestFeedback.note ?? latestFeedback.reason_code ?? '—'}</span>
-          <span className="sw-client__fb-meta">{latestFeedback.to_state ? `${titleCaseState(latestFeedback.to_state)} · ` : ''}{formatDate(latestFeedback.at)}</span>
+          <span className="sw-client__fb-note">{latestFeedback.note ?? (latestFeedback.reason_code !== null ? withdrawReasonLabel(latestFeedback.reason_code) : '—')}</span>
+          <span className="sw-client__fb-meta">{latestFeedback.to_state ? `${clientStateLabel(latestFeedback.to_state)} · ` : ''}{formatDate(latestFeedback.at)}</span>
         </div>
       ) : (
         <div className="sw-client__nofb">No client feedback recorded yet.</div>
@@ -146,8 +149,9 @@ export function ClientResponseSection({ view, onChanged }: { view: SubmittalWork
   );
 }
 
-function titleCaseState(s: string): string {
-  return s.toLowerCase().split('_').map((w) => (w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w)).join(' ');
+// A feedback event's to_state is a ClientSelection state — same labels as the header pill.
+function clientStateLabel(s: string): string {
+  return clientSelectionPill(s)?.label ?? s;
 }
 
 // Client-response history composed from SW-4 facts only: the submitted-to-client
@@ -160,7 +164,7 @@ function buildHistory(view: SubmittalWorkspaceView): { date: string; title: stri
   }
   const events = view.client_selection.feedback.slice().reverse();
   for (const ev of events) {
-    out.push({ date: formatDate(ev.at), title: ev.to_state ? titleCaseState(ev.to_state) : 'Client update', sub: ev.note ?? ev.reason_code ?? '' });
+    out.push({ date: formatDate(ev.at), title: ev.to_state ? clientStateLabel(ev.to_state) : 'Client update', sub: ev.note ?? (ev.reason_code !== null ? withdrawReasonLabel(ev.reason_code) : '') });
   }
   return out;
 }

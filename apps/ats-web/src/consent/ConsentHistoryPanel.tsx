@@ -27,10 +27,11 @@ import {
 } from '../ui';
 
 import { getTalentConsentHistory } from './consent-api';
-import type {
-  ConsentDecisionAction,
-  ConsentHistoryEvent,
-  ConsentHistoryResponse,
+import {
+  consentScopeLabel,
+  type ConsentDecisionAction,
+  type ConsentHistoryEvent,
+  type ConsentHistoryResponse,
 } from './types';
 
 interface ConsentHistoryPanelProps {
@@ -72,7 +73,7 @@ const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
       </span>
     ),
   },
-  { key: 'scope', header: 'Scope', render: (e) => e.scope },
+  { key: 'scope', header: 'Scope', render: (e) => consentScopeLabel(e.scope) },
   {
     key: 'action',
     header: 'Action',

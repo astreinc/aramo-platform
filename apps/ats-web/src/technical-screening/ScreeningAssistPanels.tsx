@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Checkbox, Input, TextArea } from '@aramo/fe-foundation';
 
+import { llmProviderLabel } from '../integrations/integration-vocab';
 import { Button, StatusPill } from '../ui';
+import { codeLabel } from '../ui/code-label';
 import type { PillTone } from '../ui/pills';
 
 import {
@@ -64,7 +66,7 @@ export function QuestionPlanPanel(props: {
       )}
       {lastPlan !== undefined && (
         <p className="ts-muted">
-          Last generated with {lastPlan.provider} · {lastPlan.model}
+          Last generated with {llmProviderLabel(lastPlan.provider)} · {lastPlan.model}
           {lastPlan.used_talent_profile ? ' · talent profile used' : ' · requisition context only'}
         </p>
       )}
@@ -409,6 +411,23 @@ export const SCHEDULE_LABEL: Record<string, string> = {
   session_unavailable: 'Not drafted — the screening is no longer a draft',
 };
 
+// libs/conversation-transcript TRANSCRIPT_STATES — why a checked transcript is not usable yet.
+export const TRANSCRIPT_STATE_LABELS: Readonly<Record<string, string>> = {
+  waiting_for_source: 'Waiting for the transcript',
+  source_available: 'Transcript available',
+  acquiring: 'Retrieving',
+  source_ready: 'Retrieved',
+  expired: 'Expired',
+  failed_retryable: 'Retrieval failed, will retry',
+  intervention_required: 'Needs attention',
+  failed_terminal: 'Retrieval failed',
+  normalizing: 'Processing',
+  normalized: 'Processed',
+  normalization_failed_retryable: 'Processing failed, will retry',
+  normalization_intervention_required: 'Processing needs attention',
+  normalization_failed_terminal: 'Processing failed',
+};
+
 export function TranscriptPanel(props: {
   detail: ScreeningSessionDetail;
   busy: boolean;
@@ -443,8 +462,8 @@ export function TranscriptPanel(props: {
       {checked !== null &&
         checked.map((c) => (
           <p key={c.conversation_transcript_id} className="ts-muted">
-            Transcript {c.linked ? 'linked' : `not usable (${c.state})`}
-            {c.analysis !== null ? ` · ${SCHEDULE_LABEL[c.analysis] ?? c.analysis}` : ''}
+            Transcript {c.linked ? 'linked' : `not usable (${codeLabel(TRANSCRIPT_STATE_LABELS, c.state).toLowerCase()})`}
+            {c.analysis !== null ? ` · ${codeLabel(SCHEDULE_LABEL, c.analysis)}` : ''}
           </p>
         ))}
       {detail.transcripts.length > 0 && (

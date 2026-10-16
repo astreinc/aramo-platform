@@ -82,6 +82,14 @@ describe('DashboardView (My Desk)', () => {
     expect(screen.getByText('1 overdue · 1 due today · 1 interviews · 1 exceptions')).toBeInTheDocument();
   });
 
+  it('shows requisition status + interview type labels, never raw codes', async () => {
+    getMyDeskMock.mockResolvedValue(makeDesk());
+    renderDesk();
+    expect(await screen.findByText(/Client interview · Round 1/)).toBeInTheDocument();
+    expect(screen.getAllByText('Open').some((el) => el.classList.contains('rc-desk-status'))).toBe(true);
+    expect(screen.queryByText('open')).not.toBeInTheDocument();
+  });
+
   it('renders the 5 summary cards with counts from the same arrays', async () => {
     getMyDeskMock.mockResolvedValue(makeDesk());
     renderDesk();

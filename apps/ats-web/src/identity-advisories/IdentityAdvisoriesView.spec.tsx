@@ -102,7 +102,7 @@ describe('IdentityAdvisoriesView — reviewer worklist', () => {
       ),
     );
     renderView();
-    expect(await screen.findByText('Reopened from CORROBORATED')).toBeInTheDocument();
+    expect(await screen.findByText('Reopened from Corroborated')).toBeInTheDocument();
   });
 
   it('empty tab shows the calm empty copy', async () => {

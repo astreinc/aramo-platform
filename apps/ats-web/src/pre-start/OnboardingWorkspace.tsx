@@ -1,7 +1,7 @@
 import { Button } from '@aramo/fe-foundation';
 
 import { canMarkReady, requirementActionsFor, type RequirementAffordance } from './pre-start-affordance';
-import { REQUIREMENT_STATUS_LABELS, type PreStartPlacementRequirements, type PreStartRequirementView } from './types';
+import { REQUIREMENT_STATUS_LABELS, requirementOwnerRoleLabel, type PreStartPlacementRequirements, type PreStartRequirementView } from './types';
 
 // L5-P7 — the dedicated onboarding workspace (the OWNING pre-start surface). Renders
 // overall readiness, each requirement (status · blocking · satisfaction policy · owner ·
@@ -78,7 +78,7 @@ function RequirementRow({
         <span className="rc-onboarding__badge rc-onboarding__badge--verify">Verification required</span>
       ) : null}
       <span className="rc-onboarding__req-status">{REQUIREMENT_STATUS_LABELS[r.status]}</span>
-      {r.owner_role ? <span className="rc-onboarding__req-owner">Owner: {r.owner_role}</span> : null}
+      {r.owner_role ? <span className="rc-onboarding__req-owner">Owner: {requirementOwnerRoleLabel(r.owner_role)}</span> : null}
       {actions.length > 0 ? (
         <span className="rc-onboarding__req-actions">
           {actions.map((a) => (

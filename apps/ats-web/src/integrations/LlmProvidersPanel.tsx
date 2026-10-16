@@ -4,6 +4,7 @@ import { hasScope, useSession, useToast, type Session, Input, IconShield } from 
 import { Button, Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
 import { SettingCardHead, StatChip } from '../settings/components';
 
+import { LLM_PROVIDER_LABELS } from './integration-vocab';
 import {
   clearProviderKey as defaultClear,
   getLlmOverview as defaultLoad,
@@ -36,13 +37,13 @@ interface ProviderMeta {
 
 const PROVIDER_META: Record<LlmProvider, ProviderMeta> = {
   anthropic: {
-    label: 'Anthropic',
+    label: LLM_PROVIDER_LABELS.anthropic,
     note: 'Claude · governed extraction reference models',
     initials: 'AN',
     av: 'anthropic',
   },
   openai: {
-    label: 'OpenAI',
+    label: LLM_PROVIDER_LABELS.openai,
     note: 'GPT-4 class · direct API key',
     initials: 'OA',
     av: 'openai',

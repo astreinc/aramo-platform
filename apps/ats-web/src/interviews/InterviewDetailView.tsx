@@ -22,6 +22,7 @@ import {
 import {
   dayHeading,
   INTERVIEW_STATE_LABEL,
+  interviewTypeLabel,
   timeLabel,
 } from './interview-format';
 import {
@@ -380,7 +381,7 @@ export function InterviewDetailView() {
 
       <dl className="rc-detail-grid">
         <dt>Type</dt>
-        <dd>{detail.interview_type}</dd>
+        <dd>{interviewTypeLabel(detail.interview_type)}</dd>
         <dt>Talent</dt>
         <dd>
           <Link to={`/talent/${detail.talent_record_id}`} className="rc-link-action">
