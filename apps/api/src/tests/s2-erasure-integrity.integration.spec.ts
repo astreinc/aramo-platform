@@ -68,7 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
 
   // Insert one row, filling every NOT NULL column without a default from its
   // type (overrides win). Keeps the seed honest across many holder tables.
-  async function seed(table: string, overrides: Record<string, unknown>): Promise<void> {
+  async function seed(table: string, overrides: Record<string, unknown>, via: Client = db): Promise<void> {
     const [schema, name] = table.replace(/"/g, '').split('.') as [string, string];
     const cols = await db.query<{ column_name: string; data_type: string; udt_schema: string; udt_name: string }>(
       `SELECT column_name, data_type, udt_schema, udt_name FROM information_schema.columns
@@ -95,7 +95,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     }
     Object.assign(values, overrides);
     const keys = Object.keys(values);
-    await db.query(
+    await via.query(
       `INSERT INTO ${table} (${keys.map((k) => `"${k}"`).join(', ')}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')})`,
       keys.map((k) => values[k]),
     );
@@ -754,5 +754,186 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
         !guarded.some((h) => h.includes(label)),
     );
     expect(unclassified, 'a talent-keyed holder is neither erased, guarded nor declared retained').toEqual([]);
+
+    // Gate-5 C — every table with a DIRECT talent key serializes with the erasure: it carries
+    // the write-guard trigger. Exempt: the retained audit streams, the ledger, TalentRecord's
+    // same-schema FK children (the FK already locks the record), and a screening child keyed
+    // through its session (locked FOR UPDATE by the pass).
+    const direct = await db.query<{ label: string; guarded: boolean }>(
+      `SELECT format('%s."%s"', c.table_schema, c.table_name) AS label,
+              EXISTS (SELECT 1 FROM pg_trigger tg JOIN pg_class k ON k.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = k.relnamespace
+                       WHERE n.nspname = c.table_schema AND k.relname = c.table_name AND tg.tgname = 'trg_s2_guard_talent_write') AS guarded
+         FROM information_schema.columns c
+         JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+        WHERE c.column_name IN ('talent_id', 'talent_record_id', 'promoted_talent_record_id')
+           OR (c.table_schema, c.table_name, c.column_name) IN (
+                ('activity', 'Activity', 'subject_id'), ('attachment', 'Attachment', 'owner_id'), ('communications', 'CommunicationAssociation', 'subject_id'),
+                ('documents', 'DocumentAssociation', 'resource_id'), ('documents', 'DocumentRequirement', 'resource_id'),
+                ('saved_list', 'SavedListEntry', 'item_id'), ('task', 'Task', 'owner_id'))`,
+    );
+    const exempt = new Set([...RETAINED, ...notReachedDirectly, 'talent_record."talent_resume_text"']);
+    expect(direct.rows.filter((r) => !r.guarded && !exempt.has(r.label)).map((r) => r.label), 'a talent-keyed table without the S2 write guard').toEqual([]);
+  });
+
+  it('(13) replay identity: tombstones never collide or re-link — across husks, retries, re-runs and later erasures', async () => {
+    const ada = await talent();
+    const husk = uuidv7();
+    await seed('talent_record."TalentRecord"', { id: husk, tenant_id: TENANT, first_name: 'Husk', last_name: 'Record', superseded_by_record_id: ada });
+    const r1 = uuidv7();
+    const r2 = uuidv7();
+    const pa1 = uuidv7();
+    const pa2 = uuidv7();
+    const ph1 = uuidv7();
+    // The husk and its survivor BOTH hold an episode on R1 (distinct ids, so the unique key allows it).
+    for (const [id, who, req] of [[pa1, ada, r1], [pa2, ada, r2], [ph1, husk, r1]] as const) {
+      await seed('pipeline."Pipeline"', { id, tenant_id: TENANT, talent_record_id: who, requisition_id: req });
+    }
+    await seed('client_selection."ClientSelectionProcess"', { id: uuidv7(), tenant_id: TENANT, talent_id: ada, requisition_id: r1 });
+    const grainR1 = `SELECT count(DISTINCT talent_record_id)::int AS n FROM pipeline."Pipeline" WHERE requisition_id = $1`;
+    expect(await count('pipeline."Pipeline"', 'requisition_id = $1', [r1])).toBe(2);
+
+    // Retry: a failed pass persists NO tombstone (the temp table and every re-point roll back).
+    await db.query(`
+      CREATE OR REPLACE FUNCTION public.s2_test_fail_replay() RETURNS TRIGGER AS $$ BEGIN RAISE EXCEPTION 's2 injected replay failure'; END; $$ LANGUAGE plpgsql;
+      CREATE TRIGGER s2_test_fail_replay BEFORE UPDATE ON consent."TalentErasureRun" FOR EACH ROW EXECUTE FUNCTION public.s2_test_fail_replay();`);
+    try {
+      expect((await erasure.execute(pg, TENANT, ada, okStore())).outcome).toBe('FAILED');
+    } finally {
+      await db.query(`DROP TRIGGER s2_test_fail_replay ON consent."TalentErasureRun"; DROP FUNCTION public.s2_test_fail_replay();`);
+    }
+    expect(await count('pipeline."Pipeline"', 'id = ANY($1::uuid[]) AND talent_record_id = ANY($2::uuid[])', [[pa1, pa2, ph1], [ada, husk]])).toBe(3);
+
+    const done = await erasure.execute(pg, TENANT, ada, okStore());
+    expect(done.outcome).toBe('COMPLETED');
+    const tombOf = async (id: string) => (await db.query<{ t: string }>(`SELECT talent_record_id AS t FROM pipeline."Pipeline" WHERE id = $1`, [id])).rows[0]!.t;
+    const first = { pa1: await tombOf(pa1), pa2: await tombOf(pa2), ph1: await tombOf(ph1) };
+    // One per (record, requisition): three distinct values, none an erased id; the R1 grain
+    // keeps its two (talent, requisition) pairs; the selection process shares the survivor's R1 tombstone.
+    expect(new Set(Object.values(first)).size).toBe(3);
+    for (const t of Object.values(first)) expect([ada, husk]).not.toContain(t);
+    expect((await db.query<{ n: number }>(grainR1, [r1])).rows[0]!.n).toBe(2);
+    expect(await count('client_selection."ClientSelectionProcess"', 'requisition_id = $1 AND talent_id = $2', [r1, first.pa1])).toBe(1);
+    // Unlinkable: no tombstone resolves to a record, and none is written to the retained ledger.
+    expect(await count('talent_record."TalentRecord"', 'id = ANY($1::uuid[])', [Object.values(first)])).toBe(0);
+    for (const t of Object.values(first)) {
+      expect(await count('consent."TalentErasureRun"', `array_to_string(record_ids, ',') || array_to_string(subject_ids, ',') || id::text LIKE $1`, [`%${t}%`])).toBe(0);
+      expect(await count('audit."ConsentAuditEvent"', `event_payload::text LIKE $1`, [`%${t}%`])).toBe(0);
+    }
+    // Stable once committed: a re-run is a no-op and re-points nothing.
+    expect((await erasure.execute(pg, TENANT, ada, okStore())).outcome).toBe('COMPLETED');
+    expect({ pa1: await tombOf(pa1), pa2: await tombOf(pa2), ph1: await tombOf(ph1) }).toEqual(first);
+    // A later erasure of ANOTHER talent on the same requisition never reuses or merges a tombstone.
+    const bob = await talent();
+    const pb1 = uuidv7();
+    await seed('pipeline."Pipeline"', { id: pb1, tenant_id: TENANT, talent_record_id: bob, requisition_id: r1 });
+    expect((await erasure.execute(pg, TENANT, bob, okStore())).outcome).toBe('COMPLETED');
+    expect(Object.values(first)).not.toContain(await tombOf(pb1));
+    expect((await db.query<{ n: number }>(grainR1, [r1])).rows[0]!.n).toBe(3);
+  });
+
+  it('(14) concurrency: writers and the erasure serialize on the talent — no holder slips past the preflight', async () => {
+    const connect = async () => {
+      const c = new Client({ connectionString: container.getConnectionUri() });
+      await c.connect();
+      return c;
+    };
+    const writer = await connect();
+    const observer = await connect();
+    // The erasure runs on `db`: while it is in flight only `writer` / `observer` are used.
+    const waitersOnLock = async (): Promise<number> =>
+      Number((await observer.query<{ n: string }>(`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted`)).rows[0]!.n);
+    const untilWaiting = async (): Promise<void> => {
+      for (let i = 0; i < 100; i++) {
+        if ((await waitersOnLock()) > 0) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error('no transaction ever waited on a lock');
+    };
+    // A template row (seeded up front) lets the writer insert while `db` is busy with the pass.
+    const templateOffer = uuidv7();
+    await seed('offer."Offer"', { id: templateOffer, tenant_id: TENANT, talent_record_id: uuidv7() });
+    const insertOfferAs = (c: Client, rec: string) =>
+      c.query(
+        `INSERT INTO offer."Offer" SELECT (jsonb_populate_record(o, jsonb_build_object('id', gen_random_uuid(), 'submittal_id', gen_random_uuid(), 'talent_record_id', $2::uuid))).*
+           FROM offer."Offer" o WHERE o.id = $1`,
+        [templateOffer, rec],
+      );
+    try {
+      // (a) writer FIRST, a blocking holder: the erasure waits on the talent lock, then sees the
+      //     committed offer and BLOCKS — nothing erased.
+      const a = await talent();
+      await writer.query('BEGIN');
+      await insertOfferAs(writer, a);
+      const ea = erasure.execute(pg, TENANT, a, okStore());
+      await untilWaiting();
+      await writer.query('COMMIT');
+      const ra = await ea;
+      expect([ra.outcome, ra.blockers.map((b) => b.holder)]).toEqual(['BLOCKED', ['offer."Offer"']]);
+      expect(await count('talent_record."TalentRecord"', 'id = $1', [a])).toBe(1);
+
+      // (b) writer FIRST, an erasable holder: the erasure waits, then erases the committed row.
+      const b = await talent();
+      await writer.query('BEGIN');
+      await seed('talent_evidence."TalentProjectExperience"', { id: uuidv7(), tenant_id: TENANT, talent_id: b }, writer);
+      const eb = erasure.execute(pg, TENANT, b, okStore());
+      await untilWaiting();
+      await writer.query('COMMIT');
+      expect((await eb).outcome).toBe('COMPLETED');
+      expect(await count('talent_evidence."TalentProjectExperience"', 'talent_id = $1', [b])).toBe(0);
+
+      // (c) erasure FIRST: a writer arriving during the pass waits on the talent lock and, once
+      //     the run commits, is refused — the erased record can never be named again.
+      const c = await talent();
+      await seed('talent_evidence."TalentSkillEvidence"', { id: uuidv7(), tenant_id: TENANT, talent_id: c });
+      await db.query(`
+        CREATE OR REPLACE FUNCTION public.s2_test_slow() RETURNS TRIGGER AS $$ BEGIN PERFORM pg_sleep(1.5); RETURN OLD; END; $$ LANGUAGE plpgsql;
+        CREATE TRIGGER s2_test_slow BEFORE DELETE ON talent_evidence."TalentSkillEvidence" FOR EACH ROW EXECUTE FUNCTION public.s2_test_slow();`);
+      try {
+        const ec = erasure.execute(pg, TENANT, c, okStore());
+        // the pass is in flight once it holds the talent lock
+        for (let i = 0; i < 100; i++) {
+          const held = await observer.query(`SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND mode = 'ExclusiveLock' AND granted`);
+          if ((held.rowCount ?? 0) > 0) break;
+          await new Promise((r) => setTimeout(r, 20));
+        }
+        const wc = insertOfferAs(writer, c).then(() => 'inserted', (e: Error) => e.message);
+        await untilWaiting();
+        expect((await ec).outcome).toBe('COMPLETED');
+        expect(await wc).toMatch(/has been erased/);
+      } finally {
+        await db.query(`DROP TRIGGER s2_test_slow ON talent_evidence."TalentSkillEvidence"; DROP FUNCTION public.s2_test_slow();`);
+      }
+      expect(await count('offer."Offer"', 'talent_record_id = $1', [c])).toBe(0);
+
+      // (d) contact identity: a sourced record carrying the talent's email, written FIRST,
+      //     makes the erasure wait on the contact lock (read before any delete) and then BLOCK.
+      const d = await talent();
+      const email = `cc-${d.slice(-8)}@pii.example`;
+      await seed('talent_evidence."TalentContactMethod"', { id: uuidv7(), tenant_id: TENANT, talent_id: d, value: email });
+      await writer.query('BEGIN');
+      await writer.query(`INSERT INTO sourced_talent."SourcedTalent"(id, tenant_id, source_channel, external_source_id, provenance, legal_basis, arrived_at, normalized_email) VALUES (gen_random_uuid(), $1, 'x', $2, '{}', '{}', now(), $3)`, [TENANT, uuidv7(), email]);
+      const ed = erasure.execute(pg, TENANT, d, okStore());
+      await untilWaiting();
+      await writer.query('COMMIT');
+      const rd = await ed;
+      expect([rd.outcome, rd.blockers.map((x) => x.holder)]).toEqual(['BLOCKED', ['sourced_talent."SourcedTalent"']]);
+
+      // (e) an FK-checked child written FIRST (a status-history note on the talent's pipeline)
+      //     makes the erasure wait on the parent lock, then is redacted with the rest.
+      const e = await talent();
+      const pipe = uuidv7();
+      await seed('pipeline."Pipeline"', { id: pipe, tenant_id: TENANT, talent_record_id: e, requisition_id: uuidv7() });
+      await writer.query('BEGIN');
+      await writer.query(`INSERT INTO pipeline."PipelineStatusHistory"(id, tenant_id, pipeline_id, status_to, changed_at, note) VALUES (gen_random_uuid(), $1, $2, 'contacted', now(), 'late note about the talent')`, [TENANT, pipe]);
+      const ee = erasure.execute(pg, TENANT, e, okStore());
+      await untilWaiting();
+      await writer.query('COMMIT');
+      expect((await ee).outcome).toBe('COMPLETED');
+      expect(await count('pipeline."PipelineStatusHistory"', `pipeline_id = $1 AND note IS NOT NULL`, [pipe])).toBe(0);
+    } finally {
+      await writer.query('ROLLBACK').catch(() => undefined);
+      await writer.end();
+      await observer.end();
+    }
   });
 });

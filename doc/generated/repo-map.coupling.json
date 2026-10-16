@@ -6889,6 +6889,24 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
       "status": "excluded",
+      "to": "apps/api/src/talent-anchor/erase-talent.command.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/talent-anchor/talent-data-inventory.command.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/talent-identity/talent-data-inventory.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
       "to": "apps/api/src/talent-identity/talent-erasure.service.ts"
     },
     {

@@ -52,4 +52,27 @@ describe('S2 erasure-authorization confinement — exact-path default-deny (§2.
       expect(offenders, `the ${name} appears outside its exact allowlist:\n  ${offenders.join('\n  ')}`).toEqual([]);
     });
   }
+
+  // Gate-5 B — the trusted application boundary. The erasure engine has NO HTTP / queue /
+  // module surface: the ONLY production code that may run it is the operator CLI
+  // (erase-talent: --execute plus the re-typed record id, run under DATABASE_URL by an
+  // operator after the runbook's verified-request preconditions). The read-only
+  // data-inventory pair may use dryRun and the PgExec type only. Every other production
+  // importer — a controller, module, worker or repository — fails here.
+  it('the erasure engine is reachable only from the operator CLI (no HTTP / worker path)', () => {
+    const PRODUCTION_IMPORTERS = new Set([
+      'apps/api/src/talent-anchor/erase-talent.command.ts',
+      'apps/api/src/talent-anchor/talent-data-inventory.command.ts',
+      'apps/api/src/talent-identity/talent-data-inventory.service.ts',
+    ]);
+    const importers = execSync(`git grep -l -F -e ${JSON.stringify('talent-erasure.service')} -- apps libs tools ci`, { cwd: root })
+      .toString()
+      .split('\n')
+      .filter((f) => f.length > 0 && !/\.spec\.ts$/.test(f));
+    expect(importers.filter((f) => !PRODUCTION_IMPORTERS.has(f))).toEqual([]);
+    for (const f of [...PRODUCTION_IMPORTERS].filter((x) => !x.endsWith('erase-talent.command.ts'))) {
+      const src = execSync(`git show :${f}`, { cwd: root }).toString();
+      expect(src, `${f} may only dry-run`).not.toMatch(/\.(execute|resume)\(/);
+    }
+  });
 });

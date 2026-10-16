@@ -2465,6 +2465,7 @@
     "libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql",
     "libs/consent/prisma/migrations/20261016160000_s2_talent_erasure_run/migration.sql",
     "libs/consent/prisma/migrations/20261016180000_s2_erasure_run_authorization/migration.sql",
+    "libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql",
     "libs/consent/prisma/migrations/migration_lock.toml",
     "libs/consent/prisma/schema.prisma",
     "libs/consent/project.json",

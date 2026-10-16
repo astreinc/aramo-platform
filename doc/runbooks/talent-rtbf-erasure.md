@@ -61,6 +61,21 @@ runbook closes the full gap. See the register entry in
 > - **Client talent restriction (§3.3):** the identifying link can be removed, but
 >   every restriction BLOCKS until Legal records its retention class.
 >
+> **When a run is BLOCKED — the remediation per class** (nothing was changed; fix
+> the cause and re-run the same `--execute`):
+>
+> | Class | Remediation |
+> |---|---|
+> | `LEGAL_HOLD` | Wait for the hold to be released by its owner; never override. |
+> | `PENDING_PO_LEGAL` | Record the Legal retention decision for the named holder (restriction / offer / placement / submittal consumption / e-sign / document `retain_until`); until then the erasure stays blocked. |
+> | `BLOCKED_SHARED` | Operator review of the named interaction or document (it also belongs to another talent); never partially erased. |
+> | `PENDING_OUTBOX_DRAIN` | Wait for the outbox publisher to publish the named event(s), then re-run (published events are erased). |
+> | `PENDING_CLASSIFICATION` | Escalate to the Architect / PO for a disposition of the named holder; no classification is made by the tool. |
+>
+> **Concurrency.** The pass serializes with application writes on the talent's
+> identity (advisory locks taken by write-guard triggers and by the pass); writes
+> that name an erased record id are refused afterwards.
+>
 > **Operator access.** Execute on the entry point is granted only to the NOLOGIN
 > role `aramo_erasure_operator`; an operator login must be made a member of it
 > (`GRANT aramo_erasure_operator TO <operator_login>`). A superuser connection

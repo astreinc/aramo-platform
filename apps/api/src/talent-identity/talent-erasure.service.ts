@@ -227,6 +227,19 @@ const TOMBSTONE_KEYS = `SELECT talent_record_id AS record_id, requisition_id FRO
   UNION SELECT talent_id, requisition_id FROM client_selection."ClientSelectionProcess" WHERE talent_id = ANY($1::uuid[])
   UNION SELECT talent_record_id, requisition_id FROM client_selection."InterviewSession" WHERE talent_record_id = ANY($1::uuid[])`;
 
+// Gate-5 C — the parents whose FK-checked children the pass reads, redacts or deletes.
+// FOR UPDATE conflicts with the KEY SHARE lock a child INSERT takes on its parent.
+const PARENT_LOCKS: ReadonlyArray<Pick<ErasureStep, 'keyspace'> & { sql: string }> = [
+  { keyspace: 'record', sql: `SELECT 1 FROM pipeline."Pipeline" WHERE talent_record_id = ANY($1::uuid[]) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM client_selection."ClientSelectionProcess" WHERE talent_id = ANY($1::uuid[]) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM client_selection."InterviewSession" WHERE talent_record_id = ANY($1::uuid[]) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM activity."Activity" WHERE (subject_type = 'talent_record' AND subject_id = ANY($1::uuid[])) OR (subject_type = 'pipeline' AND subject_id IN (${TALENT_PIPELINES})) OR (subject_type = 'interview_session' AND subject_id IN (${TALENT_INTERVIEWS})) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM documents."Document" WHERE id IN (${TALENT_DOCUMENTS}) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]) FOR UPDATE` },
+  { keyspace: 'record', sql: `SELECT 1 FROM communications."CommunicationInteraction" WHERE id IN (${TALENT_INTERACTIONS}) FOR UPDATE` },
+  { keyspace: 'subject', sql: `SELECT 1 FROM talent_trust."ResolutionSubject" WHERE id = ANY($1::uuid[]) FOR UPDATE` },
+];
+
 const INVENTORY: ErasureStep[] = [
   // ---- GROUP A operational non-cascade EVENT children (delete before parents) ----
   { label: 'submittal."TalentSubmittalEvent"', keyspace: 'record-child', where: `submittal_id IN (SELECT id FROM submittal."TalentSubmittalRecord" WHERE talent_id = ANY($1::uuid[]))` },
@@ -787,18 +800,26 @@ export class TalentErasureService {
       report.failure = 'record_not_found: no TalentRecord with this id in this tenant (and no erasure run exists)';
       return report;
     }
-    report.blockers = await this.preflight(pg, tenantId, scope);
-    if (report.blockers.length > 0) {
-      report.outcome = 'BLOCKED';
-      report.failure = 'preflight: holders that this erasure may not remove are present — nothing was deleted';
-      return report;
-    }
-
+    // The preflight runs INSIDE the transaction, after the identity locks (below) — the one
+    // authoritative check; dryRun runs the same guards read-only.
     const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
     const runId = randomUUID();
     let failing: string | null = null;
     await pg.query('BEGIN');
     try {
+      // Gate-5 C — serialize with every concurrent writer BEFORE checking anything. Talent-
+      // keyed writes take a SHARED advisory lock on the talent (consent write-guard
+      // triggers); the pass takes the EXCLUSIVE lock on every record of the husk chain and on
+      // each of the talent's contact values (read before any delete). A writer that started
+      // first makes this wait, and its committed row is then seen below; a writer that
+      // arrives now waits, and once the run commits it is refused (the record is erased).
+      failing = 'identity locks';
+      await pg.query(`SELECT consent.s2_lock_talent_identity($1::uuid[])`, [scope.record_ids]);
+      // FK-checked children (status history, dispositions, note events, document events,
+      // screening and conversation rows) take a KEY SHARE lock on their parent: locking the
+      // parents FOR UPDATE makes a concurrent child insert wait for this pass.
+      failing = 'parent row locks';
+      for (const lock of PARENT_LOCKS) await pg.query(lock.sql, this.keyParams(lock, scope));
       // S2 LOCKED §2 — open the run through the SECURITY DEFINER entry point. It creates the
       // DB_PASS_IN_PROGRESS run in THIS transaction and arms it; the record set it authorizes
       // is computed by the database (the husk chain), so it must equal the resolved scope.
@@ -811,6 +832,11 @@ export class TalentErasureService {
       if (authorized.join(',') !== [...scope.record_ids].sort().join(',')) {
         throw new Error('the database-authorized record set differs from the resolved scope');
       }
+      // The authoritative preflight: under the locks, every committed holder is visible and
+      // no new one can be written until this transaction ends. Blocked → roll back.
+      failing = 'preflight';
+      const blockers = await this.preflight(pg, tenantId, scope);
+      if (blockers.length > 0) throw new ErasureBlockedError(blockers);
       // Re-collect the keys inside the transaction (the same snapshot the deletes see).
       const keys = await this.collectStorageKeys(pg, scope);
       scope.s3_keys = keys;
@@ -874,6 +900,12 @@ export class TalentErasureService {
       report.total_rows = 0;
       report.redacted_rows = 0;
       report.cluster_purge = { captured_cluster_ids: capturedClusters, orphaned_cluster_ids: [], purged: [] };
+      if (err instanceof ErasureBlockedError) {
+        report.outcome = 'BLOCKED';
+        report.blockers = err.blockers;
+        report.failure = 'preflight: holders that this erasure may not remove are present — nothing was deleted';
+        return report;
+      }
       report.outcome = 'FAILED';
       report.failure = `database pass rolled back at ${failing ?? 'unknown'} — nothing was deleted`;
       return report;
@@ -980,6 +1012,12 @@ export class TalentErasureService {
       tables_redacted: report.steps.filter((s) => s.status === 'redacted' || s.status === 'tombstoned').map((s) => s.table),
       artifacts_purged: purged,
     };
+  }
+}
+
+class ErasureBlockedError extends Error {
+  constructor(readonly blockers: ErasureBlocker[]) {
+    super('erasure blocked inside the database pass');
   }
 }
 
