@@ -252,7 +252,22 @@ function BoardCard({
       onDragStart={card.handoff ? undefined : (e) => { e.dataTransfer?.setData?.('text/plain', card.pipeline_id); onDragStart(); }}
       onDragEnd={card.handoff ? undefined : onDragEnd}
     >
-      <Button unstyled type="button" className="rc-tboard__card-open" onClick={onSelect} aria-label={`Open ${name}`}>
+      {/* A div[role=button], not <button>: the RTR chips inside are real buttons, and
+          nested buttons are invalid HTML (React validateDOMNesting). */}
+      <div
+        role="button"
+        tabIndex={0}
+        className="rc-tboard__card-open"
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+        aria-label={`Open ${name}`}
+      >
         <span className="rc-tboard__card-id">
           <span className="rc-tboard__avatar" style={{ background: avatarTint(card.talent_record_id) }} aria-hidden="true">
             {initialsOf(name)}
@@ -337,7 +352,7 @@ function BoardCard({
             </span>
           )
         )}
-      </Button>
+      </div>
 
       <div className="rc-tboard__foot">
         {primary !== undefined ? (

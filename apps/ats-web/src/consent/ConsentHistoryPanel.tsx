@@ -36,6 +36,9 @@ import {
 
 interface ConsentHistoryPanelProps {
   talentId: string;
+  // false when a host (e.g. the Talent 360 dialog) already titles it — avoids a
+  // doubled "Consent history" heading.
+  showTitle?: boolean;
 }
 
 type LoadState =
@@ -63,14 +66,16 @@ const CONSENT_ACTION_LABELS: Record<ConsentDecisionAction, string> = {
   expired: 'Expired',
 };
 
+// The event's internal id is NOT shown (no raw ids on screen); it stays the row
+// key + test hook. Read order: when → what scope → what happened → expiry.
 const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
+  // T10-B4/F-025/F-026 — created_at is an event instant (shared formatter, was
+  // raw ISO); expires_at preserved (ambiguous date/instant — §3 rule C).
   {
-    key: 'event_id',
-    header: 'Event',
+    key: 'created_at',
+    header: 'Date',
     render: (e) => (
-      <span data-testid={`consent-history-event-${e.event_id}`}>
-        {e.event_id}
-      </span>
+      <span data-testid={`consent-history-event-${e.event_id}`}>{formatInstant(e.created_at) || '—'}</span>
     ),
   },
   { key: 'scope', header: 'Scope', render: (e) => consentScopeLabel(e.scope) },
@@ -83,13 +88,11 @@ const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
       </StatusPill>
     ),
   },
-  // T10-B4/F-025/F-026 — created_at is an event instant (shared formatter, was
-  // raw ISO); expires_at preserved (ambiguous date/instant — §3 rule C).
-  { key: 'created_at', header: 'Created at', render: (e) => formatInstant(e.created_at) || '—' },
-  { key: 'expires_at', header: 'Expires at', render: (e) => e.expires_at ?? '—' },
+  { key: 'expires_at', header: 'Expires', render: (e) => e.expires_at ?? '—' },
 ];
 
-export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
+export function ConsentHistoryPanel({ talentId, showTitle = true }: ConsentHistoryPanelProps) {
+  const head = showTitle ? <CardHead title="Consent history" /> : null;
   const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   useEffect(() => {
@@ -144,7 +147,7 @@ export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
     return (
       <section data-testid="consent-history-panel">
         <Card>
-          <CardHead title="Consent history" />
+          {head}
           <p className="rc-muted-line rc-mt-8">Loading consent history…</p>
         </Card>
       </section>
@@ -155,9 +158,9 @@ export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
     return (
       <section data-testid="consent-history-panel">
         <Card>
-          <CardHead title="Consent history" />
+          {head}
           <p className="rc-muted-line rc-mt-8">
-            Consent history could not be loaded for talent {talentId}.
+            Consent history could not be loaded.
           </p>
         </Card>
       </section>
@@ -168,7 +171,7 @@ export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
     return (
       <section data-testid="consent-history-panel">
         <Card>
-          <CardHead title="Consent history" />
+          {head}
           <p
             className="rc-muted-line rc-mt-8"
             data-testid="consent-history-anonymized"
@@ -183,7 +186,7 @@ export function ConsentHistoryPanel({ talentId }: ConsentHistoryPanelProps) {
   return (
     <section data-testid="consent-history-panel">
       <Card>
-        <CardHead title="Consent history" />
+        {head}
         <div className="rc-mt-8">
           <DataTable
             columns={EVENT_COLUMNS}

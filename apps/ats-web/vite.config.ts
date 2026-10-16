@@ -9,6 +9,11 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 export default defineConfig({
   root,
   plugins: [react()],
+  // Pre-bundle the lazily imported Word→HTML converter at dev-server start.
+  // Discovered only on first preview, it forced a mid-session re-optimize and
+  // the in-flight dynamic import 504'd ("Failed to fetch dynamically imported
+  // module …/.vite/deps/mammoth.js") — the preview then showed nothing.
+  optimizeDeps: { include: ['mammoth'] },
   // PL-93 trio leg 3 (Q3 ruling, Recruiter R0): mirrors tenant-console
   // — the same alias covers vite build AND vitest runtime since this
   // config hosts both.

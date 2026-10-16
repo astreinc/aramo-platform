@@ -231,7 +231,7 @@ export type Seg =
 // a "bad" (unknown field) segment — it blocks approval.
 export function parseLabelSegments(text: string, m: BindingMap): Seg[] {
   const out: Seg[] = [];
-  for (const part of text.split(/(\[[^\]]+\])/)) {
+  for (const part of (text ?? '').split(/(\[[^\]]+\])/)) {
     if (part === '') continue;
     const mm = part.match(/^\[([^\]]+)\]$/);
     if (mm != null) {

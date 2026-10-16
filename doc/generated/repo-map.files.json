@@ -1317,6 +1317,7 @@
     "apps/ats-web/src/talent-360/t360-model.ts",
     "apps/ats-web/src/talent-360/t360-previews.tsx",
     "apps/ats-web/src/talent-360/t360-profile.tsx",
+    "apps/ats-web/src/talent-360/t360-screening.tsx",
     "apps/ats-web/src/talent-360/t360-sections.tsx",
     "apps/ats-web/src/talent-360/t360-vocab.spec.ts",
     "apps/ats-web/src/talent-360/t360-vocab.ts",

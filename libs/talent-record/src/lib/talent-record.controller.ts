@@ -749,6 +749,8 @@ export class TalentRecordController {
     return {
       edition_id: result.edition.id,
       talent_document_id: result.edition.talent_document_id,
+      // Not on the bare edition row; a re-read projects it.
+      document_id: null,
       attachment_id: result.edition.attachment_id,
       purpose: result.edition.purpose,
       label: result.edition.label,

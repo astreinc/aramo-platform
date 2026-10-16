@@ -222,13 +222,15 @@ export function ListsPanel({
                     </span>
                     <span className="rc-ldt__actions">
                       {canAddToReq ? (
-                        <Button type="button" onClick={() => setReqTarget(t.id)}>
+                        <Button type="button" variant="secondary" size="sm" onClick={() => setReqTarget(t.id)}>
                           Add to requisition
                         </Button>
                       ) : null}
                       {canManageLists ? (
                         <Button
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => void removeMember(t.id)}
                           title="Remove from this list"
                         >

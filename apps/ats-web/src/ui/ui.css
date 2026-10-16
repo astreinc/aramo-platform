@@ -1907,6 +1907,8 @@ button.rc-link-action {
 .rc-ldt__nm { display: flex; flex-direction: column; min-width: 0; }
 .rc-ldt__nm small { font-size: 11px; color: var(--faint); }
 .rc-ldt__actions { display: inline-flex; justify-content: flex-end; gap: 6px; }
+/* Row actions never wrap: one secondary action + a quiet Remove (list table). */
+.rc-ldt__actions .tc-button { white-space: nowrap; }
 
 /* CRM-2/3 — add-to-list modal body. */
 .rc-addlist { display: flex; flex-direction: column; gap: 12px; }

@@ -98,6 +98,8 @@ vi.mock('../talent/saved-list-api', async (importActual) => {
   return { ...actual, listTalentMemberships: h.listTalentMemberships };
 });
 // CRM-6 — the follow-up modal's assignee picker roster (self u1 + a teammate).
+const ts = vi.hoisted(() => ({ listScreeningSessions: vi.fn(), getScreeningSession: vi.fn() }));
+vi.mock('../technical-screening/technical-screening-api', () => ({ ...ts }));
 vi.mock('../users/users-api', () => ({
   resolveUserNames: vi.fn().mockResolvedValue({ 'u-up': 'Purush P.' }),
   fetchAssignableUsers: vi.fn().mockResolvedValue([
@@ -559,8 +561,10 @@ describe('Talent360View — sections (§7–§9)', () => {
     expect(await screen.findByTestId('record-consent-dialog')).toBeInTheDocument();
   });
 
-  it('Conversation Intelligence and Technical Screening render their empty states (no data source wired)', async () => {
-    getTalent360Mock.mockResolvedValue(makeModel());
+  it('Conversation Intelligence renders its empty state (no read exists); Technical Screening empty when nothing to show', async () => {
+    h.scopes = [...BASE_SCOPES, 'screening:read'];
+    ts.listScreeningSessions.mockResolvedValue({ items: [] });
+    getTalent360Mock.mockResolvedValue(makeModel({ opportunities: { active: [], closed: [] } }));
     renderView('/talent/tal-1?section=ci');
     expect(await screen.findByText('No recorded conversations yet.')).toBeInTheDocument();
     fireEvent.click(within(nav()).getByRole('button', { name: /Technical Screening/ }));
@@ -992,6 +996,18 @@ describe('Talent360View — Documents (§8B)', () => {
     expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
   });
 
+  it('a resume with a canonical document id streams through the authenticated content route (no storage URL)', async () => {
+    tal.listTalentResumeEditions.mockResolvedValue({ editions: [{ ...EDITIONS[2], document_id: 'doc-ed3' }] });
+    vi.mocked(getTalent360DocumentContent).mockResolvedValue({ ...pdf, document_id: 'doc-ed3', file_name: 'Divya_2025.pdf' });
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview Resume' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByTitle('Preview of Divya_2025.pdf')).toHaveAttribute('src', 'blob:preview-1');
+    expect(getTalent360DocumentContent).toHaveBeenCalledWith('tal-1', 'doc-ed3');
+    expect(tal.getAttachmentDownloadUrl).not.toHaveBeenCalled();
+  });
+
   it('a previous resume offers Make current resume (explicit default) for talent:edit', async () => {
     h.scopes = [...BASE_SCOPES, 'talent:edit'];
     tal.getAttachmentDownloadUrl.mockResolvedValue({ presigned_url: 'https://s3.local/old.pdf' });
@@ -1043,5 +1059,48 @@ describe('Talent360View — Documents (§8B)', () => {
     expect(tal.setTalentResumeEditionDefault).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     vi.unstubAllGlobals();
+  });
+});
+
+describe('Talent360View — Technical Screening (§9) from the INC-3 reads', () => {
+  const base = {
+    talent_record_id: 'tal-1', interaction_id: null, version: 1, updated_at: '2026-09-25T12:00:00Z',
+    confirmed_by_actor_id: null, confirmed_at: null, confirmed_version: null, voided_by_actor_id: null, voided_at: null, void_reason: null,
+  };
+  it('lists sessions (Complete / In progress), hides voided, adds "Not prepared yet" for unscreened active reqs; no level pill', async () => {
+    h.scopes = [...BASE_SCOPES, 'screening:read'];
+    ts.listScreeningSessions.mockResolvedValue({
+      items: [
+        { ...base, id: 's1', requisition_id: 'r1', state: 'CONFIRMED', created_at: '2026-09-25T12:00:00Z', confirmed_at: '2026-09-25T12:00:00Z', created_by_actor_id: 'u-up' },
+        { ...base, id: 's2', requisition_id: null, state: 'DRAFT', created_at: '2026-09-20T12:00:00Z', created_by_actor_id: 'u-up' },
+        { ...base, id: 's3', requisition_id: 'r2', state: 'VOIDED', created_at: '2026-09-10T12:00:00Z', created_by_actor_id: 'u-up' },
+      ],
+    });
+    ts.getScreeningSession.mockImplementation((id: string) =>
+      Promise.resolve({ questions: id === 's1' ? [{ status: 'SELECTED' }, { status: 'SELECTED' }, { status: 'REMOVED' }] : [{ status: 'SELECTED' }] }),
+    );
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=ts');
+    const card = await screen.findByTestId('t360-ts');
+    await waitFor(() => expect(within(card).getAllByTestId('t360-ts-row')).toHaveLength(3));
+    const rows = within(card).getAllByTestId('t360-ts-row');
+    expect(rows[0]).toHaveTextContent('REQ-1001');
+    expect(rows[0]).toHaveTextContent('2 questions · Purush P.');
+    expect(within(rows[0] as HTMLElement).getByText('Complete')).toBeInTheDocument();
+    expect(within(rows[0] as HTMLElement).getByRole('link', { name: 'View findings ↗' })).toHaveAttribute('href', '/talent/tal-1/screening');
+    expect(rows[1]).toHaveTextContent('No requisition');
+    expect(within(rows[1] as HTMLElement).getByText('In progress')).toBeInTheDocument();
+    // r2 had only a VOIDED session → still "Not prepared yet".
+    expect(rows[2]).toHaveTextContent('Not prepared yet');
+    expect(within(rows[2] as HTMLElement).getByRole('link', { name: 'Prepare in REQ-1032 ↗' })).toBeInTheDocument();
+    for (const banned of ['Strong', 'Moderate', 'Limited', 'Not demonstrated']) expect(within(card).queryByText(banned)).toBeNull();
+    expect(within(card).getByText(/Every technical screening Divya has had/)).toBeInTheDocument();
+  });
+
+  it('without screening:read shows an access notice and calls nothing', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=ts');
+    expect(await screen.findByText('You don’t have access to technical screening.')).toBeInTheDocument();
+    expect(ts.listScreeningSessions).not.toHaveBeenCalled();
   });
 });
