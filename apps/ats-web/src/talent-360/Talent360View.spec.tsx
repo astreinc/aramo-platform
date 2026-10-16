@@ -3,7 +3,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { Talent360View } from './Talent360View';
-import { getTalent360 } from './talent-360-api';
+import { getTalent360, getTalent360CommunicationPreview, getTalent360DocumentContent } from './talent-360-api';
 import type {
   Talent360View as Talent360ViewModel,
   TalentRequisitionJourney,
@@ -192,7 +192,7 @@ function makeModel(overrides: Partial<Talent360ViewModel> = {}): Talent360ViewMo
     ],
     recent_activity: {
       items: [
-        { id: 'e1', occurred_at: '2026-09-30T13:14:00Z', category: 'communications', title: 'Email received', body: 'Happy to proceed.', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'From Divya', channel: 'email' },
+        { id: 'e1', occurred_at: '2026-09-30T13:14:00Z', category: 'communications', title: 'Email received', body: 'Happy to proceed.', requisition_id: 'r1', requisition_label: 'REQ-1001', actor_label: 'From Divya', channel: 'email', preview_id: null },
       ],
       category_counts: { communications: 1 },
       has_more: false,
@@ -833,5 +833,116 @@ describe('Talent360View — Profile inline edit (§8A.7)', () => {
     const body = tal.updateTalent.mock.calls[0]?.[1] as { work_history: { role_title: string }[] };
     expect(body.work_history.map((w) => w.role_title)).toEqual(['Agile Coach', 'Senior System Analyst', 'Scrum Coach']);
     await waitFor(() => expect(tal.getTalentWorkHistory).toHaveBeenCalledWith('tal-1'));
+  });
+});
+
+// ── Carried from PR #946 / INC-3 into the redesign ───────────────────────────
+describe('Talent360View — Technical screening entry (TIP-E2E INC-3 §11)', () => {
+  it('··· holds Technical screening only when screening:read is held', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    h.scopes = [...BASE_SCOPES, 'screening:read'];
+    const { unmount } = renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'More' }));
+    expect(screen.getByRole('menuitem', { name: 'Technical screening' })).toHaveAttribute('href', '/talent/tal-1/screening');
+    unmount();
+    h.scopes = [...BASE_SCOPES];
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'More' }));
+    expect(screen.queryByRole('menuitem', { name: 'Technical screening' })).toBeNull();
+  });
+});
+
+describe('Talent360View — email preview from Recent activity', () => {
+  const emailItem = {
+    id: 'comm:ci-1',
+    occurred_at: '2026-10-11T21:39:00Z',
+    category: 'communications',
+    title: 'Email sent',
+    body: '“Business Analyst role – quick intro call?”',
+    requisition_id: 'r1',
+    requisition_label: 'REQ-1000',
+    actor_label: 'Purush Pichaimuthu',
+    channel: 'email',
+    preview_id: 'ci-1',
+  };
+  const preview = {
+    id: 'ci-1',
+    channel: 'email',
+    direction: 'outbound',
+    subject: 'Business Analyst role – quick intro call?',
+    body: 'Hi Divya,\n\nAre you free for a quick call this week?',
+    from_address: 'purush@astre.example',
+    to_address: 'divya@example.com',
+    sent_at: '2026-10-11T21:39:00Z',
+    sender_label: 'Purush Pichaimuthu',
+    requisition_label: 'REQ-1000',
+  };
+  function withEmail(): void {
+    getTalent360Mock.mockResolvedValue(
+      makeModel({ recent_activity: { items: [emailItem], category_counts: { communications: 1 }, has_more: false } }),
+    );
+    vi.mocked(getTalent360CommunicationPreview).mockResolvedValue(preview);
+  }
+
+  it('the title shows the email subject as context and opens the full email', async () => {
+    withEmail();
+    renderView();
+    expect(await screen.findByText('“Business Analyst role – quick intro call?”')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview email sent · REQ-1000' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(getTalent360CommunicationPreview).toHaveBeenCalledWith('tal-1', 'ci-1');
+    expect(await within(dialog).findByText(/Are you free for a quick call this week\?/)).toBeInTheDocument();
+    expect(within(dialog).getByText('Purush Pichaimuthu <purush@astre.example>')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close email preview' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('a row without a preview id is plain text, not a link', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    expect(await screen.findByText('Email received')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Preview email/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Talent360View — read-only document preview', () => {
+  const pdf = {
+    document_id: 'd1',
+    file_name: 'RTR_Freddie_Mac.pdf',
+    mime_type: 'application/pdf',
+    byte_size: 4,
+    content_base64: btoa('%PDF'),
+  };
+  const origCreate = URL.createObjectURL;
+  const origRevoke = URL.revokeObjectURL;
+  beforeEach(() => {
+    URL.createObjectURL = vi.fn(() => 'blob:preview-1');
+    URL.revokeObjectURL = vi.fn();
+  });
+  afterEach(() => {
+    URL.createObjectURL = origCreate;
+    URL.revokeObjectURL = origRevoke;
+  });
+
+  it('clicking a document opens a PDF inline with a Download link; X closes', async () => {
+    vi.mocked(getTalent360DocumentContent).mockResolvedValue(pdf);
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    fireEvent.click(await screen.findByRole('button', { name: /^Preview Right to Represent · Freddie Mac/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(getTalent360DocumentContent).toHaveBeenCalledWith('tal-1', 'd1');
+    expect(await within(dialog).findByTitle('Preview of RTR_Freddie_Mac.pdf')).toHaveAttribute('src', 'blob:preview-1');
+    expect(within(dialog).getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'RTR_Freddie_Mac.pdf');
+    fireEvent.click(screen.getByRole('button', { name: 'Close document preview' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('shows a safe error when the file cannot be loaded', async () => {
+    vi.mocked(getTalent360DocumentContent).mockRejectedValue(new Error('boom'));
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    fireEvent.click(await screen.findByRole('button', { name: /^Preview Right to Represent · Freddie Mac/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
   });
 });

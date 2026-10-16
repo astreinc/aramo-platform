@@ -60,6 +60,28 @@ export class MeetingAssociationValidator {
   }
 
   /**
+   * TIP-E2E INC-3 A1 Part F — a SCREENING meeting: the Talent must belong to the
+   * caller's tenant; the Requisition is OPTIONAL and, when given, must belong to
+   * the tenant. The live-pipeline-episode check does NOT apply (Part F). The
+   * screening session itself is verified by the screening domain (tenant-bound,
+   * DRAFT, same Talent) before this is called. Fail-closed.
+   */
+  async assertScreeningAssociation(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    requisition_id: string | null;
+  }): Promise<void> {
+    const contacts = await this.talents.findContactByIds(args.tenant_id, [args.talent_record_id]);
+    if (!contacts.has(args.talent_record_id)) {
+      throw new MeetingAssociationError('talent_not_in_tenant', args.talent_record_id);
+    }
+    if (args.requisition_id !== null) {
+      const req = await this.requisitions.findStatusById({ tenant_id: args.tenant_id, id: args.requisition_id });
+      if (req === null) throw new MeetingAssociationError('requisition_not_in_tenant', args.requisition_id);
+    }
+  }
+
+  /**
    * Full recruiting-association validation: tenant ownership PLUS a LIVE pipeline
    * episode linking this Talent to this Requisition. Used by the scheduling path,
    * where a recruiter meeting asserts a real recruiting relationship. Fail-closed.

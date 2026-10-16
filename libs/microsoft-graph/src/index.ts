@@ -9,6 +9,11 @@ export {
   FORBIDDEN_SCOPE_PATTERNS,
   MICROSOFT_DELEGATED_SCOPES,
   MICROSOFT_SCHEDULING_SCOPES,
+  MICROSOFT_MEETING_ARTIFACT_SCOPES,
+  MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ,
+  MS_SCOPE_ONLINE_MEETING_RECORDING_READ,
+  grantsMeetingArtifacts,
+  scopesForCapability,
   MS_SCOPE_CALENDARS_RW,
   MS_SCOPE_MAIL_SEND,
   MS_SCOPE_OFFLINE_ACCESS,
@@ -111,3 +116,14 @@ export {
   type UsableToken,
   type UsableTokenArgs,
 } from './lib/delegated-authorization.service.js';
+
+// TIP-E2E INC-3 A1 (Part E) — delegated meeting-artifact operations (post-meeting transcripts).
+export {
+  MICROSOFT_MEETING_ARTIFACTS_PORT,
+  MeetingArtifactError,
+  type MeetingArtifactErrorKind,
+  type MicrosoftMeetingArtifactsPort,
+  type GraphOnlineMeetingRef,
+  type GraphTranscriptRef,
+  type GraphTranscriptContent,
+} from './lib/ports/microsoft-meeting-artifacts.port.js';

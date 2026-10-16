@@ -9,18 +9,20 @@ import { ConsentModule } from '@aramo/consent';
 import { DocumentsModule } from '@aramo/documents';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityModule } from '@aramo/identity';
+import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TaskModule } from '@aramo/task';
 
+import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 import { TalentIdentityModule } from '../talent-identity/talent-identity.module.js';
 import { TalentJourneyModule } from '../talent-journey/talent-journey.module.js';
 
 import { Talent360ReadAdapter } from './talent-360.adapters.js';
 import { Talent360Controller } from './talent-360.controller.js';
-import { TALENT_360_READ_PORT } from './talent-360.ports.js';
+import { TALENT_360_DOCUMENT_STORAGE, TALENT_360_READ_PORT } from './talent-360.ports.js';
 import { Talent360Service } from './talent-360.service.js';
 
 // Talent360Module — the apps/api composition root for GET /v1/talent-360/:id.
@@ -52,12 +54,20 @@ import { Talent360Service } from './talent-360.service.js';
     TalentExtractionModule,
     TalentJourneyModule,
     TalentIdentityModule,
+    ObjectStorageModule,
   ],
   controllers: [Talent360Controller],
   providers: [
     Talent360Service,
     Talent360ReadAdapter,
     { provide: TALENT_360_READ_PORT, useClass: Talent360ReadAdapter },
+    // Read-only document preview: the DocumentStoragePort bound locally (the
+    // documents-esign module precedent — the root binding is not exported).
+    {
+      provide: TALENT_360_DOCUMENT_STORAGE,
+      useFactory: (storage: ObjectStorageService) => new AramoS3DocumentStorageAdapter(storage),
+      inject: [ObjectStorageService],
+    },
   ],
 })
 export class Talent360Module {}

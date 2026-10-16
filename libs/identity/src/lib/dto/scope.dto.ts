@@ -471,6 +471,19 @@ export const SEED_SCOPE_KEYS = [
   // INC-1a (TIP-E2E) — examination mint scope (id-map node 0x1404). Order
   // mirrors the SEED_IDS.scopes id-map (append-last).
   'examination:create',
+  // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8) — manual technical
+  // screening scopes (id-map nodes 0x1405..0x1408). GRANTED to recruiter,
+  // lead_recruiter, recruiting_manager ONLY (no authority inferred from
+  // administrative status — tenant_admin/tenant_owner/org_admin excluded).
+  // Routes land in INC-3 PR-4. Order mirrors the SEED_IDS.scopes id-map.
+  'screening:read',
+  'screening:create',
+  'screening:edit',
+  'screening:confirm',
+  // TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.7) — transcript
+  // excerpt read, separate from screening:read (CI v1.2 :1034-1044). id-map node
+  // 0x1409; granted to the same three recruiter-tier roles only.
+  'screening:transcript:read',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

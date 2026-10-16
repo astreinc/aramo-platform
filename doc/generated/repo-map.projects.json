@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 80 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 81 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -79,6 +79,7 @@
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
     "@aramo/talent-trust": "./libs/talent-trust/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
+    "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
     "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
     "@aramo/visibility": "./libs/visibility/src/index.ts"
   },
@@ -499,6 +500,8 @@
       "AI_PROCESSING_AUTHORIZATION",
       "CI_ANALYSIS_JSON_SCHEMA",
       "CI_ANALYSIS_JSON_SCHEMA_NAME",
+      "CI_ANALYSIS_PROFILE_REQUISITION",
+      "CI_ANALYSIS_PROFILE_SCREENING",
       "CI_ANALYSIS_SCHEMA_VERSION",
       "CI_CLAIM_STATUSES",
       "CI_CLAIM_STATUSES_REQUIRING_CITATION",
@@ -512,6 +515,14 @@
       "CI_RUN_STATUSES",
       "CI_RUN_TERMINAL_STATUSES",
       "CI_RUN_TRANSITIONS",
+      "CI_SCREENING_CLAIM_TYPE",
+      "CI_SCREENING_JSON_SCHEMA",
+      "CI_SCREENING_JSON_SCHEMA_NAME",
+      "CI_SCREENING_PROMPT_SHA256",
+      "CI_SCREENING_PROMPT_TEMPLATE_ID",
+      "CI_SCREENING_PROMPT_TEMPLATE_TEXT",
+      "CI_SCREENING_PROMPT_TEMPLATE_VERSION",
+      "CI_SCREENING_SCHEMA_VERSION",
       "CONVERSATION_INTELLIGENCE_MODEL_PROVIDER",
       "CiAnalysisValidationError",
       "CiRunInvalidStateError",
@@ -530,12 +541,18 @@
       "RequisitionAnalysisContextSnapshotRepository",
       "RequisitionAnalysisContextSnapshotService",
       "RequisitionGoldenProfileContextReader",
+      "SCREENING_ANALYSIS_CONTEXT_SOURCE",
+      "SCREENING_ANALYSIS_MODEL",
+      "SCREENING_FINDING_DRAFT_SINK",
       "assertCiRunTransition",
       "buildRequisitionAnalysisContext",
       "canCiRunTransition",
       "isRequisitionAnalysisContextV1",
+      "resolveScreeningCitations",
+      "screeningContextSha256",
       "validateAnalysisResult",
-      "validateCitationsAgainstTranscript"
+      "validateCitationsAgainstTranscript",
+      "validateScreeningAnalysisResult"
     ],
     "@aramo/conversation-transcript": [
       "CONVERSATION_TRANSCRIPT_PROVIDER",
@@ -544,12 +561,18 @@
       "ConversationTranscriptProviderRegistry",
       "ConversationTranscriptRepository",
       "ConversationTranscriptService",
+      "EXTERNAL_CAPTURE_EVENT_TYPES",
+      "EXTERNAL_CAPTURE_MAX_SKEW_MS",
+      "ExternalCaptureEventError",
+      "FAKE_EXTERNAL_CAPTURE_PROVIDER_KEY",
       "FAKE_TRANSCRIPT_PROVIDER_KEY",
       "FIXTURE_TRANSCRIPT_FORMAT",
       "FakeConversationTranscriptProvider",
+      "FakeExternalCaptureProvider",
       "FixtureTranscriptParser",
       "INTERACTION_REFERENCE_PORT",
       "InMemoryTranscriptArtifactStore",
+      "LiveCaptureSessionBuffer",
       "MAX_ACQUISITION_ATTEMPTS",
       "MAX_NORMALIZATION_ATTEMPTS",
       "NORMALIZATION_ERROR_CODES",
@@ -588,12 +611,16 @@
       "canonicalStringify",
       "canonicalize",
       "deriveUtteranceId",
+      "evaluateLiveAssist",
       "isTerminalTranscriptState",
       "isTranscriptionAuthorized",
       "normalizeUtteranceText",
+      "parseExternalCaptureEvent",
       "sha256Hex",
       "sha256HexUtf8",
-      "validateNormalizedTranscript"
+      "signExternalCaptureEvent",
+      "validateNormalizedTranscript",
+      "verifyExternalCaptureSignature"
     ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
@@ -625,7 +652,18 @@
       "TemplateVersionNotFoundError",
       "TemplatesRepository"
     ],
-    "@aramo/documents-contracts": ["SIGNATURE_PROVIDER_PORT"],
+    "@aramo/documents-contracts": [
+      "ESIGN_S2S_SCHEME",
+      "ESIGN_S2S_SIGNATURE_HEADER",
+      "ESIGN_S2S_TIMESTAMP_HEADER",
+      "ESIGN_S2S_TIMESTAMP_TOLERANCE_SEC",
+      "SIGNATURE_PROVIDER_PORT",
+      "canonicalEsignS2sRequest",
+      "computeEsignS2sSignature",
+      "normalizeEsignS2sQuery",
+      "signEsignServiceRequest",
+      "verifyEsignServiceRequest"
+    ],
     "@aramo/documents-rendering": [
       "DOCUMENT_RENDERING_PORT",
       "PdfLibDocumentRenderingAdapter",
@@ -1048,6 +1086,8 @@
       "MICROSOFT_DELEGATED_SCOPES",
       "MICROSOFT_GRAPH_PORT",
       "MICROSOFT_LOGIN_AUTHORITY",
+      "MICROSOFT_MEETING_ARTIFACTS_PORT",
+      "MICROSOFT_MEETING_ARTIFACT_SCOPES",
       "MICROSOFT_OAUTH_PORT",
       "MICROSOFT_OAUTH_STATE_TTL_SECONDS",
       "MICROSOFT_PROVIDER_KEY",
@@ -1056,9 +1096,12 @@
       "MS_SCOPE_MAIL_SEND",
       "MS_SCOPE_OFFLINE_ACCESS",
       "MS_SCOPE_ONLINE_MEETINGS_RW",
+      "MS_SCOPE_ONLINE_MEETING_RECORDING_READ",
+      "MS_SCOPE_ONLINE_MEETING_TRANSCRIPT_READ",
       "MS_SCOPE_OPENID",
       "MS_SCOPE_PROFILE",
       "MS_SCOPE_USER_READ",
+      "MeetingArtifactError",
       "MicrosoftConsentRevokedError",
       "MicrosoftIdentityNotBoundError",
       "MicrosoftOAuthStateError",
@@ -1073,10 +1116,12 @@
       "decryptMicrosoftOAuthState",
       "encryptMicrosoftOAuthState",
       "generateMicrosoftPkce",
+      "grantsMeetingArtifacts",
       "isMicrosoftOAuthStateExpired",
       "microsoftSchedulingScopeParam",
       "microsoftScopeParam",
       "redactTokenBundle",
+      "scopesForCapability",
       "tokenNeedsRefresh"
     ],
     "@aramo/object-storage": [
@@ -1628,6 +1673,10 @@
       "RESOLUTION_SUBJECT_REF_TYPES",
       "RESOLUTION_SUBJECT_STATUSES",
       "RecordEvidenceDto",
+      "SCREENING_EVIDENCE_SOURCES",
+      "SCREENING_FINDING_BASES",
+      "SCREENING_FINDING_ORIGINS",
+      "SCREENING_REVIEW_OUTCOMES",
       "SEED_ASSERTION_TYPES",
       "SOURCE_CLASSES",
       "STATEMENT_CLASS_DIMENSION",
@@ -1680,6 +1729,21 @@
       "isTaskSource",
       "isTaskStatus",
       "isTaskType"
+    ],
+    "@aramo/technical-screening": [
+      "FOLLOW_UP_PROMPT_VERSION",
+      "QUESTION_PLAN_PROMPT_VERSION",
+      "SCREENING_AI_CONSENT",
+      "SCREENING_AI_MODEL",
+      "SCREENING_EVIDENCE_PUBLISHER",
+      "ScreeningAiService",
+      "ScreeningGuardError",
+      "TechnicalScreeningModule",
+      "TechnicalScreeningPrismaService",
+      "TechnicalScreeningRepository",
+      "TechnicalScreeningService",
+      "buildScreeningFindingPayload",
+      "screeningPayloadHash"
     ],
     "@aramo/tenant-reset": [
       "ACTIVITY_SCOPE_PREDICATE",
@@ -1781,6 +1845,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -1796,7 +1866,14 @@
         "status": "excluded"
       },
       { "project": "selection", "status": "production" },
-      { "project": "talent-extraction", "status": "production" }
+      { "project": "talent-extraction", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/technical-screening/src/tests/screening-ai.service.spec.ts",
+        "project": "technical-screening",
+        "status": "excluded"
+      },
+      { "project": "technical-screening", "status": "production" }
     ],
     "@aramo/api": [
       {
@@ -2274,6 +2351,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3433,6 +3516,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine-live-list.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4015,6 +4104,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-erasure.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4397,6 +4498,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/conversation-intelligence/src/tests/ci-b6-processing.integration.spec.ts",
+        "project": "conversation-intelligence",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/conversation-intelligence/src/tests/inc3-a1-screening-profile.integration.spec.ts",
         "project": "conversation-intelligence",
         "status": "excluded"
       },
@@ -5538,6 +5645,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-trust/src/tests/tr-screen-1-publication.integration.spec.ts",
+        "project": "talent-trust",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-trust/src/tests/tr2a-b3a-fixpoint-cluster.integration.spec.ts",
         "project": "talent-trust",
         "status": "excluded"
@@ -5567,7 +5680,20 @@
         "project": "task",
         "status": "excluded"
       },
-      { "project": "task", "status": "production" }
+      { "project": "task", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/technical-screening/src/tests/inc3-a1-domain.integration.spec.ts",
+        "project": "technical-screening",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/technical-screening/src/tests/technical-screening.integration.spec.ts",
+        "project": "technical-screening",
+        "status": "excluded"
+      },
+      { "project": "technical-screening", "status": "production" }
     ],
     "@aramo/communications": [
       {
@@ -5846,6 +5972,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/live-screening-assist.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" }
     ],
     "@aramo/documents": [
@@ -5864,6 +5996,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-storage-adapter.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5945,6 +6083,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5969,6 +6113,17 @@
       },
       { "project": "api", "status": "production" },
       {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/document-source-http.adapter.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/envelope-field-mapper.spec.ts",
         "project": "esign-service",
@@ -5980,7 +6135,12 @@
         "project": "esign-service",
         "status": "excluded"
       },
-      { "project": "esign-service", "status": "production" }
+      { "project": "esign-service", "status": "production" },
+      {
+        "from": "pact/consumers/esign-source-consumer/src/source-pull.consumer.test.ts",
+        "project": "esign-source-consumer-pact",
+        "status": "unscoped"
+      }
     ],
     "@aramo/documents-rendering": [
       {
@@ -6872,6 +7032,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/technical-screening/TechnicalScreeningView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/trust-proposals/TrustProposalsView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7512,6 +7678,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/microsoft-scheduling.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/technical-screening/screening-meeting-artifacts.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9038,6 +9210,7 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/technical-screening": [{ "project": "api", "status": "production" }],
     "@aramo/tenant-reset": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9698,6 +9871,13 @@
       "name": "task",
       "root": "libs/task",
       "sourceRoot": "libs/task/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "technical-screening",
+      "root": "libs/technical-screening",
+      "sourceRoot": "libs/technical-screening/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },

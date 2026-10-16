@@ -964,6 +964,28 @@ export const ERROR_CODES = [
   // identity.invitation.rejected_cross_tenant retains the reason). Also the
   // governed mapping for a User.email P2002 lost race on the create path.
   'EMAIL_UNAVAILABLE',
+  // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0)
+  // — a Core route that only esign-service may call cannot authenticate the
+  // service request because the shared signing secret is not configured. Fail
+  // closed (503) in every mode; never served unauthenticated.
+  'ESIGN_SERVICE_AUTH_UNAVAILABLE',
+  // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9, D6) — a screening edit,
+  // removal, void or confirm on a session that is not DRAFT (CONFIRMED/VOIDED
+  // are terminal; the DB trigger also refuses). HTTP 422.
+  'SCREENING_SESSION_STATE_INVALID',
+  // TIP-E2E INC-3 — the session version (CAS token, held in the write predicate)
+  // is stale, or the confirmed finding set does not match the session's. HTTP 409.
+  'SCREENING_SESSION_VERSION_CONFLICT',
+  // TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.6) — no tenant LLM
+  // key is configured, surfaced honestly instead of a raw provider error. HTTP 422.
+  'LLM_PROVIDER_NOT_CONFIGURED',
+  // TIP-E2E INC-3 A1 §B.6 — a retryable model/provider failure during screening
+  // AI assistance (question plan, follow-up, findings draft). HTTP 503.
+  'SCREENING_AI_UNAVAILABLE',
+  // TIP-E2E INC-3 A1 §B.6 — the client tenant's Microsoft 365 prerequisites
+  // (§10.1) are not met, e.g. Graph transcript access disabled or the
+  // meeting_artifacts capability not consented. HTTP 409.
+  'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

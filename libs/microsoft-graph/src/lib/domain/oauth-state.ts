@@ -1,8 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 import {
-  MICROSOFT_DELEGATED_SCOPES,
-  MICROSOFT_SCHEDULING_SCOPES,
+  scopesForCapability,
   type MicrosoftScopeCapability,
   assertLeastPrivilegeScopes,
 } from './graph-scopes.js';
@@ -143,7 +142,7 @@ export function buildMicrosoftAuthorizeUrl(args: BuildAuthorizeUrlArgs): string 
   const capability: MicrosoftScopeCapability = args.capability ?? 'baseline';
   const scopes =
     args.scopes ??
-    (capability === 'scheduling' ? MICROSOFT_SCHEDULING_SCOPES : MICROSOFT_DELEGATED_SCOPES);
+    scopesForCapability(capability);
   assertLeastPrivilegeScopes(scopes, capability);
   const authority = args.loginAuthority ?? MICROSOFT_LOGIN_AUTHORITY;
   const tenant = args.authorityTenant ?? MICROSOFT_DEFAULT_AUTHORITY_TENANT;

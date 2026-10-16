@@ -292,6 +292,15 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   MICROSOFT_SCHEDULING_IN_PROGRESS: 409,
   // IC-1 PR-1 (Amendment A1 §4) — cross-tenant invitation refusal (both tiers).
   EMAIL_UNAVAILABLE: 409,
+  // ES-2 — esign-service request authentication not configured (fail closed).
+  ESIGN_SERVICE_AUTH_UNAVAILABLE: 503,
+  // TIP-E2E INC-3 (directive §9, D6) — screening session lifecycle refusals.
+  SCREENING_SESSION_STATE_INVALID: 422,
+  SCREENING_SESSION_VERSION_CONFLICT: 409,
+  // TIP-E2E INC-3 A1 (§B.6) — screening AI assistance and meeting-artifact access.
+  LLM_PROVIDER_NOT_CONFIGURED: 422,
+  SCREENING_AI_UNAVAILABLE: 503,
+  MEETING_ARTIFACT_ACCESS_UNAVAILABLE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

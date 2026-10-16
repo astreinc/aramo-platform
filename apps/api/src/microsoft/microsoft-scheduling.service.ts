@@ -19,7 +19,7 @@ import {
   CALENDAR_INVITE_CONSENT_GATE,
   type CalendarInviteConsentGate,
 } from './calendar-invite-consent-gate.port.js';
-import { MeetingAssociationValidator } from './meeting-association.validator.js';
+import { MeetingAssociationError, MeetingAssociationValidator } from './meeting-association.validator.js';
 import { MicrosoftConfigResolver } from './microsoft-config.resolver.js';
 
 // COMM-C2B Amendment A1 (M365-SCHED-1) — Outlook calendar scheduling orchestration.
@@ -89,8 +89,12 @@ export interface ScheduleMeetingArgs {
   recruiter_id: string;
   connection_id?: string;
   talent_record_id: string;
-  requisition_id: string;
+  // INC-3 A1 Part F — null ONLY for a screening meeting with no Requisition.
+  requisition_id: string | null;
   pipeline_id?: string;
+  // INC-3 A1 Part F — a screening meeting: associates the screening session and
+  // replaces the live-pipeline check with the screening association check.
+  screening_session_id?: string;
   subject: string;
   start_date_time: string;
   end_date_time: string;
@@ -164,6 +168,7 @@ export class MicrosoftSchedulingService {
       organizer_id: args.recruiter_id,
       talent_record_id: args.talent_record_id,
       requisition_id: args.requisition_id,
+      screening_session_id: args.screening_session_id ?? null,
       request_fingerprint: fingerprint,
     });
     if (claim.outcome === 'identity_conflict') {
@@ -197,11 +202,22 @@ export class MicrosoftSchedulingService {
       // Authorization + association (C-4) THEN consent (R1) — fail closed, BEFORE any
       // provider side-effect. Validation runs AFTER the claim so a stuck pending op
       // never results: any throw below marks the op failed/unresolved (reclaimable).
-      await this.associations.assertRecruitingAssociation({
-        tenant_id: args.tenant_id,
-        talent_record_id: args.talent_record_id,
-        requisition_id: args.requisition_id,
-      });
+      if (args.screening_session_id !== undefined) {
+        await this.associations.assertScreeningAssociation({
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+        });
+      } else {
+        if (args.requisition_id === null) {
+          throw new MeetingAssociationError('association_invalid', `${args.talent_record_id}@none`);
+        }
+        await this.associations.assertRecruitingAssociation({
+          tenant_id: args.tenant_id,
+          talent_record_id: args.talent_record_id,
+          requisition_id: args.requisition_id,
+        });
+      }
       await this.consent.assertInvitationAllowed({
         tenant_id: args.tenant_id,
         talent_record_id: args.talent_record_id,
@@ -252,6 +268,7 @@ export class MicrosoftSchedulingService {
         talent_record_id: args.talent_record_id,
         requisition_id: args.requisition_id,
         pipeline_id: args.pipeline_id,
+        screening_session_id: args.screening_session_id ?? null,
       });
       await this.repo.markOperation(op.id, {
         status: 'succeeded',
@@ -622,16 +639,20 @@ export class MicrosoftSchedulingService {
 
   private requestFingerprint(args: ScheduleMeetingArgs, effectiveConnectionId: string): string {
     // Pipe-joined immutable request identity (FIX-3). '|' (never a space → NUL trap).
-    return [
+    // The recruiting-meeting format is UNCHANGED (an op persisted before INC-3 A1
+    // must still match its own retry); only a screening meeting (A1 Part F)
+    // appends its session — and only it may carry a null Requisition.
+    const base = [
       args.recruiter_id,
       args.talent_record_id,
-      args.requisition_id,
+      args.requisition_id ?? '',
       args.subject,
       args.start_date_time,
       args.end_date_time,
       args.time_zone,
       effectiveConnectionId,
     ].join('|');
+    return args.screening_session_id === undefined ? base : `${base}|screening:${args.screening_session_id}`;
   }
 
   async listUpcoming(args: {

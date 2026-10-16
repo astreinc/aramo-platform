@@ -28,6 +28,8 @@ import {
 } from '@aramo/conversation-transcript';
 
 import { ZOOM_TRANSCRIPT_EVENT_HANDLER } from '../communications/zoom-transcript-event-handler.port.js';
+import { MicrosoftModule } from '../microsoft/microsoft.module.js';
+import { MeetingArtifactsService } from '../microsoft/meeting-artifacts.service.js';
 
 import { ZoomTranscriptEventHandlerAdapter } from './zoom-transcript-event-handler.adapter.js';
 import { ObjectStorageTranscriptArtifactStore } from './object-storage-transcript-artifact-store.adapter.js';
@@ -35,6 +37,10 @@ import { CommunicationsInteractionReferenceReader, CommunicationsTranscriptCorre
 import { ConsentTranscriptGate } from './consent-transcript.gate.js';
 import { ZoomRecordingTranscriptProvider } from './zoom/zoom-recording-transcript.provider.js';
 import { ZoomVttTranscriptParser } from './zoom/zoom-vtt.parser.js';
+// TIP-E2E INC-3 A1-5 (CI-B5M) — the Teams post-meeting transcript path on the
+// SAME B3/B4 registries (no second transcript engine).
+import { TeamsMeetingTranscriptProvider } from './teams/teams-meeting-transcript.provider.js';
+import { TeamsTranscriptParser } from './teams/teams-transcript.parser.js';
 import { ZoomTranscriptHttpClient, type FetchLike } from './zoom/zoom-transcript-http.client.js';
 import { IntegrationZoomConnectionSecretResolver, SecretsManagerZoomTokenProvider } from './zoom/zoom-transcript-resolvers.js';
 import {
@@ -47,6 +53,8 @@ import {
 
 const ZOOM_TRANSCRIPT_PROVIDER = 'ZOOM_TRANSCRIPT_PROVIDER_INSTANCE';
 const ZOOM_TRANSCRIPT_PARSER = 'ZOOM_TRANSCRIPT_PARSER_INSTANCE';
+const TEAMS_TRANSCRIPT_PROVIDER = 'TEAMS_TRANSCRIPT_PROVIDER_INSTANCE';
+const TEAMS_TRANSCRIPT_PARSER = 'TEAMS_TRANSCRIPT_PARSER_INSTANCE';
 
 /** Registers the Zoom provider + WEBVTT parser into the (empty) registries once. */
 @Injectable()
@@ -56,20 +64,22 @@ class ZoomTranscriptRegistrar implements OnApplicationBootstrap {
     private readonly parserRegistry: TranscriptSourceParserRegistry,
     @Inject(ZOOM_TRANSCRIPT_PROVIDER) private readonly provider: ZoomRecordingTranscriptProvider,
     @Inject(ZOOM_TRANSCRIPT_PARSER) private readonly parser: ZoomVttTranscriptParser,
+    @Inject(TEAMS_TRANSCRIPT_PROVIDER) private readonly teamsProvider: TeamsMeetingTranscriptProvider,
+    @Inject(TEAMS_TRANSCRIPT_PARSER) private readonly teamsParser: TeamsTranscriptParser,
   ) {}
 
   onApplicationBootstrap(): void {
-    if (!this.providerRegistry.has(this.provider.providerKey())) {
-      this.providerRegistry.register(this.provider);
+    for (const provider of [this.provider, this.teamsProvider]) {
+      if (!this.providerRegistry.has(provider.providerKey())) this.providerRegistry.register(provider);
     }
-    if (!this.parserRegistry.has(this.parser.formatKey())) {
-      this.parserRegistry.register(this.parser);
+    for (const parser of [this.parser, this.teamsParser]) {
+      if (!this.parserRegistry.has(parser.formatKey())) this.parserRegistry.register(parser);
     }
   }
 }
 
 @Module({
-  imports: [CommunicationsModule, ConsentModule, IntegrationModule, ObjectStorageModule],
+  imports: [CommunicationsModule, ConsentModule, IntegrationModule, ObjectStorageModule, MicrosoftModule],
   providers: [
     // --- B3/B4 substrate, composed at the root with ports bound ---
     ConversationTranscriptPrismaService,
@@ -118,6 +128,14 @@ class ZoomTranscriptRegistrar implements OnApplicationBootstrap {
       inject: [ZoomTranscriptHttpClient, TRANSCRIPT_ARTIFACT_STORE, IntegrationZoomConnectionSecretResolver],
     },
     { provide: ZOOM_TRANSCRIPT_PARSER, useClass: ZoomVttTranscriptParser },
+    // --- TIP-E2E INC-3 A1-5 — Teams post-meeting transcript adapter chain ---
+    {
+      provide: TEAMS_TRANSCRIPT_PROVIDER,
+      useFactory: (artifacts: MeetingArtifactsService, store: TranscriptArtifactStore) =>
+        new TeamsMeetingTranscriptProvider(artifacts, store),
+      inject: [MeetingArtifactsService, TRANSCRIPT_ARTIFACT_STORE],
+    },
+    { provide: TEAMS_TRANSCRIPT_PARSER, useClass: TeamsTranscriptParser },
     // --- correlation + consent enforcement ---
     {
       provide: TRANSCRIPT_INTERACTION_CORRELATOR,
@@ -149,6 +167,15 @@ class ZoomTranscriptRegistrar implements OnApplicationBootstrap {
       inject: [ZoomRecordingTranscriptOrchestrator],
     },
   ],
-  exports: [ZoomRecordingTranscriptOrchestrator, ZOOM_TRANSCRIPT_EVENT_HANDLER],
+  // TIP-E2E INC-3 A1-5 — the screening API drives Teams transcript acquisition
+  // + normalization through the same B3/B4 services, and (A1-8) deletes the
+  // transcript artifacts under the screening retention rule.
+  exports: [
+    ZoomRecordingTranscriptOrchestrator,
+    ZOOM_TRANSCRIPT_EVENT_HANDLER,
+    ConversationTranscriptService,
+    TranscriptNormalizationService,
+    ConversationTranscriptRepository,
+  ],
 })
 export class ConversationTranscriptZoomModule {}

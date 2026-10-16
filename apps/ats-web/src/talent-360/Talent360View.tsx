@@ -76,6 +76,8 @@ export function Talent360View(): JSX.Element | null {
   const canResolveIdentity = session !== null && hasScope(session, 'identity:resolve');
   const canEditTalent = session !== null && hasScope(session, 'talent:edit');
   const canSeePay = session !== null && hasScope(session, 'compensation:view:pay');
+  // TIP-E2E INC-3 §11 — the manual Technical Screening workspace (screening:read).
+  const canScreen = session !== null && hasScope(session, 'screening:read');
   const myId = session?.sub ?? null;
 
   const [model, setModel] = useState<Talent360ViewModel | null>(null);
@@ -379,7 +381,7 @@ export function Talent360View(): JSX.Element | null {
       case 'ci':
         return <CiSection />;
       case 'ts':
-        return <ScreeningSection />;
+        return <ScreeningSection talentId={talentId} canScreen={canScreen} />;
     }
   };
 
@@ -388,6 +390,7 @@ export function Talent360View(): JSX.Element | null {
     ...(canAddToList ? [{ label: 'Add to list', run: () => setAddListOpen(true) }] : []),
     ...(h.actions.can_edit_profile ? [{ label: 'Edit profile', to: `/talent/${talentId}/edit` }] : []),
     ...(h.actions.can_log_activity ? [{ label: 'Log activity', run: () => setLogOpen(true) }] : []),
+    ...(canScreen ? [{ label: 'Technical screening', to: `/talent/${talentId}/screening` }] : []),
   ];
 
   return (

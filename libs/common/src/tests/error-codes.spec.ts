@@ -317,6 +317,14 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'MICROSOFT_SCHEDULING_IN_PROGRESS',
       // IC-1 PR-1 (Amendment A1 §4) — cross-tenant invitation refusal (appended LAST).
       'EMAIL_UNAVAILABLE',
+      'ESIGN_SERVICE_AUTH_UNAVAILABLE',
+      // TIP-E2E INC-3 (directive §9, D6) — screening session lifecycle refusals.
+      'SCREENING_SESSION_STATE_INVALID',
+      'SCREENING_SESSION_VERSION_CONFLICT',
+      // TIP-E2E INC-3 A1 (§B.6).
+      'LLM_PROVIDER_NOT_CONFIGURED',
+      'SCREENING_AI_UNAVAILABLE',
+      'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
     ]);
   });
 });

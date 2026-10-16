@@ -1,8 +1,9 @@
 import { Dialog, Select, TextArea } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 
 import { createNote, listActivities } from '../activity/activity-api';
+import { formatActivityNote } from '../activity/activity-note-format';
 import type { ActivityView } from '../activity/types';
 import { ConsentHistoryPanel } from '../consent/ConsentHistoryPanel';
 import {
@@ -45,11 +46,13 @@ import {
   workAuthLabel,
   type T360Section,
 } from './t360-model';
+import { DocumentPreviewDialog, EmailPreviewDialog } from './t360-previews';
 import type {
   ActiveOpportunityView,
   AttentionItemView,
   RecentActivityItemView,
   Talent360View as Model,
+  TalentDocumentView,
 } from './talent-360-types';
 
 // Talent 360 (redesign) — one view per section (§6–§9). Presentation over the
@@ -80,6 +83,9 @@ function ReqTag({ label }: { label: string }): JSX.Element {
 // ── shared rows ───────────────────────────────────────────────────────────────
 
 function ActivityRow({ a, full }: { a: RecentActivityItemView; full: boolean }): JSX.Element {
+  const { talentId = '' } = useParams();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const canPreview = a.preview_id !== null && talentId !== '';
   return (
     <div className={`t360-act${full ? ' t360-act--full' : ''}`}>
       <span className="t360-act__time">
@@ -91,12 +97,27 @@ function ActivityRow({ a, full }: { a: RecentActivityItemView; full: boolean }):
       </span>
       <span className="t360-min0">
         <span className="t360-act__head">
-          <b>{a.title}</b>
+          {canPreview ? (
+            <Button
+              unstyled
+              type="button"
+              className="t360-act__title-link"
+              onClick={() => setPreviewOpen(true)}
+              aria-label={`Preview ${a.title.toLowerCase()}${a.requisition_label !== null ? ` · ${a.requisition_label}` : ''}`}
+            >
+              {a.title}
+            </Button>
+          ) : (
+            <b>{a.title}</b>
+          )}
           {a.requisition_label !== null ? <ReqTag label={a.requisition_label} /> : null}
         </span>
-        {a.body !== null ? <span className="t360-act__text">{a.body}</span> : null}
+        {a.body !== null ? <span className="t360-act__text">{formatActivityNote(a.body)}</span> : null}
         {full && a.actor_label !== null ? <span className="t360-act__who">{a.actor_label}</span> : null}
       </span>
+      {previewOpen && a.preview_id !== null ? (
+        <EmailPreviewDialog talentId={talentId} interactionId={a.preview_id} onClose={() => setPreviewOpen(false)} />
+      ) : null}
     </div>
   );
 }
@@ -626,27 +647,42 @@ export function DocumentsSection({ model, talentId, canEdit }: { model: Model; t
         <span className="t360-caption t360-caption--inline">Requisition documents carry their REQ tag.</span>
       </div>
       {docs.length === 0 ? <div className="t360-empty">No documents yet.</div> : null}
-      {docs.map((d) => {
-        const resume = /r[ée]sum[ée]/i.test(d.kind);
-        const tone = d.signed ? 'green' : resume ? 'blue' : 'grey';
-        return (
-          <div key={d.id} className="t360-doc">
-            <span className={`t360-doc__tile t360-doc__tile--${tone}`}>
-              <Glyph d={ICON.docs} width={1.7} />
-            </span>
-            <span className="t360-min0 t360-grow">
-              <span className="t360-doc__head">
-                <b>{d.kind}</b>
-                {d.requisition_label !== null ? <ReqTag label={d.requisition_label} /> : null}
-              </span>
-              <span className="t360-doc__meta">
-                {[d.meta, d.signed && d.signed_at !== null ? `Signed ${shortDate(d.signed_at)}` : null].filter(Boolean).join(' · ')}
-              </span>
-            </span>
-          </div>
-        );
-      })}
+      {docs.map((d) => (
+        <DocRow key={d.id} d={d} talentId={talentId} />
+      ))}
     </div>
+    </>
+  );
+}
+
+// A document row opens the read-only preview (PR #946; nothing is recorded).
+function DocRow({ d, talentId }: { d: TalentDocumentView; talentId: string }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const resume = /r[ée]sum[ée]/i.test(d.kind);
+  const tone = d.signed ? 'green' : resume ? 'blue' : 'grey';
+  return (
+    <>
+      <Button
+        unstyled
+        type="button"
+        className="t360-doc t360-doc--link"
+        onClick={() => setOpen(true)}
+        aria-label={`Preview ${d.kind}${d.meta !== null ? ` — ${d.meta}` : ''}`}
+      >
+        <span className={`t360-doc__tile t360-doc__tile--${tone}`}>
+          <Glyph d={ICON.docs} width={1.7} />
+        </span>
+        <span className="t360-min0 t360-grow">
+          <span className="t360-doc__head">
+            <b>{d.kind}</b>
+            {d.requisition_label !== null ? <ReqTag label={d.requisition_label} /> : null}
+          </span>
+          <span className="t360-doc__meta">
+            {[d.meta, d.signed && d.signed_at !== null ? `Signed ${shortDate(d.signed_at)}` : null].filter(Boolean).join(' · ')}
+          </span>
+        </span>
+      </Button>
+      {open ? <DocumentPreviewDialog talentId={talentId} documentId={d.id} title={d.meta ?? d.kind} onClose={() => setOpen(false)} /> : null}
     </>
   );
 }
@@ -973,14 +1009,22 @@ export function CiSection(): JSX.Element {
   );
 }
 
-export function ScreeningSection(): JSX.Element {
+export function ScreeningSection({ talentId, canScreen }: { talentId: string; canScreen: boolean }): JSX.Element {
   return (
     <div className="t360-card t360-card--sect" data-testid="t360-ts">
       <div className="t360-sect__title">Technical Screening</div>
       <div className="t360-caption t360-caption--trust">
         History across requisitions. Screenings are prepared and run per requisition, in Talent × Requisition 360.
       </div>
-      <div className="t360-empty t360-empty--rowtop">No technical screenings yet.</div>
+      {canScreen ? (
+        <div className="t360-empty t360-empty--rowtop">
+          <Link className="t360-arrow" to={`/talent/${talentId}/screening`}>
+            Open technical screening →
+          </Link>
+        </div>
+      ) : (
+        <div className="t360-empty t360-empty--rowtop">No technical screenings yet.</div>
+      )}
       <div className="t360-tsfoot">Findings are recruiter-attested. Aramo never qualifies, rejects or ranks.</div>
     </div>
   );

@@ -44,7 +44,13 @@ export const COMMUNICATION_EVIDENCE_AUTHORITIES = ['provider_verified', 'recruit
 export type CommunicationEvidenceAuthority = (typeof COMMUNICATION_EVIDENCE_AUTHORITIES)[number];
 
 /** Polymorphic association subjects (subject_id is a UUID-only cross-schema ref). */
-export const COMMUNICATION_SUBJECT_TYPES = ['talent_record', 'requisition', 'pipeline'] as const;
+export const COMMUNICATION_SUBJECT_TYPES = [
+  'talent_record',
+  'requisition',
+  'pipeline',
+  // TIP-E2E INC-3 A1 Part F — technical screening sessions (screening meetings).
+  'screening_session',
+] as const;
 export type CommunicationSubjectType = (typeof COMMUNICATION_SUBJECT_TYPES)[number];
 
 /** How an interaction relates to a subject. `regarding` (e.g. requisition) is OPTIONAL. */

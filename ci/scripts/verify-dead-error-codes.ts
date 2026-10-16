@@ -43,6 +43,8 @@ export const RESERVED_CODES: Record<string, string> = {
     'RESERVED (DOC-2): the RenderFailedError domain error (libs/documents-rendering) maps here; rendering runs inside the RTR/Offer orchestrators and is not yet exposed on a throwing HTTP path, so no controller emitter is seen. Registered + documented; HTTP mapping pending.',
   DOCUMENT_UPLOAD_UNSAFE:
     'RESERVED (DOC-2): the UnsafePdfError domain error (libs/documents-rendering) maps here; the upload-safety scan is DARK/unwired, so no emitter exists yet. Registered + documented; throw-site pending.',
+  DOCUMENT_EXECUTED_HASH_MISMATCH:
+    'RESERVED (ES-2): the retired POST /v1/documents/esign-writeback route was this code\'s only AramoError emitter. The condition (executed-artifact SHA-256 mismatch) still exists and is answered 422 by the canonical signed webhook receiver (EsignEventsController), which returns a bare status to keep webhook compatibility. Kept because the error-code registry is APPEND-ONLY.',
   REQUISITION_NO_OPENINGS:
     'RESERVED (T4-B2 §7): the pipeline over-capacity refusal was retired (capacity is now derived), but the code is kept for compatibility — still mapped by the ats-web pipeline error-message map.',
   PIPELINE_SUBMIT_REQUIRES_SUBMITTAL:

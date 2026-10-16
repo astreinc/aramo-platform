@@ -31,7 +31,18 @@ export type {
   RecordEvidenceInput,
   RecordAnchorInput,
   DeclaredEvidenceEntry,
+  // TR-SCREEN-1 DDR §3 — the pinned screening-publication input.
+  RecordScreeningFindingInput,
 } from './lib/talent-trust.service.js';
+// TR-SCREEN-1 DDR §2.1 — the SCREENING_FINDING basis vocabulary.
+export {
+  SCREENING_FINDING_BASES,
+  SCREENING_FINDING_ORIGINS,
+  SCREENING_REVIEW_OUTCOMES,
+  SCREENING_EVIDENCE_SOURCES,
+  type ScreeningFindingBasis,
+  type ScreeningFindingOrigin,
+} from './lib/canonical-claim-shapes.js';
 export type {
   EvidenceRecordRow,
   // TR-14 B1 (DDR §2.2) — the link-graph + event-timeline read shapes for the dossier.

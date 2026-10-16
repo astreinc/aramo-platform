@@ -179,6 +179,22 @@ export interface RecentActivityItemView {
   readonly requisition_label: string | null;
   readonly actor_label: string | null;
   readonly channel: string | null;
+  // Interaction id of a previewable email (opens the full-email preview); null otherwise.
+  readonly preview_id: string | null;
+}
+
+// GET /v1/talent-360/:talentId/communications/:interactionId — the full sent email.
+export interface CommunicationPreviewView {
+  readonly id: string;
+  readonly channel: string;
+  readonly direction: string;
+  readonly subject: string | null;
+  readonly body: string | null;
+  readonly from_address: string;
+  readonly to_address: string;
+  readonly sent_at: string;
+  readonly sender_label: string | null;
+  readonly requisition_label: string | null;
 }
 
 export interface RecentActivityView {
@@ -220,6 +236,16 @@ export interface TalentDocumentView {
   readonly meta: string | null;
   readonly signed: boolean;
   readonly signed_at: string | null;
+}
+
+// GET /v1/talent-360/:talentId/documents/:documentId/content — a document's file
+// for the read-only preview (bytes base64 inside JSON).
+export interface TalentDocumentContentView {
+  readonly document_id: string;
+  readonly file_name: string;
+  readonly mime_type: string;
+  readonly byte_size: number;
+  readonly content_base64: string;
 }
 
 export interface DocumentsView {

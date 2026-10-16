@@ -266,6 +266,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [uuidv7(), TALENT, T],
       );
 
+      // TIP-E2E INC-3 (directive §10.4) — technical screening is T0 PRESERVE: a
+      // CONFIRMED session + finding + PUBLISHED intent + event for T's talent.
+      {
+        const actor = '01900000-0000-7000-8000-0000000000af';
+        const sessionId = uuidv7();
+        const findingId = uuidv7();
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningSession" (id, tenant_id, talent_record_id, state, version, created_by_actor_id, confirmed_by_actor_id, confirmed_at, confirmed_version, confirmation_attested)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,'CONFIRMED',3,$4::uuid,$4::uuid,now(),2,true)`,
+          [sessionId, T, TALENT, actor],
+        );
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningFinding" (id, tenant_id, session_id, skill_raw, basis, observation_raw) VALUES ($1::uuid,$2::uuid,$3::uuid,'Go','RECRUITER_OBSERVED','observed')`,
+          [findingId, T, sessionId],
+        );
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningEvidencePublication" (id, tenant_id, session_id, finding_id, evidence_record_id, talent_record_id_at_confirm, canonical_payload, payload_hash, collected_at, state, published_at)
+           VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,'{}'::jsonb,'h',now(),'PUBLISHED',now())`,
+          [uuidv7(), T, sessionId, findingId, uuidv7(), TALENT],
+        );
+        await db.query(
+          `INSERT INTO technical_screening."ScreeningEvent" (id, tenant_id, session_id, event_type, actor_id, session_version, payload) VALUES ($1::uuid,$2::uuid,$3::uuid,'SESSION_CONFIRMED',$4,3,'{}'::jsonb)`,
+          [uuidv7(), T, sessionId, actor],
+        );
+      }
+
       // ---- E2 pre-start requirement chain (T0 v1.1 §2.2.7) — one full chain
       // per tenant: Set → Definition → Instance → Audit + MaterializationIntent.
       // T's rows are deleted by the reset (via the reset-marker escape for the
@@ -493,6 +519,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         company: await count('company."Company"', 'tenant_id=$1::uuid', [T]),
         contact: await count('contact."Contact"', 'tenant_id=$1::uuid', [T]),
         tenantRow: await count('identity."Tenant"', 'id=$1::uuid', [T]),
+        // TIP-E2E INC-3 (§10.4, §13 row 49) — screening is T0 PRESERVE.
+        screeningSession: await count('technical_screening."ScreeningSession"', 'tenant_id=$1::uuid', [T]),
+        screeningFinding: await count('technical_screening."ScreeningFinding"', 'tenant_id=$1::uuid', [T]),
+        screeningPublication: await count('technical_screening."ScreeningEvidencePublication"', 'tenant_id=$1::uuid', [T]),
+        screeningEvent: await count('technical_screening."ScreeningEvent"', 'tenant_id=$1::uuid', [T]),
         histActivity: await count(
           'activity."Activity"',
           `tenant_id=$1::uuid AND subject_type IN ('talent_record','company','contact')`,
@@ -556,6 +587,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('company."Company"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.company);
       expect(await count('contact."Contact"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.contact);
       expect(await count('identity."Tenant"', 'id=$1::uuid', [T])).toBe(preservedBefore.tenantRow);
+      // TIP-E2E INC-3 (§13 row 49) — screening counts identical before and after.
+      expect(preservedBefore.screeningSession).toBe(1);
+      expect(preservedBefore.screeningEvent).toBe(1);
+      expect(await count('technical_screening."ScreeningSession"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.screeningSession);
+      expect(await count('technical_screening."ScreeningFinding"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.screeningFinding);
+      expect(await count('technical_screening."ScreeningEvidencePublication"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.screeningPublication);
+      expect(await count('technical_screening."ScreeningEvent"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.screeningEvent);
 
       // Bystander tenant is ENTIRELY untouched.
       expect(await count('requisition."Requisition"', 'tenant_id=$1::uuid', [T2])).toBe(bystanderBefore.req);

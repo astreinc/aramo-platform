@@ -667,7 +667,12 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
                 .join(' · '),
           undefined,
           pipeline !== null ? (
-            <ResumeSelectionSection pipelineId={pipeline.id} canSetSelection={scopes.includes('pipeline:resume:set')} />
+            <ResumeSelectionSection
+              pipelineId={pipeline.id}
+              canSetSelection={scopes.includes('pipeline:resume:set')}
+              talentId={pipeline.talent_record_id}
+              canUploadTailored={scopes.includes('talent:edit') && scopes.includes('attachment:create')}
+            />
           ) : undefined,
         );
       case 'comm':

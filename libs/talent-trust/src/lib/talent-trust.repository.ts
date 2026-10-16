@@ -167,6 +167,11 @@ export interface TrustStateRow {
 }
 
 export interface InsertEvidenceInput {
+  // TR-SCREEN-1 DDR §3 — an optional caller-preallocated row id (UUIDv7). Absent
+  // → generated here, exactly as before. Supplied → the SAME single G1 atomic
+  // insert path (record + CREATED event + recompute request) keys the row on it,
+  // so a replayed publication hits the primary key instead of a second row.
+  id?: string;
   subject_id: string;
   tenant_id: string;
   dimension: TrustDimension;
@@ -910,7 +915,7 @@ export class TalentTrustRepository {
   private async createEvidenceRow(tx: TrustTx, input: InsertEvidenceInput): Promise<EvidenceRecordRow> {
     const created = await tx.evidenceRecord.create({
       data: {
-        id: uuidv7(),
+        id: input.id ?? uuidv7(),
         subject_id: input.subject_id,
         tenant_id: input.tenant_id,
         dimension: input.dimension,
