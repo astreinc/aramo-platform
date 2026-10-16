@@ -6605,6 +6605,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/communications/communications-api.capabilities.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/companies/CompaniesListView.spec.tsx",
         "project": "aramo-ats-web",

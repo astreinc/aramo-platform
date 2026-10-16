@@ -44,7 +44,7 @@ const PROVIDER_META: Record<LlmProvider, ProviderMeta> = {
   },
   openai: {
     label: LLM_PROVIDER_LABELS.openai,
-    note: 'GPT-4 class · direct API key',
+    note: 'GPT-4.1 · direct API key',
     initials: 'OA',
     av: 'openai',
   },
