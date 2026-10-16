@@ -60,11 +60,18 @@ vi.mock('../microsoft/ScheduleMeetingDialog', () => ({
   ScheduleMeetingDialog: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="schedule-dialog">{requisitionId}</div> : null,
 }));
-const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn() }));
+const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn(), getTalentWorkAuthorizationState: vi.fn() }));
 vi.mock('../talent/talent-api', () => ({
   getTalent: tal.getTalent,
   getTalentWorkHistory: tal.getTalentWorkHistory,
   updateTalent: tal.updateTalent,
+  getTalentWorkAuthorizationState: tal.getTalentWorkAuthorizationState,
+}));
+// D3 — Documents reuses Edit talent's résumé panel; stub it here.
+vi.mock('../talent/TalentEditView', () => ({
+  EditResumePanel: ({ talentId, disabled }: { talentId: string; disabled: boolean }) => (
+    <div data-testid="resume-panel">{`${talentId}:${disabled ? 'ro' : 'rw'}`}</div>
+  ),
 }));
 vi.mock('../consent/ConsentHistoryPanel', () => ({
   ConsentHistoryPanel: ({ talentId }: { talentId: string }) => <div data-testid="consent-history">{talentId}</div>,
@@ -260,6 +267,11 @@ beforeEach(() => {
   adv.dismissAdvisory.mockResolvedValue({});
   tal.getTalent.mockResolvedValue(RECORD);
   tal.getTalentWorkHistory.mockResolvedValue({ work_history: WORK_HISTORY });
+  tal.getTalentWorkAuthorizationState.mockResolvedValue({
+    talent_id: 'tal-1',
+    current: { work_authorization_status: 'permanent_resident', authorized_to_work_in: ['US'], visa_type: null, requires_sponsorship: false, asserted_at: '2026-09-23T12:00:00Z', effective_from: null, effective_to: null, expires_at: null },
+    history: [],
+  });
   tal.updateTalent.mockImplementation(async (_id: string, body: Record<string, unknown>) => ({ ...RECORD, ...body }));
   localStorage.clear();
 });
@@ -539,15 +551,30 @@ describe('Talent360View — sections (§7–§9)', () => {
 });
 
 describe('Talent360View — Profile: full record, read-only (§8A)', () => {
-  it('loads the full record + work history lazily, only when Profile opens', async () => {
+  it('loads the full record, work history and work-authorization state with the page (A4)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
     await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
-    expect(tal.getTalent).not.toHaveBeenCalled();
-    fireEvent.click(within(nav()).getByRole('button', { name: /Profile/ }));
-    expect(await screen.findByTestId('t360-profile')).toBeInTheDocument();
     await waitFor(() => expect(tal.getTalent).toHaveBeenCalledWith('tal-1'));
     expect(tal.getTalentWorkHistory).toHaveBeenCalledWith('tal-1');
+    expect(tal.getTalentWorkAuthorizationState).toHaveBeenCalledWith('tal-1');
+    // Header shows "<title> · <current employer>" on Overview too.
+    expect(await screen.findByText('Scrum Master / Product Owner · Freddie Mac')).toBeInTheDocument();
+  });
+
+  it('Work authorization: sponsorship + "Self-reported · date" from the governed state (A2)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b4 = await screen.findByTestId('t360-pblock-04');
+    await waitFor(() => expect(within(b4).getByText('Sponsorship').nextSibling).toHaveTextContent('Not required'));
+    expect(within(b4).getByText('Self-reported · Sep 23, 2026')).toBeInTheDocument();
+  });
+
+  it('Documents: the résumé panel (preview + upload) is reused from Edit talent (D3)', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    expect(await screen.findByTestId('resume-panel')).toHaveTextContent('tal-1:rw');
   });
 
   it('renders the ten blocks in Edit-talent order with exact labels; empty values show —', async () => {
@@ -585,7 +612,8 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(await screen.findByText('Scrum Master / Product Owner · Freddie Mac')).toBeInTheDocument();
   });
 
-  it('current pay is shown only to the Edit talent audience (talent:edit)', async () => {
+  it('current pay is hidden without compensation:view:pay (A1)', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');
     const b5 = await screen.findByTestId('t360-pblock-05');
@@ -593,8 +621,8 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(b5).queryByText('Current pay')).toBeNull();
   });
 
-  it('current pay row shows with talent:edit', async () => {
-    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+  it('current pay row shows with compensation:view:pay (A1)', async () => {
+    h.scopes = [...BASE_SCOPES, 'compensation:view:pay'];
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');
     const b5 = await screen.findByTestId('t360-pblock-05');

@@ -10,7 +10,9 @@ import {
   type Tr360NavState,
 } from '../requisitions/talent-requisition-360/route';
 import { getDossier, type DossierHead } from '../talent/dossier-api';
+import { EditResumePanel } from '../talent/TalentEditView';
 import { listTalentMemberships, type SavedListVisibility } from '../talent/saved-list-api';
+import type { WorkAuthorizationStateView } from '../talent/types';
 import { Button } from '../ui';
 import { resolveUserNames } from '../users/users-api';
 
@@ -461,13 +463,21 @@ export function OpportunitiesSection({
 
 // ── Work authorization (§8) ───────────────────────────────────────────────────
 
-export function WorkAuthSection({ model, firstName, canEdit, talentId, go }: { model: Model; firstName: string; canEdit: boolean; talentId: string; go: (s: T360Section) => void }): JSX.Element {
+export function WorkAuthSection({ model, firstName, canEdit, talentId, go, workAuth }: { model: Model; firstName: string; canEdit: boolean; talentId: string; go: (s: T360Section) => void; workAuth: WorkAuthorizationStateView | null }): JSX.Element {
   const h = model.header;
-  const fact = model.profile.facts.find((f) => f.label.replace(/_/g, ' ').toLowerCase() === 'work authorization');
+  const wa = workAuth?.current ?? null;
   const cells: { l: string; v: string; s: string; warn?: boolean }[] = [
-    { l: 'STATUS', v: h.work_authorization !== null ? labelize(h.work_authorization) : 'Not on record', s: fact?.source ?? 'Self-reported' },
+    {
+      l: 'STATUS',
+      v: h.work_authorization !== null ? labelize(h.work_authorization) : 'Not on record',
+      s: wa !== null ? `Self-reported · ${shortDate(wa.asserted_at)}${wa.visa_type !== null && wa.visa_type !== '' ? ` · ${wa.visa_type}` : ''}` : 'Self-reported',
+    },
     { l: 'DOCUMENT', v: '—', s: 'Collected at pre-start, not before' },
-    { l: 'SPONSORSHIP', v: '—', s: 'Not on record' },
+    {
+      l: 'SPONSORSHIP',
+      v: wa === null ? '—' : wa.requires_sponsorship ? 'Required' : 'Not required',
+      s: wa === null ? 'Not on record' : wa.expires_at !== null ? `Authorization expires ${shortDate(wa.expires_at)}` : 'Talent-stated',
+    },
     { l: 'ENGAGEMENT TYPES', v: h.engagement_type !== null ? labelize(h.engagement_type) : '—', s: 'Talent-stated' },
   ];
   return (
@@ -497,10 +507,19 @@ export function WorkAuthSection({ model, firstName, canEdit, talentId, go }: { m
 
 // ── Documents (§8) ────────────────────────────────────────────────────────────
 
-export function DocumentsSection({ model }: { model: Model }): JSX.Element {
+export function DocumentsSection({ model, talentId, canEdit }: { model: Model; talentId: string; canEdit: boolean }): JSX.Element {
   if (model.documents === null) return <NoAccess title="Documents" />;
   const docs = model.documents.key_documents;
   return (
+    <>
+    <div className="t360-card t360-card--sect t360-resumes" data-testid="t360-resumes">
+      <div className="t360-card__hd t360-card__hd--docs">
+        <span className="t360-sect__title">Résumé</span>
+        <span className="t360-caption t360-caption--inline t360-ml10">Preview any edition · upload a new résumé (earlier editions are kept).</span>
+      </div>
+      {/* The SAME résumé panel as Edit talent (editions, preview, upload, review, default). */}
+      <EditResumePanel talentId={talentId} disabled={!canEdit} />
+    </div>
     <div className="t360-card t360-card--sect">
       <div className="t360-card__hd t360-card__hd--docs">
         <span className="t360-sect__title">Documents</span>
@@ -528,6 +547,7 @@ export function DocumentsSection({ model }: { model: Model }): JSX.Element {
         );
       })}
     </div>
+    </>
   );
 }
 

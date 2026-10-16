@@ -13,7 +13,7 @@ import {
   WORK_AUTHORIZATION_VALUES,
 } from '../talent/stated-fields';
 import { getTalentWorkHistory, updateTalent } from '../talent/talent-api';
-import type { TalentRecordView, WorkHistoryDraft, WorkHistoryView } from '../talent/types';
+import type { TalentRecordView, WorkAuthorizationStateView, WorkHistoryDraft, WorkHistoryView } from '../talent/types';
 import { Button } from '../ui';
 
 import { labelize, type T360Section } from './t360-model';
@@ -38,6 +38,8 @@ export interface ProfileData {
   readonly status: 'loading' | 'ready' | 'fallback';
   readonly record: TalentRecordView | null;
   readonly workHistory: readonly WorkHistoryView[] | null;
+  /** Governed work-authorization state (GET /talent-records/:id/work-authorization). */
+  readonly workAuth: WorkAuthorizationStateView | null;
 }
 
 type CardKey = '01' | '02' | '03' | '04' | '05' | '06' | '07' | '08' | '09';
@@ -303,6 +305,7 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       : present(h.location);
   const owners = [...new Set((model.opportunities?.active ?? []).map((o) => o.owner_label).filter((x): x is string => present(x) !== null))];
   const website = present(rec?.web_site);
+  const wa = data.workAuth?.current ?? null;
 
   const readRows: Record<Exclude<CardKey, '06' | '09'>, Row[]> = {
     '01': [
@@ -330,8 +333,15 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       { l: 'Experience', v: present(h.experience_summary) },
     ],
     '04': [
-      { l: 'Status', v: label(WORK_AUTHORIZATION_LABELS, rec !== null ? rec.work_authorization : h.work_authorization), keys: ['work_authorization'] },
-      { l: 'Sponsorship', v: null },
+      {
+        l: 'Status',
+        v: label(WORK_AUTHORIZATION_LABELS, rec !== null ? rec.work_authorization : h.work_authorization),
+        ...(wa !== null ? { src: `Self-reported · ${dateLabel(wa.asserted_at) ?? ''}` } : {}),
+        keys: ['work_authorization'],
+      },
+      ...(wa !== null && present(wa.visa_type) !== null ? [{ l: 'Visa type', v: wa.visa_type }] : []),
+      { l: 'Sponsorship', v: wa === null ? null : wa.requires_sponsorship ? 'Required' : 'Not required' },
+      ...(wa !== null && wa.expires_at !== null ? [{ l: 'Expires', v: dateLabel(wa.expires_at) }] : []),
       { l: 'Document', v: null, src: 'Collected at pre-start' },
     ],
     '05': [

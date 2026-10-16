@@ -14,7 +14,7 @@ import { SectionNav, useSectionNavOpen } from '../shell/section-nav/SectionNav';
 import { dismissAdvisory } from '../sourcing/sourcing-api';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
 import { AddToListDialog } from '../talent/components/AddToListDialog';
-import { getTalent, getTalentWorkHistory } from '../talent/talent-api';
+import { getTalent, getTalentWorkAuthorizationState, getTalentWorkHistory } from '../talent/talent-api';
 import { updateTask } from '../task/task-api';
 import { Button, LoadingState, safeErrorMessage } from '../ui';
 
@@ -73,6 +73,7 @@ export function Talent360View(): JSX.Element | null {
   const canSchedule = session !== null && hasScope(session, 'communication:meeting:create');
   const canResolveIdentity = session !== null && hasScope(session, 'identity:resolve');
   const canEditTalent = session !== null && hasScope(session, 'talent:edit');
+  const canSeePay = session !== null && hasScope(session, 'compensation:view:pay');
   const myId = session?.sub ?? null;
 
   const [model, setModel] = useState<Talent360ViewModel | null>(null);
@@ -126,31 +127,29 @@ export function Talent360View(): JSX.Element | null {
   }, [talentId]);
   useEffect(() => load(), [load]);
 
-  // §8A — the full record + declared work history, loaded lazily the first time
-  // Profile opens (same reads + scope gate as Edit talent) and kept for the visit;
-  // also fills the header's current employer. 404/403 on the record → fallback
-  // to the Talent 360 read (no banner).
+  // §8A — the full record, declared work history and governed work-authorization
+  // state, loaded with the page (PO A4: the header's "<title> · <current
+  // employer>" shows on every section) — same reads + scope gate as Edit talent.
+  // 404/403 on the record → fallback to the Talent 360 read (no banner).
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
-  const profileRequested = useRef<string | null>(null);
   useEffect(() => {
-    if (section !== 'profile' || talentId === '' || profileRequested.current === talentId) return;
-    profileRequested.current = talentId;
-    setProfileData({ status: 'loading', record: null, workHistory: null });
-    const forTalent = talentId;
-    void Promise.allSettled([getTalent(forTalent), getTalentWorkHistory(forTalent)]).then(([rec, wh]) => {
-      if (profileRequested.current !== forTalent) return; // navigated to another Talent meanwhile
-      setProfileData({
-        status: rec.status === 'fulfilled' ? 'ready' : 'fallback',
-        record: rec.status === 'fulfilled' ? rec.value : null,
-        workHistory: wh.status === 'fulfilled' ? wh.value.work_history : null,
-      });
-    });
-  }, [section, talentId]);
-  useEffect(() => {
-    if (profileRequested.current !== null && profileRequested.current !== talentId) {
-      profileRequested.current = null;
-      setProfileData(null);
-    }
+    if (talentId === '') return;
+    let live = true;
+    setProfileData({ status: 'loading', record: null, workHistory: null, workAuth: null });
+    void Promise.allSettled([getTalent(talentId), getTalentWorkHistory(talentId), getTalentWorkAuthorizationState(talentId)]).then(
+      ([rec, wh, wa]) => {
+        if (!live) return;
+        setProfileData({
+          status: rec.status === 'fulfilled' ? 'ready' : 'fallback',
+          record: rec.status === 'fulfilled' ? rec.value : null,
+          workHistory: wh.status === 'fulfilled' ? wh.value.work_history : null,
+          workAuth: wa.status === 'fulfilled' ? wa.value : null,
+        });
+      },
+    );
+    return () => {
+      live = false;
+    };
   }, [talentId]);
 
   // A superseded record redirects to its survivor — never rehydrate stale state.
@@ -316,10 +315,10 @@ export function Talent360View(): JSX.Element | null {
         return (
           <ProfileSection
             model={model}
-            data={profileData ?? { status: 'loading', record: null, workHistory: null }}
+            data={profileData ?? { status: 'loading', record: null, workHistory: null, workAuth: null }}
             talentId={talentId}
             canEdit={canEditTalent && h.actions.can_edit_profile}
-            canSeePay={canEditTalent}
+            canSeePay={canSeePay}
             go={go}
             onRecordSaved={(rec) => setProfileData((p) => (p === null ? p : { ...p, record: rec }))}
             onWorkHistorySaved={(list) => setProfileData((p) => (p === null ? p : { ...p, workHistory: list }))}
@@ -327,9 +326,18 @@ export function Talent360View(): JSX.Element | null {
           />
         );
       case 'auth':
-        return <WorkAuthSection model={model} firstName={first} canEdit={h.actions.can_edit_profile} talentId={talentId} go={go} />;
+        return (
+          <WorkAuthSection
+            model={model}
+            firstName={first}
+            canEdit={h.actions.can_edit_profile}
+            talentId={talentId}
+            go={go}
+            workAuth={profileData?.workAuth ?? null}
+          />
+        );
       case 'docs':
-        return <DocumentsSection model={model} />;
+        return <DocumentsSection model={model} talentId={talentId} canEdit={canEditTalent} />;
       case 'activity':
         return <ActivitySection model={model} />;
       case 'tasks':

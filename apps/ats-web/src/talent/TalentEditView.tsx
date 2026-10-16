@@ -257,7 +257,7 @@ function resumeReviewLabel(status: string | null): string | null {
   }
 }
 
-function EditResumePanel({
+export function EditResumePanel({
   talentId,
   disabled,
 }: {
