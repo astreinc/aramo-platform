@@ -25,6 +25,7 @@ import { updateTalent } from '../talent/talent-api';
 import { listTalentMemberships, type SavedListVisibility } from '../talent/saved-list-api';
 import type { TalentRecordView, WorkAuthorizationStateView } from '../talent/types';
 import { Button } from '../ui';
+import { bandLabel } from '../ui/band-map';
 import { resolveUserNames } from '../users/users-api';
 
 import {
@@ -47,6 +48,7 @@ import {
   type T360Section,
 } from './t360-model';
 import { DocumentPreviewDialog, EmailPreviewDialog } from './t360-previews';
+import { channelLabel, dispositionReasonLabel, engagementLabel } from './t360-vocab';
 import type {
   ActiveOpportunityView,
   AttentionItemView,
@@ -481,7 +483,7 @@ export function OpportunitiesSection({
                   state={o.next_action.href === null ? TR360_STATE : undefined}
                   className="t360-btn t360-btn--secondary t360-btn--sm"
                 >
-                  {labelize(o.next_action.label)}
+                  {o.next_action.label}
                 </Link>
               ) : null}
               <Link to={path} state={TR360_STATE} className="t360-btn t360-btn--neutral t360-btn--sm">
@@ -499,9 +501,9 @@ export function OpportunitiesSection({
           <span className="t360-prow__main">
             <b>{c.role_title ?? 'Requisition'}</b>
             <span className="t360-muted"> · {c.client_name ?? 'Client'}</span>
-            <span className="t360-prow__detail">{c.reason !== null ? labelize(c.reason) : 'Reason not recorded'}</span>
+            <span className="t360-prow__detail">{c.reason !== null ? dispositionReasonLabel(c.reason) : 'Reason not recorded'}</span>
           </span>
-          <span className={`t360-pill ${/withdr/i.test(c.outcome) ? 't360-tone--amber' : 't360-tone--greyalt'}`}>{labelize(c.outcome)}</span>
+          <span className={`t360-pill ${/withdr/i.test(c.outcome) ? 't360-tone--amber' : 't360-tone--greyalt'}`}>{c.outcome}</span>
           <span className="t360-prow__when">{c.closed_at !== null ? monthYear(c.closed_at) : ''}</span>
         </div>
       ))}
@@ -576,7 +578,7 @@ export function WorkAuthSection({ model, firstName, editable, record, go, workAu
     { l: 'DOCUMENT', v: '—', s: 'Collected at pre-start, not before' },
     // TI-1G: requires_sponsorship is not collected by any surface yet (default only).
     { l: 'SPONSORSHIP', v: '—', s: wa !== null && wa.expires_at !== null ? `Not collected yet · authorization expires ${shortDate(wa.expires_at)}` : 'Not collected yet' },
-    { l: 'ENGAGEMENT TYPES', v: h.engagement_type !== null ? labelize(h.engagement_type) : '—', s: 'Talent-stated' },
+    { l: 'ENGAGEMENT TYPES', v: h.engagement_type !== null ? engagementLabel(h.engagement_type) : '—', s: 'Talent-stated' },
   ];
   return (
     <div className={`t360-card t360-card--prof t360-narrow${editing ? ' t360-pblock--editing' : ''}`} data-testid="t360-auth">
@@ -914,7 +916,7 @@ export function TrustSection({
     for (const d of dims) {
       const band = head.dimensions?.[d.key]?.band;
       if (band !== undefined && band !== null) {
-        claims.push({ claim: d.label, evidence: 'From the evidence ledger', state: labelize(String(band)), tone: bandTone(String(band)) });
+        claims.push({ claim: d.label, evidence: 'From the evidence ledger', state: bandLabel(String(band)), tone: bandTone(String(band)) });
       }
     }
   }
@@ -966,7 +968,7 @@ export function TrustSection({
             <span className="t360-contact__div">
               <span>Last contact</span>
               <span className="t360-ink">
-                {relativeDay(lc.at)} {clockTime(lc.at)} · {lc.channel}
+                {relativeDay(lc.at)} {clockTime(lc.at)} · {channelLabel(lc.channel)}
               </span>
             </span>
           ) : null}

@@ -20,6 +20,7 @@ import type { TalentRecordView, WorkAuthorizationStateView, WorkHistoryDraft, Wo
 import { Button } from '../ui';
 
 import { labelize, type T360Section } from './t360-model';
+import { workHistorySourceLabel } from './t360-vocab';
 import type { Talent360View as Model } from './talent-360-types';
 
 // Talent 360 → Profile (§8A): the talent record in Edit talent's section order,
@@ -601,8 +602,8 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
     data.workHistory !== null
       ? [...data.workHistory]
           .sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))
-          .map((w) => ({ key: w.id, role: w.role_title, org: w.employer_name, span: span(w.start_date, w.end_date), src: labelize(w.source), ok: w.verified }))
-      : model.profile.work_history.map((w, i) => ({ key: `${w.role}-${i}`, role: w.role, org: w.organization, span: w.span, src: w.source ?? '', ok: false }));
+          .map((w) => ({ key: w.id, role: w.role_title, org: w.employer_name, span: span(w.start_date, w.end_date), src: workHistorySourceLabel(w.source), ok: w.verified }))
+      : model.profile.work_history.map((w, i) => ({ key: `${w.role}-${i}`, role: w.role, org: w.organization, span: w.span, src: w.source !== null && w.source !== undefined ? workHistorySourceLabel(w.source) : '', ok: false }));
   const skillChips = rec !== null ? splitSkills(rec.key_skills ?? '') : model.profile.skills.map((s) => s.label);
 
   const addSkill = (): void => {

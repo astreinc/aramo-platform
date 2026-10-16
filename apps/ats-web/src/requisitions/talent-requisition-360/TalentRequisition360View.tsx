@@ -20,6 +20,8 @@ import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
 import { withCurrency } from '../../talent/stated-fields';
+import { availabilityLabel, journeyOwnerLabel } from '../../talent-360/t360-vocab';
+import { workAuthLabel } from '../../talent-360/t360-model';
 import { getTalent, updateTalent } from '../../talent/talent-api';
 import type { TalentRecordView } from '../../talent/types';
 import { useCompactRailPage } from '../../shell/nav-collapse';
@@ -457,7 +459,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     label: 'Rate & availability confirmed',
     sub: [
       desired !== null && desired.trim() !== '' ? `Desired ${withCurrency(desired)}` : null,
-      t360?.header.availability.detail ?? t360?.header.availability.status ?? null,
+      t360?.header.availability.detail ?? (t360 !== null && t360 !== undefined && t360.header.availability.status !== null ? availabilityLabel(t360.header.availability.status) : null),
     ]
       .filter((s): s is string => s !== null && s !== '')
       .join(' · ') || 'No rate or availability confirmation on record',
@@ -479,7 +481,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     },
     { k: 'Desired rate', v: desired !== null && desired.trim() !== '' ? desired : '—' },
     { k: 'Work authorization', v: t360?.header.work_authorization != null ? 'On record' : 'Not on record' },
-    { k: 'Availability', v: t360?.header.availability.status ?? '—' },
+    { k: 'Availability', v: t360 !== null && t360 !== undefined && t360.header.availability.status !== null ? availabilityLabel(t360.header.availability.status) : '—' },
   ];
 
   const m365Ready = binding !== null && !binding.needs_reauthorization;
@@ -561,7 +563,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
           ? `Qualified is a recruiter decision — Aramo never sets it.${primary?.label === 'Mark qualified' && primary.enabled ? ' Ready: use "Mark qualified" in the header.' : ''}`
           : `${first} has not reached ${label} on ${reqCode} yet.`;
     } else {
-      body = `${state === 'current' ? 'Current stage' : 'Reached'}${when !== null ? ` · ${when}` : ''}${reached !== undefined ? ` · owned by ${reached.owner}` : ''}.`;
+      body = `${state === 'current' ? 'Current stage' : 'Reached'}${when !== null ? ` · ${when}` : ''}${reached !== undefined ? ` · owned by ${journeyOwnerLabel(reached.owner)}` : ''}.`;
     }
     if (key === 'offer') {
       return summary(
@@ -641,7 +643,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
         return summary(
           'Work authorization',
           t360?.header.work_authorization != null
-            ? `On record · ${t360.header.work_authorization}.`
+            ? `On record · ${workAuthLabel(t360.header.work_authorization)}.`
             : 'No work authorization on record.',
         );
       case 'opp':

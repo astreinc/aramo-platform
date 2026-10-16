@@ -40,6 +40,7 @@ import {
 import { getTalent360 } from './talent-360-api';
 import type { ActiveOpportunityView, AttentionItemView, Talent360View as Talent360ViewModel } from './talent-360-types';
 import './talent-360.css';
+import { availabilityLabel, engagementLabel } from './t360-vocab';
 
 // Talent 360 — the person-centric recruiter workspace (route `talent/:talentId`),
 // redesigned to platform/Talent 360 CRM.dc.html: shared main nav + shared talent
@@ -405,7 +406,7 @@ export function Talent360View(): JSX.Element | null {
         initials={initials}
         name={h.display_name}
         subtitle={h.title ?? undefined}
-        pill={h.availability.status !== null ? labelize(h.availability.status) : undefined}
+        pill={h.availability.status !== null ? availabilityLabel(h.availability.status) : undefined}
         groups={groups}
         active={section}
         onSelect={(k) => go(k as T360Section)}
@@ -424,7 +425,7 @@ export function Talent360View(): JSX.Element | null {
             <div className="t360-hd__id">
               <div className="t360-hd__line1">
                 <h1 className="t360-h1">{h.display_name}</h1>
-                {h.availability.status !== null ? <span className="t360-chip t360-tone--green">{labelize(h.availability.status)}</span> : null}
+                {h.availability.status !== null ? <span className="t360-chip t360-tone--green">{availabilityLabel(h.availability.status)}</span> : null}
                 {h.recruiting_ready.ready ? (
                   <span
                     className="t360-chip t360-tone--blue t360-chip--help"
@@ -454,7 +455,7 @@ export function Talent360View(): JSX.Element | null {
                 {h.desired_compensation !== null ? (
                   <span>
                     <span className="t360-mono t360-ink">{withCurrency(h.desired_compensation)}</span> desired
-                    {h.engagement_type !== null ? ` · ${labelize(h.engagement_type)}` : ''}
+                    {h.engagement_type !== null ? ` · ${engagementLabel(h.engagement_type)}` : ''}
                   </span>
                 ) : null}
               </div>

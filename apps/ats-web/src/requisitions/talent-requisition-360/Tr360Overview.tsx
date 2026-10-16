@@ -1,6 +1,7 @@
 import { Button } from '@aramo/fe-foundation';
 import type { ReactNode } from 'react';
 
+import { channelLabel } from '../../talent-360/t360-vocab';
 import type { AttentionItemView, RecentActivityItemView } from '../../talent-360/talent-360-types';
 
 import { formatActivityTime, type PillTone, type SkillChip } from './tr360-model';
@@ -121,7 +122,7 @@ export function Tr360Overview({
                     <b className="tr360-act__e">{a.title}</b>
                     {a.actor_label !== null ? <span className="tr360-act__who"> · {a.actor_label}</span> : null}
                   </span>
-                  {a.channel !== null ? <span className="tr360-act__tag">{a.channel}</span> : <span />}
+                  {a.channel !== null ? <span className="tr360-act__tag">{channelLabel(a.channel)}</span> : <span />}
                 </div>
               ))
             )}
