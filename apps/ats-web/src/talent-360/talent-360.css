@@ -1737,3 +1737,19 @@ body.t360-route .rc-content {
 .t360-dv__page { overflow: auto; }
 .t360-dv__frame { height: 100%; min-height: 60vh; }
 .t360-dv__sheet { max-width: 860px; }
+/* Word sheet fills the viewer's page area (no fixed height / inner scroll /
+   width cap inherited from the Edit-talent .rc-rpreview__docx panel). */
+.t360-dv__page { padding: 16px; }
+.t360-dv__page .t360-dv__sheet.rc-rpreview__docx {
+  align-self: stretch;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 100%;
+  margin: 0;
+  overflow: visible;
+  box-sizing: border-box;
+  padding: 36px 48px 44px;
+  font-size: 13px;
+}
+.t360-dv__page .t360-dv__frame { flex: 1 1 auto; min-height: 100%; }
