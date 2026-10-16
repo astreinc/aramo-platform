@@ -926,8 +926,9 @@ export function TrustSection({
             if (!o) setHistoryOpen(false);
           }}
           title="Consent history"
+          size="lg"
         >
-          <ConsentHistoryPanel talentId={talentId} />
+          <ConsentHistoryPanel talentId={talentId} showTitle={false} />
         </Dialog>
       ) : null}
     </div>
