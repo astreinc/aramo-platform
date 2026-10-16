@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
@@ -8,13 +10,14 @@ import {
 } from '@aramo/documents';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
-import { type RenderBlock } from '@aramo/documents-rendering';
+import { type LetterheadModel, type RenderBlock } from '@aramo/documents-rendering';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
 import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
+import { isHtmlContent, type RtrHtmlLogoRef } from './rtr-html-content.js';
 
 // DOC-5 / RTR-TEMPLATE-1 — the dedicated apps/api RTR orchestrator. The ONLY layer
 // that may touch both scope:boundary Documents/E-Sign AND scope:ats TalentRecord.
@@ -92,7 +95,9 @@ export interface RtrPreviewView {
 export interface RtrComposeView {
   template: RtrProvenanceView;
   // B2 — the fixed signature block the renderer appends (printed name = bound talent name).
-  preview: { title: string; blocks: RenderBlock[]; signature_block: { printed_name: string | null } };
+  // A1 — for rtr-html-v1 content `blocks` is empty and `html` carries the REAL-bound
+  // allowlisted html (field nodes → <span data-sample="{key}">{value}</span>).
+  preview: { title: string; blocks: RenderBlock[]; html?: string; signature_block: { printed_name: string | null } };
 }
 
 @Injectable()
@@ -134,6 +139,13 @@ export class RtrOrchestratorService {
     //     client. Fails closed before any write.
     const company_id = await this.resolveRequestCompany(input);
 
+    // 1c. A1 §2.4 — the version's FROZEN letterhead logo (rtr-html-v1 only): bytes read
+    //     from the TemplateAsset's storage and sha-verified. The renderer never fetches.
+    const letterhead =
+      isHtmlContent(template.content) && template.content.logo
+        ? await this.loadLetterhead(input.tenant_id, template.content.logo, input.requestId)
+        : undefined;
+
     // 2. Resolve the closed binding catalog → a fully-resolved RenderModel pinned
     //    to the exact template version. Throws RTR_TEMPLATE_BINDING_MISSING /
     //    _CONFIGURATION_INVALID before any write; no raw {{token}} can be rendered.
@@ -147,7 +159,11 @@ export class RtrOrchestratorService {
       // §13 ruling — recruiter.display_name resolves to the SENDING recruiter.
       recruiter_user_id: input.created_by,
       requestId: input.requestId,
+      ...(letterhead !== undefined ? { letterhead } : {}),
     });
+    // bound_html is a compose-preview projection only — never part of the render model.
+    const render = { ...model };
+    delete render.bound_html;
 
     // 3. Create the RTR Document (+ the three RTR associations) and FREEZE the pinned-template
     //    revision — delegated to the shared governed-signing capability. template_version_id is
@@ -168,7 +184,7 @@ export class RtrOrchestratorService {
         { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' },
         { resource_type: 'COMPANY', resource_id: company_id, relationship: 'CLIENT' },
       ],
-      render: model,
+      render,
       template_version_id: template.template_version_id,
     });
 
@@ -356,6 +372,7 @@ export class RtrOrchestratorService {
       preview: {
         title: model.title,
         blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })),
+        ...(model.bound_html !== undefined ? { html: model.bound_html } : {}),
         signature_block: { printed_name: model.signature_block.printed_name },
       },
     };
@@ -412,6 +429,20 @@ export class RtrOrchestratorService {
       });
     }
     return derived;
+  }
+
+  private async loadLetterhead(tenant_id: string, logo: RtrHtmlLogoRef, requestId: string): Promise<LetterheadModel> {
+    const invalid = (reason: string): AramoError =>
+      new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'The active Right to Represent template logo is not usable', 422, {
+        requestId,
+        details: { reason },
+      });
+    const asset = await this.templates.findAssetById(tenant_id, logo.asset_id);
+    if (asset === null) throw invalid('logo_asset_missing');
+    const bytes = await this.storage.getArtifact({ storage_key: asset.storage_locator, requestId, maxBytes: 1024 * 1024 });
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    if (sha !== asset.sha256 || sha !== logo.sha256) throw invalid('logo_asset_hash_mismatch');
+    return { image_bytes: new Uint8Array(bytes), image_format: logo.mime === 'image/png' ? 'PNG' : 'JPG', image_sha256: sha, name: null };
   }
 
   private async frozenTitle(tenant_id: string, document_id: string): Promise<string> {

@@ -10,6 +10,8 @@ import {
   type RenderModel,
   type RenderProvenance,
   type RenderedOutput,
+  type RichBlock,
+  type RichRun,
   type SignatureBlockModel,
   type SignatureFieldPlacement,
 } from './document-rendering.port.js';
@@ -159,6 +161,96 @@ function manifestSha256(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
+// The manifest projection of a model: identical to the model except letterhead bytes are
+// replaced by their sha256 (bytes do not JSON-serialise meaningfully). A model without a
+// letterhead is returned unchanged, so v1 manifests hash exactly as before.
+export function manifestProjection(model: RenderModel): unknown {
+  if (model.letterhead === undefined) return model;
+  const { image_format, image_sha256, name } = model.letterhead;
+  return { ...model, letterhead: { image_format, image_sha256, name } };
+}
+
+// ── Rich (rtr-html-v1) run layout ──────────────────────────────────────────────────
+// Greedy line fill over styled words. Each word is measured in its own font; a single
+// space separates words (runs of whitespace collapse); '\n' forces a break; a word wider
+// than the line is hard-broken via wrapTextToWidth. Pure + deterministic.
+interface RunStyle {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+}
+export interface LaidOutSegment {
+  text: string;
+  style: RunStyle;
+  // leading space before this segment (0 for the first segment on a line)
+  space_before: boolean;
+  space_underline: boolean;
+}
+type Measure = (text: string, style: RunStyle) => number;
+
+export function layoutRuns(runs: readonly RichRun[], measure: Measure, maxWidth: number): LaidOutSegment[][] {
+  type Tok = { kind: 'word'; text: string; style: RunStyle } | { kind: 'space'; style: RunStyle } | { kind: 'break' };
+  const toks: Tok[] = [];
+  for (const r of runs) {
+    const style: RunStyle = { bold: r.bold === true, italic: r.italic === true, underline: r.underline === true };
+    const parts = r.text.replace(/\r\n?/g, '\n').split(/(\n|[ \t]+)/);
+    for (const part of parts) {
+      if (part === '') continue;
+      if (part === '\n') toks.push({ kind: 'break' });
+      else if (/^[ \t]+$/.test(part)) toks.push({ kind: 'space', style });
+      else toks.push({ kind: 'word', text: part, style });
+    }
+  }
+  const lines: LaidOutSegment[][] = [];
+  let line: LaidOutSegment[] = [];
+  let width = 0;
+  let pendingSpace: RunStyle | null = null;
+  const spaceW = (st: RunStyle): number => measure(' ', st);
+  const pushLine = (): void => {
+    lines.push(line);
+    line = [];
+    width = 0;
+    pendingSpace = null;
+  };
+  for (const t of toks) {
+    if (t.kind === 'break') {
+      pushLine();
+      continue;
+    }
+    if (t.kind === 'space') {
+      if (line.length > 0) pendingSpace = t.style;
+      continue;
+    }
+    const w = measure(t.text, t.style);
+    const sp: RunStyle | null = line.length > 0 ? pendingSpace : null;
+    const extra = sp !== null ? spaceW(sp) : 0;
+    if (line.length > 0 && width + extra + w > maxWidth) pushLine();
+    if (w > maxWidth) {
+      const pieces = wrapTextToWidth(t.text, (s) => measure(s, t.style), maxWidth);
+      pieces.forEach((piece, i) => {
+        if (i > 0) pushLine();
+        line.push({ text: piece, style: t.style, space_before: false, space_underline: false });
+        width = measure(piece, t.style);
+      });
+      pendingSpace = null;
+      continue;
+    }
+    const hasSpace = line.length > 0 && sp !== null;
+    line.push({ text: t.text, style: t.style, space_before: hasSpace, space_underline: hasSpace && sp !== null && sp.underline && t.style.underline });
+    width += (hasSpace ? extra : 0) + w;
+    pendingSpace = null;
+  }
+  if (line.length > 0 || lines.length === 0 || toks[toks.length - 1]?.kind === 'break') lines.push(line);
+  return lines;
+}
+
+const LIST_INDENT = 18;
+const LIST_ITEM_GAP = 2;
+const LETTERHEAD_TOP = 762;
+const LETTERHEAD_MAX_HEIGHT = 44;
+const LETTERHEAD_MAX_WIDTH = 170;
+const LETTERHEAD_NAME_SIZE = 13;
+
 @Injectable()
 export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
   private pinMetadata(doc: PDFDocument): void {
@@ -183,6 +275,26 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
 
       let page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]); // US Letter
       let cursorY = TOP_Y;
+      // A1 §2.4 — letterhead (rich path only): the frozen logo + organisation name.
+      if (model.letterhead !== undefined) {
+        const lh = model.letterhead;
+        const img = lh.image_format === 'PNG' ? await doc.embedPng(lh.image_bytes) : await doc.embedJpg(lh.image_bytes);
+        const scale = Math.min(LETTERHEAD_MAX_HEIGHT / img.height, LETTERHEAD_MAX_WIDTH / img.width, 1);
+        const w = img.width * scale;
+        const h = img.height * scale;
+        page.drawImage(img, { x: MARGIN_X, y: LETTERHEAD_TOP - h, width: w, height: h });
+        if (lh.name !== null && lh.name.trim().length > 0) {
+          const nameX = MARGIN_X + w + 12;
+          const nameLines = wrapTextToWidth(lh.name.trim(), (s) => bold.widthOfTextAtSize(s, LETTERHEAD_NAME_SIZE), PAGE_WIDTH - MARGIN_X - nameX).slice(0, 2);
+          const blockH = nameLines.length * LETTERHEAD_NAME_SIZE * LINE_HEIGHT_FACTOR;
+          let ny = LETTERHEAD_TOP - h / 2 + blockH / 2 - LETTERHEAD_NAME_SIZE;
+          for (const l of nameLines) {
+            page.drawText(l, { x: nameX, y: ny, size: LETTERHEAD_NAME_SIZE, font: bold, color: rgb(0, 0, 0) });
+            ny -= LETTERHEAD_NAME_SIZE * LINE_HEIGHT_FACTOR;
+          }
+        }
+        cursorY = Math.min(TOP_Y, LETTERHEAD_TOP - h - 24);
+      }
       // Word-wrap each block to the content width; a line that would cross the bottom
       // margin starts a new page. Long paragraphs therefore flow instead of running off
       // the page edge.
@@ -205,9 +317,74 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
 
       drawWrapped(model.title, TITLE_SIZE, true);
       cursorY -= BLOCK_GAP;
-      for (const block of model.blocks) {
-        const isHeading = block.type === 'HEADING';
-        drawWrapped(block.text, isHeading ? HEADING_SIZE : BODY_SIZE, isHeading);
+      if (model.rich_blocks !== undefined) {
+        // A1 §2.3 — rich content. Oblique faces are embedded ONLY on this path so the
+        // rtr-generated-v1 output stays byte-identical.
+        const italic = await doc.embedFont(StandardFonts.HelveticaOblique);
+        const boldItalic = await doc.embedFont(StandardFonts.HelveticaBoldOblique);
+        const fontFor = (st: RunStyle): PDFFont => (st.bold ? (st.italic ? boldItalic : bold) : st.italic ? italic : font);
+        const ensureRoom = (size: number): void => {
+          if (cursorY - size < BOTTOM_MARGIN) {
+            page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+            cursorY = TOP_Y;
+          }
+        };
+        const drawRuns = (runs: readonly RichRun[], size: number, x0: number, width: number, marker?: { text: string; x: number }) => {
+          const measure: Measure = (t, st) => fontFor(st).widthOfTextAtSize(t, size);
+          const lines = layoutRuns(runs, measure, width);
+          const lineHeight = size * LINE_HEIGHT_FACTOR;
+          lines.forEach((segs, li) => {
+            ensureRoom(size);
+            if (li === 0 && marker !== undefined) {
+              page.drawText(marker.text, { x: marker.x, y: cursorY, size, font, color: rgb(0, 0, 0) });
+            }
+            let x = x0;
+            for (const seg of segs) {
+              const f = fontFor(seg.style);
+              if (seg.space_before) {
+                const sw = f.widthOfTextAtSize(' ', size);
+                if (seg.space_underline) {
+                  page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + sw, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+                }
+                x += sw;
+              }
+              const w = f.widthOfTextAtSize(seg.text, size);
+              page.drawText(seg.text, { x, y: cursorY, size, font: f, color: rgb(0, 0, 0) });
+              if (seg.style.underline) {
+                page.drawLine({ start: { x, y: cursorY - 1.5 }, end: { x: x + w, y: cursorY - 1.5 }, thickness: 0.6, color: rgb(0, 0, 0) });
+              }
+              x += w;
+            }
+            cursorY -= lineHeight;
+          });
+        };
+        const drawBlocks = (blocks: readonly RichBlock[], level: number): void => {
+          for (const b of blocks) {
+            if (b.kind === 'heading') {
+              drawRuns(b.runs.map((r) => ({ ...r, bold: true })), HEADING_SIZE, MARGIN_X, CONTENT_WIDTH);
+              cursorY -= BLOCK_GAP;
+            } else if (b.kind === 'paragraph') {
+              drawRuns(b.runs, BODY_SIZE, MARGIN_X, CONTENT_WIDTH);
+              cursorY -= BLOCK_GAP;
+            } else {
+              const markerX = MARGIN_X + level * LIST_INDENT;
+              const textX = markerX + LIST_INDENT;
+              b.items.forEach((item, i) => {
+                const marker = b.ordered ? `${i + 1}.` : '\u2022';
+                drawRuns(item.runs, BODY_SIZE, textX, PAGE_WIDTH - MARGIN_X - textX, { text: marker, x: markerX });
+                if (item.children.length > 0) drawBlocks(item.children, level + 1);
+                cursorY -= LIST_ITEM_GAP;
+              });
+              if (level === 0) cursorY -= BLOCK_GAP;
+            }
+          }
+        };
+        drawBlocks(model.rich_blocks, 0);
+      } else {
+        for (const block of model.blocks) {
+          const isHeading = block.type === 'HEADING';
+          drawWrapped(block.text, isHeading ? HEADING_SIZE : BODY_SIZE, isHeading);
+        }
       }
 
       let signature_fields: SignatureFieldPlacement[] | undefined;
@@ -224,7 +401,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         renderer: 'PDF_LIB',
         renderer_version: RENDERER_VERSION,
         template_version_id: model.template_version_id,
-        render_manifest_sha256: manifestSha256(model),
+        render_manifest_sha256: manifestSha256(manifestProjection(model)),
         output_sha256,
       };
       return {

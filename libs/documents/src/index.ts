@@ -17,6 +17,13 @@ export {
   type TemplateSamplePreview,
 } from './lib/template-capabilities.port.js';
 export {
+  TEMPLATE_TENANT_LOGO,
+  type TemplateTenantLogoPort,
+  type TenantLogoInfo,
+  type CapturedTenantLogo,
+  type TemplateLogoRef,
+} from './lib/template-capabilities.port.js';
+export {
   TEMPLATE_AUDIT,
   type TemplateAuditPort,
   type TemplateDraftDiscardedAudit,

@@ -11,6 +11,7 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
@@ -20,7 +21,13 @@ import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { TemplatesRepository } from './templates.repository.js';
 import { RequirementsRepository } from './requirements.repository.js';
-import { TEMPLATE_CAPABILITIES, type TemplateCapabilitiesPort } from './template-capabilities.port.js';
+import {
+  TEMPLATE_CAPABILITIES,
+  TEMPLATE_TENANT_LOGO,
+  type TemplateCapabilitiesPort,
+  type TemplateLogoRef,
+  type TemplateTenantLogoPort,
+} from './template-capabilities.port.js';
 import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import {
   DocumentNotFoundError,
@@ -143,7 +150,16 @@ export class DocumentTemplatesController {
     // Amendment A1 §1 — the template audit seam (bound in apps/api). @Optional so generic
     // CRUD works without it, but Discard draft REFUSES when it is absent (audit is a MUST).
     @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
+    // A1 §2.4 — tenant-profile logo capture/read (bound in apps/api).
+    @Optional() @Inject(TEMPLATE_TENANT_LOGO) private readonly tenantLogo?: TemplateTenantLogoPort,
   ) {}
+
+  // A1 / editor v2 — the version read view: the stored row + `logo` ({asset_id, mime} of
+  // the frozen letterhead asset, or null). The content (incl. html) is field_schema.
+  private versionView<V extends { field_schema: unknown }>(v: V): V & { logo: { asset_id: string; mime: string } | null } {
+    const ref = this.caps?.logoOf(v.field_schema) ?? null;
+    return { ...v, logo: ref === null ? null : { asset_id: ref.asset_id, mime: ref.mime } };
+  }
 
   // Load the document type for a version (version -> template -> document_type_id).
   private async documentTypeForVersion(tenant_id: string, versionId: string): Promise<{ document_type_id: string; field_schema: unknown; render_schema_version: string }> {
@@ -239,7 +255,15 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:manage')
   async createDraft(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
-      return await this.repo.createDraftFromActive({ tenant_id: auth.tenant_id, template_id: templateId, created_by: auth.sub });
+      const t = await this.repo.getTemplate(auth.tenant_id, templateId);
+      const caps = this.caps;
+      const transform =
+        caps !== undefined && caps.isConfigurable(t.document_type_id)
+          ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: t.document_type_id, ...c })
+          : undefined;
+      return this.versionView(
+        await this.repo.createDraftFromActive({ tenant_id: auth.tenant_id, template_id: templateId, created_by: auth.sub, ...(transform !== undefined ? { transform } : {}) }),
+      );
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -250,7 +274,7 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:read')
   async listVersions(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
-      return await this.repo.listVersions(auth.tenant_id, templateId);
+      return (await this.repo.listVersions(auth.tenant_id, templateId)).map((v) => this.versionView(v));
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -263,7 +287,7 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:read')
   async getVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
-      return await this.repo.getVersion(auth.tenant_id, versionId);
+      return this.versionView(await this.repo.getVersion(auth.tenant_id, versionId));
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -294,13 +318,32 @@ export class DocumentTemplatesController {
       internal_notes = trimmed.length === 0 ? null : trimmed;
     }
     try {
-      return await this.repo.updateDraftVersion({
-        tenant_id: auth.tenant_id,
-        version_id: versionId,
-        ...(hasContent ? { field_schema: body.field_schema } : {}),
-        render_schema_version: body.render_schema_version,
-        ...(internal_notes !== undefined ? { internal_notes } : {}),
-      });
+      let field_schema: unknown = hasContent ? body.field_schema : undefined;
+      // A1 §2.2 — authoritative server-side sanitisation of sanitised content versions
+      // (rtr-html-v1): the stored + returned html is the allowlist re-serialisation.
+      if (hasContent && this.caps !== undefined) {
+        const existing = await this.repo.getVersion(auth.tenant_id, versionId);
+        if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
+        const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
+        if (this.caps.isConfigurable(t.document_type_id)) {
+          field_schema = this.caps.normalizeDraftContent({
+            document_type_id: t.document_type_id,
+            render_schema_version: body.render_schema_version ?? existing.render_schema_version,
+            field_schema: body.field_schema,
+            existing_field_schema: existing.field_schema,
+            requestId,
+          });
+        }
+      }
+      return this.versionView(
+        await this.repo.updateDraftVersion({
+          tenant_id: auth.tenant_id,
+          version_id: versionId,
+          ...(hasContent ? { field_schema } : {}),
+          render_schema_version: body.render_schema_version,
+          ...(internal_notes !== undefined ? { internal_notes } : {}),
+        }),
+      );
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -363,10 +406,91 @@ export class DocumentTemplatesController {
   async allowedBindings(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
-      return { bindings: this.caps?.listAllowedBindings(t.document_type_id) ?? [] };
+      const configurable = this.caps?.isConfigurable(t.document_type_id) === true;
+      // A1 §2.4 — whether the Tenant profile has a logo the editor can add (+ the name the
+      // letterhead shows beside it).
+      const tenant_logo =
+        configurable && this.tenantLogo !== undefined ? await this.tenantLogo.info(auth.tenant_id) : { available: false, tenant_name: null };
+      return { bindings: this.caps?.listAllowedBindings(t.document_type_id) ?? [], tenant_logo };
     } catch (e) {
       throw toHttp(e, requestId);
     }
+  }
+
+  // A1 §2.4 — capture the Tenant profile logo for a DRAFT: fetched ONCE here (https,
+  // 5 s, 1 MB, PNG/JPEG magic bytes), frozen as a TemplateAsset (bytes in documents object
+  // storage; sha256 + locator on the asset row), referenced from the version content and
+  // placed as the first content node. Editing content re-arms the preview gate.
+  @Post('versions/:versionId/logo')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('document_template:manage')
+  async captureLogo(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
+    try {
+      const { v, caps } = await this.logoContext(auth.tenant_id, versionId, requestId);
+      if (this.tenantLogo === undefined) {
+        throw new AramoError('INTERNAL_ERROR', 'tenant logo capture is not configured', 500, { requestId });
+      }
+      const captured = await this.tenantLogo.capture({ tenant_id: auth.tenant_id, requestId });
+      const asset = await this.repo.createAsset({
+        tenant_id: auth.tenant_id,
+        asset_kind: 'LOGO',
+        sha256: captured.sha256,
+        mime_type: captured.mime,
+        storage_provider: captured.storage_provider,
+        storage_locator: captured.storage_locator,
+        name: 'tenant.logo',
+        created_by: auth.sub,
+      });
+      const ref: TemplateLogoRef = { asset_id: asset.id, sha256: captured.sha256, mime: captured.mime };
+      await this.repo.updateDraftVersion({ tenant_id: auth.tenant_id, version_id: versionId, field_schema: caps.withLogo(v.field_schema, ref, requestId) });
+      return { asset_id: asset.id, sha256: captured.sha256, mime: captured.mime };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // A1 §2.4 — remove the logo from a DRAFT (the reference AND the logo node). The asset
+  // row is kept (an ACTIVE/RETIRED version may still reference it). 204.
+  @Delete('versions/:versionId/logo')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireScopes('document_template:manage')
+  async removeLogo(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string): Promise<void> {
+    try {
+      const { v, caps } = await this.logoContext(auth.tenant_id, versionId, requestId);
+      await this.repo.updateDraftVersion({ tenant_id: auth.tenant_id, version_id: versionId, field_schema: caps.withLogo(v.field_schema, null, requestId) });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // A1 §2.4 — the frozen logo bytes of a version (any status) for the editor letterhead.
+  @Get('versions/:versionId/logo/content')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async logoContent(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string): Promise<StreamableFile> {
+    try {
+      const v = await this.repo.getVersion(auth.tenant_id, versionId);
+      const ref = this.caps?.logoOf(v.field_schema) ?? null;
+      const asset = ref === null ? null : await this.repo.findAssetById(auth.tenant_id, ref.asset_id);
+      if (ref === null || asset === null || this.tenantLogo === undefined) {
+        throw new AramoError('TEMPLATE_VERSION_NOT_FOUND', 'this version has no logo', 404, { requestId, details: { reason: 'no_logo' } });
+      }
+      const bytes = await this.tenantLogo.read({ storage_locator: asset.storage_locator, requestId });
+      return new StreamableFile(bytes, { type: asset.mime_type, length: bytes.byteLength });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  private async logoContext(tenant_id: string, versionId: string, requestId: string) {
+    const v = await this.repo.getVersion(tenant_id, versionId);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
+    const t = await this.repo.getTemplate(tenant_id, v.template_id);
+    const caps = this.caps;
+    if (caps === undefined || !caps.isConfigurable(t.document_type_id)) {
+      throw new AramoError('VALIDATION_ERROR', 'this document type does not support a logo', 400, { requestId });
+    }
+    return { v, caps };
   }
 
   @Post('versions/:versionId/activate')

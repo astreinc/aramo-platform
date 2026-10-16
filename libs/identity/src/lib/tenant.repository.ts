@@ -236,6 +236,21 @@ export class TenantRepository {
     return legal.length > 0 ? legal : null;
   }
 
+  // DOC-TEMPLATE-ADMIN-RTR-1 A1 §2.4 — the tenant-profile branding read for template
+  // letterheads: the stored logo URL + the names (workspace / branding / legal). Null when
+  // the tenant is unknown. Read-only; callers choose the name precedence.
+  async findBrandingById(id: string): Promise<{
+    name: string;
+    display_name: string | null;
+    legal_name: string | null;
+    logo_url: string | null;
+  } | null> {
+    return this.prisma.tenant.findUnique({
+      where: { id },
+      select: { name: true, display_name: true, legal_name: true, logo_url: true },
+    });
+  }
+
   // Platform-Console Increment-2 PR-1 — the lifecycle status write. Sets status +
   // status_changed_at + reason columns + whatever milestone/retention columns the
   // caller computed for this transition. Transition legality is enforced by the

@@ -26,6 +26,42 @@ export interface RenderModel {
   // PRINTED NAME · DATE SIGNED. Not template content (admins cannot remove it); the
   // domain supplies the bound printed name. Absent ⇒ no block (offer letter, legacy).
   signature_block?: SignatureBlockModel;
+  // Amendment A1 §2.3 (rtr-html-v1) — RICH content: when present the renderer draws these
+  // structured blocks (headings, paragraphs with bold/italic/underline runs, bulleted and
+  // numbered lists) INSTEAD of `blocks`. The domain converts its allowlisted content into
+  // this shape; the renderer never sees HTML and never fetches anything.
+  rich_blocks?: RichBlock[];
+  // A1 §2.4 — optional letterhead: the FROZEN logo bytes (read by the domain from the
+  // version's TemplateAsset) + an optional organisation name drawn beside it.
+  letterhead?: LetterheadModel;
+}
+
+// A styled text run. `text` may contain '\n' (a <br> or a multi-line field value) — a
+// hard line break inside the block.
+export interface RichRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+}
+
+export interface RichListItem {
+  runs: RichRun[];
+  // Nested lists inside the item (rendered after the item's own runs, one level deeper).
+  children: RichBlock[];
+}
+
+export type RichBlock =
+  | { kind: 'heading'; runs: RichRun[] }
+  | { kind: 'paragraph'; runs: RichRun[] }
+  | { kind: 'list'; ordered: boolean; items: RichListItem[] };
+
+export interface LetterheadModel {
+  image_bytes: Uint8Array;
+  image_format: 'PNG' | 'JPG';
+  // sha256 of image_bytes — what the provenance manifest records instead of the bytes.
+  image_sha256: string;
+  name: string | null;
 }
 
 export interface SignatureBlockModel {

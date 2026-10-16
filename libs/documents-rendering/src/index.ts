@@ -11,8 +11,18 @@ export {
   type RenderProvenance,
   type PrepareFromSourceOptions,
   type SignatureBlockModel,
+  type RichBlock,
+  type RichRun,
+  type RichListItem,
+  type LetterheadModel,
   type SignatureFieldPlacement,
 } from './lib/document-rendering.port.js';
-export { PdfLibDocumentRenderingAdapter, layoutSignatureBlock, wrapTextToWidth } from './lib/pdf-lib-document-rendering.adapter.js';
+export {
+  PdfLibDocumentRenderingAdapter,
+  layoutRuns,
+  layoutSignatureBlock,
+  manifestProjection,
+  wrapTextToWidth,
+} from './lib/pdf-lib-document-rendering.adapter.js';
 export { SafePdfPipeline, type SafePdfLimits } from './lib/safe-upload.pipeline.js';
 export { RenderFailedError, UnsafePdfError } from './lib/errors.js';

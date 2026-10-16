@@ -184,6 +184,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(draft.internal_notes).toBe('Legal asked for clause 3');
     });
 
+    // Amendment A1 — draft creation applies the capability transform (v1 → html) and a
+    // LOGO TemplateAsset is tenant-scoped; the asset reference rides in content, so a
+    // draft created from an html ACTIVE carries it and activation freezes it (trigger).
+    it('createDraftFromActive applies the transform; assets are tenant-scoped; html content (logo ref) is frozen on activation', async () => {
+      const typeId = await newDocumentType();
+      const t = await templates.createTemplate({ tenant_id: TENANT, document_type_id: typeId, name: 'H', template_kind: 'GENERATED', created_by: ACTOR });
+      const v1 = await templates.createVersion({ tenant_id: TENANT, template_id: t.id, render_schema_version: 'rtr-generated-v1', field_schema: { title: 'T', blocks: [] }, created_by: ACTOR });
+      await templates.activateVersion({ tenant_id: TENANT, version_id: v1.id, actor_id: ACTOR, require_preview: false });
+      const asset = await templates.createAsset({ tenant_id: TENANT, asset_kind: 'LOGO', sha256: 'a'.repeat(64), mime_type: 'image/png', storage_provider: 'aramo-s3', storage_locator: 'loc', name: 'tenant.logo', created_by: ACTOR });
+      expect((await templates.findAssetById(TENANT, asset.id))?.storage_locator).toBe('loc');
+      expect(await templates.findAssetById(OTHER_TENANT, asset.id)).toBeNull();
+      const html = { render_schema_version: 'rtr-html-v1', title: 'T', html: '<div data-asset="tenant.logo"></div><p>x</p>', logo: { asset_id: asset.id, sha256: 'a'.repeat(64), mime: 'image/png' } };
+      const draft = await templates.createDraftFromActive({
+        tenant_id: TENANT,
+        template_id: t.id,
+        created_by: ACTOR,
+        transform: (c) => (c.render_schema_version === 'rtr-generated-v1' ? { render_schema_version: 'rtr-html-v1', field_schema: html } : c),
+      });
+      expect(draft.render_schema_version).toBe('rtr-html-v1');
+      expect(draft.field_schema).toEqual(html);
+      await templates.activateVersion({ tenant_id: TENANT, version_id: draft.id, actor_id: ACTOR, require_preview: false });
+      await expect(
+        db.query(`UPDATE "documents"."TemplateVersion" SET field_schema = '{"logo":null}'::jsonb WHERE id = $1`, [draft.id]),
+      ).rejects.toThrow(/immutable/i);
+      // A draft from the html ACTIVE copies content verbatim (asset reference included).
+      const next = await templates.createDraftFromActive({ tenant_id: TENANT, template_id: t.id, created_by: ACTOR, transform: (c) => c });
+      expect(next.field_schema).toEqual(html);
+    });
+
     it('requirement satisfaction flips UNSATISFIED->SATISFIED when a document is linked, independent of any business transition', async () => {
       const typeId = await newDocumentType();
       const req = await requirements.createRequirement({

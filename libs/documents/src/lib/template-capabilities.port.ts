@@ -31,6 +31,20 @@ export interface TemplateSamplePreview {
   // content). printed_name = the sample talent name in an admin preview; null when the
   // document type has no signature block.
   readonly signature_block?: { readonly printed_name: string | null };
+  // A1 (rtr-html-v1) / editor v2 — the fixed sample value of every catalog binding (both
+  // content versions), so the FE can show exactly what the preview substituted.
+  readonly sample_values?: ReadonlyArray<{ readonly key: string; readonly label: string; readonly value: string }>;
+  // rtr-html-v1 only — the content with each field node replaced by
+  // <span data-sample="{key}">{escaped sample}</span>, and the version's frozen logo.
+  readonly html?: string;
+  readonly logo?: { readonly asset_id: string } | null;
+}
+
+// The server-owned logo reference stored with a version's content (A1 §2.4).
+export interface TemplateLogoRef {
+  readonly asset_id: string;
+  readonly sha256: string;
+  readonly mime: 'image/png' | 'image/jpeg';
 }
 
 export interface TemplateCapabilitiesPort {
@@ -51,4 +65,59 @@ export interface TemplateCapabilitiesPort {
   // Fixed-sample preview (§17) of the CURRENT draft content. Validates first, then
   // substitutes the fixed SAFE sample values. Never persists a business Document.
   renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): TemplateSamplePreview;
+
+  // A1 §2.2 — authoritative PATCH-time normalisation of DRAFT content. For a sanitised
+  // content version (rtr-html-v1) the html is re-serialised against the allowlist and
+  // server-owned keys (the logo reference) are carried over from the EXISTING content,
+  // never taken from the client. Throws VALIDATION_ERROR (422, details.reason) on an
+  // unknown field / logo position / size violation. Other versions pass through unchanged.
+  normalizeDraftContent(input: {
+    document_type_id: string;
+    render_schema_version: string;
+    field_schema: unknown;
+    existing_field_schema: unknown;
+    requestId: string;
+  }): unknown;
+
+  // A1 §2.1 — the content a NEW DRAFT starts from, given the ACTIVE version's content
+  // (rtr-generated-v1 is converted to rtr-html-v1; html content is copied as-is, logo
+  // reference included).
+  draftContentFrom(input: { document_type_id: string; render_schema_version: string; field_schema: unknown }): {
+    render_schema_version: string;
+    field_schema: unknown;
+  };
+
+  // A1 §2.4 — the logo reference carried by stored content (null when none / not html).
+  logoOf(field_schema: unknown): TemplateLogoRef | null;
+
+  // A1 §2.4 — content with the logo reference attached (html: also ensures the single
+  // logo node is the FIRST child) / detached (removes the reference AND the logo node).
+  withLogo(field_schema: unknown, logo: TemplateLogoRef | null, requestId: string): unknown;
+}
+
+// A1 §2.4 — the tenant-profile logo seam (bound at the composition root, apps/api): reads
+// Tenant.logo_url, fetches it ONCE at the admin capture action (https only, timeout,
+// size cap, PNG/JPEG magic bytes), stores the bytes in the documents object storage, and
+// reads frozen bytes back. libs/documents never imports identity or object storage.
+export const TEMPLATE_TENANT_LOGO = 'TEMPLATE_TENANT_LOGO';
+
+export interface TenantLogoInfo {
+  readonly available: boolean;
+  readonly tenant_name: string | null;
+}
+
+export interface CapturedTenantLogo {
+  readonly sha256: string;
+  readonly mime: 'image/png' | 'image/jpeg';
+  readonly storage_provider: string;
+  readonly storage_locator: string;
+  readonly byte_size: number;
+}
+
+export interface TemplateTenantLogoPort {
+  info(tenant_id: string): Promise<TenantLogoInfo>;
+  // Throws AramoError: 409 VALIDATION_ERROR reason=no_tenant_logo when the profile has no
+  // logo; 422 VALIDATION_ERROR reason=logo_* on an unusable logo (scheme/size/type/fetch).
+  capture(input: { tenant_id: string; requestId: string }): Promise<CapturedTenantLogo>;
+  read(input: { storage_locator: string; requestId: string }): Promise<Buffer>;
 }

@@ -251,3 +251,124 @@ describe('TemplatesRepository.deleteDraftVersion', () => {
     await expect(repo.deleteDraftVersion({ tenant_id: 't-1', version_id: 'v-1' })).rejects.toBeInstanceOf(TemplateImmutableError);
   });
 });
+
+// Amendment A1 — editor v2 controller surface: PATCH normalisation through the capability
+// port, draft-creation transform, version `logo` view, allowed-bindings tenant_logo, and
+// the logo capture / remove / content routes (DRAFT-only capture; asset frozen).
+describe('A1 — templates controller (html content + tenant logo)', () => {
+  const RTR_TYPE = 'type-rtr';
+  const LOGO = { asset_id: 'asset-1', sha256: 's'.repeat(64), mime: 'image/png' as const };
+
+  function caps(over: Record<string, unknown> = {}) {
+    return {
+      isConfigurable: (t: string) => t === RTR_TYPE,
+      listAllowedBindings: () => [{ key: 'talent.full_name', label: 'Talent full name', group: 'Talent' }],
+      validateDraftContent: vi.fn(),
+      renderSamplePreview: vi.fn(),
+      normalizeDraftContent: vi.fn((i: { field_schema: unknown }) => ({ ...(i.field_schema as object), html: '<p>clean</p>' })),
+      draftContentFrom: vi.fn(() => ({ render_schema_version: 'rtr-html-v1', field_schema: { html: '<p>converted</p>' } })),
+      logoOf: (fs: unknown) => ((fs as { logo?: unknown } | null)?.logo as typeof LOGO | undefined) ?? null,
+      withLogo: vi.fn((fs: unknown, logo: unknown) => ({ ...(fs as object), logo })),
+      ...over,
+    };
+  }
+  function repo(version: Record<string, unknown> = {}) {
+    const v = { id: 'v-1', template_id: 'tpl-1', status: 'DRAFT', render_schema_version: 'rtr-html-v1', field_schema: { html: '<p>x</p>', logo: null }, ...version };
+    return {
+      getVersion: vi.fn(async () => v),
+      getTemplate: vi.fn(async () => ({ id: 'tpl-1', document_type_id: RTR_TYPE })),
+      updateDraftVersion: vi.fn(async (i: { field_schema?: unknown }) => ({ ...v, field_schema: i.field_schema ?? v.field_schema })),
+      createDraftFromActive: vi.fn(async (i: { transform?: (c: unknown) => { field_schema: unknown } }) => ({
+        ...v,
+        field_schema: i.transform ? i.transform({ render_schema_version: 'rtr-generated-v1', field_schema: {} }).field_schema : {},
+      })),
+      createAsset: vi.fn(async () => ({ id: 'asset-9' })),
+      findAssetById: vi.fn(async () => ({ id: 'asset-1', storage_locator: 'loc', mime_type: 'image/png' })),
+      listVersions: vi.fn(async () => [v]),
+    };
+  }
+  function logoPort(over: Record<string, unknown> = {}) {
+    return {
+      info: vi.fn(async () => ({ available: true, tenant_name: 'Astre' })),
+      capture: vi.fn(async () => ({ sha256: 'h'.repeat(64), mime: 'image/png', storage_provider: 'aramo-s3', storage_locator: 'loc-9', byte_size: 10 })),
+      read: vi.fn(async () => Buffer.from([1, 2, 3])),
+      ...over,
+    };
+  }
+  const ctl = (r: unknown, c: unknown, l?: unknown) => new DocumentTemplatesController(r as never, c as never, undefined, l as never);
+
+  it('PATCH routes content through normalizeDraftContent (existing content + effective version) and returns the sanitised html + logo view', async () => {
+    const r = repo({ field_schema: { html: '<p>old</p>', logo: LOGO } });
+    const c = caps();
+    const out = (await ctl(r, c).updateVersion(AUTH, 'v-1', { field_schema: { title: 'T', html: '<p onclick=x>new</p>' } }, 'r')) as unknown as {
+      field_schema: { html: string };
+      logo: unknown;
+    };
+    expect(c.normalizeDraftContent).toHaveBeenCalledWith({
+      document_type_id: RTR_TYPE,
+      render_schema_version: 'rtr-html-v1',
+      field_schema: { title: 'T', html: '<p onclick=x>new</p>' },
+      existing_field_schema: { html: '<p>old</p>', logo: LOGO },
+      requestId: 'r',
+    });
+    expect(out.field_schema.html).toBe('<p>clean</p>');
+    expect(r.updateDraftVersion.mock.calls[0]?.[0]).toMatchObject({ field_schema: { title: 'T', html: '<p>clean</p>' } });
+  });
+
+  it('PATCH on a non-DRAFT version is refused before sanitising (409 TEMPLATE_IMMUTABLE)', async () => {
+    const c = caps();
+    await expectAramo(ctl(repo({ status: 'ACTIVE' }), c).updateVersion(AUTH, 'v-1', { field_schema: {} }, 'r'), 'TEMPLATE_IMMUTABLE', 409);
+    expect(c.normalizeDraftContent).not.toHaveBeenCalled();
+  });
+
+  it('createDraft passes the capability transform (v1 → html conversion) to the repo', async () => {
+    const r = repo();
+    const c = caps();
+    const out = (await ctl(r, c).createDraft(AUTH, 'tpl-1', 'r')) as unknown as { field_schema: unknown };
+    expect(c.draftContentFrom).toHaveBeenCalledWith({ document_type_id: RTR_TYPE, render_schema_version: 'rtr-generated-v1', field_schema: {} });
+    expect(out.field_schema).toEqual({ html: '<p>converted</p>' });
+  });
+
+  it('version reads carry logo {asset_id, mime} or null', async () => {
+    const withLogo = await ctl(repo({ field_schema: { html: '', logo: LOGO } }), caps()).getVersion(AUTH, 'v-1', 'r');
+    expect(withLogo.logo).toEqual({ asset_id: 'asset-1', mime: 'image/png' });
+    const list = await ctl(repo(), caps()).listVersions(AUTH, 'tpl-1', 'r');
+    expect(list[0]?.logo).toBeNull();
+  });
+
+  it('allowed-bindings additionally returns tenant_logo {available, tenant_name}', async () => {
+    const res = await ctl(repo(), caps(), logoPort()).allowedBindings(AUTH, 'tpl-1', 'r');
+    expect(res.tenant_logo).toEqual({ available: true, tenant_name: 'Astre' });
+    const none = await ctl(repo(), caps()).allowedBindings(AUTH, 'tpl-1', 'r');
+    expect(none.tenant_logo).toEqual({ available: false, tenant_name: null });
+  });
+
+  it('POST logo: captures once, creates a LOGO TemplateAsset, attaches it to the DRAFT content, returns {asset_id, sha256, mime}', async () => {
+    const r = repo();
+    const c = caps();
+    const l = logoPort();
+    const out = await ctl(r, c, l).captureLogo(AUTH, 'v-1', 'r');
+    expect(out).toEqual({ asset_id: 'asset-9', sha256: 'h'.repeat(64), mime: 'image/png' });
+    expect(r.createAsset).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 't-1', asset_kind: 'LOGO', storage_locator: 'loc-9', name: 'tenant.logo', created_by: 'u-1' }));
+    expect(c.withLogo).toHaveBeenCalledWith({ html: '<p>x</p>', logo: null }, { asset_id: 'asset-9', sha256: 'h'.repeat(64), mime: 'image/png' }, 'r');
+    expect(r.updateDraftVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it('POST logo on ACTIVE → 409 TEMPLATE_IMMUTABLE (no fetch); no tenant logo → the port 409 surfaces unchanged', async () => {
+    const l = logoPort();
+    await expectAramo(ctl(repo({ status: 'ACTIVE' }), caps(), l).captureLogo(AUTH, 'v-1', 'r'), 'TEMPLATE_IMMUTABLE', 409);
+    expect(l.capture).not.toHaveBeenCalled();
+    const noLogo = logoPort({ capture: vi.fn(async () => { throw new AramoError('VALIDATION_ERROR', 'no logo', 409, { requestId: 'r', details: { reason: 'no_tenant_logo' } }); }) });
+    await expectAramo(ctl(repo(), caps(), noLogo).captureLogo(AUTH, 'v-1', 'r'), 'VALIDATION_ERROR', 409);
+  });
+
+  it('DELETE logo detaches (withLogo null) on a DRAFT; GET logo/content streams the frozen bytes with the asset mime', async () => {
+    const r = repo({ field_schema: { html: '', logo: LOGO } });
+    const c = caps();
+    await ctl(r, c, logoPort()).removeLogo(AUTH, 'v-1', 'r');
+    expect(c.withLogo).toHaveBeenCalledWith({ html: '', logo: LOGO }, null, 'r');
+    const file = await ctl(r, c, logoPort()).logoContent(AUTH, 'v-1', 'r');
+    expect(file.getHeaders().type).toBe('image/png');
+    await expectAramo(ctl(repo(), caps(), logoPort()).logoContent(AUTH, 'v-1', 'r'), 'TEMPLATE_VERSION_NOT_FOUND', 404);
+  });
+});

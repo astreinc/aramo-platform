@@ -1,8 +1,12 @@
 import { Global, Module } from '@nestjs/common';
-import { TEMPLATE_AUDIT, TEMPLATE_CAPABILITIES, type TemplateAuditPort } from '@aramo/documents';
-import { IdentityAuditRepository, IdentityCoreModule } from '@aramo/identity';
+import { TEMPLATE_AUDIT, TEMPLATE_CAPABILITIES, TEMPLATE_TENANT_LOGO, type TemplateAuditPort } from '@aramo/documents';
+import { IdentityAuditRepository, IdentityCoreModule, TenantRepository } from '@aramo/identity';
+import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
+
+import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 
 import { RtrTemplateCapabilities } from './rtr-template-capabilities.service.js';
+import { RtrTemplateTenantLogoService } from './rtr-template-tenant-logo.service.js';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 — provides the RTR template-content capability (catalog +
 // closed-binding validation + fixed-sample preview) under the generic TEMPLATE_CAPABILITIES
@@ -33,12 +37,19 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
 
 @Global()
 @Module({
-  imports: [IdentityCoreModule],
+  imports: [IdentityCoreModule, ObjectStorageModule],
   providers: [
     RtrTemplateCapabilities,
     { provide: TEMPLATE_CAPABILITIES, useExisting: RtrTemplateCapabilities },
     { provide: TEMPLATE_AUDIT, useFactory: templateAuditFromIdentity, inject: [IdentityAuditRepository] },
+    // A1 §2.4 — tenant-profile logo capture/read over the documents object storage.
+    {
+      provide: TEMPLATE_TENANT_LOGO,
+      useFactory: (tenants: TenantRepository, storage: ObjectStorageService) =>
+        new RtrTemplateTenantLogoService(tenants, new AramoS3DocumentStorageAdapter(storage)),
+      inject: [TenantRepository, ObjectStorageService],
+    },
   ],
-  exports: [TEMPLATE_CAPABILITIES, TEMPLATE_AUDIT],
+  exports: [TEMPLATE_CAPABILITIES, TEMPLATE_AUDIT, TEMPLATE_TENANT_LOGO],
 })
 export class TemplateCapabilitiesModule {}

@@ -6,7 +6,9 @@ import {
   SafePdfPipeline,
   RenderFailedError,
   UnsafePdfError,
+  layoutRuns,
   layoutSignatureBlock,
+  manifestProjection,
   wrapTextToWidth,
   type RenderModel,
 } from '../index.js';
@@ -182,6 +184,82 @@ describe('PdfLibDocumentRenderingAdapter (GENERATED path — fixed signature blo
     const b = await adapter.renderGenerated(SIGNED);
     expect(a.sha256).toBe(b.sha256);
     expect(a.signature_fields).toEqual(b.signature_fields);
+  });
+});
+
+// Amendment A1 §2.3 — rich (rtr-html-v1) rendering: marks, lists, wrap, page break,
+// letterhead logo, the shared signature block — and the v1 path stays byte-identical.
+describe('PdfLibDocumentRenderingAdapter (GENERATED path — rich content, A1)', () => {
+  // 1x1 PNG.
+  const PNG = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC', 'base64'));
+  const RICH: RenderModel = {
+    template_version_id: MODEL.template_version_id,
+    render_schema_version: 'rich-v1',
+    title: 'Right to Represent',
+    blocks: [],
+    rich_blocks: [
+      { kind: 'heading', runs: [{ text: 'Scope' }] },
+      { kind: 'paragraph', runs: [{ text: 'Plain ' }, { text: 'bold', bold: true }, { text: ' ' }, { text: 'italic', italic: true }, { text: ' ' }, { text: 'under', underline: true }, { text: '\nnext line' }] },
+      { kind: 'list', ordered: false, items: [{ runs: [{ text: 'bullet' }], children: [{ kind: 'list', ordered: true, items: [{ runs: [{ text: 'nested' }], children: [] }] }] }] },
+      { kind: 'list', ordered: true, items: [{ runs: [{ text: 'first' }], children: [] }, { runs: [{ text: 'second' }], children: [] }] },
+    ],
+    signature_block: { printed_name: 'Ravi Shankar' },
+  };
+
+  it('v1 regression: rtr-generated-v1 models render byte-identically to the pre-A1 renderer on this branch', async () => {
+    const base: RenderModel = {
+      template_version_id: '00000000-0000-7000-8000-000000000001',
+      render_schema_version: 'v1',
+      title: 'Right to Represent',
+      blocks: [
+        { type: 'HEADING', text: 'Right to Represent' },
+        { type: 'TEXT', text: 'This authorizes representation of Ravi Shankar to the associated client for the associated requisition. '.repeat(30) },
+      ],
+    };
+    // Golden hashes captured from commit 85b5ab5c's adapter before the rich path landed.
+    expect((await adapter.renderGenerated(base)).sha256).toBe('e9daa8f376fa282bf1d1413609f53e3889279064ee62daec3dfcae9891405c15');
+    expect((await adapter.renderGenerated({ ...base, signature_block: { printed_name: 'Ravi Shankar' } })).sha256).toBe(
+      '6821189e4eb09da78b95de567c1a880c223939337d1532e28077c4ccf5f77f90',
+    );
+  });
+
+  it('renders marks + lists with the signature block appended; hash-stable', async () => {
+    const a = await adapter.renderGenerated(RICH);
+    const b = await adapter.renderGenerated(RICH);
+    expect(a.page_count).toBe(1);
+    expect(a.sha256).toBe(b.sha256);
+    expect(a.signature_fields?.map((f) => f.field_type)).toEqual(['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE']);
+    // Marks matter: the same text without marks renders differently.
+    const plain = await adapter.renderGenerated({ ...RICH, rich_blocks: [{ kind: 'paragraph', runs: [{ text: 'Plain bold italic under\nnext line' }] }] });
+    expect(plain.sha256).not.toBe(a.sha256);
+  });
+
+  it('a long rich paragraph wraps and flows onto a new page', async () => {
+    const long = await adapter.renderGenerated({
+      ...RICH,
+      rich_blocks: [{ kind: 'paragraph', runs: [{ text: 'The Talent authorizes the Recruiting Company to represent them. '.repeat(150), bold: true }] }],
+    });
+    expect(long.page_count).toBeGreaterThan(1);
+  });
+
+  it('draws the letterhead from the supplied frozen bytes; the manifest records the sha, never the bytes', async () => {
+    const lh = { image_bytes: PNG, image_format: 'PNG' as const, image_sha256: 'abc', name: 'Astre Consulting Services' };
+    const withLogo = await adapter.renderGenerated({ ...RICH, letterhead: lh });
+    expect(withLogo.sha256).not.toBe((await adapter.renderGenerated(RICH)).sha256);
+    const projected = manifestProjection({ ...RICH, letterhead: lh }) as { letterhead: Record<string, unknown> };
+    expect(projected.letterhead).toEqual({ image_format: 'PNG', image_sha256: 'abc', name: 'Astre Consulting Services' });
+    expect(manifestProjection(MODEL)).toBe(MODEL);
+    const parsed = await PDFDocument.load(withLogo.bytes);
+    expect(parsed.getPageCount()).toBe(1);
+  });
+
+  it('layoutRuns: wraps styled words to width, honours \n, keeps marks per segment, hard-breaks long words', () => {
+    const measure = (t: string) => t.length * 5;
+    const lines = layoutRuns([{ text: 'aaaa bbbb ' }, { text: 'cccc', bold: true }, { text: '\ndd' }], measure, 50);
+    expect(lines.map((l) => l.map((s) => s.text))).toEqual([['aaaa', 'bbbb'], ['cccc'], ['dd']]);
+    expect(lines[1]?.[0]?.style.bold).toBe(true);
+    const hard = layoutRuns([{ text: 'x'.repeat(25) }], measure, 50);
+    expect(hard.map((l) => l.map((s) => s.text).join(''))).toEqual(['x'.repeat(10), 'x'.repeat(10), 'x'.repeat(5)]);
   });
 });
 

@@ -1,12 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { type RenderModel } from '@aramo/documents-rendering';
+import { type LetterheadModel, type RenderModel } from '@aramo/documents-rendering';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
 import { CompanyRepository } from '@aramo/company';
 import { IdentityRepository, TenantRepository } from '@aramo/identity';
 
-import { isRtrBindingKey, type RtrBindingKey, type RtrTemplateContentV1 } from './rtr-template-content.js';
+import { isRtrBindingKey, type RtrBindingKey } from './rtr-template-content.js';
+import {
+  collectFieldKeys,
+  htmlWithSamples,
+  isHtmlContent,
+  sanitizeRtrHtml,
+  toRichBlocks,
+  type RtrTemplateContent,
+} from './rtr-html-content.js';
 
 // RTR-TEMPLATE-1 (§9, §10, INV-8/INV-9) — the server-owned RTR binding resolver.
 //
@@ -20,7 +28,11 @@ import { isRtrBindingKey, type RtrBindingKey, type RtrTemplateContentV1 } from '
 // so a raw {{token}} or empty value can never reach the PDF (§9).
 
 export interface RtrBindingInput {
-  content: RtrTemplateContentV1;
+  // A1 §2.1 — rtr-generated-v1 (title + HEADING/TEXT) or rtr-html-v1 (title + allowlisted html).
+  content: RtrTemplateContent;
+  // A1 §2.4 — the version's FROZEN logo (bytes read by the orchestrator from the
+  // TemplateAsset, sha-verified). Only meaningful for rtr-html-v1 content.
+  letterhead?: LetterheadModel;
   template_version_id: string;
   tenant_id: string;
   talent_id: string;
@@ -44,8 +56,10 @@ export class RtrTemplateBindingService {
     private readonly identity: IdentityRepository,
   ) {}
 
-  async bind(input: RtrBindingInput): Promise<RenderModel & { signature_block: { printed_name: string } }> {
-    const used = this.collectTokens([input.content.title, ...input.content.blocks.map((b) => b.text)], input.requestId);
+  async bind(input: RtrBindingInput): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
+    if (isHtmlContent(input.content)) return this.bindHtml(input, input.content);
+    const content = input.content;
+    const used = this.collectTokens([content.title, ...content.blocks.map((b) => b.text)], input.requestId);
     // B2 (spec §9.3) — the fixed signature block's PRINTED NAME is the bound
     // talent.full_name for EVERY version, whether or not the content references it, so it
     // is always resolved (fail closed when missing, like any other binding).
@@ -56,9 +70,63 @@ export class RtrTemplateBindingService {
       // The RENDERER's schema (flat resolved blocks) — distinct from the template
       // content-contract version (rtr-generated-v1). Values are already resolved.
       render_schema_version: 'v1',
-      title: this.substitute(input.content.title, values, input.requestId),
-      blocks: input.content.blocks.map((b) => ({ type: b.type, text: this.substitute(b.text, values, input.requestId) })),
+      title: this.substitute(content.title, values, input.requestId),
+      blocks: content.blocks.map((b) => ({ type: b.type, text: this.substitute(b.text, values, input.requestId) })),
       signature_block: { printed_name: values.get('talent.full_name') as string },
+    };
+  }
+
+  // A1 §2.3 — rtr-html-v1: keys come from the data-field nodes (same closed catalog, same
+  // fail-closed rules); bound values are substituted as PLAIN TEXT inside the styled runs.
+  // The html is re-sanitised here (defence in depth) — a non-clean stored html fails
+  // closed as a configuration error.
+  private async bindHtml(
+    input: RtrBindingInput,
+    content: Extract<RtrTemplateContent, { render_schema_version: 'rtr-html-v1' }>,
+  ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html: string }> {
+    const res = sanitizeRtrHtml(content.html);
+    if ('issue' in res) {
+      throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template content is not usable: ${res.issue.reason}`, 422, {
+        requestId: input.requestId,
+        details: { reason: res.issue.reason, ...(res.issue.keys !== undefined ? { keys: res.issue.keys } : {}) },
+      });
+    }
+    const used = this.collectTokens([content.title], input.requestId);
+    for (const key of collectFieldKeys(res.nodes)) {
+      if (!isRtrBindingKey(key)) {
+        throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template references a binding outside the closed catalog: ${key}`, 422, {
+          requestId: input.requestId,
+          details: { reason: 'unknown_binding', binding_key: key },
+        });
+      }
+      used.add(key);
+    }
+    used.add('talent.full_name');
+    const values = await this.resolveValues(used, input);
+    // A1 §2.4 — the organisation name beside the letterhead logo: the tenant's branding
+    // label (display_name), else its legal name, else the workspace name.
+    let letterhead = input.letterhead;
+    if (letterhead !== undefined) {
+      const b = await this.tenants.findBrandingById(input.tenant_id);
+      const name = (b?.display_name ?? '').trim() || (b?.legal_name ?? '').trim() || (b?.name ?? '').trim();
+      letterhead = { ...letterhead, name: name.length > 0 ? name : null };
+    }
+    const value = (key: string): string => {
+      const v = values.get(key);
+      if (v === undefined) throw this.missing(key, input.requestId);
+      return v;
+    };
+    return {
+      template_version_id: input.template_version_id,
+      render_schema_version: 'rich-v1',
+      title: this.substitute(content.title, values, input.requestId),
+      blocks: [],
+      rich_blocks: toRichBlocks(res.nodes, value),
+      ...(letterhead !== undefined ? { letterhead } : {}),
+      signature_block: { printed_name: values.get('talent.full_name') as string },
+      // The bound content as allowlisted html (field nodes → <span data-sample> with the
+      // REAL value) for the recruiter compose preview. Never rendered by the PDF path.
+      bound_html: htmlWithSamples(res.nodes, value),
     };
   }
 

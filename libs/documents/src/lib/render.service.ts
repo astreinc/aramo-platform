@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DOCUMENT_RENDERING_PORT,
+  manifestProjection,
   type DocumentRenderingPort,
   type RenderModel,
 } from '@aramo/documents-rendering';
@@ -81,7 +82,8 @@ export class RenderService {
           // a signature_block) is frozen with the revision, so a later send can place e-sign
           // fields over EXACTLY these bytes without re-rendering (INV-3).
           render_manifest: {
-            model: input.model,
+            // Letterhead bytes are projected to their sha256 (the asset is frozen separately).
+            model: manifestProjection(input.model),
             provenance: out.provenance,
             ...(out.signature_fields !== undefined ? { signature_fields: out.signature_fields } : {}),
           } as never,

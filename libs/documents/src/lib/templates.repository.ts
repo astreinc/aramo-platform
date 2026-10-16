@@ -190,7 +190,16 @@ export class TemplatesRepository {
   // current ACTIVE version's editable content as the starting point. One-DRAFT guarded;
   // never touches current_version_id or any workflow. Returns the existing DRAFT's id
   // via TemplateDraftAlreadyExistsError if one is already open.
-  async createDraftFromActive(input: { tenant_id: string; template_id: string; created_by: string }) {
+  //
+  // A1 §2.1 — `transform` (supplied by the document-type capability) maps the ACTIVE
+  // content to the content the new DRAFT starts from (rtr-generated-v1 → rtr-html-v1);
+  // without it the content is copied verbatim (generic behaviour).
+  async createDraftFromActive(input: {
+    tenant_id: string;
+    template_id: string;
+    created_by: string;
+    transform?: (c: { render_schema_version: string; field_schema: unknown }) => { render_schema_version: string; field_schema: unknown };
+  }) {
     const template = await this.getTemplate(input.tenant_id, input.template_id);
     const active =
       template.current_version_id !== null
@@ -198,11 +207,16 @@ export class TemplatesRepository {
             where: { tenant_id: input.tenant_id, id: template.current_version_id },
           })
         : null;
+    const base = {
+      render_schema_version: active?.render_schema_version ?? 'rtr-generated-v1',
+      field_schema: (active?.field_schema ?? undefined) as unknown,
+    };
+    const start = input.transform !== undefined && active !== null ? input.transform(base) : base;
     return this.createVersion({
       tenant_id: input.tenant_id,
       template_id: input.template_id,
-      render_schema_version: active?.render_schema_version ?? 'rtr-generated-v1',
-      field_schema: active?.field_schema ?? undefined,
+      render_schema_version: start.render_schema_version,
+      field_schema: start.field_schema ?? undefined,
       // Slice 1 B1 — the new DRAFT starts from the ACTIVE version's notes.
       internal_notes: active?.internal_notes ?? null,
       created_by: input.created_by,
@@ -389,6 +403,11 @@ export class TemplatesRepository {
     created_by: string;
   }) {
     return this.prisma.templateAsset.create({ data: { id: randomUUID(), ...input } });
+  }
+
+  // A1 §2.4 — tenant-scoped asset read (null when unknown / cross-tenant).
+  async findAssetById(tenant_id: string, id: string) {
+    return this.prisma.templateAsset.findFirst({ where: { tenant_id, id } });
   }
 
   // ── Packets (generic grouping; does NOT own document business state) ──────

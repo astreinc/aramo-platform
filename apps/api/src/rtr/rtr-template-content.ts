@@ -58,7 +58,7 @@ export const RTR_BINDING_CATALOG: readonly RtrBindingDescriptor[] = [
     group: 'Requisition',
     sample: 'Analyze business requirements for multi-family housing programs.\n\nPartner with stakeholders to define scope and acceptance criteria.',
   },
-  { key: 'recruiting_company.name', label: 'Recruiting organization name', group: 'Recruiting organization', sample: 'Astre Consulting' },
+  { key: 'recruiting_company.name', label: 'Recruiting company', group: 'Recruiting organization', sample: 'Astre Consulting' },
   { key: 'recruiter.display_name', label: 'Recruiter name', group: 'Recruiter', sample: 'Deepika Rao' },
 ] as const;
 

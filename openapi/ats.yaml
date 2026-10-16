@@ -8399,6 +8399,9 @@ paths:
                           properties:
                             type: { type: string, enum: [HEADING, TEXT] }
                             text: { type: string }
+                      html:
+                        type: string
+                        description: rtr-html-v1 only — the REAL-bound allowlisted html (field nodes → `<span data-sample="{key}">{escaped value}</span>`); `blocks` is then empty.
                       signature_block:
                         type: object
                         additionalProperties: false

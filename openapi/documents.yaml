@@ -370,7 +370,10 @@ paths:
       summary: Update a DRAFT version's editable content.
       description: |
         DRAFT-only (ACTIVE/RETIRED -> 409 TEMPLATE_IMMUTABLE). Editing re-arms the
-        preview-before-approve gate. Requires `document_template:manage`.
+        preview-before-approve gate. For `rtr-html-v1` content the html is sanitised server-side
+        against the A1 allowlist and the sanitised form is stored and returned; an unknown field key →
+        422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a misplaced / repeated logo
+        node → 422 (logo_position); over 64 KB → 422 (content_too_large). Requires `document_template:manage`.
       parameters:
         - $ref: '#/components/parameters/VersionId'
       requestBody:
@@ -392,6 +395,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
     delete:
       operationId: deleteTemplateDraftVersion
       summary: Discard the open DRAFT version.
@@ -430,6 +435,70 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/document-templates/versions/{versionId}/logo:
+    post:
+      operationId: captureTemplateVersionLogo
+      summary: Capture the Tenant profile logo into a DRAFT version (letterhead).
+      description: |
+        Amendment A1 §2.4. DRAFT only. The server fetches the Tenant profile logo (Tenant.logo_url) ONCE, here
+        (https only, no IP-literal/local hosts, no redirects, 5 s timeout, max 1 MB, image/png or image/jpeg
+        verified by magic bytes), stores the bytes + sha256 as a LOGO TemplateAsset (bytes in documents object
+        storage), references it from the version content and places the logo node first. The renderer never
+        fetches the network. Activation freezes the asset reference with the version. No Tenant profile logo →
+        409 VALIDATION_ERROR (details.reason = no_tenant_logo); an unusable logo → 422 (details.reason =
+        logo_url_not_https | logo_url_host_refused | logo_url_invalid | logo_too_large | logo_type_invalid |
+        logo_fetch_failed). Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '201':
+          description: The captured logo asset.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateLogoCaptureResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: removeTemplateVersionLogo
+      summary: Remove the logo from a DRAFT version.
+      description: Removes the logo reference AND the logo node from the DRAFT content (the asset row is kept for versions that still reference it). DRAFT only. Requires `document_template:manage`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '204':
+          description: The logo was removed.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/document-templates/versions/{versionId}/logo/content:
+    get:
+      operationId: getTemplateVersionLogoContent
+      summary: The frozen logo image bytes of a version (editor letterhead).
+      description: Returns the PNG/JPEG bytes of the version's frozen logo asset. 404 when the version has no logo. Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: The logo image.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/document-templates/versions/{versionId}/activate:
     post:
       operationId: activateTemplateVersion
@@ -847,6 +916,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: The content was refused by server-side validation (details.reason names why).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
     ErrorResponse:
       type: object
@@ -1138,6 +1213,54 @@ components:
           type: [string, 'null']
           maxLength: 500
           description: Admin-only notes for this version (Document Templates slice 1). Never rendered into any document.
+        field_schema:
+          description: |
+            The version content. `rtr-generated-v1`: { render_schema_version, title, blocks: [{type: HEADING|TEXT, text}] }.
+            `rtr-html-v1` (Amendment A1): see RtrHtmlContent — the html is the server-sanitised allowlist form.
+          oneOf:
+            - $ref: '#/components/schemas/RtrHtmlContent'
+            - type: object
+              additionalProperties: true
+            - type: 'null'
+        logo:
+          description: The version's frozen letterhead logo asset (rtr-html-v1), or null.
+          oneOf:
+            - type: object
+              required: [asset_id, mime]
+              properties:
+                asset_id: { type: string, format: uuid }
+                mime: { type: string, enum: [image/png, image/jpeg] }
+            - type: 'null'
+    RtrHtmlContent:
+      type: object
+      description: |
+        Amendment A1 `rtr-html-v1` content. `html` is restricted to the allowlist p, h2, b/strong, i/em, u,
+        ul, ol, li, br; `<span data-field="{closed catalog key}"></span>` (empty) field nodes; and at most one
+        `<div data-asset="tenant.logo"></div>`, only as the first child. No other elements or attributes, no
+        style/class, no URLs. Max 64 KB. The server re-serialises on every PATCH (strong→b, em→i, field spans
+        emptied, unknown tags/attributes removed) and returns the sanitised html. `logo` is server-owned
+        (set only by POST versions/{versionId}/logo); a client-supplied value is ignored.
+      required: [render_schema_version, title, html]
+      properties:
+        render_schema_version: { type: string, enum: [rtr-html-v1] }
+        title: { type: string }
+        html: { type: string, maxLength: 65536 }
+        logo:
+          oneOf:
+            - type: object
+              required: [asset_id, sha256, mime]
+              properties:
+                asset_id: { type: string, format: uuid }
+                sha256: { type: string }
+                mime: { type: string, enum: [image/png, image/jpeg] }
+            - type: 'null'
+    TemplateLogoCaptureResponse:
+      type: object
+      required: [asset_id, sha256, mime]
+      properties:
+        asset_id: { type: string, format: uuid }
+        sha256: { type: string }
+        mime: { type: string, enum: [image/png, image/jpeg] }
     RenameTemplateRequest:
       type: object
       description: Template rename (Document Templates slice 1). The name is trimmed server-side.
@@ -1188,6 +1311,27 @@ components:
                 type: string
         signature_block:
           $ref: '#/components/schemas/SignatureBlockPreview'
+        sample_values:
+          type: array
+          description: The fixed sample value of every catalog binding (both content versions).
+          items:
+            type: object
+            required: [key, label, value]
+            properties:
+              key: { type: string }
+              label: { type: string }
+              value: { type: string }
+        html:
+          type: string
+          description: rtr-html-v1 only — the content with each field node replaced by `<span data-sample="{key}">{escaped sample}</span>` (line breaks in a sample become `<br>`).
+        logo:
+          description: rtr-html-v1 only — the version's frozen logo asset, or null.
+          oneOf:
+            - type: object
+              required: [asset_id]
+              properties:
+                asset_id: { type: string, format: uuid }
+            - type: 'null'
     SignatureBlockPreview:
       type: object
       description: |
@@ -1221,6 +1365,13 @@ components:
                 type: string
               group:
                 type: string
+        tenant_logo:
+          type: object
+          description: A1 §2.4 — whether the Tenant profile has a logo the editor can add, and the organisation name the letterhead shows beside it (display name, else legal name, else workspace name).
+          required: [available, tenant_name]
+          properties:
+            available: { type: boolean }
+            tenant_name: { type: [string, 'null'] }
     TemplateFieldDefinition:
       type: object
       description: The canonical field model (a PDF AcroForm field is only one representation).
