@@ -109,10 +109,13 @@ export function SendRtrModal({
             <div style={{ display: 'flex', alignItems: 'center', gap: 11, border: '1px solid #E5E9ED', background: '#FAFBFC', borderRadius: 10, padding: '10px 12px', flexWrap: 'wrap' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5C6770" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" style={{ flex: 'none' }}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" /></svg>
               <span style={{ flex: '1 1 200px', minWidth: 0 }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700 }}>
-                  {templateLine ?? 'Approved template'}<LockSvg />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, minWidth: 0 }} data-testid="send-rtr-provenance">
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontWeight: 700 }}>{templateLine ?? 'Approved template'}</span>
+                    <span style={{ color: '#5C6770' }}> · Approved by your organization</span>
+                  </span>
+                  <LockSvg />
                 </span>
-                <span style={{ display: 'block', fontSize: '11.5px', color: '#5C6770', marginTop: 1 }}>Approved by your organization</span>
               </span>
               <Button unstyled onClick={previewDoc} style={{ border: '1px solid #022AC0', background: '#fff', color: '#022AC0', borderRadius: 7, padding: '6px 12px', font: "600 12px 'Hanken Grotesk',sans-serif", cursor: 'pointer', whiteSpace: 'nowrap' }} data-testid="send-rtr-preview">Preview document</Button>
             </div>

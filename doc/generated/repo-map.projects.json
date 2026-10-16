@@ -645,6 +645,7 @@
       "RenderService",
       "RequirementsRepository",
       "RevisionSourceService",
+      "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
       "TemplateImmutableError",
       "TemplateNotFoundError",
@@ -669,7 +670,9 @@
       "PdfLibDocumentRenderingAdapter",
       "RenderFailedError",
       "SafePdfPipeline",
-      "UnsafePdfError"
+      "UnsafePdfError",
+      "layoutSignatureBlock",
+      "wrapTextToWidth"
     ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",

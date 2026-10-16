@@ -10613,6 +10613,11 @@
       "to": "openapi/common.yaml"
     },
     {
+      "from": "apps/ats-web/src/talent/evidence-vocab.ts",
+      "status": "production",
+      "to": "libs/talent-trust/src/lib/vocab.ts"
+    },
+    {
       "excludedBy": "src/**/*.spec.ts",
       "from": "apps/ats-web/src/talent/profile-hydration.drift.spec.ts",
       "status": "excluded",
@@ -22331,6 +22336,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261009120000_doc_template_admin_rtr_1_version_admin/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

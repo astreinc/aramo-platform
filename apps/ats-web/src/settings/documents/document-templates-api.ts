@@ -55,6 +55,9 @@ export interface TemplateVersionView {
   // §18 preview-revision gate markers — the editor arms/reads the gate from these.
   readonly content_fingerprint: string | null;
   readonly previewed_fingerprint: string | null;
+  // Admin-only usage guidance (≤500). OPTIONAL in this mirror: the editor renders the
+  // field only when the server's version view carries the property (no dead control).
+  readonly internal_notes?: string | null;
 }
 
 // §15 — one governed Insert-field binding (the server's closed catalog; the editor
@@ -70,6 +73,9 @@ export interface TemplateBinding {
 export interface TemplateSamplePreview {
   readonly title: string;
   readonly blocks: ReadonlyArray<{ readonly type: string; readonly text: string }>;
+  // OPTIONAL: present when the server appends the fixed Aramo e-sign signature block to
+  // the render. The FE draws the signature in a preview ONLY when this is present.
+  readonly signature_block?: { readonly printed_name: string | null } | null;
 }
 
 export async function listDocumentTemplates(): Promise<readonly DocumentTemplateView[]> {
@@ -95,6 +101,18 @@ export async function listAllowedBindings(templateId: string): Promise<readonly 
   return res.bindings;
 }
 
+// Rename the template (document_template:manage). The name is a TEMPLATE attribute
+// (shared by every version), not draft content — it does not re-arm the §18 gate.
+export async function updateDocumentTemplate(id: string, input: { name: string }): Promise<DocumentTemplateView> {
+  return apiClient.patch<DocumentTemplateView>(`${BASE}/${encodeURIComponent(id)}`, input);
+}
+
+// Discard the open DRAFT version (204; DRAFT-only — ACTIVE/RETIRED are immutable and the
+// backend refuses them). The active version is unchanged.
+export async function deleteDraftVersion(versionId: string): Promise<void> {
+  await apiClient.delete<undefined>(`${BASE}/versions/${encodeURIComponent(versionId)}`);
+}
+
 // Open a new editable DRAFT (vN+1). The backend copies the current ACTIVE content as
 // the starting point (§8) and refuses (409 TEMPLATE_DRAFT_ALREADY_EXISTS) if one is open.
 export async function createDraftFromActive(templateId: string): Promise<TemplateVersionView> {
@@ -104,7 +122,7 @@ export async function createDraftFromActive(templateId: string): Promise<Templat
 // Save DRAFT content (DRAFT-only; re-arms the §18 preview gate server-side).
 export async function updateDraftVersion(
   versionId: string,
-  input: { field_schema: unknown; render_schema_version?: string },
+  input: { field_schema: unknown; render_schema_version?: string; internal_notes?: string | null },
 ): Promise<TemplateVersionView> {
   return apiClient.patch<TemplateVersionView>(`${BASE}/versions/${encodeURIComponent(versionId)}`, input);
 }

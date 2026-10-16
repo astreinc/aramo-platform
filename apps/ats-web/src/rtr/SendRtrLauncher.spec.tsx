@@ -50,7 +50,9 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     vi.mocked(composeRtr).mockResolvedValue(COMPOSE);
     renderLauncher();
     expect(await screen.findByText('Standard Right to Represent · v2')).toBeInTheDocument();
-    expect(screen.getByText('Approved by your organization')).toBeInTheDocument();
+    // Provenance is ONE line: `{name} · v{n} · Approved by your organization` + lock.
+    expect(screen.getByTestId('send-rtr-provenance').textContent).toBe('Standard Right to Represent · v2 · Approved by your organization');
+    expect(screen.getByTestId('send-rtr-provenance').querySelector('svg')).not.toBeNull();
     expect(screen.getByTestId('send-rtr-recipient').textContent).toContain('ada@example.com');
     expect(composeRtr).toHaveBeenCalledWith('t-1', 'r-1');
     // No template selector (locked ruling).
