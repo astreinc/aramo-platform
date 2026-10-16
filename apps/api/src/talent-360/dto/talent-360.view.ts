@@ -254,6 +254,37 @@ export interface RecentActivityItemView {
   readonly actor_label: string | null;
   // Channel for communication events ("email"/"voice"); null otherwise.
   readonly channel: string | null;
+  // The interaction id when the event has a previewable message (an email whose
+  // regarding requisition, if any, is visible to the viewer); null otherwise.
+  // The FE opens GET /v1/talent-360/:talentId/communications/:id with it.
+  readonly preview_id: string | null;
+}
+
+// GET /v1/talent-360/:talentId/communications/:interactionId — the full sent
+// email for the recruiter-facing preview. The FINAL sent subject/body (COMM-C4
+// durable evidence); never a provider payload or template.
+export interface CommunicationPreviewView {
+  readonly id: string;
+  readonly channel: string;
+  readonly direction: string;
+  readonly subject: string | null;
+  readonly body: string | null;
+  readonly from_address: string;
+  readonly to_address: string;
+  readonly sent_at: string;
+  readonly sender_label: string | null;
+  readonly requisition_label: string | null;
+}
+
+// GET /v1/talent-360/:talentId/documents/:documentId/content — a Talent
+// document's file for the READ-ONLY preview (no view is recorded). The bytes are
+// base64 inside JSON (bounded) so the API never serves raw file content inline.
+export interface TalentDocumentContentView {
+  readonly document_id: string;
+  readonly file_name: string;
+  readonly mime_type: string;
+  readonly byte_size: number;
+  readonly content_base64: string;
 }
 
 // Per-category counts drive the filter chips; every count links/filters

@@ -7,12 +7,26 @@ import {
   setPipelineResumeEdition,
 } from '../pipeline/pipeline-api';
 import type { PipelineResumeEditionView } from '../pipeline/types';
+import {
+  createAttachment,
+  createTalentResumeEdition,
+  getTalentResumeEditionText,
+  putResumeToStorage,
+  requestResumeUploadUrl,
+} from '../talent/talent-api';
 
 import { ResumeSelectionSection } from './ResumeSelectionSection';
 
 vi.mock('../pipeline/pipeline-api', () => ({
   getPipelineResumeEdition: vi.fn(),
   setPipelineResumeEdition: vi.fn(),
+}));
+vi.mock('../talent/talent-api', () => ({
+  createAttachment: vi.fn(),
+  createTalentResumeEdition: vi.fn(),
+  getTalentResumeEditionText: vi.fn(),
+  putResumeToStorage: vi.fn(),
+  requestResumeUploadUrl: vi.fn(),
 }));
 
 const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
@@ -84,6 +98,13 @@ describe('ResumeSelectionSection', () => {
   beforeEach(() => {
     vi.mocked(getPipelineResumeEdition).mockReset();
     vi.mocked(setPipelineResumeEdition).mockReset();
+    vi.mocked(getTalentResumeEditionText).mockResolvedValue({
+      talent_id: NO_SELECTION.talent_record_id,
+      edition_id: ED_A,
+      status: 'EXTRACTED',
+      redacted_text: 'resume text',
+      extracted_at: null,
+    });
     vi.mocked(getPipelineResumeEdition).mockResolvedValue(NO_SELECTION);
     vi.mocked(setPipelineResumeEdition).mockResolvedValue(WITH_SELECTION);
   });
@@ -153,5 +174,59 @@ describe('ResumeSelectionSection', () => {
     render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
     const current = await screen.findByTestId('resume-current-selection');
     expect(current).toHaveTextContent('grace-tailored.pdf');
+  });
+
+  it('Preview opens the edition\'s own redacted text in a popup and closes on the X', async () => {
+    vi.mocked(getTalentResumeEditionText).mockResolvedValue({
+      talent_id: NO_SELECTION.talent_record_id,
+      edition_id: ED_B,
+      status: 'EXTRACTED',
+      redacted_text: 'Grace Hopper — tailored for BA',
+      extracted_at: '2026-07-05T00:00:00Z',
+    });
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
+    fireEvent.click(await screen.findByTestId(`resume-preview-${ED_B}`));
+    expect(await screen.findByTestId('resume-preview-text')).toHaveTextContent('Grace Hopper — tailored for BA');
+    expect(getTalentResumeEditionText).toHaveBeenCalledWith(NO_SELECTION.talent_record_id, ED_B);
+    fireEvent.click(screen.getByRole('button', { name: 'Close resume preview' }));
+    await waitFor(() => expect(screen.queryByTestId('resume-preview-text')).not.toBeInTheDocument());
+    expect(setPipelineResumeEdition).not.toHaveBeenCalled();
+  });
+
+  it('labels the tailored revision and uses standard status pills', async () => {
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
+    const row = await screen.findByTestId(`resume-row-${ED_B}`);
+    expect(row).toHaveTextContent('Tailored for this requisition');
+    expect(row.querySelector('.rc-pill')).not.toBeNull();
+  });
+
+  it('"Upload tailored resume" adds a REQUISITION revision derived from the default — and does NOT select it', async () => {
+    vi.mocked(requestResumeUploadUrl).mockResolvedValue({ presigned_url: 'https://s3/put', storage_key: 'k1' } as never);
+    vi.mocked(putResumeToStorage).mockResolvedValue(undefined);
+    vi.mocked(createAttachment).mockResolvedValue({ id: 'att-1' } as never);
+    vi.mocked(createTalentResumeEdition).mockResolvedValue({ edition_id: 'ed-new' } as never);
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection canUploadTailored />);
+    const input = await screen.findByTestId('resume-tailored-input');
+    const file = new File(['x'], 'grace-ba.pdf', { type: 'application/pdf' });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() =>
+      expect(createTalentResumeEdition).toHaveBeenCalledWith(NO_SELECTION.talent_record_id, {
+        attachment_id: 'att-1',
+        purpose: 'REQUISITION',
+        requisition_id: NO_SELECTION.requisition_id,
+        derived_from_edition_id: ED_A,
+      }),
+    );
+    expect(createAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({ owner_type: 'talent', owner_id: NO_SELECTION.talent_record_id, is_resume: true }),
+    );
+    expect(await screen.findByTestId('resume-upload-notice')).toBeInTheDocument();
+    expect(setPipelineResumeEdition).not.toHaveBeenCalled();
+  });
+
+  it('hides "Upload tailored resume" without talent:edit + attachment:create', async () => {
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
+    await screen.findByTestId(`resume-row-${ED_A}`);
+    expect(screen.queryByTestId('resume-upload-tailored')).not.toBeInTheDocument();
   });
 });

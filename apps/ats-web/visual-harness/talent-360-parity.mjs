@@ -23,8 +23,9 @@
 //      geometry.json, metrics.json, report.md
 // Env: T360_BASE (default http://localhost:4201), T360_PROTO (prototype file path),
 //      T360_OUT_DIR (default /tmp/t360-parity).
-import { chromium } from 'playwright-core';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+
+import { chromium } from 'playwright-core';
 
 const BASE = process.env.T360_BASE || 'http://localhost:4201';
 const PROTO_PATH =
@@ -145,7 +146,7 @@ const SPARSE = {
   opportunities: { active: [{ pipeline_id: 'p1', requisition_id: 'r1', requisition_code: 'REQ-1000', client_name: 'Technology Ventures', role_title: 'Business Analyst - Multi-Family', stage: 'SOURCED', contextual_state: null, age_label: null, owner_label: 'Purush Pichaimuthu', next_action: null, open_journey_href: '/requisitions/r1', journey: j('r1', { pipeline_stage: 'SOURCED' }, [{ stage: 'SOURCED', owner: 'pipeline', source_object_id: 'pl1' }]) }], closed: [] },
   attention: [],
   tasks: [],
-  recent_activity: { items: [{ id: 'e1', occurred_at: '2026-09-21T14:45:00Z', category: 'communications', title: 'Email sent', body: null, requisition_id: null, requisition_label: null, actor_label: null, channel: 'email' }, { id: 'e2', occurred_at: '2026-09-14T16:00:00Z', category: 'communications', title: 'Email sent', body: null, requisition_id: null, requisition_label: null, actor_label: null, channel: 'email' }], category_counts: { communications: 2 }, has_more: false },
+  recent_activity: { items: [{ id: 'e1', occurred_at: '2026-09-21T14:45:00Z', category: 'communications', title: 'Email sent', body: null, requisition_id: null, requisition_label: null, actor_label: null, channel: 'email', preview_id: null }, { id: 'e2', occurred_at: '2026-09-14T16:00:00Z', category: 'communications', title: 'Email sent', body: null, requisition_id: null, requisition_label: null, actor_label: null, channel: 'email', preview_id: null }], category_counts: { communications: 2 }, has_more: false },
   documents: { key_documents: [], total: 0 },
   identity: { primary_email_confirmed: true, mobile_confirmed: true, advisory: null },
   profile: { summary: null, facts: [{ label: 'availability', value: 'available_now', source: null }, { label: 'compensation', value: '70/Hr', source: null }, { label: 'work authorization', value: 'permanent_resident', source: null }, { label: 'location', value: 'Vienna, VA', source: null }, { label: 'engagement', value: 'Contract', source: null }], skills: [], work_history: [] },
@@ -248,7 +249,7 @@ await apage.route('**/v1/**/dossier**', (r) => r.fulfill({ status: 200, contentT
 await apage.goto(`${BASE}/talent/${TALENT_ID}`, { waitUntil: 'networkidle' }).catch((e) => console.log('actual goto:', String(e)));
 await apage.addStyleTag({ content: NO_ANIM });
 await apage.waitForTimeout(800);
-try { await apage.evaluate(() => document.fonts && document.fonts.ready); } catch {}
+try { await apage.evaluate(() => document.fonts && document.fonts.ready); } catch { /* fonts API optional — capture anyway */ }
 console.log('ACTUAL tabs:', await apage.locator('.t360-tab').count());
 
 // ── prototype (file://) context (only in full compare mode) ───────────────────
@@ -260,7 +261,7 @@ if (STATE === 'full') {
   await ppage.goto(PROTO_URL, { waitUntil: 'networkidle' }).catch((e) => console.log('proto goto:', String(e)));
   await ppage.addStyleTag({ content: NO_ANIM });
   await ppage.waitForTimeout(800);
-  try { await ppage.evaluate(() => document.fonts && document.fonts.ready); } catch {}
+  try { await ppage.evaluate(() => document.fonts && document.fonts.ready); } catch { /* fonts API optional — capture anyway */ }
 }
 // Sparse/empty states are captured actual-only into a sub-directory.
 const STATE_OUT = STATE === 'full' ? OUT : `${OUT}/${STATE}`;
@@ -287,7 +288,7 @@ for (const tab of TABS) {
   // Deterministic expand: first opportunity on Overview/Opportunities.
   if (tab.key === 'overview' || tab.key === 'opportunities') {
     const row = apage.locator('.t360-opp-row').first();
-    if (await row.count()) { await row.click({ force: true }).catch(() => {}); await apage.waitForTimeout(300); }
+    if (await row.count()) { await row.click({ force: true }).catch(() => undefined); await apage.waitForTimeout(300); }
     // prototype auto-expands opp 1001 on Overview and all on Opportunities.
   }
   await apage.evaluate(() => window.scrollTo(0, 0));

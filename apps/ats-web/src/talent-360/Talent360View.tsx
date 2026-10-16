@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Dialog, InlineAlert, Input, Select, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
+import { Dialog, DialogClose, InlineAlert, Input, Select, TextArea, hasScope, useSession } from '@aramo/fe-foundation';
 import type { Session } from '@aramo/fe-foundation';
 
 import { Button, LoadingState, safeErrorMessage } from '../ui';
@@ -23,6 +23,7 @@ import {
 import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
 import { GeneralTalentContactEmailComposer } from '../microsoft/GeneralTalentContactEmailComposer';
 import { createNote } from '../activity/activity-api';
+import { formatActivityNote } from '../activity/activity-note-format';
 import { createTask, updateTask } from '../task/task-api';
 import { fetchAssignableUsers, type AssignableUser } from '../users/users-api';
 import { submittalEntryHref, entryActionLabel } from '../submittal-workspace/present';
@@ -32,12 +33,18 @@ import {
   type Tr360NavState,
 } from '../requisitions/talent-requisition-360/route';
 
-import { getTalent360 } from './talent-360-api';
+import {
+  getTalent360,
+  getTalent360CommunicationPreview,
+  getTalent360DocumentContent,
+} from './talent-360-api';
 import type {
   ActiveOpportunityView,
   AttentionItemView,
+  CommunicationPreviewView,
   RecentActivityItemView,
   Talent360View as Talent360ViewModel,
+  TalentDocumentContentView,
   TalentDocumentView,
 } from './talent-360-types';
 import './talent-360.css';
@@ -1008,6 +1015,14 @@ function RecentActivitySection({
 }
 
 function ActivityRow({ a }: { a: RecentActivityItemView }) {
+  const { talentId = '' } = useParams();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const titleContent = (
+    <>
+      {a.title}
+      {a.requisition_label !== null && <span className="t360-reqtag">{a.requisition_label}</span>}
+    </>
+  );
   return (
     <div className="t360-act-row">
       <div className="t360-act-time">
@@ -1018,14 +1033,108 @@ function ActivityRow({ a }: { a: RecentActivityItemView }) {
         <Icon name={ACTIVITY_CATEGORY_ICON[a.category] ?? 'reqs'} size={14} width={1.8} />
       </div>
       <div style={{ minWidth: 0 }}>
-        <div className="t360-act-title">
-          {a.title}
-          {a.requisition_label !== null && <span className="t360-reqtag">{a.requisition_label}</span>}
-        </div>
-        {a.body !== null && <div className="t360-act-body">{a.body}</div>}
+        {a.preview_id !== null && talentId !== '' ? (
+          <Button
+            unstyled
+            type="button"
+            className="t360-act-title t360-act-title--link"
+            onClick={() => setPreviewOpen(true)}
+            aria-label={`Preview ${a.title.toLowerCase()}${a.requisition_label !== null ? ` · ${a.requisition_label}` : ''}`}
+          >
+            {titleContent}
+          </Button>
+        ) : (
+          <div className="t360-act-title">{titleContent}</div>
+        )}
+        {a.body !== null && <div className="t360-act-body">{formatActivityNote(a.body)}</div>}
         {a.actor_label !== null && <div className="t360-act-who">{a.actor_label}</div>}
       </div>
+      {previewOpen && a.preview_id !== null && (
+        <EmailPreviewDialog
+          talentId={talentId}
+          interactionId={a.preview_id}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+// The full sent email behind a Recent-activity row, loaded on demand (never
+// inlined in the Talent 360 read). Closes on the X, a click outside, or Escape.
+function EmailPreviewDialog({
+  talentId,
+  interactionId,
+  onClose,
+}: {
+  talentId: string;
+  interactionId: string;
+  onClose: () => void;
+}) {
+  const [email, setEmail] = useState<CommunicationPreviewView | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTalent360CommunicationPreview(talentId, interactionId)
+      .then((v) => {
+        if (!cancelled) setEmail(v);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setError(safeErrorMessage(e, 'This email could not be loaded.'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId, interactionId]);
+
+  const subject = email === null ? 'Email' : (email.subject ?? '(no subject)');
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={<span className="t360-email-title">{subject}</span>}
+      size="lg"
+    >
+      <DialogClose asChild>
+        <Button unstyled type="button" className="t360-email-close" aria-label="Close email preview">
+          ×
+        </Button>
+      </DialogClose>
+      {error !== null ? (
+        <InlineAlert variant="error">{error}</InlineAlert>
+      ) : email === null ? (
+        <LoadingState label="Loading email…" />
+      ) : (
+        <div className="t360-email">
+          <dl className="t360-email-meta">
+            <dt>From</dt>
+            <dd>
+              {email.sender_label !== null ? `${email.sender_label} <${email.from_address}>` : email.from_address}
+            </dd>
+            <dt>To</dt>
+            <dd>{email.to_address}</dd>
+            <dt>Sent</dt>
+            <dd>
+              {new Date(email.sent_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+            </dd>
+            {email.requisition_label !== null && (
+              <>
+                <dt>Requisition</dt>
+                <dd>{email.requisition_label}</dd>
+              </>
+            )}
+          </dl>
+          {email.body !== null && email.body.trim().length > 0 ? (
+            <div className="t360-email-body">{email.body}</div>
+          ) : (
+            <div className="t360-empty">The message body was not recorded for this email.</div>
+          )}
+        </div>
+      )}
+    </Dialog>
   );
 }
 
@@ -1147,8 +1256,10 @@ function DocumentsSection({
 }
 
 function DocRow({ d }: { d: TalentDocumentView }) {
-  return (
-    <div className="t360-doc-row">
+  const { talentId = '' } = useParams();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const inner = (
+    <>
       <div className={`t360-doc-icon${d.signed ? ' t360-doc-icon--signed' : ''}`} aria-hidden="true">
         {d.signed ? '✓' : '▤'}
       </div>
@@ -1162,7 +1273,131 @@ function DocRow({ d }: { d: TalentDocumentView }) {
           {d.signed && d.signed_at !== null ? ` · Signed ${shortDate(d.signed_at)}` : ''}
         </div>
       </div>
-    </div>
+    </>
+  );
+  if (talentId === '') return <div className="t360-doc-row">{inner}</div>;
+  return (
+    <>
+      <Button
+        unstyled
+        type="button"
+        className="t360-doc-row t360-doc-row--link"
+        onClick={() => setPreviewOpen(true)}
+        aria-label={`Preview ${d.kind}${d.meta !== null ? ` — ${d.meta}` : ''}`}
+      >
+        {inner}
+      </Button>
+      {previewOpen && (
+        <DocumentPreviewDialog
+          talentId={talentId}
+          documentId={d.id}
+          title={d.meta ?? d.kind}
+          onClose={() => setPreviewOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+type DocPreviewBody =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'pdf'; url: string }
+  | { kind: 'image'; url: string }
+  | { kind: 'docx'; html: string }
+  | { kind: 'download' };
+
+// Read-only preview of a Talent document (PO ruling: nothing is recorded). The
+// file is loaded on open through the authenticated API (never a raw S3 link): PDF
+// and images render inline, DOCX is converted in the browser (the ResumePreview
+// mammoth path), anything else offers Download. X, click outside or Escape close.
+function DocumentPreviewDialog({
+  talentId,
+  documentId,
+  title,
+  onClose,
+}: {
+  talentId: string;
+  documentId: string;
+  title: string;
+  onClose: () => void;
+}) {
+  const [file, setFile] = useState<TalentDocumentContentView | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [body, setBody] = useState<DocPreviewBody>({ kind: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    let url: string | null = null;
+    getTalent360DocumentContent(talentId, documentId)
+      .then(async (doc) => {
+        if (cancelled) return;
+        const bytes = Uint8Array.from(atob(doc.content_base64), (c) => c.charCodeAt(0));
+        const mime = doc.mime_type === '' ? 'application/octet-stream' : doc.mime_type;
+        url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+        setFile(doc);
+        setBlobUrl(url);
+        const lower = doc.file_name.toLowerCase();
+        if (mime === 'application/pdf' || lower.endsWith('.pdf')) {
+          setBody({ kind: 'pdf', url });
+        } else if (mime.startsWith('image/') && mime !== 'image/svg+xml') {
+          setBody({ kind: 'image', url });
+        } else if (mime === DOCX_MIME || lower.endsWith('.docx')) {
+          const mammoth = (await import('mammoth')) as unknown as {
+            convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
+          };
+          const { value } = await mammoth.convertToHtml({ arrayBuffer: bytes.buffer });
+          if (!cancelled) setBody({ kind: 'docx', html: value });
+        } else {
+          setBody({ kind: 'download' });
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setBody({ kind: 'error', message: safeErrorMessage(e, 'This document could not be loaded.') });
+      });
+    return () => {
+      cancelled = true;
+      if (url !== null) URL.revokeObjectURL(url);
+    };
+  }, [talentId, documentId]);
+
+  const name = file?.file_name ?? title;
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={<span className="t360-email-title">{name}</span>}
+      size="xl"
+    >
+      <DialogClose asChild>
+        <Button unstyled type="button" className="t360-email-close" aria-label="Close document preview">
+          ×
+        </Button>
+      </DialogClose>
+      <div className="t360-docpv">
+        {body.kind === 'loading' && <LoadingState label="Loading document…" />}
+        {body.kind === 'error' && <InlineAlert variant="error">{body.message}</InlineAlert>}
+        {body.kind === 'pdf' && <iframe className="t360-docpv__frame" title={`Preview of ${name}`} src={body.url} />}
+        {body.kind === 'image' && <img className="t360-docpv__img" src={body.url} alt={name} />}
+        {body.kind === 'docx' && (
+          <div className="t360-docpv__docx rc-rpreview__docx" dangerouslySetInnerHTML={{ __html: body.html }} />
+        )}
+        {body.kind === 'download' && (
+          <div className="t360-empty">Inline preview isn’t available for this file type — download it to open.</div>
+        )}
+        {blobUrl !== null && (
+          <div className="t360-docpv__bar">
+            <a className="t360-link" href={blobUrl} download={name}>
+              Download
+            </a>
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }
 

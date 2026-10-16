@@ -599,6 +599,94 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
       security:
         - BearerAuth: []
+  # GET /v1/talent-360/{talentId}/communications/{interactionId} — the full sent
+  # email behind a Recent-activity row (opened from the row's preview_id). READ-ONLY.
+  /v1/talent-360/{talentId}/communications/{interactionId}:
+    get:
+      operationId: getTalent360CommunicationPreview
+      summary: The full sent email behind a Talent 360 Recent-activity row.
+      description: |
+        Returns the FINAL sent subject/body and addressing of one email
+        interaction associated to the Talent. Requires `talent:read` +
+        `communication:read` + the `ats` capability. Refused with a tenant-safe
+        404 when the interaction is absent, cross-tenant, not this Talent's, not
+        an email, or regarding only requisitions the caller cannot see.
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          description: The Talent record id.
+          schema:
+            type: string
+            format: uuid
+        - name: interactionId
+          in: path
+          required: true
+          description: The communication interaction id (the row's preview_id).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The sent email.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommunicationPreviewView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  # GET /v1/talent-360/{talentId}/documents/{documentId}/content — a Talent
+  # document's file for the READ-ONLY preview (no view is recorded).
+  /v1/talent-360/{talentId}/documents/{documentId}/content:
+    get:
+      operationId: getTalent360DocumentContent
+      summary: A Talent document's file for the read-only Talent 360 preview.
+      description: |
+        Returns the bytes (base64) of the document's content artifact — the
+        executed copy, else the prepared rendition, else the original upload.
+        Requires `talent:read` + `document:read` + the `ats` capability. Refused
+        with a tenant-safe 404 when the document is absent, cross-tenant, not this
+        Talent's, has no file, or is regarding only requisitions the caller cannot
+        see. Files over the preview cap are refused with 422 VALIDATION_ERROR
+        (`details.reason: too_large_for_preview`). Read-only: no access is recorded.
+      parameters:
+        - name: talentId
+          in: path
+          required: true
+          description: The Talent record id.
+          schema:
+            type: string
+            format: uuid
+        - name: documentId
+          in: path
+          required: true
+          description: The document id (a Talent 360 key_documents[].id).
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The document file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentDocumentContentView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   # ── TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9) ──
   # A recruiter records findings in a DRAFT session and explicitly confirms them;
   # each confirmed finding is published exactly once in effect as canonical
@@ -11196,7 +11284,7 @@ components:
     RecentActivityItemView:
       type: object
       additionalProperties: false
-      required: [id, occurred_at, category, title, body, requisition_id, requisition_label, actor_label, channel]
+      required: [id, occurred_at, category, title, body, requisition_id, requisition_label, actor_label, channel, preview_id]
       properties:
         id: { type: string }
         occurred_at: { type: string, format: date-time }
@@ -11207,6 +11295,35 @@ components:
         requisition_label: { type: [string, 'null'] }
         actor_label: { type: [string, 'null'] }
         channel: { type: [string, 'null'] }
+        preview_id:
+          type: [string, 'null']
+          format: uuid
+          description: Interaction id of a previewable email (GET /v1/talent-360/{talentId}/communications/{interactionId}); null when none or when its requisition is not visible to the caller.
+    TalentDocumentContentView:
+      type: object
+      additionalProperties: false
+      required: [document_id, file_name, mime_type, byte_size, content_base64]
+      properties:
+        document_id: { type: string, format: uuid }
+        file_name: { type: string }
+        mime_type: { type: string }
+        byte_size: { type: integer }
+        content_base64: { type: string, description: 'The file bytes, base64-encoded.' }
+    CommunicationPreviewView:
+      type: object
+      additionalProperties: false
+      required: [id, channel, direction, subject, body, from_address, to_address, sent_at, sender_label, requisition_label]
+      properties:
+        id: { type: string, format: uuid }
+        channel: { type: string }
+        direction: { type: string }
+        subject: { type: [string, 'null'] }
+        body: { type: [string, 'null'] }
+        from_address: { type: string }
+        to_address: { type: string }
+        sent_at: { type: string, format: date-time }
+        sender_label: { type: [string, 'null'] }
+        requisition_label: { type: [string, 'null'] }
     RecentActivityView:
       type: object
       additionalProperties: false

@@ -18,11 +18,16 @@ import {
   type Talent360ReadPort,
   type TalentCoreRow,
 } from './talent-360.ports.js';
-import { TALENT_360_RECENT_ACTIVITY_LIMIT } from './talent-360.adapters.js';
+import {
+  TALENT_360_DOCUMENT_PREVIEW_MAX_BYTES,
+  TALENT_360_RECENT_ACTIVITY_LIMIT,
+} from './talent-360.adapters.js';
 import type {
   ActiveOpportunityView,
   AttentionItemView,
   ClosedOpportunityView,
+  CommunicationPreviewView,
+  TalentDocumentContentView,
   IdentityView,
   ProfileFactView,
   ProfileSkillView,
@@ -196,7 +201,7 @@ export class Talent360Service {
 
     // ---- Recent activity (activity:read ∪ communication:read) ----------------
     const recent_activity = authorized.activity
-      ? await this.composeRecentActivity(ctx, talent_id, authorized, reqMap)
+      ? await this.composeRecentActivity(ctx, talent_id, authorized, reqMap, timeZone)
       : null;
 
     // ---- Documents (document:read) -------------------------------------------
@@ -444,6 +449,94 @@ export class Talent360Service {
     return items;
   }
 
+  // --- communication preview ------------------------------------------------
+
+  /**
+   * The full sent email behind a Recent-activity row. Same visibility rules as
+   * the list: the Talent must be readable, the email must be this Talent's
+   * (`subject` association), and when it is regarding requisitions at least one
+   * must be visible to the viewer. Every refusal is the same tenant-safe 404 so
+   * existence is never disclosed. Email channel only.
+   */
+  async previewCommunication(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    interaction_id: string,
+  ): Promise<CommunicationPreviewView> {
+    const notFound = (): AramoError =>
+      new AramoError('NOT_FOUND', 'Communication not found for this Talent', 404, {
+        requestId: ctx.request_id,
+      });
+    const core = await this.port.loadTalent(ctx, talent_id);
+    if (core === null) throw notFound();
+    const row = await this.port.loadCommunicationPreview(ctx, talent_id, interaction_id);
+    if (row === null || row.channel !== 'email') throw notFound();
+    const [reqs, names] = await Promise.all([
+      this.port.resolveRequisitions(ctx, row.requisition_ids),
+      this.port.resolveUserNames(ctx, row.initiated_by_id !== null ? [row.initiated_by_id] : []),
+    ]);
+    const req = row.requisition_ids.map((id) => reqs.get(id)).find((r) => r !== undefined) ?? null;
+    if (row.requisition_ids.length > 0 && req === null) throw notFound();
+    return {
+      id: row.id,
+      channel: row.channel,
+      direction: row.direction,
+      subject: row.subject,
+      body: row.body,
+      from_address: row.from_address,
+      to_address: row.to_address,
+      sent_at: row.created_at,
+      sender_label: row.initiated_by_id !== null ? (names.get(row.initiated_by_id) ?? null) : null,
+      requisition_label: req !== null ? `REQ-${req.requisition_number}` : null,
+    };
+  }
+
+  // --- document preview (read-only) ----------------------------------------
+
+  /**
+   * A Talent document's file for the read-only preview. The Talent must be
+   * readable and the document SUBJECT-associated to it; when the document is
+   * regarding requisitions, at least one must be visible to the viewer. Every
+   * refusal is the same tenant-safe 404. Nothing is recorded (read-only by PO
+   * ruling); a file over the preview cap is refused (422, reason too_large_for_preview).
+   */
+  async documentContent(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    document_id: string,
+  ): Promise<TalentDocumentContentView> {
+    const notFound = (): AramoError =>
+      new AramoError('NOT_FOUND', 'Document not found for this Talent', 404, {
+        requestId: ctx.request_id,
+      });
+    const core = await this.port.loadTalent(ctx, talent_id);
+    if (core === null) throw notFound();
+    const row = await this.port.loadDocumentContent(ctx, talent_id, document_id);
+    if (row === null) throw notFound();
+    if (row.regarding_requisition_ids.length > 0) {
+      const reqs = await this.port.resolveRequisitions(ctx, row.regarding_requisition_ids);
+      if (reqs.size === 0) throw notFound();
+    }
+    if (row.byte_size > TALENT_360_DOCUMENT_PREVIEW_MAX_BYTES) {
+      throw new AramoError('VALIDATION_ERROR', 'This document is too large to preview', 422, {
+        requestId: ctx.request_id,
+        details: {
+          reason: 'too_large_for_preview',
+          byte_size: row.byte_size,
+          max_bytes: TALENT_360_DOCUMENT_PREVIEW_MAX_BYTES,
+        },
+      });
+    }
+    const bytes = await row.readBytes();
+    return {
+      document_id: row.document_id,
+      file_name: row.title,
+      mime_type: row.mime_type,
+      byte_size: bytes.byteLength,
+      content_base64: bytes.toString('base64'),
+    };
+  }
+
   // --- recent activity ------------------------------------------------------
 
   private async composeRecentActivity(
@@ -451,6 +544,7 @@ export class Talent360Service {
     talent_id: string,
     authorized: Talent360AuthorizedSections,
     reqMap: ReadonlyMap<string, RequisitionSummaryRow>,
+    timeZone: string,
   ): Promise<Talent360View['recent_activity']> {
     const [acts, comms] = await Promise.all([
       ctx.scopes.has(SCOPE.activity)
@@ -460,15 +554,33 @@ export class Talent360Service {
         ? this.port.listRecentCommunications(ctx, talent_id, TALENT_360_RECENT_ACTIVITY_LIMIT)
         : Promise.resolve([] as readonly CommunicationRow[]),
     ]);
+
+    // Requisition context for communication rows. resolveRequisitions applies the
+    // authoritative visibility predicate, so a requisition the viewer cannot see
+    // is simply absent — its label is never shown and (below) the row's subject
+    // and preview are withheld rather than leaking hidden requisition content.
+    const extraReqIds = dedupe(comms.flatMap((c) => c.requisition_ids)).filter(
+      (id) => !reqMap.has(id),
+    );
+    const actorIds = dedupe(
+      [...acts.map((a) => a.created_by_id), ...comms.map((c) => c.initiated_by_id)].filter(
+        (x): x is string => x !== null,
+      ),
+    );
+    const [extraReqs, actorNames] = await Promise.all([
+      this.port.resolveRequisitions(ctx, extraReqIds),
+      this.port.resolveUserNames(ctx, actorIds),
+    ]);
+    const visibleReqs = new Map<string, RequisitionSummaryRow>([...reqMap, ...extraReqs]);
+
     const merged: RecentActivityItemView[] = [
-      ...acts.map((a) => activityToItem(a)),
-      ...comms.map((c) => commToItem(c)),
+      ...acts.map((a) => activityToItem(a, actorNames)),
+      ...comms.map((c) => commToItem(c, visibleReqs, actorNames, timeZone)),
     ].sort((x, y) => Date.parse(y.occurred_at) - Date.parse(x.occurred_at));
 
     const window = merged.slice(0, TALENT_360_RECENT_ACTIVITY_LIMIT);
     const counts: Record<string, number> = {};
     for (const it of window) counts[it.category] = (counts[it.category] ?? 0) + 1;
-    void reqMap; // requisition tagging of activity rows is a Slice-C enrichment
     return {
       items: window,
       category_counts: counts,
@@ -818,7 +930,10 @@ function documentKind(
   return typeName;
 }
 
-function activityToItem(a: ActivityRow): RecentActivityItemView {
+function activityToItem(
+  a: ActivityRow,
+  actorNames: ReadonlyMap<string, string>,
+): RecentActivityItemView {
   return {
     id: `activity:${a.id}`,
     occurred_at: a.created_at,
@@ -827,23 +942,89 @@ function activityToItem(a: ActivityRow): RecentActivityItemView {
     body: a.notes,
     requisition_id: null,
     requisition_label: null,
-    actor_label: null,
+    actor_label: a.created_by_id !== null ? (actorNames.get(a.created_by_id) ?? null) : null,
     channel: null,
+    preview_id: null,
   };
 }
 
-function commToItem(c: CommunicationRow): RecentActivityItemView {
+function commToItem(
+  c: CommunicationRow,
+  visibleReqs: ReadonlyMap<string, RequisitionSummaryRow>,
+  actorNames: ReadonlyMap<string, string>,
+  timeZone: string,
+): RecentActivityItemView {
+  const req =
+    c.requisition_ids.map((id) => visibleReqs.get(id)).find((r) => r !== undefined) ?? null;
+  // Regarding a requisition the viewer cannot see → withhold the subject and the
+  // preview (they carry that requisition's content); the bare event still shows.
+  const restricted = c.requisition_ids.length > 0 && req === null;
+  const subject =
+    !restricted && c.subject !== null && c.subject.trim().length > 0 ? c.subject.trim() : null;
+  let body: string | null = null;
+  if (c.channel === 'meeting') {
+    const parts = [subject, meetingWindow(c.started_at, c.ended_at, timeZone)].filter(
+      (x): x is string => x !== null,
+    );
+    body = parts.length > 0 ? parts.join(' — ') : null;
+  } else if (subject !== null) {
+    body = `“${subject}”`;
+  }
   return {
     id: `comm:${c.id}`,
     occurred_at: c.created_at,
     category: 'communications',
-    title: c.direction === 'inbound' ? `${channelNoun(c.channel)} received` : `${channelNoun(c.channel)} sent`,
-    body: null,
-    requisition_id: null,
-    requisition_label: null,
-    actor_label: null,
+    title: commTitle(c),
+    body,
+    requisition_id: req?.id ?? null,
+    requisition_label: req !== null ? `REQ-${req.requisition_number}` : null,
+    actor_label: c.initiated_by_id !== null ? (actorNames.get(c.initiated_by_id) ?? null) : null,
     channel: c.channel,
+    preview_id: c.channel === 'email' && !restricted ? c.id : null,
   };
+}
+
+// A meeting row is never "sent": it is a scheduled Outlook event (scheduled/
+// rescheduled/cancelled) or a create-link-only meeting link (`created`).
+function commTitle(c: CommunicationRow): string {
+  if (c.channel === 'meeting') {
+    switch (c.status) {
+      case 'scheduled':
+        return 'Meeting scheduled';
+      case 'rescheduled':
+        return 'Meeting rescheduled';
+      case 'cancelled':
+        return 'Meeting cancelled';
+      case 'created':
+        return 'Meeting link created';
+      default:
+        return 'Meeting';
+    }
+  }
+  return c.direction === 'inbound' ? `${channelNoun(c.channel)} received` : `${channelNoun(c.channel)} sent`;
+}
+
+// "Tue, Oct 14, 2:00 PM – 2:30 PM EDT" in the app timezone; null without a start.
+function meetingWindow(start: string | null, end: string | null, timeZone: string): string | null {
+  if (start === null) return null;
+  const s = new Date(start);
+  if (Number.isNaN(s.getTime())) return null;
+  const day = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(s);
+  const time = (d: Date, withZone: boolean): string =>
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: 'numeric',
+      minute: '2-digit',
+      ...(withZone ? { timeZoneName: 'short' as const } : {}),
+    }).format(d);
+  const e = end === null ? null : new Date(end);
+  if (e === null || Number.isNaN(e.getTime())) return `${day}, ${time(s, true)}`;
+  return `${day}, ${time(s, false)} – ${time(e, true)}`;
 }
 
 function channelNoun(channel: string): string {

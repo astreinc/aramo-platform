@@ -659,21 +659,26 @@ export function RequisitionDetailView({
     label: `Activity (${activities.length})`,
     content: (
       <div className="rc-mt-16">
-        <div className="rc-viewhead">
-          <h2 className="rc-section-h">Activity — one timeline, every lifecycle</h2>
-          <div className="rc-viewhead__actions">
+        <ActivityTimeline
+          requisitionId={req.id}
+          pipelineIds={pipelines.map((p) => p.id)}
+          refreshKey={refreshKey}
+          talentNameByPipelineId={Object.fromEntries(
+            pipelines.flatMap((p) => {
+              const name = talentNames[p.talent_record_id];
+              return name !== undefined && name !== '' ? [[p.id, name] as const] : [];
+            }),
+          )}
+          userNames={userNames}
+          title="Activity — one timeline, every lifecycle"
+          headerAction={
             <LogNoteDialog
               requisitionId={req.id}
               requisitionCode={`REQ-${req.requisition_number}`}
               requisitionTitle={req.title}
               onSaved={refresh}
             />
-          </div>
-        </div>
-        <ActivityTimeline
-          requisitionId={req.id}
-          pipelineIds={pipelines.map((p) => p.id)}
-          refreshKey={refreshKey}
+          }
         />
       </div>
     ),
@@ -693,17 +698,13 @@ export function RequisitionDetailView({
       label: 'Tasks',
       content: (
         <div className="rc-mt-16">
-          <div className="rc-viewhead">
-            <h2 className="rc-section-h">Tasks on this requisition</h2>
-          </div>
           <TasksPanel
             ownerType="requisition"
             ownerId={req.id}
             canWrite={canWriteTasks}
+            cardTitle="Tasks on this requisition"
+            cardFootnote="Tasks consolidate actionable work across lifecycles."
           />
-          <p className="rc-muted-line rc-mt-8">
-            Tasks consolidate actionable work across lifecycles.
-          </p>
         </div>
       ),
     });

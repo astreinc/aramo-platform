@@ -9,6 +9,7 @@ import type { PlacementView } from '../placement/types';
 import type { TalentRecordView } from '../talent/types';
 import type { TaskView } from '../task/types';
 import { TASK_ACTIVE_STATUS_VALUES } from '../task/types';
+import { formatActivityNote } from '../activity/activity-note-format';
 
 import { AddTalentDialog } from './AddTalentDialog';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
@@ -908,7 +909,7 @@ function activityDetail(
   userName: (id: string | null) => string,
 ): string {
   const by = `by ${userName(a.created_by_id)}`;
-  if (a.notes !== null && a.notes.trim() !== '') return `${a.notes} · ${by}`;
+  if (a.notes !== null && a.notes.trim() !== '') return `${formatActivityNote(a.notes)} · ${by}`;
   return by;
 }
 

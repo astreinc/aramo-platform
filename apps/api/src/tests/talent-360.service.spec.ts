@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { RECRUITING_READY_RULE, Talent360Service } from '../talent-360/talent-360.service.js';
 import type {
+  CommunicationPreviewRow,
+  CommunicationRow,
   ConsentSummaryValue,
+  DocumentContentRow,
   DocumentRow,
   EpisodeRow,
   IdentityOutcomeRow,
@@ -131,6 +134,8 @@ function fakePort(overrides: Partial<Talent360ReadPort> = {}): Talent360ReadPort
     findLatestInterview: async () => null,
     lastContact: async () => null,
     listRecentCommunications: async () => [],
+    loadCommunicationPreview: async () => null,
+    loadDocumentContent: async () => null,
     listRecentActivity: async () => [],
     listTasks: async () => [],
     listDocuments: async () => [],
@@ -509,3 +514,238 @@ function docRow(overrides: Partial<DocumentRow> = {}): DocumentRow {
     ...overrides,
   };
 }
+
+// Recent-activity context: communication rows carry what was sent, about which
+// requisition, and by whom — drawn from stored interaction truth, and never
+// disclosing a requisition the viewer cannot see.
+function commRow(overrides: Partial<CommunicationRow> = {}): CommunicationRow {
+  return {
+    id: 'ci-1',
+    channel: 'email',
+    direction: 'outbound',
+    status: 'connected',
+    subject: 'Business Analyst role – quick intro call?',
+    started_at: null,
+    ended_at: null,
+    initiated_by_id: 'u-1',
+    requisition_ids: ['req-1'],
+    created_at: '2026-10-11T21:39:00Z',
+    ...overrides,
+  };
+}
+
+function previewRow(overrides: Partial<CommunicationPreviewRow> = {}): CommunicationPreviewRow {
+  return {
+    id: 'ci-1',
+    channel: 'email',
+    direction: 'outbound',
+    status: 'connected',
+    subject: 'Business Analyst role – quick intro call?',
+    body: 'Hi Divya,\n\nAre you free for a quick call?',
+    from_address: 'purush@astre.example',
+    to_address: 'divya@example.com',
+    initiated_by_id: 'u-1',
+    requisition_ids: ['req-1'],
+    created_at: '2026-10-11T21:39:00Z',
+    ...overrides,
+  };
+}
+
+describe('Talent360Service — recent activity shows what was communicated (stored truth only)', () => {
+  it('an email row carries its subject, visible requisition tag, sender name, and a preview id', async () => {
+    const service = svc(
+      fakePort({
+        listRecentCommunications: async () => [commRow()],
+        resolveRequisitions: async (_c, ids) =>
+          new Map(ids.includes('req-1') ? [['req-1', req('req-1', 1000)]] : []),
+        resolveUserNames: async () => new Map([['u-1', 'Purush Pichaimuthu']]),
+      }),
+    );
+    const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+    const item = v.recent_activity!.items[0]!;
+    expect(item.title).toBe('Email sent');
+    expect(item.body).toBe('“Business Analyst role – quick intro call?”');
+    expect(item.requisition_label).toBe('REQ-1000');
+    expect(item.requisition_id).toBe('req-1');
+    expect(item.actor_label).toBe('Purush Pichaimuthu');
+    expect(item.preview_id).toBe('ci-1');
+  });
+
+  it('withholds subject, tag and preview when the email is regarding only a requisition the viewer cannot see', async () => {
+    const service = svc(
+      fakePort({
+        listRecentCommunications: async () => [commRow({ requisition_ids: ['req-hidden'] })],
+        resolveRequisitions: async () => new Map(),
+      }),
+    );
+    const item = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!.items[0]!;
+    expect(item.title).toBe('Email sent');
+    expect(item.body).toBeNull();
+    expect(item.requisition_label).toBeNull();
+    expect(item.preview_id).toBeNull();
+  });
+
+  it('a meeting is never "sent": the title reflects its stored status and the body its title + window', async () => {
+    const service = svc(
+      fakePort({
+        listRecentCommunications: async () => [
+          commRow({
+            id: 'm-1',
+            channel: 'meeting',
+            status: 'scheduled',
+            subject: 'Recruiter screen',
+            started_at: '2026-10-14T18:00:00Z',
+            ended_at: '2026-10-14T18:30:00Z',
+          }),
+          commRow({ id: 'm-2', channel: 'meeting', status: 'cancelled', subject: null, created_at: '2026-10-10T00:00:00Z' }),
+        ],
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1000)]]),
+      }),
+    );
+    const [a, b] = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!.items;
+    expect(a!.title).toBe('Meeting scheduled');
+    expect(a!.body).toBe('Recruiter screen — Wed, Oct 14, 2:00 PM – 2:30 PM EDT');
+    expect(a!.preview_id).toBeNull();
+    expect(b!.title).toBe('Meeting cancelled');
+    expect(b!.body).toBeNull();
+  });
+
+  it('a legacy email with no stored subject keeps the plain title (nothing fabricated)', async () => {
+    const service = svc(
+      fakePort({ listRecentCommunications: async () => [commRow({ subject: null, requisition_ids: [] })] }),
+    );
+    const item = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!.items[0]!;
+    expect(item.body).toBeNull();
+    expect(item.requisition_label).toBeNull();
+    expect(item.preview_id).toBe('ci-1');
+  });
+
+  it('activity-log rows name their author from the directory', async () => {
+    const service = svc(
+      fakePort({
+        listRecentActivity: async () => [
+          { id: 'a-1', type: 'note', notes: 'Called back', created_by_id: 'u-2', created_at: '2026-10-01T00:00:00Z' },
+        ],
+        resolveUserNames: async () => new Map([['u-2', 'Sanjay Kumar']]),
+      }),
+    );
+    const item = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!.items[0]!;
+    expect(item.actor_label).toBe('Sanjay Kumar');
+  });
+});
+
+describe('Talent360Service — email preview is constrained to this Talent and visible requisitions', () => {
+  it('returns the full sent email with sender name and requisition tag', async () => {
+    const service = svc(
+      fakePort({
+        loadCommunicationPreview: async () => previewRow(),
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1000)]]),
+        resolveUserNames: async () => new Map([['u-1', 'Purush Pichaimuthu']]),
+      }),
+    );
+    const v = await service.previewCommunication(ctx(), 'tal-1', 'ci-1');
+    expect(v).toEqual({
+      id: 'ci-1',
+      channel: 'email',
+      direction: 'outbound',
+      subject: 'Business Analyst role – quick intro call?',
+      body: 'Hi Divya,\n\nAre you free for a quick call?',
+      from_address: 'purush@astre.example',
+      to_address: 'divya@example.com',
+      sent_at: '2026-10-11T21:39:00Z',
+      sender_label: 'Purush Pichaimuthu',
+      requisition_label: 'REQ-1000',
+    });
+  });
+
+  it.each([
+    ['the Talent is absent', { loadTalent: async () => null }],
+    ['the interaction is not this Talent\'s', { loadCommunicationPreview: async () => null }],
+    ['the interaction is not an email', { loadCommunicationPreview: async () => previewRow({ channel: 'meeting' }) }],
+    [
+      'it is regarding only a hidden requisition',
+      { loadCommunicationPreview: async () => previewRow(), resolveRequisitions: async () => new Map() },
+    ],
+  ] as const)('404s (tenant-safe) when %s', async (_label, overrides) => {
+    const service = svc(fakePort(overrides as Partial<Talent360ReadPort>));
+    await expect(service.previewCommunication(ctx(), 'tal-1', 'ci-1')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+  });
+});
+
+describe('Talent360Service — document preview is read-only and constrained to this Talent', () => {
+  function docRow(overrides: Partial<DocumentContentRow> = {}): DocumentContentRow {
+    return {
+      document_id: 'doc-1',
+      title: 'Deepika_Natarajan_Business_Analyst.docx',
+      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      byte_size: 5,
+      regarding_requisition_ids: [],
+      readBytes: async () => Buffer.from('hello'),
+      ...overrides,
+    };
+  }
+
+  it('returns the file name, type and base64 bytes', async () => {
+    const service = svc(fakePort({ loadDocumentContent: async () => docRow() }));
+    const v = await service.documentContent(ctx(), 'tal-1', 'doc-1');
+    expect(v).toEqual({
+      document_id: 'doc-1',
+      file_name: 'Deepika_Natarajan_Business_Analyst.docx',
+      mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      byte_size: 5,
+      content_base64: Buffer.from('hello').toString('base64'),
+    });
+  });
+
+  it('serves a document regarding a VISIBLE requisition', async () => {
+    const service = svc(
+      fakePort({
+        loadDocumentContent: async () => docRow({ regarding_requisition_ids: ['req-1'] }),
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)]]),
+      }),
+    );
+    await expect(service.documentContent(ctx(), 'tal-1', 'doc-1')).resolves.toMatchObject({ document_id: 'doc-1' });
+  });
+
+  it.each([
+    ['the Talent is absent', { loadTalent: async () => null }],
+    ['the document is not this Talent\'s (or has no file)', { loadDocumentContent: async () => null }],
+    [
+      'it is regarding only a hidden requisition',
+      {
+        loadDocumentContent: async () => docRow({ regarding_requisition_ids: ['req-hidden'] }),
+        resolveRequisitions: async () => new Map(),
+      },
+    ],
+  ] as const)('404s (tenant-safe) when %s', async (_label, overrides) => {
+    const service = svc(fakePort(overrides as Partial<Talent360ReadPort>));
+    await expect(service.documentContent(ctx(), 'tal-1', 'doc-1')).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      statusCode: 404,
+    });
+  });
+
+  it('refuses a file over the preview cap WITHOUT reading its bytes', async () => {
+    let read = false;
+    const service = svc(
+      fakePort({
+        loadDocumentContent: async () =>
+          docRow({
+            byte_size: 21 * 1024 * 1024,
+            readBytes: async () => {
+              read = true;
+              return Buffer.alloc(0);
+            },
+          }),
+      }),
+    );
+    await expect(service.documentContent(ctx(), 'tal-1', 'doc-1')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      statusCode: 422,
+    });
+    expect(read).toBe(false);
+  });
+});

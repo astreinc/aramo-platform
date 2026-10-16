@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Button } from '@aramo/fe-foundation';
+import { useEffect, useRef, useState } from 'react';
+import { Button, Dialog, DialogClose } from '@aramo/fe-foundation';
 
 import {
   getPipelineResumeEdition,
   setPipelineResumeEdition,
 } from '../pipeline/pipeline-api';
+import {
+  createAttachment,
+  createTalentResumeEdition,
+  getTalentResumeEditionText,
+  putResumeToStorage,
+  requestResumeUploadUrl,
+} from '../talent/talent-api';
+import { LoadingState, StatusPill } from '../ui';
 import type {
   PipelineResumeEditionAvailable,
   PipelineResumeEditionView,
@@ -24,15 +32,31 @@ export interface ResumeSelectionSectionProps {
   readonly pipelineId: string;
   // scopes.includes('pipeline:resume:set') — gates the mutating affordance only.
   readonly canSetSelection: boolean;
+  // The Talent the pipeline belongs to — the owner of uploaded tailored editions
+  // and of the edition-text preview read. Defaults to the authoritative
+  // talent_record_id the pipeline resume-edition read returns.
+  readonly talentId?: string;
+  // talent:edit + attachment:create — gates "Upload tailored resume". Uploading
+  // only ADDS an edition tailored for this requisition; it never selects it (the
+  // explicit "Use this resume" stays the only binding action).
+  readonly canUploadTailored?: boolean;
 }
+
+const RESUME_ACCEPT = '.pdf,.doc,.docx,application/pdf';
 
 export function ResumeSelectionSection({
   pipelineId,
   canSetSelection,
+  talentId,
+  canUploadTailored = false,
 }: ResumeSelectionSectionProps): JSX.Element {
   const [view, setView] = useState<PipelineResumeEditionView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +82,52 @@ export function ResumeSelectionSection({
       .then((v) => setView(v))
       .catch(() => setErr('Could not set the resume — the backend rejected this.'))
       .finally(() => setBusyId(null));
+  };
+
+  // Upload a NEW edition tailored for this requisition (purpose REQUISITION,
+  // derived from the current working selection or the default). The existing
+  // governed path: presigned PUT → owned resume attachment → edition ingestion.
+  // It does NOT select the new edition — the recruiter chooses it explicitly.
+  const handleUpload = (file: File | undefined): void => {
+    const owner = talentId ?? view?.talent_record_id;
+    if (file === undefined || view === null || owner === undefined) return;
+    const contentType = file.type === '' ? 'application/octet-stream' : file.type;
+    const derivedFrom = view.selected_edition_id ?? view.default_edition_id ?? undefined;
+    setUploading(true);
+    setErr(null);
+    setNotice(null);
+    void requestResumeUploadUrl({ filename: file.name, content_type: contentType })
+      .then((presign) =>
+        putResumeToStorage(presign.presigned_url, file, contentType).then(() =>
+          createAttachment({
+            owner_type: 'talent',
+            owner_id: owner,
+            file_name: file.name,
+            mime: contentType,
+            size_bytes: file.size,
+            storage_key: presign.storage_key,
+            is_resume: true,
+          }),
+        ),
+      )
+      .then((att) =>
+        createTalentResumeEdition(owner, {
+          attachment_id: att.id,
+          purpose: 'REQUISITION',
+          requisition_id: view.requisition_id,
+          ...(derivedFrom !== undefined ? { derived_from_edition_id: derivedFrom } : {}),
+        }),
+      )
+      .then(() => getPipelineResumeEdition(pipelineId))
+      .then((v) => {
+        setView(v);
+        setNotice('Tailored resume added — choose “Use this resume” to select it for this requisition.');
+      })
+      .catch(() => setErr('Could not upload the tailored resume. Please try again.'))
+      .finally(() => {
+        setUploading(false);
+        if (fileRef.current !== null) fileRef.current.value = '';
+      });
   };
 
   if (view === null) {
@@ -91,6 +161,7 @@ export function ResumeSelectionSection({
   // NOT silently switch to another revision; it asks the recruiter to replace it.
   // This is the UX projection of the SAME rule the backend submit guard enforces.
   const requiresAttention = view.selected_requires_attention === true;
+  const ownerTalentId = talentId ?? view.talent_record_id;
 
   return (
     <section className="rc-cdp__sec" data-testid="resume-selection">
@@ -120,6 +191,11 @@ export function ResumeSelectionSection({
       )}
 
       {err !== null ? <p className="rc-cdp__err">{err}</p> : null}
+      {notice !== null ? (
+        <p className="rc-cdp__note" role="status" data-testid="resume-upload-notice">
+          {notice}
+        </p>
+      ) : null}
 
       <ul className="rc-cdp__resumes">
         {editions.map((e) => (
@@ -129,12 +205,116 @@ export function ResumeSelectionSection({
             currentRequisitionId={view.requisition_id}
             isSelected={e.edition_id === selectedId}
             canSetSelection={canSetSelection}
+            canPreview
             busy={busyId === e.edition_id}
             onUse={() => handleUse(e.edition_id)}
+            onPreview={() => setPreviewId(e.edition_id)}
           />
         ))}
       </ul>
+
+      {canUploadTailored ? (
+        <div className="rc-cdp__resumeupload">
+          {/* eslint-disable-next-line no-restricted-syntax -- G1/A3 escape hatch: native file picker — distinct native behavior, no fe-foundation primitive */}
+          <input
+            ref={fileRef}
+            type="file"
+            accept={RESUME_ACCEPT}
+            hidden
+            data-testid="resume-tailored-input"
+            onChange={(e) => handleUpload(e.target.files?.[0])}
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            data-testid="resume-upload-tailored"
+          >
+            {uploading ? 'Uploading…' : 'Upload tailored resume'}
+          </Button>
+          <span className="rc-cdp__note">PDF or Word · saved as a new revision tailored for this requisition</span>
+        </div>
+      ) : null}
+
+      {previewId !== null ? (
+        <ResumeTextPreview
+          talentId={ownerTalentId}
+          edition={editions.find((e) => e.edition_id === previewId) ?? null}
+          editionId={previewId}
+          onClose={() => setPreviewId(null)}
+        />
+      ) : null}
     </section>
+  );
+}
+
+// PREVIEW is inert (never binds, issues no PUT): it reads the edition's OWN
+// redacted text (TI-1H §9 — opening edition R returns R's text, never another's).
+function ResumeTextPreview({
+  talentId,
+  edition,
+  editionId,
+  onClose,
+}: {
+  readonly talentId: string;
+  readonly edition: PipelineResumeEditionAvailable | null;
+  readonly editionId: string;
+  readonly onClose: () => void;
+}): JSX.Element {
+  const [text, setText] = useState<string | null>(null);
+  const [state, setState] = useState<'loading' | 'ready' | 'pending' | 'error'>('loading');
+  useEffect(() => {
+    let cancelled = false;
+    void getTalentResumeEditionText(talentId, editionId)
+      .then((v) => {
+        if (cancelled) return;
+        if (v.redacted_text === null || v.redacted_text.trim() === '') {
+          setState('pending');
+        } else {
+          setText(v.redacted_text);
+          setState('ready');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId, editionId]);
+  const name = edition?.filename ?? 'Resume';
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      title={<span className="rc-cdp__pvtitle">{name}</span>}
+      description={
+        edition !== null && edition.revision_number !== null
+          ? `Revision ${edition.revision_number} · contact details redacted`
+          : 'Contact details redacted'
+      }
+      size="lg"
+    >
+      <DialogClose asChild>
+        <Button unstyled type="button" className="rc-cdp__pvclose" aria-label="Close resume preview">
+          ×
+        </Button>
+      </DialogClose>
+      {state === 'loading' ? <LoadingState label="Loading resume…" /> : null}
+      {state === 'pending' ? (
+        <p className="rc-cdp__note">The text for this revision is still being extracted. Try again in a minute.</p>
+      ) : null}
+      {state === 'error' ? <p className="rc-cdp__err">This resume could not be loaded.</p> : null}
+      {state === 'ready' && text !== null ? (
+        <div className="rc-cdp__pvtext" data-testid="resume-preview-text">
+          {text}
+        </div>
+      ) : null}
+    </Dialog>
   );
 }
 
@@ -143,15 +323,19 @@ function ResumeRow({
   currentRequisitionId,
   isSelected,
   canSetSelection,
+  canPreview,
   busy,
   onUse,
+  onPreview,
 }: {
   readonly edition: PipelineResumeEditionAvailable;
   readonly currentRequisitionId: string;
   readonly isSelected: boolean;
   readonly canSetSelection: boolean;
+  readonly canPreview: boolean;
   readonly busy: boolean;
   readonly onUse: () => void;
+  readonly onPreview: () => void;
 }): JSX.Element {
   // §3/§10 — a revision tailored for THIS requisition is distinguished from a
   // general one; the revision ordinal gives the recruiter a stable identity beyond
@@ -161,38 +345,47 @@ function ResumeRow({
   const context = tailoredForThis ? 'Tailored for this requisition' : 'General resume';
   return (
     <li className="rc-cdp__resume" data-testid={`resume-row-${edition.edition_id}`}>
-      <span className="rc-cdp__resumename">{edition.filename}</span>
-      <span className="rc-cdp__resumectx" data-testid={`resume-context-${edition.edition_id}`}>
-        {edition.revision_number !== null ? `Revision ${edition.revision_number} · ` : ''}
-        {context}
+      <span className="rc-cdp__resumemain">
+        <span className="rc-cdp__resumename">{edition.filename}</span>
+        <span className="rc-cdp__resumectx" data-testid={`resume-context-${edition.edition_id}`}>
+          {edition.revision_number !== null ? `Revision ${edition.revision_number} · ` : ''}
+          {context}
+        </span>
       </span>
-      {edition.is_default ? <span className="rc-cdp__resumetag">Default</span> : null}
-      {isSelected ? <span className="rc-cdp__resumetag">Selected</span> : null}
-      {/* PREVIEW — DISABLED (TI-1E-B1). The prior href pointed at
-          /talent/:id/resume-editions/:editionId, which has no route (dead link);
-          the pipeline edition payload also lacks the attachment identity the
-          attachment download API needs. Edition-aware viewing is TI-1H, so the
-          action is inert here (never binds, issues no PUT). */}
-      <Button unstyled
-        type="button"
-        className="rc-cdp__resumeprev"
-        data-testid={`resume-preview-${edition.edition_id}`}
-        disabled
-        title="Resume preview is coming soon"
-      >
-        Preview
-      </Button>
-      {canSetSelection && !isSelected ? (
-        <Button unstyled
-          type="button"
-          className="rc-cdp__resumeuse"
-          data-testid={`resume-use-${edition.edition_id}`}
-          disabled={busy}
-          onClick={onUse}
-        >
-          {busy ? 'Setting…' : 'Use this resume'}
-        </Button>
-      ) : null}
+      <span className="rc-cdp__resumetags">
+        {tailoredForThis ? <StatusPill tone="info">Tailored</StatusPill> : null}
+        {edition.is_default ? <StatusPill tone="neutral">Default</StatusPill> : null}
+        {isSelected ? (
+          <StatusPill tone="ok" dot>
+            Selected
+          </StatusPill>
+        ) : null}
+      </span>
+      <span className="rc-cdp__resumeactions">
+        {canPreview ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            data-testid={`resume-preview-${edition.edition_id}`}
+            onClick={onPreview}
+          >
+            Preview
+          </Button>
+        ) : null}
+        {canSetSelection && !isSelected ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            type="button"
+            data-testid={`resume-use-${edition.edition_id}`}
+            disabled={busy}
+            onClick={onUse}
+          >
+            {busy ? 'Setting…' : 'Use this resume'}
+          </Button>
+        ) : null}
+      </span>
     </li>
   );
 }

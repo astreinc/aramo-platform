@@ -19,7 +19,11 @@ import {
 } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
-import type { Talent360View } from './dto/talent-360.view.js';
+import type {
+  CommunicationPreviewView,
+  Talent360View,
+  TalentDocumentContentView,
+} from './dto/talent-360.view.js';
 import { Talent360Service } from './talent-360.service.js';
 
 // The app timezone all "today"/aging is computed against (My Desk §38
@@ -79,6 +83,83 @@ export class Talent360Controller {
       talentId,
       Date.now(),
       APP_TIME_ZONE,
+    );
+  }
+
+  // GET /v1/talent-360/:talentId/communications/:interactionId — the full sent
+  // email behind a Recent-activity row (subject/body/addressing). READ ONLY.
+  // Requires talent:read (the workspace) AND communication:read (the message);
+  // the service constrains it to this Talent's emails and to visible
+  // requisitions, refusing with a tenant-safe 404.
+  @Get(':talentId/communications/:interactionId')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read', 'communication:read')
+  @RequireSiteMatch()
+  async communicationPreview(
+    @AuthContext() authContext: AuthContextType,
+    @Param('talentId', ParseUUIDPipe) talentId: string,
+    @Param('interactionId', ParseUUIDPipe) interactionId: string,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<CommunicationPreviewView> {
+    const [visibility, visible_requisition_ids, visible_contact_ids] =
+      await Promise.all([
+        req.resolveVisibility!(),
+        req.resolveVisibleRequisitionIds!(),
+        req.resolveVisibleContactIds!(),
+      ]);
+    return this.service.previewCommunication(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+        visibility,
+        visible_requisition_ids,
+        visible_contact_ids,
+        scopes: new Set(authContext.scopes ?? []),
+        request_id: requestId,
+      },
+      talentId,
+      interactionId,
+    );
+  }
+
+  // GET /v1/talent-360/:talentId/documents/:documentId/content — a Talent
+  // document's file for the READ-ONLY preview (PO ruling: no view is recorded).
+  // Requires talent:read AND document:read; the service constrains it to this
+  // Talent's documents and visible requisitions (tenant-safe 404).
+  @Get(':talentId/documents/:documentId/content')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('talent:read', 'document:read')
+  @RequireSiteMatch()
+  async documentContent(
+    @AuthContext() authContext: AuthContextType,
+    @Param('talentId', ParseUUIDPipe) talentId: string,
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+    @Query('site_id') siteIdFromQuery: string | undefined,
+    @RequestId() requestId: string,
+    @Req() req: Request,
+  ): Promise<TalentDocumentContentView> {
+    const [visibility, visible_requisition_ids, visible_contact_ids] =
+      await Promise.all([
+        req.resolveVisibility!(),
+        req.resolveVisibleRequisitionIds!(),
+        req.resolveVisibleContactIds!(),
+      ]);
+    return this.service.documentContent(
+      {
+        tenant_id: authContext.tenant_id,
+        user_id: authContext.sub,
+        ...(siteIdFromQuery === undefined ? {} : { site_id: siteIdFromQuery }),
+        visibility,
+        visible_requisition_ids,
+        visible_contact_ids,
+        scopes: new Set(authContext.scopes ?? []),
+        request_id: requestId,
+      },
+      talentId,
+      documentId,
     );
   }
 }

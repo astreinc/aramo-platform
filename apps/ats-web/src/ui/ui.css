@@ -4922,12 +4922,25 @@ select.rc-secinput { appearance: none; padding-right: 28px; }
    surface inside the requisition Talent drawer. Preview is inert; only "Use this
    resume" issues the governed PUT. ── */
 .rc-cdp__resumes { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.rc-cdp__resume { display: flex; align-items: center; gap: 8px; font-size: 13px; }
-.rc-cdp__resumename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-cdp__resumetag { font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--brand-strong, #022AC0); border: 1px solid var(--brand-strong, #022AC0); border-radius: 6px; padding: 1px 6px; }
-.rc-cdp__resumeprev { font-size: 12px; color: var(--brand-strong, #022AC0); text-decoration: underline; }
-.rc-cdp__resumeuse { font-size: 12px; font-weight: 600; color: #fff; background: var(--brand-strong, #022AC0); border: none; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
-.rc-cdp__resumeuse:disabled { opacity: 0.6; cursor: default; }
+.rc-cdp__resume { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 8px 0; border-top: 1px solid #F2F4F6; }
+.rc-cdp__resume:first-child { border-top: 0; }
+.rc-cdp__resumemain { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.rc-cdp__resumename { font-weight: 600; color: #1B2730; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-cdp__resumectx { font-size: 11.5px; color: #5C6770; }
+.rc-cdp__resumetags { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.rc-cdp__resumeactions { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.rc-cdp__resumeupload { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.rc-cdp__resumeupload .rc-cdp__note { margin: 0; }
+.rc-cdp__pvtitle { display: block; padding-right: 32px; }
+.rc-cdp__pvclose {
+  position: absolute; top: 12px; right: 12px; width: 28px; height: 28px; border: none;
+  border-radius: 6px; background: transparent; color: #5C6770; font-size: 20px; line-height: 1; cursor: pointer;
+}
+.rc-cdp__pvclose:hover, .rc-cdp__pvclose:focus-visible { background: #EEF1F4; color: #1B2730; }
+.rc-cdp__pvtext {
+  max-height: 65vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere;
+  font-size: 13px; line-height: 1.55; color: #1B2730; border: 1px solid #E5E9ED; border-radius: 8px; padding: 14px 16px;
+}
 
 /* ── TI-1E-B1 hydrated field value — server value_state / source_type /
    resolution rendered inline. UNKNOWN & EXPLICITLY_CLEARED both show the value
@@ -5432,6 +5445,46 @@ button.rc-snapcard:hover {
 .rc-act__body b { display: block; color: #1B2730; }
 .rc-act__detail { color: #5C6770; }
 .rc-act__when { font-size: 11px; color: #93A0A8; flex: none; }
+.rc-act__dot--brand { background: #022AC0; }
+
+/* Requisition Activity tab — one card of compact rows (prototype: Requisition
+ * Detail CRM "Activity — one timeline, every lifecycle"). */
+.rc-tl { padding: 15px 18px; }
+.rc-tl__head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.rc-tl__head h2 { font-size: 13px; font-weight: 700; color: #1B2730; margin: 0; }
+.rc-tl__actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.rc-tl__empty { margin: 0; padding: 9px 0; border-top: 1px solid #F2F4F6; font-size: 12.5px; color: #5C6770; }
+.rc-tl__foot { margin: 10px 0 0; font-size: 11.5px; color: #93A0A8; }
+.rc-tl__row { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid #F2F4F6; font-size: 12.5px; }
+.rc-tl__row .rc-act__dot { width: 8px; height: 8px; }
+.rc-tl__body { flex: 1; min-width: 0; color: #1B2730; }
+.rc-tl__tag {
+  display: inline-flex; border-radius: 14px; padding: 1px 7px; margin-right: 7px;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .05em; vertical-align: 1px;
+  background: #EDF0F3; color: #5C6770;
+}
+.rc-tl__detail { color: #5C6770; }
+.rc-tl__when { flex: none; font-size: 11px; color: #93A0A8; font-family: 'IBM Plex Mono', monospace; }
+
+/* Requisition Tasks card rows (prototype: checkbox · title — meta · due · Open →). */
+.rc-tk__row { display: flex; align-items: center; gap: 11px; padding: 9px 0; border-top: 1px solid #F2F4F6; font-size: 12.5px; }
+.rc-tk__row--done .rc-tk__body b { color: #93A0A8; text-decoration: line-through; }
+.rc-tk__check {
+  width: 16px; height: 16px; border-radius: 5px; border: 1.5px solid #C6CDD4; flex: none;
+  box-sizing: border-box; display: grid; place-items: center; font-size: 10px; line-height: 1;
+  background: #fff; color: #fff; padding: 0; cursor: pointer;
+}
+span.rc-tk__check { cursor: default; }
+.rc-tk__check--on { background: #1F7A4D; border-color: #1F7A4D; }
+.rc-tk__body { flex: 1; min-width: 0; color: #1B2730; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rc-tk__meta { color: #5C6770; }
+.rc-tk__due { flex: none; font-size: 11px; font-weight: 700; }
+.rc-tk__due--late { color: #C0410C; }
+.rc-tk__due--soon { color: #8A5A00; }
+.rc-tk__due--later { color: #5C6770; font-weight: 600; }
+.rc-tk__open { flex: none; font-size: 12px; font-weight: 600; }
+.rc-tk__del { flex: none; font-size: 11.5px; color: #93A0A8; background: none; border: 0; padding: 0; cursor: pointer; }
+.rc-tk__del:hover { color: #C0410C; }
 
 /* Underline tabs — scoped to the workspace; the global Tabs primitive is
  * untouched (the wrapper class raises specificity over theme.css). */
