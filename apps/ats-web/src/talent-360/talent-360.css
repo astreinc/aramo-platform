@@ -1405,7 +1405,8 @@ body.t360-route .rc-content {
 .t360-req {
   color: #b3402a;
 }
-.t360 .t360-ctl {
+.t360 .t360-ctl,
+.t360-up .t360-ctl {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d5dbe1;
@@ -1416,16 +1417,40 @@ body.t360-route .rc-content {
   background: #fff;
   outline: none;
 }
-.t360 .t360-ctl:focus {
+.t360 .t360-ctl:focus,
+.t360-up .t360-ctl:focus {
   border-color: #022ac0;
   box-shadow: 0 0 0 3px #022ac01f;
 }
-.t360 .t360-ctl--err {
+.t360 .t360-ctl--err,
+.t360-up .t360-ctl--err {
   border-color: #e3a79a;
 }
 .t360 .t360-ctl--area {
   resize: vertical;
   line-height: 1.5;
+}
+/* Selects follow the prototype's control: native arrow replaced by a chevron.
+   The Upload dialog renders in a portal outside .t360, so it is listed explicitly. */
+.t360 select.t360-ctl,
+.t360-up select.t360-ctl {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 38px;
+  padding: 8px 34px 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231B2730' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+}
+.t360 select.t360-ctl:disabled,
+.t360-up select.t360-ctl:disabled {
+  cursor: not-allowed;
+  background-color: #f4f6fa;
+  color: #93a0a8;
+}
+.t360-up__opt {
+  font-weight: 400;
+  color: #93a0a8;
 }
 .t360-ctlpair {
   display: flex;

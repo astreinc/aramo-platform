@@ -658,7 +658,7 @@ function UploadDialog({
           </label>
           <label className="t360-up__field">
             <span>
-              Requisition {needsReq ? <span className="t360-req">*</span> : null}
+              Requisition {needsReq ? <span className="t360-req">*</span> : <span className="t360-up__opt">· optional</span>}
             </span>
             <Select
               unstyled
