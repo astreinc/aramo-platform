@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   TalentErasureService,
   type PgExec,
-  type S3Deleter,
+  type ErasureObjectStore,
 } from '../talent-identity/talent-erasure.service.js';
 import { TalentDataInventoryService } from '../talent-identity/talent-data-inventory.service.js';
 
@@ -72,8 +72,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const erasure = new TalentErasureService();
     const inventory = new TalentDataInventoryService();
     const s3Recorded: string[] = [];
-    const s3Delete: S3Deleter = async (keys) => {
-      s3Recorded.push(...keys);
+    const s3Delete: ErasureObjectStore = {
+      purge: async (key) => {
+        s3Recorded.push(key);
+        return { remaining: 0 };
+      },
     };
 
     async function count(table: string, where: string, params: unknown[]): Promise<number> {
@@ -251,6 +254,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const report = await erasure.execute(pg, TENANT, REC, s3Delete);
 
       expect(report.mode).toBe('execute');
+      // S2 — the truthful verdict: no blockers in this seed, the DB pass committed
+      // and there are no artifacts → COMPLETED, marker appended, is_anonymized true.
+      expect(report.outcome).toBe('COMPLETED');
+      expect(report.blockers).toEqual([]);
+      expect(report.steps.filter((st) => st.status !== 'deleted')).toEqual([]);
       expect(report.erasure_marker_appended).toBe(true);
       expect(report.is_anonymized_flipped).toBe(true);
 
@@ -281,6 +289,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Idempotent second run: nothing left, marker not re-appended.
       const second = await erasure.execute(pg, TENANT, REC, s3Delete);
+      expect(second.outcome).toBe('COMPLETED'); // idempotent: the recorded run is complete
       expect(second.total_rows).toBe(0);
       expect(second.erasure_marker_appended).toBe(false);
       expect(await count('audit."ConsentAuditEvent"', `subject_id=$1::uuid AND event_type='consent.erased'`, [REC])).toBe(1);

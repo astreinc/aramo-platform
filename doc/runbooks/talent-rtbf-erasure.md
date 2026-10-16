@@ -12,25 +12,42 @@ runbook closes the full gap. See the register entry in
 [../go-live-known-limitations.md](../go-live-known-limitations.md) (Talent →
 "RTBF / talent erasure") and [ADR-0007](../adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md).
 
-> **Preferred path — the `erase-talent` CLI (TR-15 B2).** This procedure is now
-> automated by an admin command that runs the exact delete-pass below,
+> **Preferred path — the `erase-talent` CLI (TR-15 B2, hardened by S2).** The
+> procedure is automated by an admin command that runs the delete-pass below,
 > child-before-parent, over the whole human:
 > ```sh
-> # DRY-RUN (default) — prints the per-table would-delete inventory, ZERO writes:
+> # DRY-RUN (default) — the would-delete inventory, the PREFLIGHT blockers and the
+> # artifacts to purge; ZERO writes:
 > node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT_ID>
 > # LIVE — requires --execute AND re-typing the id as a confirmation string:
 > node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT_ID> --execute <TALENT_ID>
+> # RESUME — retry the object-storage purge of a STORAGE_PENDING run:
+> node dist/apps/api/src/talent-anchor/erase-talent.command.js <TENANT_ID> <TALENT_ID> --resume <TALENT_ID>
 > ```
-> The CLI performs the DB deletes + appends the retained consent erasure marker +
-> flips `is_anonymized`. It STUBS the S3 deletion (the app has no DeleteObject
-> IAM): it prints the object keys; you still run Step 2 below with elevated creds.
-> The manual SQL steps below remain the authoritative reference + the S3 procedure.
+> **S2 — the CLI only reports what is true.** Exactly one outcome per run, each
+> with its own exit code:
+>
+> | Outcome | Exit | Meaning |
+> |---|---|---|
+> | `COMPLETED` | 0 | Database pass committed AND every object-storage artifact verifiably purged (every version + delete-marker). The `consent.erased` marker is appended and `is_anonymized` is true — **only now**. |
+> | `BLOCKED` | 2 | The PREFLIGHT found holders this erasure may not remove (append-only history pending the S2 authority amendment, a commercial/legal record pending a PO/Legal retention class, a legal hold, or an interaction shared with another talent). **Nothing was deleted.** Each blocker is printed with its holder, count and the authority it needs. |
+> | `STORAGE_PENDING` | 3 | The database pass committed; some artifacts are not yet verifiably purged (e.g. missing `s3:ListBucketVersions` / `s3:DeleteObjectVersion`). **Not an erasure completion** — no marker, `is_anonymized` false. Fix the cause and run `--resume`. |
+> | `FAILED` | 4 | The database pass rolled back (nothing was deleted), or no record / run exists. |
+>
+> The database pass is ONE transaction; object purge state is durable in
+> `consent."TalentErasureRun"` / `consent."TalentErasureArtifact"` (an artifact's
+> key is held only while its purge is pending). Re-running `--execute` or
+> `--resume` is idempotent. The S3 purge is automated through the platform
+> storage abstraction (`purgeObjectAllVersions`); Step 2 below remains the manual
+> reference for an operator-run purge.
 
 > Scope: this erases the ATS-side resume artifacts, every operational + trust-side
 > PII holder, the person's husk chain, and the (TalentRecord-keyed) consent-event
 > ledger. RETAINED as the append-only **record of process**: the consent audit
 > stream (`audit."ConsentAuditEvent"`) and the merge-operation audit
-> (`talent_trust."SubjectMergeOperation"`) — see the audit-retention note.
+> (`talent_trust."SubjectMergeOperation"`) and the scheduling audit
+> (`audit."MeetingSchedulingAuditEvent"` — verified to hold only ids, times and
+> statuses) — see the audit-retention note.
 
 ---
 

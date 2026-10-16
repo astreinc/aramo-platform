@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  ListObjectVersionsCommand,
   PutObjectCommand,
   PutObjectTaggingCommand,
 } from '@aws-sdk/client-s3';
@@ -363,6 +365,64 @@ export class ObjectStorageService {
       bucket,
       storage_key: input.storage_key,
     });
+  }
+
+  /**
+   * S2 (TM-L12 object-storage deletion; Architect ruling F5) — ERASURE-grade purge
+   * of one key on the VERSIONED platform bucket. A plain DeleteObject only writes
+   * a delete-marker and leaves every prior version (the PII) in place, so this
+   * deletes EVERY version and delete-marker of the EXACT key, then re-lists and
+   * returns how many remain (0 = verifiably purged). Never touches another key
+   * that merely shares the prefix. Throws on any S3 failure (the caller records
+   * it as a retryable failed attempt — never as success).
+   */
+  async purgeObjectAllVersions(input: { storage_key: string; requestId: string }): Promise<{ deleted: number; remaining: number }> {
+    const { bucket } = this.s3Factory.getConfig();
+    const client = this.s3Factory.getClient();
+    const list = async (): Promise<Array<{ Key: string; VersionId: string }>> => {
+      const out: Array<{ Key: string; VersionId: string }> = [];
+      let keyMarker: string | undefined;
+      let versionMarker: string | undefined;
+      for (;;) {
+        const res = await client.send(
+          new ListObjectVersionsCommand({
+            Bucket: bucket,
+            Prefix: input.storage_key,
+            ...(keyMarker !== undefined ? { KeyMarker: keyMarker } : {}),
+            ...(versionMarker !== undefined ? { VersionIdMarker: versionMarker } : {}),
+          }),
+        );
+        for (const v of [...(res.Versions ?? []), ...(res.DeleteMarkers ?? [])]) {
+          if (v.Key === input.storage_key && v.VersionId !== undefined) out.push({ Key: v.Key, VersionId: v.VersionId });
+        }
+        if (res.IsTruncated !== true) return out;
+        keyMarker = res.NextKeyMarker;
+        versionMarker = res.NextVersionIdMarker;
+      }
+    };
+    let deleted = 0;
+    try {
+      const versions = await list();
+      for (let i = 0; i < versions.length; i += 1000) {
+        const batch = versions.slice(i, i + 1000);
+        const res = await client.send(
+          new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: batch, Quiet: true } }),
+        );
+        if ((res.Errors ?? []).length > 0) {
+          throw new Error(`${(res.Errors ?? []).length} version(s) not deleted (${res.Errors?.[0]?.Code ?? 'unknown'})`);
+        }
+        deleted += batch.length;
+      }
+      const remaining = (await list()).length;
+      this.logger.log({ event: 'object_storage.object_purge', requestId: input.requestId, bucket, storage_key: input.storage_key, deleted, remaining });
+      return { deleted, remaining };
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new AramoError('OBJECT_STORAGE_UPLOAD_FAILED', `object purge failed: ${message}`, 502, {
+        requestId: input.requestId,
+        details: { kind: 'purge_object_all_versions_failed', bucket, storage_key: input.storage_key },
+      });
+    }
   }
 
   async createPresignedGet(
