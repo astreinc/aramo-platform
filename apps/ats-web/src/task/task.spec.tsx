@@ -94,6 +94,12 @@ describe('TaskList — write-gated controls (Ruling 4)', () => {
     expect(screen.getByTestId('task-edit')).toBeInTheDocument();
     expect(screen.getByTestId('task-delete')).toBeInTheDocument();
   });
+  it('priority dot names the priority by its label, never the raw code', () => {
+    render(
+      <TaskList items={[task({ priority: 'med' })]} canWrite={false} onToggleStatus={noop} onEdit={noop} onDelete={noop} emptyMessage="none" />,
+    );
+    expect(screen.getByLabelText('Priority Medium')).toHaveAttribute('title', 'Priority: Medium');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -138,6 +144,8 @@ describe('MyTasksView — the rebuilt workspace page', () => {
     // summary strip present; quick-add is a disabled seam (no fake ownerless create)
     expect(screen.getByTestId('summary-overdue')).toBeInTheDocument();
     expect(screen.getByTestId('quickadd-seam')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Priority High').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByLabelText('Priority med')).toBeNull();
   });
 
   it('switches to the Board view (by status)', async () => {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { BandPill, Button, Card, InlineAlert, StatusPill, type PillTone } from '../../ui';
+import { codeLabel } from '../../ui/code-label';
 import {
   getDossier,
   getDossierEvidence,
@@ -10,6 +11,12 @@ import {
   type DossierEvidenceItem,
   type DossierHead,
 } from '../dossier-api';
+import {
+  anchorKindLabel,
+  evidenceAssertionTypeLabel,
+  evidenceEventTypeLabel,
+  verificationStatusLabel,
+} from '../evidence-vocab';
 
 import { ContradictionResolveDialog } from './ContradictionResolveDialog';
 
@@ -92,7 +99,7 @@ export function TrustPanel({ talentId, canResolve }: Props) {
   const established = head.ledger_established;
   const proposalKinds = [
     ...new Set(
-      (head.proposal_pointers ?? []).map((p) => PROPOSAL_POINTER_LABEL[p.kind] ?? p.kind),
+      (head.proposal_pointers ?? []).map((p) => codeLabel(PROPOSAL_POINTER_LABEL, p.kind)),
     ),
   ];
 
@@ -122,11 +129,11 @@ export function TrustPanel({ talentId, canResolve }: Props) {
             {head.verifications.map((v) => (
               <TRow
                 key={`v-${v.anchor_kind}`}
-                title={v.anchor_kind}
+                title={anchorKindLabel(v.anchor_kind)}
                 evidence="Verification anchor"
                 right={
                   <StatusPill tone={verificationTone(v.status)} dot>
-                    {v.status}
+                    {verificationStatusLabel(v.status)}
                   </StatusPill>
                 }
               />
@@ -170,7 +177,7 @@ export function TrustPanel({ talentId, canResolve }: Props) {
             <div key={c.evidence_id} className="talent-detail__attention-row">
               <div className="talent-detail__attention-body">
                 {c.reason != null && c.reason !== '' ? c.reason : 'Conflicting evidence'}
-                <span className="talent-detail__attention-meta"> · {c.assertion_type}</span>
+                <span className="talent-detail__attention-meta"> · {evidenceAssertionTypeLabel(c.assertion_type)}</span>
               </div>
               {canResolve ? (
                 <Button
@@ -197,7 +204,7 @@ export function TrustPanel({ talentId, canResolve }: Props) {
               {timeline.map((it) => (
                 <TRow
                   key={it.event.id}
-                  title={`${it.event.event_type} · ${it.evidence.assertion_type}`}
+                  title={`${evidenceEventTypeLabel(it.event.event_type)} · ${evidenceAssertionTypeLabel(it.evidence.assertion_type)}`}
                   evidence={it.event.occurred_at.slice(0, 10)}
                 />
               ))}

@@ -15,6 +15,8 @@
 // Decision F). Always false in M0; PR-9 honors it defensively
 // (PR-9 §4.4). RTBF initiation surfaces are M6 scope.
 
+import { codeLabel } from '../ui/code-label';
+
 export type ConsentScope =
   | 'profile_storage'
   | 'resume_processing'
@@ -31,6 +33,18 @@ export const CONSENT_SCOPES: readonly ConsentScope[] = [
   'cross_tenant_visibility',
 ];
 
+// Display labels for the five consent scopes (the panels' Scope column).
+export const CONSENT_SCOPE_LABELS: Readonly<Record<ConsentScope, string>> = {
+  profile_storage: 'Profile storage',
+  resume_processing: 'Resume processing',
+  matching: 'Matching',
+  contacting: 'Contacting',
+  cross_tenant_visibility: 'Cross-tenant visibility',
+};
+export function consentScopeLabel(code: string): string {
+  return codeLabel(CONSENT_SCOPE_LABELS, code);
+}
+
 export type ConsentScopeStatus =
   | 'granted'
   | 'revoked'
@@ -44,7 +58,26 @@ export type ConsentDecisionLogEventType =
   | 'consent.revoke.recorded'
   | 'consent.check.decision';
 
+export const CONSENT_DECISION_LOG_EVENT_LABELS: Readonly<Record<ConsentDecisionLogEventType, string>> = {
+  'consent.grant.recorded': 'Consent granted',
+  'consent.revoke.recorded': 'Consent revoked',
+  'consent.check.decision': 'Consent check',
+};
+export function consentDecisionLogEventLabel(code: string): string {
+  return codeLabel(CONSENT_DECISION_LOG_EVENT_LABELS, code);
+}
+
 export type ConsentActorType = 'recruiter' | 'self' | 'system';
+
+// `self` is the Talent acting on their own consent.
+export const CONSENT_ACTOR_TYPE_LABELS: Readonly<Record<ConsentActorType, string>> = {
+  recruiter: 'Recruiter',
+  self: 'Talent',
+  system: 'System',
+};
+export function consentActorTypeLabel(code: string): string {
+  return codeLabel(CONSENT_ACTOR_TYPE_LABELS, code);
+}
 
 export interface TalentConsentScopeState {
   scope: ConsentScope;

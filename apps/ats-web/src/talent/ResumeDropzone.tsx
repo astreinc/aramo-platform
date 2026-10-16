@@ -61,7 +61,7 @@ export function ResumeDropzone({
         <div className="rc-dropzone__meta">
           <span>
             <Icons.IconCheck />
-            Résumé text is stored securely
+            Resume text is stored securely
           </span>
           <span>
             <Icons.IconCheck />

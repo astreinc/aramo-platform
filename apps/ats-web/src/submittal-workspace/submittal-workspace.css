@@ -231,7 +231,7 @@
 .sw-req__status--muted { color: #5c6770; }
 .sw-req__detail { display: block; font-size: 12.5px; color: #3a454e; margin-top: 2px; }
 .sw-req__remediation { display: block; font-size: 12px; color: #5c6770; margin-top: 2px; }
-.sw-req__source { display: block; font-size: 11px; color: #93a0a8; margin-top: 3px; text-transform: capitalize; }
+.sw-req__source { display: block; font-size: 11px; color: #93a0a8; margin-top: 3px; }
 .sw-req__action {
   border: 1px solid #c9d4f2;
   background: #fff;

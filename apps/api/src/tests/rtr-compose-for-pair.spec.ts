@@ -114,7 +114,7 @@ describe('SEAM 4 — RtrOrchestratorService.composeForPair (read-only Send RTR p
     // Only talent.full_name + requisition.reference are referenced by CONTENT, so these
     // three repos are never touched — provided as inert stubs for completeness.
     const companiesFake = { findNamesByIds: async () => new Map<string, string>() };
-    const tenantsFake = { findNamesByIds: async () => new Map<string, string>() };
+    const tenantsFake = { findLegalNameById: async () => null };
     const identityFake = { findUserById: async () => null };
 
     documents = {
@@ -166,6 +166,8 @@ describe('SEAM 4 — RtrOrchestratorService.composeForPair (read-only Send RTR p
     });
 
     expect(view.preview.title).toBe('Right to Represent');
+    // Slice 1 B2 — the fixed signature block's PRINTED NAME is the bound talent name.
+    expect(view.preview.signature_block).toEqual({ printed_name: 'Ravi Shankar' });
     expect(documents.createDocument).not.toHaveBeenCalled();
     expect(documents.ensureRequirement).not.toHaveBeenCalled();
     expect(documents.getCurrentRevision).not.toHaveBeenCalled();

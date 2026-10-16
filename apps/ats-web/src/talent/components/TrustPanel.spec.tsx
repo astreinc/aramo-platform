@@ -84,6 +84,9 @@ describe('TrustPanel', () => {
     // The contradiction renders in the attention panel (reason · assertion type).
     expect(await screen.findByText(/Overlapping roles/)).toBeInTheDocument();
     expect(screen.getByTestId('resolve-open')).toBeInTheDocument();
+    // the assertion_type code renders through its label
+    expect(screen.getByText(/· Employment/)).toBeInTheDocument();
+    expect(screen.queryByText(/EMPLOYMENT/)).not.toBeInTheDocument();
     unmount();
 
     vi.mocked(getDossier).mockResolvedValue(withContra);

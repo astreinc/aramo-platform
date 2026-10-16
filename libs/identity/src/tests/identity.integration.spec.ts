@@ -2263,6 +2263,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings D4: +3 site.created + site.deactivated + site.updated (22 -> 25).
       // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (25 -> 27).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
+        // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1 — template draft discard audit.
+        'identity.document_template.draft_discarded',
         'identity.domain.verification.requested',
         'identity.domain.verified',
         'identity.invitation.accepted',

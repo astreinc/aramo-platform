@@ -2,6 +2,11 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // vitest hoists vi.mock above the imports (keeps the import group contiguous).
+vi.mock('../talent-360/t360-previews', () => ({
+  DocumentPreviewDialog: ({ talentId, documentId }: { talentId: string; documentId: string }) => (
+    <div data-testid="rtr-viewer">{`${talentId}:${documentId}`}</div>
+  ),
+}));
 vi.mock('./rtr-api', () => ({
   requestRtr: vi.fn(),
   sendRtr: vi.fn(),
@@ -133,14 +138,17 @@ describe('RtrPanel', () => {
     expect(screen.getByText('Refresh status')).toBeInTheDocument();
   });
 
-  it('G — EXECUTED exposes View RTR + Certificate evidence links and no Send', async () => {
+  it('G — EXECUTED: View RTR opens the frozen signed PDF in the viewer (not a raw API link); no Send', async () => {
     vi.mocked(getCurrentRtr).mockResolvedValue(
       current({ status: 'EXECUTED', document_status: 'EXECUTED', executed_available: true, certificate_available: true }),
     );
     renderPanel();
-    const viewRtr = await screen.findByText('View RTR');
-    expect(viewRtr.getAttribute('href')).toBe('/v1/documents/doc-1/artifacts?role=EXECUTED');
-    expect(screen.getByText('Certificate').getAttribute('href')).toBe('/v1/documents/doc-1/artifacts?role=EXECUTION_CERTIFICATE');
+    const viewRtr = await screen.findByRole('button', { name: 'View RTR' });
+    expect(viewRtr.getAttribute('href')).toBeNull();
+    // No byte-serving certificate route exists yet → no dead link.
+    expect(screen.queryByText('Certificate')).not.toBeInTheDocument();
+    fireEvent.click(viewRtr);
+    expect(await screen.findByTestId('rtr-viewer')).toHaveTextContent('t-1:doc-1');
     expect(screen.queryByText('Send for signature')).not.toBeInTheDocument();
   });
 

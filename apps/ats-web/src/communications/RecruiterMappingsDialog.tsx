@@ -7,7 +7,7 @@ import {
   listCommunicationProviderIdentities,
   upsertCommunicationProviderIdentity,
 } from './provider-config-api';
-import type { CommunicationProviderIdentity } from './types';
+import { PROVIDER_IDENTITY_STATUS_LABELS, type CommunicationProviderIdentity } from './types';
 
 // COMM-C1 — recruiter↔provider identity mapping administration (Settings →
 // Integrations → Communications). Reuses the existing provider-identity admin
@@ -134,7 +134,7 @@ export function RecruiterMappingsDialog({
                   <span className="set-row__t">{m.recruiter_id}</span>
                   <span className="set-row__s">
                     {m.provider_user_id}
-                    {m.extension != null ? ` · ext ${m.extension}` : ''} · {m.status}
+                    {m.extension != null ? ` · ext ${m.extension}` : ''} · {PROVIDER_IDENTITY_STATUS_LABELS[m.status]}
                     {m.voice_enabled ? ' · voice' : ''}
                     {m.sms_enabled ? ' · sms (metadata)' : ''}
                   </span>

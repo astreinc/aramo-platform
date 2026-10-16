@@ -4,6 +4,7 @@
 // are read verbatim from the SW-4 payload. Icon/label/route mapping only.
 
 import type { PillTone } from '../ui';
+import { codeLabel, sentenceCaseCode } from '../ui/code-label';
 
 import type {
   SubmittalReadiness,
@@ -44,7 +45,7 @@ const CLIENT_SELECTION_PILLS: Record<string, PillModel> = {
 
 export function clientSelectionPill(state: string | null): PillModel | null {
   if (state === null) return null;
-  return CLIENT_SELECTION_PILLS[state] ?? { tone: 'neutral', label: titleCase(state) };
+  return CLIENT_SELECTION_PILLS[state] ?? { tone: 'neutral', label: sentenceCaseCode(state) };
 }
 
 const DELIVERY_LABELS: Record<string, string> = {
@@ -57,7 +58,7 @@ const DELIVERY_LABELS: Record<string, string> = {
 
 export function deliveryLabel(channel: string | null): string {
   if (channel === null) return 'Not recorded';
-  return DELIVERY_LABELS[channel] ?? titleCase(channel);
+  return DELIVERY_LABELS[channel] ?? sentenceCaseCode(channel);
 }
 
 // A read-only (historical) submittal — preparation controls are hidden and
@@ -131,7 +132,10 @@ export function waitingLabel(waitingDays: number | null): string | null {
   return `${waitingDays} day${waitingDays === 1 ? '' : 's'}`;
 }
 
-const WITHDRAW_REASON_LABELS: Record<string, string> = {
+// Client feedback reason_code. WITHDRAWN carries this closed WithdrawReasonCode set; DECLINED
+// is reason-free (note only, libs/client-selection disposition-classification), so any other
+// code degrades to sentence case.
+export const WITHDRAW_REASON_LABELS: Readonly<Record<string, string>> = {
   TALENT_WITHDREW: 'Talent withdrew',
   TALENT_UNAVAILABLE: 'Talent unavailable',
   RECRUITER_DISPOSITIONED: 'Recruiter dispositioned',
@@ -141,16 +145,25 @@ const WITHDRAW_REASON_LABELS: Record<string, string> = {
 };
 
 export function withdrawReasonLabel(code: string): string {
-  return WITHDRAW_REASON_LABELS[code] ?? titleCase(code);
+  return codeLabel(WITHDRAW_REASON_LABELS, code);
 }
 
-function titleCase(s: string): string {
-  return s
-    .toLowerCase()
-    .split(/[_\s]+/)
-    .map((w) => (w.length > 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-    .join(' ');
+// SubmittalRequirementSource (libs/submittal-eligibility) — the domain a readiness
+// requirement's rule originates from (provenance line under each requirement).
+export const REQUIREMENT_SOURCE_LABELS: Readonly<Record<string, string>> = {
+  submittal: 'Submittal',
+  pipeline: 'Recruiting',
+  requisition: 'Requisition',
+  documents: 'Documents',
+  submittal_policy: 'Submittal policy',
+  client_talent_restriction: 'Client Talent restriction',
+  engagement: 'Engagement',
+  client_submittal_policy: 'Client submittal policy',
+};
+export function requirementSourceLabel(code: string): string {
+  return codeLabel(REQUIREMENT_SOURCE_LABELS, code);
 }
+
 
 // The entry-point destination for a (talent, requisition): the Submittal Workspace
 // for an existing submittal, or the wizard create route when none exists yet.

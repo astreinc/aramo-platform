@@ -11,6 +11,7 @@ import {
   upholdDispute,
   type PortalDisputeItem,
 } from './portal-disputes-api';
+import { portalDisputeItemTypeLabel, portalDisputeStatusLabel } from './portal-disputes-vocab';
 
 // Portal P3b (§PR-2) — the minimal tenant dispute-disposition worklist (mirrors
 // IdentityAdvisoriesView conventions). Gated on identity:resolve: the reviewer
@@ -98,8 +99,8 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
           <tbody>
             {(disputes ?? []).map((d) => (
               <tr key={`${d.dispute_id}:${d.subject_id}`}>
-                <td>{d.item_type}</td>
-                <td>{d.status}</td>
+                <td>{portalDisputeItemTypeLabel(d.item_type)}</td>
+                <td>{portalDisputeStatusLabel(d.status)}</td>
                 <td>{formatInstant(d.arrived_at)}</td>
                 <td>
                   {canResolve && d.status === 'OPEN' && (

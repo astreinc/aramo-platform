@@ -41,6 +41,10 @@ describe('ConsentDecisionLogPanel', () => {
         ),
       ).toBeInTheDocument();
     });
+    // event_type + actor_type codes render through their label maps
+    expect(screen.getAllByText('Consent granted').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/^Recruiter/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('consent.grant.recorded')).toBeNull();
   });
 
   it('renders the neutral anonymized state when is_anonymized:true', async () => {

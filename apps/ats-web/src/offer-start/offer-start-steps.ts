@@ -8,6 +8,12 @@ import type { TalentRequisitionJourney } from '../pipeline/talent-journey-api';
 // to offer send today (§6.2 typed GAP); it is never faked as a Task or an FE step.
 
 export type StepStatus = 'done' | 'current' | 'future' | 'declined';
+export const STEP_STATUS_LABELS: Readonly<Record<StepStatus, string>> = {
+  done: 'Done',
+  current: 'Current',
+  future: 'Upcoming',
+  declined: 'Declined',
+};
 export type Engagement = 'CONTRACT' | 'DIRECT_HIRE';
 
 export interface JourneyStep {

@@ -68,13 +68,24 @@ describe('IntegrationConnectionsPanel — least-visibility', () => {
     expect(listFn).not.toHaveBeenCalled();
   });
 
+  it('labels a known provider key and its last error code', async () => {
+    const listFn = vi.fn().mockResolvedValue([
+      { ...CONN, provider_key: 'fieldglass', status: 'degraded', last_error_code: 'CONNECTOR_EXECUTION_FAILED' },
+    ]);
+    renderPanel({ sessionOverride: makeSession(['integration:read']), listFn });
+    await waitFor(() => expect(screen.getByText('SAP Fieldglass')).toBeInTheDocument());
+    expect(screen.getByText(/Credential configured · Sync failed/)).toBeInTheDocument();
+  });
+
   it('read-only actor sees connections + status but NO write controls, and no secret material', async () => {
     const listFn = vi.fn().mockResolvedValue([CONN]);
     renderPanel({ sessionOverride: makeSession(['integration:read']), listFn });
     await waitFor(() =>
       expect(screen.getByTestId('integration-connection-c1')).toBeInTheDocument(),
     );
-    expect(screen.getByText('acme_vms')).toBeInTheDocument();
+    // an unregistered provider_key degrades to sentence case, never the raw key
+    expect(screen.getByText('Acme vms')).toBeInTheDocument();
+    expect(screen.queryByText('acme_vms')).not.toBeInTheDocument();
     expect(screen.getByText('Configured')).toBeInTheDocument();
     expect(screen.getByText('Credential configured')).toBeInTheDocument();
     expect(screen.queryByTestId('integration-enable-c1')).not.toBeInTheDocument();

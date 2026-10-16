@@ -83,7 +83,7 @@ export type DeskExceptionKind =
   | 'pre_start_blocked'
   | 'offer_expiring'
   | 'identity_advisory'
-  // Talent Draft Recovery §19 — an unfinished Talent (couldn't read the résumé, or
+  // Talent Draft Recovery §19 — an unfinished Talent (couldn't read the resume, or
   // untouched ≥ 3 days). The generic exceptions renderer deep-links primary_action.href.
   | 'unfinished_talent';
 

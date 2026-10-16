@@ -6,6 +6,8 @@
 // The legal-transition matrix is mirrored in ./legal-transitions.ts and
 // guarded by ./legal-transitions-drift.spec.ts.
 
+import { codeLabel } from '../ui/code-label';
+
 // The canonical 7-state Pipeline recruiting funnel (mirrors
 // libs/pipeline/src/lib/pipeline-state.ts PIPELINE_STATUS_VALUES). The Pipeline
 // owns recruiting progress only; downstream facts (submittal / interview / offer /
@@ -44,6 +46,10 @@ export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
   completed: 'Completed',
   voided: 'Removed (added by mistake)',
 };
+// For a pipeline status read off a loosely-typed projection (string on the wire).
+export function pipelineStatusLabel(code: string): string {
+  return codeLabel(PIPELINE_STATUS_LABELS, code);
+}
 
 // REQ-PIXEL-PARITY-1-A2 (P2-A) — the derived "Next Action" per stage. This is
 // UI-ONLY display sugar (what the recruiter does next given the stage) — it is

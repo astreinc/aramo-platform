@@ -18,9 +18,11 @@ import { useEffect, useState } from 'react';
 import { Button, Card, CardHead, DataTable, type TableColumn } from '../ui';
 
 import { getTalentConsentDecisionLog } from './consent-api';
-import type {
-  ConsentDecisionLogEntry,
-  ConsentDecisionLogResponse,
+import {
+  consentActorTypeLabel,
+  consentDecisionLogEventLabel,
+  type ConsentDecisionLogEntry,
+  type ConsentDecisionLogResponse,
 } from './types';
 
 interface ConsentDecisionLogPanelProps {
@@ -48,12 +50,12 @@ const ENTRY_COLUMNS: ReadonlyArray<TableColumn<ConsentDecisionLogEntry>> = [
       </span>
     ),
   },
-  { key: 'event_type', header: 'Type', render: (entry) => entry.event_type },
+  { key: 'event_type', header: 'Type', render: (entry) => consentDecisionLogEventLabel(entry.event_type) },
   {
     key: 'actor',
     header: 'Actor',
     render: (entry) =>
-      `${entry.actor_type}${entry.actor_id ? ` (${entry.actor_id})` : ''}`,
+      `${consentActorTypeLabel(entry.actor_type)}${entry.actor_id ? ` (${entry.actor_id})` : ''}`,
   },
   { key: 'created_at', header: 'Created at', render: (entry) => entry.created_at },
 ];

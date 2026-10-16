@@ -12,7 +12,7 @@ import { useState } from 'react';
 // reject or submit — "Mark qualified" stays the recruiter's header decision.
 
 export type ScreeningPhase = 'prepared' | 'scheduled' | 'live' | 'findings' | 'saved';
-export type ScreeningSource = 'REQ' | 'Client' | 'Résumé' | 'Transcript';
+export type ScreeningSource = 'REQ' | 'Client' | 'Resume' | 'Transcript';
 export type ScreeningLevel = 'Strong' | 'Moderate' | 'Limited' | 'Not demonstrated';
 export type ScreeningConsent = 'pending' | 'yes' | 'no' | 'off';
 
@@ -66,7 +66,7 @@ const LEVELS: readonly { label: ScreeningLevel; desc: string; tone: 'green' | 'b
 const SOURCE_TONE: Record<ScreeningSource, 'blue' | 'grey' | 'green'> = {
   REQ: 'blue',
   Client: 'blue',
-  'Résumé': 'grey',
+  'Resume': 'grey',
   Transcript: 'green',
 };
 
@@ -106,7 +106,7 @@ function EmptyState({ enabled, talentFirstName }: { enabled: boolean; talentFirs
       {enabled ? (
         <div className="tr360-ts__empty-body">
           Aramo will draft questions from the requisition, the client&apos;s must-haves and{' '}
-          {talentFirstName}&apos;s résumé; you review, edit, schedule on Teams and run the call.
+          {talentFirstName}&apos;s resume; you review, edit, schedule on Teams and run the call.
         </div>
       ) : null}
       {/* "Prepare screening" is hidden: preparing a screening is not wired in this increment. */}

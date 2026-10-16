@@ -185,6 +185,10 @@ export function summarizeDetail(
     }
     case 'identity.site.deactivated':
       return 'Deactivated a branch (site)';
+    case 'identity.document_template.draft_discarded': {
+      const n = payload['version_number'];
+      return typeof n === 'number' ? `Discarded a document template draft (v${n})` : 'Discarded a document template draft';
+    }
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

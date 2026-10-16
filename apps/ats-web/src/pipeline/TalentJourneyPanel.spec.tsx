@@ -31,11 +31,13 @@ vi.mock('./talent-journey-api', () => ({
 }));
 
 describe('TalentJourneyPanel — AC-8 single-source', () => {
-  it('renders the BE-composed current_journey_stage verbatim (no local re-derivation)', async () => {
+  it('renders the BE-composed current_journey_stage through its label (no local re-derivation)', async () => {
     render(<TalentJourneyPanel pipelineId="p1" />);
-    await waitFor(() => expect(screen.getByTestId('journey-current-stage')).toHaveTextContent('STARTED'));
-    // The owner-attributed stage + owner label come straight from the composed response.
-    expect(screen.getByText('placement')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('journey-current-stage')).toHaveTextContent('Started'));
+    // The owner-attributed stage + owner come from the composed response, shown as labels.
+    expect(screen.getByText('Placement')).toBeInTheDocument();
+    expect(screen.getByText('Recruiting')).toBeInTheDocument();
+    expect(screen.queryByText('placement')).not.toBeInTheDocument();
   });
 
   it('NEGATIVE CONTROL — the journey panel does NOT import the placement-board stage derivation', () => {

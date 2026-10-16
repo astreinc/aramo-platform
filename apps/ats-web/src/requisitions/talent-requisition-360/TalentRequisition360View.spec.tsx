@@ -171,7 +171,7 @@ describe('TalentRequisition360View', () => {
       'Overview', 'Conversation Intelligence', 'Technical Screening', 'Submittal', 'Tasks', 'Notes',
     ]);
     // Section nav, exact order.
-    const nav = screen.getByRole('complementary', { name: 'Talent sections' });
+    const nav = screen.getByRole('navigation', { name: 'Talent sections' });
     expect(within(nav).getAllByRole('button').map((b) => b.getAttribute('title'))).toEqual([
       'Back to REQ-1001 pipeline', 'Collapse talent sections', 'Overview', 'Experience', 'Skills', 'Work authorization',
       'Opportunities', 'Activity', 'Documents', 'Communication', 'Talent Trust', 'Conversation Intelligence',
@@ -313,7 +313,7 @@ const SESSION_FIXTURE: ScreeningSessionModel = {
   recording: true,
   recordingLabel: 'Recording · consented 10:32',
   questions: [
-    { id: 'q1', skill: 'Requirements elicitation', text: 'Walk me through…', why: 'REQ must-have', sources: ['REQ', 'Résumé'], must: true },
+    { id: 'q1', skill: 'Requirements elicitation', text: 'Walk me through…', why: 'REQ must-have', sources: ['REQ', 'Resume'], must: true },
     { id: 'q2', skill: 'SQL', text: 'Describe a time…', why: 'Client must-have', sources: ['Client'], must: true },
   ],
   asked: { q1: true },

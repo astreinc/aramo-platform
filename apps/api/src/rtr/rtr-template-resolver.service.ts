@@ -8,6 +8,7 @@ import {
   type RtrContentBlock,
   type RtrTemplateContentV1,
 } from './rtr-template-content.js';
+import { RTR_HTML_SCHEMA_V1, parseHtmlContent, sanitizeRtrHtml, type RtrTemplateContent } from './rtr-html-content.js';
 
 // RTR-TEMPLATE-1 (§6, §10, §27) — the server-authoritative RTR template resolver.
 //
@@ -28,7 +29,8 @@ export interface ResolvedRtrTemplate {
   template_name: string;
   version_number: number;
   render_schema_version: string;
-  content: RtrTemplateContentV1;
+  // A1 §2.1 — exactly rtr-generated-v1 or rtr-html-v1.
+  content: RtrTemplateContent;
 }
 
 @Injectable()
@@ -68,13 +70,16 @@ export class RtrTemplateResolverService {
       throw this.invalid(input.requestId, template.id, 'current_version_not_active', { status: version.status });
     }
     // Unrecognised content-contract version ⇒ fail closed (§8): never interpret.
-    if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1) {
+    if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1 && version.render_schema_version !== RTR_HTML_SCHEMA_V1) {
       throw this.invalid(input.requestId, template.id, 'unrecognised_render_schema_version', {
         render_schema_version: version.render_schema_version,
       });
     }
 
-    const content = this.parseContent(version.field_schema);
+    const content: RtrTemplateContent | null =
+      version.render_schema_version === RTR_HTML_SCHEMA_V1
+        ? this.parseHtml(version.field_schema)
+        : this.parseContent(version.field_schema);
     if (content === null) {
       throw this.invalid(input.requestId, template.id, 'content_schema_invalid');
     }
@@ -101,6 +106,16 @@ export class RtrTemplateResolverService {
       422,
       { requestId, details: { template_id, reason, ...(extra ?? {}) } },
     );
+  }
+
+  // A1 — rtr-html-v1: structurally valid AND still clean under the allowlist (the stored
+  // html was sanitised at PATCH; a non-canonical / unknown-field html fails closed).
+  private parseHtml(fieldSchema: unknown): RtrTemplateContent | null {
+    const c = parseHtmlContent(fieldSchema);
+    if (c === null || c.title.trim().length === 0) return null;
+    const res = sanitizeRtrHtml(c.html);
+    if ('issue' in res) return null;
+    return { ...c, html: res.html };
   }
 
   // Structural validation of the stored field_schema against the rtr-generated-v1

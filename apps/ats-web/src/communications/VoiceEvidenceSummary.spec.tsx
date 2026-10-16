@@ -37,6 +37,7 @@ describe('VoiceEvidenceSummary', () => {
     expect(screen.getByText(/Voice attempt recorded/)).toBeInTheDocument();
     expect(screen.getByText(/Conversation required/)).toBeInTheDocument();
     expect(screen.queryByTestId('voice-evidence-strength')).not.toBeInTheDocument();
+    expect(screen.getByTestId('voice-evidence-latest')).toHaveTextContent('Latest outcome: No answer');
   });
 
   it('shows a two-way conversation with its evidence grade', () => {

@@ -89,6 +89,9 @@ describe('ConsentStatePanel', () => {
         screen.getByTestId(`consent-state-scope-${scope}`),
       ).toBeInTheDocument();
     }
+    // scope codes render through CONSENT_SCOPE_LABELS
+    expect(screen.getByTestId('consent-state-scope-profile_storage')).toHaveTextContent('Profile storage');
+    expect(screen.getByTestId('consent-state-scope-cross_tenant_visibility')).toHaveTextContent('Cross-tenant visibility');
 
     // T10-B4/F-025 — per-scope statuses render as human labels that preserve the
     // exact server-resolved meaning (was the raw lowercase enum).

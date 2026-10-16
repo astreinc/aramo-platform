@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { InlineAlert, useToast } from '@aramo/fe-foundation';
 
+import {
+  evidenceAssertionTypeLabel,
+  evidenceMethodLabel,
+  evidenceSourceClassLabel,
+  evidenceStatusLabel,
+  identityRefTypeLabel,
+} from '../../talent/evidence-vocab';
 import { Avatar, BandPill, Button, Icons, StatusPill } from '../../ui';
 import { addToPipeline, getSubjectDetail, saveToBench } from '../sourcing-api';
 import { deferralGuidance, promoteErrorMessage, subjectErrorMessage } from '../error-messages';
@@ -336,13 +343,13 @@ export function SourcingSubjectDrawer({
                   {detail.evidence.map((e) => (
                     <li key={e.id} className="rc-sourcing-ev__row">
                       <div className="rc-sourcing-ev__top">
-                        <span className="rc-sourcing-ev__type">{e.assertion_type}</span>
+                        <span className="rc-sourcing-ev__type">{evidenceAssertionTypeLabel(e.assertion_type)}</span>
                         <StatusPill tone={e.current_status === 'VALID' ? 'ok' : 'neutral'}>
-                          {e.current_status}
+                          {evidenceStatusLabel(e.current_status)}
                         </StatusPill>
                       </div>
                       <div className="rc-sourcing-ev__sub">
-                        {e.source_class} · {e.method} · {collectedOn(e.collected_at)}
+                        {evidenceSourceClassLabel(e.source_class)} · {evidenceMethodLabel(e.method)} · {collectedOn(e.collected_at)}
                       </div>
                     </li>
                   ))}
@@ -358,7 +365,7 @@ export function SourcingSubjectDrawer({
                 <div className="rc-kv-list">
                   {detail.refs.map((r) => (
                     <div key={`${r.ref_type}:${r.ref_id}`} className="rc-kv">
-                      <span className="rc-kv__k">{r.ref_type}</span>
+                      <span className="rc-kv__k">{identityRefTypeLabel(r.ref_type)}</span>
                       <span className="rc-kv__v mono">{r.ref_id}</span>
                     </div>
                   ))}

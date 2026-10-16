@@ -8,6 +8,7 @@ import {
   addDays,
   dayHeading,
   INTERVIEW_STATE_LABEL,
+  interviewTypeLabel,
   requisitionLabel,
   startOfWeek,
   timeLabel,
@@ -182,7 +183,7 @@ export function InterviewsView() {
                         )}
                       </span>
                       <span className="rc-interview-meta">
-                        Round {iv.round} · {iv.interview_type}
+                        Round {iv.round} · {interviewTypeLabel(iv.interview_type)}
                       </span>
                       <span
                         className={`rc-interview-state rc-state-${iv.state.toLowerCase()}`}

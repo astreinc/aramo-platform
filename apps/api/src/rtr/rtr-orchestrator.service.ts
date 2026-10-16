@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
@@ -8,13 +10,14 @@ import {
 } from '@aramo/documents';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
-import { type RenderBlock } from '@aramo/documents-rendering';
+import { type LetterheadModel, type RenderBlock } from '@aramo/documents-rendering';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
 import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
+import { isHtmlContent, type RtrHtmlLogoRef } from './rtr-html-content.js';
 
 // DOC-5 / RTR-TEMPLATE-1 — the dedicated apps/api RTR orchestrator. The ONLY layer
 // that may touch both scope:boundary Documents/E-Sign AND scope:ats TalentRecord.
@@ -33,10 +36,18 @@ export interface RtrRequestInput {
   tenant_id: string;
   talent_id: string;
   requisition_id: string;
-  company_id: string;
+  // Optional (back-compat): when supplied it MUST equal the requisition's CLIENT
+  // company; when absent the requisition's company is used. The requisition is the
+  // authority for client.name and the COMPANY/CLIENT association (never the caller).
+  company_id?: string;
   created_by: string;
   requestId: string;
 }
+
+// Document Templates slice 1 (PO ruling 3, 2026-10-16) — Document.title and the
+// e-sign envelope subject follow the admin's document title (the ACTIVE version's
+// content title, bound). This literal is only the safe fallback for a blank title.
+export const RTR_FALLBACK_TITLE = 'Right to Represent';
 
 export interface RtrSendResult {
   document_id: string;
@@ -83,7 +94,10 @@ export interface RtrPreviewView {
 // same closed binding catalog the send path uses (resolved blocks, in-memory only).
 export interface RtrComposeView {
   template: RtrProvenanceView;
-  preview: { title: string; blocks: RenderBlock[] };
+  // B2 — the fixed signature block the renderer appends (printed name = bound talent name).
+  // A1 — for rtr-html-v1 content `blocks` is empty and `html` carries the REAL-bound
+  // allowlisted html (field nodes → <span data-sample="{key}">{value}</span>).
+  preview: { title: string; blocks: RenderBlock[]; html?: string; signature_block: { printed_name: string | null } };
 }
 
 @Injectable()
@@ -119,6 +133,19 @@ export class RtrOrchestratorService {
       requestId: input.requestId,
     });
 
+    // 1b. Derive the CLIENT company from the requisition (the authority for client.name
+    //     and the COMPANY/CLIENT association). A caller-supplied company_id that differs
+    //     is refused — the preview (compose) and the frozen document must name the same
+    //     client. Fails closed before any write.
+    const company_id = await this.resolveRequestCompany(input);
+
+    // 1c. A1 §2.4 — the version's FROZEN letterhead logo (rtr-html-v1 only): bytes read
+    //     from the TemplateAsset's storage and sha-verified. The renderer never fetches.
+    const letterhead =
+      isHtmlContent(template.content) && template.content.logo
+        ? await this.loadLetterhead(input.tenant_id, template.content.logo, input.requestId)
+        : undefined;
+
     // 2. Resolve the closed binding catalog → a fully-resolved RenderModel pinned
     //    to the exact template version. Throws RTR_TEMPLATE_BINDING_MISSING /
     //    _CONFIGURATION_INVALID before any write; no raw {{token}} can be rendered.
@@ -128,11 +155,15 @@ export class RtrOrchestratorService {
       tenant_id: input.tenant_id,
       talent_id: input.talent_id,
       requisition_id: input.requisition_id,
-      company_id: input.company_id,
+      company_id,
       // §13 ruling — recruiter.display_name resolves to the SENDING recruiter.
       recruiter_user_id: input.created_by,
       requestId: input.requestId,
+      ...(letterhead !== undefined ? { letterhead } : {}),
     });
+    // bound_html is a compose-preview projection only — never part of the render model.
+    const render = { ...model };
+    delete render.bound_html;
 
     // 3. Create the RTR Document (+ the three RTR associations) and FREEZE the pinned-template
     //    revision — delegated to the shared governed-signing capability. template_version_id is
@@ -142,7 +173,8 @@ export class RtrOrchestratorService {
     const { document_id } = await this.signing.prepare({
       tenant_id: input.tenant_id,
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
-      title: 'Right to Represent',
+      // PO ruling 3 — the admin's (bound) document title; fallback only when blank.
+      title: rtrTitleOrFallback(model.title),
       execution_mode: 'SINGLE_SIGNATURE',
       source_kind: 'TEMPLATE_GENERATED',
       created_by: input.created_by,
@@ -150,9 +182,9 @@ export class RtrOrchestratorService {
       associations: [
         { resource_type: 'TALENT', resource_id: input.talent_id, relationship: 'SUBJECT' },
         { resource_type: 'REQUISITION', resource_id: input.requisition_id, relationship: 'REGARDING' },
-        { resource_type: 'COMPANY', resource_id: input.company_id, relationship: 'CLIENT' },
+        { resource_type: 'COMPANY', resource_id: company_id, relationship: 'CLIENT' },
       ],
-      render: model,
+      render,
       template_version_id: template.template_version_id,
     });
 
@@ -193,10 +225,14 @@ export class RtrOrchestratorService {
       throw new AramoError('VALIDATION_ERROR', 'talent has no email for RTR signing', 400, { requestId: input.requestId });
     }
     const name = `${talent.first_name} ${talent.last_name}`.trim();
+    // PO ruling 3 — the envelope subject is the FROZEN Document.title (set at request
+    // from the pinned version's title). Read, never re-resolved from today's template
+    // (INV-3). An unreadable document falls back; signing.send then fails as before.
+    const subject = await this.frozenTitle(input.tenant_id, input.document_id);
     return this.signing.send({
       tenant_id: input.tenant_id,
       document_id: input.document_id,
-      subject: 'Right to Represent',
+      subject,
       execution_mode: 'SINGLE_SIGNATURE',
       recipient: { email, name },
       created_by: input.created_by,
@@ -333,7 +369,12 @@ export class RtrOrchestratorService {
 
     return {
       template: { name: template.template_name, version_number: template.version_number },
-      preview: { title: model.title, blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })) },
+      preview: {
+        title: model.title,
+        blocks: model.blocks.map((b) => ({ type: b.type, text: b.text })),
+        ...(model.bound_html !== undefined ? { html: model.bound_html } : {}),
+        signature_block: { printed_name: model.signature_block.printed_name },
+      },
     };
   }
 
@@ -370,6 +411,50 @@ export class RtrOrchestratorService {
     return { url: access.url, expires_at: access.expires_at, content_sha256: artifact.sha256 };
   }
 
+  // request() company authority — the requisition's CLIENT company. Null (unknown
+  // requisition, or one with no client) fails closed; a supplied id that differs is a
+  // mismatch. Both are 422 VALIDATION_ERROR with a typed details.reason.
+  private async resolveRequestCompany(input: RtrRequestInput): Promise<string> {
+    const derived = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
+    if (derived === null) {
+      throw new AramoError('VALIDATION_ERROR', 'requisition has no client company; an RTR cannot be requested', 422, {
+        requestId: input.requestId,
+        details: { reason: 'requisition_company_unresolved', requisition_id: input.requisition_id },
+      });
+    }
+    if (input.company_id !== undefined && input.company_id !== derived) {
+      throw new AramoError('VALIDATION_ERROR', "company_id does not match the requisition's client company", 422, {
+        requestId: input.requestId,
+        details: { reason: 'company_requisition_mismatch', requisition_id: input.requisition_id },
+      });
+    }
+    return derived;
+  }
+
+  private async loadLetterhead(tenant_id: string, logo: RtrHtmlLogoRef, requestId: string): Promise<LetterheadModel> {
+    const invalid = (reason: string): AramoError =>
+      new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'The active Right to Represent template logo is not usable', 422, {
+        requestId,
+        details: { reason },
+      });
+    const asset = await this.templates.findAssetById(tenant_id, logo.asset_id);
+    if (asset === null) throw invalid('logo_asset_missing');
+    const bytes = await this.storage.getArtifact({ storage_key: asset.storage_locator, requestId, maxBytes: 1024 * 1024 });
+    const sha = createHash('sha256').update(bytes).digest('hex');
+    if (sha !== asset.sha256 || sha !== logo.sha256) throw invalid('logo_asset_hash_mismatch');
+    return { image_bytes: new Uint8Array(bytes), image_format: logo.mime === 'image/png' ? 'PNG' : 'JPG', image_sha256: sha, name: null };
+  }
+
+  private async frozenTitle(tenant_id: string, document_id: string): Promise<string> {
+    try {
+      const doc = await this.documents.getDocument(tenant_id, document_id);
+      return rtrTitleOrFallback(doc.title);
+    } catch (e) {
+      if (e instanceof DocumentNotFoundError) return RTR_FALLBACK_TITLE;
+      throw e;
+    }
+  }
+
   // §15 current-selection precedence: a live (non-terminal) RTR wins; else the
   // most recent EXECUTED; else the most recent. `docs` is created_at desc.
   private selectCurrent<T extends { status: string }>(docs: readonly T[]): T {
@@ -392,4 +477,9 @@ export class RtrOrchestratorService {
     if (template === null) return null;
     return { name: template.name, version_number: version.version_number };
   }
+}
+
+function rtrTitleOrFallback(title: string | null | undefined): string {
+  const t = (title ?? '').trim();
+  return t.length > 0 ? t : RTR_FALLBACK_TITLE;
 }

@@ -8165,19 +8165,22 @@ paths:
   /v1/rtr:
     post:
       operationId: requestRtr
-      summary: Request a Right to Represent for a (talent, requisition, company).
-      description: Creates the RIGHT_TO_REPRESENT Document + TALENT/REQUISITION/COMPANY associations and declares the requisition's RTR requirement. Recruiter-only; requires document:create.
+      summary: Request a Right to Represent for a (talent, requisition).
+      description: |
+        Creates the RIGHT_TO_REPRESENT Document + TALENT/REQUISITION/COMPANY associations and declares the requisition's RTR requirement. Recruiter-only; requires document:create.
+        The CLIENT company is derived from the requisition (the authority for client.name and the COMPANY association). `company_id` is optional for backward compatibility; when supplied it must equal the requisition's client company, else 422 VALIDATION_ERROR (details.reason = company_requisition_mismatch). A requisition with no client company is 422 (details.reason = requisition_company_unresolved).
+        Document.title and the e-sign envelope subject follow the active template version's document title.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [talent_id, requisition_id, company_id]
+              required: [talent_id, requisition_id]
               properties:
                 talent_id: { type: string, format: uuid }
                 requisition_id: { type: string, format: uuid }
-                company_id: { type: string, format: uuid }
+                company_id: { type: string, format: uuid, description: "Optional; must match the requisition's client company when supplied." }
       responses:
         '201':
           description: The created RTR document reference.
@@ -8191,6 +8194,8 @@ paths:
                   document_id: { type: string, format: uuid }
         '400':
           $ref: 'common.yaml#/components/responses/BadRequest'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
   /v1/rtr/{documentId}/send:
@@ -8382,7 +8387,7 @@ paths:
                   preview:
                     type: object
                     additionalProperties: false
-                    required: [title, blocks]
+                    required: [title, blocks, signature_block]
                     properties:
                       title: { type: string }
                       blocks:
@@ -8394,6 +8399,16 @@ paths:
                           properties:
                             type: { type: string, enum: [HEADING, TEXT] }
                             text: { type: string }
+                      html:
+                        type: string
+                        description: rtr-html-v1 only — the REAL-bound allowlisted html (field nodes → `<span data-sample="{key}">{escaped value}</span>`); `blocks` is then empty.
+                      signature_block:
+                        type: object
+                        additionalProperties: false
+                        description: The fixed signature block the renderer appends after the content (TALENT SIGNATURE · PRINTED NAME · DATE SIGNED). Not template content.
+                        required: [printed_name]
+                        properties:
+                          printed_name: { type: [string, 'null'], description: The bound talent full name. }
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
         '422':

@@ -29,19 +29,24 @@ export class RtrController {
   @RequireScopes('document:create')
   @HttpCode(HttpStatus.CREATED)
   async request(
-    @Body() body: { talent_id?: string; requisition_id?: string; company_id?: string },
+    @Body() body: { talent_id?: string; requisition_id?: string; company_id?: string | null },
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<{ document_id: string }> {
     this.assertRecruiter(authContext, requestId);
-    if (typeof body?.talent_id !== 'string' || typeof body?.requisition_id !== 'string' || typeof body?.company_id !== 'string') {
-      throw new AramoError('VALIDATION_ERROR', 'talent_id, requisition_id, company_id are required', 400, { requestId });
+    if (typeof body?.talent_id !== 'string' || typeof body?.requisition_id !== 'string') {
+      throw new AramoError('VALIDATION_ERROR', 'talent_id and requisition_id are required', 400, { requestId });
+    }
+    // company_id is OPTIONAL (back-compat). The requisition's client company is the
+    // authority; a supplied company_id must match it (422 company_requisition_mismatch).
+    if (body.company_id !== undefined && body.company_id !== null && typeof body.company_id !== 'string') {
+      throw new AramoError('VALIDATION_ERROR', 'company_id must be a string when supplied', 400, { requestId });
     }
     return this.orchestrator.request({
       tenant_id: authContext.tenant_id,
       talent_id: body.talent_id,
       requisition_id: body.requisition_id,
-      company_id: body.company_id,
+      ...(typeof body.company_id === 'string' ? { company_id: body.company_id } : {}),
       created_by: authContext.sub,
       requestId,
     });

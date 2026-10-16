@@ -1,5 +1,5 @@
 import { Button, useOptionalToast, useSession, type Session } from '@aramo/fe-foundation';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { getCompany } from '../../companies/companies-api';
@@ -19,8 +19,13 @@ import { listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } 
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
+import { withCurrency } from '../../talent/stated-fields';
+import { availabilityLabel, journeyOwnerLabel } from '../../talent-360/t360-vocab';
+import { workAuthLabel } from '../../talent-360/t360-model';
 import { getTalent, updateTalent } from '../../talent/talent-api';
 import type { TalentRecordView } from '../../talent/types';
+import { useCompactRailPage } from '../../shell/nav-collapse';
+import { SectionNav, useSectionNavOpen } from '../../shell/section-nav/SectionNav';
 import { getTalent360 } from '../../talent-360/talent-360-api';
 import type { AttentionItemView, Talent360View } from '../../talent-360/talent-360-types';
 import { RemoveFromRequisitionModal } from '../RemoveFromRequisitionModal';
@@ -139,16 +144,6 @@ function Glyph({ d, size = 16, width = 1.8 }: { d: string; size?: number; width?
   );
 }
 
-function useNarrow(breakpoint: number): boolean {
-  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < breakpoint);
-  useEffect(() => {
-    const onResize = (): void => setNarrow(window.innerWidth < breakpoint);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [breakpoint]);
-  return narrow;
-}
-
 export interface TalentRequisition360ViewProps {
   /** Test seam (mirrors the other views): a session instead of the live one. */
   readonly sessionOverride?: Session;
@@ -185,9 +180,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const [reload, setReload] = useState(0);
 
   // ── UI state ──
-  const [secOpenPref, setSecOpenPref] = useState(true);
-  const narrow = useNarrow(900);
-  const secOpen = secOpenPref && !narrow;
+  const [secOpen, toggleSec] = useSectionNavOpen();
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -226,11 +219,29 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canEditTalent = scopes.includes('talent:edit');
   const canSendRtr = scopes.includes('document:create');
 
-  // Route chrome: icon-only app nav + no top bar while this page is mounted.
+  // Route chrome: edge-to-edge content (the app shell — main nav + top bar — is
+  // unchanged). The sticky section nav / header sit below the shell's sticky top
+  // bar, so its live height is mirrored into --tr360-top.
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Section-nav page: under 1280px the shared main nav opens collapsed (rail spec §6).
+  useCompactRailPage();
   useEffect(() => {
     document.body.classList.add('tr360-route');
     return () => document.body.classList.remove('tr360-route');
   }, []);
+  useLayoutEffect(() => {
+    const bar = document.querySelector<HTMLElement>('.rc-topbar');
+    const root = rootRef.current;
+    if (bar === null || root === null) return;
+    const apply = (): void => {
+      root.style.setProperty('--tr360-top', `${bar.offsetHeight}px`);
+      root.style.setProperty('--page-top', `${bar.offsetHeight}px`);
+    };
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(bar);
+    return () => ro.disconnect();
+  }, [loadError]);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [reqId, talentId]);
@@ -447,8 +458,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     key: 'rate',
     label: 'Rate & availability confirmed',
     sub: [
-      desired !== null && desired.trim() !== '' ? `Desired ${desired}` : null,
-      t360?.header.availability.detail ?? t360?.header.availability.status ?? null,
+      desired !== null && desired.trim() !== '' ? `Desired ${withCurrency(desired)}` : null,
+      t360?.header.availability.detail ?? (t360 !== null && t360 !== undefined && t360.header.availability.status !== null ? availabilityLabel(t360.header.availability.status) : null),
     ]
       .filter((s): s is string => s !== null && s !== '')
       .join(' · ') || 'No rate or availability confirmation on record',
@@ -470,7 +481,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     },
     { k: 'Desired rate', v: desired !== null && desired.trim() !== '' ? desired : '—' },
     { k: 'Work authorization', v: t360?.header.work_authorization != null ? 'On record' : 'Not on record' },
-    { k: 'Availability', v: t360?.header.availability.status ?? '—' },
+    { k: 'Availability', v: t360 !== null && t360 !== undefined && t360.header.availability.status !== null ? availabilityLabel(t360.header.availability.status) : '—' },
   ];
 
   const m365Ready = binding !== null && !binding.needs_reauthorization;
@@ -552,7 +563,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
           ? `Qualified is a recruiter decision — Aramo never sets it.${primary?.label === 'Mark qualified' && primary.enabled ? ' Ready: use "Mark qualified" in the header.' : ''}`
           : `${first} has not reached ${label} on ${reqCode} yet.`;
     } else {
-      body = `${state === 'current' ? 'Current stage' : 'Reached'}${when !== null ? ` · ${when}` : ''}${reached !== undefined ? ` · owned by ${reached.owner}` : ''}.`;
+      body = `${state === 'current' ? 'Current stage' : 'Reached'}${when !== null ? ` · ${when}` : ''}${reached !== undefined ? ` · owned by ${journeyOwnerLabel(reached.owner)}` : ''}.`;
     }
     if (key === 'offer') {
       return summary(
@@ -632,7 +643,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
         return summary(
           'Work authorization',
           t360?.header.work_authorization != null
-            ? `On record · ${t360.header.work_authorization}.`
+            ? `On record · ${workAuthLabel(t360.header.work_authorization)}.`
             : 'No work authorization on record.',
         );
       case 'opp':
@@ -744,71 +755,29 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const statusTone = req !== null ? UI_TONE[RECRUITING_STATUS_TONE[req.status]] ?? 'grey' : 'grey';
 
   return (
-    <div className="tr360" data-testid="tr360">
-      <aside className={`tr360-sec${secOpen ? '' : ' tr360-sec--collapsed'}`} aria-label="Talent sections">
-        <div className="tr360-sec__top">
-          {secOpen ? (
-            <Button unstyled type="button" className="tr360-sec__back" title={backLabel} onClick={back}>
-              <Glyph d={IC.back} size={13} width={2.2} />
-              <span>{backLabel}</span>
-            </Button>
-          ) : null}
-          <Button
-            unstyled
-            type="button"
-            className="tr360-sec__toggle"
-            title={secOpen ? 'Collapse talent sections' : 'Expand talent sections'}
-            aria-label={secOpen ? 'Collapse talent sections' : 'Expand talent sections'}
-            aria-expanded={secOpen}
-            onClick={() => setSecOpenPref(!secOpen)}
-          >
-            <Glyph
-              d={secOpen ? 'M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2' : 'M4 4h16v16H4zM9 4v16M13 10l2 2-2 2'}
-              size={14}
-              width={2}
-            />
-          </Button>
-        </div>
-        <div className="tr360-sec__who">
-          <span className="tr360-sec__avatar" aria-hidden="true">
-            {initials(talentName)}
-          </span>
-          {secOpen ? (
-            <span className="tr360-sec__whotext">
-              <span className="tr360-sec__name">{talentName}</span>
-              {subtitle !== '' ? <span className="tr360-sec__subtitle">{subtitle}</span> : null}
-              {pipeline !== null ? <span className="tr360-sec__active tr360-tone--green">Active</span> : null}
-            </span>
-          ) : null}
-        </div>
-        <nav className="tr360-sec__list">
-          {!secOpen ? (
-            <Button unstyled type="button" className="tr360-sec__item tr360-sec__item--back" title={backLabel} aria-label={backLabel} onClick={back}>
-              <Glyph d={IC.back} />
-            </Button>
-          ) : null}
-          {SECTION_DEF.map((s) => {
-            const on = activeSection === s.key;
-            const badge = sectionBadge(s.key);
-            return (
-              <Button
-                unstyled
-                key={s.key}
-                type="button"
-                className={`tr360-sec__item${on ? ' tr360-sec__item--on' : ''}`}
-                title={s.label}
-                aria-label={secOpen ? undefined : s.label}
-                aria-current={on ? 'page' : undefined}
-                onClick={() => go(s.key)}
-              >
-                <Glyph d={s.icon} />
-                {secOpen ? <span className="tr360-sec__label">{s.label}</span> : null}
-                {secOpen && badge !== '' ? <span className="tr360-badge tr360-tone--grey">{badge}</span> : null}
-              </Button>
-            );
-          })}
-        </nav>
-      </aside>
+    <div className="tr360" data-testid="tr360" ref={rootRef}>
+      <SectionNav
+        variant="opportunity"
+        ariaLabel="Talent sections"
+        open={secOpen}
+        onToggle={toggleSec}
+        backLabel={backLabel}
+        onBack={back}
+        initials={initials(talentName)}
+        name={talentName}
+        subtitle={subtitle}
+        pill={pipeline !== null ? 'Active' : undefined}
+        groups={[
+          {
+            items: SECTION_DEF.map((d) => {
+              const badge = sectionBadge(d.key);
+              return { key: d.key, label: d.label, icon: d.icon, ...(badge !== '' ? { badge: { text: badge, tone: 'grey' as const } } : {}) };
+            }),
+          },
+        ]}
+        active={activeSection}
+        onSelect={(k) => go(k as SectionKey)}
+      />
 
       <main className="tr360-main">
         <div className="tr360-hd">

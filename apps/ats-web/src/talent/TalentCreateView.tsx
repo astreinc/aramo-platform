@@ -41,8 +41,8 @@ import type {
   WorkHistoryDraft,
 } from './types';
 
-// Durable Async Résumé-First Add-Talent. The browser is NOT part of the
-// durability boundary: a résumé upload persists a TalentIntakeDraft; extraction
+// Durable Async Resume-First Add-Talent. The browser is NOT part of the
+// durability boundary: a resume upload persists a TalentIntakeDraft; extraction
 // runs asynchronously in a worker; the recruiter can leave and return (any
 // session/device) via Draft Talents or ?draft=<id>. GET is authoritative; SSE
 // is notification-only (triggers a refetch); the Talent is created only on an
@@ -98,7 +98,7 @@ export function TalentCreateView() {
     day: 'numeric',
     year: 'numeric',
   });
-  const headerDescription = `Résumé-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
+  const headerDescription = `Resume-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
 
   const [phase, setPhase] = useState<Phase>('intake');
 
@@ -110,7 +110,7 @@ export function TalentCreateView() {
   const [draftWarning, setDraftWarning] = useState<string | null>(null);
   const [draftFailure, setDraftFailure] = useState<string | null>(null);
 
-  // Résumé artifact context. uploadFile is present only on a fresh upload (for
+  // Resume artifact context. uploadFile is present only on a fresh upload (for
   // the live preview); on reopen we have filename/size from the draft.
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [sourceFilename, setSourceFilename] = useState<string | null>(null);
@@ -406,7 +406,7 @@ export function TalentCreateView() {
     navigate(backTo);
   }
 
-  // §13 — replace the résumé on this draft: mint a fresh upload target, PUT the
+  // §13 — replace the resume on this draft: mint a fresh upload target, PUT the
   // new file, then complete-upload to re-queue extraction (same durable path).
   async function onReplaceResume(file: File): Promise<void> {
     if (draftId === null) return;
@@ -484,12 +484,12 @@ export function TalentCreateView() {
   const cityOk = fields.city.trim() !== '';
   const stateOk = fields.state.trim() !== '';
   // Create authority (§9/§13) — canonical admission ONLY (name + email + phone).
-  // A résumé is NOT required and city/state are completeness guidance, never
+  // A resume is NOT required and city/state are completeness guidance, never
   // creation gates. An active-email duplicate is the one backend-authoritative
   // block (the 409 is preserved — PO ruling), surfaced via `duplicate`.
   const canCreate = nameOk && emailOk && phoneOk && duplicate === null && !submitting;
 
-  // ── Promote (replaces direct createTalent for the résumé-first flow) ────
+  // ── Promote (replaces direct createTalent for the resume-first flow) ────
   async function onCreate(): Promise<void> {
     if (!canCreate || draftId === null) return;
     setSubmitting(true);
@@ -550,7 +550,7 @@ export function TalentCreateView() {
 
       {phase === 'intake' ? (
         <div className="rc-stepwrap">
-          <div className="rc-stepeyebrow">Step 1 of 2 · Résumé</div>
+          <div className="rc-stepeyebrow">Step 1 of 2 · Resume</div>
           {/* §8 — Continue adding (n): the actor's in-progress drafts, max 3 rows,
               then "View all {n} in progress ›". Starting someone new stays direct
               (no modal, no mandatory chooser) — it's the section right below. */}
@@ -593,7 +593,7 @@ export function TalentCreateView() {
             <h2 className="rc-steptitle">
               {reopenDraftId === null && inProgressDrafts(intakeDrafts).length > 0
                 ? 'Or start someone new'
-                : 'Start with the résumé'}
+                : 'Start with the resume'}
             </h2>
             <p className="rc-stepdesc">
               Aramo reads it in the background — you can leave and come back any
@@ -605,7 +605,7 @@ export function TalentCreateView() {
           ) : null}
           <ResumeDropzone onFile={handleFile} />
           <p className="rc-stepreq">
-            Add a résumé to prefill details, or enter the Talent information manually.
+            Add a resume to prefill details, or enter the Talent information manually.
           </p>
           <div className="rc-stepcancel">
             <Button unstyled type="button" className="rc-btn" onClick={() => navigate('/talent')}>
@@ -620,7 +620,7 @@ export function TalentCreateView() {
       ) : null}
 
       {phase === 'processing' ? (
-        <ParseProgress phase="uploading" fileName={sourceFilename ?? 'résumé'} />
+        <ParseProgress phase="uploading" fileName={sourceFilename ?? 'resume'} />
       ) : null}
 
       {phase === 'form' ? (
@@ -687,7 +687,7 @@ export function TalentCreateView() {
           <details className="rc-railsummary">
             <summary>
               <Icons.IconFile aria-hidden="true" />
-              {sourceFilename ?? 'résumé'} ·{' '}
+              {sourceFilename ?? 'resume'} ·{' '}
               {[nameOk, emailOk, phoneOk, cityOk && stateOk, draftId !== null].filter(Boolean).length}
               /5 required ▾
             </summary>
@@ -698,7 +698,7 @@ export function TalentCreateView() {
                   { ok: emailOk, label: 'Email address' },
                   { ok: phoneOk, label: 'Phone number' },
                   { ok: cityOk && stateOk, label: 'City and state' },
-                  { ok: draftId !== null, label: 'Résumé attached' },
+                  { ok: draftId !== null, label: 'Resume attached' },
                 ]}
               />
             </div>
@@ -714,12 +714,12 @@ export function TalentCreateView() {
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
                 { ok: cityOk && stateOk, label: 'City and state' },
-                { ok: draftId !== null, label: 'Résumé attached' },
+                { ok: draftId !== null, label: 'Resume attached' },
               ]}
             />
             <p className="rc-secnote">
               Work authorization and desired rate are optional — capture them later
-              if the résumé doesn’t state them.
+              if the resume doesn’t state them.
             </p>
             {uploadFile !== null ? (
               <ResumePreview file={uploadFile} fileName={uploadFile.name} mime={uploadFile.type} />
@@ -776,7 +776,7 @@ function ProcessingBanner({
   const fileRef = useRef<HTMLInputElement>(null);
   if (processingStatus === 'FAILED') {
     // §13 — failure NEVER blocks creation; manual entry remains available and the
-    // résumé stays attached. Try reading again / Replace résumé are the recovery
+    // resume stays attached. Try reading again / Replace resume are the recovery
     // affordances.
     return (
       <div className="rc-failnote" role="alert">
@@ -795,14 +795,14 @@ function ProcessingBanner({
           }}
         />
         <span>
-          <b>Couldn’t read this résumé.</b> Enter the details below — the résumé stays attached.
+          <b>Couldn’t read this resume.</b> Enter the details below — the resume stays attached.
         </span>
         <span className="rc-failnote__acts">
           <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
             Try reading again
           </Button>
           <Button unstyled type="button" className="rc-linkbtn" onClick={() => fileRef.current?.click()}>
-            Replace résumé
+            Replace resume
           </Button>
         </span>
       </div>
@@ -812,7 +812,7 @@ function ProcessingBanner({
     return (
       <div className="rc-parsedpill">
         <Icons.IconCheck />
-        <span>Résumé read — review the proposed values below.</span>
+        <span>Resume read — review the proposed values below.</span>
       </div>
     );
   }
@@ -820,7 +820,7 @@ function ProcessingBanner({
   // remain available while extraction runs.
   return (
     <div className="rc-readingnote" role="status" aria-live="polite">
-      Reading résumé — fields fill in as they’re found. Edit now or leave; your progress is saved.
+      Reading resume — fields fill in as they’re found. Edit now or leave; your progress is saved.
     </div>
   );
 }
@@ -885,7 +885,7 @@ function DupMatchCard({
   );
 }
 
-// ── Right-rail résumé card ───────────────────────────────────────────────────
+// ── Right-rail resume card ───────────────────────────────────────────────────
 function ResumeCard({
   fileName,
   sizeBytes,
@@ -894,10 +894,10 @@ function ResumeCard({
   readonly sizeBytes: number;
 }) {
   return (
-    <section className="rc-sidecard rc-resumecard" aria-label="Résumé">
+    <section className="rc-sidecard rc-resumecard" aria-label="Resume">
       <h3 className="rc-sidecard__h">
         <Icons.IconFile />
-        Résumé
+        Resume
       </h3>
       <div className="rc-resumecard__file">
         <span className="rc-resumecard__fic" aria-hidden="true">
@@ -912,7 +912,7 @@ function ResumeCard({
       </div>
       <p className="rc-consent__note">
         <Icons.IconShield />
-        <span>SSN-like numbers are removed before the résumé text is stored.</span>
+        <span>SSN-like numbers are removed before the resume text is stored.</span>
       </p>
     </section>
   );

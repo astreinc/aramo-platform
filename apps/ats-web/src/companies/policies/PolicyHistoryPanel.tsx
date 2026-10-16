@@ -10,7 +10,7 @@ import {
 
 import { PolicyEditorHeader } from './PolicyEditorHeader';
 import type { PolicyDomain } from './CompanyPoliciesOverview';
-import { DOMAIN_TITLES } from './labels';
+import { DOMAIN_TITLES, POLICY_VERSION_STATUS_LABELS } from './labels';
 
 // CSP PA-3 (§10/§34) — the read-only client-scope version history. Immutable: each
 // version is a published record; changing policy is a NEW version, never an in-place
@@ -74,7 +74,7 @@ export function PolicyHistoryPanel({
             <li key={`${v.version}-${v.published_at ?? ''}`} className="rc-history-row">
               <div className="rc-history-row__main">
                 <span className="rc-history-row__ver">Version {v.version}</span>
-                <StatusPill tone={STATUS_TONE[v.status]}>{v.status}</StatusPill>
+                <StatusPill tone={STATUS_TONE[v.status]}>{POLICY_VERSION_STATUS_LABELS[v.status]}</StatusPill>
               </div>
               <div className="rc-muted-line">
                 Published {fmtDate(v.published_at)}

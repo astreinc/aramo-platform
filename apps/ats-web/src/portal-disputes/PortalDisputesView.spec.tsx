@@ -51,7 +51,9 @@ describe('PortalDisputesView — tenant disposition worklist', () => {
   it('renders the worklist and offers Triage on an OPEN dispute', async () => {
     vi.mocked(api.getPortalDisputes).mockResolvedValue({ disputes: [OPEN_ITEM] });
     renderView();
-    expect(await screen.findByText('VERIFICATION')).toBeInTheDocument();
+    expect(await screen.findByText('Verification')).toBeInTheDocument();
+    expect(screen.getByText('Open')).toBeInTheDocument();
+    expect(screen.queryByText('VERIFICATION')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Triage' })).toBeInTheDocument();
   });
 
@@ -82,7 +84,7 @@ describe('PortalDisputesView — tenant disposition worklist', () => {
   it('hides disposition actions without identity:resolve', async () => {
     vi.mocked(api.getPortalDisputes).mockResolvedValue({ disputes: [OPEN_ITEM] });
     renderView(makeSession([]));
-    await screen.findByText('VERIFICATION');
+    await screen.findByText('Verification');
     expect(screen.queryByRole('button', { name: 'Triage' })).not.toBeInTheDocument();
   });
 });

@@ -4,6 +4,7 @@ import { Button, Checkbox } from '@aramo/fe-foundation';
 import { Icons } from '../../ui';
 import {
   OWNER_LABELS,
+  PRIORITY_LABELS,
   TYPE_LABELS,
   ownerHref,
   ownerIcon,
@@ -80,8 +81,8 @@ export function TaskRowItem({
       {task.priority !== null ? (
         <span
           className={`rc-pdot rc-pdot--${task.priority}`}
-          aria-label={`Priority ${task.priority}`}
-          title={`Priority: ${task.priority}`}
+          aria-label={`Priority ${PRIORITY_LABELS[task.priority]}`}
+          title={`Priority: ${PRIORITY_LABELS[task.priority]}`}
         />
       ) : (
         <span className="rc-pdot rc-pdot--none" aria-hidden="true" />

@@ -4,7 +4,7 @@ import { IconCompanies, IconContacts, IconRequisitions, IconTalent, IconUpload }
 import { formatInstant } from '../../format/date';
 import { Button, Card, safeErrorMessage } from '../../ui';
 import type { ImportBatchStatus, ImportBatchView, ImportFailureView, ImportTargetEntity } from '../admin-types';
-import { IMPORT_ENTITY_LABEL } from '../admin-types';
+import { IMPORT_ENTITY_LABEL, importFailureReasonLabel } from '../admin-types';
 import { SettingCardHead, SettingHint, SettingsSection, StatChip } from '../components';
 import { fetchImportFailures, fetchImports } from '../import-api';
 
@@ -215,7 +215,7 @@ function ImportRow({
                 <div className="set-row__l">
                   <div className="set-row__t">Row {f.row_number}</div>
                   <div className="set-row__s">
-                    {f.failure_reason}
+                    {importFailureReasonLabel(f.failure_reason)}
                     {f.offending_fields.length > 0
                       ? ` · fields: ${f.offending_fields.join(', ')}`
                       : ''}

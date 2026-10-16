@@ -1,6 +1,6 @@
 import { Button } from '@aramo/fe-foundation';
 
-import { TYPE_LABELS } from './task-vocab';
+import { PRIORITY_LABELS, TYPE_LABELS } from './task-vocab';
 import type { TaskView } from './types';
 
 // Tasks FE — presentational task list for the per-entity TasksPanel (the /tasks
@@ -43,8 +43,8 @@ export function TaskList({
           {t.priority !== null ? (
             <span
               className={`rc-pdot rc-pdot--${t.priority}`}
-              title={`Priority: ${t.priority}`}
-              aria-label={`Priority ${t.priority}`}
+              title={`Priority: ${PRIORITY_LABELS[t.priority]}`}
+              aria-label={`Priority ${PRIORITY_LABELS[t.priority]}`}
             />
           ) : null}
           <span className="task-list__title">{t.title}</span>
@@ -147,8 +147,8 @@ export function TaskCardRows({
               {t.priority !== null ? (
                 <span
                   className={`rc-pdot rc-pdot--${t.priority}`}
-                  title={`Priority: ${t.priority}`}
-                  aria-label={`Priority ${t.priority}`}
+                  title={`Priority: ${PRIORITY_LABELS[t.priority]}`}
+                  aria-label={`Priority ${PRIORITY_LABELS[t.priority]}`}
                 />
               ) : null}
               <b>{t.title}</b>
