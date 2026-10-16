@@ -478,6 +478,9 @@ export interface CreateAttachmentRequest {
 export interface TalentResumeEditionView {
   readonly edition_id: string;
   readonly talent_document_id: string;
+  // Canonical documents.Document id — bytes stream via the authenticated
+  // Talent 360 document-content route (no cross-origin storage fetch).
+  readonly document_id?: string | null;
   readonly attachment_id: string | null;
   readonly purpose: string;
   readonly label: string | null;

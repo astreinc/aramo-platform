@@ -992,6 +992,18 @@ describe('Talent360View — Documents (§8B)', () => {
     expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
   });
 
+  it('a resume with a canonical document id streams through the authenticated content route (no storage URL)', async () => {
+    tal.listTalentResumeEditions.mockResolvedValue({ editions: [{ ...EDITIONS[2], document_id: 'doc-ed3' }] });
+    vi.mocked(getTalent360DocumentContent).mockResolvedValue({ ...pdf, document_id: 'doc-ed3', file_name: 'Divya_2025.pdf' });
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    fireEvent.click(await screen.findByRole('button', { name: 'Preview Resume' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByTitle('Preview of Divya_2025.pdf')).toHaveAttribute('src', 'blob:preview-1');
+    expect(getTalent360DocumentContent).toHaveBeenCalledWith('tal-1', 'doc-ed3');
+    expect(tal.getAttachmentDownloadUrl).not.toHaveBeenCalled();
+  });
+
   it('a previous resume offers Make current resume (explicit default) for talent:edit', async () => {
     h.scopes = [...BASE_SCOPES, 'talent:edit'];
     tal.getAttachmentDownloadUrl.mockResolvedValue({ presigned_url: 'https://s3.local/old.pdf' });

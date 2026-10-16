@@ -1662,7 +1662,9 @@ body.t360-route .rc-content {
 .t360-dv__tools { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px; }
 .t360-dv__tools .t360-btn { text-decoration: none; }
 .t360-dv__close { position: static; }
-.t360-dv__body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: min(640px, 70vh); margin: -4px -24px -24px; border-top: 1px solid #e5e9ed; }
+.t360-dv__body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: min(640px, 70vh); border: 1px solid #e5e9ed; border-radius: 10px; overflow: hidden; }
+.t360-dv__page { min-width: 0; }
+.t360-dv__side { min-width: 0; overflow-y: auto; }
 .t360-dv__page { display: flex; flex-direction: column; gap: 12px; padding: 22px; background: #eef1f4; overflow: auto; }
 .t360-dv__banner { max-width: 680px; width: 100%; align-self: center; padding: 8px 12px; border-left: 3px solid #022ac0; background: #f3f6fe; font-size: 12px; color: #011f8d; }
 .t360-dv__frame { width: 100%; height: min(680px, 70vh); border: none; border-radius: 4px; background: #fff; box-shadow: 0 1px 3px rgba(15, 25, 40, 0.12), 0 8px 24px -12px rgba(15, 25, 40, 0.25); }

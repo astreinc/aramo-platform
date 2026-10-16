@@ -420,7 +420,7 @@ export function TasksSection(p: TasksProps): JSX.Element {
       <div className="t360-card__hd t360-card__hd--tight">
         <span className="t360-sect__title">Tasks</span>
         {p.canFollowUp ? (
-          <Button unstyled type="button" className="t360-btn t360-btn--brandline t360-btn--sm" onClick={p.onFollowUp}>
+          <Button unstyled type="button" className="t360-btn t360-btn--brandline t360-btn--sm t360-ml-auto" onClick={p.onFollowUp}>
             + Follow up
           </Button>
         ) : null}

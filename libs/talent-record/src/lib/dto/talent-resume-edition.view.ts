@@ -7,6 +7,8 @@ import type { TalentResumeEditionWithDocumentRow } from '@aramo/talent-extractio
 export interface TalentResumeEditionView {
   edition_id: string;
   talent_document_id: string;
+  // Canonical documents.Document id (null only for legacy rows/fakes).
+  document_id: string | null;
   attachment_id: string | null;
   purpose: string;
   label: string | null;
@@ -58,6 +60,7 @@ export function toResumeEditionView(
   return {
     edition_id: row.id,
     talent_document_id: row.talent_document_id,
+    document_id: row.document_id ?? null,
     attachment_id: row.attachment_id,
     purpose: row.purpose,
     label: row.label,
