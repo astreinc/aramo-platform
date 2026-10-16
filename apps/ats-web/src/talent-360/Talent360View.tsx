@@ -318,9 +318,12 @@ export function Talent360View(): JSX.Element | null {
             model={model}
             data={profileData ?? { status: 'loading', record: null, workHistory: null }}
             talentId={talentId}
-            canEdit={h.actions.can_edit_profile}
+            canEdit={canEditTalent && h.actions.can_edit_profile}
             canSeePay={canEditTalent}
             go={go}
+            onRecordSaved={(rec) => setProfileData((p) => (p === null ? p : { ...p, record: rec }))}
+            onWorkHistorySaved={(list) => setProfileData((p) => (p === null ? p : { ...p, workHistory: list }))}
+            notify={setNotice}
           />
         );
       case 'auth':

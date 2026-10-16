@@ -1290,3 +1290,173 @@ body.t360-route .rc-content {
   font-size: 12.5px;
   color: #93a0a8;
 }
+
+/* ── Profile inline edit (§8A.7) ── */
+.t360 .t360-pblock__edit {
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+.t360 .t360-pblock__edit--off {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.t360-pblock--editing {
+  border-color: #9db0f5;
+  box-shadow: 0 0 0 3px #022ac014;
+}
+.t360-cardact {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+.t360-btn--xs {
+  border-radius: 7px;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+.t360-btn--save {
+  padding: 5px 13px;
+  min-width: 58px;
+  justify-content: center;
+}
+.t360-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.t360-prow2--edit {
+  padding: 7px 0;
+  align-items: center;
+}
+.t360-prow2__el {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3a454e;
+}
+.t360-req {
+  color: #b3402a;
+}
+.t360 .t360-ctl {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d5dbe1;
+  border-radius: 7px;
+  padding: 7px 10px;
+  font: 500 13px 'Hanken Grotesk', sans-serif;
+  color: #1b2730;
+  background: #fff;
+  outline: none;
+}
+.t360 .t360-ctl:focus {
+  border-color: #022ac0;
+  box-shadow: 0 0 0 3px #022ac01f;
+}
+.t360 .t360-ctl--err {
+  border-color: #e3a79a;
+}
+.t360 .t360-ctl--area {
+  resize: vertical;
+  line-height: 1.5;
+}
+.t360-ctlpair {
+  display: flex;
+  gap: 6px;
+}
+.t360-ferr {
+  display: block;
+  font-size: 11.5px;
+  color: #b3402a;
+  margin-top: 3px;
+}
+.t360-ferr--card {
+  margin: 0 0 6px;
+}
+.t360-locked {
+  display: block;
+}
+.t360-locked__v {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #5c6770;
+}
+.t360-seg {
+  display: inline-flex;
+  background: #eef1f4;
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+.t360-seg__opt {
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font: 500 12.5px 'Hanken Grotesk', sans-serif;
+  color: #5c6770;
+  cursor: pointer;
+}
+.t360-seg__opt--on {
+  background: #fff;
+  color: #011f8d;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(20, 35, 48, 0.08);
+}
+.t360-skill--edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.t360-skill__x {
+  border: none;
+  background: none;
+  color: #93a0a8;
+  cursor: pointer;
+  padding: 0 0 0 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+.t360-skill__x:hover {
+  color: #b3402a;
+}
+.t360 .t360-skilladd {
+  width: 150px;
+  border: 1px dashed #c9d4f2;
+  border-radius: 7px;
+  padding: 3px 10px;
+  font: 500 11.5px 'Hanken Grotesk', sans-serif;
+  outline: none;
+}
+.t360-addrole {
+  display: block;
+  width: 100%;
+  border: 1px dashed #c9d4f2;
+  background: #fff;
+  color: #022ac0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: 600 12px 'Hanken Grotesk', sans-serif;
+  cursor: pointer;
+  margin: 4px 0 6px;
+}
+.t360-whedit {
+  display: grid;
+  grid-template-columns: 1.3fr 1.3fr 1fr 28px;
+  gap: 8px;
+  align-items: start;
+  padding: 7px 0;
+  border-top: 1px solid #f2f4f6;
+}
+.t360-whedit__x {
+  border: 1px solid #e5e9ed;
+  background: #fff;
+  border-radius: 7px;
+  height: 32px;
+  color: #93a0a8;
+  cursor: pointer;
+}
+.t360-whedit__x:hover {
+  color: #b3402a;
+}

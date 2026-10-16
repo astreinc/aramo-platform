@@ -60,8 +60,12 @@ vi.mock('../microsoft/ScheduleMeetingDialog', () => ({
   ScheduleMeetingDialog: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="schedule-dialog">{requisitionId}</div> : null,
 }));
-const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn() }));
-vi.mock('../talent/talent-api', () => ({ getTalent: tal.getTalent, getTalentWorkHistory: tal.getTalentWorkHistory }));
+const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn() }));
+vi.mock('../talent/talent-api', () => ({
+  getTalent: tal.getTalent,
+  getTalentWorkHistory: tal.getTalentWorkHistory,
+  updateTalent: tal.updateTalent,
+}));
 vi.mock('../consent/ConsentHistoryPanel', () => ({
   ConsentHistoryPanel: ({ talentId }: { talentId: string }) => <div data-testid="consent-history">{talentId}</div>,
 }));
@@ -256,6 +260,7 @@ beforeEach(() => {
   adv.dismissAdvisory.mockResolvedValue({});
   tal.getTalent.mockResolvedValue(RECORD);
   tal.getTalentWorkHistory.mockResolvedValue({ work_history: WORK_HISTORY });
+  tal.updateTalent.mockImplementation(async (_id: string, body: Record<string, unknown>) => ({ ...RECORD, ...body }));
   localStorage.clear();
 });
 afterEach(() => vi.clearAllMocks());
@@ -564,15 +569,6 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(screen.getByTestId('t360-pblock-10')).getByText('Saved when the talent was created — not readable yet.')).toBeInTheDocument();
   });
 
-  it('each block Edit opens Edit talent at the matching section', async () => {
-    getTalent360Mock.mockResolvedValue(makeModel());
-    renderView('/talent/tal-1?section=profile');
-    const b4 = await screen.findByTestId('t360-pblock-04');
-    await waitFor(() => expect(within(b4).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/talent/tal-1/edit?section=work-authorization'));
-    expect(within(screen.getByTestId('t360-pblock-09')).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/talent/tal-1/edit?section=work-history');
-    expect(within(screen.getByTestId('t360-pblock-10')).queryByRole('link', { name: 'Edit' })).toBeNull();
-  });
-
   it('work history shows every declared role, newest first', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');
@@ -606,7 +602,8 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(b5).getByText('Visible to recruiters only')).toBeInTheDocument();
   });
 
-  it('falls back to the Talent 360 read when the full record 404s: no banner, Edit links hidden', async () => {
+  it('falls back to the Talent 360 read when the full record 404s: no banner, no Edit', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
     tal.getTalent.mockRejectedValue(new Error('404'));
     tal.getTalentWorkHistory.mockRejectedValue(new Error('404'));
     getTalent360Mock.mockResolvedValue(makeModel());
@@ -614,8 +611,122 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     const b1 = await screen.findByTestId('t360-pblock-01');
     await waitFor(() => expect(screen.queryByText('Loading the talent record…')).toBeNull());
     expect(within(b1).getByText('divya@example.com')).toBeInTheDocument();
-    expect(within(b1).queryByRole('link', { name: 'Edit' })).toBeNull();
+    expect(within(b1).queryByRole('button', { name: /^Edit/ })).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
     expect(within(screen.getByTestId('t360-pblock-09')).getByText('No work history on record.')).toBeInTheDocument();
+  });
+});
+
+describe('Talent360View — Profile inline edit (§8A.7)', () => {
+  const EDITOR = () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+  };
+  async function openProfile(): Promise<void> {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Edit Location' })).toBeInTheDocument());
+  }
+
+  it('no Edit anywhere without talent:edit (read-only caption)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    await waitFor(() => expect(screen.getByText('Read-only · you don’t have permission to edit talent.')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open Edit talent' })).toBeNull();
+  });
+
+  it('one card at a time: Edit switches the card in place; others are disabled; Cancel discards', async () => {
+    EDITOR();
+    await openProfile();
+    expect(screen.getByRole('link', { name: 'Open Edit talent' })).toHaveAttribute('href', '/talent/tal-1/edit');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Location' }));
+    const b2 = screen.getByTestId('t360-pblock-02');
+    expect(within(b2).getByLabelText('City')).toHaveValue('Vienna');
+    expect(screen.getByRole('button', { name: 'Edit Professional' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('button', { name: 'Edit Professional' })).toHaveAttribute('title', 'Save or cancel the open card first');
+    fireEvent.change(within(b2).getByLabelText('City'), { target: { value: 'Reston' } });
+    fireEvent.click(within(b2).getByRole('button', { name: 'Cancel' }));
+    expect(within(b2).getByText('Vienna, VA 22181')).toBeInTheDocument();
+    expect(tal.updateTalent).not.toHaveBeenCalled();
+  });
+
+  it('Save sends only the card’s changed fields via the existing PATCH and shows the server values', async () => {
+    EDITOR();
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Location' }));
+    const b2 = screen.getByTestId('t360-pblock-02');
+    fireEvent.change(within(b2).getByLabelText('City'), { target: { value: 'Reston' } });
+    fireEvent.click(within(b2).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(tal.updateTalent).toHaveBeenCalledWith('tal-1', { city: 'Reston' }));
+    expect(await within(b2).findByText('Reston, VA 22181')).toBeInTheDocument();
+    expect(within(b2).getByText('Updated just now by you')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Location saved · 1 field updated');
+  });
+
+  it('identity anchors are locked; required fields block the save', async () => {
+    EDITOR();
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Identity & contact' }));
+    const b1 = screen.getByTestId('t360-pblock-01');
+    expect(within(b1).queryByLabelText('Primary email')).toBeNull();
+    expect(within(b1).getAllByText('Identity anchor · change through identity review')).toHaveLength(2);
+    fireEvent.change(within(b1).getByLabelText('First name'), { target: { value: ' ' } });
+    fireEvent.click(within(b1).getByRole('button', { name: 'Save' }));
+    expect(within(b1).getByText('Required')).toBeInTheDocument();
+    expect(tal.updateTalent).not.toHaveBeenCalled();
+  });
+
+  it('no changes → closes with a “no changes” toast and no PATCH', async () => {
+    EDITOR();
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Recruiter notes' }));
+    fireEvent.click(within(screen.getByTestId('t360-pblock-08')).getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Recruiter notes saved · no changes');
+    expect(tal.updateTalent).not.toHaveBeenCalled();
+  });
+
+  it('a server error keeps the card open with the entered values', async () => {
+    EDITOR();
+    tal.updateTalent.mockRejectedValueOnce(new Error('boom'));
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Professional' }));
+    const b3 = screen.getByTestId('t360-pblock-03');
+    fireEvent.change(within(b3).getByLabelText('Current employer'), { target: { value: 'Fannie Mae' } });
+    fireEvent.click(within(b3).getByRole('button', { name: 'Save' }));
+    expect(await within(b3).findByRole('alert')).toBeInTheDocument();
+    expect(within(b3).getByLabelText('Current employer')).toHaveValue('Fannie Mae');
+  });
+
+  it('Skills: remove a chip and add one (duplicates ignored) → key_skills', async () => {
+    EDITOR();
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Skills' }));
+    const b6 = screen.getByTestId('t360-pblock-06');
+    fireEvent.click(within(b6).getByRole('button', { name: 'Remove SAFe' }));
+    const add = within(b6).getByLabelText('Add a skill');
+    fireEvent.change(add, { target: { value: 'scrum' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    fireEvent.change(add, { target: { value: 'Kanban' } });
+    fireEvent.keyDown(add, { key: 'Enter' });
+    fireEvent.click(within(b6).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(tal.updateTalent).toHaveBeenCalledWith('tal-1', { key_skills: 'Scrum, Kanban' }));
+  });
+
+  it('Work history: + Add role at the top, required role/org, replace-set PATCH, then re-read', async () => {
+    EDITOR();
+    await openProfile();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Work history' }));
+    const b9 = screen.getByTestId('t360-pblock-09');
+    fireEvent.click(within(b9).getByRole('button', { name: '+ Add role' }));
+    fireEvent.click(within(b9).getByRole('button', { name: 'Save' }));
+    expect(within(b9).getAllByText('Required')).toHaveLength(2);
+    fireEvent.change(within(b9).getByLabelText('Role 1'), { target: { value: 'Agile Coach' } });
+    fireEvent.change(within(b9).getByLabelText('Organization 1'), { target: { value: 'Capital One' } });
+    tal.getTalentWorkHistory.mockClear();
+    fireEvent.click(within(b9).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(tal.updateTalent).toHaveBeenCalled());
+    const body = tal.updateTalent.mock.calls[0]?.[1] as { work_history: { role_title: string }[] };
+    expect(body.work_history.map((w) => w.role_title)).toEqual(['Agile Coach', 'Senior System Analyst', 'Scrum Coach']);
+    await waitFor(() => expect(tal.getTalentWorkHistory).toHaveBeenCalledWith('tal-1'));
   });
 });
