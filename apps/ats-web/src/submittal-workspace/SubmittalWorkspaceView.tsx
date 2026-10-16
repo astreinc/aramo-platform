@@ -11,7 +11,9 @@ import {
   StatusPill,
   safeErrorMessage,
 } from '../ui';
+import { pipelineStatusLabel } from '../pipeline/types';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
+import { workAuthorizationLabel } from '../talent/stated-fields';
 
 import { getSubmittalWorkspace } from './submittal-workspace-api';
 import { RecordSubmittalDialog } from './RecordSubmittalDialog';
@@ -26,6 +28,7 @@ import {
   lifecyclePill,
   remediationOnRequisition,
   requirementRow,
+  requirementSourceLabel,
   requiredCounts,
   waitingLabel,
 } from './present';
@@ -250,7 +253,7 @@ export function SubmittalWorkspaceView() {
           </div>
           <div className={`sw-head__next sw-head__next--${banner?.tone ?? 'muted'}`}>{headLine}</div>
           <div className="sw-head__meta">
-            Recruiting stage: {pipeline.current_stage ?? '—'} · Recruiter {context.recruiter?.name ?? '—'} · Account manager {context.owner?.name ?? '—'}
+            Recruiting stage: {pipeline.current_stage !== null ? pipelineStatusLabel(pipeline.current_stage) : '—'} · Recruiter {context.recruiter?.name ?? '—'} · Account manager {context.owner?.name ?? '—'}
           </div>
         </div>
         <div className="sw-head__actions">
@@ -318,7 +321,7 @@ export function SubmittalWorkspaceView() {
                     {!req.satisfied && req.remediation !== null ? (
                       <span className="sw-req__remediation">{req.remediation}</span>
                     ) : null}
-                    <span className="sw-req__source">{req.source.replace(/_/g, ' ')}</span>
+                    <span className="sw-req__source">{requirementSourceLabel(req.source)}</span>
                   </div>
                   {remediationOnRequisition(req) ? (
                     <Link className="sw-req__action" to={`/requisitions/${identity.requisition.id}`}>
@@ -383,7 +386,7 @@ export function SubmittalWorkspaceView() {
             <div className="sw-reqctx__title">Requisition</div>
             <div className="sw-rec__row"><span className="sw-rec__k">Client</span><span className="sw-rec__v">{client ?? '—'}</span></div>
             <div className="sw-rec__row"><span className="sw-rec__k">Talent location</span><span className="sw-rec__v">{context.talent_location ?? '—'}</span></div>
-            <div className="sw-rec__row"><span className="sw-rec__k">Work authorization</span><span className="sw-rec__v">{context.work_authorization ?? '—'}</span></div>
+            <div className="sw-rec__row"><span className="sw-rec__k">Work authorization</span><span className="sw-rec__v">{context.work_authorization !== null ? workAuthorizationLabel(context.work_authorization) : '—'}</span></div>
             <div className="sw-rec__row"><span className="sw-rec__k">Recruiter</span><span className="sw-rec__v">{context.recruiter?.name ?? '—'}</span></div>
             <div className="sw-rec__row"><span className="sw-rec__k">Account manager</span><span className="sw-rec__v">{context.owner?.name ?? '—'}</span></div>
             <Link className="sw-link" to={`/requisitions/${identity.requisition.id}`}>Back to requisition →</Link>

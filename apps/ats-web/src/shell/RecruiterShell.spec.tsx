@@ -64,12 +64,12 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Placements' })).not.toBeInTheDocument();
   });
 
-  it('hosts the aramo.ai brand as a rail home link (REQ-PIXEL-PARITY-1)', () => {
+  it('rail head row: Aramo mark + aramo.ai wordmark + Collapse sidebar (rail spec §3)', () => {
     renderShell(makeSession(['talent:read']));
-    // Brand moved from the top bar to the rail top, matching Requisitions.dc.html.
-    const brand = screen.getByRole('link', { name: /aramo\.ai — home/ });
-    expect(brand).toHaveAttribute('href', '/');
-    expect(brand).toHaveTextContent('aramo.ai');
+    const rail = screen.getByRole('complementary', { name: 'Main navigation' });
+    expect(within(rail).getByTitle('Aramo')).toBeInTheDocument();
+    expect(within(rail).getByText('aramo')).toHaveTextContent('aramo.ai');
+    expect(within(rail).getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('shows the admin nav section only to a tenant:admin-scoped principal', () => {
@@ -133,9 +133,9 @@ describe('RecruiterShell', () => {
     expect(
       screen.queryByRole('navigation', { name: 'Breadcrumb' }),
     ).not.toBeInTheDocument();
-    // The primary rail nav (active-module indicator) still communicates location.
+    // The main nav rail (active-module indicator) still communicates location.
     expect(
-      screen.getByRole('navigation', { name: 'Primary' }),
+      screen.getByRole('complementary', { name: 'Main navigation' }),
     ).toBeInTheDocument();
   });
 
@@ -204,9 +204,9 @@ describe('RecruiterShell', () => {
     expect(post).toHaveBeenCalledWith('/auth/recruiter/logout');
   });
 
-  it('exposes the primary nav landmark and renders children', () => {
+  it('exposes the main navigation landmark and renders children', () => {
     renderShell(makeSession(['requisition:read']));
-    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Main navigation' })).toBeInTheDocument();
     expect(screen.getByText('page content')).toBeInTheDocument();
   });
 
@@ -222,14 +222,15 @@ describe('RecruiterShell', () => {
   it('renders the tenant org label and real rail identity from /me', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
     renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
-    // Org-context label (M365 text, not a logo).
-    expect(
-      await screen.findByText('Astre Consulting Services Inc'),
-    ).toBeInTheDocument();
-    // Rail footer shows the real name + a CONDENSED role (primary + "+N") so a
-    // multi-role user doesn't clip; the FULL role line lives in the account menu.
-    expect(screen.getByText('Purush Pichaimuthu')).toBeInTheDocument();
-    expect(screen.getByText('Tenant Admin +1')).toBeInTheDocument();
+    // Org-context label (M365 text, not a logo) in the top bar…
+    await waitFor(() =>
+      expect(document.querySelector('.rc-orglabel')).toHaveTextContent('Astre Consulting Services Inc'),
+    );
+    // …and the rail footer shows the real name + the tenant (rail spec §3); the
+    // FULL role line lives only in the account menu.
+    const rail = screen.getByRole('complementary', { name: 'Main navigation' });
+    expect(within(rail).getByText('Purush Pichaimuthu')).toBeInTheDocument();
+    expect(within(rail).getByText('Astre Consulting Services Inc')).toBeInTheDocument();
     expect(screen.queryByText('Tenant Admin · Recruiter')).not.toBeInTheDocument();
   });
 
@@ -272,7 +273,7 @@ describe('RecruiterShell', () => {
     vi.spyOn(apiClient, 'get').mockRejectedValue(new Error('network'));
     renderShell(makeSession(['requisition:read']));
     // Chrome intact: nav landmark + a neutral account trigger, no crash.
-    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument();
+    expect(screen.getByRole('complementary', { name: 'Main navigation' })).toBeInTheDocument();
     expect(
       await screen.findByRole('button', { name: 'Account menu' }),
     ).toBeInTheDocument();
@@ -298,7 +299,7 @@ describe('RecruiterShell', () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue(ME); // status: ACTIVE
     renderShell(makeSession(['requisition:read']));
     // Wait for /me to resolve (org label appears) before asserting absence.
-    await screen.findByText('Astre Consulting Services Inc');
+    await waitFor(() => expect(document.querySelector('.rc-orglabel')).not.toBeNull());
     expect(screen.queryByText(OFFBOARDING_COPY)).not.toBeInTheDocument();
   });
 

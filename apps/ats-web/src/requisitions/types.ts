@@ -5,6 +5,8 @@
 // importing @aramo/requisition (a forbidden domain edge from
 // apps/ats-web).
 
+import { codeLabel } from '../ui/code-label';
+
 // T1-d — the RecruitingStatus declared lifecycle. MUST stay 1:1 with the BE
 // source libs/requisition/src/lib/dto/requisition-status.ts (RECRUITING_STATUS_
 // VALUES / GATED_RECRUITING_STATUS_VALUES); the recruiting-status-drift.spec.ts
@@ -55,6 +57,30 @@ export const RECRUITING_STATUS_LABELS: Record<RecruitingStatus, string> = {
   closed: 'Closed',
   archived: 'Archived',
 };
+// For a status read off a loosely-typed projection (string on the wire).
+export function recruitingStatusLabel(code: string): string {
+  return codeLabel(RECRUITING_STATUS_LABELS, code);
+}
+
+// L8-B2 — requisition-grain Client Status + its reason (RequisitionView
+// client_submittal_status / client_submittal_reason). `null` status ⇒ Open.
+export const CLIENT_SUBMITTAL_STATUS_LABELS: Readonly<Record<string, string>> = {
+  open: 'Open',
+  paused: 'Paused',
+  closed: 'Closed',
+};
+export function clientSubmittalStatusLabel(code: string | null): string {
+  return code === null ? 'Open' : codeLabel(CLIENT_SUBMITTAL_STATUS_LABELS, code);
+}
+export const CLIENT_SUBMITTAL_REASON_LABELS: Readonly<Record<string, string>> = {
+  deadline_passed: 'Deadline passed',
+  limit_reached: 'Limit reached',
+  manual_hold: 'Manually held',
+  paused: 'Paused',
+};
+export function clientSubmittalReasonLabel(code: string): string {
+  return codeLabel(CLIENT_SUBMITTAL_REASON_LABELS, code);
+}
 
 // Q2 ruling — the "my open reqs" framing. Closed = the former `full`
 // (submittals_closed) + closed + canceled + the terminal archived. Open =

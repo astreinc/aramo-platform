@@ -21,6 +21,9 @@ export const RIGHT_TO_REPRESENT_TYPE_ID = 'd0c50005-0000-7000-8000-000000000001'
 
 // §12 — the RTR generated-content schema version. A new DRAFT starts at this version.
 export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
+// Amendment A1 — allowlisted-HTML content (field_schema { render_schema_version, title, html }).
+// New drafts copied from a v1 ACTIVE arrive as rtr-html-v1; an existing v1 DRAFT stays v1.
+export const RTR_HTML_SCHEMA_V1 = 'rtr-html-v1';
 
 export type TemplateStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
 
@@ -55,7 +58,16 @@ export interface TemplateVersionView {
   // §18 preview-revision gate markers — the editor arms/reads the gate from these.
   readonly content_fingerprint: string | null;
   readonly previewed_fingerprint: string | null;
+  // Admin-only usage guidance (≤500). OPTIONAL in this mirror: the editor renders the
+  // field only when the server's version view carries the property (no dead control).
+  readonly internal_notes?: string | null;
+  // A1 — the version's captured tenant-logo asset (the letterhead), when any.
+  readonly logo?: TemplateLogo | null;
 }
+
+export interface TemplateLogo { readonly asset_id: string; readonly mime: string }
+export interface TenantLogoInfo { readonly available: boolean; readonly tenant_name: string }
+export interface SampleValue { readonly key: string; readonly label: string; readonly value: string }
 
 // §15 — one governed Insert-field binding (the server's closed catalog; the editor
 // generates its Insert menu from this, so there is no FE mirror to drift, §14).
@@ -69,7 +81,14 @@ export interface TemplateBinding {
 // its SAFE sample value. Structured resolved blocks (no business Document created).
 export interface TemplateSamplePreview {
   readonly title: string;
-  readonly blocks: ReadonlyArray<{ readonly type: string; readonly text: string }>;
+  // v1: resolved blocks. rtr-html-v1: `html` with <span data-sample="key">value</span>.
+  readonly blocks?: ReadonlyArray<{ readonly type: string; readonly text: string }>;
+  readonly html?: string;
+  readonly logo?: { readonly asset_id: string; readonly mime?: string } | null;
+  readonly sample_values?: readonly SampleValue[];
+  // OPTIONAL: present when the server appends the fixed Aramo e-sign signature block to
+  // the render. The FE draws the signature in a preview ONLY when this is present.
+  readonly signature_block?: { readonly printed_name: string | null } | null;
 }
 
 export async function listDocumentTemplates(): Promise<readonly DocumentTemplateView[]> {
@@ -95,6 +114,43 @@ export async function listAllowedBindings(templateId: string): Promise<readonly 
   return res.bindings;
 }
 
+// A1 — the governed catalog + whether the tenant has a profile logo to place.
+export interface TemplateCatalog { readonly bindings: readonly TemplateBinding[]; readonly tenantLogo: TenantLogoInfo | null }
+export async function fetchTemplateCatalog(templateId: string): Promise<TemplateCatalog> {
+  const res = await apiClient.get<{ bindings: TemplateBinding[]; tenant_logo?: TenantLogoInfo | null }>(
+    `${BASE}/${encodeURIComponent(templateId)}/allowed-bindings`,
+  );
+  return { bindings: res.bindings, tenantLogo: res.tenant_logo ?? null };
+}
+
+// A1 — capture the Tenant-profile logo onto the DRAFT version (409 reason=no_tenant_logo
+// when the tenant has none) / remove it (the reference AND the node; 204). The logo
+// reference is server-owned (carried over on PATCH). Letterhead bytes: logo/content.
+// The server stores the reference AND places the logo node first in the draft html;
+// it answers 201 { asset_id, sha256, mime }.
+export interface CapturedLogo { readonly asset_id: string; readonly sha256?: string; readonly mime: string }
+export async function captureVersionLogo(versionId: string): Promise<CapturedLogo> {
+  return apiClient.post<CapturedLogo>(`${BASE}/versions/${encodeURIComponent(versionId)}/logo`, {});
+}
+export async function removeVersionLogo(versionId: string): Promise<void> {
+  await apiClient.delete<undefined>(`${BASE}/versions/${encodeURIComponent(versionId)}/logo`);
+}
+export function versionLogoUrl(versionId: string, assetId: string | null): string {
+  return `${BASE}/versions/${encodeURIComponent(versionId)}/logo/content${assetId != null ? `?v=${encodeURIComponent(assetId)}` : ''}`;
+}
+
+// Rename the template (document_template:manage). The name is a TEMPLATE attribute
+// (shared by every version), not draft content — it does not re-arm the §18 gate.
+export async function updateDocumentTemplate(id: string, input: { name: string }): Promise<DocumentTemplateView> {
+  return apiClient.patch<DocumentTemplateView>(`${BASE}/${encodeURIComponent(id)}`, input);
+}
+
+// Discard the open DRAFT version (204; DRAFT-only — ACTIVE/RETIRED are immutable and the
+// backend refuses them). The active version is unchanged.
+export async function deleteDraftVersion(versionId: string): Promise<void> {
+  await apiClient.delete<undefined>(`${BASE}/versions/${encodeURIComponent(versionId)}`);
+}
+
 // Open a new editable DRAFT (vN+1). The backend copies the current ACTIVE content as
 // the starting point (§8) and refuses (409 TEMPLATE_DRAFT_ALREADY_EXISTS) if one is open.
 export async function createDraftFromActive(templateId: string): Promise<TemplateVersionView> {
@@ -104,7 +160,7 @@ export async function createDraftFromActive(templateId: string): Promise<Templat
 // Save DRAFT content (DRAFT-only; re-arms the §18 preview gate server-side).
 export async function updateDraftVersion(
   versionId: string,
-  input: { field_schema: unknown; render_schema_version?: string },
+  input: { field_schema: unknown; render_schema_version?: string; internal_notes?: string | null },
 ): Promise<TemplateVersionView> {
   return apiClient.patch<TemplateVersionView>(`${BASE}/versions/${encodeURIComponent(versionId)}`, input);
 }

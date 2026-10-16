@@ -43,6 +43,14 @@ die()  { printf '\033[31m[local-stack] %s\033[0m\n' "$*" >&2; exit 1; }
 load_env() {
   [ -f .env ] || die "no .env — copy .env.example to .env and fill it (doc/runbooks/local-run.md)"
   set -a; . ./.env; set +a
+  # E-Sign local wiring: api ⇄ esign-service share ONE HMAC secret (the api's
+  # esign-service request guard enforces it; esign-service signs its webhooks +
+  # source fetches with it). A fixed LOCAL-ONLY default unless .env sets one —
+  # never a production value. Signing links point at the local sign-web.
+  export ESIGN_WEBHOOK_SIGNING_SECRET="${ESIGN_WEBHOOK_SIGNING_SECRET:-local-dev-esign-webhook-secret}"
+  export ESIGN_SERVICE_URL="${ESIGN_SERVICE_URL:-http://localhost:3003}"
+  export ESIGN_SIGN_WEB_BASE_URL="${ESIGN_SIGN_WEB_BASE_URL:-http://localhost:4204}"
+  export DOCUMENTS_API_URL="${DOCUMENTS_API_URL:-http://localhost:3000}"
 }
 
 compose() { docker compose "$@"; }
@@ -125,8 +133,8 @@ cmd_up() {
   if [ "${SKIP_BUILD:-0}" = "1" ]; then
     log "4/7 build: skipped (SKIP_BUILD=1) — reusing dist/"
   else
-    log "4/7 build: nx build api auth-service"
-    npx nx run-many -t build -p api auth-service
+    log "4/7 build: nx build api auth-service esign-service"
+    npx nx run-many -t build -p api auth-service esign-service
   fi
 
   log "5/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
@@ -151,10 +159,13 @@ cmd_up() {
     ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
   fi
 
-  log "7/7 start: auth-service :3001, api :3000, ats-web :4201, talent-intake-consumer"
+  log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, talent-intake-consumer"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
+  # E-Sign: without it "Send for signature" fails (api → localhost:3003 refused).
+  start_app esign-service env PORT=3003 node dist/apps/esign-service/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web
+  start_app sign-web     npx nx serve aramo-sign-web
   # ADR-0033 dev-only SQS consumer runner — LocalStack SQS → the SAME
   # processTalentIntakeSqsBatch seam the prod Lambda uses. Redis-INDEPENDENT.
   start_app talent-intake-consumer node tools/talent-intake-dev-consumer.cjs
@@ -162,17 +173,18 @@ cmd_up() {
   log "stack up:"
   log "  FE   → http://localhost:4201"
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
+  log "  esign → http://localhost:3003   signer page (sign-web) → http://localhost:4204"
   log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
   log "  logs → $RUN_DIR/{auth-service,api,ats-web,talent-intake-consumer}.log   (tools/local-stack.sh down to stop)"
 }
 
 cmd_down() {
-  stop_app talent-intake-consumer; stop_app ats-web; stop_app api; stop_app auth-service
+  stop_app talent-intake-consumer; stop_app sign-web; stop_app ats-web; stop_app esign-service; stop_app api; stop_app auth-service
   if command -v docker >/dev/null; then log "infra: docker compose down"; compose down; fi
 }
 
 cmd_status() {
-  for name in auth-service api ats-web talent-intake-consumer; do
+  for name in auth-service api esign-service ats-web sign-web talent-intake-consumer; do
     local pidf="$RUN_DIR/$name.pid"
     if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
       printf '  %-13s UP   (pid %s)\n' "$name" "$(cat "$pidf")"

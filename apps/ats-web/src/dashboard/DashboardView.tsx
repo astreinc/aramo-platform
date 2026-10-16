@@ -2,6 +2,8 @@ import { Button, InlineAlert, Input, hasScope, useSession } from '@aramo/fe-foun
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { interviewTypeLabel } from '../interviews/interview-format';
+import { recruitingStatusLabel } from '../requisitions/types';
 import { updateTask } from '../task/task-api';
 import { useMe } from '../shell/me-api';
 import { DataTable, EmptyState, safeErrorMessage, type TableColumn } from '../ui';
@@ -165,7 +167,7 @@ export function DashboardView() {
         </Link>
       ),
     },
-    { key: 'status', header: 'Status', render: (r) => <span className="rc-desk-status">{r.status}</span> },
+    { key: 'status', header: 'Status', render: (r) => <span className="rc-desk-status">{recruitingStatusLabel(r.status)}</span> },
     { key: 'pipeline', header: 'Pipeline', align: 'right', render: (r) => <span className="num">{r.pipeline_count}</span> },
     { key: 'qualified', header: 'Qualified', align: 'right', render: (r) => <span className="num">{r.qualified_count}</span> },
     { key: 'with_client', header: 'With client', align: 'right', render: (r) => <span className="num rc-muted">{r.with_client_count}</span> },
@@ -323,7 +325,7 @@ export function DashboardView() {
                   <span className="rc-desk-iv__body">
                     <span className="rc-desk-iv__who">{iv.talent_name ?? 'Talent'}</span>
                     <span className="rc-desk-iv__what">
-                      {interviewLabel(iv.interview_type)}
+                      {interviewTypeLabel(iv.interview_type)}
                       {iv.round !== null ? ` · Round ${iv.round}` : ''}
                       {iv.requisition_label !== null ? ` · ${iv.requisition_label}` : ''}
                     </span>
@@ -622,9 +624,3 @@ function urgencyLabel(u: DeskUrgency): string {
   return u === 'overdue' ? 'Overdue' : u === 'today' ? 'Today' : 'Upcoming';
 }
 
-function interviewLabel(type: string): string {
-  return type
-    .split('_')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-}

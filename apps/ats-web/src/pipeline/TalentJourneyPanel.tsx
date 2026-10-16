@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { journeyOwnerLabel, journeyStageLabel } from './journey-vocab';
 import { getTalentJourney, type TalentRequisitionJourney } from './talent-journey-api';
 
 // Lane 2 / L2-H — the Unified Talent Journey panel. Renders the BE-composed
@@ -29,13 +30,13 @@ export function TalentJourneyPanel({ pipelineId }: { pipelineId: string }): JSX.
   return (
     <section className="rc-journey" aria-label="Talent journey">
       <div className="rc-journey__current" data-testid="journey-current-stage">
-        {journey.current_journey_stage}
+        {journeyStageLabel(journey.current_journey_stage)}
       </div>
       <ol className="rc-journey__stages">
         {journey.stages.map((s) => (
           <li key={`${s.owner}:${s.source_object_id}:${s.stage}`} className="rc-journey__stage" data-owner={s.owner}>
-            <span className="rc-journey__stage-name">{s.stage}</span>
-            <span className="rc-journey__stage-owner">{s.owner}</span>
+            <span className="rc-journey__stage-name">{journeyStageLabel(s.stage)}</span>
+            <span className="rc-journey__stage-owner">{journeyOwnerLabel(s.owner)}</span>
           </li>
         ))}
       </ol>

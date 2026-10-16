@@ -38,6 +38,7 @@ import {
 import { getTalentConsentState } from './consent-api';
 import {
   CONSENT_SCOPES,
+  consentScopeLabel,
   type ConsentScope,
   type ConsentScopeStatus,
   type TalentConsentScopeState,
@@ -80,7 +81,7 @@ const SCOPE_COLUMNS: ReadonlyArray<TableColumn<ScopeRow>> = [
     key: 'scope',
     header: 'Scope',
     render: (row) => (
-      <span data-testid={`consent-state-scope-${row.scope}`}>{row.scope}</span>
+      <span data-testid={`consent-state-scope-${row.scope}`}>{consentScopeLabel(row.scope)}</span>
     ),
   },
   {

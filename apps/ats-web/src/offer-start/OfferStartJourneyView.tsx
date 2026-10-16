@@ -4,11 +4,13 @@ import { Link, useParams } from 'react-router-dom';
 
 import { remindOfferDocument, requestOfferDocument, sendOfferDocument } from '../offer-document/offer-document-api';
 import { markPlacementReady } from '../pre-start/pre-start-api';
+import { journeyOwnerLabel, journeyStageLabel } from '../pipeline/journey-vocab';
 import { getTalentJourney, type TalentRequisitionJourney } from '../pipeline/talent-journey-api';
+import { requirementOwnerRoleLabel, requirementStatusLabel } from '../pre-start/types';
 import { listOffers } from '../offers/offers-api';
 import type { OfferView } from '../offers/types';
 
-import { deriveSteps, type JourneyStep } from './offer-start-steps';
+import { deriveSteps, STEP_STATUS_LABELS, type JourneyStep } from './offer-start-steps';
 import './offer-start.css';
 
 // Offer & Start journey page (directive §6.3) — ONE person × requisition surface keyed on the
@@ -194,10 +196,6 @@ export function OfferStartJourneyView(): JSX.Element {
       flash('Marked ready to start');
     });
   };
-  const PRE_START_STATUS_LABEL: Record<string, string> = {
-    PENDING: 'Pending', IN_PROGRESS: 'In progress', SATISFIED: 'Satisfied',
-    VERIFIED: 'Verified', WAIVED: 'Waived', FAILED: 'Failed', CANCELED: 'Canceled',
-  };
 
   return (
     <section className="os-root" data-testid="offer-start-journey">
@@ -264,7 +262,7 @@ export function OfferStartJourneyView(): JSX.Element {
                     {s.status === 'done' ? '✓' : s.status === 'declined' ? '✕' : s.status === 'current' ? '●' : '○'}
                   </span>
                   <span className="os-step-label">{s.label}</span>
-                  <span className="os-step-status">{s.status}</span>
+                  <span className="os-step-status">{STEP_STATUS_LABELS[s.status]}</span>
                 </div>
               ))}
             </div>
@@ -291,8 +289,8 @@ export function OfferStartJourneyView(): JSX.Element {
                 preStart.requirements.map((r) => (
                   <div key={r.id} className="os-req" data-testid={`os-req-${r.id}`}>
                     <span className="os-req-label">{r.label}{r.blocking ? <span className="os-req-blocking" title="Blocking">•</span> : null}</span>
-                    <span className="os-req-status" data-testid={`os-req-status-${r.id}`}>{PRE_START_STATUS_LABEL[r.status] ?? r.status}</span>
-                    {r.owner_role !== null ? <span className="os-muted os-req-owner">{r.owner_role}</span> : null}
+                    <span className="os-req-status" data-testid={`os-req-status-${r.id}`}>{requirementStatusLabel(r.status)}</span>
+                    {r.owner_role !== null ? <span className="os-muted os-req-owner">{requirementOwnerRoleLabel(r.owner_role)}</span> : null}
                   </div>
                 ))
               )}
@@ -373,8 +371,8 @@ export function OfferStartJourneyView(): JSX.Element {
                 .filter((s) => s.occurred_at !== undefined)
                 .map((s) => (
                   <div key={`${s.stage}-${s.source_object_id}`} className="os-hist">
-                    <span className="os-hist-what">{s.stage}</span>
-                    <span className="os-muted">{s.owner}</span>
+                    <span className="os-hist-what">{journeyStageLabel(s.stage)}</span>
+                    <span className="os-muted">{journeyOwnerLabel(s.owner)}</span>
                   </div>
                 ))
             )}

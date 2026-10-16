@@ -30,7 +30,7 @@ function makeView(overrides: Partial<WorkspaceView> = {}): WorkspaceView {
       owner: { id: 'u2', name: 'Purush P.' },
       talent_location: 'McLean, VA',
       talent_title: 'Scrum Master',
-      work_authorization: 'Permanent resident',
+      work_authorization: 'PERMANENT_RESIDENT',
     },
     pipeline: { linked_episode_id: 'p1', current_stage: 'qualifying', is_live: true },
     submittal: { state: 'ready_for_review', created_at: null, created_by: null, confirmed_at: null, revoked_at: null, resume_edition_id: 're1' },
@@ -79,6 +79,11 @@ describe('SubmittalWorkspaceView', () => {
     expect(screen.getByText('All requirements complete')).toBeInTheDocument();
     // lifecycle pill is distinct from the readiness banner
     expect(screen.getByText('Ready for review')).toBeInTheDocument();
+    // codes render through their label maps (pipeline stage / work authorization / requirement source)
+    expect(screen.getByText(/Recruiting stage: Qualifying ·/)).toBeInTheDocument();
+    expect(screen.getByText('Permanent resident')).toBeInTheDocument();
+    expect(screen.getAllByText('Documents').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('PERMANENT_RESIDENT')).not.toBeInTheDocument();
   });
 
   it('READY but NO submit authority → no CTA, renders a view-only note (§3/§D)', async () => {

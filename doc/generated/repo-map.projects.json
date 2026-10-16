@@ -645,7 +645,9 @@
       "RenderService",
       "RequirementsRepository",
       "RevisionSourceService",
+      "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
+      "TEMPLATE_TENANT_LOGO",
       "TemplateImmutableError",
       "TemplateNotFoundError",
       "TemplateVersionNotActiveError",
@@ -669,7 +671,11 @@
       "PdfLibDocumentRenderingAdapter",
       "RenderFailedError",
       "SafePdfPipeline",
-      "UnsafePdfError"
+      "UnsafePdfError",
+      "layoutRuns",
+      "layoutSignatureBlock",
+      "manifestProjection",
+      "wrapTextToWidth"
     ],
     "@aramo/engagement": [
       "DEFAULT_ENGAGEMENT_ENFORCEMENT_MODE",
@@ -3858,6 +3864,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-binding.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3865,6 +3877,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reminder.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3883,6 +3901,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-resolver.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-template-tenant-logo.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4577,6 +4601,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/offer-start-prestart-doctype-seed.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-admin-slice1.spec.ts",
         "project": "documents",
         "status": "excluded"
       },
@@ -6031,7 +6061,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-binding.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6907,6 +6949,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/documents/RtrDraftEditor.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/documents/RtrDraftEditorHtml.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -8412,6 +8460,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-binding.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8938,7 +8998,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-html-binding.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },

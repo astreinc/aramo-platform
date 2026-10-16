@@ -13,6 +13,7 @@ import {
 import { SettingCardHead } from '../settings/components';
 
 import { IntegrationConnectionStatusPill } from './IntegrationConnectionStatusPill';
+import { connectorErrorCodeLabel, connectorProviderLabel } from './integration-vocab';
 import {
   disableIntegrationConnection,
   enableIntegrationConnection,
@@ -153,10 +154,10 @@ function Panel({
                 <div role="listitem" key={c.id} data-testid={`integration-connection-${c.id}`}>
                   <div className="set-row">
                     <span className="set-row__l">
-                      <span className="set-row__t">{c.provider_key}</span>
+                      <span className="set-row__t">{connectorProviderLabel(c.provider_key)}</span>
                       <span className="set-row__s">
                         {c.has_secret ? 'Credential configured' : 'No credential'}
-                        {c.last_error_code != null ? ` · ${c.last_error_code}` : ''}
+                        {c.last_error_code != null ? ` · ${connectorErrorCodeLabel(c.last_error_code)}` : ''}
                       </span>
                     </span>
                     <span className="set-row__r">

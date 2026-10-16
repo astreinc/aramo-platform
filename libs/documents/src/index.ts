@@ -16,6 +16,18 @@ export {
   type TemplateBindingDescriptor,
   type TemplateSamplePreview,
 } from './lib/template-capabilities.port.js';
+export {
+  TEMPLATE_TENANT_LOGO,
+  type TemplateTenantLogoPort,
+  type TenantLogoInfo,
+  type CapturedTenantLogo,
+  type TemplateLogoRef,
+} from './lib/template-capabilities.port.js';
+export {
+  TEMPLATE_AUDIT,
+  type TemplateAuditPort,
+  type TemplateDraftDiscardedAudit,
+} from './lib/template-audit.port.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
   DocumentsRepository,

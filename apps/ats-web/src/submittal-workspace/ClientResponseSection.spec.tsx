@@ -97,4 +97,16 @@ describe('ClientResponseSection', () => {
     expect(screen.getAllByText('Declined').length).toBeGreaterThanOrEqual(1); // pill + history
     expect(screen.getAllByText('Needs deeper experience.').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('WITHDRAWN feedback with no note → the reason code renders through its label', () => {
+    renderSection(makeView({ state: 'WITHDRAWN', feedback: [{ at: '2026-10-05T00:00:00.000Z', to_state: 'WITHDRAWN', reason_code: 'TALENT_UNAVAILABLE', note: null }] }));
+    expect(screen.getAllByText('Talent unavailable').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('TALENT_UNAVAILABLE')).not.toBeInTheDocument();
+    expect(screen.getAllByText('Withdrawn').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('latest interview NO_SHOW renders the canonical state label', () => {
+    renderSection(makeView({ state: 'INTERVIEW', latest_interview: { id: 'iv1', round: 1, state: 'NO_SHOW', scheduled_at: null } }));
+    expect(screen.getByText(/Round 1 · No-show/)).toBeInTheDocument();
+  });
 });

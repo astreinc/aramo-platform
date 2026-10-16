@@ -139,6 +139,9 @@ export const EVENT_TYPES = [
   'tenant.offboarding_started',
   'tenant.closed',
   'tenant.lifecycle_transition_rejected',
+  // DOC-TEMPLATE-ADMIN-RTR-1 Amendment A1 §1 — Discard draft MUST write a template audit
+  // event (actor, version, time). subject_id = the discarded TemplateVersion id.
+  'identity.document_template.draft_discarded',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -207,6 +210,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'tenant.offboarding_started',
   'tenant.closed',
   'tenant.lifecycle_transition_rejected',
+  // A1 §1 — template draft discard carries the writing tenant's id.
+  'identity.document_template.draft_discarded',
 ]);
 
 export interface WriteAuditEventInput {

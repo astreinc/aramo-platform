@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/fe-foundation';
 
-import { BandPill, Card, FilterChip, PageHeader, StatusPill, Tag, Toolbar } from '../ui';
+import { BandPill, bandLabel, Card, FilterChip, PageHeader, StatusPill, Tag, Toolbar } from '../ui';
 import {
   AdvisoryResolveDialog,
   type AdvisoryAction,
@@ -209,7 +209,7 @@ export function IdentityAdvisoriesView({ sessionOverride }: IdentityAdvisoriesVi
                               <StatusPill tone="warn" dot>
                                 Reopened
                                 {it.reopened_from_band !== null
-                                  ? ` from ${it.reopened_from_band}`
+                                  ? ` from ${bandLabel(it.reopened_from_band)}`
                                   : ''}
                               </StatusPill>
                               <span className="rc-advisory-when mono">

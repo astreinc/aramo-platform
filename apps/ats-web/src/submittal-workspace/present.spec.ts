@@ -9,6 +9,7 @@ import {
   remediationOnRequisition,
   requiredCounts,
   requirementRow,
+  requirementSourceLabel,
   submittalEntryHref,
   waitingLabel,
   withdrawReasonLabel,
@@ -109,6 +110,14 @@ describe('present — withdraw reason labels (closed set)', () => {
   it('maps each closed code to a human label', () => {
     expect(withdrawReasonLabel('TALENT_WITHDREW')).toBe('Talent withdrew');
     expect(withdrawReasonLabel('CLIENT_PROCESS_CANCELLED')).toBe('Client process cancelled');
+  });
+
+  it('labels requirement sources and degrades unknown codes to sentence case', () => {
+    expect(requirementSourceLabel('client_submittal_policy')).toBe('Client submittal policy');
+    expect(requirementSourceLabel('documents')).toBe('Documents');
+    expect(requirementSourceLabel('pipeline')).toBe('Recruiting');
+    expect(requirementSourceLabel('new_source_kind')).toBe('New source kind');
+    expect(withdrawReasonLabel('SOME_NEW_CODE')).toBe('Some new code');
   });
 });
 

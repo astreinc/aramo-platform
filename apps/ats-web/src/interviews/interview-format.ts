@@ -1,3 +1,5 @@
+import { codeOrTextLabel } from '../ui/code-label';
+
 import type { InterviewSessionState } from './interviews-api';
 
 // Human-facing labels for the canonical InterviewSession states (Calendar/Interview
@@ -10,6 +12,23 @@ export const INTERVIEW_STATE_LABEL: Record<InterviewSessionState, string> = {
   CANCELED: 'Canceled',
   NO_SHOW: 'No-show',
 };
+
+// interview_type is free text on the BE (ScheduleInterviewRequestDto) — the schedule dialog
+// captures what the recruiter types ("Client interview"). Seeded / integration-created
+// sessions carry these codes instead; they map to labels. Recruiter-typed text renders as-is.
+export const INTERVIEW_TYPE_LABELS: Readonly<Record<string, string>> = {
+  phone: 'Phone',
+  video: 'Video',
+  onsite: 'Onsite',
+  client_interview: 'Client interview',
+  client_panel: 'Client panel',
+  recruiter_screen: 'Recruiter screen',
+  technical: 'Technical',
+  panel: 'Panel',
+};
+export function interviewTypeLabel(type: string): string {
+  return codeOrTextLabel(INTERVIEW_TYPE_LABELS, type);
+}
 
 export function startOfWeek(d: Date): Date {
   const x = new Date(d);

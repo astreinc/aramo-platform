@@ -4,6 +4,8 @@
 // a BE shape change surfaces as a failing build here, not silent runtime drift.
 // No secret material is ever part of these shapes.
 
+import { codeLabel } from '../ui/code-label';
+
 export interface CommunicationVoiceCapability {
   readonly outbound: boolean;
   readonly inbound: boolean;
@@ -25,6 +27,13 @@ export type CommunicationProviderIdentityStatus =
   | 'unmapped'
   | 'disabled'
   | 'reauth_required';
+
+export const PROVIDER_IDENTITY_STATUS_LABELS: Readonly<Record<CommunicationProviderIdentityStatus, string>> = {
+  active: 'Active',
+  unmapped: 'Unmapped',
+  disabled: 'Disabled',
+  reauth_required: 'Needs re-authorization',
+};
 
 export interface CommunicationProviderIdentity {
   readonly recruiter_id: string;
@@ -67,6 +76,24 @@ export const COMMUNICATION_DISPOSITION_OUTCOMES = [
 ] as const;
 export type CommunicationDispositionOutcome =
   (typeof COMMUNICATION_DISPOSITION_OUTCOMES)[number];
+
+// Display labels for the call disposition outcome (the disposition picker + the
+// voice-evidence "latest outcome" line).
+export const DISPOSITION_LABELS: Readonly<Record<CommunicationDispositionOutcome, string>> = {
+  connected: 'Connected — spoke with talent',
+  interested: 'Interested',
+  callback_requested: 'Callback requested',
+  follow_up_required: 'Follow-up required',
+  left_voicemail: 'Left voicemail',
+  no_answer: 'No answer',
+  busy: 'Busy',
+  wrong_number: 'Wrong number',
+  not_interested: 'Not interested',
+  do_not_contact: 'Do not contact',
+};
+export function dispositionOutcomeLabel(code: string): string {
+  return codeLabel(DISPOSITION_LABELS, code);
+}
 
 // COMM-C2A — provider-neutral derived voice evidence for a Talent × Requisition
 // (mirror of VoiceEngagementEvidenceDto). Lane-2 facts only — no vendor key.

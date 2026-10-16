@@ -13,6 +13,7 @@ import {
 import { ZoomPhoneEmbed, type ZoomEmbedLoader } from './ZoomPhoneEmbed';
 import {
   COMMUNICATION_DISPOSITION_OUTCOMES,
+  DISPOSITION_LABELS,
   type CallRegardingContext,
   type CommunicationDispositionOutcome,
   type CommunicationInteractionView,
@@ -50,19 +51,6 @@ function phoneOptions(t: CallTalent): PhoneOption[] {
     { key: 'home' as const, label: 'Home', number: t.phone_home },
   ].filter((o): o is PhoneOption => o.number !== null && o.number.length > 0);
 }
-
-const DISPOSITION_LABELS: Record<CommunicationDispositionOutcome, string> = {
-  connected: 'Connected — spoke with talent',
-  interested: 'Interested',
-  callback_requested: 'Callback requested',
-  follow_up_required: 'Follow-up required',
-  left_voicemail: 'Left voicemail',
-  no_answer: 'No answer',
-  busy: 'Busy',
-  wrong_number: 'Wrong number',
-  not_interested: 'Not interested',
-  do_not_contact: 'Do not contact',
-};
 
 type IdentityState =
   | { kind: 'loading' }

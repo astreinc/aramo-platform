@@ -58,6 +58,8 @@ describe('ConsentHistoryPanel', () => {
         ),
       ).toBeInTheDocument();
     });
+    expect(screen.getAllByText('Profile storage').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('profile_storage')).toBeNull();
   });
 
   it('loads a second page and forwards the opaque cursor verbatim', async () => {

@@ -122,14 +122,14 @@ describe('RequisitionTalentBoard (TB-2)', () => {
             key: 'submitted',
             owner: 'submittal',
             count: 1,
-            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true, label: 'Submitted résumé', display_date: '2026-09-20T00:00:00Z', tailored_for_requisition: false } })],
+            cards: [card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'submitted', owner: 'submittal', owner_state: 'submitted_to_client', resume: { resume_edition_id: 're1', source: 'submitted_frozen', locked: true, label: 'Submitted resume', display_date: '2026-09-20T00:00:00Z', tailored_for_requisition: false } })],
           },
         ],
       }),
     );
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} />);
     // The frozen submitted edition surfaces its authoritative date (never a bare "submitted").
-    expect(await screen.findByText('Résumé · Sep 2026')).toBeInTheDocument();
+    expect(await screen.findByText('Resume · Sep 2026')).toBeInTheDocument();
   });
 
   it('renders the collapsed Closed panel with canonical reason labels', async () => {
@@ -418,15 +418,15 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(onSelectCard).toHaveBeenCalledWith('pipe-7');
   });
 
-  // Gap 3 / SEAM 3 — résumé vocabulary from the authoritative edition metadata.
-  it('renders the résumé edition vocabulary (general / tailored-for-REQ / empty)', async () => {
+  // Gap 3 / SEAM 3 — resume vocabulary from the authoritative edition metadata.
+  it('renders the resume edition vocabulary (general / tailored-for-REQ / empty)', async () => {
     const general = card({
       talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted',
-      resume: { resume_edition_id: 're1', source: 'working_selection', locked: false, label: 'General BA résumé', display_date: '2026-09-15T00:00:00Z', tailored_for_requisition: false },
+      resume: { resume_edition_id: 're1', source: 'working_selection', locked: false, label: 'General BA resume', display_date: '2026-09-15T00:00:00Z', tailored_for_requisition: false },
     });
     const tailored = card({
       talent_record_id: 't2', pipeline_id: 'p2', column: 'qualified', owner_state: 'qualified',
-      resume: { resume_edition_id: 're2', source: 'working_selection', locked: false, label: 'Tailored résumé', display_date: '2026-09-21T00:00:00Z', tailored_for_requisition: true },
+      resume: { resume_edition_id: 're2', source: 'working_selection', locked: false, label: 'Tailored resume', display_date: '2026-09-21T00:00:00Z', tailored_for_requisition: true },
     });
     const none = card({
       talent_record_id: 't3', pipeline_id: 'p3', column: 'pipeline', owner_state: 'no_contact',
@@ -444,9 +444,9 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     );
     render(<RequisitionTalentBoard requisitionId="r1" reqCode="REQ-1001" talentNames={NAMES} onSelectCard={vi.fn()} />);
     await screen.findByLabelText('Talent board');
-    expect(screen.getByText('Résumé · Sep 2026')).toBeInTheDocument();
-    expect(screen.getByText('Résumé · tailored for REQ-1001 · Sep 21')).toBeInTheDocument();
-    expect(screen.getByText('No résumé selected')).toBeInTheDocument();
+    expect(screen.getByText('Resume · Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('Resume · tailored for REQ-1001 · Sep 21')).toBeInTheDocument();
+    expect(screen.getByText('No resume selected')).toBeInTheDocument();
   });
 
   // Gaps 2/5/6/7 — the actionable "Send RTR ›" chip (talent_responded / qualifying, required

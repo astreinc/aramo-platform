@@ -44,18 +44,31 @@ export interface RtrBindingDescriptor {
 
 export const RTR_BINDING_CATALOG: readonly RtrBindingDescriptor[] = [
   { key: 'talent.full_name', label: 'Talent full name', group: 'Talent', sample: 'Ravi Shankar' },
+  // Amendment A2 — the talent's STATED desired rate (TalentRecord.desired_pay), NOT an
+  // agreed rate: never bound to / substituted for / labelled as agreed_pay_rate.*.
+  { key: 'talent.desired_pay_rate', label: 'Desired pay rate', group: 'Talent', sample: '$70/hr' },
   { key: 'client.name', label: 'Client name', group: 'Client', sample: 'Mindlance' },
   { key: 'requisition.title', label: 'Requisition title', group: 'Requisition', sample: 'Business Analyst - Multi-Family' },
   { key: 'requisition.reference', label: 'Requisition reference', group: 'Requisition', sample: 'REQ-1001' },
-  { key: 'recruiting_company.name', label: 'Recruiting organization name', group: 'Recruiting organization', sample: 'Astre Consulting' },
+  // Slice 1 B3 — Requisition.description flattened to plain text (paragraph breaks kept);
+  // null/blank fails closed like every other binding. Multi-line in the renderer.
+  {
+    key: 'requisition.description',
+    label: 'Job description',
+    group: 'Requisition',
+    sample: 'Analyze business requirements for multi-family housing programs.\n\nPartner with stakeholders to define scope and acceptance criteria.',
+  },
+  { key: 'recruiting_company.name', label: 'Recruiting company', group: 'Recruiting organization', sample: 'Astre Consulting' },
   { key: 'recruiter.display_name', label: 'Recruiter name', group: 'Recruiter', sample: 'Deepika Rao' },
 ] as const;
 
 export const RTR_BINDING_KEYS = [
   'talent.full_name',
+  'talent.desired_pay_rate',
   'client.name',
   'requisition.title',
   'requisition.reference',
+  'requisition.description',
   'recruiting_company.name',
   'recruiter.display_name',
 ] as const;

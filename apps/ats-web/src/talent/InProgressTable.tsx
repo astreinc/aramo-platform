@@ -170,7 +170,7 @@ export function InProgressTable({ items, onChanged }: InProgressTableProps): JSX
         title="Discard this unfinished talent?"
         description={
           confirm !== null
-            ? `${confirm.name} — the uploaded résumé is deleted. This can't be undone.`
+            ? `${confirm.name} — the uploaded resume is deleted. This can't be undone.`
             : ''
         }
         size="sm"
@@ -185,7 +185,7 @@ export function InProgressTable({ items, onChanged }: InProgressTableProps): JSX
           </>
         }
       >
-        <p className="rc-empty">This removes the draft and its uploaded résumé.</p>
+        <p className="rc-empty">This removes the draft and its uploaded resume.</p>
       </Dialog>
     </>
   );

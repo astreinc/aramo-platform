@@ -12,6 +12,7 @@
 
 import { PIPELINE_STATUS_LABELS } from '../pipeline/types';
 
+import { withCurrency } from './stated-fields';
 import type { TalentRecordView } from './types';
 
 // ── Enrichment vocab (composed fields; labels for the cross-facet displays) ──
@@ -165,9 +166,7 @@ export function locationOf(t: TalentRecordView): string {
 export function statedRate(t: TalentRecordView): string {
   const raw = (t.current_pay ?? t.desired_pay ?? '').trim();
   if (raw === '') return '—';
-  // Default the currency to $ for every rate — the pay fields are free text, so
-  // prepend $ whenever the stated value doesn't already carry a currency symbol.
-  return /^[$€£]/.test(raw) ? raw : `$${raw}`;
+  return withCurrency(raw);
 }
 
 // The "Unknown" availability bucket = null (never captured) OR the explicit

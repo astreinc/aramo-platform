@@ -35,17 +35,24 @@ describe('RtrTemplateCapabilities (T1 port)', () => {
     expect(caps.isConfigurable(OTHER)).toBe(false);
   });
 
-  it('listAllowedBindings: the 6 RTR bindings (labels+groups); empty for non-configurable', () => {
+  // Slice 1 B3 adds requisition.description ("Job description"); Amendment A2 adds
+  // talent.desired_pay_rate ("Desired pay rate") → 8 bindings.
+  it('listAllowedBindings: the 8 RTR bindings (labels+groups); empty for non-configurable', () => {
     const b = caps.listAllowedBindings(RTR);
     expect(b.map((x) => x.key)).toEqual([
       'talent.full_name',
+      'talent.desired_pay_rate',
       'client.name',
       'requisition.title',
       'requisition.reference',
+      'requisition.description',
       'recruiting_company.name',
       'recruiter.display_name',
     ]);
     expect(b.every((x) => x.label.length > 0 && x.group.length > 0)).toBe(true);
+    expect(b.find((x) => x.key === 'talent.desired_pay_rate')).toEqual({ key: 'talent.desired_pay_rate', label: 'Desired pay rate', group: 'Talent' });
+    expect(b.some((x) => x.key.startsWith('agreed_pay_rate') || /agreed/i.test(x.label))).toBe(false);
+    expect(b.find((x) => x.key === 'requisition.description')).toEqual({ key: 'requisition.description', label: 'Job description', group: 'Requisition' });
     expect(caps.listAllowedBindings(OTHER)).toEqual([]);
   });
 
@@ -70,6 +77,13 @@ describe('RtrTemplateCapabilities (T1 port)', () => {
     );
     expect(p.blocks[0]!.text).toBe('Ravi Shankar / Mindlance / REQ-1001 / Deepika Rao');
     expect(p.title).toBe('Right to Represent');
+    // Slice 1 B2 — the fixed signature block, PRINTED NAME = the talent.full_name sample.
+    expect(p.signature_block).toEqual({ printed_name: 'Ravi Shankar' });
+  });
+
+  it('renderSamplePreview: Desired pay rate uses the fixed sample $70/hr (A2), Job description its sample (B3)', () => {
+    const p = caps.renderSamplePreview(input([{ type: 'TEXT', text: 'Rate {{talent.desired_pay_rate}}. {{requisition.description}}' }]));
+    expect(p.blocks[0]?.text.startsWith('Rate $70/hr. Analyze business requirements')).toBe(true);
   });
 
   it('renderSamplePreview: refuses unknown binding (never previews a non-catalog token)', () => {

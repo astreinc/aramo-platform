@@ -2,7 +2,7 @@ import { apiClient } from '@aramo/fe-foundation';
 
 import type { TalentRecordView } from './types';
 
-// Durable Async Résumé-First Talent Intake — FE client. The durable record is
+// Durable Async Resume-First Talent Intake — FE client. The durable record is
 // the authority: every call reads/writes the persisted TalentIntakeDraft, so the
 // recruiter can leave and return (any session/device). SSE is NOTIFICATION-ONLY
 // — on a 'draft' event the FE refetches the authoritative GET.
@@ -135,7 +135,7 @@ export async function promoteTalentIntakeDraft(id: string): Promise<TalentRecord
   return apiClient.post<TalentRecordView>(`${BASE}/${encodeURIComponent(id)}/promote`, {});
 }
 
-// Replace the résumé on an existing draft → fresh presigned upload target; the
+// Replace the resume on an existing draft → fresh presigned upload target; the
 // browser uploads then calls completeTalentIntakeUpload (re-queues extraction).
 export async function replaceTalentIntakeResume(
   id: string,
@@ -147,7 +147,7 @@ export async function replaceTalentIntakeResume(
   );
 }
 
-// Discard an unfinished draft (and its résumé object). The only deletion path —
+// Discard an unfinished draft (and its resume object). The only deletion path —
 // no age-based auto-deletion.
 export async function discardTalentIntakeDraft(id: string): Promise<void> {
   return apiClient.delete<void>(`${BASE}/${encodeURIComponent(id)}`);

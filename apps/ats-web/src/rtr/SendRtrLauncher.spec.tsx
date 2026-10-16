@@ -50,7 +50,9 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     vi.mocked(composeRtr).mockResolvedValue(COMPOSE);
     renderLauncher();
     expect(await screen.findByText('Standard Right to Represent · v2')).toBeInTheDocument();
-    expect(screen.getByText('Approved by your organization')).toBeInTheDocument();
+    // Provenance is ONE line: `{name} · v{n} · Approved by your organization` + lock.
+    expect(screen.getByTestId('send-rtr-provenance').textContent).toBe('Standard Right to Represent · v2 · Approved by your organization');
+    expect(screen.getByTestId('send-rtr-provenance').querySelector('svg')).not.toBeNull();
     expect(screen.getByTestId('send-rtr-recipient').textContent).toContain('ada@example.com');
     expect(composeRtr).toHaveBeenCalledWith('t-1', 'r-1');
     // No template selector (locked ruling).
@@ -66,6 +68,27 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     expect(within(preview).getByText('Right to Represent — Business Analyst')).toBeInTheDocument();
     expect(within(preview).getByText('Authorization')).toBeInTheDocument();
     expect(within(preview).getByText(/I authorize Astre/)).toBeInTheDocument();
+  });
+
+  it('"Preview document" renders an rtr-html-v1 compose preview (formatted, real-bound, no raw markup)', async () => {
+    vi.mocked(composeRtr).mockResolvedValue({
+      ...COMPOSE,
+      preview: {
+        title: 'Right to Represent',
+        blocks: [],
+        html: '<h2>Scope</h2><p>I authorize <b>Astre</b> to represent <span data-sample="talent.full_name">Ada Lovelace</span>.</p><ul><li>Only this requisition.</li></ul><script>alert(1)</script>',
+      },
+    });
+    renderLauncher();
+    await screen.findByText('Standard Right to Represent · v2');
+    fireEvent.click(screen.getByTestId('send-rtr-preview'));
+    const doc = await screen.findByTestId('send-rtr-compose-html');
+    expect(within(doc).getByText('Scope').tagName).toBe('H2');
+    expect(within(doc).getByText('Astre').tagName).toBe('B');
+    expect(within(doc).getByText('Ada Lovelace')).toBeInTheDocument();
+    expect(within(doc).getByText('Only this requisition.').tagName).toBe('LI');
+    expect(doc.querySelector('script')).toBeNull();
+    expect(doc.textContent).not.toContain('alert(1)');
   });
 
   it('"Send for signature" runs the governed request→send lifecycle then closes + notifies', async () => {

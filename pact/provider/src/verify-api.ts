@@ -488,6 +488,23 @@ const DOCUMENTS_DOC2_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20260922130000_doc2_templates_rendering_requirements/migration.sql',
 );
+// DOC-TEMPLATE-ADMIN-RTR-1 — additive TemplateVersion columns (activated_by +
+// content_fingerprint + previewed_fingerprint) + the one-DRAFT partial unique index.
+// Changes the returned TemplateVersion shape, so it is registered (CLAUDE.md law);
+// applied AFTER DOC-2. (The 20261004120000 RTR-TEMPLATE-1 default-template backfill is
+// a DATA-only seed — no shape change — and depends on the unregistered DOC-5 RTR
+// DocumentType seed, so it is intentionally NOT registered.)
+const DOCUMENTS_TEMPLATE_ADMIN_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261009120000_doc_template_admin_rtr_1_version_admin/migration.sql',
+);
+// Document Templates slice 1 (B1) — additive nullable TemplateVersion.internal_notes
+// (≤500 CHECK). Changes the returned TemplateVersion shape → registered; after the
+// DOC-TEMPLATE-ADMIN-RTR-1 migration.
+const DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261016160000_doc_template_version_internal_notes/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3706,6 +3723,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // can build the evidence package + persist the workflow record.
         DOCUMENTS_INIT_MIGRATION,
         DOCUMENTS_DOC2_MIGRATION,
+        DOCUMENTS_TEMPLATE_ADMIN_MIGRATION,
+        DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

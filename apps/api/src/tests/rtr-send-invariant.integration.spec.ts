@@ -33,6 +33,7 @@ import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr
 
 const ROOT = resolve(__dirname, '../../../..');
 const ACTOR = randomUUID();
+const CLIENT_COMPANY = randomUUID();
 
 function documentsMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/documents/prisma/migrations');
@@ -51,7 +52,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let binding: RtrTemplateBindingService;
     let render: RenderService;
     let orchestrator: RtrOrchestratorService;
-    const captured: { documents?: Array<{ document_revision_ref: string; source_sha256: string }> } = {};
+    const captured: { documents?: Array<{ document_revision_ref: string; source_sha256: string }>; subject?: string } = {};
 
     async function activeRtrTemplate(tenant: string): Promise<{ templateId: string; v1: string }> {
       const tpl = await templates.createTemplate({
@@ -102,8 +103,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // T2b: the 4 new resolver repos are unused by the talent.full_name default template.
       binding = new RtrTemplateBindingService(fakeTalent, {} as never, {} as never, {} as never, {} as never);
       const fakeSignature = {
-        createEnvelope: async (input: { documents: Array<{ document_revision_ref: string; source_sha256: string }> }) => {
+        createEnvelope: async (input: { subject: string; documents: Array<{ document_revision_ref: string; source_sha256: string }> }) => {
           captured.documents = input.documents;
+          captured.subject = input.subject;
           return { envelope_id: 'env-1' };
         },
         sendEnvelope: async () => ({ status: 'SENT' }),
@@ -111,7 +113,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         findEnvelopeForDocument: async () => null,
       } as unknown as SignatureProviderPort;
 
-      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, templates, storageStub);
+      // Slice 1 (C) — request() derives the CLIENT company from the requisition; the
+      // supplied company_id must match it.
+      const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY } as never;
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, templates, storageStub, fakeRequisitions);
     }, 180_000);
 
     afterAll(async () => {
@@ -134,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: tenant,
         talent_id: talent,
         requisition_id: randomUUID(),
-        company_id: randomUUID(),
+        company_id: CLIENT_COMPANY,
         created_by: ACTOR,
         requestId: randomUUID(),
       });
@@ -185,6 +190,81 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(after?.template_version_id).toBe(v1);
 
       vi.restoreAllMocks();
+    });
+
+    // Amendment A1 — an ACTIVE rtr-html-v1 template renders through the REAL pdf-lib rich
+    // path on real Postgres: frozen revision pinned to the version, rich manifest, the
+    // signature block geometry, and send consumes it without re-rendering.
+    it('rtr-html-v1: request renders the rich content into a frozen revision; send consumes it', async () => {
+      const tenant = randomUUID();
+      const tpl = await templates.createTemplate({ tenant_id: tenant, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, name: 'HTML RTR', template_kind: 'GENERATED', created_by: ACTOR });
+      const v = await templates.createVersion({
+        tenant_id: tenant,
+        template_id: tpl.id,
+        render_schema_version: 'rtr-html-v1',
+        field_schema: { render_schema_version: 'rtr-html-v1', title: 'Exclusive RTR', html: '<h2>Scope</h2><p>For <b><span data-field="talent.full_name"></span></b></p><ul><li>one</li><li>two</li></ul>', logo: null },
+        created_by: ACTOR,
+      });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v.id, actor_id: ACTOR, require_preview: false });
+      const { document_id } = await orchestrator.request({ tenant_id: tenant, talent_id: randomUUID(), requisition_id: randomUUID(), created_by: ACTOR, requestId: randomUUID() });
+      const frozen = await docsRepo.getCurrentRevision(tenant, document_id);
+      expect(frozen?.template_version_id).toBe(v.id);
+      const manifest = frozen?.render_manifest as { model: { render_schema_version: string; rich_blocks: unknown[]; bound_html?: unknown }; signature_fields: unknown[] };
+      expect(manifest.model.render_schema_version).toBe('rich-v1');
+      expect(manifest.model.rich_blocks).toHaveLength(3);
+      expect(manifest.model.bound_html).toBeUndefined();
+      expect(manifest.signature_fields).toHaveLength(3);
+      await orchestrator.send({ tenant_id: tenant, document_id, talent_id: randomUUID(), created_by: ACTOR, requestId: randomUUID() });
+      expect(captured.subject).toBe('Exclusive RTR');
+      expect(captured.documents?.[0]?.source_sha256).toBe(frozen?.content_sha256);
+    });
+
+    // Document Templates slice 1 (E, PO ruling 3) — Document.title + envelope subject
+    // follow the admin's document title from the PINNED version; a later activation
+    // with a different title cannot change the subject of an already-requested RTR.
+    it('Document.title and the envelope subject come from the pinned version title, not a later activation', async () => {
+      const tenant = randomUUID();
+      const tpl = await templates.createTemplate({
+        tenant_id: tenant,
+        document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+        name: 'Exclusive RTR',
+        template_kind: 'GENERATED',
+        created_by: ACTOR,
+      });
+      const v1 = await templates.createVersion({
+        tenant_id: tenant,
+        template_id: tpl.id,
+        render_schema_version: RTR_GENERATED_SCHEMA_V1,
+        field_schema: { ...DEFAULT_RTR_TEMPLATE_CONTENT_V1, title: 'Exclusive Right to Represent Agreement' },
+        created_by: ACTOR,
+      });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v1.id, actor_id: ACTOR, require_preview: false });
+
+      const { document_id } = await orchestrator.request({
+        tenant_id: tenant,
+        talent_id: randomUUID(),
+        requisition_id: randomUUID(),
+        created_by: ACTOR,
+        requestId: randomUUID(),
+      });
+      expect((await docsRepo.getDocument(tenant, document_id)).title).toBe('Exclusive Right to Represent Agreement');
+      // B2 — the frozen revision carries the renderer-computed signature-block geometry.
+      const frozen = await docsRepo.getCurrentRevision(tenant, document_id);
+      const manifest = frozen?.render_manifest as { signature_fields?: Array<{ field_type: string }>; model?: { signature_block?: unknown } };
+      expect(manifest.signature_fields?.map((f) => f.field_type)).toEqual(['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE']);
+      expect(manifest.model?.signature_block).toEqual({ printed_name: 'Jordan Lee' });
+
+      const v2 = await templates.createVersion({
+        tenant_id: tenant,
+        template_id: tpl.id,
+        render_schema_version: RTR_GENERATED_SCHEMA_V1,
+        field_schema: { ...DEFAULT_RTR_TEMPLATE_CONTENT_V1, title: 'Some Later Title' },
+        created_by: ACTOR,
+      });
+      await templates.activateVersion({ tenant_id: tenant, version_id: v2.id, actor_id: ACTOR, require_preview: false });
+
+      await orchestrator.send({ tenant_id: tenant, document_id, talent_id: randomUUID(), created_by: ACTOR, requestId: randomUUID() });
+      expect(captured.subject).toBe('Exclusive Right to Represent Agreement');
     });
   },
 );

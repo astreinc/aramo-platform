@@ -74,8 +74,8 @@ describe('PolicyHistoryPanel', () => {
     render(<PolicyHistoryPanel domain="client-submittal" companyId="co-1" onBack={vi.fn()} />);
     await waitFor(() => expect(screen.getByText('Version 2')).toBeInTheDocument());
     expect(screen.getByText('Version 1')).toBeInTheDocument();
-    expect(screen.getByText('current')).toBeInTheDocument();
-    expect(screen.getByText('superseded')).toBeInTheDocument();
+    expect(screen.getByText('Current')).toBeInTheDocument();
+    expect(screen.getByText('Superseded')).toBeInTheDocument();
     expect(screen.getAllByText(/Priya Shah/).length).toBeGreaterThanOrEqual(1);
   });
 });

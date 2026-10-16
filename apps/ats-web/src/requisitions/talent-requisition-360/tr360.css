@@ -13,8 +13,9 @@
   --tr-row-2: #edf0f3;
   --tr-control: #d5dbe1;
   --tr-canvas: #f4f6fa;
+  --tr360-top: 0px;
   display: flex;
-  min-height: 100vh;
+  min-height: calc(100vh - var(--tr360-top));
   background: var(--tr-canvas);
   font-family: 'Hanken Grotesk', system-ui, sans-serif;
   color: var(--tr-ink);
@@ -41,33 +42,12 @@
   font-weight: 500;
 }
 
-/* ── Route chrome: icon-only app nav (64px), no top bar, edge-to-edge content ── */
-body.tr360-route .rc-app {
-  grid-template-columns: 64px 1fr;
-}
-body.tr360-route .rc-rail {
-  padding: 18px 8px;
-}
-body.tr360-route .rc-nav__label,
-body.tr360-route .rc-nav__item span:not(.rc-nav__count),
-body.tr360-route .rc-nav__count,
-body.tr360-route .rc-rail__who,
-body.tr360-route .rc-rail__name,
-body.tr360-route .rc-rail__logout span,
-body.tr360-route .rc-nav__section-toggle,
-body.tr360-route .rc-rail-toggle,
-body.tr360-route .rc-topbar {
-  display: none;
-}
-body.tr360-route .rc-nav__item,
-body.tr360-route .rc-rail__user,
-body.tr360-route .rc-rail__brand,
-body.tr360-route .rc-rail__logout {
-  justify-content: center;
-}
-body.tr360-route .rc-nav__section--collapsed .rc-nav__group {
-  display: flex;
-}
+/* ── Route chrome ──
+   The app shell (main nav + top bar) stays exactly as on every other screen —
+   the main nav follows the user's own collapse preference. Only the content
+   padding is removed so the page runs edge-to-edge. --tr360-top is the shell
+   top bar's height (set by the view), so the sticky section nav and header sit
+   BELOW it. */
 body.tr360-route .rc-content {
   padding: 0;
 }
@@ -131,172 +111,7 @@ body.tr360-route .rc-content {
   cursor: default;
 }
 
-/* ── Section nav (§3.2) ── */
-.tr360-sec {
-  width: 232px;
-  flex: none;
-  background: #fff;
-  border-right: 1px solid var(--tr-line);
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-.tr360-sec--collapsed {
-  width: 60px;
-}
-.tr360-sec__top {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 10px 10px 4px;
-  justify-content: flex-start;
-}
-.tr360-sec--collapsed .tr360-sec__top {
-  justify-content: center;
-}
-.tr360-sec__back {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  min-width: 0;
-  flex: 1;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-}
-.tr360 .tr360-sec__back {
-  color: var(--tr-muted);
-}
-.tr360 .tr360-sec__back:hover {
-  color: var(--tr-brand);
-}
-.tr360-sec__back svg {
-  flex: none;
-}
-.tr360-sec__back span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tr360-sec__toggle {
-  width: 30px;
-  height: 30px;
-  border: 1px solid var(--tr-line);
-  background: #fff;
-  color: var(--tr-muted);
-  border-radius: 8px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  flex: none;
-  padding: 0;
-}
-.tr360-sec__toggle:hover {
-  background: var(--tr-canvas);
-  color: var(--tr-ink);
-}
-.tr360-sec__who {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 8px 16px 14px;
-  border-bottom: 1px solid var(--tr-row-2);
-}
-.tr360-sec--collapsed .tr360-sec__who {
-  padding: 8px 0 12px;
-  justify-content: center;
-}
-.tr360-sec__avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: #1f3a8a;
-  color: #fff;
-  display: grid;
-  place-items: center;
-  font-size: 14px;
-  font-weight: 700;
-  flex: none;
-}
-.tr360-sec--collapsed .tr360-sec__avatar {
-  width: 32px;
-  height: 32px;
-  font-size: 11px;
-}
-.tr360-sec__whotext {
-  min-width: 0;
-}
-.tr360-sec__name {
-  display: block;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.tr360-sec__subtitle {
-  display: block;
-  font-size: 12px;
-  color: var(--tr-muted);
-  margin-top: 1px;
-}
-.tr360-sec__active {
-  display: inline-block;
-  margin-top: 5px;
-  border-radius: 9px;
-  padding: 1.5px 8px;
-  font-size: 10.5px;
-  font-weight: 700;
-}
-.tr360-sec__list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px;
-}
-.tr360-sec__item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-start;
-  border: none;
-  background: transparent;
-  color: #3a454e;
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left;
-}
-.tr360-sec--collapsed .tr360-sec__item {
-  justify-content: center;
-}
-.tr360-sec__item:hover {
-  background: var(--tr-canvas);
-  color: var(--tr-ink);
-}
-.tr360-sec__item--back {
-  color: var(--tr-muted);
-}
-.tr360-sec__item--on,
-.tr360-sec__item--on:hover {
-  background: var(--tr-tint);
-  color: var(--tr-brand-dark);
-  font-weight: 700;
-}
-.tr360-sec__item svg {
-  flex: none;
-}
-.tr360-sec__label {
-  flex: 1;
-  white-space: nowrap;
-}
+/* Section nav: the shared component (shell/section-nav). */
 .tr360-badge {
   font-size: 10.5px;
   font-weight: 700;
@@ -316,8 +131,8 @@ body.tr360-route .rc-content {
   border-bottom: 1px solid var(--tr-line);
   padding: 14px 24px 0;
   position: sticky;
-  top: 0;
-  z-index: 20;
+  top: var(--tr360-top);
+  z-index: 4;
 }
 .tr360-crumbs {
   display: flex;
@@ -515,6 +330,8 @@ body.tr360-route .rc-content {
   margin: 14px 0 0;
   padding-bottom: 12px;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 .tr360-step {
   display: flex;
@@ -585,6 +402,13 @@ body.tr360-route .rc-content {
   border-top: 1px solid var(--tr-row-2);
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
+}
+/* Only the page scrollbar is visible (§3.1): the section nav, stepper and tab
+   strip scroll with hidden scrollbars. */
+.tr360-steps::-webkit-scrollbar,
+.tr360-tabs::-webkit-scrollbar {
+  display: none;
 }
 .tr360-tab {
   border: none;

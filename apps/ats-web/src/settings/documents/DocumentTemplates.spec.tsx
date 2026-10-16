@@ -76,6 +76,11 @@ describe('DocumentTemplatesSection — list table (§6)', () => {
     expect(screen.queryByTestId('doc-template-manage-RIGHT_TO_REPRESENT')).toBeNull();
   });
 
+  it('uses the Settings section gutter (.set-content)', () => {
+    renderList(<DocumentTemplatesSection sessionOverride={MANAGER} />);
+    expect(screen.getByTestId('doc-templates-page')).toHaveClass('set-content');
+  });
+
   it('Manage navigates to the RTR detail', async () => {
     renderList(<DocumentTemplatesSection sessionOverride={MANAGER} />);
     fireEvent.click(screen.getByTestId('doc-template-manage-RIGHT_TO_REPRESENT'));
@@ -144,5 +149,85 @@ describe('RtrTemplateDetail — version history (§7)', () => {
     fireEvent.click(await screen.findByTestId('rtr-detail-draft'));
     await waitFor(() => expect(createDraftFn).toHaveBeenCalledWith('tpl-rtr'));
     expect(await screen.findByTestId('rtr-draft-landing')).toBeInTheDocument();
+  });
+
+  it('uses the Settings section gutter (.set-content)', async () => {
+    renderDetail({ sessionOverride: MANAGER, ...base, listVersionsFn: () => Promise.resolve([version('v2', 2, 'ACTIVE')]) });
+    await screen.findByTestId('rtr-version-history');
+    expect(screen.getByTestId('rtr-detail-page')).toHaveClass('set-content');
+  });
+
+  it('previews a DRAFT through the server render; an ACTIVE version shows its wording with field chips (no invented values)', async () => {
+    const previewFn = vi.fn().mockResolvedValue({ title: 'RTR — Sample', blocks: [{ type: 'TEXT', text: 'Hi Server Sample Talent' }] });
+    renderDetail({ sessionOverride: MANAGER, ...base, previewFn, listVersionsFn: () => Promise.resolve([version('v2', 2, 'ACTIVE'), version('v3', 3, 'DRAFT')]) });
+    const draftRow = await screen.findByTestId('rtr-version-3');
+    fireEvent.click(within(draftRow).getByText('Preview'));
+    await waitFor(() => expect(previewFn).toHaveBeenCalledWith('v3'));
+    expect(await screen.findByTestId('dt-preview-paper')).toHaveTextContent('Hi Server Sample Talent');
+    fireEvent.click(screen.getByTestId('dt-preview-close'));
+
+    fireEvent.click(screen.getByTestId('rtr-preview-active'));
+    const paper = await screen.findByTestId('dt-preview-paper');
+    expect(previewFn).toHaveBeenCalledTimes(1);
+    expect(within(paper).getByText('Talent full name')).toHaveClass('dt-chip');
+    expect(screen.getByTestId('dt-preview-modal').textContent).not.toMatch(/Ravi Shankar|agreed pay|Talent signature/i);
+  });
+
+  it('Discard on the DRAFT row (manage only) confirms and calls DELETE; never offered on ACTIVE/RETIRED', async () => {
+    const discardFn = vi.fn().mockResolvedValue(undefined);
+    let versions = [version('v1', 1, 'RETIRED'), version('v2', 2, 'ACTIVE'), version('v3', 3, 'DRAFT')];
+    const listVersionsFn = vi.fn().mockImplementation(() => Promise.resolve(versions));
+    renderDetail({ sessionOverride: MANAGER, ...base, listVersionsFn, discardFn });
+    await screen.findByTestId('rtr-version-3');
+    expect(screen.getAllByTestId('rtr-detail-discard')).toHaveLength(1);
+    expect(within(screen.getByTestId('rtr-version-3')).getByTestId('rtr-detail-discard')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('rtr-detail-discard'));
+    expect(await screen.findByTestId('dt-discard-modal')).toHaveTextContent('Discard draft v3?');
+    versions = versions.filter((v) => v.status !== 'DRAFT');
+    fireEvent.click(screen.getByTestId('dt-discard-confirm'));
+    await waitFor(() => expect(discardFn).toHaveBeenCalledWith('v3'));
+    await waitFor(() => expect(screen.queryByTestId('rtr-version-3')).toBeNull());
+    expect(screen.queryByTestId('rtr-detail-discard')).toBeNull();
+  });
+
+  it('a reader never sees Discard', async () => {
+    renderDetail({ sessionOverride: READER, ...base, listVersionsFn: () => Promise.resolve([version('v2', 2, 'ACTIVE'), version('v3', 3, 'DRAFT')]) });
+    await screen.findByTestId('rtr-version-3');
+    expect(screen.queryByTestId('rtr-detail-discard')).toBeNull();
+  });
+
+  it('Approved content draws the fixed signature block ONLY when the version view carries signature_block', async () => {
+    const { unmount } = renderDetail({ sessionOverride: READER, ...base, listVersionsFn: () => Promise.resolve([version('v2', 2, 'ACTIVE')]) });
+    await screen.findByTestId('rtr-version-history');
+    expect(screen.queryByTestId('rtr-approved-signature')).toBeNull();
+    unmount();
+    const withSig = { ...version('v2', 2, 'ACTIVE'), signature_block: { printed_name: null } } as TemplateVersionView;
+    renderDetail({ sessionOverride: READER, ...base, listVersionsFn: () => Promise.resolve([withSig]) });
+    const sig = await screen.findByTestId('rtr-approved-signature');
+    expect(sig).toHaveTextContent('PRINTED NAME');
+    expect(within(sig).getByText('Talent full name')).toHaveClass('dt-chip');
+  });
+
+  it('Approved content renders rtr-html-v1 through the safe renderer: marks, lists, chips, letterhead — no raw markup', async () => {
+    const html = '<div data-asset="tenant.logo"></div><p>Hi <b>bold</b> <span data-field="talent.full_name"></span></p><ul><li>One</li></ul><script>bad()</script>';
+    const v = {
+      ...version('v2', 2, 'ACTIVE'),
+      render_schema_version: 'rtr-html-v1',
+      field_schema: { render_schema_version: 'rtr-html-v1', title: 'Right to Represent', html },
+      logo: { asset_id: 'a1', mime: 'image/png' },
+    } as TemplateVersionView;
+    renderDetail({
+      sessionOverride: READER, ...base, listBindingsFn: undefined,
+      catalogFn: () => Promise.resolve({ bindings: BINDINGS, tenantLogo: { available: true, tenant_name: 'Astre Consulting Services Inc' } }),
+      listVersionsFn: () => Promise.resolve([v]),
+    });
+    const doc = await screen.findByTestId('rtr-approved-doc');
+    expect(doc.querySelector('b')).toHaveTextContent('bold');
+    expect(doc.querySelectorAll('li')).toHaveLength(1);
+    expect(within(doc).getByText('Talent full name').closest('.dt-chip')).not.toBeNull();
+    expect(doc.querySelector('script')).toBeNull();
+    const lh = within(doc).getByTestId('dt-doc-letterhead');
+    expect(lh).toHaveTextContent('Astre Consulting Services Inc');
+    expect(within(lh).getByRole('img')).toHaveAttribute('src', '/v1/document-templates/versions/v2/logo/content?v=a1');
   });
 });
