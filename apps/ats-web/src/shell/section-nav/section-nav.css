@@ -1,0 +1,262 @@
+/* Shared talent section nav — Talent 360 + Talent × Requisition 360. Values from
+   the design authority prototypes; the two specs' differences are the
+   .secnav--talent / .secnav--opportunity modifiers below. --secnav-top is the
+   offset of the sticky shell top bar (set by the page). */
+
+.secnav {
+  --secnav-top: var(--page-top, 0px);
+  width: 232px;
+  flex: none;
+  box-sizing: border-box;
+  min-width: 0;
+  background: #fff;
+  border-right: 1px solid #e5e9ed;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  color: #1b2730;
+  transition: width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.secnav--collapsed {
+  width: 60px;
+}
+.secnav :focus-visible {
+  outline: 2px solid #022ac0;
+  outline-offset: 2px;
+}
+.secnav__inner {
+  position: sticky;
+  top: var(--secnav-top);
+  display: flex;
+  flex-direction: column;
+}
+/* Talent 360: no second scroll container — the inner wrapper clips. */
+.secnav--talent .secnav__inner {
+  overflow: hidden;
+}
+/* Talent × Requisition 360: the nav scrolls on its own with a hidden scrollbar. */
+.secnav--opportunity .secnav__inner {
+  height: calc(100vh - var(--secnav-top));
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.secnav--opportunity .secnav__inner::-webkit-scrollbar {
+  display: none;
+}
+
+/* Top row */
+.secnav__top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 10px 4px;
+  justify-content: space-between;
+}
+.secnav--collapsed .secnav__top {
+  justify-content: center;
+}
+.secnav__back {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #5c6770;
+  min-width: 0;
+  flex: 1;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.secnav__back:hover {
+  color: #022ac0;
+}
+.secnav__back svg {
+  flex: none;
+}
+.secnav__back span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.secnav__toggle {
+  width: 30px;
+  height: 30px;
+  border: 1px solid #e5e9ed;
+  background: #fff;
+  color: #5c6770;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+}
+.secnav__toggle:hover {
+  background: #f4f6fa;
+  color: #1b2730;
+}
+
+/* Talent block */
+.secnav__who {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 16px 14px;
+  border-bottom: 1px solid #edf0f3;
+}
+.secnav--collapsed .secnav__who {
+  padding: 8px 0 12px;
+  justify-content: center;
+}
+.secnav__avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex: none;
+}
+.secnav--talent .secnav__avatar {
+  background: #e8edfb;
+  color: #011f8d;
+}
+.secnav--opportunity .secnav__avatar {
+  background: #1f3a8a;
+  color: #fff;
+}
+.secnav--collapsed .secnav__avatar {
+  width: 32px;
+  height: 32px;
+  font-size: 11px;
+}
+.secnav__whotext {
+  min-width: 0;
+}
+.secnav__name {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.secnav__subtitle {
+  display: block;
+  font-size: 12px;
+  color: #5c6770;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.secnav--opportunity .secnav__subtitle {
+  margin-top: 1px;
+  white-space: normal;
+}
+.secnav__pill {
+  display: inline-block;
+  border-radius: 9px;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: #e6f2ea;
+  color: #1f7a4d;
+  padding: 1px 8px;
+  margin-top: 4px;
+}
+.secnav--opportunity .secnav__pill {
+  padding: 1.5px 8px;
+  margin-top: 5px;
+}
+
+/* Section list */
+.secnav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px 16px;
+}
+.secnav--opportunity .secnav__list {
+  padding: 10px;
+}
+.secnav__group {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #93a0a8;
+  padding: 10px 10px 3px;
+}
+.secnav__sep {
+  height: 1px;
+  background: #edf0f3;
+  margin: 8px 6px;
+}
+.secnav__item,
+.secnav__backitem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: flex-start;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #3a454e;
+  padding: 7px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font: 500 13px 'Hanken Grotesk', sans-serif;
+  text-align: left;
+}
+.secnav--opportunity .secnav__item {
+  padding: 8px 10px;
+}
+.secnav--collapsed .secnav__item {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+.secnav__backitem {
+  justify-content: center;
+  padding: 8px 0;
+  color: #5c6770;
+}
+.secnav__item:hover,
+.secnav__backitem:hover {
+  background: #f4f6fa;
+}
+.secnav__item--on,
+.secnav__item--on:hover {
+  background: #e8edfb;
+  color: #011f8d;
+  font-weight: 700;
+}
+.secnav__item svg {
+  flex: none;
+}
+.secnav__label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.secnav__badge {
+  border-radius: 8px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.secnav__badge--grey {
+  background: #eef1f4;
+  color: #5c6770;
+}
+.secnav__badge--blue {
+  background: #e8edfb;
+  color: #011f8d;
+}
+.secnav__badge--amber {
+  background: #faefd8;
+  color: #946011;
+}

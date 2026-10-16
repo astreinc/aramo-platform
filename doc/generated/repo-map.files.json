@@ -1226,6 +1226,8 @@
     "apps/ats-web/src/shell/breadcrumb.tsx",
     "apps/ats-web/src/shell/me-api.ts",
     "apps/ats-web/src/shell/nav-collapse.tsx",
+    "apps/ats-web/src/shell/section-nav/SectionNav.tsx",
+    "apps/ats-web/src/shell/section-nav/section-nav.css",
     "apps/ats-web/src/sourcing/SourcingPoolView.spec.tsx",
     "apps/ats-web/src/sourcing/SourcingPoolView.tsx",
     "apps/ats-web/src/sourcing/components/AdvisoryResolveDialog.tsx",

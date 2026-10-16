@@ -171,7 +171,7 @@ describe('TalentRequisition360View', () => {
       'Overview', 'Conversation Intelligence', 'Technical Screening', 'Submittal', 'Tasks', 'Notes',
     ]);
     // Section nav, exact order.
-    const nav = screen.getByRole('complementary', { name: 'Talent sections' });
+    const nav = screen.getByRole('navigation', { name: 'Talent sections' });
     expect(within(nav).getAllByRole('button').map((b) => b.getAttribute('title'))).toEqual([
       'Back to REQ-1001 pipeline', 'Collapse talent sections', 'Overview', 'Experience', 'Skills', 'Work authorization',
       'Opportunities', 'Activity', 'Documents', 'Communication', 'Talent Trust', 'Conversation Intelligence',

@@ -22,6 +22,7 @@ import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
 import { getTalent, updateTalent } from '../../talent/talent-api';
 import type { TalentRecordView } from '../../talent/types';
 import { useCompactRailPage } from '../../shell/nav-collapse';
+import { SectionNav, useSectionNavOpen } from '../../shell/section-nav/SectionNav';
 import { getTalent360 } from '../../talent-360/talent-360-api';
 import type { AttentionItemView, Talent360View } from '../../talent-360/talent-360-types';
 import { RemoveFromRequisitionModal } from '../RemoveFromRequisitionModal';
@@ -140,16 +141,6 @@ function Glyph({ d, size = 16, width = 1.8 }: { d: string; size?: number; width?
   );
 }
 
-function useNarrow(breakpoint: number): boolean {
-  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.innerWidth < breakpoint);
-  useEffect(() => {
-    const onResize = (): void => setNarrow(window.innerWidth < breakpoint);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [breakpoint]);
-  return narrow;
-}
-
 export interface TalentRequisition360ViewProps {
   /** Test seam (mirrors the other views): a session instead of the live one. */
   readonly sessionOverride?: Session;
@@ -186,9 +177,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const [reload, setReload] = useState(0);
 
   // ── UI state ──
-  const [secOpenPref, setSecOpenPref] = useState(true);
-  const narrow = useNarrow(900);
-  const secOpen = secOpenPref && !narrow;
+  const [secOpen, toggleSec] = useSectionNavOpen();
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -241,7 +230,10 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     const bar = document.querySelector<HTMLElement>('.rc-topbar');
     const root = rootRef.current;
     if (bar === null || root === null) return;
-    const apply = (): void => root.style.setProperty('--tr360-top', `${bar.offsetHeight}px`);
+    const apply = (): void => {
+      root.style.setProperty('--tr360-top', `${bar.offsetHeight}px`);
+      root.style.setProperty('--page-top', `${bar.offsetHeight}px`);
+    };
     apply();
     const ro = new ResizeObserver(apply);
     ro.observe(bar);
@@ -756,70 +748,28 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
 
   return (
     <div className="tr360" data-testid="tr360" ref={rootRef}>
-      <aside className={`tr360-sec${secOpen ? '' : ' tr360-sec--collapsed'}`} aria-label="Talent sections">
-        <div className="tr360-sec__top">
-          {secOpen ? (
-            <Button unstyled type="button" className="tr360-sec__back" title={backLabel} onClick={back}>
-              <Glyph d={IC.back} size={13} width={2.2} />
-              <span>{backLabel}</span>
-            </Button>
-          ) : null}
-          <Button
-            unstyled
-            type="button"
-            className="tr360-sec__toggle"
-            title={secOpen ? 'Collapse talent sections' : 'Expand talent sections'}
-            aria-label={secOpen ? 'Collapse talent sections' : 'Expand talent sections'}
-            aria-expanded={secOpen}
-            onClick={() => setSecOpenPref(!secOpen)}
-          >
-            <Glyph
-              d={secOpen ? 'M4 4h16v16H4zM9 4v16M15 10l-2 2 2 2' : 'M4 4h16v16H4zM9 4v16M13 10l2 2-2 2'}
-              size={14}
-              width={2}
-            />
-          </Button>
-        </div>
-        <div className="tr360-sec__who">
-          <span className="tr360-sec__avatar" aria-hidden="true">
-            {initials(talentName)}
-          </span>
-          {secOpen ? (
-            <span className="tr360-sec__whotext">
-              <span className="tr360-sec__name">{talentName}</span>
-              {subtitle !== '' ? <span className="tr360-sec__subtitle">{subtitle}</span> : null}
-              {pipeline !== null ? <span className="tr360-sec__active tr360-tone--green">Active</span> : null}
-            </span>
-          ) : null}
-        </div>
-        <nav className="tr360-sec__list">
-          {!secOpen ? (
-            <Button unstyled type="button" className="tr360-sec__item tr360-sec__item--back" title={backLabel} aria-label={backLabel} onClick={back}>
-              <Glyph d={IC.back} />
-            </Button>
-          ) : null}
-          {SECTION_DEF.map((s) => {
-            const on = activeSection === s.key;
-            const badge = sectionBadge(s.key);
-            return (
-              <Button
-                unstyled
-                key={s.key}
-                type="button"
-                className={`tr360-sec__item${on ? ' tr360-sec__item--on' : ''}`}
-                title={s.label}
-                aria-label={secOpen ? undefined : s.label}
-                aria-current={on ? 'page' : undefined}
-                onClick={() => go(s.key)}
-              >
-                <Glyph d={s.icon} />
-                {secOpen ? <span className="tr360-sec__label">{s.label}</span> : null}
-                {secOpen && badge !== '' ? <span className="tr360-badge tr360-tone--grey">{badge}</span> : null}
-              </Button>
-            );
-          })}
-        </nav>
-      </aside>
+      <SectionNav
+        variant="opportunity"
+        ariaLabel="Talent sections"
+        open={secOpen}
+        onToggle={toggleSec}
+        backLabel={backLabel}
+        onBack={back}
+        initials={initials(talentName)}
+        name={talentName}
+        subtitle={subtitle}
+        pill={pipeline !== null ? 'Active' : undefined}
+        groups={[
+          {
+            items: SECTION_DEF.map((d) => {
+              const badge = sectionBadge(d.key);
+              return { key: d.key, label: d.label, icon: d.icon, ...(badge !== '' ? { badge: { text: badge, tone: 'grey' as const } } : {}) };
+            }),
+          },
+        ]}
+        active={activeSection}
+        onSelect={(k) => go(k as SectionKey)}
+      />
 
       <main className="tr360-main">
         <div className="tr360-hd">
