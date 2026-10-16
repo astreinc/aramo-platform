@@ -82,7 +82,7 @@ export function presentDraft(d: DraftStateInput): DraftPresentation {
     return make(
       'Needs attention',
       'amber',
-      (d.failure ?? '').trim() || "Couldn't read résumé — enter details manually",
+      (d.failure ?? '').trim() || "Couldn't read resume — enter details manually",
       true,
     );
   }
@@ -90,12 +90,12 @@ export function presentDraft(d: DraftStateInput): DraftPresentation {
     return make(
       'Needs attention',
       'amber',
-      (d.warning ?? '').trim() || "Couldn't fully read the résumé — review the details",
+      (d.warning ?? '').trim() || "Couldn't fully read the resume — review the details",
       true,
     );
   }
   if (READING.has(d.processing_status)) {
-    return make('Reading résumé', 'blue', null, false);
+    return make('Reading resume', 'blue', null, false);
   }
   // READY (extraction complete, no failure/duplicate).
   return canCreate
@@ -111,9 +111,9 @@ export function draftTitle(d: {
 }): { title: string; file: string } {
   const name = (d.display_name ?? '').trim();
   const file = (d.source_filename ?? '').trim();
-  if (name !== '') return { title: name, file: file || 'résumé' };
+  if (name !== '') return { title: name, file: file || 'resume' };
   if (file !== '') return { title: file, file };
-  return { title: 'Name not found yet', file: 'résumé' };
+  return { title: 'Name not found yet', file: 'resume' };
 }
 
 // In-progress = unpromoted drafts (the recovery population). The server already

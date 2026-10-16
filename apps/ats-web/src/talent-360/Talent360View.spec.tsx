@@ -60,12 +60,13 @@ vi.mock('../microsoft/ScheduleMeetingDialog', () => ({
   ScheduleMeetingDialog: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="schedule-dialog">{requisitionId}</div> : null,
 }));
-const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn(), getTalentWorkAuthorizationState: vi.fn() }));
+const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn(), getTalentWorkAuthorizationState: vi.fn(), getTalentProfileHydration: vi.fn() }));
 vi.mock('../talent/talent-api', () => ({
   getTalent: tal.getTalent,
   getTalentWorkHistory: tal.getTalentWorkHistory,
   updateTalent: tal.updateTalent,
   getTalentWorkAuthorizationState: tal.getTalentWorkAuthorizationState,
+  getTalentProfileHydration: tal.getTalentProfileHydration,
 }));
 // D3 — Documents reuses Edit talent's resume panel; stub it here.
 vi.mock('../talent/TalentEditView', () => ({
@@ -267,6 +268,13 @@ beforeEach(() => {
   adv.dismissAdvisory.mockResolvedValue({});
   tal.getTalent.mockResolvedValue(RECORD);
   tal.getTalentWorkHistory.mockResolvedValue({ work_history: WORK_HISTORY });
+  tal.getTalentProfileHydration.mockResolvedValue({
+    talent_record_id: 'tal-1',
+    fields: [
+      { field_key: 'title', current_value: 'Scrum Master / Product Owner', value_state: 'SET', source_type: 'RESUME', projection_policy: 'AUTO', provenance: null, resolution_status: 'NONE', resolution_reason: null, proposed_value: null },
+      { field_key: 'desired_pay', current_value: '70/hr', value_state: 'SET', source_type: 'MANUAL', projection_policy: 'HOLD', provenance: null, resolution_status: 'NONE', resolution_reason: null, proposed_value: null },
+    ],
+  });
   tal.getTalentWorkAuthorizationState.mockResolvedValue({
     talent_id: 'tal-1',
     current: { work_authorization_status: 'permanent_resident', authorized_to_work_in: ['US'], visa_type: null, requires_sponsorship: false, asserted_at: '2026-09-23T12:00:00Z', effective_from: null, effective_to: null, expires_at: null },
@@ -320,7 +328,7 @@ describe('Talent360View — redesign shell (§3–§4)', () => {
     const hd = screen.getByRole('banner');
     expect(within(hd).getByRole('link', { name: 'Talent' })).toHaveAttribute('href', '/talent');
     expect(within(hd).getByText('Overview')).toBeInTheDocument();
-    expect(within(hd).getByText('Available Now')).toBeInTheDocument();
+    expect(within(hd).getByText('Available now')).toBeInTheDocument();
     expect(within(hd).getByText('Recruiting ready')).toHaveAttribute('title', expect.stringMatching(/Worked out by Aramo/));
     expect(within(hd).getByRole('button', { name: 'Contact permitted · no SMS' })).toBeInTheDocument();
     expect(within(hd).getByRole('button', { name: 'Identity · 1 to review' })).toBeInTheDocument();
@@ -476,7 +484,7 @@ describe('Talent360View — sections (§7–§9)', () => {
     expect(within(card).getByText('PAST · 1')).toBeInTheDocument();
     expect(within(card).getByText('Reason not recorded')).toBeInTheDocument();
     expect(within(card).getAllByRole('link', { name: 'Open full view ↗' })[0]).toHaveAttribute('href', '/requisitions/r1/talent/tal-1');
-    expect(within(card).getByRole('link', { name: 'Open Interview' })).toHaveAttribute('href', '/requisitions/r1');
+    expect(within(card).getByRole('link', { name: 'Open interview' })).toHaveAttribute('href', '/requisitions/r1');
     expect(within(card).getAllByText(/Stage 7 of 8/).length).toBeGreaterThan(0);
   });
 
@@ -562,12 +570,33 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(await screen.findByText('Scrum Master / Product Owner · Freddie Mac')).toBeInTheDocument();
   });
 
-  it('Work authorization: sponsorship + "Self-reported · date" from the governed state (A2)', async () => {
+  it('Work authorization: "Declared · date" from the governed state; sponsorship is never the uncollected default (A2)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');
     const b4 = await screen.findByTestId('t360-pblock-04');
-    await waitFor(() => expect(within(b4).getByText('Sponsorship').nextSibling).toHaveTextContent('Not required'));
-    expect(within(b4).getByText('Self-reported · Sep 23, 2026')).toBeInTheDocument();
+    await waitFor(() => expect(within(b4).getByText('Declared · Sep 23, 2026')).toBeInTheDocument());
+    expect(within(b4).getByText('Sponsorship').nextSibling).toHaveTextContent('—Not collected yet');
+    expect(within(b4).queryByText('Not required')).toBeNull();
+  });
+
+  it('per-field source lines come from the provenance read (A3)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b1 = await screen.findByTestId('t360-pblock-01');
+    await waitFor(() => expect(within(b1).getByText('From resume')).toBeInTheDocument());
+    expect(within(screen.getByTestId('t360-pblock-05')).getByText('Entered manually')).toBeInTheDocument();
+  });
+
+  it('Work authorization section edits Status in place (Update → Save)', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=auth');
+    const card = await screen.findByTestId('t360-auth');
+    await waitFor(() => expect(within(card).getByRole('button', { name: 'Update' })).toBeInTheDocument());
+    fireEvent.click(within(card).getByRole('button', { name: 'Update' }));
+    fireEvent.change(within(card).getByLabelText('Status'), { target: { value: 'US_CITIZEN' } });
+    fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(tal.updateTalent).toHaveBeenCalledWith('tal-1', { work_authorization: 'US_CITIZEN' }));
   });
 
   it('Documents: the resume panel (preview + upload) is reused from Edit talent (D3)', async () => {

@@ -6,7 +6,7 @@ import type {
 
 // The Add/Edit-Talent intake field model + the full-profile EDIT body builder.
 //
-// NOTE: the résumé-first CREATE helpers (applyPrefill, buildCreateBody) were
+// NOTE: the resume-first CREATE helpers (applyPrefill, buildCreateBody) were
 // removed with the synchronous draft-from-resume cutover. The durable async
 // Talent Intake flow owns create-side mapping now: the FE maps the persisted
 // review_payload ↔ the form in TalentCreateView, and promotion builds the

@@ -1,4 +1,4 @@
-import { Dialog, TextArea } from '@aramo/fe-foundation';
+import { Dialog, Select, TextArea } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
@@ -11,8 +11,12 @@ import {
 } from '../requisitions/talent-requisition-360/route';
 import { getDossier, type DossierHead } from '../talent/dossier-api';
 import { EditResumePanel } from '../talent/TalentEditView';
+import { updateErrorMessage } from '../talent/error-messages';
+import { buildPatchBody, stateFromTalent, type IntakeState } from '../talent/intake-fields';
+import { WORK_AUTHORIZATION_LABELS, WORK_AUTHORIZATION_VALUES } from '../talent/stated-fields';
+import { updateTalent } from '../talent/talent-api';
 import { listTalentMemberships, type SavedListVisibility } from '../talent/saved-list-api';
-import type { WorkAuthorizationStateView } from '../talent/types';
+import type { TalentRecordView, WorkAuthorizationStateView } from '../talent/types';
 import { Button } from '../ui';
 import { resolveUserNames } from '../users/users-api';
 
@@ -32,6 +36,7 @@ import {
   shortDate,
   stageIndex,
   stagePill,
+  workAuthLabel,
   type T360Section,
 } from './t360-model';
 import type {
@@ -463,41 +468,114 @@ export function OpportunitiesSection({
 
 // ── Work authorization (§8) ───────────────────────────────────────────────────
 
-export function WorkAuthSection({ model, firstName, canEdit, talentId, go, workAuth }: { model: Model; firstName: string; canEdit: boolean; talentId: string; go: (s: T360Section) => void; workAuth: WorkAuthorizationStateView | null }): JSX.Element {
+export interface WorkAuthSectionProps {
+  readonly model: Model;
+  readonly firstName: string;
+  /** talent:edit and the full record is readable → inline edit (§8A.7 pattern). */
+  readonly editable: boolean;
+  readonly record: TalentRecordView | null;
+  readonly go: (s: T360Section) => void;
+  readonly workAuth: WorkAuthorizationStateView | null;
+  readonly onRecordSaved: (rec: TalentRecordView) => void;
+  readonly notify: (msg: string) => void;
+}
+
+export function WorkAuthSection({ model, firstName, editable, record, go, workAuth, onRecordSaved, notify }: WorkAuthSectionProps): JSX.Element {
   const h = model.header;
   const wa = workAuth?.current ?? null;
-  const cells: { l: string; v: string; s: string; warn?: boolean }[] = [
+  const [editing, setEditing] = useState(false);
+  const [status, setStatus] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const current = record !== null ? record.work_authorization : h.work_authorization;
+
+  const save = async (): Promise<void> => {
+    if (record === null) return;
+    // Edit talent's own body builder: only the changed field ('' clears to null).
+    const body = buildPatchBody({ ...stateFromTalent(record), work_authorization: status as IntakeState['work_authorization'] }, record) as unknown as Record<string, unknown>;
+    if (Object.keys(body).length === 0) {
+      setEditing(false);
+      notify('Work authorization saved · no changes');
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      onRecordSaved(await updateTalent(record.id, body));
+      setEditing(false);
+      notify('Work authorization saved · 1 field updated');
+    } catch (e) {
+      setErr(updateErrorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cells: { l: string; v: ReactNode; s: string }[] = [
     {
       l: 'STATUS',
-      v: h.work_authorization !== null ? labelize(h.work_authorization) : 'Not on record',
-      s: wa !== null ? `Self-reported · ${shortDate(wa.asserted_at)}${wa.visa_type !== null && wa.visa_type !== '' ? ` · ${wa.visa_type}` : ''}` : 'Self-reported',
+      v: editing ? (
+        <Select unstyled className="t360-ctl" aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="">Not stated</option>
+          {WORK_AUTHORIZATION_VALUES.map((v) => (
+            <option key={v} value={v}>
+              {WORK_AUTHORIZATION_LABELS[v]}
+            </option>
+          ))}
+        </Select>
+      ) : current !== null ? (
+        workAuthLabel(current)
+      ) : (
+        'Not on record'
+      ),
+      s: wa !== null ? `Declared · ${shortDate(wa.asserted_at)}${wa.visa_type !== null && wa.visa_type !== '' ? ` · ${wa.visa_type}` : ''}` : 'Declared',
     },
     { l: 'DOCUMENT', v: '—', s: 'Collected at pre-start, not before' },
-    {
-      l: 'SPONSORSHIP',
-      v: wa === null ? '—' : wa.requires_sponsorship ? 'Required' : 'Not required',
-      s: wa === null ? 'Not on record' : wa.expires_at !== null ? `Authorization expires ${shortDate(wa.expires_at)}` : 'Talent-stated',
-    },
+    // TI-1G: requires_sponsorship is not collected by any surface yet (default only).
+    { l: 'SPONSORSHIP', v: '—', s: wa !== null && wa.expires_at !== null ? `Not collected yet · authorization expires ${shortDate(wa.expires_at)}` : 'Not collected yet' },
     { l: 'ENGAGEMENT TYPES', v: h.engagement_type !== null ? labelize(h.engagement_type) : '—', s: 'Talent-stated' },
   ];
   return (
-    <div className="t360-card t360-card--prof t360-narrow">
+    <div className={`t360-card t360-card--prof t360-narrow${editing ? ' t360-pblock--editing' : ''}`} data-testid="t360-auth">
       <div className="t360-sect__title t360-mb4">Work authorization</div>
       <div className="t360-lede">What {firstName} has told us, and what&apos;s on file. Requisition-specific checks stay on each opportunity.</div>
+      {err !== null ? (
+        <div className="t360-ferr t360-ferr--card" role="alert">
+          {err}
+        </div>
+      ) : null}
       <div className="t360-facts t360-facts--180">
         {cells.map((c) => (
           <div key={c.l} className="t360-fact t360-fact--roomy">
             <div className="t360-fact__l">{c.l}</div>
-            <div className={`t360-fact__v${c.warn === true ? ' t360-fact__v--warn' : ''}`}>{c.v}</div>
+            <div className="t360-fact__v">{c.v}</div>
             <div className="t360-fact__s">{c.s}</div>
           </div>
         ))}
       </div>
       <div className="t360-row8">
-        {canEdit ? (
-          <Link to={`/talent/${talentId}/edit`} className="t360-btn t360-btn--neutral t360-btn--sm">
+        {editing ? (
+          <>
+            <Button unstyled type="button" className="t360-btn t360-btn--primary t360-btn--sm" disabled={saving} onClick={() => void save()}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+            <Button unstyled type="button" className="t360-btn t360-btn--neutral t360-btn--sm" disabled={saving} onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+          </>
+        ) : editable ? (
+          <Button
+            unstyled
+            type="button"
+            className="t360-btn t360-btn--neutral t360-btn--sm"
+            onClick={() => {
+              setStatus(record?.work_authorization ?? '');
+              setErr(null);
+              setEditing(true);
+            }}
+          >
             Update
-          </Link>
+          </Button>
         ) : null}
         <LinkButton onClick={() => go('trust')}>See evidence in Talent Trust →</LinkButton>
       </div>
@@ -515,7 +593,7 @@ export function DocumentsSection({ model, talentId, canEdit }: { model: Model; t
     <div className="t360-card t360-card--sect t360-resumes" data-testid="t360-resumes">
       <div className="t360-card__hd t360-card__hd--docs">
         <span className="t360-sect__title">Resume</span>
-        <span className="t360-caption t360-caption--inline t360-ml10">Preview any edition · upload a new resume (earlier editions are kept).</span>
+        <span className="t360-caption t360-caption--inline">Preview any edition · upload a new resume (earlier editions are kept).</span>
       </div>
       {/* The SAME resume panel as Edit talent (editions, preview, upload, review, default). */}
       <EditResumePanel talentId={talentId} disabled={!canEdit} />
@@ -523,7 +601,7 @@ export function DocumentsSection({ model, talentId, canEdit }: { model: Model; t
     <div className="t360-card t360-card--sect">
       <div className="t360-card__hd t360-card__hd--docs">
         <span className="t360-sect__title">Documents</span>
-        <span className="t360-caption t360-caption--inline t360-ml10">Requisition documents carry their REQ tag.</span>
+        <span className="t360-caption t360-caption--inline">Requisition documents carry their REQ tag.</span>
       </div>
       {docs.length === 0 ? <div className="t360-empty">No documents yet.</div> : null}
       {docs.map((d) => {
@@ -763,9 +841,9 @@ export function TrustSection({
   }
   if (model.header.work_authorization !== null) {
     claims.push({
-      claim: `Work authorization · ${labelize(model.header.work_authorization)}`,
-      evidence: 'Self-reported · no document on file yet',
-      state: 'Self-reported',
+      claim: `Work authorization · ${workAuthLabel(model.header.work_authorization)}`,
+      evidence: 'Declared on the record · no document on file yet',
+      state: 'Claimed',
       tone: 'greyalt',
     });
   }

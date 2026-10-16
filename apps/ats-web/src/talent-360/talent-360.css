@@ -395,6 +395,7 @@ body.t360-route .rc-content {
 }
 .t360-card__hd--docs {
   margin-bottom: 6px;
+  gap: 10px;
 }
 .t360-card__hd--filters {
   gap: 10px;

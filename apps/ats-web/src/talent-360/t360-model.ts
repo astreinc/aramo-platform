@@ -2,6 +2,8 @@
 // backend composed (GET /v1/talent-360/:id); nothing here decides readiness,
 // attention, stage or eligibility. Design authority: platform/Talent 360 CRM.dc.html.
 
+import { WORK_AUTHORIZATION_LABELS } from '../talent/stated-fields';
+
 import type { AttentionItemView } from './talent-360-types';
 
 export const SECTION_KEYS = [
@@ -165,8 +167,10 @@ export function orderFacts<T extends { readonly label: string }>(facts: readonly
 }
 
 // ── Formatting ────────────────────────────────────────────────────────────────
+/** Enum/key → sentence case ("PERMANENT_RESIDENT" → "Permanent resident"), the prototype's label style. */
 export function labelize(v: string): string {
-  return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const t = v.replace(/_/g, ' ').trim().toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 function startOfDay(d: Date): number {
@@ -185,6 +189,11 @@ export function clockTime(iso: string): string {
 export function shortDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
+/** Work authorization enum → the canonical label (Edit talent's), else sentence case. */
+export function workAuthLabel(v: string): string {
+  return (WORK_AUTHORIZATION_LABELS as Record<string, string>)[v] ?? labelize(v);
+}
+
 /** "Mar 2024" — month-grain dates are stored as UTC midnight, so format in UTC (no TZ shift). */
 export function monthYear(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: 'short', year: 'numeric', timeZone: 'UTC' });

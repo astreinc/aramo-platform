@@ -80,7 +80,7 @@ function ageTone(days: number): '' | 'warn' | 'hot' {
   return '';
 }
 
-// Prototype-fidelity résumé vocabulary (Gap 3 / SEAM 3). Grounded on the authoritative
+// Prototype-fidelity resume vocabulary (Gap 3 / SEAM 3). Grounded on the authoritative
 // edition metadata the board now carries — label / display_date / tailored_for_requisition —
 // never a fabricated label and never inferred from filename/UI text. The month/day/year is
 // formatted in UTC so the copy is clock- and timezone-stable (no local-midnight flake).
@@ -92,19 +92,19 @@ function formatResumeDate(iso: string, withYear: boolean): string | null {
   return withYear ? `${mon} ${d.getUTCFullYear()}` : `${mon} ${d.getUTCDate()}`;
 }
 
-// "Résumé · {Mon YYYY}" for a general edition; "Résumé · tailored for {REQ-code} · {Mon D}"
+// "Resume · {Mon YYYY}" for a general edition; "Resume · tailored for {REQ-code} · {Mon D}"
 // when the authoritative edition was tailored FOR this requisition. When no edition is linked
 // (source:'none') or the metadata is unresolved, the honest empty state — never a bare
 // "selected / submitted / not selected" label once the real metadata is available.
 function resumeText(card: BoardCardView, reqCode?: string): string {
   const r = card.resume;
-  if (r.source === 'none' || r.label === null || r.display_date === null) return 'No résumé selected';
+  if (r.source === 'none' || r.label === null || r.display_date === null) return 'No resume selected';
   if (r.tailored_for_requisition && reqCode !== undefined && reqCode.length > 0) {
     const d = formatResumeDate(r.display_date, false);
-    return `Résumé · tailored for ${reqCode}${d !== null ? ` · ${d}` : ''}`;
+    return `Resume · tailored for ${reqCode}${d !== null ? ` · ${d}` : ''}`;
   }
   const d = formatResumeDate(r.display_date, true);
-  return `Résumé · ${d ?? r.label}`;
+  return `Resume · ${d ?? r.label}`;
 }
 
 export interface RequisitionTalentBoardProps {
@@ -131,7 +131,7 @@ export interface RequisitionTalentBoardProps {
    *  initiate the RTR lifecycle; its ABSENCE degrades the actionable chip to a muted status
    *  (least-visibility). The governed request→send stays the mutation authority. */
   readonly onSendRtr?: (talentId: string, talentName: string) => void;
-  /** The requisition code (REQ-N) — used for the "tailored for {REQ}" résumé label. */
+  /** The requisition code (REQ-N) — used for the "tailored for {REQ}" resume label. */
   readonly reqCode?: string;
   /** Bump to force a re-fetch (e.g. after a successful VOID removes a card). */
   readonly refreshToken?: unknown;

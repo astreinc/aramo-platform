@@ -23,10 +23,10 @@ function st(over: Partial<DraftStateInput> = {}): DraftStateInput {
 }
 
 describe('presentDraft — locked recruiter vocabulary + tones', () => {
-  it('reading states map to blue "Reading résumé"', () => {
+  it('reading states map to blue "Reading resume"', () => {
     for (const s of ['UPLOADED', 'QUEUED', 'PROCESSING']) {
       const p = presentDraft(st({ processing_status: s, admissible: false }));
-      expect(p.label).toBe('Reading résumé');
+      expect(p.label).toBe('Reading resume');
       expect(p.tone).toBe('blue');
       expect(p.needsAttention).toBe(false);
     }
@@ -51,7 +51,7 @@ describe('presentDraft — locked recruiter vocabulary + tones', () => {
     expect(p.label).toBe('Needs attention');
     expect(p.tone).toBe('amber');
     expect(p.needsAttention).toBe(true);
-    expect(p.reason).toBe("Couldn't read résumé — enter details manually");
+    expect(p.reason).toBe("Couldn't read resume — enter details manually");
     expect(p.canCreate).toBe(true); // extraction failure does not block creation
   });
 

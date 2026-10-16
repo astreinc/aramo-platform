@@ -13,6 +13,7 @@ import {
   WORK_AUTHORIZATION_VALUES,
 } from '../talent/stated-fields';
 import { getTalentWorkHistory, updateTalent } from '../talent/talent-api';
+import type { ProfileHydrationItem } from '../talent/profile-hydration';
 import type { TalentRecordView, WorkAuthorizationStateView, WorkHistoryDraft, WorkHistoryView } from '../talent/types';
 import { Button } from '../ui';
 
@@ -40,6 +41,28 @@ export interface ProfileData {
   readonly workHistory: readonly WorkHistoryView[] | null;
   /** Governed work-authorization state (GET /talent-records/:id/work-authorization). */
   readonly workAuth: WorkAuthorizationStateView | null;
+  /** Per-field provenance (GET /talent-records/:id/profile-hydration), keyed by field. */
+  readonly hydration: ReadonlyMap<string, ProfileHydrationItem> | null;
+}
+
+// A3 — the per-field source line from the existing provenance read: where the
+// current value came from, and whether a resume-proposed change awaits review.
+// It carries no actor/date — "Edited by … · date" needs change attribution (C4).
+export function provenanceLine(item: ProfileHydrationItem | undefined): string | undefined {
+  if (item === undefined) return undefined;
+  if (item.resolution_status === 'PENDING_REVIEW') return 'Pending review · the resume proposes a different value';
+  switch (item.source_type) {
+    case 'RESUME':
+      return 'From resume';
+    case 'MANUAL':
+      return 'Entered manually';
+    case 'IMPORT':
+      return 'Imported';
+    case 'RECONCILED':
+      return 'Reconciled from evidence';
+    default:
+      return undefined;
+  }
 }
 
 type CardKey = '01' | '02' | '03' | '04' | '05' | '06' | '07' | '08' | '09';
@@ -124,12 +147,14 @@ function Value({ r }: { r: Row }): JSX.Element {
   return <span className={`t360-pv${r.mono === true ? ' t360-mono' : ''}${r.pre === true ? ' t360-pv--pre' : ''}`}>{r.v}</span>;
 }
 
-function ReadRows({ rows, updated }: { rows: readonly Row[]; updated: ReadonlySet<string> }): JSX.Element {
+function ReadRows({ rows, updated, hydration }: { rows: readonly Row[]; updated: ReadonlySet<string>; hydration: ReadonlyMap<string, ProfileHydrationItem> | null }): JSX.Element {
   return (
     <>
       {rows.map((r) => {
         const fresh = (r.keys ?? []).some((k) => updated.has(k));
-        const src = fresh ? 'Updated just now by you' : r.src;
+        // Precedence: just saved › a fixed/returned qualifier › field provenance (A3).
+        const prov = r.v !== null && r.keys !== undefined && r.keys.length > 0 ? provenanceLine(hydration?.get(r.keys[0] ?? '')) : undefined;
+        const src = fresh ? 'Updated just now by you' : (r.src ?? prov);
         return (
           <div key={r.l} className="t360-prow2">
             <span className="t360-prow2__l">{r.l}</span>
@@ -336,11 +361,13 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       {
         l: 'Status',
         v: label(WORK_AUTHORIZATION_LABELS, rec !== null ? rec.work_authorization : h.work_authorization),
-        ...(wa !== null ? { src: `Self-reported · ${dateLabel(wa.asserted_at) ?? ''}` } : {}),
+        ...(wa !== null ? { src: `Declared · ${dateLabel(wa.asserted_at) ?? ''}` } : {}),
         keys: ['work_authorization'],
       },
       ...(wa !== null && present(wa.visa_type) !== null ? [{ l: 'Visa type', v: wa.visa_type }] : []),
-      { l: 'Sponsorship', v: wa === null ? null : wa.requires_sponsorship ? 'Required' : 'Not required' },
+      // TI-1G: requires_sponsorship stays at its default until a surface collects it,
+      // and none does yet — never present the default as a fact.
+      { l: 'Sponsorship', v: null, src: 'Not collected yet' },
       ...(wa !== null && wa.expires_at !== null ? [{ l: 'Expires', v: dateLabel(wa.expires_at) }] : []),
       { l: 'Document', v: null, src: 'Collected at pre-start' },
     ],
@@ -436,7 +463,17 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       case '03':
         return <>{text('current_employer', 'Current employer')}</>;
       case '04':
-        return <>{select('work_authorization', 'Status', WORK_AUTHORIZATION_VALUES, WORK_AUTHORIZATION_LABELS)}</>;
+        return (
+          <>
+            {select('work_authorization', 'Status', WORK_AUTHORIZATION_VALUES, WORK_AUTHORIZATION_LABELS)}
+            <FieldRow l="Sponsorship">
+              <Locked value={null} note="Not collected yet · needs the governed work-authorization update" />
+            </FieldRow>
+            <FieldRow l="Document">
+              <Locked value={null} note="Collected at pre-start, not here" />
+            </FieldRow>
+          </>
+        );
       case '05':
         return (
           <>
@@ -529,7 +566,7 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
   };
 
   const block = (k: Exclude<CardKey, '06' | '09'>, opts: { full?: boolean; link?: { label: string; to: T360Section } } = {}): JSX.Element =>
-    renderCard(k, opts, editing === k ? editFields(k) : <ReadRows rows={readRows[k]} updated={updated} />);
+    renderCard(k, opts, editing === k ? editFields(k) : <ReadRows rows={readRows[k]} updated={updated} hydration={data.hydration} />);
 
   // Work history: the dedicated read (newest first); the Talent 360 read when it is unavailable.
   const history =

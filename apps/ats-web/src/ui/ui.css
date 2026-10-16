@@ -6561,7 +6561,7 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-ip__menuitem--danger:hover { background: var(--danger-tint); }
 .rc-ip__foot { font-size: 0.74rem; color: var(--muted); margin-top: 10px; }
 
-/* §12 — Reading-résumé is informational (blue), never a block. */
+/* §12 — Reading-resume is informational (blue), never a block. */
 .rc-readingnote { display: flex; align-items: flex-start; gap: 9px; border: 1px solid var(--info); background: var(--info-tint); color: var(--brand-strong); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; line-height: 1.45; }
 /* §13 — couldn't-read is "Needs attention" (amber) with Try again / Replace. */
 .rc-failnote { display: flex; align-items: center; gap: 10px 12px; flex-wrap: wrap; border: 1px solid var(--warn); background: var(--warn-tint); color: var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; line-height: 1.45; }
@@ -6604,3 +6604,33 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
   .rc-railsummary > summary { list-style: none; cursor: pointer; padding: 10px 14px; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .rc-railsummary__body { padding: 0 14px 11px; display: grid; gap: 6px; }
 }
+
+/* Resume revisions list (Edit talent + Talent 360 Documents) — one row per
+   revision: file (selects the preview) · context · default / status · actions.
+   Previously unstyled (browser-default buttons). */
+.rc-redition-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; }
+.rc-redition { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 9px 0; border-top: 1px solid #F2F4F6; font-size: 12.5px; }
+.rc-redition:first-child { border-top: none; }
+.rc-redition__pick { border: none; background: none; padding: 0; font: 600 13px var(--font-sans, 'Hanken Grotesk', sans-serif); color: #1B2730; cursor: pointer; text-align: left; }
+.rc-redition__pick:hover { color: #022AC0; }
+.rc-redition__pick[aria-pressed='true'] { color: #022AC0; text-decoration: underline; text-underline-offset: 3px; }
+.rc-redition .rc-secnote { margin: 0; font-size: 11.5px; color: #5C6770; }
+.rc-redition__ctx { flex: 1 1 160px; }
+.rc-redition__default { border-radius: 9px; padding: 1px 8px; font-weight: 700; font-size: 10.5px; background: #E8EDFB; color: #011F8D !important; }
+.rc-redition__status { border-radius: 9px; padding: 1px 8px; font-weight: 700; font-size: 10.5px; background: #FAEFD8; color: #946011 !important; }
+.rc-redition__archived { border-radius: 9px; padding: 1px 8px; font-weight: 700; font-size: 10.5px; background: #EEF1F4; }
+.rc-redition__setdefault,
+.rc-redition__confirm,
+.rc-redition__reject,
+.rc-redition__archive,
+.rc-redition__togglearchived { border: 1px solid #D5DBE1; background: #fff; color: #1B2730; border-radius: 7px; padding: 4px 10px; font: 600 11.5px var(--font-sans, 'Hanken Grotesk', sans-serif); cursor: pointer; white-space: nowrap; }
+.rc-redition__setdefault:hover,
+.rc-redition__archive:hover,
+.rc-redition__togglearchived:hover { background: #FAFBFC; }
+.rc-redition__confirm { border-color: #022AC0; background: #022AC0; color: #fff; }
+.rc-redition__reject { color: #B3402A; }
+.rc-redition__setdefault:disabled,
+.rc-redition__confirm:disabled,
+.rc-redition__reject:disabled,
+.rc-redition__archive:disabled { opacity: 0.55; cursor: default; }
+.rc-redition-archived { margin-top: 8px; }

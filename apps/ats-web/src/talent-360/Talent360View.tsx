@@ -14,13 +14,14 @@ import { SectionNav, useSectionNavOpen } from '../shell/section-nav/SectionNav';
 import { dismissAdvisory } from '../sourcing/sourcing-api';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
 import { AddToListDialog } from '../talent/components/AddToListDialog';
-import { getTalent, getTalentWorkAuthorizationState, getTalentWorkHistory } from '../talent/talent-api';
+import { indexHydration } from '../talent/profile-hydration';
+import { getTalent, getTalentProfileHydration, getTalentWorkAuthorizationState, getTalentWorkHistory } from '../talent/talent-api';
 import { updateTask } from '../task/task-api';
 import { Button, LoadingState, safeErrorMessage } from '../ui';
 
 import { FollowUpDialog, LogActivityDialog, type FollowUpReqOption } from './t360-dialogs';
 import { ProfileSection, type ProfileData } from './t360-profile';
-import { SECTION_GROUPS, isSection, labelize, monthYear, sectionLabel, type T360Section } from './t360-model';
+import { SECTION_GROUPS, isSection, labelize, monthYear, sectionLabel, workAuthLabel, type T360Section } from './t360-model';
 import {
   ActivitySection,
   CiSection,
@@ -135,15 +136,21 @@ export function Talent360View(): JSX.Element | null {
   useEffect(() => {
     if (talentId === '') return;
     let live = true;
-    setProfileData({ status: 'loading', record: null, workHistory: null, workAuth: null });
-    void Promise.allSettled([getTalent(talentId), getTalentWorkHistory(talentId), getTalentWorkAuthorizationState(talentId)]).then(
-      ([rec, wh, wa]) => {
+    setProfileData({ status: 'loading', record: null, workHistory: null, workAuth: null, hydration: null });
+    void Promise.allSettled([
+      getTalent(talentId),
+      getTalentWorkHistory(talentId),
+      getTalentWorkAuthorizationState(talentId),
+      getTalentProfileHydration(talentId),
+    ]).then(
+      ([rec, wh, wa, hy]) => {
         if (!live) return;
         setProfileData({
           status: rec.status === 'fulfilled' ? 'ready' : 'fallback',
           record: rec.status === 'fulfilled' ? rec.value : null,
           workHistory: wh.status === 'fulfilled' ? wh.value.work_history : null,
           workAuth: wa.status === 'fulfilled' ? wa.value : null,
+          hydration: hy.status === 'fulfilled' ? indexHydration(hy.value) : null,
         });
       },
     );
@@ -271,7 +278,9 @@ export function Talent360View(): JSX.Element | null {
     titleLine,
     h.location,
     h.experience_summary,
-    h.work_authorization !== null ? labelize(h.work_authorization) : null,
+    (profileData?.record?.work_authorization ?? h.work_authorization) !== null
+      ? workAuthLabel(profileData?.record?.work_authorization ?? h.work_authorization ?? '')
+      : null,
   ].filter((x): x is string => x !== null && x !== '');
   const hist = model.relationship.history;
   const line3 = [
@@ -315,7 +324,7 @@ export function Talent360View(): JSX.Element | null {
         return (
           <ProfileSection
             model={model}
-            data={profileData ?? { status: 'loading', record: null, workHistory: null, workAuth: null }}
+            data={profileData ?? { status: 'loading', record: null, workHistory: null, workAuth: null, hydration: null }}
             talentId={talentId}
             canEdit={canEditTalent && h.actions.can_edit_profile}
             canSeePay={canSeePay}
@@ -330,10 +339,12 @@ export function Talent360View(): JSX.Element | null {
           <WorkAuthSection
             model={model}
             firstName={first}
-            canEdit={h.actions.can_edit_profile}
-            talentId={talentId}
+            editable={canEditTalent && h.actions.can_edit_profile && profileData?.status === 'ready'}
+            record={profileData?.record ?? null}
             go={go}
             workAuth={profileData?.workAuth ?? null}
+            onRecordSaved={(rec) => setProfileData((p) => (p === null ? p : { ...p, record: rec }))}
+            notify={setNotice}
           />
         );
       case 'docs':

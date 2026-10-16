@@ -5,7 +5,7 @@ import { ToastProvider } from '@aramo/fe-foundation';
 
 import { TalentCreateView } from './TalentCreateView';
 
-// Durable Async Résumé-First Add-Talent — FE cutover proof. Asserts the view
+// Durable Async Resume-First Add-Talent — FE cutover proof. Asserts the view
 // drives the async intake flow (create-intake → S3 → complete-upload) and NEVER
 // the retired synchronous POST /v1/talent-records/draft-from-resume; that ?draft=
 // fully restores a persisted draft from backend state; and that an already-
@@ -94,7 +94,7 @@ describe('TalentCreateView — durable async intake cutover', () => {
     vi.restoreAllMocks();
   });
 
-  it('uploading a résumé uses the async intake flow and NEVER calls draft-from-resume', async () => {
+  it('uploading a resume uses the async intake flow and NEVER calls draft-from-resume', async () => {
     render(
       <MemoryRouter>
         <ToastProvider>
