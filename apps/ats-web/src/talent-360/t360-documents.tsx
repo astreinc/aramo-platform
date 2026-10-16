@@ -300,12 +300,20 @@ function DocumentViewer({
       if (mime === 'application/pdf' || lower.endsWith('.pdf')) setBody({ kind: 'pdf', url });
       else if (mime.startsWith('image/') && mime !== 'image/svg+xml') setBody({ kind: 'image', url });
       else if (mime === DOCX_MIME || lower.endsWith('.docx')) {
-        const buf = bytes ?? new Uint8Array(await (await fetch(url)).arrayBuffer());
-        const mammoth = (await import('mammoth')) as unknown as {
-          convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
-        };
-        const { value } = await mammoth.convertToHtml({ arrayBuffer: buf.buffer as ArrayBuffer });
-        if (!cancelled) setBody({ kind: 'docx', html: value });
+        // A Word file that can't be converted in the browser still downloads —
+        // degrade to "Preview not available" instead of a dead error.
+        try {
+          const buf = bytes ?? new Uint8Array(await (await fetch(url)).arrayBuffer());
+          const mammoth = (await import('mammoth')) as unknown as {
+            convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
+          };
+          const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+          const { value } = await mammoth.convertToHtml({ arrayBuffer: ab });
+          if (!cancelled) setBody({ kind: 'docx', html: value });
+        } catch (err: unknown) {
+          console.error('[t360 viewer] Word preview conversion failed', err);
+          if (!cancelled) setBody({ kind: 'none' });
+        }
       } else setBody({ kind: 'none' });
     };
     // Same-origin bytes through the authenticated document-content route (works
@@ -343,7 +351,9 @@ function DocumentViewer({
       await render(null, r.presigned_url, ed.filename, ed.mime_type);
     };
     run().catch((e: unknown) => {
-      if (!cancelled) setBody({ kind: 'error', message: safeErrorMessage(e, 'This document could not be loaded.') });
+      console.error('[t360 viewer] document load failed', e);
+      const detail = import.meta.env.DEV && e instanceof Error ? ` (${e.name}: ${e.message})` : '';
+      if (!cancelled) setBody({ kind: 'error', message: `${safeErrorMessage(e, 'This document could not be loaded.')}${detail}` });
     });
     return () => {
       cancelled = true;
