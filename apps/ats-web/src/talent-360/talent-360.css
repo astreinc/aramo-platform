@@ -1741,6 +1741,9 @@ body.t360-route .rc-content {
    width cap inherited from the Edit-talent .rc-rpreview__docx panel). */
 .t360-dv__page { padding: 16px; }
 .t360-dv__page .t360-dv__sheet.rc-rpreview__docx {
+  /* never shrink inside the flex-column page: grow with the document so the
+     white sheet always backs all of the text (the page area scrolls). */
+  flex: 0 0 auto;
   align-self: stretch;
   width: auto;
   max-width: none;
