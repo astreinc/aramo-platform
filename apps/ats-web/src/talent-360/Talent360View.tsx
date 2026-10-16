@@ -14,10 +14,12 @@ import { SectionNav, useSectionNavOpen } from '../shell/section-nav/SectionNav';
 import { dismissAdvisory } from '../sourcing/sourcing-api';
 import { AddToRequisitionDialog } from '../talent/AddToRequisitionDialog';
 import { AddToListDialog } from '../talent/components/AddToListDialog';
+import { getTalent, getTalentWorkHistory } from '../talent/talent-api';
 import { updateTask } from '../task/task-api';
 import { Button, LoadingState, safeErrorMessage } from '../ui';
 
 import { FollowUpDialog, LogActivityDialog, type FollowUpReqOption } from './t360-dialogs';
+import { ProfileSection, type ProfileData } from './t360-profile';
 import { SECTION_GROUPS, isSection, labelize, monthYear, sectionLabel, type T360Section } from './t360-model';
 import {
   ActivitySection,
@@ -27,7 +29,6 @@ import {
   NotesSection,
   OpportunitiesSection,
   OverviewSection,
-  ProfileSection,
   ScreeningSection,
   TasksCard,
   TasksSection,
@@ -71,6 +72,7 @@ export function Talent360View(): JSX.Element | null {
   const canTaskWrite = session !== null && hasScope(session, 'task:write');
   const canSchedule = session !== null && hasScope(session, 'communication:meeting:create');
   const canResolveIdentity = session !== null && hasScope(session, 'identity:resolve');
+  const canEditTalent = session !== null && hasScope(session, 'talent:edit');
   const myId = session?.sub ?? null;
 
   const [model, setModel] = useState<Talent360ViewModel | null>(null);
@@ -123,6 +125,33 @@ export function Talent360View(): JSX.Element | null {
       .finally(() => setLoading(false));
   }, [talentId]);
   useEffect(() => load(), [load]);
+
+  // §8A — the full record + declared work history, loaded lazily the first time
+  // Profile opens (same reads + scope gate as Edit talent) and kept for the visit;
+  // also fills the header's current employer. 404/403 on the record → fallback
+  // to the Talent 360 read (no banner).
+  const [profileData, setProfileData] = useState<ProfileData | null>(null);
+  const profileRequested = useRef<string | null>(null);
+  useEffect(() => {
+    if (section !== 'profile' || talentId === '' || profileRequested.current === talentId) return;
+    profileRequested.current = talentId;
+    setProfileData({ status: 'loading', record: null, workHistory: null });
+    const forTalent = talentId;
+    void Promise.allSettled([getTalent(forTalent), getTalentWorkHistory(forTalent)]).then(([rec, wh]) => {
+      if (profileRequested.current !== forTalent) return; // navigated to another Talent meanwhile
+      setProfileData({
+        status: rec.status === 'fulfilled' ? 'ready' : 'fallback',
+        record: rec.status === 'fulfilled' ? rec.value : null,
+        workHistory: wh.status === 'fulfilled' ? wh.value.work_history : null,
+      });
+    });
+  }, [section, talentId]);
+  useEffect(() => {
+    if (profileRequested.current !== null && profileRequested.current !== talentId) {
+      profileRequested.current = null;
+      setProfileData(null);
+    }
+  }, [talentId]);
 
   // A superseded record redirects to its survivor — never rehydrate stale state.
   useEffect(() => {
@@ -236,8 +265,11 @@ export function Talent360View(): JSX.Element | null {
 
   const contactChip = c.recruiting_permitted ? (c.sms_permitted ? 'Contact permitted' : 'Contact permitted · no SMS') : 'Contact restricted';
   const identity = model.identity;
+  // `<title> · <current employer>` once the full record has loaded (§8A).
+  const employer = profileData?.record?.current_employer ?? null;
+  const titleLine = [h.title, employer].filter((x): x is string => x !== null && x.trim() !== '').join(' · ');
   const line2 = [
-    h.title,
+    titleLine,
     h.location,
     h.experience_summary,
     h.work_authorization !== null ? labelize(h.work_authorization) : null,
@@ -281,7 +313,16 @@ export function Talent360View(): JSX.Element | null {
           />
         );
       case 'profile':
-        return <ProfileSection model={model} canEdit={h.actions.can_edit_profile} talentId={talentId} />;
+        return (
+          <ProfileSection
+            model={model}
+            data={profileData ?? { status: 'loading', record: null, workHistory: null }}
+            talentId={talentId}
+            canEdit={h.actions.can_edit_profile}
+            canSeePay={canEditTalent}
+            go={go}
+          />
+        );
       case 'auth':
         return <WorkAuthSection model={model} firstName={first} canEdit={h.actions.can_edit_profile} talentId={talentId} go={go} />;
       case 'docs':

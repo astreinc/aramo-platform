@@ -60,6 +60,8 @@ vi.mock('../microsoft/ScheduleMeetingDialog', () => ({
   ScheduleMeetingDialog: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="schedule-dialog">{requisitionId}</div> : null,
 }));
+const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn() }));
+vi.mock('../talent/talent-api', () => ({ getTalent: tal.getTalent, getTalentWorkHistory: tal.getTalentWorkHistory }));
 vi.mock('../consent/ConsentHistoryPanel', () => ({
   ConsentHistoryPanel: ({ talentId }: { talentId: string }) => <div data-testid="consent-history">{talentId}</div>,
 }));
@@ -230,6 +232,20 @@ function renderView(path = '/talent/tal-1') {
   );
 }
 
+const RECORD = {
+  id: 'tal-1', first_name: 'Divya', last_name: 'Vasudevan', title: 'Scrum Master / Product Owner',
+  email1: 'divya@example.com', email2: null, phone_cell: '571-307-0783', phone_home: null, phone_work: '703-555-0100',
+  best_time_to_call: null, web_site: 'divya.example.com/portfolio', address: '2909 Gettysburg Sq', address2: null,
+  city: 'Vienna', state: 'VA', zip: '22181', country: 'US', can_relocate: false,
+  current_employer: 'Freddie Mac', work_authorization: 'permanent_resident', availability_status: 'available_now',
+  date_available: null, engagement_type: 'contract', desired_pay: '70/hr', current_pay: '$65/hr', is_hot: false,
+  source: 'Referral', notes: 'Prefers hybrid.\nOpen to W2.', key_skills: 'Scrum, SAFe',
+};
+const WORK_HISTORY = [
+  { id: 'w1', employer_name: 'Freddie Mac', role_title: 'Senior System Analyst', start_date: '2008-10-01', end_date: '2011-04-01', employment_type: null, description: null, source: 'resume', verified: false },
+  { id: 'w2', employer_name: 'Freddie Mac', role_title: 'Scrum Coach', start_date: '2025-01-01', end_date: null, employment_type: null, description: null, source: 'resume', verified: false },
+];
+
 beforeEach(() => {
   h.scopes = [...BASE_SCOPES];
   h.createTask.mockResolvedValue({});
@@ -238,12 +254,15 @@ beforeEach(() => {
   act.createNote.mockResolvedValue({});
   act.listActivities.mockResolvedValue({ items: [] });
   adv.dismissAdvisory.mockResolvedValue({});
+  tal.getTalent.mockResolvedValue(RECORD);
+  tal.getTalentWorkHistory.mockResolvedValue({ work_history: WORK_HISTORY });
   localStorage.clear();
 });
 afterEach(() => vi.clearAllMocks());
 
 
 const nav = () => screen.getByRole('navigation', { name: 'Talent sections' });
+
 
 describe('Talent360View — redesign shell (§3–§4)', () => {
   it('renders the shared section nav: 3 groups, 12 sections in order, with badges from the payload', async () => {
@@ -374,7 +393,7 @@ describe('Talent360View — Overview (§6)', () => {
 describe('Talent360View — header actions (§4, §10)', () => {
   it('Email opens the requisition composer when there is one active opportunity', async () => {
     const m = makeModel();
-    getTalent360Mock.mockResolvedValue(makeModel({ opportunities: { active: [m.opportunities!.active[0]!], closed: [] } }));
+    getTalent360Mock.mockResolvedValue(makeModel({ opportunities: { active: (m.opportunities?.active ?? []).slice(0, 1), closed: [] } }));
     renderView();
     fireEvent.click(await screen.findByRole('button', { name: 'Email' }));
     expect(await screen.findByTestId('email-composer')).toHaveTextContent('r1');
@@ -429,7 +448,7 @@ describe('Talent360View — sections (§7–§9)', () => {
     getTalent360Mock.mockResolvedValue(
       makeModel({
         opportunities: {
-          ...makeModel().opportunities!,
+          active: makeModel().opportunities?.active ?? [],
           closed: [{ pipeline_id: 'p9', requisition_id: 'r9', requisition_code: 'REQ-0877', client_name: 'Wells Fargo', role_title: 'Scrum Master', outcome: 'not_selected', reason: null, closed_at: '2026-06-01T00:00:00Z', open_journey_href: '/x' }],
         },
       }),
@@ -511,5 +530,92 @@ describe('Talent360View — sections (§7–§9)', () => {
     getTalent360Mock.mockRejectedValue(new Error('boom'));
     renderView();
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeInTheDocument();
+  });
+});
+
+describe('Talent360View — Profile: full record, read-only (§8A)', () => {
+  it('loads the full record + work history lazily, only when Profile opens', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView();
+    await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
+    expect(tal.getTalent).not.toHaveBeenCalled();
+    fireEvent.click(within(nav()).getByRole('button', { name: /Profile/ }));
+    expect(await screen.findByTestId('t360-profile')).toBeInTheDocument();
+    await waitFor(() => expect(tal.getTalent).toHaveBeenCalledWith('tal-1'));
+    expect(tal.getTalentWorkHistory).toHaveBeenCalledWith('tal-1');
+  });
+
+  it('renders the ten blocks in Edit-talent order with exact labels; empty values show —', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b1 = await screen.findByTestId('t360-pblock-01');
+    const order = ['01', '02', '03', '04', '05', '07', '08', '06', '09', '10'];
+    for (const n of order) expect(screen.getByTestId(`t360-pblock-${n}`)).toBeInTheDocument();
+    await waitFor(() => expect(within(b1).getByText('Home / work phone')).toBeInTheDocument());
+    expect(within(b1).getByText('703-555-0100')).toBeInTheDocument();
+    expect(within(b1).queryByText('Secondary email')).toBeNull(); // hide if empty
+    expect(within(b1).getByText('Best time to call').nextSibling).toHaveTextContent('—');
+    expect(within(b1).getByRole('link', { name: 'divya.example.com/portfolio' })).toHaveAttribute('href', 'https://divya.example.com/portfolio');
+    expect(within(b1).getByText('Confirmed by SMS code')).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-02')).getByText('Vienna, VA 22181')).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-03')).getByText('Freddie Mac')).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-08')).getByText(/Prefers hybrid\./)).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-08')).getByText('Separate from activity Notes')).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-10')).getByText('Saved when the talent was created — not readable yet.')).toBeInTheDocument();
+  });
+
+  it('each block Edit opens Edit talent at the matching section', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b4 = await screen.findByTestId('t360-pblock-04');
+    await waitFor(() => expect(within(b4).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/talent/tal-1/edit?section=work-authorization'));
+    expect(within(screen.getByTestId('t360-pblock-09')).getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/talent/tal-1/edit?section=work-history');
+    expect(within(screen.getByTestId('t360-pblock-10')).queryByRole('link', { name: 'Edit' })).toBeNull();
+  });
+
+  it('work history shows every declared role, newest first', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b9 = await screen.findByTestId('t360-pblock-09');
+    await waitFor(() => expect(within(b9).getAllByText(/Scrum Coach|Senior System Analyst/)).toHaveLength(2));
+    const roles = within(b9).getAllByText(/Scrum Coach|Senior System Analyst/).map((n) => n.textContent);
+    expect(roles).toEqual(['Scrum Coach', 'Senior System Analyst']);
+    expect(within(b9).getByText('2025 – Present')).toBeInTheDocument();
+  });
+
+  it('header shows <title> · <current employer> once the full record loads', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    expect(await screen.findByText('Scrum Master / Product Owner · Freddie Mac')).toBeInTheDocument();
+  });
+
+  it('current pay is shown only to the Edit talent audience (talent:edit)', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b5 = await screen.findByTestId('t360-pblock-05');
+    await waitFor(() => expect(within(b5).getByText('Hot talent').nextSibling).toHaveTextContent('No'));
+    expect(within(b5).queryByText('Current pay')).toBeNull();
+  });
+
+  it('current pay row shows with talent:edit', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b5 = await screen.findByTestId('t360-pblock-05');
+    await waitFor(() => expect(within(b5).getByText('$65/hr')).toBeInTheDocument());
+    expect(within(b5).getByText('Visible to recruiters only')).toBeInTheDocument();
+  });
+
+  it('falls back to the Talent 360 read when the full record 404s: no banner, Edit links hidden', async () => {
+    tal.getTalent.mockRejectedValue(new Error('404'));
+    tal.getTalentWorkHistory.mockRejectedValue(new Error('404'));
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=profile');
+    const b1 = await screen.findByTestId('t360-pblock-01');
+    await waitFor(() => expect(screen.queryByText('Loading the talent record…')).toBeNull());
+    expect(within(b1).getByText('divya@example.com')).toBeInTheDocument();
+    expect(within(b1).queryByRole('link', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(within(screen.getByTestId('t360-pblock-09')).getByText('No work history on record.')).toBeInTheDocument();
   });
 });

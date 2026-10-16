@@ -1271,6 +1271,7 @@
     "apps/ats-web/src/talent-360/Talent360View.tsx",
     "apps/ats-web/src/talent-360/t360-dialogs.tsx",
     "apps/ats-web/src/talent-360/t360-model.ts",
+    "apps/ats-web/src/talent-360/t360-profile.tsx",
     "apps/ats-web/src/talent-360/t360-sections.tsx",
     "apps/ats-web/src/talent-360/talent-360-api.ts",
     "apps/ats-web/src/talent-360/talent-360-types.ts",

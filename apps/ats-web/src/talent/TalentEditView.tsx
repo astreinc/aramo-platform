@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
-import { IntakeForm } from './IntakeForm';
+import { IntakeForm, TALENT_SECTION_DOM_ID } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
   archiveTalentResumeEdition,
@@ -104,6 +104,14 @@ export function TalentEditView() {
       cancelled = true;
     };
   }, [talentId]);
+
+  // `?section=<id>` (Talent 360 Profile → "Edit") scrolls to that section once loaded.
+  const [searchParams] = useSearchParams();
+  const sectionParam = searchParams.get('section');
+  useEffect(() => {
+    if (loading || sectionParam === null) return;
+    document.getElementById(TALENT_SECTION_DOM_ID(sectionParam))?.scrollIntoView({ block: 'start' });
+  }, [loading, sectionParam]);
 
   function onField(key: keyof IntakeState, value: string): void {
     setFields((s) => ({ ...s, [key]: value }));

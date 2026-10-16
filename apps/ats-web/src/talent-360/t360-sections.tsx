@@ -459,50 +459,7 @@ export function OpportunitiesSection({
   );
 }
 
-// ── Profile + Work authorization (§8) ─────────────────────────────────────────
-
-export function ProfileSection({ model, canEdit, talentId }: { model: Model; canEdit: boolean; talentId: string }): JSX.Element {
-  const p = model.profile;
-  return (
-    <div className="t360-card t360-card--prof">
-      <div className="t360-card__hd t360-card__hd--prof">
-        <span className="t360-sect__title">Profile</span>
-        {canEdit ? (
-          <Link to={`/talent/${talentId}/edit`} className="t360-btn t360-btn--neutral t360-btn--sm t360-ml-auto">
-            Edit profile
-          </Link>
-        ) : null}
-      </div>
-      {p.summary !== null ? <div className="t360-summary">{p.summary}</div> : null}
-      {p.facts.length > 0 ? <FactGrid facts={p.facts} min={190} /> : null}
-      <div className="t360-subhd">SKILLS</div>
-      {p.skills.length > 0 ? (
-        <>
-          <Skills skills={p.skills} />
-          <div className="t360-note">Green = backed by résumé and a second source. Others are self-reported.</div>
-        </>
-      ) : (
-        <div className="t360-empty t360-mb16">No skills on record yet.</div>
-      )}
-      <div className="t360-subhd t360-subhd--rows">EXPERIENCE</div>
-      {p.work_history.length === 0 ? (
-        <div className="t360-hrow t360-muted">No work history yet — it’s captured from the résumé at creation.</div>
-      ) : (
-        p.work_history.map((w, i) => (
-          <div key={`${w.role}-${i}`} className="t360-hrow">
-            <span className="t360-hrow__main">
-              <b>{w.role}</b> · {w.organization}
-            </span>
-            <span className="t360-hrow__span">{w.span}</span>
-            <span className={`t360-hrow__src${w.source !== null && /\+/.test(w.source) ? ' t360-hrow__src--ok' : ''}`}>{w.source ?? ''}</span>
-          </div>
-        ))
-      )}
-      <div className="t360-subhd t360-subhd--rows t360-mt16">EDUCATION &amp; CERTIFICATIONS</div>
-      <div className="t360-hrow t360-muted">None on record.</div>
-    </div>
-  );
-}
+// ── Work authorization (§8) ───────────────────────────────────────────────────
 
 export function WorkAuthSection({ model, firstName, canEdit, talentId, go }: { model: Model; firstName: string; canEdit: boolean; talentId: string; go: (s: T360Section) => void }): JSX.Element {
   const h = model.header;

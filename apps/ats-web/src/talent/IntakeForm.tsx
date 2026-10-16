@@ -170,13 +170,13 @@ export function IntakeForm({
 
   return (
     <div className="rc-secgrid">
-      <Section label="Identity" tag={parsed ? 'FROM RESUME' : undefined}>
+      <Section id="identity" label="Identity" tag={parsed ? 'FROM RESUME' : undefined}>
         {field('first_name', 'First name', { required: true })}
         {field('last_name', 'Last name', { required: true })}
         {field('title', 'Professional title', { full: true })}
       </Section>
 
-      <Section label="Contact" tag={parsed ? 'FROM RESUME' : undefined}>
+      <Section id="contact" label="Contact" tag={parsed ? 'FROM RESUME' : undefined}>
         {field('email1', 'Primary email', { type: 'email', required: true })}
         {field('email2', 'Secondary email', { type: 'email' })}
         {field('phone_cell', 'Mobile', { type: 'tel', required: true })}
@@ -186,7 +186,7 @@ export function IntakeForm({
         {field('web_site', 'Website / portfolio', { type: 'url', full: true })}
       </Section>
 
-      <Section label="Location" tag={parsed ? 'FROM RESUME' : undefined}>
+      <Section id="location" label="Location" tag={parsed ? 'FROM RESUME' : undefined}>
         {/* Address autocomplete (reuses the requisition work-location typeahead
             + /v1/address-lookup). Optional — fills the fields below, which stay
             editable. Never blocks manual entry. */}
@@ -215,11 +215,11 @@ export function IntakeForm({
         {toggle('can_relocate', 'Can relocate')}
       </Section>
 
-      <Section label="Professional" tag={parsed ? 'FROM RESUME' : undefined}>
+      <Section id="professional" label="Professional" tag={parsed ? 'FROM RESUME' : undefined}>
         {field('current_employer', 'Current employer', { full: true })}
       </Section>
 
-      <Section label="Work authorization">
+      <Section id="work-authorization" label="Work authorization">
         {select(
           'work_authorization',
           'Work authorization',
@@ -229,7 +229,7 @@ export function IntakeForm({
         )}
       </Section>
 
-      <Section label="Availability & preferences">
+      <Section id="availability" label="Availability & preferences">
         {select('availability_status', 'Availability', AVAILABILITY_STATUS_VALUES, AVAILABILITY_LABELS)}
         {field('date_available', 'Available from', { type: 'date' })}
         {select('engagement_type', 'Engagement type', ENGAGEMENT_TYPE_VALUES, ENGAGEMENT_LABELS)}
@@ -238,7 +238,7 @@ export function IntakeForm({
         {toggle('is_hot', 'Hot talent')}
       </Section>
 
-      <Section label="Skills" tag={parsed ? 'FROM RESUME' : undefined} full>
+      <Section id="skills" label="Skills" tag={parsed ? 'FROM RESUME' : undefined} full>
         <div className="rc-secfield rc-secfield--full">
           <span className="rc-secfield__lb">
             <span>Key skills</span>
@@ -261,14 +261,14 @@ export function IntakeForm({
         </div>
       </Section>
 
-      <Section label="Source context" tag="RECORDED AUTOMATICALLY">
+      <Section id="source" label="Source context" tag="RECORDED AUTOMATICALLY">
         {field('source', 'Source relationship', {
           full: true,
           placeholder: 'e.g. Referral — via Kofi Mensah',
         })}
       </Section>
 
-      <Section label="Ownership">
+      <Section id="ownership" label="Ownership">
         <div className="rc-secfield">
           <span className="rc-secfield__lb">
             <span>Owner</span>
@@ -277,7 +277,7 @@ export function IntakeForm({
         </div>
       </Section>
 
-      <Section label="Notes">
+      <Section id="notes" label="Notes">
         <div className="rc-secfield rc-secfield--full">
           <span className="rc-secfield__lb">
             <span>Recruiter notes</span>
@@ -295,6 +295,7 @@ export function IntakeForm({
       </Section>
 
       <Section
+        id="work-history"
         label="Work history"
         tag={workHistory.length > 0 ? 'FROM RESUME' : undefined}
         full
@@ -309,6 +310,7 @@ export function IntakeForm({
       </Section>
 
       <Section
+        id="education"
         label="Education · certifications"
         tag={education.length > 0 || certifications.length > 0 ? 'FROM RESUME' : 'AFTER CREATION'}
         full
@@ -319,19 +321,25 @@ export function IntakeForm({
   );
 }
 
+// Section ids are stable deep-link targets (`/talent/:id/edit?section=<id>` —
+// Talent 360 Profile's per-block "Edit" links scroll here).
+export const TALENT_SECTION_DOM_ID = (key: string): string => `talent-section-${key}`;
+
 function Section({
+  id,
   label,
   tag,
   full = false,
   children,
 }: {
+  readonly id: string;
   readonly label: string;
   readonly tag?: string;
   readonly full?: boolean;
   readonly children: ReactNode;
 }) {
   return (
-    <section className={`rc-seccard${full ? ' rc-seccard--full' : ''}`}>
+    <section id={TALENT_SECTION_DOM_ID(id)} className={`rc-seccard${full ? ' rc-seccard--full' : ''}`}>
       <div className="rc-seccard__hd">
         <span className="rc-seccard__lb">{label}</span>
         {tag !== undefined ? <span className="rc-seccard__tag">{tag}</span> : null}
