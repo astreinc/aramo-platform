@@ -366,6 +366,12 @@ const COMMUNICATIONS_RECONCILIATION_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
 );
+// TIP-E2E INC-3 A1-4 — additive: CommunicationSubjectType 'screening_session'
+// and MeetingSchedulingOperation.requisition_id nullable (screening meetings only).
+const COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261016140000_inc3_a1_screening_meetings/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -1106,6 +1112,33 @@ const TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION = resolve(
   ROOT,
   'libs/talent-trust/prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
 );
+// TIP-E2E INC-3 — the technical_screening schema (sessions, findings, publication
+// intents, events); the screening provider states query it.
+const TECHNICAL_SCREENING_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
+);
+// TIP-E2E INC-3 A1 — AI-assisted screening columns/tables (the regenerated
+// client SELECTs ScreeningSession.requisition_id and the finding provenance).
+const TECHNICAL_SCREENING_A1_MIGRATION = resolve(
+  ROOT,
+  'libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql',
+);
+// TIP-E2E INC-3 A1-5 — the screening session detail reads the CI screening-
+// profile run status (conversation_intelligence schema: B2 init + B6 run +
+// the additive A1-5 profile columns the regenerated client SELECTs).
+const CI_REQUISITION_ANALYSIS_CONTEXT_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20260907130000_ci_requisition_analysis_context_init/migration.sql',
+);
+const CI_B6_PROCESSING_RUN_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20260909120000_ci_b6_processing_run/migration.sql',
+);
+const CI_INC3_A1_SCREENING_PROFILE_MIGRATION = resolve(
+  ROOT,
+  'libs/conversation-intelligence/prisma/migrations/20261016150000_inc3_a1_ci_screening_profile/migration.sql',
+);
 const SAVED_LIST_INIT_MIGRATION = resolve(
   ROOT,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
@@ -1383,6 +1416,10 @@ const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
 // use; the recruiter actor uuid matches the audit-row value the pacts
 // assert with a regex matcher.
 const PACT_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+// TIP-E2E INC-3 — fixed technical-screening fixture ids (mirrored in
+// pact/consumers/ats-web/src/technical-screening.consumer.test.ts).
+const PACT_SCREENING_SESSION_ID = '0192f3c0-0000-7000-8000-00000000c501';
+const PACT_SCREENING_FINDING_ID = '0192f3c0-0000-7000-8000-00000000c502';
 const PACT_RECRUITER_ACTOR_ID = '00000000-0000-7000-8000-000000000bb1';
 
 // Migration files contain dollar-quoted PL/pgSQL bodies (the
@@ -1557,6 +1594,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // seeds it (nothing reads it).
       // 4e-selection-key — selection.talent_id references TalentRecord.
       await c.query('TRUNCATE TABLE talent_record."TalentRecord" CASCADE');
+      // TIP-E2E INC-3 — technical screening (UUID-only refs → not cascaded by
+      // TalentRecord). Truncate so a session opened by one interaction never
+      // leaks into the next screening read.
+      // INC-3 A1 — the A1 tables too, so a note added by one interaction never
+      // leaks into another interaction's DRAFT detail.
+      await c.query('TRUNCATE TABLE technical_screening."ScreeningEvent", technical_screening."ScreeningEvidencePublication", technical_screening."ScreeningFindingCitation", technical_screening."ScreeningAssistSuggestion", technical_screening."ScreeningNote", technical_screening."ScreeningQuestion", technical_screening."ScreeningAiGeneration", technical_screening."ScreeningTranscriptLink", technical_screening."ScreeningFinding", technical_screening."ScreeningSession"');
       // TALENT-INTEL-1 TI-1D-C — the resume-edition substrate (talent_evidence,
       // UUID-only refs → not cascaded by TalentRecord). Truncate so fixed-id
       // edition/document fixtures don't collide across interactions.
@@ -3755,6 +3798,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_SCHEDULING_MIGRATION,
         COMMUNICATIONS_MUTATION_FENCE_MIGRATION,
         COMMUNICATIONS_RECONCILIATION_MIGRATION,
+        COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -3887,6 +3931,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_TRUST_P3A_DISPUTE_MIGRATION,
         TALENT_TRUST_P3B_DISPUTE_MIGRATION,
         TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION,
+        // TIP-E2E INC-3 — technical_screening (self-contained; no cross-schema FK).
+        TECHNICAL_SCREENING_INIT_MIGRATION,
+        TECHNICAL_SCREENING_A1_MIGRATION,
+        CI_REQUISITION_ANALYSIS_CONTEXT_INIT_MIGRATION,
+        CI_B6_PROCESSING_RUN_MIGRATION,
+        CI_INC3_A1_SCREENING_PROFILE_MIGRATION,
         // Portal P1 PR-2a — portal_identity (PortalUser) for the OPEN-4 chain.
         PORTAL_IDENTITY_MIGRATION,
         SAVED_LIST_INIT_MIGRATION,
@@ -4095,6 +4145,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'offer:transition',
           'offer:read',
           'offer:read:financial',
+          // TIP-E2E INC-3 — Manual Technical Screening routes (screening:read gates
+          // the list/detail reads; screening:create gates opening a session).
+          // Additive; inert for prior interactions.
+          'screening:read',
+          'screening:create',
+          'screening:edit',
+          'screening:confirm',
           // PC-5a — Gate-2a desk (company + contact + D4a) RolesGuard
           // @RequireScopes. company:read:all additionally short-circuits the
           // VisibilityInterceptor resolver to zero reads on the company/
@@ -5011,6 +5068,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               lastName: 'Vasudevan',
             });
             await seedAtsWebContactingConsent(c);
+          });
+        },
+      // TIP-E2E INC-3 — Manual Technical Screening: a live TalentRecord with ONE
+      // DRAFT session holding ONE recruiter-observed finding (fixed ids, so the
+      // detail read resolves). The create-session interaction reuses the record.
+      'an ats-web recruiter and a Talent with a draft technical screening exist':
+        async () => {
+          await withClient(async (c) => {
+            await seedAtsWebTalentRecord(c, {
+              id: PACT_TALENT_ID,
+              firstName: 'Divya',
+              lastName: 'Vasudevan',
+            });
+            await c.query(
+              `INSERT INTO technical_screening."ScreeningSession" (id, tenant_id, talent_record_id, state, version, created_by_actor_id)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'DRAFT',2,$4::uuid) ON CONFLICT (id) DO NOTHING`,
+              [PACT_SCREENING_SESSION_ID, TENANT_ID, PACT_TALENT_ID, RECRUITER_ID],
+            );
+            await c.query(
+              `INSERT INTO technical_screening."ScreeningFinding" (id, tenant_id, session_id, skill_raw, basis, observation_raw)
+               VALUES ($1::uuid,$2::uuid,$3::uuid,'Kubernetes','RECRUITER_OBSERVED','Explained pod disruption budgets.') ON CONFLICT (id) DO NOTHING`,
+              [PACT_SCREENING_FINDING_ID, TENANT_ID, PACT_SCREENING_SESSION_ID],
+            );
           });
         },
       // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====
@@ -9272,7 +9352,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     //     branch is conditional on the literal substring, so it's a
     //     no-op for those.
     async function requestFilter(
-      req: { headers: Record<string, string | string[] | undefined> },
+      // method + url are read by the ES-2 re-signing step (always present on the
+      // replayed Express request); typed here so the provider typechecks.
+      req: { headers: Record<string, string | string[] | undefined>; method: string; url: string },
       _res: unknown,
       next: () => void,
     ): Promise<void> {

@@ -12,6 +12,7 @@ import {
   DELEGATED_TOKEN_STORE,
   DelegatedAuthorizationService,
   MICROSOFT_CALENDAR_PORT,
+  MICROSOFT_MEETING_ARTIFACTS_PORT,
   MICROSOFT_GRAPH_PORT,
   MICROSOFT_OAUTH_PORT,
   PROVIDER_IDENTITY_STORE,
@@ -38,6 +39,8 @@ import { MicrosoftSchedulingService } from './microsoft-scheduling.service.js';
 import { MicrosoftCalendarHttpAdapter } from './microsoft-calendar-http.adapter.js';
 import { MicrosoftGraphHttpAdapter } from './microsoft-graph-http.adapter.js';
 import { MicrosoftOAuthHttpAdapter } from './microsoft-oauth-http.adapter.js';
+import { MicrosoftMeetingArtifactsHttpAdapter } from './microsoft-meeting-artifacts-http.adapter.js';
+import { MeetingArtifactsService } from './meeting-artifacts.service.js';
 import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.js';
 
 // COMM-C2B composition root. Wires the provider-neutral DelegatedAuthorization
@@ -97,6 +100,13 @@ import { ProviderIdentityStoreAdapter } from './provider-identity-store.adapter.
     // opt-in scheduling orchestration service.
     { provide: MICROSOFT_CALENDAR_PORT, useFactory: () => new MicrosoftCalendarHttpAdapter() },
     MicrosoftSchedulingService,
+    // TIP-E2E INC-3 A1 (Part E/F) — delegated Teams meeting artifacts for
+    // screening meetings (organizer token only; post-meeting transcripts).
+    { provide: MICROSOFT_MEETING_ARTIFACTS_PORT, useFactory: () => new MicrosoftMeetingArtifactsHttpAdapter() },
+    MeetingArtifactsService,
   ],
+  // TIP-E2E INC-3 A1 — the screening API composes screening meetings through the
+  // existing scheduling service and the meeting-artifact service.
+  exports: [MicrosoftSchedulingService, MeetingArtifactsService],
 })
 export class MicrosoftModule {}

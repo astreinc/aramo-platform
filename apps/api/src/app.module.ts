@@ -122,6 +122,8 @@ import { OfferExpiryModule } from './offer/offer-expiry.module.js';
 // CI-B6P — the production Conversation Intelligence processing worker
 // (Anthropic structured-output adapter; DARK by default — CI_PROCESSING_ENABLED).
 import { CiProcessingModule } from './conversation-intelligence/ci-processing.module.js';
+// TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED).
+import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
@@ -442,6 +444,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     OfferExpiryModule,
     // CI-B6P — production CI processing (dark by default; app boots with real DI).
     CiProcessingModule,
+    // TIP-E2E INC-3 — Manual Technical Screening routes + the domain module (its
+    // repository re-keys sessions in the record-reconcile operational sweep).
+    TechnicalScreeningApiModule,
     // CB-D2-R (ADR-0030) — the reconciliation-drain worker (scheduled tick →
     // claim due pending rows → re-run the governed path / resolve / park;
     // Redis-gated). Drains the rows A1 + FG only WRITE today.

@@ -86,6 +86,12 @@ const VERIFICATION_ASSERTION_TYPES = new Set<string>([
 // treated as its own independent signal.
 function independenceKey(e: EvidenceForDerivation, index: number): string {
   if (e.source_class === 'SELF') return 'SELF';
+  // TR-SCREEN-1 DDR §2.3 (TIP-E2E INC-3, D1) — every non-SELF SCREENING_FINDING of
+  // the subject's (surviving cluster's) evidence set is ONE independence group,
+  // whichever recruiter, session or interaction produced it: screening can never
+  // manufacture corroboration. SELF_REPORTED findings are SELF and stay in the
+  // single SELF group above (TR-1 §5.3 item 2) — the SELF check stays first.
+  if (e.assertion_type === 'SCREENING_FINDING') return 'screening';
   // TR-9 B1 (D3) — reference-attestations collapse by ATTESTER, not by their
   // per-reference content-hash source_ref: five references from one person are
   // ONE independence signal, not five (without this, v1 capture would inflate
@@ -114,17 +120,21 @@ function attesterKeyOfSourceRef(sourceRef: unknown | null): string | null {
 // detector's "independent sources" definition is the band derivation's own:
 //   - both SELF → same source (all self-claims collapse);
 //   - one SELF, one not → distinct;
+//   - both non-SELF SCREENING_FINDING → same (TR-SCREEN-1 DDR §2.3);
 //   - both non-SELF with a null source_ref → distinct (each its own signal);
 //   - both non-SELF with structurally-equal source_ref → same;
 //   - else distinct.
 // The employer-disagreement detector fires ONLY on independent pairs
 // (!sameUltimateSource), so two SELF claims disagreeing stay silent.
 export function sameUltimateSource(
-  a: { source_class: SourceClass; source_ref: unknown | null },
-  b: { source_class: SourceClass; source_ref: unknown | null },
+  a: { source_class: SourceClass; source_ref: unknown | null; assertion_type?: string },
+  b: { source_class: SourceClass; source_ref: unknown | null; assertion_type?: string },
 ): boolean {
   if (a.source_class === 'SELF' && b.source_class === 'SELF') return true;
   if (a.source_class === 'SELF' || b.source_class === 'SELF') return false;
+  const aScreening = a.assertion_type === 'SCREENING_FINDING';
+  const bScreening = b.assertion_type === 'SCREENING_FINDING';
+  if (aScreening || bScreening) return aScreening && bScreening;
   if (a.source_ref === null || a.source_ref === undefined) return false;
   if (b.source_ref === null || b.source_ref === undefined) return false;
   return stableStringify(a.source_ref) === stableStringify(b.source_ref);
@@ -132,7 +142,7 @@ export function sameUltimateSource(
 
 // Deterministic JSON stringify (object keys sorted) so two structurally-equal
 // source_refs collapse to the same independence key.
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const obj = value as Record<string, unknown>;

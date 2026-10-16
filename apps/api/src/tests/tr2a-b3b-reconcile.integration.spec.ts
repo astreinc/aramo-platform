@@ -84,6 +84,10 @@ const MIGRATIONS = [
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
   'libs/task/prisma/migrations/20260609140000_init_task_model/migration.sql',
+  // TIP-E2E INC-3 — technical_screening: the orchestrator's operational-holder sweep
+  // now re-keys ScreeningSession.talent_record_id (directive §10.3).
+  'libs/technical-screening/prisma/migrations/20261016120000_inc3_technical_screening_init/migration.sql',
+  'libs/technical-screening/prisma/migrations/20261016130000_inc3_a1_ai_assisted_screening/migration.sql',
   // TR-2a-B3b — the four Group-2 immutability reconcile-re-key trigger amendments
   // (GUC-gated exemption of the talent_id re-point). Applied AFTER each schema's
   // init so the CREATE OR REPLACE FUNCTION redefines the existing trigger fn.

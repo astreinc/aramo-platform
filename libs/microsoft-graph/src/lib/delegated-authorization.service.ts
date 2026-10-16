@@ -102,6 +102,9 @@ export interface UsableToken {
   readonly access_token: string;
   readonly provider_identity_id: string;
   readonly ms_object_id: string;
+  /** INC-3 A1 — the scopes Microsoft actually granted (space-delimited), so a
+   *  capability-gated call (meeting artifacts) can fail closed honestly. */
+  readonly granted_scope?: string;
 }
 
 export class DelegatedAuthorizationService {
@@ -217,6 +220,7 @@ export class DelegatedAuthorizationService {
         access_token: bundle.access_token,
         provider_identity_id: binding.id,
         ms_object_id: binding.provider_user_id,
+        granted_scope: bundle.scope,
       };
     }
     let refreshed: DelegatedTokenBundle;
@@ -240,6 +244,7 @@ export class DelegatedAuthorizationService {
       access_token: refreshed.access_token,
       provider_identity_id: binding.id,
       ms_object_id: binding.provider_user_id,
+      granted_scope: refreshed.scope,
     };
   }
 

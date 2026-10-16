@@ -28,7 +28,7 @@ export interface MeetingOperationRow {
   interaction_id: string | null;
   organizer_id: string;
   talent_record_id: string;
-  requisition_id: string;
+  requisition_id: string | null;
   request_fingerprint: string | null;
   last_error: string | null;
   created_at: Date;
@@ -103,7 +103,10 @@ export class MeetingSchedulingRepository {
     transaction_id: string;
     organizer_id: string;
     talent_record_id: string;
-    requisition_id: string;
+    // INC-3 A1 Part F — null only for a screening meeting with no Requisition.
+    requisition_id: string | null;
+    // INC-3 A1 — the authoritative screening association (screening meetings only).
+    screening_session_id?: string | null;
     request_fingerprint: string;
   }): Promise<{
     outcome: 'created' | 'replay' | 'in_progress' | 'needs_reconciliation' | 'identity_conflict';
@@ -120,6 +123,7 @@ export class MeetingSchedulingRepository {
           organizer_id: args.organizer_id,
           talent_record_id: args.talent_record_id,
           requisition_id: args.requisition_id,
+          screening_session_id: args.screening_session_id ?? null,
           request_fingerprint: args.request_fingerprint,
         },
       })) as MeetingOperationRow;
@@ -208,8 +212,11 @@ export class MeetingSchedulingRepository {
     ended_at: Date;
     subject: string;
     talent_record_id: string;
-    requisition_id: string;
+    // INC-3 A1 Part F — a screening meeting carries the screening session as a
+    // `regarding` subject and may have no Requisition.
+    requisition_id: string | null;
     pipeline_id?: string | null;
+    screening_session_id?: string | null;
   }): Promise<ScheduledMeetingRow> {
     return (await this.prisma.$transaction(async (tx) => {
       const interaction = await tx.communicationInteraction.create({
@@ -238,15 +245,28 @@ export class MeetingSchedulingRepository {
           relation_type: 'subject',
         },
       });
-      await tx.communicationAssociation.create({
-        data: {
-          tenant_id: args.tenant_id,
-          interaction_id: interaction.id,
-          subject_type: 'requisition',
-          subject_id: args.requisition_id,
-          relation_type: 'regarding',
-        },
-      });
+      if (args.requisition_id !== null) {
+        await tx.communicationAssociation.create({
+          data: {
+            tenant_id: args.tenant_id,
+            interaction_id: interaction.id,
+            subject_type: 'requisition',
+            subject_id: args.requisition_id,
+            relation_type: 'regarding',
+          },
+        });
+      }
+      if (args.screening_session_id !== undefined && args.screening_session_id !== null) {
+        await tx.communicationAssociation.create({
+          data: {
+            tenant_id: args.tenant_id,
+            interaction_id: interaction.id,
+            subject_type: 'screening_session',
+            subject_id: args.screening_session_id,
+            relation_type: 'regarding',
+          },
+        });
+      }
       if (args.pipeline_id !== undefined && args.pipeline_id !== null && args.pipeline_id.length > 0) {
         await tx.communicationAssociation.create({
           data: {
@@ -260,6 +280,23 @@ export class MeetingSchedulingRepository {
       }
       return interaction as ScheduledMeetingRow;
     })) as ScheduledMeetingRow;
+  }
+
+  // INC-3 A1 Part E — record the Teams onlineMeeting id resolved from the join
+  // URL on the meeting interaction (provider_interaction_id), tenant-bound.
+  async setOnlineMeetingId(tenant_id: string, interaction_id: string, online_meeting_id: string): Promise<void> {
+    await this.prisma.communicationInteraction.updateMany({
+      where: { tenant_id, id: interaction_id, channel: 'meeting' },
+      data: { provider_interaction_id: online_meeting_id },
+    });
+  }
+
+  async findOnlineMeetingId(tenant_id: string, interaction_id: string): Promise<string | null> {
+    const row = await this.prisma.communicationInteraction.findFirst({
+      where: { tenant_id, id: interaction_id, channel: 'meeting' },
+      select: { provider_interaction_id: true },
+    });
+    return row?.provider_interaction_id ?? null;
   }
 
   async findScheduledMeeting(

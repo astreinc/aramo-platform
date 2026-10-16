@@ -47,7 +47,8 @@
     "libs/talent-evidence",
     "libs/talent-reconcile",
     "libs/talent-record",
-    "libs/talent-trust"
+    "libs/talent-trust",
+    "libs/technical-screening"
   ],
   "coverageAliases": [
     {

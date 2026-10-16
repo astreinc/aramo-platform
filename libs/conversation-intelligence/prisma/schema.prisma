@@ -143,7 +143,16 @@ model ConversationIntelligenceRun {
   // Cross-schema references (UUID-only, no FK).
   interaction_id                           String @db.Uuid
   conversation_transcript_id               String @db.Uuid
-  requisition_analysis_context_snapshot_id String @db.Uuid
+  // INC-3 A1-5 — nullable ONLY for SCREENING-profile runs (DB CHECK enforces).
+  requisition_analysis_context_snapshot_id String? @db.Uuid
+
+  // INC-3 A1-5 (Part D.1) — the analysis profile discriminator. REQUISITION =
+  // the CI-B6 analysis; SCREENING = the screening analysis profile, bound to
+  // exactly one screening session (cross-schema UUID reference, no FK).
+  analysis_profile     String  @default("REQUISITION")
+  screening_session_id String? @db.Uuid
+  // INC-3 A1-5 — canonical hash of the screening context the run is bound to.
+  screening_context_sha256 String?
 
   // The exact normalized-artifact hash this run was grounded on (evidence bind).
   normalized_sha256 String
@@ -172,6 +181,7 @@ model ConversationIntelligenceRun {
   @@unique([tenant_id, conversation_transcript_id, requisition_analysis_context_snapshot_id, model_provider, model_name, prompt_template_version, output_schema_version], name: "analysis_identity", map: "CIRun_analysis_identity_key")
   @@index([tenant_id, status])
   @@index([tenant_id, conversation_transcript_id])
+  @@index([tenant_id, screening_session_id], map: "CIRun_tenant_screening_session_idx")
   @@schema("conversation_intelligence")
 }
 

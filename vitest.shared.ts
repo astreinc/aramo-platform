@@ -22,6 +22,7 @@ export default defineConfig({
       '@aramo/common': resolve(root, 'libs/common/src/index.ts'),
       '@aramo/communications': resolve(root, 'libs/communications/src/index.ts'),
       '@aramo/conversation-intelligence': resolve(root, 'libs/conversation-intelligence/src/index.ts'),
+      '@aramo/technical-screening': resolve(root, 'libs/technical-screening/src/index.ts'),
       // CI-B3 — provider-neutral conversation-transcript substrate. Mirrors the
       // tsconfig.base.json @aramo/conversation-transcript alias so vitest
       // resolves the lib barrel from its integration/unit specs.

@@ -67,6 +67,7 @@ import { MyTasksView } from './task/MyTasksView';
 import { TalentCreateView } from './talent/TalentCreateView';
 import { DraftsLegacyRedirect } from './talent/DraftsLegacyRedirect';
 import { Talent360View } from './talent-360/Talent360View';
+import { TechnicalScreeningView } from './technical-screening/TechnicalScreeningView';
 import { TalentEditView } from './talent/TalentEditView';
 import { TalentRequisition360View } from './requisitions/talent-requisition-360/TalentRequisition360View';
 import { RecruiterShell } from './shell/RecruiterShell';
@@ -383,6 +384,17 @@ export function App() {
                           sessionStateOverride={state}
                         >
                           <DraftsLegacyRedirect />
+                        </RouteGuard>
+                      }
+                    />
+                    <Route
+                      path="talent/:talentId/screening"
+                      element={
+                        <RouteGuard
+                          requireScope="screening:read"
+                          sessionStateOverride={state}
+                        >
+                          <TechnicalScreeningView />
                         </RouteGuard>
                       }
                     />

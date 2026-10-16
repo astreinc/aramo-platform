@@ -143,3 +143,30 @@ export {
   buildSourceArtifactKey,
   type FakeWriteMode,
 } from './lib/normalization/fake/in-memory-transcript-artifact-store.js';
+
+// TIP-E2E INC-3 A1-6 — the provider-neutral external meeting-capture contract
+// (§9). No vendor is approved: only the FAKE provider implements it, for tests.
+export {
+  EXTERNAL_CAPTURE_EVENT_TYPES,
+  EXTERNAL_CAPTURE_MAX_SKEW_MS,
+  ExternalCaptureEventError,
+  LiveCaptureSessionBuffer,
+  evaluateLiveAssist,
+  parseExternalCaptureEvent,
+  signExternalCaptureEvent,
+  verifyExternalCaptureSignature,
+  type ExternalCaptureCommandPort,
+  type ExternalCaptureEvent,
+  type ExternalCaptureEventType,
+  type ExternalCaptureProvider,
+  type LiveApplyResult,
+  type LiveAssistConsent,
+  type LiveAssistDecision,
+  type LiveSegment,
+  type SpeakerAttribution,
+  type TranscriptSegmentPayload,
+} from './lib/live/external-capture.contract.js';
+export {
+  FakeExternalCaptureProvider,
+  FAKE_EXTERNAL_CAPTURE_PROVIDER_KEY,
+} from './lib/live/fake-external-capture.provider.js';

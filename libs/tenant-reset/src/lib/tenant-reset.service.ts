@@ -185,6 +185,21 @@ const PRESERVE_INVENTORY: readonly PreserveStep[] = [
   { label: `company."Company"`, display: `company."Company"`, where: `tenant_id = $1::uuid` },
   { label: `contact."Contact"`, display: `contact."Contact"`, where: `tenant_id = $1::uuid` },
   { label: `identity."Tenant"`, display: `identity."Tenant"`, where: `id = $1::uuid` },
+  // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §10.4) — screening data is
+  // talent-scoped evidence history: T0 PRESERVE ("talent records · trust and
+  // evidence records", T0 :60). Absent from DELETE_INVENTORY; counted before and
+  // after so any change fails the preserved-unchanged verification (T0 :168).
+  { label: `technical_screening."ScreeningSession"`, display: `technical_screening."ScreeningSession"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningFinding"`, display: `technical_screening."ScreeningFinding"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningEvidencePublication"`, display: `technical_screening."ScreeningEvidencePublication"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningEvent"`, display: `technical_screening."ScreeningEvent"`, where: `tenant_id = $1::uuid` },
+  // INC-3 A1 §B.8 / Part H T0 — the A1 screening tables are PRESERVE likewise.
+  { label: `technical_screening."ScreeningFindingCitation"`, display: `technical_screening."ScreeningFindingCitation"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningAiGeneration"`, display: `technical_screening."ScreeningAiGeneration"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningQuestion"`, display: `technical_screening."ScreeningQuestion"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningNote"`, display: `technical_screening."ScreeningNote"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningAssistSuggestion"`, display: `technical_screening."ScreeningAssistSuggestion"`, where: `tenant_id = $1::uuid` },
+  { label: `technical_screening."ScreeningTranscriptLink"`, display: `technical_screening."ScreeningTranscriptLink"`, where: `tenant_id = $1::uuid` },
   {
     label: `activity."Activity" (non-workflow)`,
     display: `activity."Activity" (talent/company/contact history)`,

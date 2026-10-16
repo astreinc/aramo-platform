@@ -1,0 +1,30 @@
+{
+  "name": "technical-screening",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/technical-screening/src",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/technical-screening",
+        "main": "libs/technical-screening/src/index.ts",
+        "tsConfig": "libs/technical-screening/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/technical-screening/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/technical-screening"
+      }
+    }
+  }
+}

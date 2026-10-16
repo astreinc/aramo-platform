@@ -1728,6 +1728,18 @@ components:
         User.email uniqueness race lost between pre-check and insert maps
         to the same governed 409, never a raw P2002 / HTTP 500.
         AUTHZ-D4a adds one code for the team-model substrate.
+        TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §9) adds two
+        screening-session lifecycle codes: SCREENING_SESSION_STATE_INVALID
+        (HTTP 422 — an edit, removal, void or confirm on a session that is
+        no longer DRAFT) and SCREENING_SESSION_VERSION_CONFLICT (HTTP 409 —
+        a stale session version, or a confirmed finding set that does not
+        match the session's findings).
+        TIP-E2E INC-3 A1 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED §B.6) adds three:
+        LLM_PROVIDER_NOT_CONFIGURED (HTTP 422 — no tenant AI provider key is
+        configured), SCREENING_AI_UNAVAILABLE (HTTP 503 — a retryable model or
+        provider failure during screening AI assistance) and
+        MEETING_ARTIFACT_ACCESS_UNAVAILABLE (HTTP 409 — the client Microsoft
+        365 tenant prerequisites for meeting transcripts are not met).
         MANAGEMENT_CYCLE_REJECTED (HTTP 409) — set-management-edge
         refusal: the proposed (manager_user_id, report_user_id) edge
         would create a cycle in the management graph. The cycle check
@@ -1987,6 +1999,11 @@ components:
         - MICROSOFT_SCHEDULING_IN_PROGRESS
         - EMAIL_UNAVAILABLE
         - ESIGN_SERVICE_AUTH_UNAVAILABLE
+        - SCREENING_SESSION_STATE_INVALID
+        - SCREENING_SESSION_VERSION_CONFLICT
+        - LLM_PROVIDER_NOT_CONFIGURED
+        - SCREENING_AI_UNAVAILABLE
+        - MEETING_ARTIFACT_ACCESS_UNAVAILABLE
 
     ErrorObject:
       type: object
