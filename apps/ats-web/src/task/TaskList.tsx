@@ -82,3 +82,92 @@ export function TaskList({
     </ul>
   );
 }
+
+// Compact card rows for the Requisition Detail Tasks card (prototype: checkbox ·
+// bold title — assignee · due chip · Open →). Controls render ONLY when canWrite.
+function dueChip(due: string | null, done: boolean): { text: string; tone: string } | null {
+  if (due === null || done) return null;
+  const d = due.slice(0, 10);
+  const today = new Date();
+  const iso = (x: Date): string =>
+    `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (d < iso(today)) return { text: 'overdue', tone: 'late' };
+  if (d === iso(today)) return { text: 'due today', tone: 'late' };
+  if (d === iso(tomorrow)) return { text: 'due tomorrow', tone: 'soon' };
+  const [y, m, day] = d.split('-').map(Number);
+  const label = new Date(y ?? 0, (m ?? 1) - 1, day ?? 1).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+  });
+  return { text: `due ${label}`, tone: 'later' };
+}
+
+export function TaskCardRows({
+  items,
+  canWrite,
+  assigneeNames,
+  onToggleStatus,
+  onEdit,
+  onDelete,
+  emptyMessage,
+}: TaskListProps & { readonly assigneeNames: Readonly<Record<string, string>> }) {
+  if (items.length === 0) {
+    return <p className="rc-tl__empty task-list__empty">{emptyMessage}</p>;
+  }
+  return (
+    <div>
+      {items.map((t) => {
+        const done = t.status === 'done' || t.status === 'cancelled';
+        const due = dueChip(t.due_date, done);
+        const assignee = t.assignee_id !== null ? (assigneeNames[t.assignee_id] ?? null) : null;
+        const meta = [
+          t.type !== null ? TYPE_LABELS[t.type] : null,
+          t.assignee_id === null ? 'unassigned' : assignee !== null ? `assigned to ${assignee}` : 'assigned',
+        ].filter((x): x is string => x !== null);
+        return (
+          <div key={t.id} className={`rc-tk__row${done ? ' rc-tk__row--done' : ''}`} data-testid="task-row">
+            {canWrite ? (
+              <Button
+                unstyled
+                type="button"
+                className={`rc-tk__check${done ? ' rc-tk__check--on' : ''}`}
+                onClick={() => onToggleStatus(t)}
+                aria-label={done ? `Reopen ${t.title}` : `Mark ${t.title} done`}
+                data-testid="task-toggle"
+              >
+                {done ? '✓' : ''}
+              </Button>
+            ) : (
+              <span className={`rc-tk__check${done ? ' rc-tk__check--on' : ''}`} aria-hidden="true">
+                {done ? '✓' : ''}
+              </span>
+            )}
+            <span className="rc-tk__body">
+              {t.priority !== null ? (
+                <span
+                  className={`rc-pdot rc-pdot--${t.priority}`}
+                  title={`Priority: ${t.priority}`}
+                  aria-label={`Priority ${t.priority}`}
+                />
+              ) : null}
+              <b>{t.title}</b>
+              <span className="rc-tk__meta"> — {meta.join(' · ')}</span>
+            </span>
+            {due !== null ? <span className={`rc-tk__due rc-tk__due--${due.tone}`}>{due.text}</span> : null}
+            {canWrite ? (
+              <>
+                <Button unstyled type="button" className="rc-link rc-tk__open" onClick={() => onEdit(t)} data-testid="task-edit">
+                  Open →
+                </Button>
+                <Button unstyled type="button" className="rc-tk__del" onClick={() => onDelete(t)} data-testid="task-delete">
+                  Delete
+                </Button>
+              </>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}

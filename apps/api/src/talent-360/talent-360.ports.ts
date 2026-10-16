@@ -102,6 +102,36 @@ export interface CommunicationRow {
   readonly id: string;
   readonly channel: string;
   readonly direction: string;
+  // The interaction lifecycle status (e.g. a meeting's scheduled/rescheduled/
+  // cancelled, or a create-link-only meeting's `created`).
+  readonly status: string;
+  // The stored subject (email subject / scheduled-meeting title); null when the
+  // writer stored none (voice, create-link-only meetings, legacy sends).
+  readonly subject: string | null;
+  // The meeting window for meeting-channel rows; null otherwise.
+  readonly started_at: string | null;
+  readonly ended_at: string | null;
+  readonly initiated_by_id: string | null;
+  // `regarding` requisition associations (association truth). NOT pre-filtered
+  // by visibility — the service resolves them through resolveRequisitions.
+  readonly requisition_ids: readonly string[];
+  readonly created_at: string;
+}
+
+// A single email interaction for the recruiter-facing preview: the FINAL sent
+// subject/body (COMM-C4 durable evidence) + addressing. Only returned when the
+// interaction is associated to the Talent as its `subject`.
+export interface CommunicationPreviewRow {
+  readonly id: string;
+  readonly channel: string;
+  readonly direction: string;
+  readonly status: string;
+  readonly subject: string | null;
+  readonly body: string | null;
+  readonly from_address: string;
+  readonly to_address: string;
+  readonly initiated_by_id: string | null;
+  readonly requisition_ids: readonly string[];
   readonly created_at: string;
 }
 
@@ -157,6 +187,24 @@ export interface WorkHistoryRow {
   readonly employment_type: string | null;
   readonly source: string;
 }
+
+// A Talent document's file for the read-only preview: the bytes of its content
+// artifact (executed > prepared > original upload) + the REGARDING requisition ids
+// so the service can apply visibility. null ⇒ absent / not this Talent's / no file.
+export interface DocumentContentRow {
+  readonly document_id: string;
+  readonly title: string;
+  readonly mime_type: string;
+  readonly byte_size: number;
+  readonly regarding_requisition_ids: readonly string[];
+  // Lazily read so the service can refuse (visibility / size) before any bytes move.
+  readonly readBytes: () => Promise<Buffer>;
+}
+
+// DI token for the DocumentStoragePort bound locally in Talent360Module (the
+// documents root binding is not exported to sub-modules — the documents-esign
+// module precedent).
+export const TALENT_360_DOCUMENT_STORAGE = 'TALENT_360_DOCUMENT_STORAGE';
 
 export interface Talent360ReadPort {
   // Core Talent record (detail projection). null ⇒ absent/cross-tenant.
@@ -219,6 +267,22 @@ export interface Talent360ReadPort {
     talent_id: string,
     limit: number,
   ): Promise<readonly CommunicationRow[]>;
+
+  // One interaction for the preview, tenant-scoped AND constrained to the Talent
+  // (`subject` association). null ⇒ absent / cross-tenant / not this Talent's.
+  loadCommunicationPreview(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    interaction_id: string,
+  ): Promise<CommunicationPreviewRow | null>;
+
+  // A Talent document's content for the read-only preview (SUBJECT-associated
+  // to this Talent). Tenant-scoped. null ⇒ absent / not this Talent's / no file.
+  loadDocumentContent(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    document_id: string,
+  ): Promise<DocumentContentRow | null>;
 
   listRecentActivity(
     ctx: Talent360ActorContext,

@@ -510,6 +510,10 @@ export interface CreateTalentResumeEditionRequest {
   readonly attachment_id: string;
   readonly purpose?: string;
   readonly label?: string;
+  // Resume Revision Lifecycle — a revision tailored for a requisition + its lineage
+  // (mirrors BE CreateResumeEditionRequestDto).
+  readonly requisition_id?: string;
+  readonly derived_from_edition_id?: string;
 }
 
 // TALENT-INTEL-1 TI-1H §9 — the redacted text for ONE resume edition (preview).

@@ -430,6 +430,72 @@ export class DocumentsRepository {
     }));
   }
 
+  // Talent 360 document preview — the CONTENT artifact of a document that is
+  // SUBJECT-associated to the given resource (tenant-scoped; null when absent,
+  // cross-tenant, or not that resource's). Metadata only — the caller reads the
+  // bytes through the DocumentStoragePort. Preference: the executed copy, else the
+  // prepared rendition, else the original upload (newest of the chosen role).
+  // Returns the REGARDING requisition ids so the caller can apply visibility.
+  async findContentArtifactForSubject(input: {
+    tenant_id: string;
+    document_id: string;
+    resource_type: string;
+    resource_id: string;
+  }): Promise<{
+    document_id: string;
+    title: string;
+    regarding_requisition_ids: string[];
+    storage_locator: string;
+    mime_type: string;
+    byte_size: number;
+  } | null> {
+    const doc = await this.prisma.document.findFirst({
+      where: {
+        id: input.document_id,
+        tenant_id: input.tenant_id,
+        associations: {
+          some: {
+            resource_type: input.resource_type,
+            resource_id: input.resource_id,
+            relationship: 'SUBJECT',
+          },
+        },
+      },
+      select: {
+        id: true,
+        title: true,
+        associations: {
+          where: { resource_type: 'REQUISITION', relationship: 'REGARDING' },
+          select: { resource_id: true },
+        },
+      },
+    });
+    if (doc === null) return null;
+    const artifacts = await this.prisma.documentArtifact.findMany({
+      where: {
+        tenant_id: input.tenant_id,
+        document_id: doc.id,
+        artifact_role: { in: ['EXECUTED', 'RENDERED_UNSIGNED', 'SOURCE_UPLOAD'] },
+      },
+      select: { artifact_role: true, storage_locator: true, mime_type: true, byte_size: true },
+      orderBy: { created_at: 'desc' },
+    });
+    const artifact =
+      artifacts.find((a) => a.artifact_role === 'EXECUTED') ??
+      artifacts.find((a) => a.artifact_role === 'RENDERED_UNSIGNED') ??
+      artifacts.find((a) => a.artifact_role === 'SOURCE_UPLOAD') ??
+      null;
+    if (artifact === null) return null;
+    return {
+      document_id: doc.id,
+      title: doc.title,
+      regarding_requisition_ids: [...new Set(doc.associations.map((a) => a.resource_id))],
+      storage_locator: artifact.storage_locator,
+      mime_type: artifact.mime_type,
+      byte_size: artifact.byte_size,
+    };
+  }
+
   // DOC-5 (R-5-11) — is a document of this type REQUIRED for a resource? Returns
   // the DocumentRequirement (or null). The readiness gate uses this to stay
   // CONDITIONAL: a submit is gated on RTR ONLY when such a requirement exists, so

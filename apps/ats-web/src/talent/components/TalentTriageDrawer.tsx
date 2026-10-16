@@ -21,6 +21,7 @@ import {
   AVAILABILITY_LABELS,
   ENGAGEMENT_LABELS,
 } from '../talent-workspace';
+import { formatActivityNote } from '../../activity/activity-note-format';
 import type { TalentRecordView } from '../types';
 
 // TalentTriageDrawer — right slide-in triage panel. Feature-local; NON-MODAL
@@ -299,7 +300,7 @@ export function TalentTriageDrawer({
               {activities.slice(0, 6).map((a) => (
                 <li key={a.id}>
                   <span className="rc-drawer__feed-t">
-                    {a.notes ?? a.type}
+                    {a.notes !== null ? formatActivityNote(a.notes) : a.type}
                   </span>
                   <span className="rc-drawer__feed-w">{ago(a.created_at)}</span>
                 </li>

@@ -599,6 +599,32 @@ export class CommunicationsRepository {
     return [...new Set(rows.map((r) => r.subject_id))];
   }
 
+  // Talent 360 — BATCHED `regarding` requisition ids per interaction (one query
+  // over the id-set; tenant-scoped). Interactions with no requisition association
+  // are absent from the map. Association TRUTH only — never inferred.
+  async findRequisitionIdsForInteractions(
+    tenantId: string,
+    interactionIds: readonly string[],
+  ): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    if (interactionIds.length === 0) return out;
+    const rows = await this.prisma.communicationAssociation.findMany({
+      where: {
+        tenant_id: tenantId,
+        interaction_id: { in: [...interactionIds] },
+        subject_type: 'requisition' satisfies CommunicationSubjectType,
+        relation_type: 'regarding' satisfies CommunicationRelationType,
+      },
+      select: { interaction_id: true, subject_id: true },
+    });
+    for (const r of rows) {
+      const ids = out.get(r.interaction_id) ?? [];
+      if (!ids.includes(r.subject_id)) ids.push(r.subject_id);
+      out.set(r.interaction_id, ids);
+    }
+    return out;
+  }
+
   // COMM-B7 — the Talent communication timeline read. Interactions linked to the
   // talent via a `subject` CommunicationAssociation (Communications associations
   // ONLY — no Requisition/Activity join), tenant-scoped, ordered (created_at DESC,

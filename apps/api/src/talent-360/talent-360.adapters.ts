@@ -4,7 +4,7 @@ import { InterviewSessionRepository } from '@aramo/client-selection';
 import { CommunicationsRepository } from '@aramo/communications';
 import { ActivityRepository } from '@aramo/activity';
 import { ConsentRepository } from '@aramo/consent';
-import { DocumentsRepository } from '@aramo/documents';
+import { DocumentsRepository, type DocumentStoragePort } from '@aramo/documents';
 import { IdentityService } from '@aramo/identity';
 import { PipelineRepository } from '@aramo/pipeline';
 import { TalentExtractionService } from '@aramo/talent-extraction';
@@ -23,8 +23,10 @@ import type { TalentRequisitionJourney } from '../talent-journey/dto/talent-jour
 
 import type {
   ActivityRow,
+  CommunicationPreviewRow,
   CommunicationRow,
   ConsentSummaryValue,
+  DocumentContentRow,
   DocumentRow,
   EpisodeRow,
   IdentityOutcomeRow,
@@ -37,6 +39,7 @@ import type {
   TaskRow,
   WorkHistoryRow,
 } from './talent-360.ports.js';
+import { TALENT_360_DOCUMENT_STORAGE } from './talent-360.ports.js';
 
 // The concrete Talent360ReadPort — the ONLY layer that touches the real domain
 // repositories/services. It maps each aggregate's view down to the narrow
@@ -71,6 +74,8 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     @Inject(TALENT_DOSSIER_READ_PORT)
     private readonly dossierPort: TalentDossierReadPort,
     private readonly extraction: TalentExtractionService,
+    @Inject(TALENT_360_DOCUMENT_STORAGE)
+    private readonly documentStorage: DocumentStoragePort,
   ) {}
 
   async loadTalent(
@@ -259,12 +264,49 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
       talent_id,
       limit,
     );
+    const reqIds = await this.communications.findRequisitionIdsForInteractions(
+      ctx.tenant_id,
+      rows.map((r) => r.id),
+    );
     return rows.map((r) => ({
       id: r.id,
       channel: r.channel,
       direction: r.direction,
+      status: r.status,
+      subject: r.subject,
+      started_at: r.started_at === null ? null : toIso(r.started_at),
+      ended_at: r.ended_at === null ? null : toIso(r.ended_at),
+      initiated_by_id: r.initiated_by_id,
+      requisition_ids: reqIds.get(r.id) ?? [],
       created_at: toIso(r.created_at),
     }));
+  }
+
+  async loadCommunicationPreview(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    interaction_id: string,
+  ): Promise<CommunicationPreviewRow | null> {
+    const row = await this.communications.findInteractionForTenant(ctx.tenant_id, interaction_id);
+    if (row === null) return null;
+    const [talentIds, requisition_ids] = await Promise.all([
+      this.communications.findTalentSubjectIdsForInteraction(ctx.tenant_id, interaction_id),
+      this.communications.findRequisitionIdsForInteraction(ctx.tenant_id, interaction_id),
+    ]);
+    if (!talentIds.includes(talent_id)) return null;
+    return {
+      id: row.id,
+      channel: row.channel,
+      direction: row.direction,
+      status: row.status,
+      subject: row.subject,
+      body: row.body,
+      from_address: row.from_address,
+      to_address: row.to_address,
+      initiated_by_id: row.initiated_by_id,
+      requisition_ids,
+      created_at: toIso(row.created_at),
+    };
   }
 
   async listRecentActivity(
@@ -324,6 +366,33 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
       tenant_id: ctx.tenant_id,
       talent_record_id: talent_id,
     });
+  }
+
+  async loadDocumentContent(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+    document_id: string,
+  ): Promise<DocumentContentRow | null> {
+    const found = await this.documents.findContentArtifactForSubject({
+      tenant_id: ctx.tenant_id,
+      document_id,
+      resource_type: 'TALENT',
+      resource_id: talent_id,
+    });
+    if (found === null) return null;
+    return {
+      document_id: found.document_id,
+      title: found.title,
+      mime_type: found.mime_type,
+      byte_size: found.byte_size,
+      regarding_requisition_ids: found.regarding_requisition_ids,
+      readBytes: () =>
+        this.documentStorage.getArtifact({
+          storage_key: found.storage_locator,
+          requestId: ctx.request_id,
+          maxBytes: TALENT_360_DOCUMENT_PREVIEW_MAX_BYTES,
+        }),
+    };
   }
 
   async loadConsentSummary(
@@ -397,3 +466,6 @@ function toIso(value: Date | string): string {
 // bounded window (directive §18 — the Overview shows a recent window, not the
 // full history).
 export const TALENT_360_RECENT_ACTIVITY_LIMIT = RECENT_ACTIVITY_LIMIT;
+// Read-only document preview cap: the bytes travel base64 inside JSON, so a larger
+// file is refused (422 too_large_for_preview) rather than streamed.
+export const TALENT_360_DOCUMENT_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;

@@ -37,9 +37,17 @@ const PURPOSES: Purpose[] = [
 ];
 
 const BASE_ZONES = [
-  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-  'America/Toronto', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
-  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Tokyo', 'Australia/Sydney', 'UTC',
+  // US (Phoenix: Arizona observes no daylight saving, so it differs from Denver half the year)
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Phoenix',
+  'America/Los_Angeles', 'America/Anchorage', 'Pacific/Honolulu',
+  // Americas
+  'America/Toronto', 'America/Mexico_City', 'America/Sao_Paulo',
+  // Europe / Africa / Middle East
+  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Africa/Lagos', 'Africa/Johannesburg', 'Asia/Dubai',
+  // Asia-Pacific
+  'Asia/Kolkata', 'Asia/Singapore', 'Asia/Manila', 'Asia/Shanghai', 'Asia/Seoul', 'Asia/Tokyo',
+  'Australia/Sydney', 'Pacific/Auckland',
+  'UTC',
 ];
 
 function resolvedZone(): string {

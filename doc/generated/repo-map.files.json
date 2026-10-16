@@ -733,6 +733,8 @@
     "apps/ats-web/src/activity/LogNoteDialog.spec.tsx",
     "apps/ats-web/src/activity/LogNoteDialog.tsx",
     "apps/ats-web/src/activity/activity-api.ts",
+    "apps/ats-web/src/activity/activity-note-format.spec.ts",
+    "apps/ats-web/src/activity/activity-note-format.ts",
     "apps/ats-web/src/activity/error-messages.ts",
     "apps/ats-web/src/activity/redaction-drift.spec.ts",
     "apps/ats-web/src/activity/redaction.ts",
