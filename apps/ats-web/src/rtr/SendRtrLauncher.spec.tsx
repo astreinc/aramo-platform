@@ -120,13 +120,14 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     vi.mocked(composeRtr).mockResolvedValue(COMPOSE);
     vi.mocked(requestRtr).mockResolvedValue({ document_id: 'doc-9' });
     vi.mocked(sendRtr).mockRejectedValue(
-      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING' }),
+      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING', details: { binding_key: 'recruiting_company.name' } }),
     );
     renderLauncher();
     await screen.findByText('Standard Right to Represent · v2');
     fireEvent.click(screen.getByTestId('send-rtr-send'));
     const missing = await screen.findByTestId('send-rtr-missing');
-    expect(missing.textContent).toContain('a required detail');
+    expect(missing.textContent).toContain('Your organization’s legal name isn’t set');
+    expect(missing.textContent).not.toContain('requisition reference');
     expect(screen.getByTestId('send-rtr-send')).toBeDisabled();
   });
 });
