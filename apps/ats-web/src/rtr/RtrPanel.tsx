@@ -1,6 +1,8 @@
 import { Button } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { DocumentPreviewDialog } from '../talent-360/t360-previews';
+
 import { SendRtrModal } from './SendRtrModal';
 import {
   requestRtr,
@@ -88,6 +90,7 @@ export function RtrPanel({
   recipientEmail = null,
 }: RtrPanelProps): JSX.Element {
   const [current, setCurrent] = useState<RtrCurrentResponse | null>(null);
+  const [viewOpen, setViewOpen] = useState(false);
   const [loading, setLoading] = useState(canRead);
   const [busy, setBusy] = useState<'' | 'requesting' | 'sending' | 'refreshing' | 'previewing' | 'reminding'>('');
   const [error, setError] = useState<{ text: string; retryable: boolean } | null>(null);
@@ -261,25 +264,22 @@ export function RtrPanel({
               Refresh status
             </Button>
           ) : null}
+          {/* The frozen signed PDF opens in the read-only document viewer (the
+              authenticated content read). The old links pointed the browser at the
+              JSON artifact-metadata API (no bearer, no bytes). The certificate has no
+              byte-serving route yet, so it is not offered. */}
           {executed && current.executed_available ? (
-            <a
-              className="rc-tj__rtrlink"
-              href={`/v1/documents/${current.document_id}/artifacts?role=EXECUTED`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
+            <Button unstyled type="button" className="rc-tj__rtrlink" onClick={() => setViewOpen(true)}>
               View RTR
-            </a>
+            </Button>
           ) : null}
-          {executed && current.certificate_available ? (
-            <a
-              className="rc-tj__rtrlink"
-              href={`/v1/documents/${current.document_id}/artifacts?role=EXECUTION_CERTIFICATE`}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Certificate
-            </a>
+          {viewOpen ? (
+            <DocumentPreviewDialog
+              talentId={talentId}
+              documentId={current.document_id}
+              title="Right to Represent"
+              onClose={() => setViewOpen(false)}
+            />
           ) : null}
         </div>
       </div>

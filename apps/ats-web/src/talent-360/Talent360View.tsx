@@ -26,7 +26,6 @@ import { SECTION_GROUPS, isSection, labelize, monthYear, sectionLabel, workAuthL
 import {
   ActivitySection,
   CiSection,
-  DocumentsSection,
   ListsSection,
   NotesSection,
   OpportunitiesSection,
@@ -40,6 +39,7 @@ import {
 import { getTalent360 } from './talent-360-api';
 import type { ActiveOpportunityView, AttentionItemView, Talent360View as Talent360ViewModel } from './talent-360-types';
 import './talent-360.css';
+import { DocumentsSection } from './t360-documents';
 import { availabilityLabel, engagementLabel } from './t360-vocab';
 
 // Talent 360 — the person-centric recruiter workspace (route `talent/:talentId`),
@@ -352,7 +352,7 @@ export function Talent360View(): JSX.Element | null {
           />
         );
       case 'docs':
-        return <DocumentsSection model={model} talentId={talentId} canEdit={canEditTalent} />;
+        return <DocumentsSection model={model} talentId={talentId} canEdit={canEditTalent} notify={setNotice} />;
       case 'activity':
         return <ActivitySection model={model} />;
       case 'tasks':

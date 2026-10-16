@@ -628,67 +628,6 @@ export function WorkAuthSection({ model, firstName, editable, record, go, workAu
   );
 }
 
-// ── Documents (§8) ────────────────────────────────────────────────────────────
-
-export function DocumentsSection({ model, talentId, canEdit }: { model: Model; talentId: string; canEdit: boolean }): JSX.Element {
-  if (model.documents === null) return <NoAccess title="Documents" />;
-  const docs = model.documents.key_documents;
-  return (
-    <>
-    <div className="t360-card t360-card--sect t360-resumes" data-testid="t360-resumes">
-      <div className="t360-card__hd t360-card__hd--docs">
-        <span className="t360-sect__title">Resume</span>
-        <span className="t360-caption t360-caption--inline">Preview any edition · upload a new resume (earlier editions are kept).</span>
-      </div>
-      {/* The SAME resume panel as Edit talent (editions, preview, upload, review, default). */}
-      <EditResumePanel talentId={talentId} disabled={!canEdit} />
-    </div>
-    <div className="t360-card t360-card--sect">
-      <div className="t360-card__hd t360-card__hd--docs">
-        <span className="t360-sect__title">Documents</span>
-        <span className="t360-caption t360-caption--inline">Requisition documents carry their REQ tag.</span>
-      </div>
-      {docs.length === 0 ? <div className="t360-empty">No documents yet.</div> : null}
-      {docs.map((d) => (
-        <DocRow key={d.id} d={d} talentId={talentId} />
-      ))}
-    </div>
-    </>
-  );
-}
-
-// A document row opens the read-only preview (PR #946; nothing is recorded).
-function DocRow({ d, talentId }: { d: TalentDocumentView; talentId: string }): JSX.Element {
-  const [open, setOpen] = useState(false);
-  const resume = /r[ée]sum[ée]/i.test(d.kind);
-  const tone = d.signed ? 'green' : resume ? 'blue' : 'grey';
-  return (
-    <>
-      <Button
-        unstyled
-        type="button"
-        className="t360-doc t360-doc--link"
-        onClick={() => setOpen(true)}
-        aria-label={`Preview ${d.kind}${d.meta !== null ? ` — ${d.meta}` : ''}`}
-      >
-        <span className={`t360-doc__tile t360-doc__tile--${tone}`}>
-          <Glyph d={ICON.docs} width={1.7} />
-        </span>
-        <span className="t360-min0 t360-grow">
-          <span className="t360-doc__head">
-            <b>{d.kind}</b>
-            {d.requisition_label !== null ? <ReqTag label={d.requisition_label} /> : null}
-          </span>
-          <span className="t360-doc__meta">
-            {[d.meta, d.signed && d.signed_at !== null ? `Signed ${shortDate(d.signed_at)}` : null].filter(Boolean).join(' · ')}
-          </span>
-        </span>
-      </Button>
-      {open ? <DocumentPreviewDialog talentId={talentId} documentId={d.id} title={d.meta ?? d.kind} onClose={() => setOpen(false)} /> : null}
-    </>
-  );
-}
-
 // ── Activity (§7) ─────────────────────────────────────────────────────────────
 
 export function ActivitySection({ model }: { model: Model }): JSX.Element {

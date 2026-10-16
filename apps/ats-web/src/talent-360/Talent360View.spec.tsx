@@ -60,20 +60,22 @@ vi.mock('../microsoft/ScheduleMeetingDialog', () => ({
   ScheduleMeetingDialog: ({ open, requisitionId }: { open: boolean; requisitionId: string }) =>
     open ? <div data-testid="schedule-dialog">{requisitionId}</div> : null,
 }));
-const tal = vi.hoisted(() => ({ getTalent: vi.fn(), getTalentWorkHistory: vi.fn(), updateTalent: vi.fn(), getTalentWorkAuthorizationState: vi.fn(), getTalentProfileHydration: vi.fn() }));
-vi.mock('../talent/talent-api', () => ({
-  getTalent: tal.getTalent,
-  getTalentWorkHistory: tal.getTalentWorkHistory,
-  updateTalent: tal.updateTalent,
-  getTalentWorkAuthorizationState: tal.getTalentWorkAuthorizationState,
-  getTalentProfileHydration: tal.getTalentProfileHydration,
+const tal = vi.hoisted(() => ({
+  getTalent: vi.fn(),
+  getTalentWorkHistory: vi.fn(),
+  updateTalent: vi.fn(),
+  getTalentWorkAuthorizationState: vi.fn(),
+  getTalentProfileHydration: vi.fn(),
+  // §8B Documents — the resume-edition chain (same calls as Edit talent).
+  listTalentResumeEditions: vi.fn(),
+  listTalentAttachments: vi.fn(),
+  getAttachmentDownloadUrl: vi.fn(),
+  setTalentResumeEditionDefault: vi.fn(),
+  requestResumeUploadUrl: vi.fn(),
+  createAttachment: vi.fn(),
+  createTalentResumeEdition: vi.fn(),
 }));
-// D3 — Documents reuses Edit talent's resume panel; stub it here.
-vi.mock('../talent/TalentEditView', () => ({
-  EditResumePanel: ({ talentId, disabled }: { talentId: string; disabled: boolean }) => (
-    <div data-testid="resume-panel">{`${talentId}:${disabled ? 'ro' : 'rw'}`}</div>
-  ),
-}));
+vi.mock('../talent/talent-api', () => ({ ...tal }));
 vi.mock('../consent/ConsentHistoryPanel', () => ({
   ConsentHistoryPanel: ({ talentId }: { talentId: string }) => <div data-testid="consent-history">{talentId}</div>,
 }));
@@ -97,6 +99,7 @@ vi.mock('../talent/saved-list-api', async (importActual) => {
 });
 // CRM-6 — the follow-up modal's assignee picker roster (self u1 + a teammate).
 vi.mock('../users/users-api', () => ({
+  resolveUserNames: vi.fn().mockResolvedValue({ 'u-up': 'Purush P.' }),
   fetchAssignableUsers: vi.fn().mockResolvedValue([
     { user_id: 'u1', display_name: 'Me Myself' },
     { user_id: 'u2', display_name: 'Sanjay Kumar' },
@@ -258,6 +261,23 @@ const WORK_HISTORY = [
   { id: 'w2', employer_name: 'Freddie Mac', role_title: 'Scrum Coach', start_date: '2025-01-01', end_date: null, employment_type: null, description: null, source: 'resume', verified: false },
 ];
 
+const EDITION_BASE = {
+  talent_document_id: 'td',
+  label: null,
+  lifecycle_status: 'active',
+  created_at: '2026-09-14T00:00:00Z',
+  revision_number: 1,
+  client_context_id: null,
+  derived_from_edition_id: null,
+  processing_status: null,
+};
+const EDITIONS = [
+  { ...EDITION_BASE, edition_id: 'ed-1', attachment_id: 'att-1', purpose: 'GENERAL', filename: 'Divya_Vasudevan_2026.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', uploaded_at: '2026-09-14T12:00:00Z', is_default: true, requisition_id: null },
+  { ...EDITION_BASE, edition_id: 'ed-2', attachment_id: 'att-2', purpose: 'REQUISITION', filename: 'Divya_FreddieMac.pdf', mime_type: 'application/pdf', uploaded_at: '2026-09-26T00:00:00Z', is_default: false, requisition_id: 'r1' },
+  { ...EDITION_BASE, edition_id: 'ed-3', attachment_id: 'att-3', purpose: 'GENERAL', filename: 'Divya_2025.pdf', mime_type: 'application/pdf', uploaded_at: '2025-05-01T00:00:00Z', is_default: false, requisition_id: null },
+  { ...EDITION_BASE, edition_id: 'ed-4', attachment_id: 'att-4', purpose: 'GENERAL', filename: 'Divya_old.pdf', mime_type: 'application/pdf', uploaded_at: '2024-01-01T00:00:00Z', is_default: false, requisition_id: null, lifecycle_status: 'archived' },
+];
+
 beforeEach(() => {
   h.scopes = [...BASE_SCOPES];
   h.createTask.mockResolvedValue({});
@@ -267,6 +287,8 @@ beforeEach(() => {
   act.listActivities.mockResolvedValue({ items: [] });
   adv.dismissAdvisory.mockResolvedValue({});
   tal.getTalent.mockResolvedValue(RECORD);
+  tal.listTalentResumeEditions.mockResolvedValue({ editions: EDITIONS });
+  tal.listTalentAttachments.mockResolvedValue({ items: [{ id: 'att-1', file_name: 'Divya_Vasudevan_2026.docx', size_bytes: 93184, uploaded_by_id: 'u-up' }] });
   tal.getTalentWorkHistory.mockResolvedValue({ work_history: WORK_HISTORY });
   tal.getTalentProfileHydration.mockResolvedValue({
     talent_record_id: 'tal-1',
@@ -547,6 +569,7 @@ describe('Talent360View — sections (§7–§9)', () => {
 
   it('a scope-hidden section shows an access notice (documents null)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel({ documents: null }));
+    tal.listTalentResumeEditions.mockResolvedValue({ editions: [] });
     renderView('/talent/tal-1?section=docs');
     expect(await screen.findByText('You don’t have access to this section.')).toBeInTheDocument();
   });
@@ -645,13 +668,6 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     fireEvent.change(within(card).getByLabelText('Status'), { target: { value: 'US_CITIZEN' } });
     fireEvent.click(within(card).getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(tal.updateTalent).toHaveBeenCalledWith('tal-1', { work_authorization: 'US_CITIZEN' }));
-  });
-
-  it('Documents: the resume panel (preview + upload) is reused from Edit talent (D3)', async () => {
-    h.scopes = [...BASE_SCOPES, 'talent:edit'];
-    getTalent360Mock.mockResolvedValue(makeModel());
-    renderView('/talent/tal-1?section=docs');
-    expect(await screen.findByTestId('resume-panel')).toHaveTextContent('tal-1:rw');
   });
 
   it('renders the ten blocks in Edit-talent order with exact labels; empty values show —', async () => {
@@ -905,7 +921,7 @@ describe('Talent360View — email preview from Recent activity', () => {
   });
 });
 
-describe('Talent360View — read-only document preview', () => {
+describe('Talent360View — Documents (§8B)', () => {
   const pdf = {
     document_id: 'd1',
     file_name: 'RTR_Freddie_Mac.pdf',
@@ -924,16 +940,46 @@ describe('Talent360View — read-only document preview', () => {
     URL.revokeObjectURL = origRevoke;
   });
 
-  it('clicking a document opens a PDF inline with a Download link; X closes', async () => {
+  function withResumeDocRow(): void {
+    const base = makeModel();
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        documents: {
+          total: 2,
+          key_documents: [
+            ...(base.documents?.key_documents ?? []),
+            // The composed read lists resumes as EXECUTED (signed) — must not surface.
+            { id: 'd-res', kind: 'Resume', requisition_id: null, requisition_label: null, meta: 'Divya_Vasudevan_2026.docx', signed: true, signed_at: null },
+          ],
+        },
+      }),
+    );
+  }
+
+  it('lists resumes from the edition read (Current first, tailored with REQ tag, archived hidden) and governed docs without resume rows', async () => {
+    withResumeDocRow();
+    renderView('/talent/tal-1?section=docs');
+    const card = await screen.findByTestId('t360-docs');
+    await waitFor(() => expect(within(card).getAllByRole('button', { name: /^(Preview|View) / })).toHaveLength(4));
+    const labels = within(card).getAllByRole('button', { name: /^(Preview|View) / }).map((b) => b.getAttribute('aria-label'));
+    expect(labels).toEqual(['Preview Resume', 'Preview Resume', 'Preview Resume · tailored · REQ-1001', 'View Right to Represent · Freddie Mac · REQ-1001']);
+    expect(within(card).getByText('Current')).toBeInTheDocument();
+    expect(within(card).getByText('Divya_Vasudevan_2026.docx · current · uploaded Sep 14')).toBeInTheDocument();
+    expect(within(card).queryByText(/Divya_old\.pdf/)).toBeNull();
+    expect(within(card).queryByRole('button', { name: /Upload/ })).toBeNull(); // no talent:edit
+  });
+
+  it('a signed RTR opens the frozen PDF with the e-sign card and a Download link; X closes', async () => {
     vi.mocked(getTalent360DocumentContent).mockResolvedValue(pdf);
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=docs');
-    fireEvent.click(await screen.findByRole('button', { name: /^Preview Right to Represent · Freddie Mac/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^View Right to Represent · Freddie Mac/ }));
     const dialog = await screen.findByRole('dialog');
     expect(getTalent360DocumentContent).toHaveBeenCalledWith('tal-1', 'd1');
     expect(await within(dialog).findByTitle('Preview of RTR_Freddie_Mac.pdf')).toHaveAttribute('src', 'blob:preview-1');
+    expect(within(dialog).getByText('Signed in Aramo e-sign')).toBeInTheDocument();
     expect(within(dialog).getByRole('link', { name: 'Download' })).toHaveAttribute('download', 'RTR_Freddie_Mac.pdf');
-    fireEvent.click(screen.getByRole('button', { name: 'Close document preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close document viewer' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
@@ -941,8 +987,61 @@ describe('Talent360View — read-only document preview', () => {
     vi.mocked(getTalent360DocumentContent).mockRejectedValue(new Error('boom'));
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=docs');
-    fireEvent.click(await screen.findByRole('button', { name: /^Preview Right to Represent · Freddie Mac/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^View Right to Represent · Freddie Mac/ }));
     const dialog = await screen.findByRole('dialog');
     expect(await within(dialog).findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('a previous resume offers Make current resume (explicit default) for talent:edit', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    tal.getAttachmentDownloadUrl.mockResolvedValue({ presigned_url: 'https://s3.local/old.pdf' });
+    tal.setTalentResumeEditionDefault.mockResolvedValue({ editions: EDITIONS.map((e) => ({ ...e, is_default: e.edition_id === 'ed-3' })) });
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=docs');
+    const card = await screen.findByTestId('t360-docs');
+    await waitFor(() => expect(within(card).getAllByRole('button', { name: 'Preview Resume' })).toHaveLength(2));
+    fireEvent.click(within(card).getAllByRole('button', { name: 'Preview Resume' })[1] as HTMLElement);
+    const dialog = await screen.findByRole('dialog');
+    expect(await within(dialog).findByTitle('Preview of Divya_2025.pdf')).toHaveAttribute('src', 'https://s3.local/old.pdf');
+    expect(within(dialog).getByText('Previous version')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Make current resume' }));
+    await waitFor(() => expect(tal.setTalentResumeEditionDefault).toHaveBeenCalledWith('tal-1', 'ed-3'));
+  });
+
+  it('Upload: resume types only; tailored requires a requisition; success adds a JUST UPLOADED row', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    getTalent360Mock.mockResolvedValue(makeModel());
+    tal.requestResumeUploadUrl.mockResolvedValue({ presigned_url: 'https://s3.local/put', storage_key: 'k1' });
+    tal.createAttachment.mockResolvedValue({ id: 'att-9' });
+    tal.createTalentResumeEdition.mockResolvedValue({ ...EDITIONS[1], edition_id: 'ed-9', filename: 'new.pdf' });
+    class FakeXhr {
+      upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+      status = 200;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      open = vi.fn();
+      setRequestHeader = vi.fn();
+      send(): void {
+        this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 1 });
+        this.onload?.();
+      }
+    }
+    vi.stubGlobal('XMLHttpRequest', FakeXhr);
+    renderView('/talent/tal-1?section=docs');
+    fireEvent.click(await screen.findByRole('button', { name: 'Upload' }));
+    const dialog = await screen.findByRole('dialog');
+    expect([...within(dialog).getByLabelText('Document type').querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Resume', 'Resume · tailored']);
+    const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'photo.png', { type: 'image/png' })] } });
+    expect(within(dialog).getByText('That file type isn’t supported for a resume. Use PDF or Word.')).toBeInTheDocument();
+    fireEvent.change(input, { target: { files: [new File(['%PDF'], 'new.pdf', { type: 'application/pdf' })] } });
+    fireEvent.change(within(dialog).getByLabelText('Document type'), { target: { value: 'tailored' } });
+    expect(within(dialog).getByRole('button', { name: 'Upload' })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText('Requisition'), { target: { value: 'r1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload' }));
+    await waitFor(() => expect(tal.createTalentResumeEdition).toHaveBeenCalledWith('tal-1', { attachment_id: 'att-9', purpose: 'REQUISITION', requisition_id: 'r1' }));
+    expect(tal.setTalentResumeEditionDefault).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    vi.unstubAllGlobals();
   });
 });

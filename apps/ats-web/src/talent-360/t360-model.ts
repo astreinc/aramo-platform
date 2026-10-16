@@ -27,6 +27,7 @@ export function isSection(v: string | null): v is T360Section {
 }
 
 export const ICON = {
+  upload: 'M12 16V4M7 9l5-5 5 5M4 20h16',
   overview: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
   profile: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
   auth: 'M4 5h16v14H4zM8 10h3M8 14h6M15 9.5h2',
