@@ -121,6 +121,7 @@ body.tr360-route .rc-content {
   top: var(--tr360-top);
   height: calc(100vh - var(--tr360-top));
   overflow-y: auto;
+  scrollbar-width: none;
   display: flex;
   flex-direction: column;
 }
@@ -495,6 +496,8 @@ body.tr360-route .rc-content {
   margin: 14px 0 0;
   padding-bottom: 12px;
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 .tr360-step {
   display: flex;
@@ -565,6 +568,14 @@ body.tr360-route .rc-content {
   border-top: 1px solid var(--tr-row-2);
   overflow-x: auto;
   overflow-y: hidden;
+  scrollbar-width: none;
+}
+/* Only the page scrollbar is visible (§3.1): the section nav, stepper and tab
+   strip scroll with hidden scrollbars. */
+.tr360-sec::-webkit-scrollbar,
+.tr360-steps::-webkit-scrollbar,
+.tr360-tabs::-webkit-scrollbar {
+  display: none;
 }
 .tr360-tab {
   border: none;
