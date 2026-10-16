@@ -21,6 +21,7 @@ import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
 import { getTalent, updateTalent } from '../../talent/talent-api';
 import type { TalentRecordView } from '../../talent/types';
+import { useCompactRailPage } from '../../shell/nav-collapse';
 import { getTalent360 } from '../../talent-360/talent-360-api';
 import type { AttentionItemView, Talent360View } from '../../talent-360/talent-360-types';
 import { RemoveFromRequisitionModal } from '../RemoveFromRequisitionModal';
@@ -230,6 +231,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   // unchanged). The sticky section nav / header sit below the shell's sticky top
   // bar, so its live height is mirrored into --tr360-top.
   const rootRef = useRef<HTMLDivElement>(null);
+  // Section-nav page: under 1280px the shared main nav opens collapsed (rail spec §6).
+  useCompactRailPage();
   useEffect(() => {
     document.body.classList.add('tr360-route');
     return () => document.body.classList.remove('tr360-route');

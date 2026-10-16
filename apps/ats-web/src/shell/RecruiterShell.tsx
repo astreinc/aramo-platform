@@ -4,35 +4,20 @@ import {
   type Session,
 } from '@aramo/fe-foundation';
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  IconBriefcase,
-  IconCompanies,
-  IconContacts,
-  IconDesk,
-  IconRequisitions,
-  IconShield,
-  IconSourcing,
-  IconTalent,
-  IconTasks,
-} from '@aramo/fe-foundation';
 
 import { hasAdminScope } from '../admin/admin-access';
 import { getRequisitionCount, getTalentCount } from '../reporting/counts-api';
 import {
-  AppShell,
   CmdKSearch,
   NotificationButton,
-  Rail,
-  RailNavItem,
-  RailNavSection,
-  RailUser,
   TopBar,
   UserMenu,
   initialsOf,
 } from '../ui';
 import { CommandPalette } from '../search/CommandPalette';
 
-import { AramoBrand } from './AramoBrand';
+import { AppRail, type RailItem, type RailKey } from './AppRail';
+import { AtsAppShell } from './AtsAppShell';
 // BreadcrumbProvider is retained so routed detail views may still publish their
 // entity title via useEntityCrumb (that publication is covered by their specs);
 // the app shell no longer RENDERS a route/section title in the TopBar — the
@@ -53,7 +38,7 @@ const SETTINGS_PROFILE_PATH = '/admin/settings/profile';
 const MY_SETTINGS_PATH = '/settings/me';
 
 // RecruiterShell — Phase 2A. The app-layer chrome that REPLACES the frozen
-// fe-foundation Shell (non-consumption, Lead-approved). Composes AppShell +
+// fe-foundation Shell (non-consumption, Lead-approved). Composes AtsAppShell +
 // Rail + TopBar: scope-gated nav rendered as real react-router NavLinks (the
 // keyboard/SR navigation path), a route-derived breadcrumb, the visual ⌘K
 // entry + notifications bell, and the LOGOUT control (the shared session
@@ -66,84 +51,40 @@ const MY_SETTINGS_PATH = '/settings/me';
 // "Activity" from the mockup still has no standalone route → carried.
 
 interface NavItem {
+  readonly key: RailKey;
   readonly to: string;
   readonly label: string;
-  readonly icon: ReactNode;
-  readonly end?: boolean;
   /** Scope-gate; omitted = always visible (the view gates internally). */
   readonly scope?: string;
 }
 
+// Shared main nav (app rail) — order and labels per the rail spec:
+// My desk · Requisitions · Placements · Talent · Companies · Contacts, then WORK
+// (Sourcing · Tasks · Identity Advisories · Portal Disputes · Trust Proposals ·
+// Reports), then ADMINISTRATION (Settings). Each item stays gated on its route's
+// existing scope (no NavLink, no fetch without it). Search lives in the top-bar
+// ⌘K, not the rail; unfinished talent is recovered inside Talent (no rail item).
 const PRIMARY_NAV: readonly NavItem[] = [
-  { to: '/', end: true, label: 'My desk', icon: <IconDesk />, scope: 'dashboard:read' },
-  { to: '/requisitions', label: 'Requisitions', icon: <IconRequisitions />, scope: 'requisition:read' },
-  { to: '/placements', label: 'Placements', icon: <IconBriefcase />, scope: 'pipeline:read' },
-  { to: '/talent', label: 'Talent', icon: <IconTalent />, scope: 'talent:read' },
-  // Talent Draft Recovery (§4): unfinished talent is recovered INSIDE Talent (the
-  // "In progress" view), not a peer module — there is no "Draft talents" nav item
-  // and no draft badge on the Talent entry.
-  // Promotion-Trigger slice B-ui — the sourcing pool (talent:source). Gated by
-  // the same hasScope filter as its siblings; hidden from a non-sourcer.
-  { to: '/sourcing', label: 'Sourcing', icon: <IconSourcing />, scope: 'talent:source' },
-  { to: '/companies', label: 'Companies', icon: <IconCompanies />, scope: 'company:read' },
-  { to: '/contacts', label: 'Contacts', icon: <IconContacts />, scope: 'contact:read' },
-  // REQ-PIXEL-PARITY-1 §Decision: the rail no longer carries a "Search" entry —
-  // search lives in the top-bar ⌘K (CmdKSearch), matching Requisitions.dc.html.
-  // The /search ROUTE is unchanged; only its rail nav item is removed.
+  { key: 'desk', to: '/', label: 'My desk', scope: 'dashboard:read' },
+  { key: 'requisitions', to: '/requisitions', label: 'Requisitions', scope: 'requisition:read' },
+  { key: 'placements', to: '/placements', label: 'Placements', scope: 'pipeline:read' },
+  { key: 'talent', to: '/talent', label: 'Talent', scope: 'talent:read' },
+  { key: 'companies', to: '/companies', label: 'Companies', scope: 'company:read' },
+  { key: 'contacts', to: '/contacts', label: 'Contacts', scope: 'contact:read' },
 ];
 
 const WORK_NAV: readonly NavItem[] = [
-  { to: '/tasks', label: 'Tasks', icon: <IconTasks />, scope: 'task:read' },
-  // TR-6 B2 — the identity-advisory reviewer worklist. Gated on identity:resolve
-  // (the same scope as the route); hidden from a principal who can't resolve.
-  {
-    to: '/identity/advisories',
-    label: 'Identity Advisories',
-    icon: <IconShield />,
-    scope: 'identity:resolve',
-  },
-  // Portal P3b (T10-B1/F-005) — the tenant dispute-disposition worklist was
-  // live but URL-only. Surfaced here gated on its EXISTING route scope
-  // (identity:resolve, App.tsx); hidden from a principal without it (the
-  // hasScope filter renders nothing → no NavLink, no fetch).
-  {
-    to: '/identity/portal-disputes',
-    label: 'Portal Disputes',
-    icon: <IconShield />,
-    scope: 'identity:resolve',
-  },
-  // TR-12 B2 — the caseworker's Trust Proposals queue. Gated on talent:read (the
-  // same scope as the route); the per-row ACTs carry their own scopes.
-  {
-    to: '/trust/proposals',
-    label: 'Trust Proposals',
-    icon: <IconTasks />,
-    scope: 'talent:read',
-  },
-  // T9-B1 — the operational Reports surface (fill rate + time-to-fill). Gated
-  // on report:read (the same scope as the route); a dedicated entry, NOT folded
-  // into My Desk (D-7).
-  {
-    to: '/reports',
-    label: 'Reports',
-    icon: <IconDesk />,
-    scope: 'report:read',
-  },
+  { key: 'sourcing', to: '/sourcing', label: 'Sourcing', scope: 'talent:source' },
+  { key: 'tasks', to: '/tasks', label: 'Tasks', scope: 'task:read' },
+  { key: 'advisories', to: '/identity/advisories', label: 'Identity Advisories', scope: 'identity:resolve' },
+  { key: 'disputes', to: '/identity/portal-disputes', label: 'Portal Disputes', scope: 'identity:resolve' },
+  { key: 'proposals', to: '/trust/proposals', label: 'Trust Proposals', scope: 'talent:read' },
+  { key: 'reports', to: '/reports', label: 'Reports', scope: 'report:read' },
 ];
 
-// Admin-gated nav (FE Consolidation Phase 1). The section is shown only to a
-// principal holding a `tenant:admin:*` scope (hasAdminScope); the individual
-// items here are NOT per-item scope-gated — the section's family gate covers
-// them. Empty placeholder destination this PR (the real admin modules + their
-// own nav entries port in Phase 2+).
-// Settings Rebuild Directive 1 — the admin surface is now the enterprise
-// Settings shell (the PO calls it the heart of the ATS). The single rail entry
-// lands on /admin (which redirects into the settings rail); the section rail
-// lives inside SettingsShell. `end` is dropped so the item stays highlighted
-// across the /admin/* subtree.
-const ADMIN_NAV: readonly NavItem[] = [
-  { to: '/admin', label: 'Settings', icon: <IconShield /> },
-];
+// Admin section — shown only to a principal holding a `tenant:admin:*` scope
+// (hasAdminScope); lands on /admin (the Settings shell).
+const ADMIN_NAV: readonly NavItem[] = [{ key: 'settings', to: '/admin', label: 'Settings' }];
 
 interface RecruiterShellProps {
   readonly session: Session;
@@ -177,15 +118,6 @@ function RecruiterShellInner({
   // FULL role line (all roles) — for the roomy top-right account menu.
   const roleLine =
     me && me.roles.length > 0 ? me.roles.join(' · ') : null;
-  // CONDENSED role for the narrow rail footer: primary role + "+N" when a user
-  // holds several (e.g. "Lead Recruiter +2"), so multi-role users don't clip/
-  // crowd the block. The full list stays in the account menu (roleLine).
-  const railRole =
-    me && me.roles.length > 0
-      ? me.roles.length === 1
-        ? me.roles[0]
-        : `${me.roles[0]} +${me.roles.length - 1}`
-      : null;
   // Rail footer: real identity once loaded; neutral placeholders while in
   // flight so the chrome (avatar slot + logout) never collapses.
   const railName = displayName ?? '—';
@@ -235,41 +167,22 @@ function RecruiterShellInner({
     };
   }, [session]);
 
-  const renderNav = (items: readonly NavItem[]) =>
+  const railItems = (items: readonly NavItem[]): RailItem[] =>
     items
       .filter((item) => item.scope === undefined || hasScope(session, item.scope))
-      .map((item) => (
-        <RailNavItem
-          key={item.to}
-          to={item.to}
-          end={item.end}
-          icon={item.icon}
-          label={item.label}
-          count={navCounts[item.to]}
-        />
-      ));
+      .map((item) => ({ key: item.key, to: item.to, label: item.label, count: navCounts[item.to] }));
 
+  // The ONE shared main nav (app rail). Sign out lives in the top-right avatar
+  // menu (UserMenu); the rail footer shows identity + tenant only.
   const rail = (
-    <Rail
-      user={
-        // G2.7 — the left-nav user block shows identity ONLY, matching the
-        // prototype. Sign out lives in the top-right avatar menu (UserMenu).
-        <RailUser
-          initials={railInitials}
-          name={railName}
-          role={railRole ?? undefined}
-        />
-      }
-    >
-      <AramoBrand />
-      {renderNav(PRIMARY_NAV)}
-      <RailNavSection label="Work">{renderNav(WORK_NAV)}</RailNavSection>
-      {hasAdminScope(session) ? (
-        <RailNavSection label="Administration">
-          {renderNav(ADMIN_NAV)}
-        </RailNavSection>
-      ) : null}
-    </Rail>
+    <AppRail
+      primary={railItems(PRIMARY_NAV)}
+      work={railItems(WORK_NAV)}
+      admin={hasAdminScope(session) ? railItems(ADMIN_NAV) : []}
+      userInitials={railInitials}
+      userName={railName}
+      tenantName={me?.tenant.display_name ?? null}
+    />
   );
 
   const topBar = (
@@ -307,7 +220,7 @@ function RecruiterShellInner({
   const offboarding = me?.tenant.status === 'OFFBOARDING';
 
   return (
-    <AppShell rail={rail} topBar={topBar}>
+    <AtsAppShell rail={rail} topBar={topBar}>
       {offboarding ? (
         <div className="rc-offboarding-banner" role="status">
           <strong>This workspace is winding down.</strong> Your organization is
@@ -317,6 +230,6 @@ function RecruiterShellInner({
       ) : null}
       {children}
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
-    </AppShell>
+    </AtsAppShell>
   );
 }

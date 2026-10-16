@@ -1,0 +1,236 @@
+/* Shared main left nav (app rail) + page grid — values transcribed from the
+   design authority platform/Requisitions CRM.dc.html (railVals()). Normative;
+   do not restyle. */
+
+.ats-app {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  min-height: 100vh;
+  background: var(--canvas, #f4f6fa);
+  color: var(--ink, #1b2730);
+  position: relative;
+  transition: grid-template-columns 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.ats-app--collapsed {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+
+.ats-rail {
+  background: #022ac0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  font-family: 'Hanken Grotesk', system-ui, sans-serif;
+}
+.ats-rail::-webkit-scrollbar {
+  display: none;
+}
+.ats-rail--collapsed {
+  padding: 14px 9px;
+}
+.ats-rail :focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Head row */
+.ats-rail__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 16px;
+  justify-content: flex-start;
+  flex: none;
+}
+.ats-rail--collapsed .ats-rail__head {
+  justify-content: center;
+}
+.ats-rail__logo {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: transparent;
+  cursor: default;
+  padding: 0;
+}
+.ats-rail__logo--open {
+  cursor: pointer;
+}
+.ats-rail__logo--open:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.ats-rail__word {
+  color: #fff;
+  font-weight: 600;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.ats-rail__ai {
+  color: #d9dff6;
+  font-weight: 400;
+}
+.ats-rail__collapse {
+  margin-left: auto;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #d9dff6;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.ats-rail__collapse:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+/* Items */
+.ats-rail__item {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  justify-content: flex-start;
+  padding: 10px 12px;
+  margin-bottom: 3px;
+  border: 1.5px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #d9dff6;
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  position: relative;
+  flex: none;
+  text-decoration: none;
+}
+.ats-rail--collapsed .ats-rail__item {
+  gap: 0;
+  justify-content: center;
+  padding: 10px 0;
+}
+.ats-rail__item svg {
+  flex: none;
+}
+.ats-rail__item--primary:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+.ats-rail__item--work:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.ats-rail__item--on,
+.ats-rail__item--on:hover {
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 700;
+}
+/* Collapsed: the label stays as the item's accessible name (visually hidden). */
+.ats-rail--collapsed .ats-rail__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.ats-rail__count {
+  margin-left: auto;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.14);
+  padding: 1px 6px;
+  border-radius: 20px;
+}
+.ats-rail__item--on .ats-rail__count {
+  background: rgba(255, 255, 255, 0.22);
+}
+.ats-rail--collapsed .ats-rail__count {
+  display: none;
+}
+
+/* Section labels / collapsed dividers */
+.ats-rail__section {
+  color: #95a6e5;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  padding: 16px 13px 7px;
+  flex: none;
+}
+.ats-rail__divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.2);
+  margin: 11px 6px 10px;
+  flex: none;
+}
+
+/* Footer */
+.ats-rail__foot {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  justify-content: flex-start;
+  flex: none;
+}
+.ats-rail--collapsed .ats-rail__foot {
+  padding: 12px 0 2px;
+  justify-content: center;
+}
+.ats-rail__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #3555cd;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 11.5px;
+  font-weight: 600;
+  flex: none;
+}
+.ats-rail__who {
+  min-width: 0;
+}
+.ats-rail--collapsed .ats-rail__who {
+  display: none;
+}
+.ats-rail__name {
+  display: block;
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ats-rail__tenant {
+  display: block;
+  color: #95a6e5;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
