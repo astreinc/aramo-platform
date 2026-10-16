@@ -951,27 +951,6 @@ export function CiSection(): JSX.Element {
   );
 }
 
-export function ScreeningSection({ talentId, canScreen }: { talentId: string; canScreen: boolean }): JSX.Element {
-  return (
-    <div className="t360-card t360-card--sect" data-testid="t360-ts">
-      <div className="t360-sect__title">Technical Screening</div>
-      <div className="t360-caption t360-caption--trust">
-        History across requisitions. Screenings are prepared and run per requisition, in Talent × Requisition 360.
-      </div>
-      {canScreen ? (
-        <div className="t360-empty t360-empty--rowtop">
-          <Link className="t360-arrow" to={`/talent/${talentId}/screening`}>
-            Open technical screening →
-          </Link>
-        </div>
-      ) : (
-        <div className="t360-empty t360-empty--rowtop">No technical screenings yet.</div>
-      )}
-      <div className="t360-tsfoot">Findings are recruiter-attested. Aramo never qualifies, rejects or ranks.</div>
-    </div>
-  );
-}
-
 function NoAccess({ title }: { title: string }): JSX.Element {
   return (
     <div className="t360-card t360-card--sect">
