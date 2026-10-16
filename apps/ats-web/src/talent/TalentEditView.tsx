@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
+import { getTalent360DocumentContent } from '../talent-360/talent-360-api';
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
 import { IntakeForm, TALENT_SECTION_DOM_ID } from './IntakeForm';
@@ -267,6 +268,11 @@ export function EditResumePanel({
   const [editions, setEditions] = useState<readonly TalentResumeEditionView[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  // Bytes loaded through the authenticated document-content route (same
+  // origin). A Word file must be read by script to render, and the storage
+  // bucket's CORS blocks that for a presigned URL — so prefer this when the
+  // edition carries its canonical document id.
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [replacedFile, setReplacedFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'done' | 'error'>('idle');
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -332,7 +338,21 @@ export function EditResumePanel({
   useEffect(() => {
     let cancelled = false;
     setPreviewUrl(null);
-    if (selected === null || selected.attachment_id === null) return undefined;
+    setPreviewFile(null);
+    if (selected === null) return undefined;
+    if (selected.document_id != null) {
+      getTalent360DocumentContent(talentId, selected.document_id)
+        .then((doc) => {
+          if (cancelled) return;
+          const bytes = Uint8Array.from(atob(doc.content_base64), (c) => c.charCodeAt(0));
+          setPreviewFile(new File([bytes], doc.file_name, { type: doc.mime_type === '' ? selected.mime_type : doc.mime_type }));
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    }
+    if (selected.attachment_id === null) return undefined;
     getAttachmentDownloadUrl(selected.attachment_id)
       .then((r) => {
         if (!cancelled) setPreviewUrl(r.presigned_url);
@@ -543,7 +563,7 @@ export function EditResumePanel({
     return (
       <>
         <ResumePreview
-          src={previewUrl}
+          {...(previewFile !== null ? { file: previewFile } : { src: previewUrl })}
           fileName={selected.filename}
           mime={selected.mime_type}
           action={action}
