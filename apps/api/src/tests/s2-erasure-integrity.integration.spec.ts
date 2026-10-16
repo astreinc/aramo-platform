@@ -196,6 +196,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
       expect([r.outcome, r.blockers.map((b) => [b.holder, b.classification])], holder).toEqual(['BLOCKED', [[holder, cls]]]);
       expect(await count('talent_record."TalentRecord"', 'id = $1', [rec]), holder).toBe(1);
     }
+    // A BLOCKED run leaves no partial state (no run row, no marker), so once the
+    // blocker is resolved through its own governed path the SAME --execute
+    // completes — blocked erasures stay retryable.
+    const retry = await talent();
+    const offer = uuidv7();
+    await seed('offer."Offer"', { id: offer, tenant_id: TENANT, talent_record_id: retry });
+    const first = await erasure.execute(pg, TENANT, retry, okStore());
+    expect(first.outcome).toBe('BLOCKED');
+    expect(await count('consent."TalentErasureRun"', 'record_id = $1', [retry])).toBe(0);
+    await db.query(`DELETE FROM offer."Offer" WHERE id = $1`, [offer]); // the blocker resolved (test stand-in)
+    const second = await erasure.execute(pg, TENANT, retry, okStore());
+    expect([second.outcome, second.erasure_marker_appended]).toEqual(['COMPLETED', true]);
+    expect(await count('talent_record."TalentRecord"', 'id = $1', [retry])).toBe(0);
     // A tenant under legal hold blocks every erasure in it.
     await seed('identity."Tenant"', { id: HOLD_TENANT, name: 'Hold Co', legal_hold: true });
     const held = await talent(HOLD_TENANT);
