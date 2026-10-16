@@ -314,6 +314,8 @@ describe('TenantResetService — happy path + delete ordering (§2.2 / §3.8)', 
 
     // The DELETE order is the binding §2.2 order, children first.
     const expectedOrder = [
+      // S2 F4 — the scoped RN-1 note events first (RESTRICT FK child).
+      'DELETE FROM activity."ActivityNoteEvent"',
       'DELETE FROM activity."Activity"',
       'DELETE FROM requisition."RequisitionLifecycleEvent"',
       'DELETE FROM submittal."TalentSubmittalEvent"',

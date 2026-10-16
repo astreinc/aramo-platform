@@ -73,7 +73,10 @@ interface DeleteStep {
 }
 
 const DELETE_INVENTORY: readonly DeleteStep[] = [
-  // §2.2.1 — Activity (SCOPED purge, never table-wide).
+  // §2.2.1 — Activity (SCOPED purge, never table-wide). S2 F4 — the RN-1 note
+  //          events of exactly those scoped activities go first (RESTRICT FK;
+  //          their append-only trigger admits a DELETE only under this marker).
+  { item: 1, label: `activity."ActivityNoteEvent"`, where: `activity_id IN (SELECT id FROM activity."Activity" WHERE ${ACTIVITY_SCOPE_PREDICATE})`, scoping: 'activity' },
   { item: 1, label: `activity."Activity"`, where: ACTIVITY_SCOPE_PREDICATE, scoping: 'activity' },
   // §2.2.2 — RequisitionLifecycleEvent (bare-UUID history that survives FK
   //          deletion by design → must be explicitly deleted; only after
