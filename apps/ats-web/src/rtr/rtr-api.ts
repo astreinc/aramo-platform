@@ -96,7 +96,9 @@ export interface RtrComposeBlock {
 }
 export interface RtrComposeResponse {
   template: RtrTemplateProvenance;
-  preview: { title: string; blocks: RtrComposeBlock[] };
+  // `html` (rtr-html-v1 templates): the real-bound allowlisted HTML; `blocks` is
+  // empty then. v1 templates send `blocks` only.
+  preview: { title: string; blocks: RtrComposeBlock[]; html?: string };
 }
 export async function composeRtr(
   talentId: string,

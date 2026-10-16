@@ -52,6 +52,9 @@ export const SaveIcon = ({ size = 15 }: { size?: number }) => (
   <Svg size={size} sw={1.8} style={{ flex: 'none' }}><path d="M5 3h11l3 3v15H5zM8 3v5h7M8 21v-7h8v7" /></Svg>
 );
 export const TabIcon = ({ path }: { path: string }) => (<Svg size={15} sw={1.8} style={{ flex: 'none' }}><path d={path} /></Svg>);
+export const LogoIcon = () => (
+  <Svg size={12} sw={1.9} style={{ flex: 'none' }}><path d="M3 4h18v16H3zM3 16l5-5 4 4 3-3 6 6" /></Svg>
+);
 export const DragDots = () => (
   <svg width="12" height="16" viewBox="0 0 12 16" fill="currentColor" aria-hidden="true">
     <circle cx="3" cy="3" r="1.4" /><circle cx="9" cy="3" r="1.4" /><circle cx="3" cy="8" r="1.4" />
@@ -124,9 +127,10 @@ export function signatureFrom(x: unknown): SignatureInfo | null {
 }
 
 // mode 'template' shows the printed-name FIELD chip; 'render' shows the resolved value.
-export function SignatureBlock({ mode, printedName, nameLabel, className, testId }: {
+export function SignatureBlock({ mode, printedName, highlight, nameLabel, className, testId }: {
   readonly mode: 'template' | 'render';
   readonly printedName?: string | null;
+  readonly highlight?: boolean; // sample preview: the printed name is a highlighted sample value
   readonly nameLabel: string;
   readonly className?: string;
   readonly testId?: string;
@@ -140,7 +144,7 @@ export function SignatureBlock({ mode, printedName, nameLabel, className, testId
       <div>
         <div className="dt-sig__l">PRINTED NAME</div>
         <div className="dt-sig__line">
-          {mode === 'template' ? <span className="dt-chip">{nameLabel}</span> : <span>{printedName ?? ''}</span>}
+          {mode === 'template' ? <span className="dt-chip">{nameLabel}</span> : <span className={highlight === true && printedName != null ? 'dt-sample' : undefined}>{printedName ?? ''}</span>}
         </div>
       </div>
       <div>

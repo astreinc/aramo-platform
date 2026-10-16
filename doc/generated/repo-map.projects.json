@@ -647,6 +647,7 @@
       "RevisionSourceService",
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
+      "TEMPLATE_TENANT_LOGO",
       "TemplateImmutableError",
       "TemplateNotFoundError",
       "TemplateVersionNotActiveError",
@@ -671,7 +672,9 @@
       "RenderFailedError",
       "SafePdfPipeline",
       "UnsafePdfError",
+      "layoutRuns",
       "layoutSignatureBlock",
+      "manifestProjection",
       "wrapTextToWidth"
     ],
     "@aramo/engagement": [
@@ -3873,6 +3876,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-send-invariant.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4580,6 +4589,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/offer-start-prestart-doctype-seed.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/template-admin-slice1.spec.ts",
         "project": "documents",
         "status": "excluded"
       },
@@ -6035,6 +6050,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8415,6 +8436,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8942,6 +8969,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-request-company-authority.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },

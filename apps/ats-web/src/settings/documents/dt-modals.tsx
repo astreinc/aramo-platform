@@ -1,15 +1,18 @@
 import { Button } from '@aramo/fe-foundation';
 
-import { InfoCircle, Segments, SignatureBlock, TALENT_NAME_KEY, type BindingMap, type SignatureInfo } from './dt-ui';
+import type { SampleValue, TemplateSamplePreview, TemplateVersionView } from './document-templates-api';
+import { SafeDoc, type LetterheadInfo } from './dt-html-render';
+import { InfoCircle, parseContent, Segments, signatureFrom, SignatureBlock, TALENT_NAME_KEY, type BindingMap, type SignatureInfo } from './dt-ui';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 — shared Preview + Approve dialogs (prototype §2.5/§2.6).
 // Both are used by the RTR detail (preview a version) and the draft editor (preview the
 // draft, confirm approve).
 //
 // Preview has two honest modes:
-//  - 'sample'  — the SERVER's fixed-sample render (POST .../preview, §17): the title and
-//                blocks exactly as the backend resolved them with its safe sample values.
-//                The FE substitutes nothing; there is no browser-side sample table.
+//  - 'sample'  — the SERVER's fixed-sample render (POST .../preview, §17): exactly as the
+//                backend resolved it with its safe sample values (v1: blocks; rtr-html-v1:
+//                html with <span data-sample> values, highlighted). The FE substitutes
+//                nothing; the SAMPLE VALUES list is the server's sample_values.
 //  - 'content' — the stored wording of a version (the server sample preview is
 //                DRAFT-only + manage-scoped), with fields shown as chips — no values invented.
 // Neither creates an RTR or any business document; the amber band says so.
@@ -20,11 +23,58 @@ export interface PreviewContent {
   readonly label: string; // e.g. "Draft v4 · Standard Right to Represent"
   readonly mode: 'sample' | 'content';
   readonly title: string;
-  // 'sample': server-resolved plain text. 'content': editable [Label] text.
+  // v1 — 'sample': server-resolved plain text. 'content': editable [Label] text.
   readonly blocks: readonly PreviewBlock[];
+  // rtr-html-v1 — when set, rendered by the safe allowlist renderer instead of `blocks`.
+  readonly html?: string | null;
+  readonly letterhead?: LetterheadInfo | null;
+  // The server's sample values (preview only) — drives the SAMPLE VALUES list.
+  readonly samples?: readonly SampleValue[] | null;
   // Present ONLY when the server reports that it appends the fixed signature block
   // (see signatureFrom). Absent → no signature is drawn.
   readonly signature?: SignatureInfo | null;
+}
+
+// Stored html of a version's field_schema (rtr-html-v1), else null.
+export function htmlOf(fieldSchema: unknown): string | null {
+  if (fieldSchema == null || typeof fieldSchema !== 'object') return null;
+  const h = (fieldSchema as Record<string, unknown>).html;
+  return typeof h === 'string' ? h : null;
+}
+
+// Server sample preview → PreviewContent (v1 blocks or html, samples, logo, signature).
+export function previewContentFrom(res: TemplateSamplePreview, label: string, letterhead: LetterheadInfo | null): PreviewContent {
+  return {
+    label,
+    mode: 'sample',
+    title: res.title,
+    blocks: res.blocks ?? [],
+    html: typeof res.html === 'string' ? res.html : null,
+    letterhead: res.logo != null ? letterhead : null,
+    samples: Array.isArray(res.sample_values) ? res.sample_values : null,
+    signature: signatureFrom(res),
+  };
+}
+
+// A version's stored wording (read-only views) → PreviewContent in 'content' mode.
+export function contentFromVersion(v: TemplateVersionView, map: BindingMap, label: string, letterhead: LetterheadInfo | null): PreviewContent {
+  const html = htmlOf(v.field_schema);
+  const c = parseContent(v.field_schema, map);
+  return { label, mode: 'content', title: c.title, blocks: html != null ? [] : c.blocks, html, letterhead: v.logo != null ? letterhead : null, signature: signatureFrom(v) };
+}
+
+export function SampleValues({ samples, compact }: { readonly samples: readonly SampleValue[]; readonly compact?: boolean }) {
+  return (
+    <div className={compact === true ? 'dt-samples dt-samples--panel' : 'dt-samples'} data-testid="dt-sample-values">
+      <div className="dt-pvside__t">SAMPLE VALUES</div>
+      {samples.map((s) => (
+        <div className="dt-samples__row" key={s.key}>
+          <span className="dt-samples__l">{s.label}</span>
+          <span className="dt-samples__v">{s.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // The document page — shared by the Preview modal and the editor's inline Preview tab.
@@ -37,21 +87,28 @@ export function PreviewPaper({ content, map, className, testId }: {
   const sample = content.mode === 'sample';
   const blocks = content.blocks.filter((b) => b.text.trim() !== '');
   const sig = content.signature ?? null;
+  const html = content.html ?? null;
+  const hasSamples = content.samples != null && content.samples.length > 0;
   return (
     <div className={className} data-testid={testId}>
       <div className="dt-pvpaper__title">{content.title}</div>
-      {blocks.map((b, i) => {
-        const body = sample ? b.text : <Segments text={b.text} map={map} />;
-        return b.type === 'HEADING' ? (
-          <div className="dt-pvpaper__h" key={i} data-testid="dt-preview-heading">{body}</div>
-        ) : (
-          <p key={i}>{body}</p>
-        );
-      })}
+      {html != null ? (
+        <SafeDoc html={html} map={map} mode={sample ? 'sample' : 'content'} letterhead={content.letterhead ?? null} testId="dt-preview-doc" />
+      ) : (
+        blocks.map((b, i) => {
+          const body = sample ? b.text : <Segments text={b.text} map={map} />;
+          return b.type === 'HEADING' ? (
+            <div className="dt-pvpaper__h" key={i} data-testid="dt-preview-heading">{body}</div>
+          ) : (
+            <p key={i}>{body}</p>
+          );
+        })
+      )}
       {sig != null ? (
         <SignatureBlock
           mode={sample ? 'render' : 'template'}
           printedName={sig.printedName}
+          highlight={sample && hasSamples}
           nameLabel={map.labelByToken[TALENT_NAME_KEY] ?? 'Talent full name'}
           className="dt-sig--paper"
           testId="dt-preview-signature"
@@ -95,12 +152,21 @@ export function PreviewModal({
             <PreviewPaper content={content} map={map} className="dt-pvpaper" testId="dt-preview-paper" />
           </div>
           <div className="dt-pvside">
-            <div className="dt-pvside__t">{sample ? 'SAMPLE PREVIEW' : 'TEMPLATE WORDING'}</div>
-            <div className="dt-pvside__note">
-              {sample
-                ? 'Fields are filled with fixed sample values by Aramo. Real RTRs use the talent and requisition on record when sent.'
-                : 'Real RTRs use the talent and requisition on record when sent.'}
-            </div>
+            {sample && content.samples != null && content.samples.length > 0 ? (
+              <>
+                <SampleValues samples={content.samples} />
+                <div className="dt-pvside__note dt-mt12">Highlighted text is filled from these values. Real RTRs use the talent and requisition on record when sent.</div>
+              </>
+            ) : (
+              <>
+                <div className="dt-pvside__t">{sample ? 'SAMPLE PREVIEW' : 'TEMPLATE WORDING'}</div>
+                <div className="dt-pvside__note">
+                  {sample
+                    ? 'Fields are filled with fixed sample values by Aramo. Real RTRs use the talent and requisition on record when sent.'
+                    : 'Real RTRs use the talent and requisition on record when sent.'}
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div className="dt-modal__foot">

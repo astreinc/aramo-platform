@@ -8,6 +8,7 @@ import { safeErrorMessage } from '../../ui';
 import {
   createDraftFromActive,
   deleteDraftVersion,
+  fetchTemplateCatalog,
   listAllowedBindings,
   listDocumentTemplates,
   listTemplateVersions,
@@ -15,7 +16,9 @@ import {
   DOC_TEMPLATE_MANAGE_SCOPE,
   DOC_TEMPLATE_READ_SCOPE,
   RIGHT_TO_REPRESENT_TYPE_ID,
+  versionLogoUrl,
   type DocumentTemplateView,
+  type TemplateCatalog,
   type TemplateVersionView,
 } from './document-templates-api';
 import {
@@ -32,7 +35,8 @@ import {
   TALENT_NAME_KEY,
   type BindingMap,
 } from './dt-ui';
-import { DiscardModal, PreviewModal, type PreviewContent } from './dt-modals';
+import { contentFromVersion, htmlOf, previewContentFrom, DiscardModal, PreviewModal, type PreviewContent } from './dt-modals';
+import { SafeDoc, type LetterheadInfo } from './dt-html-render';
 import './document-templates.css';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§7) — the Right-to-Represent detail, styled to the approved
@@ -54,6 +58,7 @@ type LoadState =
       versions: readonly TemplateVersionView[];
       map: BindingMap;
       names: Record<string, string>;
+      tenantName: string;
     };
 
 function pillClass(status: string): string {
@@ -69,7 +74,8 @@ export function RtrTemplateDetail({
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
-  listBindingsFn = listAllowedBindings,
+  listBindingsFn,
+  catalogFn,
   resolveNamesFn = resolveUserNames,
   createDraftFn = createDraftFromActive,
   previewFn = previewTemplateVersion,
@@ -79,6 +85,7 @@ export function RtrTemplateDetail({
   readonly listTemplatesFn?: typeof listDocumentTemplates;
   readonly listVersionsFn?: typeof listTemplateVersions;
   readonly listBindingsFn?: typeof listAllowedBindings;
+  readonly catalogFn?: (templateId: string) => Promise<TemplateCatalog>;
   readonly resolveNamesFn?: typeof resolveUserNames;
   readonly createDraftFn?: typeof createDraftFromActive;
   readonly previewFn?: typeof previewTemplateVersion;
@@ -105,15 +112,19 @@ export function RtrTemplateDetail({
       const templates = await listTemplatesFn();
       const rtr = templates.find((t) => t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
       if (rtr == null) { setLoad({ status: 'empty' }); return; }
-      const [versions, bindings] = await Promise.all([listVersionsFn(rtr.id), listBindingsFn(rtr.id)]);
+      const loadCatalog = catalogFn ?? (listBindingsFn != null
+        ? (id: string) => listBindingsFn(id).then((b): TemplateCatalog => ({ bindings: b, tenantLogo: null }))
+        : fetchTemplateCatalog);
+      const [versions, catalog] = await Promise.all([listVersionsFn(rtr.id), loadCatalog(rtr.id)]);
+      const bindings = catalog.bindings;
       const ids = [...new Set(versions.flatMap((v) => [v.activated_by, v.created_by]).filter((x): x is string => x != null))];
       let names: Record<string, string> = {};
       try { names = await resolveNamesFn(ids); } catch { names = {}; }
-      setLoad({ status: 'ready', template: rtr, versions, map: bindingMapFrom(bindings), names });
+      setLoad({ status: 'ready', template: rtr, versions, map: bindingMapFrom(bindings), names, tenantName: catalog.tenantLogo?.tenant_name ?? '' });
     } catch (err) {
       setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the RTR template.') });
     }
-  }, [listTemplatesFn, listVersionsFn, listBindingsFn, resolveNamesFn]);
+  }, [listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
 
   useEffect(() => { if (canRead) void refetch(); }, [canRead, refetch]);
 
@@ -186,7 +197,8 @@ export function RtrTemplateDetail({
   
         {load.status === 'ready'
           ? (() => {
-              const { template, versions, map, names } = load;
+              const { template, versions, map, names, tenantName } = load;
+              const letterheadOf = (v: TemplateVersionView): LetterheadInfo => ({ src: v.logo != null ? versionLogoUrl(v.id, v.logo.asset_id) : null, tenantName });
               const nameOf = (id: string | null): string => (id != null ? names[id] ?? '' : '');
               const draft = versions.find((v) => v.status === 'DRAFT');
               const active = versions.find((v) => v.id === template.current_version_id) ?? versions.find((v) => v.status === 'ACTIVE');
@@ -195,6 +207,7 @@ export function RtrTemplateDetail({
               const shown = allVers || verAll.length <= 4 ? verAll : verAll.slice(0, 3);
               const hasMore = verAll.length > 4;
               const activeContent = active != null ? parseContent(active.field_schema, map) : { title: '', blocks: [] };
+              const activeHtml = active != null ? htmlOf(active.field_schema) : null;
               const activeLabel = active != null ? `v${active.version_number}` : '—';
               const topRetired = nonDraft.find((v) => v.status === 'RETIRED');
   
@@ -212,7 +225,7 @@ export function RtrTemplateDetail({
                   // A DRAFT previews through the SERVER's fixed-sample render (§17; manage scope).
                   try {
                     const res = await previewFn(v.id);
-                    setPreview({ label, mode: 'sample', title: res.title, blocks: res.blocks, signature: signatureFrom(res) });
+                    setPreview(previewContentFrom(res, label, { src: versionLogoUrl(v.id, v.logo?.asset_id ?? null), tenantName }));
                   } catch (err) {
                     toast.show(safeErrorMessage(err, 'Preview failed. Check that every field is a supported one.'));
                   }
@@ -221,8 +234,7 @@ export function RtrTemplateDetail({
                 // ACTIVE/RETIRED (or a reader without manage): the server sample preview is
                 // DRAFT-only + manage-scoped, so show the stored wording with field chips — no
                 // values invented on the client.
-                const c = parseContent(v.field_schema, map);
-                setPreview({ label, mode: 'content', title: c.title, blocks: c.blocks, signature: signatureFrom(v) });
+                setPreview(contentFromVersion(v, map, label, letterheadOf(v)));
               };
   
               return (
@@ -328,7 +340,10 @@ export function RtrTemplateDetail({
                             <span className="dt-verhead__h">{activeLabel} · read-only</span>
                           </div>
                           <div className="dt-doctitle">{activeContent.title}</div>
-                          {activeContent.blocks.filter((b) => b.text.trim() !== '').map((b, i) =>
+                          {activeHtml != null ? (
+                            <SafeDoc html={activeHtml} map={map} mode="content" letterhead={active.logo != null ? letterheadOf(active) : null} testId="rtr-approved-doc" />
+                          ) : null}
+                          {activeHtml != null ? null : activeContent.blocks.filter((b) => b.text.trim() !== '').map((b, i) =>
                             b.type === 'HEADING' ? (
                               <div className="dt-pvpaper__h" key={i}><Segments text={b.text} map={map} /></div>
                             ) : (

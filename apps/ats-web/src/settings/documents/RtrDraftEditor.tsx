@@ -7,19 +7,27 @@ import { safeErrorMessage } from '../../ui';
 
 import {
   activateTemplateVersion,
+  captureVersionLogo,
   deleteDraftVersion,
+  fetchTemplateCatalog,
   listAllowedBindings,
   listDocumentTemplates,
   listTemplateVersions,
   previewTemplateVersion,
+  removeVersionLogo,
   updateDocumentTemplate,
   updateDraftVersion,
+  versionLogoUrl,
   DOC_TEMPLATE_MANAGE_SCOPE,
   RIGHT_TO_REPRESENT_TYPE_ID,
   RTR_GENERATED_SCHEMA_V1,
+  RTR_HTML_SCHEMA_V1,
   type TemplateBinding,
+  type TemplateCatalog,
+  type TemplateLogo,
   type TemplateSamplePreview,
   type TemplateVersionView,
+  type TenantLogoInfo,
 } from './document-templates-api';
 import {
   bindingMapFrom,
@@ -28,8 +36,6 @@ import {
   groupBindings,
   parseContent,
   parseLabelSegments,
-  signatureFrom,
-  tokensToLabels,
   CheckCircleIcon,
   ChevronDown,
   ClockIcon,
@@ -38,6 +44,7 @@ import {
   DragDots,
   EyeIcon,
   LockIcon,
+  LogoIcon,
   PlusIcon,
   SaveIcon,
   SearchIcon,
@@ -47,10 +54,21 @@ import {
   JOB_DESCRIPTION_KEY,
   TALENT_NAME_KEY,
   type BindingMap,
-  type Block,
 } from './dt-ui';
-import { BlockBox, insertAtRange, makeFieldChip, TEXT_TOKEN_CODEC } from './dt-block-editor';
-import { ApproveModal, DiscardModal, PreviewModal, PreviewPaper, type PreviewContent } from './dt-modals';
+import { BlockBox, HTML_CODEC, insertAtRange, makeFieldChip, TEXT_TOKEN_CODEC, type BlockCodec } from './dt-block-editor';
+import { activeMarks, blocksToHtml, htmlToBlocks, toggleMark, type BlockKind } from './dt-html';
+import { Letterhead, type LetterheadInfo } from './dt-html-render';
+import {
+  contentFromVersion,
+  htmlOf,
+  previewContentFrom,
+  ApproveModal,
+  DiscardModal,
+  PreviewModal,
+  PreviewPaper,
+  SampleValues,
+  type PreviewContent,
+} from './dt-modals';
 import './document-templates.css';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§11) + PO §9 "Draft editor v2" — the Right-to-Represent DRAFT
@@ -60,14 +78,18 @@ import './document-templates.css';
 // one-row footer that carries the approval gate. Fields come ONLY from the governed catalog
 // (GET allowed-bindings); an unknown field renders a red chip and blocks approval. The
 // gate is server-authoritative (Save re-arms it; Preview records it; Approve re-validates)
-// — the derived checklist mirrors it. Only controls the v1 content model can persist are
-// rendered (Heading toggle) — no dead formatting controls.
+// — the derived checklist mirrors it. Content is rtr-html-v1 (Amendment A1: B/I/U, headings,
+// lists, fields, tenant-logo letterhead) through HTML_CODEC; an existing rtr-generated-v1
+// draft still opens and saves as v1 through TEXT_TOKEN_CODEC, where only the Heading
+// toggle can persist — so only that control is rendered for it (no dead controls).
 
 const DETAIL_ROUTE = '/admin/settings/document-templates/rtr';
 const LIST_ROUTE = '/admin/settings/document-templates';
 
 type Tab = 'builder' | 'preview' | 'versions' | 'settings';
-interface EdBlock extends Block { readonly id: string }
+interface NewBlock { readonly kind: BlockKind; readonly value: string }
+interface EdBlock extends NewBlock { readonly id: string }
+type Schema = 'v1' | 'html';
 
 interface Draft {
   templateId: string;
@@ -77,6 +99,9 @@ interface Draft {
   savedName: string;
   title: string;
   blocks: EdBlock[];
+  schema: Schema;
+  logo: boolean; // html only: the tenant-logo letterhead is the first child
+  logoAsset: TemplateLogo | null;
   notes: string | null; // null = the server's version view has no internal_notes property
   savedNotes: string | null;
   createdBy: string;
@@ -89,6 +114,7 @@ type LoadState =
   | {
       status: 'ready';
       bindings: readonly TemplateBinding[];
+      tenantLogo: TenantLogoInfo | null;
       map: BindingMap;
       versions: readonly TemplateVersionView[];
       active: TemplateVersionView | null;
@@ -124,15 +150,37 @@ const TABS: ReadonlyArray<{ id: Tab; label: string; icon: string }> = [
   { id: 'settings', label: 'Settings', icon: 'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1' },
 ];
 
-const SETTINGS_FACTS: ReadonlyArray<{ l: string; v: string; s: string }> = [
+const SETTINGS_FACTS_BASE: ReadonlyArray<{ l: string; v: string; s: string }> = [
   { l: 'DOCUMENT TYPE', v: 'Right to Represent', s: 'Governed document type' },
   { l: 'SCOPE', v: 'Tenant default', s: 'Client-specific templates may come later' },
   { l: 'USED BY', v: 'Requisition → Talent → Send RTR', s: 'Recruiters can’t choose another template' },
   { l: 'SIGNER', v: 'Talent', s: 'Recipient is locked to the talent’s email' },
   { l: 'SIGNING', v: 'Aramo e-sign', s: 'Frozen from this version when sent' },
   { l: 'SIGNATURE PLACEMENT', v: 'End of document (fixed)', s: 'Talent signature · printed name · date signed' },
-  { l: 'ALLOWED CONTENT', v: 'Headings and paragraphs with governed fields', s: 'Fields come from the governed catalog only' },
 ];
+const ALLOWED_V1 = { l: 'ALLOWED CONTENT', v: 'Headings and paragraphs with governed fields', s: 'Fields come from the governed catalog only' };
+const ALLOWED_HTML = { l: 'ALLOWED CONTENT', v: 'Text, headings, lists, fields, tenant logo', s: 'No tables, images or custom fonts' };
+
+const TOOL_MARKS: ReadonlyArray<{ tag: 'b' | 'i' | 'u'; g: string; tip: string; cls: string }> = [
+  { tag: 'b', g: 'B', tip: 'Bold', cls: 'dt-ed2tool--b' },
+  { tag: 'i', g: 'I', tip: 'Italic', cls: 'dt-ed2tool--i' },
+  { tag: 'u', g: 'U', tip: 'Underline', cls: 'dt-ed2tool--u' },
+];
+
+function apiReason(err: unknown): { status: number | null; reason: string | null } {
+  const e = err as { status?: unknown; details?: { reason?: unknown } } | null;
+  return {
+    status: e != null && typeof e.status === 'number' ? e.status : null,
+    reason: e != null && typeof e.details?.reason === 'string' ? e.details.reason : null,
+  };
+}
+const SAVE_REASON_COPY: Record<string, string> = {
+  unknown_field: 'A field in this draft isn’t a governed field. Remove the red field and save again.',
+  logo_position: 'The tenant logo must be the first block of the document.',
+  logo_asset_mismatch: 'The tenant logo is out of date. Remove it and add it again, then save.',
+  content_too_large: 'This document is too long to save. Shorten it and try again.',
+  unknown_asset: 'This draft contains an image that isn’t allowed. Only the tenant logo can be used.',
+};
 
 let blockSeq = 0;
 const newBlockId = (): string => `b${++blockSeq}`;
@@ -180,7 +228,10 @@ export function RtrDraftEditor({
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
-  listBindingsFn = listAllowedBindings,
+  listBindingsFn,
+  catalogFn,
+  captureLogoFn = captureVersionLogo,
+  removeLogoFn = removeVersionLogo,
   resolveNamesFn = resolveUserNames,
   updateFn = updateDraftVersion,
   renameFn = updateDocumentTemplate,
@@ -192,6 +243,10 @@ export function RtrDraftEditor({
   readonly listTemplatesFn?: typeof listDocumentTemplates;
   readonly listVersionsFn?: typeof listTemplateVersions;
   readonly listBindingsFn?: typeof listAllowedBindings;
+  // A1 — catalog incl. tenant_logo; when only listBindingsFn is given, no tenant logo is known.
+  readonly catalogFn?: (templateId: string) => Promise<TemplateCatalog>;
+  readonly captureLogoFn?: typeof captureVersionLogo;
+  readonly removeLogoFn?: typeof removeVersionLogo;
   readonly resolveNamesFn?: typeof resolveUserNames;
   readonly updateFn?: typeof updateDraftVersion;
   readonly renameFn?: typeof updateDocumentTemplate;
@@ -226,6 +281,9 @@ export function RtrDraftEditor({
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [fq, setFq] = useState('');
   const [shut, setShut] = useState<Record<string, boolean>>({});
+  const [marks, setMarks] = useState<{ b: boolean; i: boolean; u: boolean }>({ b: false, i: false, u: false });
+  const [saveIssue, setSaveIssue] = useState<string | null>(null);
+  const [logoRev, setLogoRev] = useState(0);
 
   const els = useRef<Record<string, HTMLDivElement | null>>({});
   const selRef = useRef<{ id: string; range: Range | null } | null>(null);
@@ -238,31 +296,42 @@ export function RtrDraftEditor({
       const templates = await listTemplatesFn();
       const rtr = templates.find((t) => t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
       if (rtr == null) { setLoad({ status: 'nodraft' }); return; }
-      const [versions, bindings] = await Promise.all([listVersionsFn(rtr.id), listBindingsFn(rtr.id)]);
+      const loadCatalog = catalogFn ?? (listBindingsFn != null
+        ? (id: string) => listBindingsFn(id).then((b): TemplateCatalog => ({ bindings: b, tenantLogo: null }))
+        : fetchTemplateCatalog);
+      const [versions, catalog] = await Promise.all([listVersionsFn(rtr.id), loadCatalog(rtr.id)]);
+      const bindings = catalog.bindings;
       const d = versions.find((v) => v.status === 'DRAFT');
       if (d == null) { setLoad({ status: 'nodraft' }); return; }
       const map = bindingMapFrom(bindings);
       const parsed = parseContent(d.field_schema, map);
+      const storedHtml = htmlOf(d.field_schema);
+      const schema: Schema = d.render_schema_version === RTR_HTML_SCHEMA_V1 || storedHtml != null ? 'html' : 'v1';
+      const doc = schema === 'html' ? htmlToBlocks(storedHtml ?? '') : null;
       const active = versions.find((v) => v.id === rtr.current_version_id) ?? versions.find((v) => v.status === 'ACTIVE') ?? null;
       const hasNotes = Object.prototype.hasOwnProperty.call(d, 'internal_notes');
       const notes = hasNotes ? (d.internal_notes ?? '') : null;
       const ids = [...new Set(versions.flatMap((v) => [v.activated_by, v.created_by]).filter((x): x is string => x != null))];
       let names: Record<string, string> = {};
       try { names = await resolveNamesFn(ids); } catch { names = {}; }
-      const blocks = parsed.blocks.length > 0 ? parsed.blocks : [{ type: 'TEXT' as const, text: '' }];
+      const loaded: NewBlock[] = doc != null
+        ? doc.blocks
+        : parsed.blocks.map((b) => ({ kind: b.type === 'HEADING' ? 'h2' as const : 'p' as const, value: b.text }));
+      const blocks = loaded.length > 0 ? loaded : [{ kind: 'p' as const, value: '' }];
       setDraft({
         templateId: rtr.id, versionId: d.id, n: d.version_number, name: rtr.name, savedName: rtr.name,
         title: parsed.title, blocks: blocks.map((b) => ({ ...b, id: newBlockId() })),
+        schema, logo: doc?.logo ?? false, logoAsset: d.logo ?? null,
         notes, savedNotes: notes, createdBy: d.created_by,
       });
       setNameDirty(false);
       setContentDirty(false);
       setPreviewed(d.previewed_fingerprint != null && d.previewed_fingerprint === d.content_fingerprint);
-      setLoad({ status: 'ready', bindings, map, versions, active, names: names ?? {} });
+      setLoad({ status: 'ready', bindings, tenantLogo: catalog.tenantLogo, map, versions, active, names: names ?? {} });
     } catch (err) {
       setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the draft.') });
     }
-  }, [listTemplatesFn, listVersionsFn, listBindingsFn, resolveNamesFn]);
+  }, [listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
 
   useEffect(() => { if (canManage) void refetch(); }, [canManage, refetch]);
 
@@ -286,6 +355,7 @@ export function RtrDraftEditor({
   });
 
   const map: BindingMap = load.status === 'ready' ? load.map : { labelByToken: {}, tokenByLabel: {} };
+  const codec: BlockCodec = draft?.schema === 'html' ? HTML_CODEC : TEXT_TOKEN_CODEC;
   const registerEl = useCallback((id: string, el: HTMLDivElement | null) => { els.current[id] = el; }, []);
 
   function editContent(next: Partial<Draft>) {
@@ -299,19 +369,20 @@ export function RtrDraftEditor({
     setDraft((d) => {
       if (d == null) return d;
       const cur = d.blocks.find((b) => b.id === id);
-      if (cur == null || cur.text === text) return d;
+      if (cur == null || cur.value === text) return d;
       setContentDirty(true);
       setPreviewed(false);
       setSaveError(null);
-      return { ...d, blocks: d.blocks.map((b) => (b.id === id ? { ...b, text } : b)) };
+      return { ...d, blocks: d.blocks.map((b) => (b.id === id ? { ...b, value: text } : b)) };
     });
   }, []);
   const onBlockSelect = useCallback((id: string, range: Range | null) => {
     setActiveId(id);
     selRef.current = { id, range };
+    setMarks(activeMarks(els.current[id] ?? null, range));
   }, []);
 
-  function addBlockAfter(afterId: string | null, block: Block) {
+  function addBlockAfter(afterId: string | null, block: NewBlock) {
     if (draft == null) return;
     const blocks = draft.blocks.slice();
     const i = afterId != null ? blocks.findIndex((b) => b.id === afterId) : -1;
@@ -345,16 +416,70 @@ export function RtrDraftEditor({
     if (draft == null) return;
     const rest = draft.blocks.filter((b) => b.id !== id);
     // The last remaining block can't be removed — it resets to an empty paragraph.
-    setBlocks(rest.length > 0 ? rest : [{ id: newBlockId(), type: 'TEXT', text: '' }]);
+    setBlocks(rest.length > 0 ? rest : [{ id: newBlockId(), kind: 'p', value: '' }]);
     if (activeId === id) setActiveId(null);
   }
   function duplicateBlock(id: string) {
     const b = draft?.blocks.find((x) => x.id === id);
-    if (b != null) addBlockAfter(id, { type: b.type, text: b.text });
+    if (b != null) addBlockAfter(id, { kind: b.kind, value: b.value });
   }
-  function toggleHeading() {
+  // H toggles p↔h2; • / 1. toggle a list (each line ↔ li). The codec converts the value.
+  function toggleKind(target: 'h2' | 'ul' | 'ol') {
     if (draft == null || activeId == null) return;
-    setBlocks(draft.blocks.map((b) => (b.id === activeId ? { ...b, type: b.type === 'HEADING' ? 'TEXT' : 'HEADING' } : b)));
+    setBlocks(draft.blocks.map((b) => {
+      if (b.id !== activeId) return b;
+      const to: BlockKind = b.kind === target ? 'p' : target;
+      return { ...b, kind: to, value: codec.convert(b.value, b.kind, to) };
+    }));
+  }
+  function toggleMarkCmd(tag: 'b' | 'i' | 'u') {
+    if (draft == null || activeId == null) return;
+    const el = els.current[activeId];
+    const block = draft.blocks.find((b) => b.id === activeId);
+    if (el == null || block == null) return;
+    let range: Range | null = null;
+    try {
+      const sel = window.getSelection();
+      if (sel != null && sel.rangeCount > 0 && el.contains(sel.anchorNode)) range = sel.getRangeAt(0);
+    } catch { /* noop */ }
+    if (range == null) range = selRef.current?.id === activeId ? selRef.current.range : null;
+    if (!toggleMark(el, range, tag)) return;
+    onBlockChange(activeId, codec.serialize(el, map, block.kind));
+    try {
+      const sel = window.getSelection();
+      const r = sel != null && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+      selRef.current = { id: activeId, range: r };
+      setMarks(activeMarks(el, r));
+    } catch { /* noop */ }
+  }
+  async function addLogo() {
+    if (draft == null) return;
+    setBusy(true);
+    try {
+      const res = await captureLogoFn(draft.versionId);
+      const asset: TemplateLogo | null = res != null && typeof res.asset_id === 'string' ? { asset_id: res.asset_id, mime: res.mime } : null;
+      setDraft((d) => (d != null ? { ...d, logo: true, logoAsset: asset ?? d.logoAsset } : d));
+      setLogoRev((r) => r + 1);
+      setContentDirty(true);
+      setPreviewed(false);
+      toast.show('Tenant logo added above the title · change it under Settings → Tenant profile');
+    } catch (err) {
+      const { reason } = apiReason(err);
+      toast.show(reason === 'no_tenant_logo' ? 'Add a logo in Settings → Tenant profile' : safeErrorMessage(err, 'Could not add the tenant logo.'));
+    } finally { setBusy(false); }
+  }
+  async function removeLogo() {
+    if (draft == null) return;
+    setBusy(true);
+    try {
+      await removeLogoFn(draft.versionId);
+      setDraft((d) => (d != null ? { ...d, logo: false, logoAsset: null } : d));
+      setContentDirty(true);
+      setPreviewed(false);
+      toast.show('Tenant logo removed');
+    } catch (err) {
+      toast.show(safeErrorMessage(err, 'Could not remove the tenant logo.'));
+    } finally { setBusy(false); }
   }
 
   function insertField(key: string) {
@@ -362,7 +487,7 @@ export function RtrDraftEditor({
     const label = map.labelByToken[key];
     setInsertOpen(false);
     if (label == null) return;
-    if (key === JOB_DESCRIPTION_KEY) { addBlockAfter(activeId, { type: 'TEXT', text: `[${label}]` }); return; }
+    if (key === JOB_DESCRIPTION_KEY) { addBlockAfter(activeId, { kind: 'p', value: codec.fieldBlock(key, label) }); return; }
     const sel = selRef.current;
     const id = activeId != null && draft.blocks.some((b) => b.id === activeId) ? activeId : null;
     const el = id != null ? els.current[id] : null;
@@ -370,18 +495,18 @@ export function RtrDraftEditor({
       // At the caret in the focused block: insert an atomic chip node, then re-serialise.
       insertAtRange(el, sel.range, [makeFieldChip(key, label), document.createTextNode(' ')]);
       try { const s = window.getSelection(); if (s != null && s.rangeCount > 0) selRef.current = { id, range: s.getRangeAt(0).cloneRange() }; } catch { /* noop */ }
-      onBlockChange(id, TEXT_TOKEN_CODEC.serialize(el, map));
+      const blk = draft.blocks.find((b) => b.id === id);
+      onBlockChange(id, codec.serialize(el, map, blk?.kind ?? 'p'));
       return;
     }
     // Otherwise: at the end of the last block.
     const last = draft.blocks[draft.blocks.length - 1];
     if (last == null) return;
-    const sep = last.text !== '' && !/\s$/.test(last.text) ? ' ' : '';
-    setBlocks(draft.blocks.map((b) => (b.id === last.id ? { ...b, text: `${b.text}${sep}[${label}]` } : b)));
+    setBlocks(draft.blocks.map((b) => (b.id === last.id ? { ...b, value: codec.appendField(b.value, b.kind, key, label) } : b)));
   }
   function addClause(text: string) {
     setClauseOpen(false);
-    addBlockAfter(activeId, { type: 'TEXT', text: tokensToLabels(text, map) });
+    addBlockAfter(activeId, { kind: 'p', value: codec.fromTemplate(text, map) });
   }
 
   async function saveName(d: Draft): Promise<boolean> {
@@ -400,14 +525,29 @@ export function RtrDraftEditor({
     setSaveError(null);
     try {
       if (!(await saveName(draft))) return false;
-      const input: { field_schema: unknown; render_schema_version: string; internal_notes?: string | null } = {
-        field_schema: buildFieldSchema(RTR_GENERATED_SCHEMA_V1, draft.title, draft.blocks, map),
-        render_schema_version: RTR_GENERATED_SCHEMA_V1,
-      };
+      const sentHtml = draft.schema === 'html' ? blocksToHtml(draft.logo, draft.blocks) : null;
+      const input: { field_schema: unknown; render_schema_version: string; internal_notes?: string | null } = sentHtml != null
+        ? { field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: draft.title, html: sentHtml }, render_schema_version: RTR_HTML_SCHEMA_V1 }
+        : {
+            field_schema: buildFieldSchema(RTR_GENERATED_SCHEMA_V1, draft.title, draft.blocks.map((b) => ({ type: b.kind === 'h2' ? 'HEADING' : 'TEXT', text: b.value })), map),
+            render_schema_version: RTR_GENERATED_SCHEMA_V1,
+          };
       if (draft.notes !== null && draft.notes !== draft.savedNotes) input.internal_notes = draft.notes;
       const res = await updateFn(draft.versionId, input);
       setNameDirty(false);
       setContentDirty(false);
+      setSaveIssue(null);
+      // rtr-html-v1: the server returns its SANITIZED html — re-render from it when it differs.
+      const resHtml = sentHtml != null && res != null ? htmlOf(res.field_schema) : null;
+      if (resHtml != null && sentHtml != null) {
+        const back = htmlToBlocks(resHtml);
+        const sentCanon = htmlToBlocks(sentHtml);
+        if (blocksToHtml(back.logo, back.blocks) !== blocksToHtml(sentCanon.logo, sentCanon.blocks)) {
+          const nb = back.blocks.length > 0 ? back.blocks : [{ kind: 'p' as const, value: '' }];
+          setDraft((cur) => (cur != null ? { ...cur, logo: back.logo, blocks: nb.map((b) => ({ ...b, id: newBlockId() })) } : cur));
+        }
+      }
+      if (res != null && res.logo !== undefined) { const lg = res.logo; setDraft((cur) => (cur != null ? { ...cur, logoAsset: lg } : cur)); }
       // The server re-arms (or keeps) the §18 gate — trust its markers.
       setPreviewed(res != null && res.previewed_fingerprint != null && res.previewed_fingerprint === res.content_fingerprint);
       const savedNotes = draft.notes;
@@ -416,8 +556,12 @@ export function RtrDraftEditor({
       toast.show('Draft saved.');
       return true;
     } catch (err) {
-      const msg = safeErrorMessage(err, 'Could not save the draft.');
+      // 422 unknown_field / logo_position → an inline, actionable error; the draft is kept.
+      const { status, reason } = apiReason(err);
+      const known = status === 422 && reason != null ? SAVE_REASON_COPY[reason] : undefined;
+      const msg = known ?? safeErrorMessage(err, 'Could not save the draft.');
       setSaveError(msg);
+      setSaveIssue(known ?? null);
       toast.show(msg);
       return false;
     } finally { setBusy(false); }
@@ -431,7 +575,7 @@ export function RtrDraftEditor({
       // returned — the FE substitutes no sample values of its own.
       const res: TemplateSamplePreview = await previewFn(d.versionId);
       setPreviewed(true);
-      return { label: `Draft v${d.n} · ${d.name}`, mode: 'sample', title: res.title, blocks: res.blocks, signature: signatureFrom(res) };
+      return previewContentFrom(res, `Draft v${d.n} · ${d.name}`, draftLetterhead(d));
     } catch (err) {
       toast.show(safeErrorMessage(err, 'Preview failed. Check that every field is a supported one.'));
       return null;
@@ -450,15 +594,14 @@ export function RtrDraftEditor({
     const c = await fetchPreview(draft);
     if (c != null) setModal(c);
   }
+  function draftLetterhead(d: Draft): LetterheadInfo {
+    const name = load.status === 'ready' ? load.tenantLogo?.tenant_name ?? '' : '';
+    return { src: versionLogoUrl(d.versionId, d.logoAsset?.asset_id ?? (logoRev > 0 ? String(logoRev) : null)), tenantName: name };
+  }
   function viewVersion(v: TemplateVersionView) {
-    const c = parseContent(v.field_schema, map);
-    setModal({
-      label: `v${v.version_number} · ${draft?.name ?? ''} · ${pillLabel(v.status)}`,
-      mode: 'content',
-      title: c.title,
-      blocks: c.blocks,
-      signature: signatureFrom(v),
-    });
+    const name = load.status === 'ready' ? load.tenantLogo?.tenant_name ?? '' : '';
+    const lh: LetterheadInfo = { src: v.logo != null ? versionLogoUrl(v.id, v.logo.asset_id) : null, tenantName: name };
+    setModal(contentFromVersion(v, map, `v${v.version_number} · ${draft?.name ?? ''} · ${pillLabel(v.status)}`, lh));
   }
   function selectTab(t: Tab) {
     if (t === 'preview') { void openPreviewTab(); return; }
@@ -534,15 +677,20 @@ export function RtrDraftEditor({
   // ── Derived state (mirrors the backend §14/§18 gate) ──
   const usedKeys: string[] = [];
   const bad: string[] = [];
-  for (const b of [draft.title, ...draft.blocks.map((x) => x.text)]) {
-    for (const s of parseLabelSegments(b, map)) {
+  const addScan = (r: { used: string[]; bad: string[] }) => {
+    r.used.forEach((k) => { if (!usedKeys.includes(k)) usedKeys.push(k); });
+    r.bad.forEach((k) => { if (!bad.includes(k)) bad.push(k); });
+  };
+  if (draft.schema === 'v1') {
+    for (const s of parseLabelSegments(draft.title, map)) {
       if (s.kind === 'field') { const k = map.tokenByLabel[s.t]; if (k != null && !usedKeys.includes(k)) usedKeys.push(k); }
       if (s.kind === 'bad' && !bad.includes(s.t)) bad.push(s.t);
     }
   }
+  draft.blocks.forEach((b) => addScan(codec.scan(b.value, map)));
   const nameOk = draft.name.trim() !== '';
   const titleOk = draft.title.trim() !== '';
-  const emptyDoc = draft.blocks.every((b) => b.text.trim() === '');
+  const emptyDoc = draft.blocks.every((b) => codec.isEmpty(b.value));
   const talentLabel = map.labelByToken[TALENT_NAME_KEY] ?? 'Talent full name';
   const isPreviewed = previewed && !contentDirty;
   const checklist: ReadonlyArray<{ label: string; ok: boolean; reason: string }> = [
@@ -563,6 +711,10 @@ export function RtrDraftEditor({
   const clauses = CLAUSES.filter((c) => clauseKeys(c.text).every((k) => allowed.has(k)));
   const jdLabel = map.labelByToken[JOB_DESCRIPTION_KEY];
   const activeBlock = draft.blocks.find((b) => b.id === activeId) ?? null;
+  const rich = codec.rich;
+  const tenantLogo = load.tenantLogo;
+  const settingsFacts = [...SETTINGS_FACTS_BASE, rich ? ALLOWED_HTML : ALLOWED_V1];
+  const jdValue = jdLabel != null ? codec.fieldBlock(JOB_DESCRIPTION_KEY, jdLabel) : null;
 
   const activeN = load.active?.version_number ?? null;
   const nonDraft = load.versions.filter((v) => v.status !== 'DRAFT').slice().sort((a, b) => b.version_number - a.version_number);
@@ -585,8 +737,9 @@ export function RtrDraftEditor({
 
   let pn = 0;
   const blockLabel = (b: EdBlock): string => {
-    if (b.type === 'HEADING') return 'Heading';
-    if (jdLabel != null && b.text.trim() === `[${jdLabel}]`) return 'Job description';
+    if (b.kind === 'h2') return 'Heading';
+    if (b.kind === 'ul' || b.kind === 'ol') return 'List';
+    if (jdValue != null && b.value.trim() === jdValue) return 'Job description';
     pn += 1;
     return `Paragraph ${pn}`;
   };
@@ -740,31 +893,99 @@ export function RtrDraftEditor({
                           ))}
                         </Menu>
                       </span>
-                      <Button unstyled className="dt-obtn" onClick={() => addBlockAfter(activeId, { type: 'TEXT', text: '' })} data-testid="rtr-add-para-top">
+                      <Button unstyled className="dt-obtn" onClick={() => addBlockAfter(activeId, { kind: 'p', value: '' })} data-testid="rtr-add-para-top">
                         <PlusIcon />Add paragraph
                       </Button>
                     </span>
                   </div>
                   <div className="dt-ed2format">
                     <span className="dt-ed2format__l">FORMAT</span>
-                    <span className="dt-ed2tools">
+                    <span className="dt-ed2tools" role="toolbar" aria-label="Format">
+                      {rich ? TOOL_MARKS.map((t) => (
+                        <Button
+                          unstyled
+                          key={t.tag}
+                          className={`dt-ed2tool ${t.cls}${marks[t.tag] ? ' dt-ed2tool--on' : ''}`}
+                          title={activeBlock != null ? t.tip : 'Click a paragraph first'}
+                          aria-label={t.tip}
+                          aria-pressed={marks[t.tag]}
+                          disabled={activeBlock == null}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => toggleMarkCmd(t.tag)}
+                          data-testid={`rtr-format-${t.tag}`}
+                        >
+                          {t.g}
+                        </Button>
+                      )) : null}
                       <Button
                         unstyled
-                        className={`dt-ed2tool${activeBlock?.type === 'HEADING' ? ' dt-ed2tool--on' : ''}`}
+                        className={`dt-ed2tool${activeBlock?.kind === 'h2' ? ' dt-ed2tool--on' : ''}`}
                         title={activeBlock != null ? 'Section heading' : 'Click a paragraph first'}
                         aria-label="Section heading"
-                        aria-pressed={activeBlock?.type === 'HEADING'}
+                        aria-pressed={activeBlock?.kind === 'h2'}
                         disabled={activeBlock == null}
                         onMouseDown={(e) => e.preventDefault()}
-                        onClick={toggleHeading}
+                        onClick={() => toggleKind('h2')}
                         data-testid="rtr-format-heading"
                       >
                         H
                       </Button>
+                      {rich ? (
+                        <>
+                          <Button
+                            unstyled
+                            className={`dt-ed2tool dt-ed2tool--ul${activeBlock?.kind === 'ul' ? ' dt-ed2tool--on' : ''}`}
+                            title={activeBlock != null ? 'Bulleted list' : 'Click a paragraph first'}
+                            aria-label="Bulleted list"
+                            aria-pressed={activeBlock?.kind === 'ul'}
+                            disabled={activeBlock == null}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => toggleKind('ul')}
+                            data-testid="rtr-format-ul"
+                          >
+                            •
+                          </Button>
+                          <Button
+                            unstyled
+                            className={`dt-ed2tool dt-ed2tool--ol${activeBlock?.kind === 'ol' ? ' dt-ed2tool--on' : ''}`}
+                            title={activeBlock != null ? 'Numbered list' : 'Click a paragraph first'}
+                            aria-label="Numbered list"
+                            aria-pressed={activeBlock?.kind === 'ol'}
+                            disabled={activeBlock == null}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => toggleKind('ol')}
+                            data-testid="rtr-format-ol"
+                          >
+                            1.
+                          </Button>
+                        </>
+                      ) : null}
                     </span>
+                    {rich ? (
+                      draft.logo ? (
+                        <Button unstyled className="dt-ed2logo dt-nowrap" title="Remove the organization logo from the top of the document" onMouseDown={(e) => e.preventDefault()} onClick={() => void removeLogo()} disabled={busy} data-testid="rtr-logo-remove">
+                          <LogoIcon />Remove logo
+                        </Button>
+                      ) : (
+                        <span title={tenantLogo?.available === true ? 'Adds your organization’s logo from Tenant profile above the title' : 'Add a logo in Settings → Tenant profile'} className="dt-nowrap" data-testid="rtr-logo-add-wrap">
+                          <Button unstyled className="dt-ed2logo dt-nowrap" onMouseDown={(e) => e.preventDefault()} onClick={() => void addLogo()} disabled={busy || tenantLogo?.available !== true} data-testid="rtr-logo-add">
+                            <LogoIcon />Tenant logo
+                          </Button>
+                        </span>
+                      )
+                    ) : null}
                     <span className="dt-ed2format__hint">Click × on a field to remove it · drag ⋮⋮ to reorder</span>
                   </div>
+                  {saveIssue != null ? <div className="dt-ed2issue" data-testid="rtr-save-issue">{saveIssue}</div> : null}
                   <div className="dt-ed2rows">
+                    {rich && draft.logo ? (
+                      <div className="dt-ed2row" data-testid="rtr-letterhead-row">
+                        <span />
+                        <span className="dt-ed2pill dt-ed2pill--blk">Letterhead</span>
+                        <Letterhead info={draftLetterhead(draft)} variant="editor" testId="rtr-letterhead" />
+                        <span />
+                      </div>
+                    ) : null}
                     <div className="dt-ed2row dt-ed2row--center">
                       <span />
                       <span className="dt-ed2pill">Title</span>
@@ -772,7 +993,7 @@ export function RtrDraftEditor({
                       <span />
                     </div>
                     {draft.blocks.map((block, i) => {
-                      const heading = block.type === 'HEADING';
+                      const heading = block.kind === 'h2';
                       const label = blockLabel(block);
                       const open = blockMenu === block.id;
                       return (
@@ -780,7 +1001,8 @@ export function RtrDraftEditor({
                           key={block.id}
                           className={`dt-ed2row${dragOver === block.id ? ' dt-ed2row--drop' : ''}`}
                           data-testid={`rtr-para-${i}`}
-                          data-block-type={block.type}
+                          data-block-type={block.kind === 'h2' ? 'HEADING' : block.kind === 'p' ? 'TEXT' : 'LIST'}
+                          data-kind={block.kind}
                           onDragOver={rowDragOver(block.id)}
                           onDrop={rowDrop(block.id)}
                         >
@@ -801,15 +1023,16 @@ export function RtrDraftEditor({
                           <span className="dt-ed2pill dt-ed2pill--blk" data-testid={`rtr-para-label-${i}`}>{label}</span>
                           <BlockBox
                             blockId={block.id}
-                            text={block.text}
-                            heading={heading}
+                            value={block.value}
+                            kind={block.kind}
+                            codec={codec}
                             map={map}
                             placeholder={heading ? 'Heading' : label}
                             testId={`rtr-para-text-${i}`}
                             registerEl={registerEl}
                             onChange={onBlockChange}
                             onSelect={onBlockSelect}
-                            onEnter={(id) => addBlockAfter(id, { type: 'TEXT', text: '' })}
+                            onEnter={(id) => addBlockAfter(id, { kind: 'p', value: '' })}
                           />
                           <span className="dt-rel dt-ed2row__menu">
                             <Button unstyled className="dt-ed2dots" title="Paragraph actions" aria-label={`${label} actions`} aria-haspopup="menu" aria-expanded={open} onClick={() => setBlockMenu(open ? null : block.id)} data-testid={`rtr-para-menu-${i}`}>···</Button>
@@ -826,7 +1049,7 @@ export function RtrDraftEditor({
                     <Button
                       unstyled
                       className="dt-ed2addpara"
-                      onClick={() => addBlockAfter(null, { type: 'TEXT', text: '' })}
+                      onClick={() => addBlockAfter(null, { kind: 'p', value: '' })}
                       onDragOver={(e) => { if (dragRef.current != null) e.preventDefault(); }}
                       onDrop={rowDrop('end')}
                       data-testid="rtr-add-para"
@@ -863,7 +1086,10 @@ export function RtrDraftEditor({
                           <Button unstyled className="dt-link" onClick={() => void openPreviewTab()} data-testid="rtr-preview-refresh">Refresh preview</Button>
                         </div>
                       ) : null}
-                      <PreviewPaper content={inline.content} map={map} className="dt-ed2paper" testId="rtr-inline-preview-paper" />
+                      <div className="dt-ed2pvgrid">
+                        <PreviewPaper content={inline.content} map={map} className="dt-ed2paper" testId="rtr-inline-preview-paper" />
+                        {inline.content.samples != null && inline.content.samples.length > 0 ? <SampleValues samples={inline.content.samples} compact /> : null}
+                      </div>
                     </>
                   ) : null}
                 </div>
@@ -894,7 +1120,7 @@ export function RtrDraftEditor({
                   <div className="dt-ed2cardhead__t">Settings</div>
                   <div className="dt-ed2cardhead__s dt-mb14">Set by the document type, not per version. Shown here so the admin knows how this template will be used.</div>
                   <div className="dt-ed2facts">
-                    {SETTINGS_FACTS.map((f) => (
+                    {settingsFacts.map((f) => (
                       <div className="dt-ed2fact" key={f.l}>
                         <div className="dt-ed2fact__l">{f.l}</div>
                         <div className="dt-ed2fact__v">{f.v}</div>

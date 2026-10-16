@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { Button } from '@aramo/fe-foundation';
 
+import { SafeDoc } from '../settings/documents/dt-html-render';
+import type { BindingMap } from '../settings/documents/dt-ui';
+
+const EMPTY_BINDING_MAP: BindingMap = { labelByToken: {}, tokenByLabel: {} };
 import type { RtrComposeBlock } from './rtr-api';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§2.7) — the recruiter Send Right to Represent modal, styled
@@ -46,7 +50,7 @@ export function SendRtrModal({
   // SEAM 4 — the compose-driven pre-request flow: a real-bound preview rendered for
   // this (talent, requisition). When present, "Preview document" toggles this inline
   // preview (no presigned URL exists yet); otherwise it falls back to onPreview.
-  readonly composePreview?: { readonly title: string; readonly blocks: readonly RtrComposeBlock[] } | null;
+  readonly composePreview?: { readonly title: string; readonly blocks: readonly RtrComposeBlock[]; readonly html?: string } | null;
   // Fail-closed BEFORE send (e.g. composeRtr refused: no approved template / missing
   // binding). Shows the honest message and disables Send — Aramo never substitutes.
   readonly disabledText?: string | null;
@@ -128,6 +132,9 @@ export function SendRtrModal({
                   Preview of what {talentName} will receive · nothing has been sent
                 </div>
                 <div style={{ fontSize: '14px', fontWeight: 700, color: '#1B2730', marginBottom: 6 }}>{composePreview.title}</div>
+                {composePreview.html !== undefined && composePreview.html !== '' ? (
+                  <SafeDoc html={composePreview.html} map={EMPTY_BINDING_MAP} mode="sample" letterhead={null} testId="send-rtr-compose-html" />
+                ) : null}
                 {composePreview.blocks.map((b, i) =>
                   b.type === 'HEADING' ? (
                     <div key={i} style={{ fontSize: '13.5px', fontWeight: 700, color: '#1B2730', margin: '10px 0 4px' }}>{b.text}</div>

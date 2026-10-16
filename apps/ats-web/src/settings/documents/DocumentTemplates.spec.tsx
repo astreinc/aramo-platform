@@ -207,4 +207,27 @@ describe('RtrTemplateDetail — version history (§7)', () => {
     expect(sig).toHaveTextContent('PRINTED NAME');
     expect(within(sig).getByText('Talent full name')).toHaveClass('dt-chip');
   });
+
+  it('Approved content renders rtr-html-v1 through the safe renderer: marks, lists, chips, letterhead — no raw markup', async () => {
+    const html = '<div data-asset="tenant.logo"></div><p>Hi <b>bold</b> <span data-field="talent.full_name"></span></p><ul><li>One</li></ul><script>bad()</script>';
+    const v = {
+      ...version('v2', 2, 'ACTIVE'),
+      render_schema_version: 'rtr-html-v1',
+      field_schema: { render_schema_version: 'rtr-html-v1', title: 'Right to Represent', html },
+      logo: { asset_id: 'a1', mime: 'image/png' },
+    } as TemplateVersionView;
+    renderDetail({
+      sessionOverride: READER, ...base, listBindingsFn: undefined,
+      catalogFn: () => Promise.resolve({ bindings: BINDINGS, tenantLogo: { available: true, tenant_name: 'Astre Consulting Services Inc' } }),
+      listVersionsFn: () => Promise.resolve([v]),
+    });
+    const doc = await screen.findByTestId('rtr-approved-doc');
+    expect(doc.querySelector('b')).toHaveTextContent('bold');
+    expect(doc.querySelectorAll('li')).toHaveLength(1);
+    expect(within(doc).getByText('Talent full name').closest('.dt-chip')).not.toBeNull();
+    expect(doc.querySelector('script')).toBeNull();
+    const lh = within(doc).getByTestId('dt-doc-letterhead');
+    expect(lh).toHaveTextContent('Astre Consulting Services Inc');
+    expect(within(lh).getByRole('img')).toHaveAttribute('src', '/v1/document-templates/versions/v2/logo/content?v=a1');
+  });
 });
