@@ -1306,12 +1306,10 @@ body.t360-route .rc-content {
   border-color: #9db0f5;
   box-shadow: 0 0 0 3px #022ac014;
 }
-/* A card in edit mode takes the full row so its inputs have room. */
-.t360-pgrid .t360-pblock--editing {
-  grid-column: 1 / -1;
-}
+/* Edit mode stays in its slot (no reflow); labels take a bounded column so
+   inputs get the rest of the (two-per-row) card width. */
 .t360-pblock--editing .t360-prow2--edit {
-  grid-template-columns: minmax(140px, 220px) minmax(0, 560px);
+  grid-template-columns: minmax(120px, 30%) minmax(0, 1fr);
 }
 .t360-cardact {
   margin-left: auto;
