@@ -6001,6 +6001,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20261016180100_s2_activity_note_event_erasure_delete/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql"
     },
     {
@@ -6056,6 +6062,12 @@
       "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
       "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/pre-start-requirement/marker-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20261016180300_s2_pipeline_history_erasure_redaction/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -6872,6 +6884,60 @@
       "from": "apps/api/src/tests/rtr-template-content-parity.spec.ts",
       "status": "excluded",
       "to": "libs/documents/prisma/migrations/20261004120000_rtr_template_1_default_rtr_template_backfill/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/talent-identity/talent-erasure.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/s2-erasure-integrity.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "doc/runbooks/talent-rtbf-erasure.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/activity/prisma/migrations/20261016180100_s2_activity_note_event_erasure_delete/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/client-selection/prisma/migrations/20261016180400_s2_client_selection_event_erasure_redaction/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/client-talent-restriction/prisma/migrations/20261016180500_s2_client_talent_restriction_erasure_redaction/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/consent/prisma/migrations/20261016180000_s2_erasure_run_authorization/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261016180200_s2_document_event_erasure_delete/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/prisma/migrations/20261016180300_s2_pipeline_history_erasure_redaction/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

@@ -135,6 +135,9 @@ model ConsentAuditEvent {
 // SQL). STORAGE_PENDING until every object is verifiably purged; the
 // consent.erased marker is appended only at COMPLETED. UPDATE-guard triggers in
 // the migration keep terminal states and identity immutable.
+// S2 LOCKED §2: a run is created ONLY by the SECURITY DEFINER erasure entry point, in
+// state DB_PASS_IN_PROGRESS (the transaction-bound erasure authorization), and
+// must leave that state before COMMIT (deferred constraint trigger).
 model TalentErasureRun {
   id              String    @id @db.Uuid
   tenant_id       String    @db.Uuid

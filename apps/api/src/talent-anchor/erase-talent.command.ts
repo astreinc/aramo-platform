@@ -96,7 +96,7 @@ async function main(): Promise<void> {
       printReport(logger, report);
       const code = ERASURE_EXIT_CODES[report.outcome as Exclude<ErasureOutcome, 'DRY_RUN'>] ?? 4;
       const line =
-        `erase-talent ${report.outcome}: ${report.total_rows} row(s) deleted; ` +
+        `erase-talent ${report.outcome}: ${report.total_rows} row(s) deleted, ${report.redacted_rows} retained row(s) redacted/tombstoned; ` +
         `artifacts purged ${report.storage.purged}/${report.storage.total}; ` +
         `marker_appended=${report.erasure_marker_appended}; is_anonymized=${report.is_anonymized_flipped}` +
         (report.failure !== undefined ? ` — ${report.failure}` : '');
@@ -107,7 +107,7 @@ async function main(): Promise<void> {
       const report = await svc.dryRun(pg, tenantId, recordId);
       printReport(logger, report);
       logger.log(
-        `erase-talent DRY-RUN — ${report.total_rows} row(s) WOULD delete; ${report.storage.total} artifact(s) WOULD be purged; ` +
+        `erase-talent DRY-RUN — ${report.total_rows} row(s) WOULD delete; ${report.redacted_rows} retained row(s) WOULD be redacted/tombstoned; ${report.storage.total} artifact(s) WOULD be purged; ` +
           (report.blockers.length > 0
             ? `${report.blockers.length} BLOCKER(S): an --execute would be refused; ZERO writes.`
             : `no blockers; ZERO writes. Re-run with '--execute ${recordId}' to erase.`),
@@ -131,7 +131,7 @@ function printReport(logger: Logger, report: ErasureReport): void {
     logger.warn(`  BLOCKER [${b.classification}] ${b.holder}: ${b.count} row(s) — ${b.reason} (needs: ${b.authority})`);
   }
   for (const s of report.steps) {
-    const verb = report.mode === 'dry-run' ? 'would-delete' : s.status;
+    const verb = report.mode === 'dry-run' ? 'would-change' : s.status;
     logger.log(`  ${s.table}: ${s.count} ${verb}${s.error ? ` [error: ${s.error}]` : ''}`);
   }
   const st = report.storage;

@@ -30,8 +30,24 @@ import {
 //      run is COMPLETED, and the consent.erased marker (what is_anonymized reads)
 //      appended, ONLY when every artifact is verifiably purged; otherwise it stays
 //      STORAGE_PENDING and `--resume` retries. A re-run is idempotent.
-// No DELETE/UPDATE exception is added to any append-only table (F2 not
-// approved): blocked holders block; they are never bypassed.
+// No blanket bypass exists (F2 not approved). ARAMO-S2-Talent-Erasure-Integrity-
+// Amendment-v1.0-LOCKED adds ONLY subject-bound, transaction-bound exceptions,
+// enforced by the triggers themselves (§2): the database pass opens its run
+// through consent.s2_begin_talent_erasure_run (the SECURITY DEFINER entry point —
+// it computes the authorized record set itself and arms the run for THIS
+// transaction only), then —
+//   §3.1 DELETEs the talent-owned immutable content (note events, document events
+//        and packet items, requisition résumé selections);
+//   §3.2 REDACTS the enumerated identifying columns of the retained workflow
+//        history (children first, while the parent still names the talent), then
+//        re-points each parent to ONE fresh tombstone per (record, requisition) —
+//        never derived from the id, never persisted — so every (talent,
+//        requisition) report grain survives and nothing links across requisitions;
+//   §3.3 removes a client restriction's identifying link (reachable only once
+//        Legal records the class — until then the preflight blocks it);
+// and must leave DB_PASS_IN_PROGRESS before COMMIT (a deferred trigger enforces
+// it). Every other operation keeps its original rejection. Commercial / legal
+// records, unclassified holders and shared interactions still BLOCK.
 //
 // Two keyspaces: GROUP A/C holders key on the RECORD id(s); GROUP B trust
 // surfaces key on the SUBJECT id(s). The ordering below is load-bearing and,
@@ -79,7 +95,9 @@ export type HolderClassification =
   | 'BLOCKED_PENDING_AUTHORITY' // append-only history: erasure needs the S2 authority amendment
   | 'PENDING_PO_LEGAL' // commercial / legal record: needs a PO/Legal retention class
   | 'LEGAL_HOLD' // a hold suspends erasure
-  | 'BLOCKED_SHARED'; // the row also belongs to another person
+  | 'BLOCKED_SHARED' // the row also belongs to another person
+  | 'PENDING_OUTBOX_DRAIN' // an unpublished outbox event names the talent: retry once it is published
+  | 'PENDING_CLASSIFICATION'; // a holder outside every recorded class (S2 holder coverage): needs a ruling
 
 export interface ErasureBlocker {
   holder: string;
@@ -111,10 +129,18 @@ const SCREENING_SESSIONS = `SELECT ss.id FROM technical_screening."ScreeningSess
 // covers a meeting scheduled but not yet linked) AND every interaction that has
 // the talent as a talent_record subject (calls, email, SMS, meetings). An
 // interaction that ALSO names another talent is a PREFLIGHT blocker, never deleted.
+const TALENT_PIPELINES = `SELECT id FROM pipeline."Pipeline" WHERE talent_record_id = ANY($1::uuid[])`;
+const TALENT_SELECTIONS = `SELECT id FROM client_selection."ClientSelectionProcess" WHERE talent_id = ANY($1::uuid[])`;
+const TALENT_INTERVIEWS = `SELECT id FROM client_selection."InterviewSession" WHERE talent_record_id = ANY($1::uuid[])`;
+// S2 LOCKED §3.2 — an interaction attached to the talent's pipeline (calls / email /
+// meetings filed against the Talent × Requisition) or linked as an interview meeting
+// is the talent's interaction too: it is erased, never left behind the tombstone.
 const TALENT_INTERACTIONS =
   `SELECT ss.interaction_id FROM technical_screening."ScreeningSession" ss WHERE ss.talent_record_id = ANY($1::uuid[]) AND ss.interaction_id IS NOT NULL` +
   ` UNION SELECT ca.interaction_id FROM communications."CommunicationAssociation" ca WHERE ca.subject_type = 'screening_session' AND ca.subject_id IN (${SCREENING_SESSIONS})` +
-  ` UNION SELECT ca.interaction_id FROM communications."CommunicationAssociation" ca WHERE ca.subject_type = 'talent_record' AND ca.subject_id = ANY($1::uuid[])`;
+  ` UNION SELECT ca.interaction_id FROM communications."CommunicationAssociation" ca WHERE ca.subject_type = 'talent_record' AND ca.subject_id = ANY($1::uuid[])` +
+  ` UNION SELECT ca.interaction_id FROM communications."CommunicationAssociation" ca WHERE ca.subject_type = 'pipeline' AND ca.subject_id IN (${TALENT_PIPELINES})` +
+  ` UNION SELECT i.meeting_interaction_id FROM client_selection."InterviewSession" i WHERE i.talent_record_id = ANY($1::uuid[]) AND i.meeting_interaction_id IS NOT NULL`;
 const TALENT_TRANSCRIPTS =
   `SELECT tl.conversation_transcript_id FROM technical_screening."ScreeningTranscriptLink" tl WHERE tl.session_id IN (${SCREENING_SESSIONS})` +
   ` UNION SELECT ct.id FROM conversation_transcript."ConversationTranscript" ct WHERE ct.interaction_id IN (${TALENT_INTERACTIONS})`;
@@ -122,9 +148,84 @@ const TALENT_CI_RUNS =
   `SELECT r.id FROM conversation_intelligence."ConversationIntelligenceRun" r WHERE r.screening_session_id IN (${SCREENING_SESSIONS})` +
   ` OR r.conversation_transcript_id IN (${TALENT_TRANSCRIPTS})`;
 const TALENT_DOCUMENTS = `SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[])`;
-const TALENT_PIPELINES = `SELECT id FROM pipeline."Pipeline" WHERE talent_record_id = ANY($1::uuid[])`;
 const TALENT_ACTIVITIES = `SELECT id FROM activity."Activity" WHERE subject_type = 'talent_record' AND subject_id = ANY($1::uuid[])`;
 const TALENT_INTAKE_DRAFTS = `SELECT id FROM talent_evidence."TalentIntakeDraft" WHERE promoted_talent_record_id = ANY($1::uuid[])`;
+// A payload (jsonb, read as text) that names any of the record ids.
+const NAMES_A_RECORD = (col: string): string =>
+  `${col}::text LIKE ANY (ARRAY(SELECT '%' || r::text || '%' FROM unnest($1::uuid[]) r))`;
+// The ordinary (trigger-free) transactional outboxes whose payloads carry talent ids.
+// offer / placement outboxes are immutable commercial records: guarded, never here.
+const ORDINARY_OUTBOXES = [
+  'canonicalization."OutboxEvent"',
+  'client_selection."OutboxEvent"',
+  'consent."OutboxEvent"',
+  'documents."OutboxEvent"',
+  'esign."OutboxEvent"',
+  'pipeline."OutboxEvent"',
+  'selection."OutboxEvent"',
+  'submittal."OutboxEvent"',
+] as const;
+
+// S2 LOCKED §3.2 — the enumerated redactions of retained workflow history, run
+// BEFORE the INVENTORY deletes and the tombstones (each trigger resolves the owning
+// talent through the parent, which must still name the talent). The SET lists are
+// exactly the trigger-enforced patches; a single extra column is rejected by the DB.
+interface ErasureRedaction {
+  label: string;
+  set: string;
+  where: string; // $1 = record ids
+}
+const REDACTIONS: ErasureRedaction[] = [
+  { label: 'pipeline."PipelineStatusHistory"', set: `note = NULL`, where: `pipeline_id IN (${TALENT_PIPELINES}) AND note IS NOT NULL` },
+  { label: 'pipeline."PipelineDisposition"', set: `reason = 'REDACTED', note = NULL, source_provenance = NULL`, where: `pipeline_id IN (${TALENT_PIPELINES})` },
+  {
+    label: 'pipeline."PipelineEntryProvenance"',
+    set: `external_object_type = NULL, external_object_id = NULL, external_event_id = NULL, source_connection_id = NULL, initiated_by_id = NULL, observed_at = NULL, metadata = '{}'::jsonb`,
+    where: `pipeline_id IN (${TALENT_PIPELINES})`,
+  },
+  {
+    label: 'client_selection."ClientSelectionEvent"',
+    set: `event_payload = '{}'::jsonb`,
+    where: `(subject_type = 'process' AND subject_id IN (${TALENT_SELECTIONS})) OR (subject_type = 'session' AND subject_id IN (${TALENT_INTERVIEWS}))`,
+  },
+  // §3.3 — reachable only when the preflight admits it (today it blocks every restriction).
+  {
+    label: 'client_talent_restriction."ClientTalentRestriction"',
+    set: `talent_record_id = gen_random_uuid(), source_reference = 'erased:' || gen_random_uuid()::text, raw_source_value = NULL, asserting_organization_reference = NULL, asserting_contact_reference = NULL, close_source_reference = NULL`,
+    where: `talent_record_id = ANY($1::uuid[])`,
+  },
+  // The activity timeline of the talent's pipelines / interviews (status-change notes,
+  // interview feedback) is retained for the activity reports; its free text is cleared
+  // with the RN-1 redact-never-delete columns (an ordinary table: no new authority).
+  {
+    label: 'activity."Activity"',
+    set: `notes = NULL, redacted_at = COALESCE(redacted_at, now()), redaction_reason_code = COALESCE(redaction_reason_code, 'TALENT_ERASURE'), redaction_reason = 'talent erasure'`,
+    where: `(subject_type = 'pipeline' AND subject_id IN (${TALENT_PIPELINES})) OR (subject_type = 'interview_session' AND subject_id IN (${TALENT_INTERVIEWS}))`,
+  },
+];
+
+// S2 LOCKED §3.2 — the parents re-pointed to the per-(record, requisition)
+// tombstone held in the transaction-local temp table s2_erasure_tombstone.
+const TOMBSTONES: Array<{ label: string; sql: string }> = [
+  {
+    label: 'pipeline."Pipeline"',
+    sql: `UPDATE pipeline."Pipeline" p SET talent_record_id = t.tombstone FROM pg_temp.s2_erasure_tombstone t
+           WHERE p.talent_record_id = t.record_id AND p.requisition_id = t.requisition_id AND p.talent_record_id = ANY($1::uuid[])`,
+  },
+  {
+    label: 'client_selection."InterviewSession"',
+    sql: `UPDATE client_selection."InterviewSession" i SET talent_record_id = t.tombstone, meeting_interaction_id = NULL FROM pg_temp.s2_erasure_tombstone t
+           WHERE i.talent_record_id = t.record_id AND i.requisition_id = t.requisition_id AND i.talent_record_id = ANY($1::uuid[])`,
+  },
+  {
+    label: 'client_selection."ClientSelectionProcess"',
+    sql: `UPDATE client_selection."ClientSelectionProcess" c SET talent_id = t.tombstone, submittal_id = gen_random_uuid() FROM pg_temp.s2_erasure_tombstone t
+           WHERE c.talent_id = t.record_id AND c.requisition_id = t.requisition_id AND c.talent_id = ANY($1::uuid[])`,
+  },
+];
+const TOMBSTONE_KEYS = `SELECT talent_record_id AS record_id, requisition_id FROM pipeline."Pipeline" WHERE talent_record_id = ANY($1::uuid[])
+  UNION SELECT talent_id, requisition_id FROM client_selection."ClientSelectionProcess" WHERE talent_id = ANY($1::uuid[])
+  UNION SELECT talent_record_id, requisition_id FROM client_selection."InterviewSession" WHERE talent_record_id = ANY($1::uuid[])`;
 
 const INVENTORY: ErasureStep[] = [
   // ---- GROUP A operational non-cascade EVENT children (delete before parents) ----
@@ -132,7 +233,9 @@ const INVENTORY: ErasureStep[] = [
   { label: 'selection."TalentSelectionEvent"', keyspace: 'record-child', where: `selection_id IN (SELECT id FROM selection."TalentSelection" WHERE talent_id = ANY($1::uuid[]))` },
   { label: 'examination."ExaminationOverride"', keyspace: 'record-child', where: `examination_id IN (SELECT id FROM examination."TalentJobExamination" WHERE talent_id = ANY($1::uuid[]))` },
   // ---- GROUP A operational holders (record keyspace) ----
-  { label: 'pipeline."Pipeline"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` }, // cascades PipelineStatusHistory
+  // pipeline."Pipeline" is NOT deleted: it is retained and tombstoned (S2 LOCKED §3.2).
+  // S2 LOCKED §3.1 — the talent's requisition résumé selections (subject-bound DELETE).
+  { label: 'pipeline."TalentRequisitionResume"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
   { label: 'submittal."TalentSubmittalRecord"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'evidence."TalentJobEvidencePackage"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'selection."TalentSelection"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
@@ -150,7 +253,12 @@ const INVENTORY: ErasureStep[] = [
   // (deleting the Document cascades its associations, per the DOC-1b FK change).
   { label: 'documents."DocumentArtifact"', keyspace: 'record', where: `document_id IN (${TALENT_DOCUMENTS})`, s3RefColumn: 'storage_locator' },
   { label: 'documents."DocumentRevision"', keyspace: 'record', where: `document_id IN (${TALENT_DOCUMENTS})` },
+  // S2 LOCKED §3.1 — DocumentEvent (subject-bound DELETE; the trigger re-checks that the
+  // document belongs to this talent only) and the RESTRICT-FK packet membership.
   { label: 'documents."DocumentEvent"', keyspace: 'record', where: `document_id IN (${TALENT_DOCUMENTS})` },
+  { label: 'documents."DocumentPacketItem"', keyspace: 'record', where: `document_id IN (${TALENT_DOCUMENTS})` },
+  // S2 holder coverage — a document requirement raised against the talent (waiver text).
+  { label: 'documents."DocumentRequirement"', keyspace: 'record', where: `resource_type = 'TALENT' AND resource_id = ANY($1::uuid[])` },
   { label: 'documents."Document"', keyspace: 'record', where: `id IN (${TALENT_DOCUMENTS})` },
   { label: 'talent_evidence."TalentDerivedSnapshot"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   // ⚠ INVENTORY ADDITION (TR-7 B1 PII; absent from the reconcile repoint set — HALT-noted):
@@ -168,10 +276,19 @@ const INVENTORY: ErasureStep[] = [
   // ---- GROUP A polymorphic holders (discriminator MANDATORY — shared id space) ----
   { label: 'saved_list."SavedListEntry"', keyspace: 'record', where: `item_type = 'talent_record' AND item_id = ANY($1::uuid[])` },
   { label: 'attachment."Attachment"', keyspace: 'record', where: `owner_type = 'talent' AND owner_id = ANY($1::uuid[])`, s3RefColumn: 'storage_key' },
+  // S2 LOCKED §3.1 — the talent's note events (subject-bound DELETE), before their notes.
+  { label: 'activity."ActivityNoteEvent"', keyspace: 'record', where: `activity_id IN (${TALENT_ACTIVITIES})` },
   { label: 'activity."Activity"', keyspace: 'record', where: `subject_type = 'talent_record' AND subject_id = ANY($1::uuid[])` },
   { label: 'task."Task"', keyspace: 'record', where: `owner_type = 'talent_record' AND owner_id = ANY($1::uuid[])` },
   // ---- GROUP A consent LEDGER (record keyspace; audit is RETAINED, not here) ----
   { label: 'consent."TalentConsentEvent"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
+  // ---- S2 holder coverage — payload-borne references in trigger-free tables: the cached
+  //      idempotent responses and the PUBLISHED outbox events naming the talent (an
+  //      UNPUBLISHED one blocks in the preflight until it drains). ----
+  { label: 'consent."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
+  { label: 'documents."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
+  { label: 'esign."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
+  ...ORDINARY_OUTBOXES.map((label): ErasureStep => ({ label, keyspace: 'record', where: `published_at IS NOT NULL AND ${NAMES_A_RECORD('event_payload')}` })),
   // ---- GROUP B trust-side PII (subject keyspace; real FKs, NO cascade → order enforced) ----
   { label: 'talent_trust."EvidenceEvent"', keyspace: 'evidence-set', where: `evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))` },
   { label: 'talent_trust."EvidenceLink"', keyspace: 'evidence-set', where: `from_evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[])) OR to_evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))` },
@@ -263,24 +380,21 @@ interface HolderGuard {
   reason: string;
   authority: string;
 }
-const APPEND_ONLY = 'S2 authority amendment (append-only history: L2-B/C/D, TALENT-INTEL-1D, RN-1-A1, DOC-1a, L2-F)';
 const PO_LEGAL = 'PO/Legal retention class (TM-L12 legal hold / retention; ADR-0007 Decision F)';
+const CLASSIFY = 'Architect / PO holder classification (S2 holder coverage)';
+// The talent's contact values (lower-cased) — captured by the preflight, before any delete.
+const TALENT_CONTACT_VALUES = `SELECT lower(cm.value) FROM talent_evidence."TalentContactMethod" cm WHERE cm.talent_id = ANY($1::uuid[]) AND cm.value IS NOT NULL AND length(cm.value) >= 5`;
 export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   // ---- legal hold (TM-L12 "must not erase data subject to legal hold") ----
   { holder: 'identity."Tenant".legal_hold', classification: 'LEGAL_HOLD', keyspace: 'tenant', sql: `SELECT count(*)::int AS n FROM identity."Tenant" WHERE id = $1::uuid AND legal_hold = true`, reason: 'the tenant is under legal hold', authority: 'TM-L12' },
   { holder: 'documents."DocumentArtifact".legal_hold', classification: 'LEGAL_HOLD', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM documents."DocumentArtifact" WHERE document_id IN (${TALENT_DOCUMENTS}) AND legal_hold = true`, reason: 'a talent document artifact is under legal hold', authority: 'TM-L12' },
   { holder: 'documents."DocumentArtifact".retain_until', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM documents."DocumentArtifact" WHERE document_id IN (${TALENT_DOCUMENTS}) AND retain_until IS NOT NULL AND retain_until > now()`, reason: 'a talent document artifact is inside its retention window', authority: PO_LEGAL },
-  // ---- append-only history (no DELETE path; blocks until the amendment) ----
-  { holder: 'pipeline."PipelineStatusHistory"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM pipeline."PipelineStatusHistory" WHERE pipeline_id IN (${TALENT_PIPELINES})`, reason: 'append-only pipeline history (cascade from Pipeline is rejected)', authority: APPEND_ONLY },
-  { holder: 'pipeline."PipelineDisposition"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM pipeline."PipelineDisposition" WHERE pipeline_id IN (${TALENT_PIPELINES})`, reason: 'append-only pipeline disposition', authority: APPEND_ONLY },
-  { holder: 'pipeline."PipelineEntryProvenance"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM pipeline."PipelineEntryProvenance" WHERE pipeline_id IN (${TALENT_PIPELINES})`, reason: 'append-only pipeline entry provenance', authority: APPEND_ONLY },
-  { holder: 'pipeline."TalentRequisitionResume"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM pipeline."TalentRequisitionResume" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'append-only requisition résumé selection', authority: APPEND_ONLY },
-  { holder: 'activity."ActivityNoteEvent"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM activity."ActivityNoteEvent" WHERE activity_id IN (${TALENT_ACTIVITIES})`, reason: 'append-only talent note history (RESTRICT FK blocks the note delete)', authority: APPEND_ONLY },
-  { holder: 'documents."DocumentEvent"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM documents."DocumentEvent" WHERE document_id IN (${TALENT_DOCUMENTS})`, reason: 'append-only document lifecycle events (RESTRICT FK blocks the document delete)', authority: APPEND_ONLY },
-  { holder: 'documents."DocumentPacketItem"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM documents."DocumentPacketItem" WHERE document_id IN (${TALENT_DOCUMENTS})`, reason: 'document packet membership (RESTRICT FK blocks the document delete)', authority: APPEND_ONLY },
-  { holder: 'client_selection."ClientSelectionProcess"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM client_selection."ClientSelectionProcess" WHERE talent_id = ANY($1::uuid[])`, reason: 'client selection process with append-only events', authority: APPEND_ONLY },
-  { holder: 'client_selection."InterviewSession"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM client_selection."InterviewSession" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'client interview session (child of the selection process)', authority: APPEND_ONLY },
-  { holder: 'client_talent_restriction."ClientTalentRestriction"', classification: 'BLOCKED_PENDING_AUTHORITY', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM client_talent_restriction."ClientTalentRestriction" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'append-only client restriction assertion', authority: APPEND_ONLY },
+  // ---- append-only history is now reached by its S2 LOCKED §3.1 / §3.2 disposition (DELETE or
+  //      redact + tombstone) — no longer a blocker. §3.3: a client talent restriction may lose
+  //      its identifying link only once Legal records whether its class carries an enforceable
+  //      retention obligation; no such class (and no indicator to read) exists yet, so EVERY
+  //      restriction blocks (fail-closed, never erase-by-default). ----
+  { holder: 'client_talent_restriction."ClientTalentRestriction"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM client_talent_restriction."ClientTalentRestriction" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'client talent restriction: no Legal-recorded retention class yet (S2 LOCKED §3.3)', authority: PO_LEGAL },
   // ---- commercial / legal records (retention class needed) ----
   { holder: 'offer."Offer"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM offer."Offer" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'offer (compensation; append-only events and revisions)', authority: PO_LEGAL },
   { holder: 'placement."PlacementProcess"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PlacementProcess" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'placement process (commercial record)', authority: PO_LEGAL },
@@ -291,8 +405,27 @@ export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   { holder: 'placement."PermanentPlacementRemedy"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PermanentPlacementRemedy" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'guarantee remedy (financial record)', authority: PO_LEGAL },
   { holder: 'submittal_policy."SubmittalConsumption"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM submittal_policy."SubmittalConsumption" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'submittal consumption (client commercial policy record)', authority: PO_LEGAL },
   { holder: 'esign."EnvelopeDocument"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM esign."EnvelopeDocument" WHERE document_ref IN (${TALENT_DOCUMENTS})`, reason: 'e-signature envelope over a talent document (executed-record retention; signer PII)', authority: PO_LEGAL },
+  { holder: 'offer."OutboxEvent" / placement."OutboxEvent"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT (SELECT count(*) FROM offer."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')}) + (SELECT count(*) FROM placement."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')})::int AS n`, reason: 'immutable commercial outbox event names the talent', authority: PO_LEGAL },
+  // ---- an unpublished outbox event still has to reach its consumers: retry after it drains ----
+  { holder: 'OutboxEvent (unpublished)', classification: 'PENDING_OUTBOX_DRAIN', keyspace: 'record', sql: `SELECT (${ORDINARY_OUTBOXES.map((o) => `(SELECT count(*) FROM ${o} WHERE published_at IS NULL AND ${NAMES_A_RECORD('event_payload')})`).join(' + ')})::int AS n`, reason: 'an unpublished outbox event names the talent — retry once the outbox has drained', authority: 'none (transient)' },
+  // ---- S2 holder coverage — holders outside every recorded class: they name the talent (by id,
+  //      or by a contact value of the talent) but no ruling says whether they are erased,
+  //      redacted or retained. They BLOCK until classified (truthful: never a silent residue). ----
+  { holder: 'policy_store."PolicyDecisionRecord"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM policy_store."PolicyDecisionRecord" WHERE ${NAMES_A_RECORD('inputs')}`, reason: 'a policy decision record names the talent in its inputs', authority: CLASSIFY },
+  { holder: 'ai_draft."AiDraftEvent"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM ai_draft."AiDraftEvent" WHERE ${NAMES_A_RECORD('event_payload')}`, reason: 'an immutable AI-draft event names the talent', authority: CLASSIFY },
+  { holder: 'sourced_talent."SourcedTalent"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM sourced_talent."SourcedTalent" s WHERE s.normalized_email IN (${TALENT_CONTACT_VALUES}) OR s.normalized_phone IN (${TALENT_CONTACT_VALUES})`, reason: 'a sourced-talent record carries a contact value of the talent', authority: CLASSIFY },
+  { holder: 'import."ImportFailure"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM import."ImportFailure" f WHERE EXISTS (SELECT 1 FROM (${TALENT_CONTACT_VALUES}) v(value) WHERE f.original_row_data::text ILIKE '%' || v.value || '%')`, reason: 'a failed import row carries a contact value of the talent', authority: CLASSIFY },
   // ---- shared rows (another person's data) ----
-  { holder: 'communications."CommunicationInteraction" (shared)', classification: 'BLOCKED_SHARED', keyspace: 'record', sql: `SELECT count(DISTINCT ca.interaction_id)::int AS n FROM communications."CommunicationAssociation" ca WHERE ca.interaction_id IN (${TALENT_INTERACTIONS}) AND ca.subject_type = 'talent_record' AND ca.subject_id <> ALL($1::uuid[])`, reason: 'an interaction of this talent also names another talent', authority: 'TM-L12 (operator review)' },
+  // S2 LOCKED §5 — an interaction of this talent that ALSO belongs to another person (named
+  // directly, or through another talent's pipeline or screening session) is never deleted or
+  // partially erased: BLOCKED_SHARED, with its transcripts (speaker attribution cannot
+  // separate one participant compliantly).
+  { holder: 'communications."CommunicationInteraction" (shared)', classification: 'BLOCKED_SHARED', keyspace: 'record', sql: `SELECT count(DISTINCT ca.interaction_id)::int AS n FROM communications."CommunicationAssociation" ca WHERE ca.interaction_id IN (${TALENT_INTERACTIONS}) AND (
+      (ca.subject_type = 'talent_record' AND ca.subject_id <> ALL($1::uuid[]))
+      OR (ca.subject_type = 'pipeline' AND ca.subject_id NOT IN (${TALENT_PIPELINES}))
+      OR (ca.subject_type = 'screening_session' AND ca.subject_id NOT IN (${SCREENING_SESSIONS})))`, reason: 'an interaction of this talent also belongs to another talent', authority: 'TM-L12 (operator review)' },
+  // S2 LOCKED §3.1 — a document of this talent that is ALSO associated with another talent.
+  { holder: 'documents."Document" (shared)', classification: 'BLOCKED_SHARED', keyspace: 'record', sql: `SELECT count(DISTINCT da.document_id)::int AS n FROM documents."DocumentAssociation" da WHERE da.document_id IN (${TALENT_DOCUMENTS}) AND da.resource_type = 'TALENT' AND da.resource_id <> ALL($1::uuid[])`, reason: 'a document of this talent is also associated with another talent', authority: 'TM-L12 (operator review)' },
 ];
 
 export interface ErasureScope {
@@ -304,7 +437,7 @@ export interface ErasureScope {
 export interface ErasureStepResult {
   table: string;
   count: number; // rows counted (dry-run) or deleted (execute)
-  status: 'counted' | 'deleted' | 'rolled_back' | 'failed';
+  status: 'counted' | 'deleted' | 'redacted' | 'tombstoned' | 'rolled_back' | 'failed';
   error?: string;
 }
 
@@ -342,14 +475,21 @@ export interface ErasureReport {
   storage: ErasureStorageStatus;
   erasure_marker_appended: boolean;
   is_anonymized_flipped: boolean; // true ONLY when the run is COMPLETED
-  total_rows: number;
+  total_rows: number; // rows deleted (or, in a dry-run, that would be)
+  redacted_rows: number; // retained rows redacted or tombstoned (S2 LOCKED §3.2 / §3.3)
   cluster_purge: ErasureClusterPurge;
 }
 
-const RETAINED = [
+export const RETAINED = [
   'audit."ConsentAuditEvent"',
   'talent_trust."SubjectMergeOperation"',
   'audit."MeetingSchedulingAuditEvent"',
+];
+
+// S2 holder coverage — every table this pass reaches (DELETE, redact or tombstone),
+// for the schema-driven coverage proof (a new talent-keyed holder must be classified).
+export const ERASURE_REACHED_HOLDERS: readonly string[] = [
+  ...new Set([...INVENTORY.map((s) => s.label), ...REDACTIONS.map((r) => r.label), ...TOMBSTONES.map((t) => t.label), RESUME_TEXT_S3.label]),
 ];
 
 interface RunRow {
@@ -587,6 +727,7 @@ export class TalentErasureService {
       erasure_marker_appended: false,
       is_anonymized_flipped: false,
       total_rows: 0,
+      redacted_rows: 0,
       cluster_purge: { captured_cluster_ids: [], orphaned_cluster_ids: [], purged: [] },
     };
   }
@@ -597,6 +738,19 @@ export class TalentErasureService {
     report.outcome = 'DRY_RUN';
     report.blockers = await this.preflight(pg, tenantId, scope);
     const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
+    for (const r of REDACTIONS) {
+      const rows = await pg.query<{ n: string }>(`SELECT count(*)::int AS n FROM ${r.label} WHERE ${r.where}`, [scope.record_ids]);
+      const n = Number(rows.rows[0]?.n ?? 0);
+      report.redacted_rows += n;
+      report.steps.push({ table: r.label, count: n, status: 'counted' });
+    }
+    for (const t of TOMBSTONES) {
+      const where = t.label === 'client_selection."ClientSelectionProcess"' ? 'talent_id = ANY($1::uuid[])' : 'talent_record_id = ANY($1::uuid[])';
+      const rows = await pg.query<{ n: string }>(`SELECT count(*)::int AS n FROM ${t.label} WHERE ${where}`, [scope.record_ids]);
+      const n = Number(rows.rows[0]?.n ?? 0);
+      report.redacted_rows += n;
+      report.steps.push({ table: t.label, count: n, status: 'counted' });
+    }
     for (const step of INVENTORY) {
       try {
         const rows = await pg.query<{ n: string }>(
@@ -645,9 +799,29 @@ export class TalentErasureService {
     let failing: string | null = null;
     await pg.query('BEGIN');
     try {
+      // S2 LOCKED §2 — open the run through the SECURITY DEFINER entry point. It creates the
+      // DB_PASS_IN_PROGRESS run in THIS transaction and arms it; the record set it authorizes
+      // is computed by the database (the husk chain), so it must equal the resolved scope.
+      failing = 'erasure run authorization';
+      const opened = await pg.query<{ ids: string[] }>(
+        `SELECT consent.s2_begin_talent_erasure_run($1::uuid, $2::uuid, $3::uuid, $4::uuid[]) AS ids`,
+        [runId, tenantId, recordId, scope.subject_ids],
+      );
+      const authorized = [...(opened.rows[0]?.ids ?? [])].sort();
+      if (authorized.join(',') !== [...scope.record_ids].sort().join(',')) {
+        throw new Error('the database-authorized record set differs from the resolved scope');
+      }
       // Re-collect the keys inside the transaction (the same snapshot the deletes see).
       const keys = await this.collectStorageKeys(pg, scope);
       scope.s3_keys = keys;
+      // §3.2 / §3.3 redactions first — each trigger resolves the talent through the parent.
+      for (const r of REDACTIONS) {
+        failing = r.label;
+        const res = await pg.query(`UPDATE ${r.label} SET ${r.set} WHERE ${r.where}`, [scope.record_ids]);
+        const n = res.rowCount ?? 0;
+        report.redacted_rows += n;
+        report.steps.push({ table: r.label, count: n, status: 'redacted' });
+      }
       for (const step of INVENTORY) {
         failing = step.label;
         const res = await pg.query(`DELETE FROM ${step.label} WHERE ${step.where}`, this.keyParams(step, scope));
@@ -655,14 +829,31 @@ export class TalentErasureService {
         report.total_rows += n;
         report.steps.push({ table: step.label, count: n, status: 'deleted' });
       }
+      // §3.2 — ONE fresh tombstone per (record, requisition): transaction-local, dropped at
+      // COMMIT or ROLLBACK, never derived from the id and never written to the ledger.
+      failing = 'tombstones';
+      await pg.query(`DROP TABLE IF EXISTS pg_temp.s2_erasure_tombstone`);
+      await pg.query(
+        `CREATE TEMP TABLE s2_erasure_tombstone ON COMMIT DROP AS
+           SELECT k.record_id, k.requisition_id, gen_random_uuid() AS tombstone FROM (${TOMBSTONE_KEYS}) k`,
+        [scope.record_ids],
+      );
+      for (const t of TOMBSTONES) {
+        failing = t.label;
+        const res = await pg.query(t.sql, [scope.record_ids]);
+        const n = res.rowCount ?? 0;
+        report.redacted_rows += n;
+        report.steps.push({ table: t.label, count: n, status: 'tombstoned' });
+      }
       failing = 'cluster purge';
       report.cluster_purge = await this.purgeOrphanedClusters(pg, capturedClusters, scope.subject_ids, false);
       failing = 'erasure run record';
       const complete = keys.length === 0;
+      // Leave DB_PASS_IN_PROGRESS (a deferred trigger rejects a COMMIT that does not).
       await pg.query(
-        `INSERT INTO consent."TalentErasureRun" (id, tenant_id, record_id, record_ids, subject_ids, state, artifact_count, completed_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid[], $5::uuid[], $6, $7, ${complete ? 'now()' : 'NULL'})`,
-        [runId, tenantId, recordId, scope.record_ids, scope.subject_ids, complete ? 'COMPLETED' : 'STORAGE_PENDING', keys.length],
+        `UPDATE consent."TalentErasureRun" SET state = $2, artifact_count = $3, completed_at = ${complete ? 'now()' : 'NULL'}
+          WHERE id = $1::uuid AND state = 'DB_PASS_IN_PROGRESS'`,
+        [runId, complete ? 'COMPLETED' : 'STORAGE_PENDING', keys.length],
       );
       for (const key of keys) {
         await pg.query(
@@ -681,6 +872,7 @@ export class TalentErasureService {
       for (const st of report.steps) st.status = 'rolled_back';
       report.steps.push({ table: failing ?? 'unknown', count: 0, status: 'failed', error: msg(err) });
       report.total_rows = 0;
+      report.redacted_rows = 0;
       report.cluster_purge = { captured_cluster_ids: capturedClusters, orphaned_cluster_ids: [], purged: [] };
       report.outcome = 'FAILED';
       report.failure = `database pass rolled back at ${failing ?? 'unknown'} — nothing was deleted`;
@@ -785,6 +977,7 @@ export class TalentErasureService {
       record_ids: scope.record_ids,
       subject_ids: scope.subject_ids,
       tables_cleared: report.steps.filter((s) => s.status === 'deleted').map((s) => s.table),
+      tables_redacted: report.steps.filter((s) => s.status === 'redacted' || s.status === 'tombstoned').map((s) => s.table),
       artifacts_purged: purged,
     };
   }

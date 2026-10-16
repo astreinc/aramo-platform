@@ -30,7 +30,7 @@ runbook closes the full gap. See the register entry in
 > | Outcome | Exit | Meaning |
 > |---|---|---|
 > | `COMPLETED` | 0 | Database pass committed AND every object-storage artifact verifiably purged (every version + delete-marker). The `consent.erased` marker is appended and `is_anonymized` is true — **only now**. |
-> | `BLOCKED` | 2 | The PREFLIGHT found holders this erasure may not remove (append-only history pending the S2 authority amendment, a commercial/legal record pending a PO/Legal retention class, a legal hold, or an interaction shared with another talent). **Nothing was deleted.** Each blocker is printed with its holder, count and the authority it needs. |
+> | `BLOCKED` | 2 | The PREFLIGHT found holders this erasure may not remove: a commercial/legal record or client talent restriction pending a PO/Legal retention class (`PENDING_PO_LEGAL`), a legal hold (`LEGAL_HOLD`), an interaction or document shared with another talent (`BLOCKED_SHARED`), an unpublished outbox event naming the talent (`PENDING_OUTBOX_DRAIN` — retry once it drains), or a holder no ruling classifies yet (`PENDING_CLASSIFICATION`). **Nothing was deleted.** Each blocker is printed with its holder, count and the authority it needs. |
 > | `STORAGE_PENDING` | 3 | The database pass committed; some artifacts are not yet verifiably purged (e.g. missing `s3:ListBucketVersions` / `s3:DeleteObjectVersion`). **Not an erasure completion** — no marker, `is_anonymized` false. Fix the cause and run `--resume`. |
 > | `FAILED` | 4 | The database pass rolled back (nothing was deleted), or no record / run exists. |
 >
@@ -40,6 +40,39 @@ runbook closes the full gap. See the register entry in
 > `--resume` is idempotent. The S3 purge is automated through the platform
 > storage abstraction (`purgeObjectAllVersions`); Step 2 below remains the manual
 > reference for an operator-run purge.
+
+> **S2 LOCKED dispositions (ARAMO-S2-Talent-Erasure-Integrity-Amendment-v1.0-LOCKED).**
+> The database pass opens its run through the SECURITY DEFINER entry point (it
+> computes the authorized record set itself and arms the run for that ONE
+> transaction); the append-only triggers then admit only the subject-bound
+> operations below and keep rejecting everything else:
+> - **DELETE (§3.1):** the talent's note events, document events + packet items
+>   (documents of this talent only, not held / retained / in e-sign), requisition
+>   résumé selections.
+> - **RETAIN + REDACT + TOMBSTONE (§3.2):** `Pipeline`, `PipelineStatusHistory`
+>   (note), `PipelineDisposition` (reason/note/source), `PipelineEntryProvenance`
+>   (external ids, connection, initiator, metadata), `ClientSelectionProcess`,
+>   `ClientSelectionEvent` (payload), `InterviewSession` (meeting link), and the
+>   activity timeline of the talent's pipelines / interviews (notes cleared with the
+>   RN-1 redaction columns). Each parent is re-pointed to one fresh tombstone per
+>   (record, requisition) — never derived from the id, never stored — so every
+>   (talent, requisition) report grain survives and nothing links across
+>   requisitions. `PlacementProcess` is never tombstoned (commercial: blocks).
+> - **Client talent restriction (§3.3):** the identifying link can be removed, but
+>   every restriction BLOCKS until Legal records its retention class.
+>
+> **Operator access.** Execute on the entry point is granted only to the NOLOGIN
+> role `aramo_erasure_operator`; an operator login must be made a member of it
+> (`GRANT aramo_erasure_operator TO <operator_login>`). A superuser connection
+> bypasses grants by definition — run the CLI with an operator login, not the
+> application's connection, once the database roles are separated.
+>
+> **External custody — never reported as erased.** `COMPLETED` covers Aramo
+> custody only (the database and the platform object store). NOT erased by Aramo:
+> Teams / Zoom recordings and provider-side transcripts (the client's or
+> provider's tenant), Microsoft 365 mailbox copies and calendar items sent through
+> Graph, LLM-provider request logs (provider terms), and the source ATS / VMS
+> record behind an external id. Raise those with their custodians separately.
 
 > Scope: this erases the ATS-side resume artifacts, every operational + trust-side
 > PII holder, the person's husk chain, and the (TalentRecord-keyed) consent-event
@@ -62,8 +95,9 @@ DB-enforced):
 
 **Group A — operational holders (keyed by the record id):**
 `submittal."TalentSubmittalEvent"` → `engagement."TalentEngagementEvent"` →
-`examination."ExaminationOverride"` (event children first) → `pipeline."Pipeline"`
-(cascades its status history) → `submittal."TalentSubmittalRecord"` →
+`examination."ExaminationOverride"` (event children first) →
+`pipeline."TalentRequisitionResume"` (the pipeline itself is retained and
+tombstoned — see S2 LOCKED dispositions above) → `submittal."TalentSubmittalRecord"` →
 `evidence."TalentJobEvidencePackage"` → `engagement."TalentJobEngagement"` →
 `examination."TalentJobExamination"` → the seven `talent_evidence.*` tables
 (`TalentSkillEvidence`, `TalentWorkHistoryEntry`, `TalentContactMethod`,

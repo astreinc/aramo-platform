@@ -240,7 +240,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('execute erases every screening-linked row + artifact and nothing else; a re-run is empty', async () => {
       const report = await erasure.execute(pg, TENANT, REC, s3Delete);
       expect(report.outcome).toBe('COMPLETED');
-      expect(report.steps.filter((s) => s.status !== 'deleted')).toEqual([]);
+      // S2 LOCKED §3.2 — the pass also redacts / tombstones retained history (never 'failed').
+      expect(report.steps.filter((s) => !['deleted', 'redacted', 'tombstoned'].includes(s.status))).toEqual([]);
       expect(report.storage).toEqual({ total: 4, purged: 4, pending: 0, failed: 0 });
       expect(s3.sort()).toEqual([
         `conversation-transcript/${TENANT}/normalized/${ids.otherTranscript}`,

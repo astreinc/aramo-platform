@@ -258,7 +258,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // and there are no artifacts → COMPLETED, marker appended, is_anonymized true.
       expect(report.outcome).toBe('COMPLETED');
       expect(report.blockers).toEqual([]);
-      expect(report.steps.filter((st) => st.status !== 'deleted')).toEqual([]);
+      // S2 LOCKED §3.2 — the pass also redacts / tombstones retained history (never 'failed').
+      expect(report.steps.filter((st) => !['deleted', 'redacted', 'tombstoned'].includes(st.status))).toEqual([]);
       expect(report.erasure_marker_appended).toBe(true);
       expect(report.is_anonymized_flipped).toBe(true);
 
