@@ -111,7 +111,7 @@ function Skills({ skills }: { skills: Model['profile']['skills'] }): JSX.Element
         <span
           key={s.label}
           className={`t360-skill${s.verified ? ' t360-skill--ok' : ''}`}
-          title={s.verified ? 'Backed by résumé + second source' : 'Self-reported'}
+          title={s.verified ? 'Backed by resume + second source' : 'Self-reported'}
         >
           {s.label}
         </span>
@@ -514,10 +514,10 @@ export function DocumentsSection({ model, talentId, canEdit }: { model: Model; t
     <>
     <div className="t360-card t360-card--sect t360-resumes" data-testid="t360-resumes">
       <div className="t360-card__hd t360-card__hd--docs">
-        <span className="t360-sect__title">Résumé</span>
-        <span className="t360-caption t360-caption--inline t360-ml10">Preview any edition · upload a new résumé (earlier editions are kept).</span>
+        <span className="t360-sect__title">Resume</span>
+        <span className="t360-caption t360-caption--inline t360-ml10">Preview any edition · upload a new resume (earlier editions are kept).</span>
       </div>
-      {/* The SAME résumé panel as Edit talent (editions, preview, upload, review, default). */}
+      {/* The SAME resume panel as Edit talent (editions, preview, upload, review, default). */}
       <EditResumePanel talentId={talentId} disabled={!canEdit} />
     </div>
     <div className="t360-card t360-card--sect">

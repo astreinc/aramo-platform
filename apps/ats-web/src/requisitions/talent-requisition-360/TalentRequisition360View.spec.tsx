@@ -313,7 +313,7 @@ const SESSION_FIXTURE: ScreeningSessionModel = {
   recording: true,
   recordingLabel: 'Recording · consented 10:32',
   questions: [
-    { id: 'q1', skill: 'Requirements elicitation', text: 'Walk me through…', why: 'REQ must-have', sources: ['REQ', 'Résumé'], must: true },
+    { id: 'q1', skill: 'Requirements elicitation', text: 'Walk me through…', why: 'REQ must-have', sources: ['REQ', 'Resume'], must: true },
     { id: 'q2', skill: 'SQL', text: 'Describe a time…', why: 'Client must-have', sources: ['Client'], must: true },
   ],
   asked: { q1: true },

@@ -67,7 +67,7 @@ vi.mock('../talent/talent-api', () => ({
   updateTalent: tal.updateTalent,
   getTalentWorkAuthorizationState: tal.getTalentWorkAuthorizationState,
 }));
-// D3 — Documents reuses Edit talent's résumé panel; stub it here.
+// D3 — Documents reuses Edit talent's resume panel; stub it here.
 vi.mock('../talent/TalentEditView', () => ({
   EditResumePanel: ({ talentId, disabled }: { talentId: string; disabled: boolean }) => (
     <div data-testid="resume-panel">{`${talentId}:${disabled ? 'ro' : 'rw'}`}</div>
@@ -570,7 +570,7 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(b4).getByText('Self-reported · Sep 23, 2026')).toBeInTheDocument();
   });
 
-  it('Documents: the résumé panel (preview + upload) is reused from Edit talent (D3)', async () => {
+  it('Documents: the resume panel (preview + upload) is reused from Edit talent (D3)', async () => {
     h.scopes = [...BASE_SCOPES, 'talent:edit'];
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=docs');

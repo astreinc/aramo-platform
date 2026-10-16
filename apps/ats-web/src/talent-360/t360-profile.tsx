@@ -622,7 +622,7 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
         ) : (
           <div className="t360-empty">No skills on record.</div>
         )}
-        <div className="t360-note t360-note--flat">{updated.has('key_skills') ? 'Updated just now by you · ' : ''}Green = backed by résumé and a second source. Others are self-reported.</div>
+        <div className="t360-note t360-note--flat">{updated.has('key_skills') ? 'Updated just now by you · ' : ''}Green = backed by resume and a second source. Others are self-reported.</div>
       </div>
 
       <div className={`t360-card t360-pwide t360-pwide--rows${editing === '09' ? ' t360-pblock--editing' : ''}`} data-testid="t360-pblock-09">
