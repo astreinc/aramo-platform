@@ -19,8 +19,28 @@ export const COMMUNICATIONS_PATH = '/v1/communications';
  * COMMUNICATION_PROVIDER_NOT_CONFIGURED) when no provider connection is
  * configured — the runtime "is voice available?" gate.
  */
+//
+// Shared for CAPABILITIES_TTL_MS: every Call button mounts this gate, and a tenant
+// without a voice provider answered each mount with its own 409 (log noise on
+// every page/row). One in-flight/settled result is reused — the 409 included —
+// and re-asked after the TTL so a newly connected provider shows up.
+const CAPABILITIES_TTL_MS = 5 * 60 * 1000;
+let capabilitiesCache: { at: number; promise: Promise<CommunicationCapabilities> } | null = null;
+
 export async function getCommunicationCapabilities(): Promise<CommunicationCapabilities> {
-  return apiClient.get<CommunicationCapabilities>(`${COMMUNICATIONS_PATH}/capabilities`);
+  const now = Date.now();
+  if (capabilitiesCache === null || now - capabilitiesCache.at > CAPABILITIES_TTL_MS) {
+    capabilitiesCache = {
+      at: now,
+      promise: apiClient.get<CommunicationCapabilities>(`${COMMUNICATIONS_PATH}/capabilities`),
+    };
+  }
+  return capabilitiesCache.promise;
+}
+
+/** Test hook — forget the shared capabilities result. */
+export function resetCommunicationCapabilitiesCache(): void {
+  capabilitiesCache = null;
 }
 
 /**

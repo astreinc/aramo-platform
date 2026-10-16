@@ -214,14 +214,15 @@ describe('RtrPanel', () => {
   it('N — a missing binding fails closed INSIDE the send modal (no substitution; send disabled)', async () => {
     vi.mocked(getCurrentRtr).mockResolvedValueOnce(current({ status: 'REQUESTED' }));
     vi.mocked(sendRtr).mockRejectedValue(
-      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING' }),
+      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING', details: { binding_key: 'recruiting_company.name' } }),
     );
     renderPanel();
     fireEvent.click(await screen.findByText('Send for signature'));
     const send = await screen.findByTestId('send-rtr-send');
     fireEvent.click(send);
     const missing = await screen.findByTestId('send-rtr-missing');
-    expect(missing.textContent).toContain('a required detail');
+    expect(missing.textContent).toContain('Your organization’s legal name isn’t set');
+    expect(missing.textContent).not.toContain('requisition reference');
     // Fail-closed: the modal stays open and Send is disabled (Aramo never substitutes).
     expect(screen.getByTestId('send-rtr-send')).toBeDisabled();
   });

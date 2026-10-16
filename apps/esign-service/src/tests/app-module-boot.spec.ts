@@ -4,6 +4,7 @@ import { DOCUMENT_SOURCE_PROVIDER_PORT } from '@aramo/esign';
 
 import { AppModule } from '../app/app.module.js';
 import { EsignSignerController } from '../app/esign-http.controller.js';
+import { NativeAramoSignatureProvider } from '../app/native-aramo-signature.provider.js';
 
 // PX-V1 F3 — real Nest AppModule compile/boot regression. Its ONLY job is to
 // resolve the full runtime DI graph, catching provider/export-boundary failures
@@ -38,6 +39,17 @@ describe('esign-service AppModule boot (PX-V1 F3 DI regression)', () => {
     // the EsignModule -> AppModule boundary that F3 depends on.
     expect(moduleRef.get(EsignSignerController, { strict: false })).toBeDefined();
     expect(moduleRef.get(DOCUMENT_SOURCE_PROVIDER_PORT, { strict: false })).toBeDefined();
+    await moduleRef.close();
+  });
+
+  // The signer invitation email: NativeAramoSignatureProvider (AppModule level)
+  // @Optional-injects SIGNING_NOTIFICATION_PORT, bound inside EsignModule.forRoot.
+  // Unexported, it silently resolved to undefined and every envelope went SENT
+  // with no email and no log (prod RTR 2026-10-16). Must be wired.
+  it('NativeAramoSignatureProvider receives the signing notifier (invitation emails are sent)', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const provider = moduleRef.get(NativeAramoSignatureProvider, { strict: false });
+    expect((provider as unknown as { notifier?: unknown }).notifier).toBeDefined();
     await moduleRef.close();
   });
 });

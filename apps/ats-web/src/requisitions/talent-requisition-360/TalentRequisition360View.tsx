@@ -602,9 +602,12 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
         return (
           <Tr360TechScreening
             enabled={FEATURE_FLAGS.techScreening360}
-            session={null}
+            talentId={talentId}
+            reqId={reqId}
+            scopes={scopes}
             talentFirstName={first}
             reqCode={reqCode}
+            mustHaveSkills={requisitionSkills(profile).filter((s) => s.must).map((s) => s.label)}
           />
         );
       case 'ci':

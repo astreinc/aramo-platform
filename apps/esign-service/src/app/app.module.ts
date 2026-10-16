@@ -43,7 +43,11 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
       imports: [MailerModule, ObjectStorageModule],
       // PX-V1 F3 — EsignSignerController (declared at AppModule level) injects the
       // source resolver; export the token so Nest can resolve it at app boot.
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT],
+      // SIGNING_NOTIFICATION_PORT must cross the boundary too: NativeAramoSignatureProvider
+      // (an AppModule provider) @Optional-injects it, and while it was unexported the
+      // notifier resolved to undefined — envelopes went SENT but the signer
+      // invitation email was silently never sent (prod RTR, 2026-10-16).
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),

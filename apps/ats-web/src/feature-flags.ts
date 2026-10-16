@@ -8,10 +8,12 @@ function envFlag(value: string | undefined): boolean {
 
 export interface FeatureFlags {
   /**
-   * Talent × Requisition 360 → Technical Screening tab, full layout. OFF: the tab
-   * renders only the "No technical screening yet" empty state with the CTA hidden.
-   * The INC-3 screening scope expansion (LLM questions, recording/transcript,
-   * Assist follow-ups) is not authorized — no such call is wired either way.
+   * Talent × Requisition 360 → Technical Screening tab. ON: the tab hosts the
+   * INC-3 screening flow as amended by ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED, on
+   * this page per A1 Note 1 (TR360 as a second host), using only the existing
+   * INC-3/A1 routes and scopes. OFF: the tab renders only the "No technical
+   * screening yet" empty state with the CTA hidden and makes no screening call.
+   * Default OFF: A1 grants no production activation (A1 :474; Note 1 §2).
    */
   readonly techScreening360: boolean;
 }

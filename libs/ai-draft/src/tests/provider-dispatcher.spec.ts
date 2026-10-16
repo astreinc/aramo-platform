@@ -65,7 +65,7 @@ describe('ProviderDraftDispatcher (TENANT-LLM-2)', () => {
     expect(resolver.resolveActiveProvider).toHaveBeenCalledWith(TENANT);
     // model pinned to the OpenAI default (the caller's Anthropic model is not
     // openai-allowlisted → never sent cross-provider).
-    expect(oai.generate.mock.calls[0][0].model).toBe('gpt-4o');
+    expect(oai.generate.mock.calls[0][0].model).toBe('gpt-4.1');
   });
 
   it('routes to Anthropic when active provider is anthropic (caller model kept)', async () => {
@@ -106,7 +106,7 @@ describe('ProviderStructuredGenerationDispatcher (TENANT-LLM-2)', () => {
     if (out.kind === 'ok') expect((out.parsed as { tag: string }).tag).toBe('openai');
     expect(oai.generateStructured).toHaveBeenCalledTimes(1);
     expect(anth.generateStructured).not.toHaveBeenCalled();
-    expect(oai.generateStructured.mock.calls[0][0].model).toBe('gpt-4o');
+    expect(oai.generateStructured.mock.calls[0][0].model).toBe('gpt-4.1');
   });
 
   it('providerKey stays anthropic (stable registration/telemetry key)', () => {
