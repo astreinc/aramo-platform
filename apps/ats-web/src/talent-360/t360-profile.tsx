@@ -79,6 +79,8 @@ const CARD_TITLES: Record<CardKey, string> = {
   '09': 'Work history',
 };
 
+const HIDDEN_CONTACT = 'Hidden · do not contact';
+
 interface Row {
   readonly l: string;
   readonly v: string | null;
@@ -331,19 +333,28 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
   const owners = [...new Set((model.opportunities?.active ?? []).map((o) => o.owner_label).filter((x): x is string => present(x) !== null))];
   const website = present(rec?.web_site);
   const wa = data.workAuth?.current ?? null;
+  // INC-2 Correction A — a do-not-contact talent's contact channels are suppressed
+  // on the composed read; the full record (GET /talent-records/:id) is not, so the
+  // Profile must apply the same rule rather than show what the header hides.
+  const contactHidden = h.contactability.summary === 'do_not_contact';
+  const hiddenRow = (l: string): Row => ({ l, v: null, src: HIDDEN_CONTACT });
 
   const readRows: Record<Exclude<CardKey, '06' | '09'>, Row[]> = {
     '01': [
       { l: 'Name', v: rec !== null ? `${rec.first_name} ${rec.last_name}`.trim() : h.display_name, keys: ['first_name', 'last_name'] },
       { l: 'Title', v: present(rec !== null ? rec.title : h.title), keys: ['title'] },
-      { l: 'Primary email', v: present(rec !== null ? rec.email1 : h.email), ...(id?.primary_email_confirmed === true ? { src: 'Confirmed' } : {}) },
-      ...(present(rec?.email2) !== null ? [{ l: 'Secondary email', v: rec?.email2 ?? null, keys: ['email2'] }] : []),
-      { l: 'Mobile', v: present(rec !== null ? rec.phone_cell : h.phone), ...(id?.mobile_confirmed === true ? { src: 'Confirmed by SMS code' } : {}) },
-      {
-        l: 'Home / work phone',
-        v: present([rec?.phone_home, rec?.phone_work].filter((x): x is string => present(x) !== null).join(' · ')),
-        keys: ['phone_home', 'phone_work'],
-      },
+      ...(contactHidden
+        ? [hiddenRow('Email'), hiddenRow('Phone')]
+        : [
+            { l: 'Primary email', v: present(rec !== null ? rec.email1 : h.email), ...(id?.primary_email_confirmed === true ? { src: 'Confirmed' } : {}) },
+            ...(present(rec?.email2) !== null ? [{ l: 'Secondary email', v: rec?.email2 ?? null, keys: ['email2'] }] : []),
+            { l: 'Mobile', v: present(rec !== null ? rec.phone_cell : h.phone), ...(id?.mobile_confirmed === true ? { src: 'Confirmed by SMS code' } : {}) },
+            {
+              l: 'Home / work phone',
+              v: present([rec?.phone_home, rec?.phone_work].filter((x): x is string => present(x) !== null).join(' · ')),
+              keys: ['phone_home', 'phone_work'],
+            },
+          ]),
       { l: 'Best time to call', v: present(rec?.best_time_to_call), keys: ['best_time_to_call'] },
       website !== null ? { l: 'Website', v: website, href: websiteHref(website), keys: ['web_site'] } : { l: 'Website', v: null, keys: ['web_site'] },
     ],
@@ -431,19 +442,32 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
             {text('first_name', 'First name', { req: true })}
             {text('last_name', 'Last name', { req: true })}
             {text('title', 'Title')}
-            <FieldRow l="Primary email">
-              <Locked value={present(rec.email1)} note="Identity anchor · change through identity review" />
-            </FieldRow>
-            {text('email2', 'Secondary email', { type: 'email' })}
-            <FieldRow l="Mobile">
-              <Locked value={present(rec.phone_cell)} note="Identity anchor · change through identity review" />
-            </FieldRow>
-            <FieldRow l="Home / work phone">
-              <span className="t360-ctlpair">
-                <Input unstyled className="t360-ctl" aria-label="Home phone" placeholder="Home" value={d.phone_home} onChange={(e) => set('phone_home', e.target.value)} />
-                <Input unstyled className="t360-ctl" aria-label="Work phone" placeholder="Work" value={d.phone_work} onChange={(e) => set('phone_work', e.target.value)} />
-              </span>
-            </FieldRow>
+            {contactHidden ? (
+              <>
+                <FieldRow l="Email">
+                  <Locked value={null} note={HIDDEN_CONTACT} />
+                </FieldRow>
+                <FieldRow l="Phone">
+                  <Locked value={null} note={HIDDEN_CONTACT} />
+                </FieldRow>
+              </>
+            ) : (
+              <>
+                <FieldRow l="Primary email">
+                  <Locked value={present(rec.email1)} note="Identity anchor · change through identity review" />
+                </FieldRow>
+                {text('email2', 'Secondary email', { type: 'email' })}
+                <FieldRow l="Mobile">
+                  <Locked value={present(rec.phone_cell)} note="Identity anchor · change through identity review" />
+                </FieldRow>
+                <FieldRow l="Home / work phone">
+                  <span className="t360-ctlpair">
+                    <Input unstyled className="t360-ctl" aria-label="Home phone" placeholder="Home" value={d.phone_home} onChange={(e) => set('phone_home', e.target.value)} />
+                    <Input unstyled className="t360-ctl" aria-label="Work phone" placeholder="Work" value={d.phone_work} onChange={(e) => set('phone_work', e.target.value)} />
+                  </span>
+                </FieldRow>
+              </>
+            )}
             {text('best_time_to_call', 'Best time to call')}
             {text('web_site', 'Website')}
           </>

@@ -579,6 +579,29 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(b4).queryByText('Not required')).toBeNull();
   });
 
+  it('Profile hides contact channels for a do-not-contact talent (INC-2 Correction A), read and edit', async () => {
+    h.scopes = [...BASE_SCOPES, 'talent:edit'];
+    getTalent360Mock.mockResolvedValue(
+      makeModel({
+        header: {
+          ...makeModel().header,
+          email: null,
+          phone: null,
+          contactability: { summary: 'do_not_contact', recruiting_permitted: false, email_permitted: false, phone_permitted: false, sms_permitted: false },
+        },
+      }),
+    );
+    renderView('/talent/tal-1?section=profile');
+    const b1 = await screen.findByTestId('t360-pblock-01');
+    await waitFor(() => expect(within(b1).getAllByText('Hidden · do not contact')).toHaveLength(2));
+    for (const raw of ['divya@example.com', '571-307-0783', '703-555-0100']) expect(within(b1).queryByText(raw, { exact: false })).toBeNull();
+    fireEvent.click(within(b1).getByRole('button', { name: /Edit/ }));
+    expect(within(b1).getAllByText('Hidden · do not contact')).toHaveLength(2);
+    expect(within(b1).queryByLabelText('Home phone')).toBeNull();
+    expect(within(b1).queryByDisplayValue('703-555-0100')).toBeNull();
+    expect(b1.textContent).not.toContain('divya@example.com');
+  });
+
   it('per-field source lines come from the provenance read (A3)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView('/talent/tal-1?section=profile');
