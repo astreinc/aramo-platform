@@ -10794,11 +10794,6 @@
       "to": "libs/fe-foundation/src/ui/ui.css"
     },
     {
-      "from": "apps/ats-web/src/users/types.ts",
-      "status": "production",
-      "to": "libs/identity/src/lib/identity.repository.ts"
-    },
-    {
       "from": "apps/ats-web/visual/harness/index.html",
       "status": "unscoped",
       "to": "apps/ats-web/index.html"
@@ -18643,11 +18638,6 @@
     {
       "from": "doc/settings-rebuild-substrate-audit.md",
       "status": "unscoped",
-      "to": "apps/ats-web/src/users/types.ts"
-    },
-    {
-      "from": "doc/settings-rebuild-substrate-audit.md",
-      "status": "unscoped",
       "to": "doc/03-refusal-layer.md"
     },
     {
@@ -18976,16 +18966,6 @@
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
-      "to": "apps/ats-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
-      "to": "apps/ats-web/src/users/roles.fixture.ts"
-    },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
       "to": "apps/platform-admin/src/tests/platform-negative-control.spec.ts"
     },
     {
@@ -19085,6 +19065,16 @@
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "libs/matching/src/tests/i15-negative-control.spec.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
     },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     {
@@ -20502,12 +20492,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "libs/identity/src/tests/displayed-status.spec.ts",
-      "status": "excluded",
-      "to": "apps/ats-web/src/users/user-status.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ic1-migration.integration.spec.ts",
       "status": "excluded",
       "to": "tools/db-sync-local.sh"
@@ -20733,6 +20717,11 @@
       "from": "libs/object-storage/src/lib/s3-client.factory.ts",
       "status": "production",
       "to": "libs/ai-draft/src/lib/secrets/secret-cache.service.ts"
+    },
+    {
+      "from": "libs/org-admin-web/src/users/types.ts",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/identity.repository.ts"
     },
     {
       "from": "libs/outbox-publisher/project.json",
@@ -23660,16 +23649,6 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
-      "to": "apps/ats-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
-      "to": "apps/ats-web/src/users/roles.fixture.ts"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
       "to": "ci/scripts/verify-ats-refusal.ts"
     },
     {
@@ -23888,6 +23867,16 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/import/src/tests/mapping-suggestion.service.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
@@ -24401,6 +24390,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/evidence/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/examination/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/export/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity-index/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity/src/index.ts" },
