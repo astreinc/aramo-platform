@@ -277,6 +277,10 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
 4. **DB:** if a migration is implicated, the STEP-2 backup is the restore point. Restoring DB is a
    deliberate, last-resort operation — surface options to the PO, do not auto-execute.
 5. **Astre was serving before STEP 6** — restoring the prior images/SHA restores it.
+6. **S2 write-guard triggers (S2 release onward):** these live in the DATABASE — an image
+   rollback does NOT remove them. If normal talent writes fail with an `s2_guard_*` / trigger error,
+   follow `doc/runbooks/talent-rtbf-erasure.md` → "S2 write-guard triggers — break-glass recovery"
+   (level A disables only the 45 guards; restore re-applies the idempotent S2 migration).
 
 > **Known gap (build-on-box):** a previously *killed* `--no-cache` build can GC image layers that
 > later block a clean rollback snapshot of the prior api/auth images. Until build-off-box/ECR lands,
