@@ -300,38 +300,60 @@ function DocumentViewer({
       if (mime === 'application/pdf' || lower.endsWith('.pdf')) setBody({ kind: 'pdf', url });
       else if (mime.startsWith('image/') && mime !== 'image/svg+xml') setBody({ kind: 'image', url });
       else if (mime === DOCX_MIME || lower.endsWith('.docx')) {
-        const buf = bytes ?? new Uint8Array(await (await fetch(url)).arrayBuffer());
-        const mammoth = (await import('mammoth')) as unknown as {
-          convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
-        };
-        const { value } = await mammoth.convertToHtml({ arrayBuffer: buf.buffer as ArrayBuffer });
-        if (!cancelled) setBody({ kind: 'docx', html: value });
+        // A Word file that can't be converted in the browser still downloads —
+        // degrade to "Preview not available" instead of a dead error.
+        try {
+          const buf = bytes ?? new Uint8Array(await (await fetch(url)).arrayBuffer());
+          const mammoth = (await import('mammoth')) as unknown as {
+            convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<{ value: string }>;
+          };
+          const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+          const { value } = await mammoth.convertToHtml({ arrayBuffer: ab });
+          if (!cancelled) setBody({ kind: 'docx', html: value });
+        } catch (err: unknown) {
+          console.error('[t360 viewer] Word preview conversion failed', err);
+          if (!cancelled) setBody({ kind: 'none' });
+        }
       } else setBody({ kind: 'none' });
     };
+    // Same-origin bytes through the authenticated document-content route (works
+    // for Word files, which must be read by script; a cross-origin storage URL
+    // is blocked by the bucket's CORS). Resume editions use their canonical
+    // document id; only a legacy edition without one falls back to the
+    // presigned link (fine for PDFs/images, which load directly).
+    const fromContent = async (documentId: string): Promise<void> => {
+      const doc = await getTalent360DocumentContent(talentId, documentId);
+      if (cancelled) return;
+      const bytes = Uint8Array.from(atob(doc.content_base64), (c) => c.charCodeAt(0));
+      const mime = doc.mime_type === '' ? 'application/octet-stream' : doc.mime_type;
+      blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      setDownload({ url: blobUrl, name: doc.file_name });
+      setSize(doc.byte_size);
+      await render(bytes, blobUrl, doc.file_name, mime);
+    };
     const run = async (): Promise<void> => {
-      if (src.kind === 'edition') {
-        const ed = src.ed;
-        if (ed.attachment_id === null) {
-          setBody({ kind: 'none' });
-          return;
-        }
-        const r = await getAttachmentDownloadUrl(ed.attachment_id);
-        if (cancelled) return;
-        setDownload({ url: r.presigned_url, name: ed.filename });
-        await render(null, r.presigned_url, ed.filename, ed.mime_type);
-      } else {
-        const doc = await getTalent360DocumentContent(talentId, src.d.id);
-        if (cancelled) return;
-        const bytes = Uint8Array.from(atob(doc.content_base64), (c) => c.charCodeAt(0));
-        const mime = doc.mime_type === '' ? 'application/octet-stream' : doc.mime_type;
-        blobUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
-        setDownload({ url: blobUrl, name: doc.file_name });
-        setSize(doc.byte_size);
-        await render(bytes, blobUrl, doc.file_name, mime);
+      if (src.kind === 'doc') {
+        await fromContent(src.d.id);
+        return;
       }
+      const ed = src.ed;
+      if (ed.document_id != null) {
+        await fromContent(ed.document_id);
+        return;
+      }
+      if (ed.attachment_id === null) {
+        setBody({ kind: 'none' });
+        return;
+      }
+      const r = await getAttachmentDownloadUrl(ed.attachment_id);
+      if (cancelled) return;
+      setDownload({ url: r.presigned_url, name: ed.filename });
+      await render(null, r.presigned_url, ed.filename, ed.mime_type);
     };
     run().catch((e: unknown) => {
-      if (!cancelled) setBody({ kind: 'error', message: safeErrorMessage(e, 'This document could not be loaded.') });
+      console.error('[t360 viewer] document load failed', e);
+      const detail = import.meta.env.DEV && e instanceof Error ? ` (${e.name}: ${e.message})` : '';
+      if (!cancelled) setBody({ kind: 'error', message: `${safeErrorMessage(e, 'This document could not be loaded.')}${detail}` });
     });
     return () => {
       cancelled = true;
@@ -658,7 +680,7 @@ function UploadDialog({
           </label>
           <label className="t360-up__field">
             <span>
-              Requisition {needsReq ? <span className="t360-req">*</span> : null}
+              Requisition {needsReq ? <span className="t360-req">*</span> : <span className="t360-up__opt">· optional</span>}
             </span>
             <Select
               unstyled

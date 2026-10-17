@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { DocumentPreviewDialog } from '../talent-360/t360-previews';
 
 import { SendRtrModal } from './SendRtrModal';
+import { rtrTemplateErrorMessage } from './rtr-binding-messages';
 import {
   requestRtr,
   sendRtr,
@@ -40,17 +41,10 @@ function messageOf(e: unknown): string {
 // retrying cannot help (an admin must act); true when fixing the data can.
 function describeError(e: unknown): { text: string; retryable: boolean } {
   const code = (e as { code?: string } | null)?.code;
-  if (code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') {
-    return {
-      text: 'Your workspace has not approved a Right to Represent template yet. Ask an admin to approve one in Settings → Documents.',
-      retryable: false,
-    };
-  }
-  if (code === 'RTR_TEMPLATE_BINDING_MISSING' || code === 'TEMPLATE_BINDING_UNSUPPORTED') {
-    return {
-      text: 'This RTR can’t be prepared yet — a required detail (such as the requisition reference) is missing. Complete the requisition, then try again.',
-      retryable: true,
-    };
+  const template = rtrTemplateErrorMessage(e);
+  if (template !== null) {
+    // An unapproved/invalid template needs an admin; a missing fact can be fixed and retried.
+    return { text: template, retryable: !(code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') };
   }
   return { text: messageOf(e), retryable: true };
 }

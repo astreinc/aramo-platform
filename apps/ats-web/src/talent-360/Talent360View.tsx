@@ -30,7 +30,6 @@ import {
   NotesSection,
   OpportunitiesSection,
   OverviewSection,
-  ScreeningSection,
   TasksCard,
   TasksSection,
   TrustSection,
@@ -40,6 +39,7 @@ import { getTalent360 } from './talent-360-api';
 import type { ActiveOpportunityView, AttentionItemView, Talent360View as Talent360ViewModel } from './talent-360-types';
 import './talent-360.css';
 import { DocumentsSection } from './t360-documents';
+import { ScreeningSection } from './t360-screening';
 import { availabilityLabel, engagementLabel } from './t360-vocab';
 
 // Talent 360 — the person-centric recruiter workspace (route `talent/:talentId`),
@@ -382,7 +382,7 @@ export function Talent360View(): JSX.Element | null {
       case 'ci':
         return <CiSection />;
       case 'ts':
-        return <ScreeningSection talentId={talentId} canScreen={canScreen} />;
+        return <ScreeningSection model={model} talentId={talentId} canScreen={canScreen} firstName={first} />;
     }
   };
 

@@ -261,8 +261,10 @@ export async function generateScreeningQuestions(id: string, includeTalentProfil
   });
 }
 
-export async function addScreeningQuestion(id: string, text: string): Promise<ScreeningSessionDetail> {
-  return apiClient.post<ScreeningSessionDetail>(`${sessionPath(id)}/questions`, { text });
+// skill_ref is optional free text (the controller accepts it beside `text`).
+export async function addScreeningQuestion(id: string, text: string, skillRef?: string | null): Promise<ScreeningSessionDetail> {
+  const ref = skillRef?.trim() ?? '';
+  return apiClient.post<ScreeningSessionDetail>(`${sessionPath(id)}/questions`, ref !== '' ? { text, skill_ref: ref } : { text });
 }
 
 export async function updateScreeningQuestion(

@@ -20033,6 +20033,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/consent/src/tests/consent.integration.spec.ts",
       "status": "excluded",
       "to": "doc/03-refusal-layer.md"

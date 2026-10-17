@@ -133,10 +133,12 @@ export class Talent360Service {
       const companyIds = dedupe(
         [...reqMap.values()].map((r) => r.company_id),
       );
+      // The record's own owner ("Record added by") rides in the same batch.
       const ownerIds = dedupe(
-        [...reqMap.values()].flatMap((r) =>
-          [r.recruiter_id, r.owner_id].filter((x): x is string => x !== null),
-        ),
+        [
+          ...[...reqMap.values()].flatMap((r) => [r.recruiter_id, r.owner_id]),
+          core.owner_id,
+        ].filter((x): x is string => x !== null),
       );
       [companyNames, userNames, dispositionReasons] = await Promise.all([
         this.port.resolveCompanyNames(ctx, companyIds),
@@ -149,6 +151,9 @@ export class Talent360Service {
         journey: journeys[i]!,
         requisition: reqMap.get(episode.requisition_id) ?? null,
       }));
+    } else if (core.owner_id !== null) {
+      // No pipeline read — still resolve the record owner's name for "Record added by".
+      userNames = await this.port.resolveUserNames(ctx, [core.owner_id]);
     }
 
     // Interview scheduled instants (only for active journeys that reached an

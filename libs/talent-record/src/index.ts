@@ -100,3 +100,12 @@ export {
   type ResumeExtractionSource,
   type AuthorizedExtractionContext,
 } from './lib/resume-extraction/resume-source.types.js';
+
+// CONSENT-RECRUITER-CREATE-DEFAULT-1 — the at-create contact-consent default
+// PORT (string token). apps/api binds it to a ConsentService adapter; talent-record
+// never imports @aramo/consent (no new nx edge, Amendment §6).
+export {
+  RECRUITER_CREATE_CONSENT_DEFAULT,
+  applyRecruiterCreateConsentDefault,
+  type RecruiterCreateConsentDefaultPort,
+} from './lib/recruiter-create-consent-default.port.js';

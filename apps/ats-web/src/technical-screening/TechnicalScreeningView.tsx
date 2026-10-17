@@ -546,12 +546,16 @@ function FindingCard({ finding, publication }: { finding: ScreeningFinding; publ
   );
 }
 
-function FindingForm(props: {
+// Exported for the TR360 second host (A1 Note 1); `basisLabels` lets that host
+// use its own copy for the same closed basis set.
+export function FindingForm(props: {
   initial?: ScreeningFinding;
   busy: boolean;
+  basisLabels?: Record<ScreeningBasis, string>;
   onSave: (input: ScreeningFindingInput) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const basisLabels = props.basisLabels ?? BASIS_LABEL;
   const [skill, setSkill] = useState(props.initial?.skill_raw ?? '');
   const [basis, setBasis] = useState<ScreeningBasis>(props.initial?.basis ?? 'RECRUITER_OBSERVED');
   const [observation, setObservation] = useState(props.initial?.observation_raw ?? '');
@@ -582,9 +586,9 @@ function FindingForm(props: {
       <label className="ts-field">
         <span>Basis</span>
         <Select value={basis} onChange={(e) => setBasis(e.target.value as ScreeningBasis)} aria-label="Basis">
-          {(Object.keys(BASIS_LABEL) as ScreeningBasis[]).map((b) => (
+          {(Object.keys(basisLabels) as ScreeningBasis[]).map((b) => (
             <option key={b} value={b}>
-              {BASIS_LABEL[b]}
+              {basisLabels[b]}
             </option>
           ))}
         </Select>
@@ -615,10 +619,11 @@ function FindingForm(props: {
   );
 }
 
-function ConfirmDialog(props: {
+export function ConfirmDialog(props: {
   findings: ScreeningFinding[];
   version: number;
   busy: boolean;
+  basisLabels?: Record<ScreeningBasis, string>;
   onClose: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
@@ -632,7 +637,7 @@ function ConfirmDialog(props: {
       <ul className="ts-confirm-list">
         {props.findings.map((f) => (
           <li key={f.id}>
-            <strong>{f.skill_raw}</strong> — {BASIS_LABEL[f.basis]}
+            <strong>{f.skill_raw}</strong> — {(props.basisLabels ?? BASIS_LABEL)[f.basis]}
           </li>
         ))}
       </ul>
@@ -652,7 +657,7 @@ function ConfirmDialog(props: {
   );
 }
 
-function VoidDialog(props: { busy: boolean; onClose: () => void; onVoid: (reason: string | null) => void | Promise<void> }) {
+export function VoidDialog(props: { busy: boolean; onClose: () => void; onVoid: (reason: string | null) => void | Promise<void> }) {
   const [reason, setReason] = useState('');
   return (
     <Dialog open onOpenChange={(o) => !o && props.onClose()} title="Void this screening">

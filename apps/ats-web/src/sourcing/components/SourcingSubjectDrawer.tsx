@@ -44,7 +44,7 @@ function collectedOn(iso: string): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// SourcingSubjectDrawer — the subject drill-in (forked from TalentTriageDrawer):
+// SourcingSubjectDrawer — the subject drill-in (originally forked from the retired Talent triage drawer):
 // same non-modal right slide-in + focus-trap + prev/next, but the body is the
 // sourcing subject: the 4 trust BandPills, the evidence ledger (assertion /
 // source / method / status / date — NEVER strength, R10), the identity refs, and

@@ -556,6 +556,10 @@ export interface ResumeExtractionDraftRow {
 // stored on the edition — ruling E) and its default marker. filename/mime_type/
 // uploaded_at are PROJECTED from TalentDocument, never copied into the edition row.
 export interface TalentResumeEditionWithDocumentRow extends TalentResumeEditionRow {
+  // The canonical documents.Document id (via TalentDocument.document_id) — lets a
+  // reader stream the stored bytes through the authenticated document-content
+  // route instead of a cross-origin storage URL. Optional for older fakes.
+  document_id?: string;
   document_filename: string;
   document_mime_type: string;
   document_uploaded_at: Date;
@@ -2849,6 +2853,7 @@ export class TalentEvidenceRepository {
               e.content_hash, e.artifact_sha256, e.purpose, e.label, e.requisition_id,
               e.client_context_id,
               e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
+              doc.id AS document_id,
               doc.title AS document_filename, rev.mime_type AS document_mime_type,
               doc.created_at AS document_uploaded_at,
               COALESCE(df.resume_edition_id = e.id, false) AS is_default,
@@ -2886,6 +2891,7 @@ export class TalentEvidenceRepository {
       lifecycle_status: r['lifecycle_status'] as TalentResumeEditionLifecycleValue,
       created_at: r['created_at'] as Date,
       created_by: r['created_by'] as string,
+      document_id: r['document_id'] as string,
       document_filename: r['document_filename'] as string,
       document_mime_type: r['document_mime_type'] as string,
       document_uploaded_at: r['document_uploaded_at'] as Date,
@@ -2913,6 +2919,7 @@ export class TalentEvidenceRepository {
               e.content_hash, e.artifact_sha256, e.purpose, e.label, e.requisition_id,
               e.client_context_id,
               e.derived_from_edition_id, e.lifecycle_status, e.created_at, e.created_by,
+              doc.id AS document_id,
               doc.title AS document_filename, rev.mime_type AS document_mime_type,
               doc.created_at AS document_uploaded_at,
               COALESCE(df.resume_edition_id = e.id, false) AS is_default,
@@ -2947,6 +2954,7 @@ export class TalentEvidenceRepository {
       lifecycle_status: r['lifecycle_status'] as TalentResumeEditionLifecycleValue,
       created_at: r['created_at'] as Date,
       created_by: r['created_by'] as string,
+      document_id: r['document_id'] as string,
       document_filename: r['document_filename'] as string,
       document_mime_type: r['document_mime_type'] as string,
       document_uploaded_at: r['document_uploaded_at'] as Date,

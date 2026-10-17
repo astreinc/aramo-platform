@@ -606,15 +606,17 @@ body.t360-route .rc-content {
 /* Key facts + skills */
 .t360-facts {
   display: grid;
-  gap: 1px;
-  background: #f2f4f6;
+  /* Cell dividers are drawn per cell (not a grey gap/background), so a
+     short last row leaves white space instead of a grey block. */
+  gap: 0;
+  background: #fff;
   border: 1px solid #f2f4f6;
   border-radius: 10px;
   overflow: hidden;
   margin-bottom: 12px;
 }
 .t360-facts--170 {
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 .t360-facts--190 {
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
@@ -628,6 +630,7 @@ body.t360-route .rc-content {
   background: #fff;
   padding: 10px 13px;
   min-width: 0;
+  box-shadow: 1px 0 0 #f2f4f6, 0 1px 0 #f2f4f6;
 }
 .t360-fact--roomy {
   padding: 11px 14px;
@@ -1405,7 +1408,8 @@ body.t360-route .rc-content {
 .t360-req {
   color: #b3402a;
 }
-.t360 .t360-ctl {
+.t360 .t360-ctl,
+.t360-up .t360-ctl {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d5dbe1;
@@ -1416,16 +1420,40 @@ body.t360-route .rc-content {
   background: #fff;
   outline: none;
 }
-.t360 .t360-ctl:focus {
+.t360 .t360-ctl:focus,
+.t360-up .t360-ctl:focus {
   border-color: #022ac0;
   box-shadow: 0 0 0 3px #022ac01f;
 }
-.t360 .t360-ctl--err {
+.t360 .t360-ctl--err,
+.t360-up .t360-ctl--err {
   border-color: #e3a79a;
 }
 .t360 .t360-ctl--area {
   resize: vertical;
   line-height: 1.5;
+}
+/* Selects follow the prototype's control: native arrow replaced by a chevron.
+   The Upload dialog renders in a portal outside .t360, so it is listed explicitly. */
+.t360 select.t360-ctl,
+.t360-up select.t360-ctl {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 38px;
+  padding: 8px 34px 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%231B2730' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center;
+}
+.t360 select.t360-ctl:disabled,
+.t360-up select.t360-ctl:disabled {
+  cursor: not-allowed;
+  background-color: #f4f6fa;
+  color: #93a0a8;
+}
+.t360-up__opt {
+  font-weight: 400;
+  color: #93a0a8;
 }
 .t360-ctlpair {
   display: flex;
@@ -1637,7 +1665,9 @@ body.t360-route .rc-content {
 .t360-dv__tools { position: absolute; top: 12px; right: 12px; display: flex; align-items: center; gap: 8px; }
 .t360-dv__tools .t360-btn { text-decoration: none; }
 .t360-dv__close { position: static; }
-.t360-dv__body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: min(640px, 70vh); margin: -4px -24px -24px; border-top: 1px solid #e5e9ed; }
+.t360-dv__body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; min-height: min(640px, 70vh); border: 1px solid #e5e9ed; border-radius: 10px; overflow: hidden; }
+.t360-dv__page { min-width: 0; }
+.t360-dv__side { min-width: 0; overflow-y: auto; }
 .t360-dv__page { display: flex; flex-direction: column; gap: 12px; padding: 22px; background: #eef1f4; overflow: auto; }
 .t360-dv__banner { max-width: 680px; width: 100%; align-self: center; padding: 8px 12px; border-left: 3px solid #022ac0; background: #f3f6fe; font-size: 12px; color: #011f8d; }
 .t360-dv__frame { width: 100%; height: min(680px, 70vh); border: none; border-radius: 4px; background: #fff; box-shadow: 0 1px 3px rgba(15, 25, 40, 0.12), 0 8px 24px -12px rgba(15, 25, 40, 0.25); }
@@ -1682,3 +1712,50 @@ body.t360-route .rc-content {
 .t360-up__foot { display: flex; justify-content: flex-end; gap: 8px; }
 .t360-up__go { min-width: 96px; }
 .t360-up__go:disabled { background: #f4f6fa; border-color: #e5e9ed; color: #a9b3bc; cursor: not-allowed; }
+
+/* Technical Screening rows (§9) */
+.t360-tsrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 0; border-top: 1px solid #f2f4f6; }
+.t360-tsrow__head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.t360-tsrow__head b { font-weight: 700; }
+.t360-tsrow__req { font-size: 11.5px; color: #5c6770; }
+.t360-tsrow__meta { display: block; margin-top: 2px; font-size: 12px; color: #5c6770; }
+.t360-tsrow .t360-btn { text-decoration: none; white-space: nowrap; }
+
+/* Document viewer: near full-screen (PO 2026-10-16 "can we have a big screen").
+   The shared Dialog has no className prop, so scope via :has(). */
+.tc-dialog__content--xl:has(.t360-dv__body) {
+  width: min(1320px, 96vw);
+  max-height: 94vh;
+  height: 94vh;
+  display: flex;
+  flex-direction: column;
+}
+.tc-dialog__content--xl:has(.t360-dv__body) .tc-dialog__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.t360-dv__body { flex: 1 1 auto; min-height: 0; }
+.t360-dv__page { overflow: auto; }
+.t360-dv__frame { height: 100%; min-height: 60vh; }
+.t360-dv__sheet { max-width: 860px; }
+/* Word sheet fills the viewer's page area (no fixed height / inner scroll /
+   width cap inherited from the Edit-talent .rc-rpreview__docx panel). */
+.t360-dv__page { padding: 16px; }
+.t360-dv__page .t360-dv__sheet.rc-rpreview__docx {
+  /* never shrink inside the flex-column page: grow with the document so the
+     white sheet always backs all of the text (the page area scrolls). */
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: auto;
+  max-width: none;
+  height: auto;
+  min-height: 100%;
+  margin: 0;
+  overflow: visible;
+  box-sizing: border-box;
+  padding: 36px 48px 44px;
+  font-size: 13px;
+}
+.t360-dv__page .t360-dv__frame { flex: 1 1 auto; min-height: 100%; }

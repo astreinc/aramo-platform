@@ -24,6 +24,11 @@ vi.mock('./requisition-talent-board-api', async (importActual) => {
 });
 const mockGet = getRequisitionTalentBoard as unknown as Mock;
 
+vi.mock('../rtr/rtr-api', () => ({
+  getCurrentRtr: vi.fn(async () => ({ document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', document_status: 'SENT' })),
+  remindRtr: vi.fn(async () => ({ document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', reminder_sent: true })),
+}));
+
 function card(overrides: Partial<BoardCardView> = {}): BoardCardView {
   return {
     talent_record_id: 't1',
@@ -512,5 +517,29 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} />);
     expect(await screen.findByRole('button', { name: 'Send email' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Contact Talent' })).not.toBeInTheDocument();
+  });
+
+  describe('RTR reminder on the card (same envelope as the List view)', () => {
+    const awaiting = (): RequisitionTalentBoardView =>
+      board({
+        total_active: 1,
+        columns: [{ key: 'qualified', owner: 'pipeline', count: 1, cards: [card({ column: 'qualified', owner_state: 'qualified', rtr_status: 'SENT', next_actions: [] })] }],
+      });
+
+    it('shows "Send reminder" with document:execute and re-notifies the current RTR', async () => {
+      const { getCurrentRtr, remindRtr } = await import('../rtr/rtr-api');
+      mockGet.mockResolvedValue(awaiting());
+      render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} scopes={['document:execute']} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Send reminder' }));
+      await waitFor(() => expect(remindRtr).toHaveBeenCalledWith('doc-rtr-1'));
+      expect(getCurrentRtr).toHaveBeenCalledWith('t1', 'r1');
+    });
+
+    it('hides the reminder without document:execute', async () => {
+      mockGet.mockResolvedValue(awaiting());
+      render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} scopes={[]} />);
+      await screen.findByText('RTR · Awaiting signature');
+      expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+    });
   });
 });

@@ -206,7 +206,10 @@ describe('AnthropicStructuredGenerationService', () => {
       const [err, expected] = make();
       createImpl = async () => { throw err; };
       const out = await service(okSecret).generateStructured(REQ);
-      expect(out).toEqual(expected);
+      // kind + category exactly; an API error may also carry the safe diagnostic
+      // (HTTP status / provider error type) — never message text.
+      expect(out).toMatchObject(expected);
+      expect(Object.keys(out).sort()).toEqual(expect.arrayContaining(['category', 'kind']));
       expect(JSON.stringify(out)).not.toContain('masked');
     }
   });

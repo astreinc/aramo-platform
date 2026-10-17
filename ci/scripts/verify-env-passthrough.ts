@@ -55,6 +55,10 @@ export const REQUIRED_PASSTHROUGH: Record<string, string[]> = {
     'DOCUMENTS_API_URL', // esign-service → api origin (http://api:3000): source pull + webhook
     'ESIGN_WEBHOOK_SIGNING_SECRET', // signs the webhook + ES-2 source requests (same value as api)
     'ESIGN_SIGN_WEB_BASE_URL', // signer link base (https://sign.aramo.ai); unset ⇒ no invitation sent
+    // SES credentials — without them the SDK uses the Lightsail instance role (no ses:SendEmail)
+    // and every signer invitation/reminder is dropped.
+    'AWS_ACCESS_KEY_ID',
+    'AWS_SECRET_ACCESS_KEY',
   ],
   'auth-service': [
     'ARAMO_IDENTITY_PEPPER', // shared pepper (Portal P1 eligibility fingerprint) — must match api

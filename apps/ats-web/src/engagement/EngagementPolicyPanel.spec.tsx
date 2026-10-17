@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EngagementPolicyPanel } from './EngagementPolicyPanel';
@@ -17,13 +17,19 @@ const loadCaps = () => vi.fn().mockResolvedValue(CAPS);
 // Default: both channels have a configured Tenant provider (fully available).
 const READY = { voice: true, email: true };
 
-function panel(
+// The panel loads its state, capabilities and readiness asynchronously and then
+// SEEDS its editable controls from the loaded policy in an effect. Rendering inside
+// an async act() lets that load + seed settle before the test interacts; a plain
+// render lets a click land between the commit and the seed effect, which then
+// resets the control (the click is lost — the merge-group CI flake on Case B).
+async function panel(
   state: EngagementPolicyState,
   publishFn = vi.fn().mockResolvedValue(undefined),
   canWrite = true,
   readiness = READY,
-) {
-  return render(
+): Promise<void> {
+  await act(async () => {
+    render(
     <EngagementPolicyPanel
       canRead
       canWrite={canWrite}
@@ -33,12 +39,13 @@ function panel(
       publishFn={publishFn}
       versionFn={() => 'v-test-1'}
     />,
-  );
+    );
+  });
 }
 
 describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   it('Case A — never configured → Not configured chip + non-enforcing notice', async () => {
-    panel({ governed: false, effective: null });
+    await panel({ governed: false, effective: null });
     expect(await screen.findByTestId('engagement-policy-status')).toHaveTextContent(/not configured/i);
     expect(screen.getByTestId('engagement-policy-notice')).toHaveTextContent(
       /no engagement requirements are currently enforced/i,
@@ -46,12 +53,12 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   });
 
   it('governed but no effective → No active policy chip', async () => {
-    panel({ governed: true, effective: null });
+    await panel({ governed: true, effective: null });
     expect(await screen.findByTestId('engagement-policy-status')).toHaveTextContent(/no active policy/i);
   });
 
   it('published policy → Published chip; controls seed from the effective policy', async () => {
-    panel({
+    await panel({
       governed: true,
       effective: {
         requirements: [{ channel: 'email', required: true, condition: 'recorded_evidence' }],
@@ -72,10 +79,9 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
 
   it('Case B — toggling evidence does NOT publish (nothing changes until Publish)', async () => {
     const publishFn = vi.fn().mockResolvedValue(undefined);
-    panel({ governed: false, effective: null }, publishFn);
+    await panel({ governed: false, effective: null }, publishFn);
     fireEvent.click(await screen.findByTestId('engagement-policy-email-toggle'));
-    // The toggle's aria-checked flips on a React state update; await it (the
-    // click's re-render may not have flushed synchronously under load — CI flake).
+    // The toggle's aria-checked flips on a React state update; await it.
     await waitFor(() =>
       expect(screen.getByTestId('engagement-policy-email-toggle')).toHaveAttribute(
         'aria-checked',
@@ -86,7 +92,7 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   });
 
   it('Case F — read-only (no write scope): no publish, toggles disabled', async () => {
-    panel({ governed: false, effective: null }, vi.fn(), false);
+    await panel({ governed: false, effective: null }, vi.fn(), false);
     expect(await screen.findByTestId('engagement-policy-readonly')).toBeInTheDocument();
     expect(screen.queryByTestId('engagement-policy-publish')).toBeNull();
     expect(screen.getByTestId('engagement-policy-email-toggle')).toBeDisabled();
@@ -98,13 +104,13 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   });
 
   it('publish requires >=1 enabled requirement (all-OFF → Publish disabled)', async () => {
-    panel({ governed: false, effective: null });
+    await panel({ governed: false, effective: null });
     expect(await screen.findByTestId('engagement-policy-publish')).toBeDisabled();
   });
 
   it('Case G — publish sends a provider-neutral email requirement (direct, no warning gate)', async () => {
     const publishFn = vi.fn().mockResolvedValue(undefined);
-    panel({ governed: false, effective: null }, publishFn);
+    await panel({ governed: false, effective: null }, publishFn);
     fireEvent.click(await screen.findByTestId('engagement-policy-email-toggle'));
     fireEvent.click(screen.getByTestId('engagement-policy-publish'));
     await waitFor(() => expect(publishFn).toHaveBeenCalledTimes(1));
@@ -118,7 +124,7 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   });
 
   it('C6 — Email is "Available" only when a Tenant provider is configured; else "Supported by platform"', async () => {
-    panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
+    await panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
     expect(await screen.findByTestId('engagement-cap-email')).toHaveTextContent(
       /supported by platform · provider not configured/i,
     );
@@ -126,19 +132,19 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
   });
 
   it('C6 — a channel with no configured provider cannot be required (toggle disabled)', async () => {
-    panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
+    await panel({ governed: false, effective: null }, vi.fn(), true, { voice: true, email: false });
     expect(await screen.findByTestId('engagement-policy-email-toggle')).toBeDisabled();
     expect(screen.getByTestId('engagement-policy-voice-toggle')).toBeEnabled();
   });
 
   it('SMS evidence is present but not requirable (execution deferred)', async () => {
-    panel({ governed: false, effective: null });
+    await panel({ governed: false, effective: null });
     expect(await screen.findByTestId('engagement-policy-sms-toggle')).toBeDisabled();
   });
 
   it('enforcement radios map 1:1 to the backend enum and are carried on publish', async () => {
     const publishFn = vi.fn().mockResolvedValue(undefined);
-    panel({ governed: false, effective: null }, publishFn);
+    await panel({ governed: false, effective: null }, publishFn);
     fireEvent.click(await screen.findByTestId('engagement-policy-email-toggle'));
     expect(screen.getByTestId('engagement-policy-mode-ADVISORY')).toBeInTheDocument();
     expect(screen.getByTestId('engagement-policy-mode-ENFORCING')).toBeInTheDocument();
@@ -153,7 +159,7 @@ describe('EngagementPolicyPanel (COMM-C3 admin)', () => {
 
   it('publishes email + voice with minimum strength when both enabled', async () => {
     const publishFn = vi.fn().mockResolvedValue(undefined);
-    panel({ governed: false, effective: null }, publishFn);
+    await panel({ governed: false, effective: null }, publishFn);
     fireEvent.click(await screen.findByTestId('engagement-policy-email-toggle'));
     fireEvent.click(screen.getByTestId('engagement-policy-voice-toggle'));
     fireEvent.change(screen.getByTestId('engagement-policy-voice-strength'), {

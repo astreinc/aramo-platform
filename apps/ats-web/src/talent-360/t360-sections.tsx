@@ -420,7 +420,7 @@ export function TasksSection(p: TasksProps): JSX.Element {
       <div className="t360-card__hd t360-card__hd--tight">
         <span className="t360-sect__title">Tasks</span>
         {p.canFollowUp ? (
-          <Button unstyled type="button" className="t360-btn t360-btn--brandline t360-btn--sm" onClick={p.onFollowUp}>
+          <Button unstyled type="button" className="t360-btn t360-btn--brandline t360-btn--sm t360-ml-auto" onClick={p.onFollowUp}>
             + Follow up
           </Button>
         ) : null}
@@ -926,8 +926,9 @@ export function TrustSection({
             if (!o) setHistoryOpen(false);
           }}
           title="Consent history"
+          size="lg"
         >
-          <ConsentHistoryPanel talentId={talentId} />
+          <ConsentHistoryPanel talentId={talentId} showTitle={false} />
         </Dialog>
       ) : null}
     </div>
@@ -946,27 +947,6 @@ export function CiSection(): JSX.Element {
         Consented recordings only. Each conversation stays attached to the requisition it was captured for — open it there to work with it.
       </div>
       <div className="t360-empty t360-empty--rowtop">No recorded conversations yet.</div>
-    </div>
-  );
-}
-
-export function ScreeningSection({ talentId, canScreen }: { talentId: string; canScreen: boolean }): JSX.Element {
-  return (
-    <div className="t360-card t360-card--sect" data-testid="t360-ts">
-      <div className="t360-sect__title">Technical Screening</div>
-      <div className="t360-caption t360-caption--trust">
-        History across requisitions. Screenings are prepared and run per requisition, in Talent × Requisition 360.
-      </div>
-      {canScreen ? (
-        <div className="t360-empty t360-empty--rowtop">
-          <Link className="t360-arrow" to={`/talent/${talentId}/screening`}>
-            Open technical screening →
-          </Link>
-        </div>
-      ) : (
-        <div className="t360-empty t360-empty--rowtop">No technical screenings yet.</div>
-      )}
-      <div className="t360-tsfoot">Findings are recruiter-attested. Aramo never qualifies, rejects or ranks.</div>
     </div>
   );
 }

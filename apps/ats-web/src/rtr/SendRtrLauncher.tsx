@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { SendRtrModal } from './SendRtrModal';
+import { rtrTemplateErrorMessage } from './rtr-binding-messages';
 import {
   composeRtr,
   requestRtr,
@@ -24,14 +25,7 @@ function messageOf(e: unknown): string {
 // Mirror of RtrPanel.describeError — the fail-closed template codes mapped to honest
 // recruiter messaging (kept local; the panel never fabricates or substitutes).
 function describeError(e: unknown): string {
-  const code = (e as { code?: string } | null)?.code;
-  if (code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') {
-    return 'Your workspace has not approved a Right to Represent template yet. Ask an admin to approve one in Settings → Documents.';
-  }
-  if (code === 'RTR_TEMPLATE_BINDING_MISSING' || code === 'TEMPLATE_BINDING_UNSUPPORTED') {
-    return 'This RTR can’t be prepared yet — a required detail (such as the requisition reference) is missing. Complete the requisition, then try again.';
-  }
-  return messageOf(e);
+  return rtrTemplateErrorMessage(e) ?? messageOf(e);
 }
 
 export interface SendRtrLauncherProps {

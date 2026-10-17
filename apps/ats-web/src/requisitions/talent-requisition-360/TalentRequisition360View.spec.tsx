@@ -4,7 +4,6 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TalentRequisition360View } from './TalentRequisition360View';
-import { Tr360TechScreening, type ScreeningSessionModel } from './Tr360TechScreening';
 
 const REQ = {
   id: 'req-1', tenant_id: 't', site_id: null, title: 'Business Analyst – Multi-Family', requisition_number: 1001,
@@ -99,6 +98,8 @@ function mockApi(opts: { actions?: readonly string[]; board?: unknown } = {}): C
     calls.push({ url, method, body });
     const json = (b: unknown): Response =>
       new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (url.includes('/v1/rtr/current')) return json({ current: { document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', document_status: 'SENT' } });
+    if (url.includes('/v1/rtr/doc-rtr-1/remind')) return json({ document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', reminder_sent: true });
     if (url.includes('/transition')) return json({ ...PIPELINES.items[0], status: 'qualified', version: 4 });
     if (url.includes('/v1/talent-records/tal-1') && method === 'PATCH') return json({ id: 'tal-1', first_name: 'Ravi', last_name: 'Shankar', ...(body as object) });
     if (url.includes('/journey')) return json(journey(opts.actions ?? ['mark_qualified']));
@@ -264,9 +265,33 @@ describe('TalentRequisition360View', () => {
     expect(screen.queryByText('Back to REQ-1001 pipeline')).toBeNull(); // icon only
   });
 
-  it('Technical Screening (flag off): only the empty state; no CTA, no screening calls', async () => {
+  it('RTR awaiting signature: "Send reminder" re-notifies the current envelope (document:execute)', async () => {
+    const awaiting = {
+      ...BOARD,
+      columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: 'SENT' })] }],
+    };
+    const calls = mockApi({ board: awaiting });
+    mount([...BASE, 'document:read', 'document:execute']);
+    expect(await screen.findAllByText('Awaiting signature')).not.toHaveLength(0);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send reminder' }));
+    expect(await screen.findByText('Reminder sent')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST' && c.url.includes('/v1/rtr/doc-rtr-1/remind'))).toBe(true);
+  });
+
+  it('RTR awaiting signature without document:execute: no reminder, only View', async () => {
+    const awaiting = {
+      ...BOARD,
+      columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: 'SENT' })] }],
+    };
+    mockApi({ board: awaiting });
+    mount([...BASE, 'document:read']);
+    expect(await screen.findAllByText('Awaiting signature')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
+  });
+
+  it('Technical Screening (flag off): only the empty state; no CTA, no screening calls — even with screening scopes', async () => {
     const calls = mockApi();
-    mount(BASE);
+    mount([...BASE, 'screening:read', 'screening:create', 'screening:edit', 'screening:confirm']);
     await screen.findByTestId('tr360-qualifying');
     fireEvent.click(screen.getByRole('tab', { name: 'Technical Screening' }));
     expect(screen.getByText('No technical screening yet')).toBeInTheDocument();
@@ -302,48 +327,5 @@ describe('TalentRequisition360View', () => {
     await screen.findByText('1 of 1 in pipeline');
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(screen.getByRole('menuitem', { name: 'Remove from requisition' })).toBeInTheDocument();
-  });
-});
-
-const SESSION_FIXTURE: ScreeningSessionModel = {
-  phase: 'live',
-  bannerTitle: 'Screening session in progress',
-  bannerSub: 'Started Oct 16 at 10:31 AM',
-  consent: 'yes',
-  recording: true,
-  recordingLabel: 'Recording · consented 10:32',
-  questions: [
-    { id: 'q1', skill: 'Requirements elicitation', text: 'Walk me through…', why: 'REQ must-have', sources: ['REQ', 'Resume'], must: true },
-    { id: 'q2', skill: 'SQL', text: 'Describe a time…', why: 'Client must-have', sources: ['Client'], must: true },
-  ],
-  asked: { q1: true },
-  levels: { q1: 'Strong' },
-  notes: {},
-  suggestions: { q1: [{ id: 's1', text: 'How did you document it?', why: 'Follows 10:34' }] },
-  evidence: { q1: [{ label: 'Interviewer notes', kind: 'recruiter', tip: 'Recruiter-attested · empty' }] },
-  coverage: [{ skill: 'SQL', count: 1 }],
-  overall: null,
-  summary: '',
-};
-
-describe('Tr360TechScreening (presentation)', () => {
-  it('flag on + live session: banner, recording pill, progress, questions, scale, follow-ups and the decision footnote', () => {
-    render(<Tr360TechScreening enabled session={SESSION_FIXTURE} talentFirstName="Ravi" reqCode="REQ-1001" />);
-    expect(screen.getByText('Screening session in progress')).toBeInTheDocument();
-    expect(screen.getByText('In progress')).toBeInTheDocument();
-    expect(screen.getByText('Recording · consented 10:32')).toBeInTheDocument();
-    expect(screen.getByText('1 of 2 questions')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'End call' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Strong/ })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText('How did you document it?')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Complete screening' })).toBeDisabled();
-    expect(screen.getByText(/"Mark qualified" in the header stays your decision/)).toBeInTheDocument();
-  });
-
-  it('flag on, no session: the empty state with its copy, CTA still hidden (not wired)', () => {
-    render(<Tr360TechScreening enabled session={null} talentFirstName="Ravi" reqCode="REQ-1001" />);
-    expect(screen.getByText('No technical screening yet')).toBeInTheDocument();
-    expect(screen.getByText(/Aramo will draft questions/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Prepare screening' })).toBeNull();
   });
 });

@@ -37,14 +37,19 @@ export function isLlmProvider(value: unknown): value is LlmProvider {
 export const PROVIDER_MODEL_ALLOWLIST: Readonly<Record<LlmProvider, readonly string[]>> =
   Object.freeze({
     anthropic: Object.freeze(['claude-sonnet-4-6']),
-    openai: Object.freeze(['gpt-4o', 'gpt-4o-mini']),
+    // gpt-4.1 is the OpenAI default (PO 2026-10-16): same Chat Completions
+    // parameters as gpt-4o (max_tokens, structured outputs) with a larger
+    // output budget, so the 16,384-token résumé draft is no longer at the cap.
+    // gpt-4o / gpt-4o-mini stay allowlisted. Reasoning models (gpt-5 / o-series)
+    // are NOT added: they need max_completion_tokens + re-budgeted callers.
+    openai: Object.freeze(['gpt-4.1', 'gpt-4o', 'gpt-4o-mini']),
   });
 
 /** Per-provider default model (the head of each allowlist). */
 export const PROVIDER_DEFAULT_MODEL: Readonly<Record<LlmProvider, string>> =
   Object.freeze({
     anthropic: 'claude-sonnet-4-6',
-    openai: 'gpt-4o',
+    openai: 'gpt-4.1',
   });
 
 export function isModelAllowedForProvider(provider: LlmProvider, model: string): boolean {

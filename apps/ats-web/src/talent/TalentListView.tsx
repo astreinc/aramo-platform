@@ -16,7 +16,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { listRequisitions } from '../requisitions/requisitions-api';
@@ -39,7 +39,6 @@ import {
 import { listTalentMemberships } from './saved-list-api';
 import { BulkBar } from './components/BulkBar';
 import { FilterBar } from './components/FilterBar';
-import { TalentTriageDrawer } from './components/TalentTriageDrawer';
 import { searchTalent } from './talent-api';
 import { useDetailsAutoClose } from './use-details-auto-close';
 import { listErrorMessage } from './error-messages';
@@ -228,7 +227,8 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const [draft, setDraft] = useState('');
 
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [drawerIndex, setDrawerIndex] = useState<number | null>(null);
+  // Clicking a talent opens its Talent 360 page (the triage side panel is retired).
+  const navigate = useNavigate();
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [density, setDensity] = useState<Density>('comfortable');
@@ -334,7 +334,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     const handle = setTimeout(() => {
       if (cancelled) return;
       setSelected(new Set());
-      setDrawerIndex(null);
       setAppendNote(null);
       void fetchPage(null, false);
     }, 180);
@@ -518,8 +517,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const selectedTalent = items.filter((t) => selected.has(t.id));
 
   const addSelectedToReq = async (req: RequisitionView) => {
-    const drawerTarget = drawerIndex !== null ? items[drawerIndex] : undefined;
-    const targets = drawerTarget !== undefined ? [drawerTarget] : selectedTalent;
+    const targets = selectedTalent;
     setBusy(true);
     setNotice(null);
     let ok = 0;
@@ -543,7 +541,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     setNotice(
       `Added ${ok} to ${req.title}${skipped > 0 ? ` (${skipped} already in pipeline)` : ''}.`,
     );
-    if (drawerIndex === null) setSelected(new Set());
+    setSelected(new Set());
   };
 
   // ── active filter chips ──
@@ -588,7 +586,6 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   const hasActiveQuery =
     chips.length > 0 || parsed.free.trim() !== '';
 
-  const drawerTalent = drawerIndex !== null ? (items[drawerIndex] ?? null) : null;
   const colCount =
     2 +
     (cols.contact ? 1 : 0) +
@@ -602,7 +599,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     1;
 
   return (
-    <section className={drawerTalent !== null ? 'rc-talent rc-talent--drawer' : 'rc-talent'}>
+    <section className="rc-talent">
       <div className="rc-viewhead">
         <div>
           {/* title row — scope sits INLINE right after the H1 (the logo now owns
@@ -926,13 +923,17 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                       </td>
                     </tr>
                   ) : (
-                    items.map((t, i) => (
+                    items.map((t) => (
                       <tr
                         key={t.id}
-                        className={`rc-row--clickable${selected.has(t.id) ? ' rc-row--sel' : ''}${drawerIndex === i ? ' rc-row--active' : ''}`}
+                        className={`rc-row--clickable${selected.has(t.id) ? ' rc-row--sel' : ''}`}
                         onClick={(e) => {
                           if (e.target instanceof Element && e.target.closest('a,button,input,label')) return;
-                          setDrawerIndex(i);
+                          if (e.metaKey || e.ctrlKey) {
+                            window.open(`/talent/${t.id}`, '_blank', 'noopener');
+                            return;
+                          }
+                          navigate(`/talent/${t.id}`);
                         }}
                       >
                         <td>
@@ -1039,14 +1040,9 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
                         ) : null}
                         <td>
                           <div className="rc-rowq">
-                            <Button
-                              type="button"
-                              title="Preview"
-                              aria-label={`Preview ${fullName(t)}`}
-                              onClick={() => setDrawerIndex(i)}
-                            >
+                            <Link to={`/talent/${t.id}`} className="rc-iconlink" title="Open Talent 360" aria-label={`Open ${fullName(t)}`}>
                               <Icons.IconOpen />
-                            </Button>
+                            </Link>
                           </div>
                         </td>
                       </tr>
@@ -1100,22 +1096,12 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         onViewList={() => setListsTab(true)}
       />
 
-      <TalentTriageDrawer
-        talent={drawerTalent}
-        index={drawerIndex ?? 0}
-        total={items.length}
-        ownerNames={userNames}
-        onClose={() => setDrawerIndex(null)}
-        onPrev={() => setDrawerIndex((i) => (i === null ? null : Math.max(0, i - 1)))}
-        onNext={() => setDrawerIndex((i) => (i === null ? null : Math.min(items.length - 1, i + 1)))}
-        onAddToReq={() => setReqDialogOpen(true)}
-      />
 
       <AddToReqDialog
         open={reqDialogOpen}
         onClose={() => setReqDialogOpen(false)}
         onPick={addSelectedToReq}
-        count={drawerIndex !== null ? 1 : selectedTalent.length}
+        count={selectedTalent.length}
         busy={busy}
       />
     </section>

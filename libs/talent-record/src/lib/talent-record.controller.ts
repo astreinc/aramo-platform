@@ -45,6 +45,11 @@ import {
 import type { CreateTalentRecordRequestDto } from './dto/create-talent-record-request.dto.js';
 import type { WorkAuthorization } from './dto/stated-fields.js';
 import {
+  RECRUITER_CREATE_CONSENT_DEFAULT,
+  applyRecruiterCreateConsentDefault,
+  type RecruiterCreateConsentDefaultPort,
+} from './recruiter-create-consent-default.port.js';
+import {
   toWorkAuthorizationAssertionView,
   type WorkAuthorizationStateView,
 } from './dto/work-authorization-state.view.js';
@@ -212,6 +217,13 @@ export class TalentRecordController {
     // TalentRecordModule (which provides it), so the confirmed-create path always
     // has it in production.
     @Optional() private readonly createFromDraft?: TalentCreateFromDraftService,
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 — the at-create contact-consent default
+    // port (email + phone). @Optional + STRING token + appended LAST so hand-wired
+    // unit-test construction sites keep positional alignment; apps/api binds it
+    // (RecruiterCreateConsentDefaultModule) so production always records it.
+    @Optional()
+    @Inject(RECRUITER_CREATE_CONSENT_DEFAULT)
+    private readonly recruiterCreateConsentDefault?: RecruiterCreateConsentDefaultPort,
   ) {}
 
   // Search PR-1/PR-2 — the LIST route gates on talent:read (route-static).
@@ -749,6 +761,8 @@ export class TalentRecordController {
     return {
       edition_id: result.edition.id,
       talent_document_id: result.edition.talent_document_id,
+      // Not on the bare edition row; a re-read projects it.
+      document_id: null,
       attachment_id: result.edition.attachment_id,
       purpose: result.edition.purpose,
       label: result.edition.label,
@@ -1102,6 +1116,17 @@ export class TalentRecordController {
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
+      requestId,
+    });
+
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 §1/§2 — the manual (non-draft) create
+    // records the email + phone contact-consent default right after the Talent
+    // exists. Fail-soft (§5): a consent-write failure never fails the create. The
+    // draft-backed branch above returned early — TalentCreateFromDraftService
+    // records it there, so it is never invoked twice for one create.
+    await applyRecruiterCreateConsentDefault(this.recruiterCreateConsentDefault, {
+      talent_record_id: created.id,
+      authContext,
       requestId,
     });
 

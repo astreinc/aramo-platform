@@ -162,7 +162,20 @@ export class AnthropicStructuredGenerationService implements StructuredGeneratio
   }
 
   /** Map provider errors to SAFE categories — never leak upstream message text. */
+  /** mapError + a SAFE diagnostic (HTTP status + provider error code/type; no message text). */
   private mapError(err: unknown): StructuredGenerationOutcome {
+    const outcome = this.mapErrorCategory(err);
+    if (outcome.kind === 'ok' || !(err instanceof APIError)) return outcome;
+    const http_status = typeof err.status === 'number' ? err.status : undefined;
+    const code = (err as { error?: { error?: { type?: unknown } } }).error?.error?.type as string | undefined;
+    const provider_error_code = typeof code === 'string' && /^[a-z0-9_.-]{1,64}$/i.test(code) ? code : undefined;
+    return {
+      ...outcome,
+      diagnostic: { ...(http_status !== undefined ? { http_status } : {}), ...(provider_error_code !== undefined ? { provider_error_code } : {}) },
+    };
+  }
+
+  private mapErrorCategory(err: unknown): StructuredGenerationOutcome {
     if (err instanceof APIConnectionTimeoutError) return { kind: 'retryable', category: 'timeout' };
     if (err instanceof APIConnectionError) return { kind: 'retryable', category: 'network' };
     if (err instanceof RateLimitError) return { kind: 'retryable', category: 'rate_limited' };
