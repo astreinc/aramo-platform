@@ -6585,191 +6585,6 @@
     "@aramo/export": [{ "project": "api", "status": "production" }],
     "@aramo/fe-foundation": [
       {
-        "from": "libs/org-admin-web/src/audit/AuditLogView.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/audit/AuditSection.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/audit/audit-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/audit/event-labels.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/domain/DomainVerificationSection.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/domain/domain-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/profile/TenantProfileForm.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/profile/TenantProfileForm.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/profile/profile-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/roles/RolesMatrixView.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/roles/RolesSection.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/roles/roles-catalog-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/SiteDialog.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/SiteDialog.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/SitesPanel.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/SitesPanel.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/error-messages.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/sites/sites-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/tests/org-users-route.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/DisableConfirmDialog.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/DisableConfirmDialog.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/EditEmailDialog.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/InviteDialog.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/InviteDialog.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/RevokeConfirmDialog.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/RoleAssignEditor.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/RoleAssignEditor.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/RolePicker.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/UsersListView.spec.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/UsersListView.tsx",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/error-messages.spec.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/error-messages.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/user-status.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/users-api.spec.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
-        "from": "libs/org-admin-web/src/users/users-api.ts",
-        "project": "(unscoped)",
-        "status": "unscoped"
-      },
-      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/activity/LogNoteDialog.spec.tsx",
         "project": "aramo-ats-web",
@@ -7351,6 +7166,7 @@
         "project": "aramo-ats-web",
         "status": "unscoped"
       },
+      { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
@@ -7394,7 +7210,74 @@
         "project": "aramo-portal-web",
         "status": "excluded"
       },
-      { "project": "aramo-portal-web", "status": "production" }
+      { "project": "aramo-portal-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/profile/TenantProfileForm.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/sites/SiteDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/sites/SitesPanel.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/tests/org-users-route.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/DisableConfirmDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/InviteDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/RoleAssignEditor.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/UsersListView.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "libs/org-admin-web/src/users/error-messages.spec.ts",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "libs/org-admin-web/src/users/users-api.spec.ts",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      { "project": "org-admin-web", "status": "production" }
     ],
     "@aramo/field-masking": [
       { "project": "api", "status": "production" },
@@ -8009,7 +7892,7 @@
       { "project": "resume-parse", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/org-admin-web": [],
+    "@aramo/org-admin-web": [{ "project": "aramo-home-web", "status": "production" }],
     "@aramo/outbox-publisher": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9544,6 +9427,13 @@
       "targets": ["build", "e2e", "lint", "preview", "serve", "test"]
     },
     {
+      "name": "aramo-home-web",
+      "root": "apps/home-web",
+      "sourceRoot": "apps/home-web/src",
+      "tags": [],
+      "targets": ["build", "lint", "preview", "serve", "test"]
+    },
+    {
       "name": "aramo-pact-provider",
       "root": "pact/provider",
       "sourceRoot": "pact/provider/src",
@@ -9925,6 +9815,13 @@
       "name": "object-storage",
       "root": "libs/object-storage",
       "sourceRoot": "libs/object-storage/src",
+      "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "org-admin-web",
+      "root": "libs/org-admin-web",
+      "sourceRoot": "libs/org-admin-web/src",
       "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },
