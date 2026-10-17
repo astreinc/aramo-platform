@@ -1,7 +1,8 @@
-import { Button } from '@aramo/fe-foundation';
+import { Button, useOptionalToast } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { getCurrentRtr, remindRtr } from '../rtr/rtr-api';
 import { withCurrency } from '../talent/stated-fields';
 import { initialsOf } from '../ui';
 
@@ -178,6 +179,7 @@ function BoardCard({
   onSelect,
   onAction,
   onSendRtr,
+  requisitionId,
   onDragStart,
   onDragEnd,
   onRequestVoid,
@@ -191,11 +193,14 @@ function BoardCard({
   onSelect: () => void;
   onAction: () => void;
   onSendRtr?: (talentId: string, talentName: string) => void;
+  requisitionId: string;
   onDragStart: () => void;
   onDragEnd: () => void;
   onRequestVoid?: (pipelineId: string, talentName: string) => void;
 }): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const toast = useOptionalToast();
 
   // Scope-gate the projected next actions (TB-3): only actions the actor can perform. The server
   // re-authorizes on execution — this is presentation, not the boundary. The VOID action is
@@ -235,6 +240,24 @@ function BoardCard({
   // RTR affordance (shared mapping) — actionable only when the actor can initiate (onSendRtr
   // present). The governed request→send stays the mutation authority.
   const rtrKind = rtrAffordanceKind(card);
+  // Same-envelope RTR reminder (COMM-RECRUITER-W1 W1-C3) — the List view's RtrPanel gate
+  // (document:execute). Resolves the authoritative current RTR, then re-notifies it.
+  const canRemind = rtrKind === 'awaiting' && scopes.includes('document:execute');
+  const sendReminder = (): void => {
+    if (reminding) return;
+    setReminding(true);
+    void getCurrentRtr(card.talent_record_id, requisitionId)
+      .then(async (cur) => {
+        if (cur === null || cur.status !== 'AWAITING_SIGNATURE') {
+          toast.show('This RTR is no longer awaiting signature.');
+          return;
+        }
+        await remindRtr(cur.document_id);
+        toast.show(`Reminder sent to ${name}`);
+      })
+      .catch(() => toast.show('Could not send the reminder. Try again shortly.'))
+      .finally(() => setReminding(false));
+  };
   // Defensive (?? '') — a version-skewed/malformed card with a missing desired_pay must never
   // throw and blank the board; an empty desired pay simply yields no pay chip.
   const wantsRaw = (card.desired_pay ?? '').trim();
@@ -367,6 +390,17 @@ function BoardCard({
           >
             {primary.key === 'pipeline.contact_talent' ? 'Send email' : primary.label}
           </Button>
+        ) : canRemind ? (
+          <Button
+            unstyled
+            type="button"
+            className="rc-tboard__act-btn"
+            onClick={(e) => { e.stopPropagation(); sendReminder(); }}
+            disabled={reminding}
+            title="Re-send the signing email for this RTR"
+          >
+            {reminding ? 'Sending reminder…' : 'Send reminder'}
+          </Button>
         ) : waiting.length > 0 ? (
           <span className="rc-tboard__wait">{waiting}</span>
         ) : null}
@@ -450,6 +484,7 @@ function BoardColumn({
   onSelectCard,
   onCardAction,
   onSendRtr,
+  requisitionId,
   isDropTarget,
   onDragStartCard,
   onDragEndCard,
@@ -465,6 +500,7 @@ function BoardColumn({
   onSelectCard: (pipelineId: string) => void;
   onCardAction?: (card: BoardCardView, talentName: string) => void;
   onSendRtr?: (talentId: string, talentName: string) => void;
+  requisitionId: string;
   isDropTarget: boolean;
   onDragStartCard: (card: BoardCardView) => void;
   onDragEndCard: () => void;
@@ -489,6 +525,7 @@ function BoardColumn({
       onSelect={() => onSelectCard(c.pipeline_id)}
       onAction={() => (onCardAction !== undefined ? onCardAction(c, name) : onSelectCard(c.pipeline_id))}
       onSendRtr={onSendRtr}
+      requisitionId={requisitionId}
       onDragStart={() => onDragStartCard(c)}
       onDragEnd={onDragEndCard}
       onRequestVoid={onRequestVoid}
@@ -598,6 +635,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubti
             onSelectCard={onSelectCard}
             onCardAction={onCardAction}
             onSendRtr={onSendRtr}
+            requisitionId={requisitionId}
             isDropTarget={validTargets?.has(col.key) ?? false}
             onDragStartCard={setDragging}
             onDragEndCard={() => setDragging(null)}
