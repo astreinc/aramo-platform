@@ -508,6 +508,7 @@
     "apps/api/src/tests/conversation-started.integration.spec.ts",
     "apps/api/src/tests/conversation-started.negative-shape.spec.ts",
     "apps/api/src/tests/create-submittal.unit.spec.ts",
+    "apps/api/src/tests/decorator-metadata-param-type-collision.spec.ts",
     "apps/api/src/tests/derive-matching-input.spec.ts",
     "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
     "apps/api/src/tests/document-readiness-effective-policy.unit.spec.ts",
