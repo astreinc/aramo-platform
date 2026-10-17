@@ -94,10 +94,25 @@ server {
     proxy_pass http://auth-service:3001;
   }
 
-  # Everything else: the ats-web SPA baked at /srv/ats, client-side routing via
-  # the index.html fallback.
+  # D-ORG-2 (T1 topology): the tenant host is the product-neutral App Home.
+  #   /ats/  → the ats-web SPA (baked at /srv/ats, built with Vite base `/ats/`);
+  #            client-side routing via its own index.html fallback so deep links
+  #            and refreshes under /ats/... keep working.
+  #   /      → the home-web SPA (App Home at `/`, Organization Administration at
+  #            `/org/*`, baked at /srv/home). Legacy ATS bookmarks (pre-T1 paths
+  #            such as /talent/...) reach home-web's index.html, whose catch-all
+  #            route forwards them to /ats<path> client-side.
+  location /ats/ {
+    alias /srv/ats/;
+    try_files $uri $uri/ /ats/index.html;
+  }
+  # `location = /ats` (no trailing slash) is normalised onto the SPA root.
+  location = /ats {
+    return 301 /ats/;
+  }
+
   location / {
-    root /srv/ats;
+    root /srv/home;
     try_files $uri /index.html;
   }
 }

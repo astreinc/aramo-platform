@@ -207,7 +207,8 @@ export function InterviewDetailView() {
           : { interviewer_user_ids: selectedInterviewers }),
       });
       // Navigate to the newly-scheduled interview.
-      window.location.assign(`/interviews/${created.id}`);
+      // D-ORG-2 — host-level navigation must carry the app base (/ats).
+      window.location.assign(`${import.meta.env.BASE_URL.replace(/\/+$/, '')}/interviews/${created.id}`);
     } catch (e) {
       setActionError(safeErrorMessage(e, 'Could not schedule the interview.'));
     } finally {

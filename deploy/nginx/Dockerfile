@@ -1,15 +1,15 @@
 # Aramo — nginx front-door image (Front-Door Migration PR-2, ADR-0023). Built
 # INERT: CI-gated + cutover-ready, but profile-gated in compose with no published
 # ports until the PR-3 flip. Mirrors the retired front-door image's shape — identical
-# web-builder stage (3 SPAs + the prisma:generate prerequisite), SPAs baked to
-# /srv/{ats,admin,portal}, front-door config + template copied in.
+# web-builder stage (5 SPAs + the prisma:generate prerequisite), SPAs baked to
+# /srv/{home,ats,admin,portal,sign}, front-door config + template copied in.
 #
 # Build from the REPO ROOT (the Nx build graph needs the whole workspace):
 #   docker build -f deploy/nginx/Dockerfile -t aramo/nginx:local .
 #
 # NO secrets baked in: the FE calls same-origin RELATIVE paths.
 
-# ---------- Stage 1: build ALL THREE static SPAs (mirrors the retired front-door image) ------
+# ---------- Stage 1: build ALL FIVE static SPAs (mirrors the retired front-door image) ------
 FROM node:24-bookworm-slim AS web-builder
 WORKDIR /app
 
@@ -28,7 +28,10 @@ COPY . .
 # prerequisite as the retired front-door image; generated code is NOT bundled into any SPA).
 RUN npm run prisma:generate
 
-# Build ALL THREE SPAs → dist/apps/{ats-web,platform-web,portal-web}.
+# Build ALL FIVE SPAs → dist/apps/{home-web,ats-web,platform-web,portal-web,sign-web}.
+# D-ORG-2: home-web is the tenant host's App Home (served at `/`); ats-web is
+# built with Vite base `/ats/` and served under `/ats/`.
+RUN npx nx build aramo-home-web --skip-nx-cache
 RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
 RUN npx nx build aramo-portal-web --skip-nx-cache
@@ -77,6 +80,7 @@ FROM nginx:stable-alpine AS runtime
 ARG GIT_REVISION=unknown
 LABEL org.opencontainers.image.revision=$GIT_REVISION
 # The compiled SPAs — the only application artifacts this image carries.
+COPY --from=web-builder /app/dist/apps/home-web /srv/home
 COPY --from=web-builder /app/dist/apps/ats-web /srv/ats
 COPY --from=web-builder /app/dist/apps/platform-web /srv/admin
 COPY --from=web-builder /app/dist/apps/portal-web /srv/portal

@@ -54,7 +54,7 @@ export interface CallbackInput {
   // the env-var routing per-consumer is a readiness-track follow-on
   // (real Cognito + IAM + 2 pools before PROD), since the proofs use
   // JwtIssuerService directly to mint platform JWTs (mocked Cognito).
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
   code: string | undefined;
   state: string | undefined;
   cognitoError: string | undefined;
@@ -78,6 +78,8 @@ export type CallbackResult =
       kind: 'success';
       accessJwt: string;
       refreshTokenPlaintext: string;
+      // D-ORG-2 — the deep link sealed at login (already sanitized), or null.
+      returnTo: string | null;
     }
   | {
       kind: 'validation_error';
@@ -294,6 +296,7 @@ export class SessionOrchestratorService {
       kind: 'success',
       accessJwt,
       refreshTokenPlaintext,
+      returnTo: payload.return_to ?? null,
     };
   }
 
