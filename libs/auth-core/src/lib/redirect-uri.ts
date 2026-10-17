@@ -216,8 +216,10 @@ function ensureLeadingSlash(p: string): string {
 // D-ORG-2 (topology T1) — each consumer lands in ITS app on the tenant host:
 // recruiter → the ATS app at /ats/; org → App Home at /; esign → App Home until the
 // Sign entry is activated (its path is reported by /v1/me/products); platform and
-// portal keep /. Overridable per consumer by AUTH_POST_LOGIN_PATH_<CONSUMER>, with
-// the legacy global AUTH_POST_LOGIN_PATH as the fallback for any consumer.
+// portal keep /. GOVERNED PRECEDENCE (Gate-6 V4 ruling — the legacy global must
+// not silently override the topology): AUTH_POST_LOGIN_PATH_<CONSUMER> (explicit
+// per-consumer operator override) → the consumer's built-in app base → the legacy
+// global AUTH_POST_LOGIN_PATH ONLY for a consumer with no built-in base → '/'.
 export const CONSUMER_APP_BASE: Readonly<Record<string, string>> = {
   recruiter: '/ats/',
   org: '/',
@@ -231,10 +233,12 @@ export function defaultPostLoginPath(consumer?: string): string {
   if (consumer !== undefined) {
     const perConsumer = process.env[`AUTH_POST_LOGIN_PATH_${consumer.toUpperCase()}`];
     if (perConsumer !== undefined && perConsumer.length > 0) return perConsumer;
+    const builtIn = CONSUMER_APP_BASE[consumer];
+    if (builtIn !== undefined) return builtIn;
   }
   const global = process.env['AUTH_POST_LOGIN_PATH'];
   if (global !== undefined && global.length > 0) return global;
-  return consumer !== undefined ? (CONSUMER_APP_BASE[consumer] ?? '/') : '/';
+  return '/';
 }
 
 // D-ORG-2 — a deep link offered at login (`?return_to=`) is accepted ONLY as a

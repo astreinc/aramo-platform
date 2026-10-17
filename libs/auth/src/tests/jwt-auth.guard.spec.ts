@@ -214,6 +214,18 @@ describe('JwtAuthGuard', () => {
     });
   });
 
+  // D-ORG Gate-6 V2 — the authorization version is per (tenant, principal), not
+  // per consumer: a bump invalidates the recruiter AND the org token of the same
+  // identity (no consumer keeps a silently stale session).
+  it('D-ORG-4: a stale authz_version invalidates every consumer token of the identity (recruiter and org alike)', async () => {
+    resolver.next = { status: 'stale' };
+    for (const consumer_type of ['recruiter', 'org'] as const) {
+      const token = await makeToken({ consumer_type });
+      const request = makeRequest({ Authorization: `Bearer ${token}` });
+      await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({ code: 'INVALID_TOKEN', statusCode: 401 });
+    }
+  });
+
   // HF-AUTH-1 — fail closed: an unprovable authorization resolves `unresolvable` →
   // deny (401), never trusting the token's own claims.
   it('throws INVALID_TOKEN (fail closed) when the resolver reports unresolvable', async () => {

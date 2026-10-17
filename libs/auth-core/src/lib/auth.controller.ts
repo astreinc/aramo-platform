@@ -528,6 +528,14 @@ export class AuthController {
     if (result.kind === 'success') {
       setAccessCookie(res, c, result.accessJwt);
       setRefreshCookie(res, c, result.refreshTokenPlaintext);
+      // D-ORG-4 upgrade transition: a jar minted BEFORE the consumer-suffixed
+      // names (legacy `aramo_refresh_token`) is migrated by this re-mint — the
+      // rotated token now lives only under the consumer name, so the legacy
+      // pair is retired here (it would otherwise linger holding a consumed token).
+      if (req.cookies?.[refreshCookieName(c)] === undefined && req.cookies?.[LEGACY_REFRESH_COOKIE] !== undefined) {
+        res.cookie(LEGACY_ACCESS_COOKIE, '', { httpOnly: true, secure: shouldSetSecure(), sameSite: 'lax', path: '/', maxAge: 0 });
+        res.cookie(LEGACY_REFRESH_COOKIE, '', { httpOnly: true, secure: shouldSetSecure(), sameSite: 'strict', path: '/auth', maxAge: 0 });
+      }
       res.status(200).end();
       return;
     }

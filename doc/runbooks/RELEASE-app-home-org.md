@@ -15,10 +15,11 @@ Terraform (the Cognito pool is not in IaC — see `doc/runbooks/RELEASE-platform
         this URL was never registered — a standing follow-up; the same URL now serves both SPAs' signed-out landings)
       Leave the existing `…/auth/recruiter/callback` and every other registered URL in place. `/auth/esign/callback`
       on the tenant host is NOT part of this release (Sign stays dark, §3.H).
-- [ ] **Decide the post-login landing env.** The code defaults are `recruiter → /ats/`, `org → /`. The box `.env`
-      currently sets the legacy global `AUTH_POST_LOGIN_PATH=/`, which OVERRIDES the per-consumer defaults for every
-      consumer. Either delete `AUTH_POST_LOGIN_PATH` (recommended — the code defaults apply) or set
-      `AUTH_POST_LOGIN_PATH_RECRUITER=/ats/` explicitly. `AUTH_SIGNOUT_PATH` stays `/signed-out`-compatible as today.
+- [ ] **Post-login landing (Gate-6 V4 ruling).** The code defaults are `recruiter → /ats/`, `org → /` and the legacy
+      global `AUTH_POST_LOGIN_PATH` no longer overrides a consumer with a built-in landing (it was also never passed to
+      the auth-service container by compose). Delete the stale `AUTH_POST_LOGIN_PATH=/` line from the box `.env` for
+      hygiene; to override ONE consumer explicitly use `AUTH_POST_LOGIN_PATH_<CONSUMER>` (now passed through by
+      compose for recruiter / org / esign). `AUTH_SIGNOUT_PATH` stays as today.
 - [ ] **Sign entry stays dark.** Do NOT set `ARAMO_SIGN_ENTRY_ENABLED`. `/v1/me/products` reports Sign as
       `not_activated` until a separate ruling activates the Sign entry (which also needs the Cognito callback above
       for `esign` and the nginx `/sign/` location — neither exists in this branch).
@@ -61,3 +62,23 @@ template cannot resolve).
 Recreate the previous image set (the previous nginx template roots `/srv/ats` at `/`). Sessions minted with the
 suffixed cookie names are simply ignored by the previous auth-service (it reads the unsuffixed names), so users
 re-authenticate once. Remove the two Cognito URLs only if the rollback is permanent.
+
+## 5. Local browser check (what Gate-6 V3 ran; repeatable before any release)
+
+The integrated front-door bundle in a real browser, with the two backends stubbed at the browser network layer
+(`apps/home-web/e2e/topology.spec.ts`; config `apps/home-web/playwright.topology.config.ts`):
+
+```sh
+docker build -f deploy/nginx/Dockerfile -t aramo/nginx:local .
+openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj '/CN=localhost' -keyout /tmp/certs/privkey.pem -out /tmp/certs/fullchain.pem
+docker run -d --name dorg-nginx -p 8443:443 --add-host api:127.0.0.1 --add-host auth-service:127.0.0.1 \
+  --add-host platform-admin:127.0.0.1 --add-host esign-service:127.0.0.1 \
+  -e NGINX_TENANT_SERVER_NAME=localhost -e NGINX_CERT_DIR=/certs -v /tmp/certs:/certs:ro aramo/nginx:local
+DORG_E2E_BASE_URL=https://localhost:8443 npx playwright test --config apps/home-web/playwright.topology.config.ts
+```
+
+Covers: tenant `/` → org login → App Home; the ATS tile → recruiter login with `return_to=/ats/`; ATS deep link +
+refresh through nginx; the ATS rail link out to `/org/`; the relocated Organization views and dialogs; legacy
+bookmark forwarding; an org-only session never opening the ATS; login-error and signed-out landings in both apps;
+global sign-out. Screenshots land in `apps/home-web/e2e/.evidence/` (gitignored). Backend contracts are proven by
+the auth-service and identity integration suites, not here.

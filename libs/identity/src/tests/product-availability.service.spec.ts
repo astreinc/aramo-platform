@@ -11,8 +11,17 @@ import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.s
 const T = '01900000-0000-7000-8000-000000000001';
 const U = '01900000-0000-7000-8000-0000000000aa';
 
-function svc(caps: string[], held: string[]): ProductAvailabilityService {
-  const roles = { getScopesByUserAndTenant: async () => held } as unknown as RoleService;
+function svc(caps: string[], held: string[], site: { site_id: string; siteHeld: string[] } | null = null): ProductAvailabilityService {
+  const roles = {
+    findActiveMembershipSite: async () => (site === null ? null : site.site_id),
+    // Tenant-wide reader — what a tenant-wide membership resolves.
+    getScopesByUserAndTenant: async () => held,
+    // Site-aware reader — what a site-scoped membership resolves (tenant-wide ∪ site-X).
+    getScopesByUserTenantAndSite: async (a: { site_id?: string }) => {
+      if (site === null || a.site_id !== site.site_id) throw new Error(`unexpected site reader call: ${String(a.site_id)}`);
+      return site.siteHeld;
+    },
+  } as unknown as RoleService;
   const entitlements = { getCapabilities: async () => new Set(caps) } as unknown as TenantEntitlementReader;
   return new ProductAvailabilityService(roles, entitlements);
 }
@@ -72,5 +81,21 @@ describe('ProductAvailabilityService (D-ORG)', () => {
     expect(Object.keys(v).sort()).toEqual(['products', 'tenant_id']);
     for (const p of v.products) expect(Object.keys(p).sort()).toEqual(['authorized', 'available', 'entry_path', 'key', 'reason', 'subscribed']);
     expect(v.products.map((p) => p.key)).toEqual(['ats', 'esign', 'org']);
+  });
+
+  // D-ORG Gate-6 V1 — authorization parity with the session path (PR-4 §2.4
+  // invariant 6): the reader is chosen by the principal's membership site exactly
+  // as the auth-service adapter chooses it at mint.
+  it('V1 parity: a SITE-SCOPED member is authorized from the site-aware reader (tenant-wide ∪ site-X), never from the tenant-wide reader alone', async () => {
+    const SITE = '01900000-0000-7000-8000-00000000000s'.replace('s', '5');
+    // Tenant-wide reader would say "nothing"; the site-aware reader carries the ATS role.
+    const p = byKey(await svc(['core', 'ats', 'portal'], [], { site_id: SITE, siteHeld: RECRUITER }).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(p['ats']).toMatchObject({ subscribed: true, authorized: true, available: true, entry_path: '/ats/' });
+    expect(p['org']).toMatchObject({ authorized: false, reason: 'not_authorized' });
+  });
+
+  it('V1 parity: a tenant-wide member (membership site null) is read from the tenant-wide reader; the site reader is never consulted', async () => {
+    const p = byKey(await svc(['core', 'ats', 'portal'], RECRUITER, null).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(p['ats'].available).toBe(true);
   });
 });

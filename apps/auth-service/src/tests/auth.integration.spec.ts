@@ -794,6 +794,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', legacy)).status).toBe(200);
       });
 
+      it('D-ORG-4 upgrade transition: a LEGACY unsuffixed refresh cookie still refreshes and the re-mint issues the consumer-suffixed pair (the legacy names are cleared); switching products (org login after recruiter) leaves the recruiter session valid', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const r = await login('recruiter');
+        // The pre-deploy jar: unsuffixed names only.
+        const legacyRefresh = `aramo_refresh_token=${r.refresh!.split('=')[1]}`;
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', legacyRefresh);
+        expect(res.status).toBe(200);
+        const names = (res.headers['set-cookie'] as unknown as string[]).map((c) => c.split(';')[0]!);
+        expect(names.some((c) => c.startsWith('aramo_access_token_recruiter=') && !c.endsWith('='))).toBe(true);
+        expect(names.some((c) => c.startsWith('aramo_refresh_token_recruiter=') && !c.endsWith('='))).toBe(true);
+        // The legacy names are cleared by the re-mint (Max-Age=0), never re-issued.
+        const cleared = (res.headers['set-cookie'] as unknown as string[]).filter((c) => c.includes('Max-Age=0')).map((c) => c.split('=')[0]);
+        expect(cleared).toEqual(expect.arrayContaining(['aramo_access_token', 'aramo_refresh_token']));
+        // Product switching: an org login afterwards does not disturb the recruiter session.
+        const fresh = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('aramo_access_token_recruiter='))!.split(';')[0]!;
+        await login('org');
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', fresh)).status).toBe(200);
+      });
+
       it('3/4/6. multi-product tenant: the SAME identity gets disjoint consumer-specific scopes; platform:* and esign:* never ride a recruiter token even when the roles hold them', async () => {
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);

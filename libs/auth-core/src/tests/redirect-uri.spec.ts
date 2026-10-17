@@ -182,7 +182,7 @@ describe('D-ORG-2 — per-consumer post-login landing and return_to', () => {
   afterEach(() => {
     process.env = { ...saved };
   });
-  it('defaults: recruiter → /ats/, org → /, esign (dark) → /, platform → /, portal → /; AUTH_POST_LOGIN_PATH_<CONSUMER> overrides one consumer, AUTH_POST_LOGIN_PATH overrides all', () => {
+  it('defaults: recruiter → /ats/, org → /, esign (dark) → /, platform → /, portal → /; AUTH_POST_LOGIN_PATH_<CONSUMER> overrides one consumer; the legacy global AUTH_POST_LOGIN_PATH never overrides a consumer with a built-in base (Gate-6 V4)', () => {
     delete process.env['AUTH_POST_LOGIN_PATH'];
     expect(defaultPostLoginPath('recruiter')).toBe('/ats/');
     expect(defaultPostLoginPath('org')).toBe('/');
@@ -193,8 +193,15 @@ describe('D-ORG-2 — per-consumer post-login landing and return_to', () => {
     expect(defaultPostLoginPath('recruiter')).toBe('/ats/desk');
     expect(defaultPostLoginPath('org')).toBe('/');
     process.env['AUTH_POST_LOGIN_PATH'] = '/everyone';
-    expect(defaultPostLoginPath('org')).toBe('/everyone');
+    // The box .env still carries AUTH_POST_LOGIN_PATH=/ from the pre-T1 era: it must
+    // not silently move the recruiter off /ats/ or the org consumer off /.
+    expect(defaultPostLoginPath('org')).toBe('/');
     expect(defaultPostLoginPath('recruiter')).toBe('/ats/desk');
+    delete process.env['AUTH_POST_LOGIN_PATH_RECRUITER'];
+    expect(defaultPostLoginPath('recruiter')).toBe('/ats/');
+    // A consumer with no built-in base (or no consumer) keeps the legacy global.
+    expect(defaultPostLoginPath('something-new')).toBe('/everyone');
+    expect(defaultPostLoginPath(undefined)).toBe('/everyone');
   });
   it('derivePostLoginRedirect(base, consumer) lands each consumer in its app; a legacy call without a consumer keeps the pre-D-ORG behaviour', () => {
     delete process.env['AUTH_POST_LOGIN_PATH'];

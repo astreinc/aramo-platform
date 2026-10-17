@@ -65,10 +65,14 @@ export class ProductAvailabilityService {
     private readonly entitlements: TenantEntitlementReader,
   ) {}
 
+  private heldScopesAsSessionWouldResolve(args: { user_id: string; tenant_id: string }): Promise<string[]> {
+    return heldScopes(this.roles, args);
+  }
+
   async forPrincipal(args: { user_id: string; tenant_id: string }): Promise<ProductAvailabilityView> {
     const [capabilities, held] = await Promise.all([
       this.entitlements.getCapabilities(args.tenant_id),
-      this.roles.getScopesByUserAndTenant(args),
+      this.heldScopesAsSessionWouldResolve(args),
     ]);
     const tenantHasEsign = capabilities.has('esign');
     const orgSubset = ORG_ADMIN_SCOPE_KEYS as readonly string[];
@@ -96,6 +100,21 @@ export class ProductAvailabilityService {
     ];
     return { tenant_id: args.tenant_id, products };
   }
+}
+
+// D-ORG Gate-6 V1 (parity) — the HELD scope set is read exactly the way a
+// session mint resolves it (auth-service adapter `resolveScopesInternal`, PR-4
+// §2.4 invariant 6): the principal's single active membership decides the
+// reader — tenant-wide when `site_id` is null, the site-aware union
+// (tenant-wide ∪ site-X) when the membership is site-scoped. The per-request
+// resolver applies the same union under the token's site claim, so "authorized"
+// here can never differ from the access the product session actually receives.
+// Not a second authorization authority: the readers are the RoleService's own.
+async function heldScopes(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {
+  const site_id = await roles.findActiveMembershipSite(args);
+  return site_id === null
+    ? roles.getScopesByUserAndTenant(args)
+    : roles.getScopesByUserTenantAndSite({ ...args, site_id });
 }
 
 function product(

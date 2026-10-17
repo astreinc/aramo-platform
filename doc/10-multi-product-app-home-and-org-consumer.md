@@ -53,7 +53,7 @@ Policy code: `libs/identity/src/lib/authorization/consumer-scope-policy.ts` (`re
 `libs/identity/src/lib/authorization/product-availability.service.ts`) returns, per product (`ats`, `esign`, `org`):
 `subscribed` (the tenant holds the capability), `authorized` (the caller holds a scope/role that can use it), `available`
 (subscribed ∧ authorized ∧ activated), `entry_path`, `reason` (`not_subscribed` | `not_authorized` | `not_activated`).
-The FE renders these booleans and never derives entitlement; no role is granted automatically. Sign's entry is reported
+The FE renders these booleans and never derives entitlement; no role is granted automatically. `authorized` is read the way a session mint reads scopes (the membership's site selects the tenant-wide or the site-aware reader — PR-4 §2.4 invariant 6), so App Home never marks a product unavailable for someone the product session would authorize (Gate-6 V1, proven on a real site-scoped membership). Sign's entry is reported
 `not_activated` until `ARAMO_SIGN_ENTRY_ENABLED=true` (its path then `/sign/`) — the Sign PRODUCT host stays dark (§3.H).
 
 A product tile enters the product through that product's consumer login with the entry path sealed as `return_to`
@@ -105,7 +105,7 @@ first. Now each consumer owns its own jar on the host:
 Unchanged: HttpOnly, Secure (outside `AUTH_ALLOW_INSECURE_COOKIES`), SameSite, host-only (no apex cookie — IC-0 §F.2
 rule 7), PKCE, host binding (IC-2 PR-4/PR-5), refresh rotation and revocation, the authz-version check, the Cognito
 logout redirect (HF3 R1–R7). Legacy unsuffixed names are still READ as a fallback (a session minted before the deploy
-keeps working until it expires) and are cleared on every logout.
+keeps working until it expires), are retired by the first `/refresh` that migrates them, and are cleared on every logout.
 
 Selection (`libs/auth/src/lib/session-cookie-names.ts`, `JwtAuthGuard`): the FE sends `X-Aramo-Consumer`
 (`libs/fe-foundation/src/api/client.ts`); the guard reads that consumer's cookie and refuses 401 `INVALID_TOKEN` on
@@ -121,7 +121,7 @@ Aramo cookies present it is an idempotent no-op before the redirect.
 `return_to` (D-ORG-2): `?return_to=` on `/auth/<c>/login` is accepted only as a same-host RELATIVE path (no scheme,
 authority or `//`, ≤ 2000 chars) inside that consumer's own app base (`sanitizeReturnTo`), sealed in the PKCE state,
 and applied at the callback (`derivePostLoginRedirect`). Anything else silently falls back to the consumer's default
-landing. Overrides: `AUTH_POST_LOGIN_PATH_<CONSUMER>`, then the legacy global `AUTH_POST_LOGIN_PATH`.
+landing. Landing precedence (Gate-6 V4): `AUTH_POST_LOGIN_PATH_<CONSUMER>` → the consumer's built-in base → the legacy global `AUTH_POST_LOGIN_PATH` only for a consumer without a built-in base.
 
 ## 6. Governance reconciliation (§4) — amendments prepared, RATIFICATION PENDING
 
