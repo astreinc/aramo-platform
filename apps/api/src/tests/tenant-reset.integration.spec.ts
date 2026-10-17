@@ -241,16 +241,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Activity — the scoped-purge crux (§2.3): 2 workflow rows (DELETE) +
       // 3 talent/company/contact history rows (PRESERVE) for T, and 1
       // workflow row for the bystander (must SURVIVE — different tenant).
-      const act = async (tenant: string, type: string, st: string | null, sid: string | null): Promise<void> => {
+      const act = async (tenant: string, type: string, st: string | null, sid: string | null): Promise<string> => {
+        const id = uuidv7();
         await db.query(
           `INSERT INTO activity."Activity" (id, tenant_id, type, subject_type, subject_id) VALUES ($1::uuid,$2::uuid,$3::"activity"."ActivityType",$4,$5::uuid)`,
-          [uuidv7(), tenant, type, st, sid],
+          [id, tenant, type, st, sid],
+        );
+        return id;
+      };
+      // S2 F4 — an RN-1 note is an Activity + ActivityNote + its append-only
+      // CREATED ActivityNoteEvent (RESTRICT FK). Before S2 the requisition note's
+      // event aborted the whole reset.
+      const rn1 = async (tenant: string, activityId: string): Promise<void> => {
+        await db.query(`INSERT INTO activity."ActivityNote" (activity_id) VALUES ($1::uuid)`, [activityId]);
+        await db.query(
+          `INSERT INTO activity."ActivityNoteEvent" (id, tenant_id, activity_id, event_type, actor_user_id) VALUES ($1::uuid,$2::uuid,$3::uuid,'CREATED',$4::uuid)`,
+          [uuidv7(), tenant, activityId, uuidv7()],
         );
       };
       await act(T, 'pipeline_status_change', 'pipeline', PIPE); // workflow → delete
-      await act(T, 'note', 'requisition', REQ1); // workflow → delete
+      await rn1(T, await act(T, 'note', 'requisition', REQ1)); // workflow RN-1 note → delete (with its event)
       await act(T, 'call', 'talent_record', TALENT); // talent history → preserve
-      await act(T, 'note', 'company', COMPANY); // company history → preserve
+      await rn1(T, await act(T, 'note', 'company', COMPANY)); // company RN-1 note → preserve (its event survives)
       await act(T, 'note', 'contact', CONTACT); // contact history → preserve
       await act(T2, 'pipeline_status_change', 'pipeline', PIPE_B); // bystander → survive
 
@@ -412,6 +424,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const del = (label: string): number => report.deleted.find((d) => d.label === label)!.before;
       expect(del('activity."Activity"')).toBe(2); // ONLY the 2 workflow rows
+      expect(del('activity."ActivityNoteEvent"')).toBe(1); // ONLY the scoped requisition note's event
       expect(del('requisition."RequisitionLifecycleEvent"')).toBe(1);
       expect(del('submittal."TalentSubmittalEvent"')).toBe(1);
       expect(del('submittal."TalentSubmittalRecord"')).toBe(1);
@@ -579,6 +592,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await count('activity."Activity"', `tenant_id=$1::uuid AND subject_type IN ('talent_record','company','contact')`, [T]),
       ).toBe(preservedBefore.histActivity);
       expect(preservedBefore.histActivity).toBe(3);
+      // S2 F4 — the scoped requisition note's event went with it; the preserved
+      // company note keeps its append-only event.
+      expect(
+        await count('activity."ActivityNoteEvent"', `activity_id IN (SELECT id FROM activity."Activity" WHERE tenant_id=$1::uuid AND subject_type = 'requisition')`, [T]),
+      ).toBe(0);
+      expect(await count('activity."ActivityNoteEvent"', 'tenant_id=$1::uuid', [T])).toBe(1);
 
       // Every preserved entity is identical before and after.
       expect(await count('metering."UsageEvent"', 'tenant_id=$1::uuid', [T])).toBe(preservedBefore.usage);

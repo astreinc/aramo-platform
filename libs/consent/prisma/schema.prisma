@@ -129,3 +129,51 @@ model ConsentAuditEvent {
   @@index([tenant_id, subject_id, created_at(sort: Desc), id(sort: Desc)])
   @@schema("audit")
 }
+
+// S2 Talent Erasure Integrity (Architect ruling F1/F5; TM-L12) — the durable,
+// truthful state of one erasure run (written by the erase-talent CLI through raw
+// SQL). STORAGE_PENDING until every object is verifiably purged; the
+// consent.erased marker is appended only at COMPLETED. UPDATE-guard triggers in
+// the migration keep terminal states and identity immutable.
+// S2 LOCKED §2: a run is created ONLY by the SECURITY DEFINER erasure entry point, in
+// state DB_PASS_IN_PROGRESS (the transaction-bound erasure authorization), and
+// must leave that state before COMMIT (deferred constraint trigger).
+model TalentErasureRun {
+  id              String    @id @db.Uuid
+  tenant_id       String    @db.Uuid
+  record_id       String    @db.Uuid
+  record_ids      String[]  @db.Uuid
+  subject_ids     String[]  @db.Uuid
+  state           String
+  artifact_count  Int
+  db_committed_at DateTime  @default(now()) @db.Timestamptz(3)
+  completed_at    DateTime? @db.Timestamptz(3)
+  last_attempt_at DateTime? @db.Timestamptz(3)
+  attempt_count   Int       @default(0)
+
+  artifacts TalentErasureArtifact[]
+
+  @@unique([tenant_id, record_id], map: "TalentErasureRun_tenant_record_key")
+  @@index([state], map: "TalentErasureRun_state_idx")
+  @@schema("consent")
+}
+
+// One object-storage artifact of an erasure run. The key (which can embed an
+// uploaded filename) is held only while PENDING/FAILED; PURGED keeps its SHA-256.
+model TalentErasureArtifact {
+  id                 String    @id @db.Uuid
+  tenant_id          String    @db.Uuid
+  run_id             String    @db.Uuid
+  storage_key        String?
+  storage_key_sha256 String
+  state              String
+  attempt_count      Int       @default(0)
+  last_error         String?
+  last_attempt_at    DateTime? @db.Timestamptz(3)
+  purged_at          DateTime? @db.Timestamptz(3)
+
+  run TalentErasureRun @relation(fields: [run_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([run_id, storage_key_sha256], map: "TalentErasureArtifact_run_key_hash_key")
+  @@schema("consent")
+}

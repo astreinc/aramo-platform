@@ -191,6 +191,35 @@ that would surface it — loudly, at boot — but the fix is to wire the handout
   rows + tag/delete S3 objects), and build the ADR-0007 anonymization state
   machine. Until then, RTBF is a runbook-driven operator procedure.
 
+### Talent erasure (S2): built and fail-closed — production ACTIVATION blocked
+- **Date:** 2026-10-16 · **Branch:** `fix/s2-erasure-integrity` · **Authority:**
+  `ARAMO-S2-Talent-Erasure-Integrity-Amendment-v1.0-LOCKED`.
+- **Present:** the `erase-talent` CLI erases, redacts and tombstones under a
+  transaction-bound, database-enforced authorization; concurrent writers serialize
+  with it; it reports COMPLETED only when every governed holder in Aramo custody is
+  resolved and every object version is purged.
+- **Activation prerequisites (mandatory, NOT met):**
+  1. **The application must not connect as a database superuser.** Production uses
+     the postgres bootstrap superuser; a superuser bypasses grants, can assume any
+     role and can disable triggers, so the erasure role separation does NOT protect
+     that connection. Required: a non-superuser runtime role for the app and a
+     separate operator login that is a member of the erasure-operator role (see the runbook).
+  2. Legal retention classes for client talent restrictions, commercial records
+     (offer, placement family, submittal consumption) and executed e-sign records.
+  3. Rulings for the `PENDING_CLASSIFICATION` holders (policy decision records,
+     AI-draft events, sourced talent, import failures).
+  4. IAM `s3:ListBucketVersions` + `s3:DeleteObjectVersion` for the erasure
+     principal (applied from the Mac, separately).
+  5. A separate deployment authorization.
+- **Production limitations (by design, fail-closed):** a talent with any holder in
+  items 2–3 erases as `BLOCKED` (exit 2, nothing changed) with the holder named;
+  an unpublished outbox event naming the talent is `PENDING_OUTBOX_DRAIN` (retry
+  after the outbox publishes); an interaction or document shared with another
+  talent is `BLOCKED_SHARED`. External custody (Teams/Zoom recordings, M365
+  mailboxes, LLM-provider logs, the source ATS/VMS) is never erased or reported as
+  erased. Remediation per class: runbook
+  [doc/runbooks/talent-rtbf-erasure.md](runbooks/talent-rtbf-erasure.md).
+
 ### Staging resume bucket: app IAM principal bound; live real-PII on apply
 - **Date:** 2026-06-17 · **Branch:** `feat/staging-resume-bucket-iam`
 - **Present (authored, pending manual apply):** the `s3-resume-bucket` module

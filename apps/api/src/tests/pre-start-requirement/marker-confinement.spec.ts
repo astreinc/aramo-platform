@@ -35,6 +35,22 @@ const EXACT_ALLOWLIST = new Set<string>([
   'libs/pre-start-requirement/src/tests/pre-start-requirement.repository.integration.spec.ts',
   // The tenant-reset service — the ONLY production code that sets the marker.
   'libs/tenant-reset/src/lib/tenant-reset.service.ts',
+  // S2 F4 — the RN-1-A1 ActivityNoteEvent reject trigger gains the same exact-value
+  // DELETE escape (UPDATE stays unconditional) so a governed reset can delete the
+  // scoped requisition-note events.
+  'libs/activity/prisma/migrations/20261016170000_s2_activity_note_event_tenant_reset_escape/migration.sql',
+  // S2 LOCKED §3.1 — the ActivityNoteEvent reject trigger is CREATE OR REPLACEd again to
+  // add the subject-bound erasure DELETE branch; the F4 tenant_reset escape is carried
+  // forward byte-for-byte.
+  'libs/activity/prisma/migrations/20261016180100_s2_activity_note_event_erasure_delete/migration.sql',
+  // S2 LOCKED §3.1 — the TalentRequisitionResume DELETE-reject trigger is CREATE OR
+  // REPLACEd to add the subject-bound erasure branch; its tenant_reset escape is carried
+  // forward byte-for-byte.
+  'libs/pipeline/prisma/migrations/20261016180300_s2_pipeline_history_erasure_redaction/migration.sql',
+  // S2 integration proof — exercises that ActivityNoteEvent DELETE passes only
+  // under the exact value, UPDATE never does, and that the erasure service source
+  // names NO session marker (raw SET LOCAL in a rolled-back transaction).
+  'apps/api/src/tests/s2-erasure-integrity.integration.spec.ts',
   // PR-C placement reset-escape migration — defines the exact-value escape on the
   // placement OutboxEvent + PlacementProcessEvent DELETE-reject triggers.
   'libs/placement/prisma/migrations/20260806090000_placement_tenant_reset_escape/migration.sql',

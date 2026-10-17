@@ -7,7 +7,7 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { TalentErasureService, type PgExec, type S3Deleter } from '../../talent-identity/talent-erasure.service.js';
+import { TalentErasureService, type ErasureObjectStore, type PgExec } from '../../talent-identity/talent-erasure.service.js';
 
 // TIP-E2E INC-3 A1-8 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED Part H, §B.8) — erasure of
 // SCREENING-LINKED data against real Postgres 17 (every repo migration applied):
@@ -20,9 +20,11 @@ import { TalentErasureService, type PgExec, type S3Deleter } from '../../talent-
 //     dispositions, associations;
 //   - the linked conversation transcript AND both object-storage artifacts;
 //   - the CI screening-profile run + claims + citations + draft.
-// Negative controls: the same talent's NON-screening meeting, the other
-// talent's transcript / CI run, and another tenant are untouched (the general
-// communications / transcript / CI gap stays on the separate S2 track).
+// S2 (Talent Erasure Integrity, F3): the talent's GENERAL communications are
+// erased too — the same talent's non-screening (requisition) meeting and its
+// transcript + CI run are personal data of the erased person.
+// Negative controls: ANOTHER talent's meeting / transcript / CI run in the same
+// tenant, and another tenant, are untouched.
 
 const ROOT = resolve(__dirname, '../../../../..');
 function allMigrations(): string[] {
@@ -54,14 +56,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let pg: PgExec;
     const erasure = new TalentErasureService();
     const s3: string[] = [];
-    const s3Delete: S3Deleter = async (keys) => {
-      s3.push(...keys);
+    const s3Delete: ErasureObjectStore = {
+      purge: async (key) => {
+        s3.push(key);
+        return { remaining: 0 };
+      },
     };
     const ids = {
       session: uuidv7(),
       interaction: uuidv7(),
       pendingLinkInteraction: uuidv7(),
-      otherInteraction: uuidv7(),
+      otherInteraction: uuidv7(), // REC's general (requisition) meeting — erased under S2
+      otherTalentInteraction: uuidv7(), // ANOTHER talent's meeting — must survive
+      otherTalentTranscript: uuidv7(),
+      otherTalentRun: uuidv7(),
       foreignInteraction: uuidv7(),
       transcript: uuidv7(),
       otherTranscript: uuidv7(),
@@ -179,13 +187,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [uuidv7(), TENANT, finding, ids.transcript],
       );
 
-      // ---- NEGATIVE CONTROLS ----
-      // The same talent's NON-screening (requisition) meeting: S2 track, untouched.
+      // ---- The same talent's GENERAL (requisition) meeting — erased under S2 F3 ----
       await interaction(ids.otherInteraction, TENANT, REC, [['requisition', uuidv7()]]);
       await operation(TENANT, REC, ids.otherInteraction, uuidv7());
-      // Another talent's transcript + CI run in the same tenant.
       await transcript(ids.otherTranscript, TENANT, ids.otherInteraction);
       await ciRun(ids.otherRun, TENANT, ids.otherTranscript, ids.otherInteraction, null);
+      // ---- NEGATIVE CONTROLS ----
+      // ANOTHER talent's meeting + transcript + CI run in the same tenant.
+      await interaction(ids.otherTalentInteraction, TENANT, OTHER_TALENT, [['requisition', uuidv7()]]);
+      await operation(TENANT, OTHER_TALENT, ids.otherTalentInteraction, uuidv7());
+      await transcript(ids.otherTalentTranscript, TENANT, ids.otherTalentInteraction);
+      await ciRun(ids.otherTalentRun, TENANT, ids.otherTalentTranscript, ids.otherTalentInteraction, null);
       // Another tenant's screening-shaped interaction.
       await interaction(ids.foreignInteraction, OTHER_TENANT, OTHER_TALENT, []);
     }, 300_000);
@@ -203,31 +215,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const report = await erasure.dryRun(pg, TENANT, REC);
       expect(report.steps.filter((s) => s.status !== 'counted')).toEqual([]);
       const c = (t: string): number => report.steps.find((s) => s.table === t)!.count;
-      expect(c('conversation_intelligence."ConversationIntelligenceRun"')).toBe(1);
-      expect(c('conversation_intelligence."ConversationIntelligenceClaim"')).toBe(1);
-      expect(c('conversation_intelligence."ConversationIntelligenceCitation"')).toBe(1);
-      expect(c('conversation_intelligence."ConversationIntelligenceDraft"')).toBe(1);
-      expect(c('conversation_transcript."ConversationTranscript"')).toBe(1);
-      expect(c('communications."CommunicationInteraction"')).toBe(2); // linked + scheduled-but-unlinked
-      expect(c('communications."CommunicationAssociation"')).toBe(4);
-      expect(c('communications."MeetingSchedulingOperation"')).toBe(3); // linked + unlinked + the failed op
+      expect(report.blockers).toEqual([]);
+      // screening run + the general meeting's run
+      expect(c('conversation_intelligence."ConversationIntelligenceRun"')).toBe(2);
+      expect(c('conversation_intelligence."ConversationIntelligenceClaim"')).toBe(2);
+      expect(c('conversation_intelligence."ConversationIntelligenceCitation"')).toBe(2);
+      expect(c('conversation_intelligence."ConversationIntelligenceDraft"')).toBe(2);
+      expect(c('conversation_transcript."ConversationTranscript"')).toBe(2);
+      expect(c('communications."CommunicationInteraction"')).toBe(3); // linked + scheduled-but-unlinked + general
+      expect(c('communications."CommunicationAssociation"')).toBe(6);
+      expect(c('communications."MeetingSchedulingOperation"')).toBe(4); // linked + unlinked + failed + general
       for (const t of ['ScreeningFindingCitation', 'ScreeningAssistSuggestion', 'ScreeningNote', 'ScreeningQuestion', 'ScreeningAiGeneration', 'ScreeningTranscriptLink']) {
         expect(c(`technical_screening."${t}"`), t).toBe(1);
       }
       expect(report.scope.s3_keys.sort()).toEqual([
+        `conversation-transcript/${TENANT}/normalized/${ids.otherTranscript}`,
         `conversation-transcript/${TENANT}/normalized/${ids.transcript}`,
+        `conversation-transcript/${TENANT}/source/${ids.otherTranscript}`,
         `conversation-transcript/${TENANT}/source/${ids.transcript}`,
-      ]);
+      ].sort());
       expect(await count('technical_screening."ScreeningNote"', 'true', [])).toBe(1);
     });
 
     it('execute erases every screening-linked row + artifact and nothing else; a re-run is empty', async () => {
       const report = await erasure.execute(pg, TENANT, REC, s3Delete);
-      expect(report.steps.filter((s) => s.status === 'failed')).toEqual([]);
+      expect(report.outcome).toBe('COMPLETED');
+      // S2 LOCKED §3.2 — the pass also redacts / tombstones retained history (never 'failed').
+      expect(report.steps.filter((s) => !['deleted', 'redacted', 'tombstoned'].includes(s.status))).toEqual([]);
+      expect(report.storage).toEqual({ total: 4, purged: 4, pending: 0, failed: 0 });
       expect(s3.sort()).toEqual([
+        `conversation-transcript/${TENANT}/normalized/${ids.otherTranscript}`,
         `conversation-transcript/${TENANT}/normalized/${ids.transcript}`,
+        `conversation-transcript/${TENANT}/source/${ids.otherTranscript}`,
         `conversation-transcript/${TENANT}/source/${ids.transcript}`,
-      ]);
+      ].sort());
       for (const t of ['ScreeningSession', 'ScreeningFinding', 'ScreeningFindingCitation', 'ScreeningAssistSuggestion', 'ScreeningNote', 'ScreeningQuestion', 'ScreeningAiGeneration', 'ScreeningTranscriptLink', 'ScreeningEvent']) {
         expect(await count(`technical_screening."${t}"`, 'tenant_id = $1::uuid', [TENANT]), t).toBe(0);
       }
@@ -238,15 +259,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('communications."CommunicationInteraction"', 'id = $1::uuid', [ids.pendingLinkInteraction])).toBe(0);
       expect(await count('communications."MeetingSchedulingOperation"', 'screening_session_id = $1::uuid', [ids.session])).toBe(0);
 
-      // Negative controls — untouched.
-      expect(await count('communications."CommunicationInteraction"', 'id = ANY($1::uuid[])', [[ids.otherInteraction, ids.foreignInteraction]])).toBe(2);
-      expect(await count('communications."MeetingSchedulingOperation"', 'interaction_id = $1::uuid', [ids.otherInteraction])).toBe(1);
-      expect(await count('conversation_transcript."ConversationTranscript"', 'id = $1::uuid', [ids.otherTranscript])).toBe(1);
-      expect(await count('conversation_intelligence."ConversationIntelligenceRun"', 'id = $1::uuid', [ids.otherRun])).toBe(1);
-      expect(await count('conversation_intelligence."ConversationIntelligenceClaim"', 'run_id = $1::uuid', [ids.otherRun])).toBe(1);
+      // S2 F3 — the same talent's GENERAL meeting, its transcript and CI run are gone too.
+      expect(await count('communications."CommunicationInteraction"', 'id = $1::uuid', [ids.otherInteraction])).toBe(0);
+      expect(await count('communications."MeetingSchedulingOperation"', 'talent_record_id = $1::uuid', [REC])).toBe(0);
+      expect(await count('conversation_transcript."ConversationTranscript"', 'id = $1::uuid', [ids.otherTranscript])).toBe(0);
+      expect(await count('conversation_intelligence."ConversationIntelligenceRun"', 'id = $1::uuid', [ids.otherRun])).toBe(0);
+
+      // Negative controls — ANOTHER talent and ANOTHER tenant are untouched.
+      expect(await count('communications."CommunicationInteraction"', 'id = ANY($1::uuid[])', [[ids.otherTalentInteraction, ids.foreignInteraction]])).toBe(2);
+      expect(await count('communications."MeetingSchedulingOperation"', 'interaction_id = $1::uuid', [ids.otherTalentInteraction])).toBe(1);
+      expect(await count('conversation_transcript."ConversationTranscript"', 'id = $1::uuid', [ids.otherTalentTranscript])).toBe(1);
+      expect(await count('conversation_intelligence."ConversationIntelligenceRun"', 'id = $1::uuid', [ids.otherTalentRun])).toBe(1);
+      expect(await count('conversation_intelligence."ConversationIntelligenceClaim"', 'run_id = $1::uuid', [ids.otherTalentRun])).toBe(1);
       expect(await count('talent_record."TalentRecord"', 'id = $1::uuid', [OTHER_TALENT])).toBe(1);
 
       const second = await erasure.execute(pg, TENANT, REC, s3Delete);
+      expect(second.outcome).toBe('COMPLETED');
       expect(second.total_rows).toBe(0);
     });
   },

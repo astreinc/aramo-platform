@@ -13,7 +13,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   TalentErasureService,
   type PgExec,
-  type S3Deleter,
+  type ErasureObjectStore,
 } from '../talent-identity/talent-erasure.service.js';
 
 // TR-2b B2b (Directive §PR-2.1/§PR-2.4) — the erasure last-reference cluster purge,
@@ -58,9 +58,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let db: Client;
     let pg: PgExec;
     const erasure = new TalentErasureService();
-    const s3Stub: S3Deleter = async () => {
-      /* no-op */
-    };
+    const s3Stub: ErasureObjectStore = { purge: async () => ({ remaining: 0 }) };
 
     async function seedRecord(tenant: string, recordId: string): Promise<void> {
       await db.query(
