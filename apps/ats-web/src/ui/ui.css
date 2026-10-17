@@ -6615,6 +6615,11 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-ip__menuitem--danger { color: var(--danger); }
 .rc-ip__menuitem--danger:hover { background: var(--danger-tint); }
 .rc-ip__foot { font-size: 0.74rem; color: var(--muted); margin-top: 10px; }
+/* The row ⋯ menu is absolutely positioned inside the table wrap; the generic
+   .rc-tablewrap overflow-x:auto also clips vertically, cutting off "Discard" on
+   the last row (and adding a scrollbar). The wide In-progress table is only
+   shown on wide screens (narrow → .rc-ip-narrow cards), so let it overflow. */
+.rc-ip-wide .rc-tablewrap { overflow: visible; }
 
 /* §12 — Reading-resume is informational (blue), never a block. */
 .rc-readingnote { display: flex; align-items: flex-start; gap: 9px; border: 1px solid var(--info); background: var(--info-tint); color: var(--brand-strong); border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 0.8rem; line-height: 1.45; }
@@ -6689,3 +6694,8 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-redition__reject:disabled,
 .rc-redition__archive:disabled { opacity: 0.55; cursor: default; }
 .rc-redition-archived { margin-top: 8px; }
+
+/* Talent list row "Open Talent 360" icon link (replaces the retired triage drawer's Preview button). */
+.rc-iconlink { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--brand); }
+.rc-iconlink:hover, .rc-iconlink:focus-visible { background: var(--brand-tint); }
+.rc-iconlink svg { width: 15px; height: 15px; }

@@ -18,6 +18,7 @@ import { OfferPanelContainer } from '../../offers/OfferPanelContainer';
 import { listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } from '../../pipeline/pipeline-api';
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
+import { getCurrentRtr, remindRtr } from '../../rtr/rtr-api';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
 import { withCurrency } from '../../talent/stated-fields';
 import { availabilityLabel, journeyOwnerLabel } from '../../talent-360/t360-vocab';
@@ -218,6 +219,9 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canCall = scopes.includes('communication:voice:call');
   const canEditTalent = scopes.includes('talent:edit');
   const canSendRtr = scopes.includes('document:create');
+  // Same-envelope reminder (COMM-RECRUITER-W1 W1-C3) — the RtrPanel's gate.
+  const canRemindRtr = scopes.includes('document:execute');
+  const [reminding, setReminding] = useState(false);
 
   // Route chrome: edge-to-edge content (the app shell — main nav + top bar — is
   // unchanged). The sticky section nav / header sit below the shell's sticky top
@@ -417,6 +421,25 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     });
   };
 
+  // "Send reminder" while the RTR awaits signature: resolve the authoritative
+  // current RTR for this (talent, requisition), then re-notify the same envelope.
+  const sendRtrReminder = (): void => {
+    if (reminding) return;
+    setReminding(true);
+    void getCurrentRtr(talentId, reqId)
+      .then(async (cur) => {
+        if (cur === null || cur.status !== 'AWAITING_SIGNATURE') {
+          toast.show('This RTR is no longer awaiting signature.');
+          setReload((n) => n + 1);
+          return;
+        }
+        await remindRtr(cur.document_id);
+        toast.show('Reminder sent');
+      })
+      .catch(() => toast.show('Could not send the reminder. Try again shortly.'))
+      .finally(() => setReminding(false));
+  };
+
   const confirmVoid = async (): Promise<void> => {
     if (pipeline === null) return;
     setVoidBusy(true);
@@ -448,9 +471,11 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       glyph: rtr.done ? '✓' : '1',
       pill: rtr.pill,
       tone: rtr.tone,
-      cta: card?.rtr_status === 'NOT_SENT' && canSendRtr ? 'Send RTR' : 'View',
-      ctaPrimary: card?.rtr_status === 'NOT_SENT' && canSendRtr,
-      onCta: card?.rtr_status === 'NOT_SENT' && canSendRtr ? () => setRtrOpen(true) : () => go('docs'),
+      ...(card?.rtr_status === 'NOT_SENT' && canSendRtr
+        ? { cta: 'Send RTR', ctaPrimary: true, onCta: () => setRtrOpen(true) }
+        : card?.rtr_status === 'SENT' && canRemindRtr
+          ? { cta: reminding ? 'Sending reminder…' : 'Send reminder', ctaPrimary: false, onCta: sendRtrReminder }
+          : { cta: 'View', ctaPrimary: false, onCta: () => go('docs') }),
     });
   }
   const desired = card?.desired_pay ?? t360?.header.desired_compensation ?? null;

@@ -446,6 +446,39 @@ describe('Talent360Service — composes authorized truth, is not the authority',
     });
   });
 
+  describe('ownership — "Record added by" resolves the record owner without any opportunity', () => {
+    const directory = new Map([['u-1', 'Purush P.'], ['u-2', 'Sanjay Kumar']]);
+    // Honours its input: returns only the ids actually requested.
+    const resolveUserNames = async (_ctx: unknown, ids: readonly string[]) =>
+      new Map(ids.flatMap((id) => (directory.has(id) ? [[id, directory.get(id)!] as const] : [])));
+
+    it('resolves owner_provenance.name for a talent with no pipelines', async () => {
+      const service = svc(
+        fakePort({
+          loadTalent: async () => core({ owner_id: 'u-1' }),
+          listEpisodes: async () => [],
+          resolveUserNames,
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.relationship.ownership.owner_provenance).toEqual({ user_id: 'u-1', name: 'Purush P.' });
+    });
+
+    it('resolves the record owner even when they are not on any requisition', async () => {
+      const service = svc(
+        fakePort({
+          loadTalent: async () => core({ owner_id: 'u-1' }),
+          listEpisodes: async () => [episode('pipe-1', 'req-1', 'qualified')],
+          composeJourney: async () => journey('req-1', {}),
+          resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)]]),
+          resolveUserNames,
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.relationship.ownership.owner_provenance).toEqual({ user_id: 'u-1', name: 'Purush P.' });
+    });
+  });
+
   describe('CRM-5 — relationship + past-opportunity deltas', () => {
     it('§9.4 derives "worked with before" from CLOSED episodes (recruiter attribution), excluding the active set', async () => {
       const service = svc(

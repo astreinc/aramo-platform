@@ -51,6 +51,22 @@ export const CONSENT_CAPTURED_METHODS = [
 ] as const;
 export type ConsentCapturedMethodValue = (typeof CONSENT_CAPTURED_METHODS)[number];
 
+// CONSENT-RECRUITER-CREATE-DEFAULT-1 (Amendment v1.0 LOCKED §3.3) — the LEDGER
+// method vocabulary: every HTTP-acceptable method above PLUS the server-only
+// `recruiter_create_default` (the at-create contact-consent grant recorded when a
+// recruiter creates a Talent). Deliberately NOT added to CONSENT_CAPTURED_METHODS:
+// that list backs the HTTP grant/revoke request validation (@IsIn) and the openapi
+// ConsentCapturedMethod enum, and the amendment forbids exposing this method to any
+// HTTP request enum. captured_method is TEXT in the DB (no migration). The resolver
+// partitions by captured_method string, so the new method is its own partition and
+// the most-restrictive rule across partitions still lets any revocation deny.
+export const CONSENT_LEDGER_CAPTURED_METHODS = [
+  ...CONSENT_CAPTURED_METHODS,
+  'recruiter_create_default',
+] as const;
+export type ConsentLedgerCapturedMethodValue =
+  (typeof CONSENT_LEDGER_CAPTURED_METHODS)[number];
+
 // Note: NO `action` field. Server sets action = "granted". This is one of the
 // belt-and-suspenders enforcement points (the others are the OpenAPI schema
 // `additionalProperties: false` and the refusal test

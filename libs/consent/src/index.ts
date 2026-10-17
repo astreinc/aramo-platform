@@ -2,6 +2,19 @@ export { ConsentModule } from './lib/consent.module.js';
 // Portal P2 P2a — the default consent term + the versioned consent-text registry
 // (the D7 hash preimage). Consumed by the portal consent routes + P2b UI.
 export { CONSENT_DEFAULT_TERM_MONTHS } from './lib/consent.service.js';
+// CONSENT-RECRUITER-CREATE-DEFAULT-1 — the at-create default grant constants +
+// result type (consumed by the apps/api talent-record port binding).
+export {
+  RECRUITER_CREATE_DEFAULT_SCOPES,
+  RECRUITER_CREATE_DEFAULT_CHANNELS,
+  RECRUITER_CREATE_DEFAULT_IDEMPOTENCY_PREFIX,
+  type RecruiterCreateDefaultResult,
+} from './lib/consent.service.js';
+export {
+  CONSENT_TEXT_RECRUITER_CREATE_DEFAULT_VERSION,
+  renderRecruiterCreateDefaultConsentText,
+  hashRecruiterCreateDefaultConsentText,
+} from './lib/consent-texts.js';
 export {
   CONSENT_TEXT_CURRENT_VERSION,
   renderPortalConsentText,

@@ -147,4 +147,20 @@ describe('OpenAiStructuredGenerationService (TENANT-LLM-2)', () => {
     expect(out).toEqual({ kind: 'terminal', category: 'invalid_request' });
     expect(JSON.stringify(out)).not.toContain('SECRET UPSTREAM DETAIL');
   });
+
+  it('adds a SAFE diagnostic (HTTP status + provider error code) — never message text', async () => {
+    createImpl = async () => {
+      const e = new MockAPIError('You exceeded your current quota — SECRET text');
+      e.status = 429;
+      (e as unknown as { code: string }).code = 'insufficient_quota';
+      throw e;
+    };
+    const out = await makeService().generateStructured(REQ);
+    expect(out).toEqual({
+      kind: 'retryable',
+      category: 'rate_limited',
+      diagnostic: { http_status: 429, provider_error_code: 'insufficient_quota' },
+    });
+    expect(JSON.stringify(out)).not.toContain('SECRET');
+  });
 });

@@ -460,6 +460,7 @@
       "CONSENT_SCOPES",
       "CONSENT_SOURCE_TYPES",
       "CONSENT_TEXT_CURRENT_VERSION",
+      "CONSENT_TEXT_RECRUITER_CREATE_DEFAULT_VERSION",
       "CONVERSATION_NOTICE_OPERATIONS",
       "ConsentCheckRequestDto",
       "ConsentController",
@@ -474,6 +475,9 @@
       "OPERATION_SCOPE_MAP",
       "OutboxPublisherRepository",
       "PrismaService",
+      "RECRUITER_CREATE_DEFAULT_CHANNELS",
+      "RECRUITER_CREATE_DEFAULT_IDEMPOTENCY_PREFIX",
+      "RECRUITER_CREATE_DEFAULT_SCOPES",
       "STALE_CONSENT_QUEUE_NAME",
       "SourceConsentService",
       "StaleConsentProcessor",
@@ -481,10 +485,12 @@
       "hashOperationNotice",
       "hashPlatformNotice",
       "hashPortalConsentText",
+      "hashRecruiterCreateDefaultConsentText",
       "renderOperationNotice",
       "renderPlatformNotice",
       "renderPlatformNoticeEmail",
-      "renderPortalConsentText"
+      "renderPortalConsentText",
+      "renderRecruiterCreateDefaultConsentText"
     ],
     "@aramo/contact": [
       "ContactController",
@@ -1620,6 +1626,7 @@
     "@aramo/talent-record": [
       "LinkTalentRecordRequestDto",
       "PROFILE_HYDRATION_FIELDS",
+      "RECRUITER_CREATE_CONSENT_DEFAULT",
       "RESUME_ATTACHMENT_RESOLVER",
       "RESUME_EXTRACTION_DRAFT_BATCH_SIZE",
       "RESUME_EXTRACTION_DRAFT_QUEUE_NAME",
@@ -1647,6 +1654,7 @@
       "TalentRecordReconcileRepository",
       "TalentRecordRepository",
       "TalentRecordService",
+      "applyRecruiterCreateConsentDefault",
       "composeProfileHydration",
       "redactResumeText"
     ],
@@ -2200,6 +2208,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-bookmarks.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2488,6 +2502,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.service.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
         "project": "consent",
         "status": "excluded"
@@ -2676,6 +2702,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/duplicate-check-pr.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -4477,6 +4509,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
         "project": "consent",
         "status": "excluded"
@@ -5880,6 +5918,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8993,6 +9037,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "api",
         "status": "excluded"
       },

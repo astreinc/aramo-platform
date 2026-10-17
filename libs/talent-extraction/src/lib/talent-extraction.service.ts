@@ -869,6 +869,10 @@ export class TalentExtractionService {
         schema_name: RESUME_DRAFT_SCHEMA_NAME,
         source_map_version: source_map.version,
         status,
+        // Which provider failure (rate_limited / auth_config / invalid_request …)
+        // plus the safe provider diagnostic — 'provider_failure' alone hid the cause.
+        provider_category: outcome.category,
+        ...(outcome.diagnostic !== undefined ? { provider_diagnostic: outcome.diagnostic } : {}),
         model_call_count: 1,
         input_chars: userContent.length,
         redacted_span_count_input: redactedSpanCountInput,

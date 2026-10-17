@@ -98,6 +98,8 @@ function mockApi(opts: { actions?: readonly string[]; board?: unknown } = {}): C
     calls.push({ url, method, body });
     const json = (b: unknown): Response =>
       new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (url.includes('/v1/rtr/current')) return json({ current: { document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', document_status: 'SENT' } });
+    if (url.includes('/v1/rtr/doc-rtr-1/remind')) return json({ document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', reminder_sent: true });
     if (url.includes('/transition')) return json({ ...PIPELINES.items[0], status: 'qualified', version: 4 });
     if (url.includes('/v1/talent-records/tal-1') && method === 'PATCH') return json({ id: 'tal-1', first_name: 'Ravi', last_name: 'Shankar', ...(body as object) });
     if (url.includes('/journey')) return json(journey(opts.actions ?? ['mark_qualified']));
@@ -261,6 +263,30 @@ describe('TalentRequisition360View', () => {
     expect(expand).toHaveAttribute('aria-expanded', 'false');
     expect(screen.getByRole('button', { name: 'Back to REQ-1001 pipeline' })).toBeInTheDocument();
     expect(screen.queryByText('Back to REQ-1001 pipeline')).toBeNull(); // icon only
+  });
+
+  it('RTR awaiting signature: "Send reminder" re-notifies the current envelope (document:execute)', async () => {
+    const awaiting = {
+      ...BOARD,
+      columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: 'SENT' })] }],
+    };
+    const calls = mockApi({ board: awaiting });
+    mount([...BASE, 'document:read', 'document:execute']);
+    expect(await screen.findAllByText('Awaiting signature')).not.toHaveLength(0);
+    fireEvent.click(await screen.findByRole('button', { name: 'Send reminder' }));
+    expect(await screen.findByText('Reminder sent')).toBeInTheDocument();
+    expect(calls.some((c) => c.method === 'POST' && c.url.includes('/v1/rtr/doc-rtr-1/remind'))).toBe(true);
+  });
+
+  it('RTR awaiting signature without document:execute: no reminder, only View', async () => {
+    const awaiting = {
+      ...BOARD,
+      columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: 'SENT' })] }],
+    };
+    mockApi({ board: awaiting });
+    mount([...BASE, 'document:read']);
+    expect(await screen.findAllByText('Awaiting signature')).not.toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
   });
 
   it('Technical Screening (flag off): only the empty state; no CTA, no screening calls — even with screening scopes', async () => {

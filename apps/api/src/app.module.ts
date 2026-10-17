@@ -80,6 +80,7 @@ import { TemplateCapabilitiesModule } from './rtr/rtr-template-capabilities.modu
 import { RtrQualifiedTransitionGuardModule } from './rtr/rtr-qualified-transition-guard.module.js';
 import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
+import { RecruiterCreateConsentDefaultModule } from './talent-consent-default/recruiter-create-consent-default.module.js';
 import { ResumeEditionReaderModule } from './resume-extraction/resume-edition-reader.module.js';
 import { CompanyClientCheckModule } from './company-client-check/company-client-check.module.js';
 import { PipelineSiteReaderModule } from './pipeline-site-reader/pipeline-site-reader.module.js';
@@ -288,6 +289,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // TALENT-INTEL-1 TI-1D-C — bind RESUME_ATTACHMENT_RESOLVER (talent-record port)
     // to the concrete AttachmentResumeResolver for the resume-editions ingestion.
     ResumeAttachmentResolverModule,
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 — bind RECRUITER_CREATE_CONSENT_DEFAULT
+    // (talent-record port) to the ConsentService adapter (email + phone default).
+    RecruiterCreateConsentDefaultModule,
     // TALENT-INTEL-1 TI-1D-D — bind the Pipeline RESUME_EDITION_READER port to the
     // talent-evidence-backed adapter (resume-edition selection for a requisition).
     ResumeEditionReaderModule,

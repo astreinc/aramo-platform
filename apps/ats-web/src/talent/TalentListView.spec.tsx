@@ -6,7 +6,7 @@ import {
   within,
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TalentListView } from './TalentListView';
@@ -275,7 +275,11 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     expect(screen.getByText('(555) 010-0001')).toBeInTheDocument();
     expect(screen.getByText('London, UK')).toBeInTheDocument();
     expect(screen.getByText('$120/hr')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Ada Lovelace/ })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /^Ada Lovelace/ })).toHaveAttribute(
+      'href',
+      '/talent/tal-1',
+    );
+    expect(screen.getByRole('link', { name: 'Open Ada Lovelace' })).toHaveAttribute(
       'href',
       '/talent/tal-1',
     );
@@ -455,13 +459,20 @@ describe('TalentListView (server-side faceted workspace — Segment 4d)', () => 
     expect(await screen.findByRole('dialog', { name: /add to list/i })).toBeInTheDocument();
   });
 
-  it('clicking a row opens the triage drawer (non-modal) with key facts', async () => {
+  it('clicking a row opens Talent 360 (no side panel)', async () => {
     mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace', { source: 'Referral' })] });
-    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    render(
+      <MemoryRouter initialEntries={['/talent']}>
+        <Routes>
+          <Route path="/talent" element={<TalentListView sessionOverride={SESSION} />} />
+          <Route path="/talent/:id" element={<div>T360 page</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
     await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /preview ada lovelace/i }));
-    const drawer = await screen.findByRole('dialog', { name: /ada lovelace — triage/i });
-    expect(within(drawer).getByText('Key facts')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Ada Lovelace').closest('tr') as HTMLElement);
+    expect(await screen.findByText('T360 page')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('the Availability pill renders + the Availability facet sends ?availability=', async () => {
