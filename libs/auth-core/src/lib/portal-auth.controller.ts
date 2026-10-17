@@ -9,6 +9,7 @@ import {
   Req,
   Res,
 } from '@nestjs/common';
+import { accessCookieName, refreshCookieName } from '@aramo/auth';
 import type { Request, Response } from 'express';
 
 import { deriveBaseFromHost } from './redirect-uri.js';
@@ -32,8 +33,10 @@ import { PortalLoginService } from './portal-login.service.js';
 // TTLs) — it is the same session contract, deliberately duplicated here to keep
 // AuthController a clean revert.
 
-const ACCESS_COOKIE = 'aramo_access_token';
-const REFRESH_COOKIE = 'aramo_refresh_token';
+// D-ORG-4 — the portal consumer's isolated cookie names (see @aramo/auth
+// session-cookie-names.ts); the unsuffixed legacy names are no longer written.
+const ACCESS_COOKIE = accessCookieName('portal');
+const REFRESH_COOKIE = refreshCookieName('portal');
 const ACCESS_MAX_AGE_MS = 900 * 1000;
 const REFRESH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 

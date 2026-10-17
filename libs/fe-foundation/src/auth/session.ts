@@ -11,14 +11,14 @@ import { useEffect, useState } from 'react';
 
 import { ApiError, apiClient } from '../api/client';
 
-import { authPath } from './consumer';
+import { appPath, authPath } from './consumer';
 
 export interface Session {
   sub: string;
   // Inc-2 PR-2: 'platform' added so the platform console's session (whose token
   // carries consumer_type='platform') types cleanly. The FE never branches on
   // this field (RouteGuard keys on scopes); it is carried for completeness.
-  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
+  consumer_type: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
   tenant_id: string;
   scopes: string[];
   iat: number;
@@ -39,6 +39,26 @@ export type SessionState =
 // The same-origin landing for a wrong-account denial (the callback uses the same
 // `?error=` contract — auth.controller.ts → /login?error=TENANT_ACCESS_DENIED).
 export const TENANT_ACCESS_DENIED_PATH = '/login?error=TENANT_ACCESS_DENIED';
+/** D-ORG-2 — the access-denied landing INSIDE this app (base-path aware). */
+export function accessDeniedPath(): string {
+  return appPath(TENANT_ACCESS_DENIED_PATH);
+}
+// D-ORG-2 — a same-host, relative deep link the auth callback returns the user to
+// after sign-in (sealed server-side in the PKCE state; validated there against the
+// consumer's app base). Only the current in-app location is ever offered.
+export function currentReturnTo(): string | null {
+  if (typeof window === 'undefined') return null;
+  const { pathname, search, hash } = window.location;
+  if (typeof pathname !== 'string' || !pathname.startsWith('/') || pathname.startsWith('//')) return null;
+  const rel = `${pathname}${search ?? ''}${hash ?? ''}`;
+  // Never bounce back into the login/signed-out landings.
+  if (/\/(login|signed-out)(\/|\?|#|$)/.test(pathname)) return null;
+  // The app root (with or without the base) is the default landing anyway — no
+  // return_to is needed, so the plain login path is preserved for it.
+  const base = appPath('/').replace(/\/+$/, '');
+  if (rel === '/' || rel === base || rel === `${base}/`) return null;
+  return rel.length <= 2000 ? rel : null;
+}
 
 // Microsoft's fixed sign-out endpoint — the last-resort recovery when the user's
 // Microsoft session keeps answering with the wrong account. A constant with NO
@@ -46,9 +66,10 @@ export const TENANT_ACCESS_DENIED_PATH = '/login?error=TENANT_ACCESS_DENIED';
 export const MICROSOFT_SIGN_OUT_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/logout';
 
 export interface LoginOptions {
-  // Ask Microsoft to show its account picker (auth-service `?select_account=1`
-  // → Cognito `prompt=select_account`, forwarded to the Microsoft OIDC IdP).
   selectAccount?: boolean;
+  // D-ORG-2 — explicit deep link to return to after sign-in; null disables,
+  // undefined (default) uses the current in-app location.
+  returnTo?: string | null;
 }
 
 // The default-consumer ('recruiter') paths, retained as named exports for
@@ -71,7 +92,12 @@ export async function fetchSession(): Promise<Session | null> {
 }
 
 export function loginUrl(options: LoginOptions = {}): string {
-  return options.selectAccount === true ? `${authPath('login')}?select_account=1` : authPath('login');
+  const params = new URLSearchParams();
+  if (options.selectAccount === true) params.set('select_account', '1');
+  const returnTo = options.returnTo === undefined ? currentReturnTo() : options.returnTo;
+  if (returnTo !== null && returnTo !== undefined) params.set('return_to', returnTo);
+  const qs = params.toString();
+  return qs.length > 0 ? `${authPath('login')}?${qs}` : authPath('login');
 }
 
 export function redirectToLogin(options: LoginOptions = {}): void {
@@ -79,7 +105,7 @@ export function redirectToLogin(options: LoginOptions = {}): void {
 }
 
 export function redirectToAccessDenied(): void {
-  window.location.assign(TENANT_ACCESS_DENIED_PATH);
+  window.location.assign(accessDeniedPath());
 }
 
 // §5 Auth-Hardening D3 — the shared session logout (terminates BOTH sessions).

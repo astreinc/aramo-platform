@@ -74,3 +74,5 @@ scratch/
 # agrees and does not HARD-STOP the build.
 pre-migration-backup-*.sql
 *.ROLLBACK
+# D-ORG Gate-6 browser evidence (screenshots + Playwright output — never commit)
+apps/home-web/e2e/.evidence/

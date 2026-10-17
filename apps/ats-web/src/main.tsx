@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { configureAppBasePath } from '@aramo/fe-foundation';
 
 import { App } from './App';
 import './index.css';
@@ -19,9 +20,15 @@ if (!container) {
   throw new Error('Root container #root not found in index.html');
 }
 
+// D-ORG-2 (topology T1) — the ATS app lives at /ats/ on the tenant host. The
+// router basename keeps every in-app <Link>/navigate relative to it; the
+// foundation base path covers the host-level redirects it performs itself.
+const APP_BASE = import.meta.env.BASE_URL.replace(/\/+$/, '');
+configureAppBasePath(APP_BASE);
+
 createRoot(container).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={APP_BASE}>
       <App />
     </BrowserRouter>
   </StrictMode>,

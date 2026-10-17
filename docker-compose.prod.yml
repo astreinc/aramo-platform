@@ -316,6 +316,10 @@ services:
       - AUTH_COGNITO_REDIRECT_URI
       - AUTH_COGNITO_ENDPOINT
       - AUTH_POST_LOGIN_REDIRECT
+      # D-ORG-2 — explicit per-consumer landing overrides (built-in defaults apply when unset).
+      - AUTH_POST_LOGIN_PATH_RECRUITER
+      - AUTH_POST_LOGIN_PATH_ORG
+      - AUTH_POST_LOGIN_PATH_ESIGN
       - AUTH_COGNITO_SIGNOUT_REDIRECT
       - AUTH_TRUSTED_IDP_NAMES
       - AUTH_ALLOW_INSECURE_COOKIES

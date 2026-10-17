@@ -44,7 +44,9 @@ export {
 } from '@aramo/fe-foundation';
 
 // ── New: surface + content atoms ──
-export { Card, CardHead } from './Card';
+// D-ORG-3 — the surface card moved to @aramo/fe-foundation (SurfaceCard); the
+// `Card`/`CardHead` names are preserved here so call-sites are untouched.
+export { SurfaceCard as Card, SurfaceCardHead as CardHead } from '@aramo/fe-foundation';
 // Avatar/EntityCell + UserMenu extracted to @aramo/fe-foundation (PR-1.6).
 export { Avatar, EntityCell, initialsOf, type AvatarSize } from '@aramo/fe-foundation';
 export { TitleCell } from './TitleCell';
@@ -92,7 +94,7 @@ export { ReservedSeam } from './ReservedSeam';
 
 // T10-B2 — shared UX-state atoms + the product-safe error fallback.
 export { LoadingState, EmptyState, ErrorState } from './StateViews';
-export { safeErrorMessage } from './errors';
+export { safeErrorMessage } from '@aramo/fe-foundation';
 
 // ── Stage projection (single source: ../pipeline/types) ──
 export {

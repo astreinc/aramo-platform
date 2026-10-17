@@ -28,6 +28,8 @@ export interface PkceStatePayload {
   // for at most its 600 s TTL (F-8). The cookie format and TTL are unchanged.
   host_class?: HostBindingClass | null;
   context_id?: string | null;
+  // D-ORG-2 — the sanitized same-host deep link to return to after sign-in.
+  return_to?: string | null;
 }
 
 const VERIFIER_BYTES = 64; // 64 random bytes → ~86-char base64url verifier (within 43-128 range)

@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   deriveBaseFromHost,
   derivePostLoginRedirect,
+  defaultPostLoginPath,
+  sanitizeReturnTo,
   deriveRedirectUri,
   deriveSignoutRedirect,
 } from '../lib/redirect-uri.js';
@@ -171,5 +173,57 @@ describe('deriveSignoutRedirect — PR-3.1 §3d.3 / T2-E1-HF3 §3d.3', () => {
 
   it('neither → null (signout_redirect_missing throw survives)', () => {
     expect(deriveSignoutRedirect(null)).toBeNull();
+  });
+});
+
+// D-ORG-2 (topology T1) — per-consumer landing + the sealed, sanitized return_to.
+describe('D-ORG-2 — per-consumer post-login landing and return_to', () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+  it('defaults: recruiter → /ats/, org → /, esign (dark) → /, platform → /, portal → /; AUTH_POST_LOGIN_PATH_<CONSUMER> overrides one consumer; the legacy global AUTH_POST_LOGIN_PATH never overrides a consumer with a built-in base (Gate-6 V4)', () => {
+    delete process.env['AUTH_POST_LOGIN_PATH'];
+    expect(defaultPostLoginPath('recruiter')).toBe('/ats/');
+    expect(defaultPostLoginPath('org')).toBe('/');
+    expect(defaultPostLoginPath('esign')).toBe('/');
+    expect(defaultPostLoginPath('platform')).toBe('/');
+    expect(defaultPostLoginPath(undefined)).toBe('/');
+    process.env['AUTH_POST_LOGIN_PATH_RECRUITER'] = '/ats/desk';
+    expect(defaultPostLoginPath('recruiter')).toBe('/ats/desk');
+    expect(defaultPostLoginPath('org')).toBe('/');
+    process.env['AUTH_POST_LOGIN_PATH'] = '/everyone';
+    // The box .env still carries AUTH_POST_LOGIN_PATH=/ from the pre-T1 era: it must
+    // not silently move the recruiter off /ats/ or the org consumer off /.
+    expect(defaultPostLoginPath('org')).toBe('/');
+    expect(defaultPostLoginPath('recruiter')).toBe('/ats/desk');
+    delete process.env['AUTH_POST_LOGIN_PATH_RECRUITER'];
+    expect(defaultPostLoginPath('recruiter')).toBe('/ats/');
+    // A consumer with no built-in base (or no consumer) keeps the legacy global.
+    expect(defaultPostLoginPath('something-new')).toBe('/everyone');
+    expect(defaultPostLoginPath(undefined)).toBe('/everyone');
+  });
+  it('derivePostLoginRedirect(base, consumer) lands each consumer in its app; a legacy call without a consumer keeps the pre-D-ORG behaviour', () => {
+    delete process.env['AUTH_POST_LOGIN_PATH'];
+    expect(derivePostLoginRedirect('https://astre.aramo.ai', 'recruiter')).toBe('https://astre.aramo.ai/ats/');
+    expect(derivePostLoginRedirect('https://astre.aramo.ai', 'org')).toBe('https://astre.aramo.ai/');
+    expect(derivePostLoginRedirect('https://astre.aramo.ai')).toBe('https://astre.aramo.ai/');
+  });
+  it('return_to: accepted only as a same-host relative path INSIDE the consumer\'s app base; everything else falls back to the default', () => {
+    delete process.env['AUTH_POST_LOGIN_PATH'];
+    expect(sanitizeReturnTo('/ats/requisitions/123?tab=x', 'recruiter')).toBe('/ats/requisitions/123?tab=x');
+    expect(sanitizeReturnTo('/ats', 'recruiter')).toBe('/ats');
+    expect(sanitizeReturnTo('/org/users', 'org')).toBe('/org/users');
+    expect(sanitizeReturnTo('/', 'org')).toBe('/');
+    // cross-app landings are refused
+    expect(sanitizeReturnTo('/org/users', 'recruiter')).toBeNull();
+    expect(sanitizeReturnTo('/ats/requisitions', 'org')).toBeNull();
+    // absolute / protocol-relative / scheme / control chars / oversized
+    for (const bad of ['https://evil.example/x', '//evil.example', '/\\evil', 'javascript:alert(1)', '/ats/a\nb', '', '/ats/' + 'x'.repeat(2001)]) {
+      expect(sanitizeReturnTo(bad, 'recruiter')).toBeNull();
+    }
+    expect(derivePostLoginRedirect('https://astre.aramo.ai', 'recruiter', '/ats/requisitions/123')).toBe('https://astre.aramo.ai/ats/requisitions/123');
+    expect(derivePostLoginRedirect('https://astre.aramo.ai', 'recruiter', 'https://evil.example')).toBe('https://astre.aramo.ai/ats/');
+    expect(derivePostLoginRedirect('https://astre.aramo.ai', 'org', '/ats/requisitions/1')).toBe('https://astre.aramo.ai/');
   });
 });

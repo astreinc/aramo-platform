@@ -126,6 +126,21 @@ export const ESIGN_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.fi
 // org_admin, every ATS role and super_admin never hold it.
 export const ESIGN_SENDER_SCOPE_KEY = 'esign:envelope:send' as const;
 
+// D-ORG (§3.F) — the ATS PRODUCT partition of the catalog: every tenant role that
+// carries ATS product scopes (the 13 AUTHZ-1/1b staffing roles INCLUDING
+// tenant_owner / tenant_admin, whose bundles are ATS supersets). Assignable ONLY
+// in a tenant that holds the `ats` capability — the symmetric twin of
+// ESIGN_PRODUCT_ROLE_KEYS (IC-3 PR-8): VALIDATION_ERROR `ats_role_not_entitled`.
+// NOT in this partition: org_admin (product-neutral), super_admin (platform),
+// the Sign roles (esign partition) and the portal-user role (portal axis).
+export const ATS_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter(
+  (k) =>
+    k !== 'org_admin' &&
+    k !== 'candidate' &&
+    !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k) &&
+    !k.startsWith('esign_'),
+);
+
 // RoleDto — public shape of the Role entity.
 export interface RoleDto {
   id: string;

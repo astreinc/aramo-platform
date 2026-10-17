@@ -883,3 +883,40 @@ describe('IdentityService — Sign invitation cannot create a cross-tenant membe
     expect(auditSpies.writeGlobalEvent).not.toHaveBeenCalled();
   });
 });
+
+// D-ORG (§3.F) — the ATS PRODUCT partition is assignable only where the tenant holds
+// `ats` (the symmetric twin of the Sign gate). A Sign-only / PERSONAL tenant keeps the
+// product-neutral org_admin; no ATS role can be handed to it; the platform pool and
+// the Sign partition behave exactly as before.
+describe('IdentityService — ATS roles assignable only in an ats-entitled tenant (D-ORG)', () => {
+  const ROLES = { recruiter: ['talent:read'], tenant_owner: ['tenant:admin:user-manage', 'talent:read'], org_admin: ['tenant:admin:user-manage'] } as const;
+  const TENANT = '01900000-0000-7000-8000-000000000001';
+  const REFUSAL = { code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'ats_role_not_entitled', missing_capabilities: ['ats'] } } };
+  it('replaceMembershipRoles: recruiter in a Sign-only tenant → refused (reconcile never reached); in an ATS tenant → proceeds', async () => {
+    const refused = buildInServiceFixture(ROLES, ['core', 'esign']);
+    await expect(refused.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: TENANT, role_keys: ['org_admin', 'recruiter'], role_ids: ['o', 'r'], request_id: REQUEST_ID })).rejects.toMatchObject(REFUSAL);
+    expect(refused.repoSpies.replaceMembershipRoles).not.toHaveBeenCalled();
+    const ok = buildInServiceFixture(ROLES, ['core', 'ats', 'portal']);
+    ok.repoSpies.replaceMembershipRoles.mockResolvedValue({ added_role_ids: ['r'], removed_role_ids: [] });
+    await ok.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: TENANT, role_keys: ['recruiter'], role_ids: ['r'], request_id: REQUEST_ID });
+    expect(ok.repoSpies.replaceMembershipRoles).toHaveBeenCalledOnce();
+  });
+  it('tenant_owner (an ATS superset bundle) is ATS-partitioned: refused in a Sign-only tenant; org_admin is NOT ATS-partitioned (assignable with core alone)', async () => {
+    const signOnly = buildInServiceFixture(ROLES, ['core', 'esign']);
+    await expect(signOnly.identitySvc.createInvitedUserNoSub({ email: 'o@sign.io', display_name: null, tenant_id: TENANT, role_keys: ['tenant_owner'], role_ids: ['t'], actor_user_id: 'a', request_id: REQUEST_ID })).rejects.toMatchObject(REFUSAL);
+    const coreOnly = buildInServiceFixture(ROLES, ['core']);
+    coreOnly.repoSpies.createUserWithMembership.mockResolvedValue({ user: { id: 'u', email: 'o@sign.io', display_name: null, is_active: true, deactivated_at: null, created_at: 'x', updated_at: 'x' }, membership_id: 'm' });
+    coreOnly.repoSpies.createInvitation.mockResolvedValue({ invitation_id: 'i', expires_at: '2099-01-01T00:00:00.000Z' });
+    await expect(coreOnly.identitySvc.createInvitedUserNoSub({ email: 'o@sign.io', display_name: null, tenant_id: TENANT, role_keys: ['org_admin'], role_ids: ['o'], actor_user_id: 'a', request_id: REQUEST_ID })).resolves.toBeDefined();
+  });
+  it('the ATS partition is exactly the 12 staffing roles (incl. tenant_owner/tenant_admin); disjoint from org_admin, super_admin, the Sign roles and the portal-user role', async () => {
+    const { ATS_PRODUCT_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
+    expect(ATS_PRODUCT_ROLE_KEYS).toHaveLength(12);
+    expect(ATS_PRODUCT_ROLE_KEYS).toContain('tenant_owner');
+    expect(ATS_PRODUCT_ROLE_KEYS).toContain('tenant_admin');
+    for (const k of ['org_admin', ...PLATFORM_ROLE_KEYS, ...ESIGN_PRODUCT_ROLE_KEYS]) expect(ATS_PRODUCT_ROLE_KEYS).not.toContain(k);
+    // The complement is exactly: org_admin + the platform role + the 4 Sign roles + the portal-user role = 7.
+    const { SEED_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
+    expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(7);
+  });
+});

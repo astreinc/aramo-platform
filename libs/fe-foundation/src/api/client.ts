@@ -20,7 +20,7 @@
 //    (S5a); S5b will need PATCH (role-assign); S5c will need DELETE
 //    (D4a clears).
 
-import { authPath } from '../auth/consumer';
+import { authPath, getAuthConsumer } from '../auth/consumer';
 
 interface ApiErrorBody {
   error?: {
@@ -109,9 +109,15 @@ export class ApiClient {
     init?: RequestInit,
     alreadyRetried = false,
   ): Promise<T> {
+    // D-ORG-4 — name this app's consumer so the API guard and auth-service read
+    // THIS consumer's isolated session cookie (aramo_access_token_<consumer>) and
+    // never another product's. A mismatched token is refused server-side.
+    const headers: Record<string, string> = { ...((init?.headers as Record<string, string> | undefined) ?? {}) };
+    if (headers['X-Aramo-Consumer'] === undefined) headers['X-Aramo-Consumer'] = getAuthConsumer();
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       method,
+      headers,
       credentials: 'include',
     });
 

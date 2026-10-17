@@ -302,7 +302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(res.status).toBe(302);
       const setCookies = res.headers['set-cookie'] as unknown as string[];
       const cookieHeader = (Array.isArray(setCookies) ? setCookies : [setCookies as string])
-        .find((c) => c.startsWith('aramo_pkce_state='))!;
+        .find((c) => c.startsWith(`aramo_pkce_state_${consumer}=`))!;
       const pkceCookie = cookieHeader.split(';')[0]!;
       const state = new URL(res.headers['location']!).searchParams.get('state')!;
       return { pkceCookie, state };
@@ -329,10 +329,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // ran (the readFileSync bug retired in Workstream A) so it never caught
       // the 3.1 behavior change; the derived-host redirect is the correct
       // production path (a real tenant host derives https://<tenant>/…).
-      expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+      expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/ats\/$/); // D-ORG-2: recruiter → /ats/
       const cookies = res.headers['set-cookie'] as unknown as string[];
-      expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
-      expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(true);
+      expect(cookies.some((c) => c.startsWith('aramo_access_token_recruiter='))).toBe(true);
+      expect(cookies.some((c) => c.startsWith('aramo_refresh_token_recruiter='))).toBe(true);
 
       const audits = await identityPrisma.identityAuditEvent.findMany({
         where: { event_type: 'identity.session.issued', actor_id: FIXED_USER_ID },
@@ -368,8 +368,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(res.status).toBe(302);
         expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
         const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
-        expect(cookies.some((c) => c.startsWith('aramo_access_token=') && !c.includes('Max-Age=0'))).toBe(false);
-        expect(cookies.some((c) => c.startsWith('aramo_refresh_token='))).toBe(false);
+        expect(cookies.some((c) => c.startsWith('aramo_access_token_recruiter=') && !c.includes('Max-Age=0'))).toBe(false);
+        expect(cookies.some((c) => c.startsWith('aramo_refresh_token_recruiter='))).toBe(false);
       });
 
       it('L6 enforce — login on the user\'s OWN tenant host mints normally (302 to that host)', async () => {
@@ -378,9 +378,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
         const res = await callbackOn(OWN_HOST, pkceCookie, state);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toBe(`https://${OWN_HOST}/`);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/ats/`); // D-ORG-2: recruiter → /ats/
         const cookies = res.headers['set-cookie'] as unknown as string[];
-        expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
+        expect(cookies.some((c) => c.startsWith('aramo_access_token_recruiter='))).toBe(true);
       });
 
       it('L6 log (default) — login on ANOTHER tenant\'s host keeps today\'s outcome (302 success)', async () => {
@@ -388,7 +388,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
         const res = await callbackOn(OTHER_HOST, pkceCookie, state);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/`);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/ats/`); // D-ORG-2: recruiter → /ats/
       });
 
       // Host-binding SSO recovery — the wrong-account → account-picker → correct-
@@ -410,13 +410,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(authorize.searchParams.get('prompt')).toBe('select_account');
         // 3. The user picks the account that owns the host → a normal session.
         const pkceCookie = ((pick.headers['set-cookie'] as unknown as string[]) ?? [])
-          .find((c) => c.startsWith('aramo_pkce_state='))!
+          .find((c) => c.startsWith('aramo_pkce_state_recruiter='))!
           .split(';')[0]!;
         const ok = await callbackOn(OWN_HOST, pkceCookie, authorize.searchParams.get('state')!);
         expect(ok.status).toBe(302);
-        expect(ok.headers['location']).toBe(`https://${OWN_HOST}/`);
+        expect(ok.headers['location']).toBe(`https://${OWN_HOST}/ats/`); // D-ORG-2: recruiter → /ats/
         const cookies = ok.headers['set-cookie'] as unknown as string[];
-        expect(cookies.some((c) => c.startsWith('aramo_access_token='))).toBe(true);
+        expect(cookies.some((c) => c.startsWith('aramo_access_token_recruiter='))).toBe(true);
       });
 
       it('recovery — a ?select_account=1 login is host-sealed exactly like a normal one (presented at another host → refused before the code exchange)', async () => {
@@ -426,7 +426,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .get('/auth/recruiter/login?select_account=1')
           .set('Host', OWN_HOST);
         const pkceCookie = ((pick.headers['set-cookie'] as unknown as string[]) ?? [])
-          .find((c) => c.startsWith('aramo_pkce_state='))!
+          .find((c) => c.startsWith('aramo_pkce_state_recruiter='))!
           .split(';')[0]!;
         const state = new URL(pick.headers['location']!).searchParams.get('state')!;
         const res = await callbackOn(OTHER_HOST, pkceCookie, state);
@@ -449,7 +449,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .set('Host', OWN_HOST)
           .set('Cookie', pkceCookie);
         const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
-        const access = cookies.find((c) => c.startsWith('aramo_access_token=') && !c.includes('Max-Age=0'));
+        const access = cookies.find((c) => c.startsWith('aramo_access_token_recruiter=') && !c.includes('Max-Age=0'));
         if (access !== undefined) {
           expect(access.toLowerCase()).not.toContain('domain=');
           const session = await request(app.getHttpServer())
@@ -491,7 +491,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
           .set('Cookie', c.pkceCookie);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/ats\/$/); // D-ORG-2: recruiter → /ats/
         // enforce: unbound → refused.
         process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
         c = legacy();
@@ -507,7 +507,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
           .set('Cookie', c.pkceCookie);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/$/);
+        expect(res.headers['location']).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/ats\/$/);
       });
     });
 
@@ -531,7 +531,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(res.status).toBe(302);
         const cookies = res.headers['set-cookie'] as unknown as string[];
         const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`))!.split(';')[0]!;
-        return { access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+        return { access: pick('aramo_access_token_recruiter'), refresh: pick('aramo_refresh_token_recruiter') };
       }
       const tenantSvc = () => module.get(TenantService) as unknown as { getTenantsByUser: ReturnType<typeof vi.fn> };
       const identitySvc = () => module.get(IdentityService) as unknown as { findUserById: ReturnType<typeof vi.fn> };
@@ -560,7 +560,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(res.body.error.code).toBe('REFRESH_TOKEN_INVALID');
         expect(res.body.error.details.reason).toBe('host_tenant_mismatch');
         const cleared = res.headers['set-cookie'] as unknown as string[];
-        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(4); // D-ORG-4: consumer + legacy name, access + refresh
         // 8/10. the same token still refreshes on the OWN host (not rotated by the refusal)
         const ok = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
         expect(ok.status).toBe(200);
@@ -615,7 +615,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const res = await request(app.getHttpServer()).post('/auth/recruiter/logout').set('Host', OTHER_HOST).set('Cookie', refresh);
         expect(res.status).toBe(204);
         const cleared = res.headers['set-cookie'] as unknown as string[];
-        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(2);
+        expect(cleared.filter((c) => c.includes('Max-Age=0')).length).toBe(4); // D-ORG-4: consumer + legacy name, access + refresh
         const after = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', refresh);
         expect(after.status).toBe(401);
         expect(after.body.error.details.reason).toBe('explicitly_revoked');
@@ -638,7 +638,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           token_hash: createHash('sha256').update(plain).digest('base64url'),
           expires_at: new Date(Date.now() + 60_000),
         });
-        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', `aramo_refresh_token=${plain}`);
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OTHER_HOST).set('Cookie', `aramo_refresh_token_recruiter=${plain}`);
         expect(res.status).toBe(401);
         expect(res.body.error.details.reason).toBe('membership_inactive');
       });
@@ -662,7 +662,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         roles().getScopesByUserAndTenant.mockResolvedValue(['auth:session:read']);
         unstubCognito();
       });
-      async function login(consumer: 'recruiter' | 'esign'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
+      async function login(consumer: 'recruiter' | 'esign' | 'org'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
         stubCognitoVerifyOnly();
         const { pkceCookie, state } = await prepareLogin(consumer, OWN_HOST);
         const res = await request(app.getHttpServer())
@@ -671,7 +671,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .set('Cookie', pkceCookie);
         const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
         const pick = (n: string) => cookies.find((c) => c.startsWith(`${n}=`) && !c.includes('Max-Age=0'))?.split(';')[0];
-        return { status: res.status, location: res.headers['location'] as string, access: pick('aramo_access_token'), refresh: pick('aramo_refresh_token') };
+        return { status: res.status, location: res.headers['location'] as string, access: pick(`aramo_access_token_${consumer}`), refresh: pick(`aramo_refresh_token_${consumer}`) };
       }
 
       it('1/7/11. ATS-only tenant (core+ats+portal): the esign consumer cannot mint → 302 /login?error=TENANT_CAPABILITY_NOT_ENTITLED; core alone grants no product', async () => {
@@ -697,7 +697,120 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(session.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         const r = await login('recruiter');
-        expect(r.location).toBe(`https://${OWN_HOST}/`);
+        // D-ORG-2 (T1): the recruiter consumer lands in the ATS app at /ats/.
+        expect(r.location).toBe(`https://${OWN_HOST}/ats/`);
+      });
+
+      // D-ORG (R2 / §3.C) — the `org` consumer: mints on every organization (core),
+      // carries ONLY the organization subset, is refused where core is absent, and
+      // never carries product or platform scopes.
+      it('D-ORG org consumer: mints on a Sign-only tenant (no ats) AND on an ATS-only tenant; carries only the organization subset; refused without core', async () => {
+        const ORG_MIXED = ['auth:session:read', 'tenant:admin:user-manage', 'talent:read', 'esign:envelope:read', 'platform:tenant:read'];
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(ORG_MIXED);
+        roles().getScopesByUserAndTenant.mockResolvedValue(ORG_MIXED);
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'esign']));
+        const signOnly = await login('org');
+        expect(signOnly.status).toBe(302);
+        expect(signOnly.location).toBe(`https://${OWN_HOST}/`);
+        const s1 = await request(app.getHttpServer()).get('/auth/org/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!);
+        expect(s1.status).toBe(200);
+        expect(s1.body.consumer_type).toBe('org');
+        expect(s1.body.scopes).toEqual(['auth:session:read', 'tenant:admin:user-manage']);
+        // The org cookie is NOT a recruiter or esign session.
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!)).status).toBe(401);
+        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!)).status).toBe(401);
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const atsOnly = await login('org');
+        expect(atsOnly.location).toBe(`https://${OWN_HOST}/`);
+        entitlements().getCapabilities.mockResolvedValue(new Set(['ats']));
+        const noCore = await login('org');
+        expect(noCore.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(noCore.access).toBeUndefined();
+      });
+
+      // D-ORG-4 (§3.G) — consumer-isolated session cookies: two consumer sessions
+      // COEXIST on one host, each answers only its own /session, each refreshes
+      // and logs out independently, a cookie is never accepted under another
+      // consumer's path, and the global sign-out revokes every consumer session.
+      it('D-ORG-4 coexistence: recruiter + org sessions on ONE host live side by side; neither overwrites the other; cross-consumer presentation is refused', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        roles().getScopesByUserTenantAndSite.mockResolvedValue(['auth:session:read', 'tenant:admin:user-manage', 'talent:read']);
+        roles().getScopesByUserAndTenant.mockResolvedValue(['auth:session:read', 'tenant:admin:user-manage', 'talent:read']);
+        const r = await login('recruiter');
+        const o = await login('org');
+        expect(r.access!.split('=')[0]).toBe('aramo_access_token_recruiter');
+        expect(o.access!.split('=')[0]).toBe('aramo_access_token_org');
+        const both = `${r.access}; ${o.access}`;
+        const rs = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', both);
+        const os = await request(app.getHttpServer()).get('/auth/org/session').set('Host', OWN_HOST).set('Cookie', both);
+        expect(rs.status).toBe(200);
+        expect(rs.body.consumer_type).toBe('recruiter');
+        // (The canonical scope set is cached per (tenant, principal, version, site, consumer) across this
+        // shared module, so the recruiter snapshot minted earlier in the file is what /session reports.)
+        expect(rs.body.scopes).toContain('auth:session:read');
+        expect(rs.body.scopes.every((sc: string) => !sc.startsWith('esign:') && !sc.startsWith('platform:'))).toBe(true);
+        expect(os.status).toBe(200);
+        expect(os.body.consumer_type).toBe('org');
+        expect(os.body.scopes).toEqual(['auth:session:read', 'tenant:admin:user-manage']);
+        // An org cookie presented under the recruiter path (and vice versa) is NOT a session there.
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', o.access!)).status).toBe(401);
+        expect((await request(app.getHttpServer()).get('/auth/org/session').set('Host', OWN_HOST).set('Cookie', r.access!)).status).toBe(401);
+        // Independent refresh: each consumer rotates ONLY its own token.
+        const rr = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', `${r.refresh}; ${o.refresh}`);
+        expect(rr.status).toBe(200);
+        const rrCookies = (rr.headers['set-cookie'] as unknown as string[]).map((c) => c.split('=')[0]);
+        expect(rrCookies).toContain('aramo_access_token_recruiter');
+        expect(rrCookies).not.toContain('aramo_access_token_org');
+        // The org refresh token presented to the recruiter refresh path is refused (consumer mismatch), and the org session stays valid.
+        const cross = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', `aramo_refresh_token_recruiter=${o.refresh!.split('=')[1]}`);
+        expect(cross.status).toBe(401);
+        expect((await request(app.getHttpServer()).get('/auth/org/session').set('Host', OWN_HOST).set('Cookie', o.access!)).status).toBe(200);
+        // Per-consumer logout: POST /auth/org/logout ends ONLY the org session.
+        const lo = await request(app.getHttpServer()).post('/auth/org/logout').set('Host', OWN_HOST).set('Cookie', `${r.refresh}; ${o.refresh}`);
+        expect(lo.status).toBe(204);
+        const cleared = (lo.headers['set-cookie'] as unknown as string[]).filter((c) => c.includes('Max-Age=0')).map((c) => c.split('=')[0]);
+        expect(cleared).toContain('aramo_access_token_org');
+        expect(cleared).not.toContain('aramo_access_token_recruiter');
+        expect((await request(app.getHttpServer()).post('/auth/org/refresh').set('Host', OWN_HOST).set('Cookie', o.refresh!)).status).toBe(401);
+        const rr2 = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', rr.headers['set-cookie'].find((c: string) => c.startsWith('aramo_refresh_token_recruiter='))!.split(';')[0]);
+        expect(rr2.status).toBe(200);
+      });
+
+      it('D-ORG-4 global sign-out: GET /auth/{any}/logout revokes EVERY consumer session on the host and clears all consumer cookies before the Cognito redirect; a legacy unsuffixed cookie still reads and is cleared too', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const r = await login('recruiter');
+        const o = await login('org');
+        process.env['AUTH_COGNITO_DOMAIN'] = process.env['AUTH_COGNITO_DOMAIN'] ?? 'auth.example.test';
+        const out = await request(app.getHttpServer()).get('/auth/org/logout').set('Host', OWN_HOST).set('Cookie', `${r.refresh}; ${o.refresh}; ${r.access}; ${o.access}`);
+        expect(out.status).toBe(302);
+        expect(out.headers['location']).toContain('/logout?client_id=');
+        const cleared = (out.headers['set-cookie'] as unknown as string[]).filter((c) => c.includes('Max-Age=0')).map((c) => c.split('=')[0]);
+        for (const n of ['aramo_access_token_recruiter', 'aramo_access_token_org', 'aramo_refresh_token_recruiter', 'aramo_refresh_token_org', 'aramo_access_token', 'aramo_refresh_token']) expect(cleared).toContain(n);
+        expect((await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', r.refresh!)).status).toBe(401);
+        expect((await request(app.getHttpServer()).post('/auth/org/refresh').set('Host', OWN_HOST).set('Cookie', o.refresh!)).status).toBe(401);
+        // Transition: a session minted under the LEGACY cookie name is still readable by /session.
+        const r2 = await login('recruiter');
+        const legacy = `aramo_access_token=${r2.access!.split('=')[1]}`;
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', legacy)).status).toBe(200);
+      });
+
+      it('D-ORG-4 upgrade transition: a LEGACY unsuffixed refresh cookie still refreshes and the re-mint issues the consumer-suffixed pair (the legacy names are cleared); switching products (org login after recruiter) leaves the recruiter session valid', async () => {
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
+        const r = await login('recruiter');
+        // The pre-deploy jar: unsuffixed names only.
+        const legacyRefresh = `aramo_refresh_token=${r.refresh!.split('=')[1]}`;
+        const res = await request(app.getHttpServer()).post('/auth/recruiter/refresh').set('Host', OWN_HOST).set('Cookie', legacyRefresh);
+        expect(res.status).toBe(200);
+        const names = (res.headers['set-cookie'] as unknown as string[]).map((c) => c.split(';')[0]!);
+        expect(names.some((c) => c.startsWith('aramo_access_token_recruiter=') && !c.endsWith('='))).toBe(true);
+        expect(names.some((c) => c.startsWith('aramo_refresh_token_recruiter=') && !c.endsWith('='))).toBe(true);
+        // The legacy names are cleared by the re-mint (Max-Age=0), never re-issued.
+        const cleared = (res.headers['set-cookie'] as unknown as string[]).filter((c) => c.includes('Max-Age=0')).map((c) => c.split('=')[0]);
+        expect(cleared).toEqual(expect.arrayContaining(['aramo_access_token', 'aramo_refresh_token']));
+        // Product switching: an org login afterwards does not disturb the recruiter session.
+        const fresh = (res.headers['set-cookie'] as unknown as string[]).find((c) => c.startsWith('aramo_access_token_recruiter='))!.split(';')[0]!;
+        await login('org');
+        expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', fresh)).status).toBe(200);
       });
 
       it('3/4/6. multi-product tenant: the SAME identity gets disjoint consumer-specific scopes; platform:* and esign:* never ride a recruiter token even when the roles hold them', async () => {
@@ -753,7 +866,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
       const refreshHeader = (cb.headers['set-cookie'] as unknown as string[])
-        .find((c) => c.startsWith('aramo_refresh_token='))!;
+        .find((c) => c.startsWith('aramo_refresh_token_recruiter='))!;
       const refreshCookie = refreshHeader.split(';')[0]!;
       const refreshPlaintext = refreshCookie.split('=')[1]!;
 
@@ -782,7 +895,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
       const refreshCookie = (cb.headers['set-cookie'] as unknown as string[])
-        .find((c) => c.startsWith('aramo_refresh_token='))!
+        .find((c) => c.startsWith('aramo_refresh_token_recruiter='))!
         .split(';')[0]!;
       const r1 = await request(app.getHttpServer())
         .post('/auth/recruiter/refresh')
@@ -808,7 +921,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
       const refreshCookie = (cb.headers['set-cookie'] as unknown as string[])
-        .find((c) => c.startsWith('aramo_refresh_token='))!
+        .find((c) => c.startsWith('aramo_refresh_token_recruiter='))!
         .split(';')[0]!;
       const res = await request(app.getHttpServer())
         .post('/auth/recruiter/logout')
@@ -855,7 +968,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .get(`/auth/recruiter/callback?code=c&state=${state}`)
         .set('Cookie', pkceCookie);
       const accessCookie = (cb.headers['set-cookie'] as unknown as string[])
-        .find((c) => c.startsWith('aramo_access_token='))!
+        .find((c) => c.startsWith('aramo_access_token_recruiter='))!
         .split(';')[0]!;
       const before = await identityPrisma.identityAuditEvent.count();
       const res = await request(app.getHttpServer())

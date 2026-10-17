@@ -213,11 +213,68 @@ function ensureLeadingSlash(p: string): string {
 // unvalidated host (derivedBase null), fall back to the legacy full-URL
 // AUTH_POST_LOGIN_REDIRECT (existing behavior preserved). Null when neither is
 // available — the caller's post_login_redirect_missing throw posture survives.
+// D-ORG-2 (topology T1) — each consumer lands in ITS app on the tenant host:
+// recruiter → the ATS app at /ats/; org → App Home at /; esign → App Home until the
+// Sign entry is activated (its path is reported by /v1/me/products); platform and
+// portal keep /. GOVERNED PRECEDENCE (Gate-6 V4 ruling — the legacy global must
+// not silently override the topology): AUTH_POST_LOGIN_PATH_<CONSUMER> (explicit
+// per-consumer operator override) → the consumer's built-in app base → the legacy
+// global AUTH_POST_LOGIN_PATH ONLY for a consumer with no built-in base → '/'.
+export const CONSUMER_APP_BASE: Readonly<Record<string, string>> = {
+  recruiter: '/ats/',
+  org: '/',
+  esign: '/',
+  platform: '/',
+  portal: '/',
+  ingestion: '/',
+};
+
+export function defaultPostLoginPath(consumer?: string): string {
+  if (consumer !== undefined) {
+    const perConsumer = process.env[`AUTH_POST_LOGIN_PATH_${consumer.toUpperCase()}`];
+    if (perConsumer !== undefined && perConsumer.length > 0) return perConsumer;
+    const builtIn = CONSUMER_APP_BASE[consumer];
+    if (builtIn !== undefined) return builtIn;
+  }
+  const global = process.env['AUTH_POST_LOGIN_PATH'];
+  if (global !== undefined && global.length > 0) return global;
+  return '/';
+}
+
+// D-ORG-2 — a deep link offered at login (`?return_to=`) is accepted ONLY as a
+// same-host RELATIVE path (no scheme, no authority, no protocol-relative `//`),
+// of bounded length, and ONLY inside the consumer's own app base (a recruiter
+// login never lands inside /org/, an org login never lands inside /ats/). Anything
+// else is dropped silently (the default landing applies) — never an error.
+export function sanitizeReturnTo(raw: string | undefined | null, consumer: string): string | null {
+  if (raw === undefined || raw === null) return null;
+  if (raw.length === 0 || raw.length > 2000) return null;
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return null;
+  // No control characters, no whitespace (explicit code-point checks — a
+  // control-character class in a regex literal is lint-restricted).
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f || /\s/.test(raw[i] as string)) return null;
+  }
+  const base = CONSUMER_APP_BASE[consumer] ?? '/';
+  if (base !== '/' && !(raw === base.replace(/\/$/, '') || raw.startsWith(base))) return null;
+  if (base === '/' ) {
+    // App-Home consumers must not be returned INTO another app's base.
+    for (const [c, b] of Object.entries(CONSUMER_APP_BASE)) {
+      if (c !== consumer && b !== '/' && (raw === b.replace(/\/$/, '') || raw.startsWith(b))) return null;
+    }
+  }
+  return raw;
+}
+
 export function derivePostLoginRedirect(
   derivedBase?: string | null,
+  consumer?: string,
+  returnTo?: string | null,
 ): string | null {
   if (derivedBase !== undefined && derivedBase !== null && derivedBase.length > 0) {
-    const path = process.env['AUTH_POST_LOGIN_PATH'] ?? '/';
+    const safe = consumer !== undefined ? sanitizeReturnTo(returnTo, consumer) : null;
+    const path = safe ?? defaultPostLoginPath(consumer);
     return `${derivedBase.replace(/\/+$/, '')}${ensureLeadingSlash(path)}`;
   }
   const legacy = process.env['AUTH_POST_LOGIN_REDIRECT'];

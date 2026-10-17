@@ -279,7 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(loginRes.status).toBe(302);
       const setCookies = loginRes.headers['set-cookie'] as unknown as string[];
       const pkceCookie = (Array.isArray(setCookies) ? setCookies : [setCookies as string])
-        .find((c) => c.startsWith('aramo_pkce_state='))!
+        .find((c) => c.startsWith('aramo_pkce_state_recruiter='))!
         .split(';')[0]!;
       const state = new URL(loginRes.headers['location']!).searchParams.get('state')!;
 
@@ -291,7 +291,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(cbRes.status).toBe(302);
       const cbCookies = cbRes.headers['set-cookie'] as unknown as string[];
       const accessHeader = cbCookies.find((c) =>
-        c.startsWith('aramo_access_token='),
+        c.startsWith('aramo_access_token_recruiter='),
       )!;
       const accessToken = accessHeader.split(';')[0]!.split('=')[1]!;
       unstubCognito();

@@ -3,35 +3,10 @@ import type { ReactNode } from 'react';
 import { bandLabel, bandTone } from './band-map';
 import { stageLabel, stageTone, type PipelineStatus } from './stage-map';
 
-export type PillTone =
-  | 'neutral'
-  | 'brand'
-  | 'info'
-  | 'ok'
-  | 'warn'
-  | 'danger'
-  | 'hot';
-
-interface StatusPillProps {
-  readonly tone: PillTone;
-  /** Render a leading current-colour dot (the mockup "Open ·" affordance). */
-  readonly dot?: boolean;
-  readonly icon?: ReactNode;
-  readonly children: ReactNode;
-}
-
-// Generic status chip — muted same-family fill. Used for requisition status
-// (Open / Hot / Intake / Closed) and any entity-state badge. The semantic
-// tone is the caller's decision (mapping helpers live with each surface so
-// the design-system atom stays domain-neutral).
-export function StatusPill({ tone, dot, icon, children }: StatusPillProps) {
-  return (
-    <span className={`rc-pill rc-pill--${tone}${dot ? ' rc-pill__dot' : ''}`}>
-      {icon}
-      {children}
-    </span>
-  );
-}
+// D-ORG-3 — PillTone / StatusPill / Tag / TagList moved to @aramo/fe-foundation
+// (move-not-fork; libs/org-admin-web renders the same chips). Re-exported here so
+// every `../ui/pills` and `../ui` call-site is unchanged.
+export { StatusPill, Tag, TagList, type PillTone } from '@aramo/fe-foundation';
 
 interface StagePillProps {
   readonly status: PipelineStatus;
@@ -62,35 +37,6 @@ export function BandPill({ band }: BandPillProps) {
   return (
     <span className={`rc-pill rc-bandpill rc-pill--${bandTone(band)}`}>
       {bandLabel(band)}
-    </span>
-  );
-}
-
-interface TagProps {
-  readonly children: ReactNode;
-}
-
-export function Tag({ children }: TagProps) {
-  return <span className="rc-tag">{children}</span>;
-}
-
-interface TagListProps {
-  readonly tags: readonly string[];
-  /** Max chips before collapsing the remainder into a "+N" tag. */
-  readonly max?: number;
-}
-
-// Skill/label chips with overflow. Presentational only — splitting freetext
-// (e.g. key_skills) into tags is the caller's job (gap #9).
-export function TagList({ tags, max = 3 }: TagListProps) {
-  const shown = tags.slice(0, max);
-  const overflow = tags.length - shown.length;
-  return (
-    <span className="rc-tags">
-      {shown.map((t) => (
-        <Tag key={t}>{t}</Tag>
-      ))}
-      {overflow > 0 ? <Tag>{`+${overflow}`}</Tag> : null}
     </span>
   );
 }

@@ -38,6 +38,17 @@ function copyForError(code: string): ErrorCopy {
           'This workspace has been suspended, so sign-in is paused. Please contact your provider to restore access.',
         retry: true,
       };
+    // D-ORG (§3.D) — the tenant does not hold this product (recruiter needs
+    // `ats`, esign needs `esign`): the sign-in itself succeeded, but the
+    // product is not part of the organization's subscription. Retrying cannot
+    // help; the App Home shows what IS available.
+    case 'TENANT_CAPABILITY_NOT_ENTITLED':
+      return {
+        title: 'Product not available',
+        message:
+          "This product is not included in your organization's Aramo subscription. Open the App Home to see the products available to you, or contact your organization administrator.",
+        retry: false,
+      };
     case 'TENANT_CLOSED':
       return {
         title: 'Workspace closed',
@@ -98,6 +109,12 @@ export function LoginPage({ onMount }: LoginPageProps) {
             <Button variant="primary" onClick={() => redirectToLogin()}>
               Try signing in again
             </Button>
+          ) : error === 'TENANT_CAPABILITY_NOT_ENTITLED' ? (
+            // The App Home is a sibling SPA on this host (D-ORG-2 T1) — a host-level
+            // link, not an ATS route.
+            <a className="rc-link-action" href="/" data-testid="login-open-app-home">
+              Open the App Home
+            </a>
           ) : undefined
         }
       >

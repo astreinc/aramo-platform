@@ -1,0 +1,82 @@
+/* Aramo App Home — structural styles for the product tiles + the forward page.
+ * Tokens come from theme.css (the Confident Blue layer). */
+
+.home-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.home-muted {
+  color: var(--muted);
+  margin: 0;
+}
+
+.home-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.home-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev);
+  color: var(--ink);
+  text-decoration: none;
+  min-height: 140px;
+}
+
+.home-tile:hover {
+  border-color: var(--brand-accent);
+}
+
+.home-tile--off {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
+
+.home-tile__icon {
+  color: var(--brand);
+}
+
+.home-tile__icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.home-tile__name {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.home-tile__blurb {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.home-tile__why {
+  margin-top: auto;
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.home-topbar-spacer {
+  flex: 1;
+}
+
+.home-forward {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+.home-forward a {
+  color: var(--brand-strong);
+  font-weight: 600;
+}

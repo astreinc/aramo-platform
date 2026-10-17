@@ -161,7 +161,7 @@ describe('AuthController.logout (idempotent)', () => {
 
     expect(refreshTokens.findByHash).not.toHaveBeenCalled();
     expect(audit.writeEvent).not.toHaveBeenCalled();
-    expect(res.cookie).toHaveBeenCalledTimes(2); // clear access + refresh
+    expect(res.cookie).toHaveBeenCalledTimes(4); // clear access + refresh (consumer-isolated name + legacy name each — D-ORG-4)
     expect(res.status).toHaveBeenCalledWith(204);
     expect(res.end).toHaveBeenCalledTimes(1);
   });
@@ -448,7 +448,7 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
         res as never,
       );
       // 3 cookie operations: access, refresh, clear pkce
-      expect(res.cookie).toHaveBeenCalledTimes(3);
+      expect(res.cookie).toHaveBeenCalledTimes(4); // clear pkce (consumer + legacy) + set access + set refresh — D-ORG-4
       // 302 to the CONFIGURED target — not a hardcoded localhost literal.
       expect(res.redirect).toHaveBeenCalledWith(302, CONFIGURED);
       expect(res.status).not.toHaveBeenCalledWith(204);
@@ -1006,7 +1006,7 @@ describe('IC-2 PR-5 — /session, /refresh, /logout host binding', () => {
           ctl.refresh('recruiter', { cookies: { aramo_refresh_token: 'p' }, requestId: 'r', get: () => undefined } as never, res as never),
         ).rejects.toMatchObject({ code: 'REFRESH_TOKEN_INVALID', statusCode: 401, context: { details: { reason } } });
         // access + refresh cookies cleared (maxAge 0)
-        expect(res.cookie).toHaveBeenCalledTimes(2);
+        expect(res.cookie).toHaveBeenCalledTimes(4); // D-ORG-4: consumer-isolated + legacy clears
       }
     });
   });
@@ -1025,7 +1025,7 @@ describe('IC-2 PR-5 — /session, /refresh, /logout host binding', () => {
         await ctl.logout('recruiter', { cookies: { aramo_refresh_token: 'plaintext' }, requestId: 'r', get: () => 'x.aramo.ai' } as never, res as never);
         expect(refreshTokens.revoke).toHaveBeenCalledWith({ id: 'rt-1' });
         expect(audit.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ event_type: 'identity.session.revoked', payload: { reason: 'logout_host_tenant_mismatch' } }));
-        expect(res.cookie).toHaveBeenCalledTimes(2);
+        expect(res.cookie).toHaveBeenCalledTimes(4); // D-ORG-4: consumer-isolated + legacy clears
         expect(res.status).toHaveBeenCalledWith(204);
       } finally {
         delete process.env['AUTH_HOST_TENANT_BINDING'];

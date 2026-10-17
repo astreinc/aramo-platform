@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleRepository } from '../lib/role.repository.js';
 import { RoleService } from '../lib/role.service.js';
+import { ProductAvailabilityService } from '../lib/authorization/product-availability.service.js';
 import { AuthorizationVersionService } from '../lib/authorization-version.service.js';
 import { bumpPrincipalsWithRoleVersion } from '../lib/authorization-version.ops.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
@@ -307,6 +308,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenantWide = await resolver.resolve(mk(1));
       expect(tenantWide.status).toBe('ok');
       if (tenantWide.status === 'ok') expect(tenantWide.scopes).toEqual([]);
+    });
+
+    // D-ORG Gate-6 V1 — App Home availability must match the access the product
+    // session actually receives. A site-scoped recruiter resolves ATS scopes only
+    // under the site-aware reader; the availability projection must say
+    // ATS authorized=true for them (and must NOT for a member with no ATS role).
+    it('D-ORG V1 PARITY: a site-scoped member is reported ATS-authorized exactly as the site-aware resolver authorizes them; a scope-less member is not', async () => {
+      const tenant_id = randomUUID();
+      const site_id = randomUUID();
+      await prisma.tenant.create({ data: { id: tenant_id, name: 'T-Parity' } });
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO identity."Site" (id, tenant_id, name, updated_at) VALUES ('${site_id}','${tenant_id}','Site P', now())`,
+      );
+      const role_id = randomUUID();
+      // This spec seeds its own minimal RBAC rows (no catalog seed): an ATS-namespace
+      // scope is any key outside esign:* / platform:* and the organization subset.
+      const scope = await prisma.scope.upsert({ where: { key: 'talent:read' }, update: {}, create: { id: randomUUID(), key: 'talent:read' } });
+      await prisma.role.create({ data: { id: role_id, key: `rp-${role_id.slice(0, 6)}` } });
+      await prisma.roleScope.create({ data: { id: randomUUID(), role_id, scope_id: scope.id } });
+      const seedMember = async (withRole: boolean): Promise<string> => {
+        const user_id = randomUUID();
+        await prisma.user.create({ data: { id: user_id, email: `${user_id}@ex.test`, tenant_id } });
+        const m = randomUUID();
+        await prisma.userTenantMembership.create({ data: { id: m, user_id, tenant_id, site_id } });
+        if (withRole) await prisma.userTenantMembershipRole.create({ data: { id: randomUUID(), membership_id: m, role_id } });
+        await versions.ensureBaseline(prisma, { tenant_id, principal_id: user_id });
+        return user_id;
+      };
+      const recruiter = await seedMember(true);
+      const nobody = await seedMember(false);
+      const entitlements = { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader;
+      const availability = new ProductAvailabilityService(new RoleService(new RoleRepository(prisma)), entitlements);
+
+      // What the product session would carry: the site-aware resolver under the token's site claim.
+      const session = await resolver.resolve({
+        tenant_id, principal_id: recruiter, token_authz_version: 1, ...BASE_INPUT, consumer_type: 'recruiter', site_id,
+      });
+      expect(session.status).toBe('ok');
+      if (session.status === 'ok') expect(session.scopes).toContain('talent:read');
+
+      const v = await availability.forPrincipal({ user_id: recruiter, tenant_id });
+      expect(v.products.find((p) => p.key === 'ats')).toMatchObject({ subscribed: true, authorized: true, available: true, entry_path: '/ats/' });
+      const none = await availability.forPrincipal({ user_id: nobody, tenant_id });
+      expect(none.products.find((p) => p.key === 'ats')).toMatchObject({ authorized: false, available: false, reason: 'not_authorized' });
     });
 
     it('FAIL CLOSED: canonical store unreachable → unresolvable (never trust the token, never expand privilege)', async () => {

@@ -236,3 +236,23 @@ describe('ApiClient — refresh-on-401', () => {
     expect(nthUrl(fetchSpy, 0)).not.toContain('/refresh');
   });
 });
+
+// D-ORG-4 — every request names this app's consumer so the backend reads the
+// consumer-isolated session cookie (and never another product's).
+describe('ApiClient — X-Aramo-Consumer header (D-ORG-4)', () => {
+  it('sends the configured consumer on every request and never overrides an explicit header', async () => {
+    const { configureAuthConsumer } = await import('../auth/consumer');
+    configureAuthConsumer('org');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({}), { status: 200 }));
+    const client = new ApiClient();
+    await client.get('/v1/me/products');
+    await client.post('/v1/p', { a: 1 }, { headers: { 'X-Aramo-Consumer': 'recruiter' } });
+    const h0 = fetchSpy.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    const h1 = fetchSpy.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(h0['X-Aramo-Consumer']).toBe('org');
+    expect(h1['X-Aramo-Consumer']).toBe('recruiter');
+    expect(h1['Content-Type']).toBe('application/json');
+    configureAuthConsumer('recruiter');
+    fetchSpy.mockRestore();
+  });
+});

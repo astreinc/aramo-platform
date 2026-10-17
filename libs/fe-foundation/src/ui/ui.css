@@ -1106,3 +1106,206 @@
   margin-top: 4px;
   font-weight: 600;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * D-ORG-3 (Organization Administration carve) — shared view atoms moved from
+ * apps/ats-web/src/ui/ui.css (move-not-fork, the PR-1.6 / PR-3.8 discipline):
+ * SurfaceCard/SurfaceCardHead (.rc-card and children), StatusPill/Tag/TagList (.rc-pill and .rc-tag families), the field grid + inputs (.rc-fgrid, .rc-ifield, .rc-input), the
+ * form footer, the secondary cell line, the stack/muted/spacing helpers and
+ * the link-styled actions. Consumed by ats-web (via its ui/ barrel re-exports)
+ * AND by libs/org-admin-web; the ats-web sheet keeps only its contextual
+ * overrides of these classes.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────── Card / CardHead ─────────────── */
+
+.rc-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev);
+  overflow: hidden;
+}
+
+.rc-card--pad {
+  padding: 16px 18px;
+}
+
+.rc-card__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rc-card__head h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.rc-card__head-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.rc-card__head-more {
+  font-size: 0.82rem;
+  color: var(--brand-strong);
+  font-weight: 600;
+  text-decoration: none;
+}
+/* ─────────────── Pills: Status / Stage ─────────────── */
+
+.rc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.rc-pill svg {
+  width: 12px;
+  height: 12px;
+}
+
+.rc-pill__dot::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+.rc-pill--neutral {
+  background: #eef0f2;
+  color: #54605b;
+}
+
+.rc-pill--brand {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+}
+
+.rc-pill--info {
+  background: var(--info-tint);
+  color: var(--info);
+}
+
+.rc-pill--ok {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.rc-pill--warn {
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.rc-pill--danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.rc-pill--hot {
+  background: var(--hot-tint);
+  color: var(--hot);
+}
+/* ─────────────── Tag + overflow ─────────────── */
+
+.rc-tags {
+  display: inline-flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.rc-tag {
+  font-size: 0.72rem;
+  font-weight: 500;
+  background: var(--canvas);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+/* ── Field grid + inputs ── */
+
+.rc-fgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px 14px; }
+
+.rc-ifield { display: flex; flex-direction: column; gap: 5px; }
+
+.rc-ifield--full { grid-column: 1 / -1; }
+
+.rc-ifield__lb {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 0.72rem; font-weight: 600; color: var(--muted);
+}
+
+.rc-ifield__req { color: var(--hot); }
+
+.rc-input {
+  height: 38px; border: 1px solid var(--line-2); border-radius: var(--r-md);
+  padding: 0 11px; font: inherit; font-size: 0.85rem; color: var(--ink);
+  background: var(--surface); width: 100%;
+}
+
+.rc-input:focus { outline: none; border-color: var(--brand-accent); box-shadow: 0 0 0 3px var(--brand-tint); }
+
+.rc-input--prov { border-color: #c9d8ec; background: #fbfdff; }
+
+.rc-input--area { height: auto; padding: 9px 11px; resize: vertical; min-height: 64px; }
+
+select.rc-input { appearance: none; padding-right: 28px; }
+.rc-ifield__hint { font-size: .72rem; color: var(--faint, var(--muted)); margin-top: 4px; }
+.rc-mt-8 { margin-top: 8px; }
+.rc-muted-line {
+  color: var(--muted);
+}
+.rc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.rc-link-action {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--brand-strong);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.rc-link-action:hover {
+  text-decoration: underline;
+}
+
+/* Inline action buttons rendered as links (Settings D4 sites row actions). */
+
+button.rc-link-action {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.rc-link-danger {
+  color: var(--danger, #b42318);
+}
+/* Form footer — button + status-marker row (FE Consolidation Directive 3,
+ * reusable by the remaining form ports). */
+
+.rc-formfoot { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
+
+/* Assignment editors — secondary cell line + inline row actions (FE
+ * Consolidation Directive 4; reusable by the remaining people-list ports). */
+
+.rc-cell-sub { color: var(--muted); font-size: 0.82rem; }

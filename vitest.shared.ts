@@ -28,6 +28,10 @@ export default defineConfig({
       // resolves the lib barrel from its integration/unit specs.
       '@aramo/conversation-transcript': resolve(root, 'libs/conversation-transcript/src/index.ts'),
       '@aramo/auth': resolve(root, 'libs/auth/src/index.ts'),
+      // D-ORG-3 — the FE libs resolve from source for any shared-config consumer
+      // (the FE apps/libs carry their own vite aliases too); mirrors tsconfig.base.json.
+      '@aramo/fe-foundation': resolve(root, 'libs/fe-foundation/src/index.ts'),
+      '@aramo/org-admin-web': resolve(root, 'libs/org-admin-web/src/index.ts'),
       // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
       // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
       // classes/ports imported by auth.module.ts + the adapters + the app specs.

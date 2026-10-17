@@ -30,6 +30,7 @@ import { SitesService } from './sites/sites.service.js';
 import { SiteRepository } from './sites/site.repository.js';
 import { RoleBundleValidator } from './tenant-user/role-bundle-validator.js';
 import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js';
+import { ProductAvailabilityService } from './authorization/product-availability.service.js';
 
 // IdentityCoreModule — the SHARED identity read surface (Auth-Hardening
 // IdentityModule-Split Directive v1.0, Option c).
@@ -108,6 +109,7 @@ import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js'
     // IC-2 PR-6 — live product-entitlement read for the mint/refresh capability
     // gate and the resolver's esign namespace check (EntitlementModule imported).
     TenantEntitlementReader,
+    ProductAvailabilityService,
     {
       provide: 'IdentityAuditServiceLogger',
       useFactory: () => createAramoLogger(IdentityAuditService.name),
@@ -120,6 +122,7 @@ import { TenantEntitlementReader } from './tenant-entitlement-reader.service.js'
     AuthorizationVersionService,
     IdentityAuditService,
     TenantEntitlementReader,
+    ProductAvailabilityService,
     // Platform-Console Increment-2 PR-2 (G1) — exported so the platform-admin
     // PlatformController can inject it for the tenant lifecycle audit read
     // (GET /platform/tenants/:id/audit).

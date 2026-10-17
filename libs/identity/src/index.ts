@@ -29,6 +29,19 @@ export {
 // IC-3 PR-8 — the Sign SENDER authorization boundary (guard composition + the
 // pure decision) a `v1/esign/sender/*` route mounts; see the module header for
 // the activation dependency.
+// D-ORG — the backend-authoritative product-availability projection (App Home).
+export {
+  ProductAvailabilityService,
+  PRODUCT_KEYS,
+  ATS_ENTRY_PATH,
+  ORG_ENTRY_PATH,
+  DEFAULT_SIGN_ENTRY_PATH,
+  signEntryActivated,
+  type ProductKey,
+  type ProductAvailability,
+  type ProductAvailabilityView,
+  type ProductUnavailableReason,
+} from './lib/authorization/product-availability.service.js';
 export {
   EsignSenderBoundary,
   EsignSenderConsumerGuard,
@@ -127,6 +140,7 @@ export {
   ORG_ADMIN_SCOPE_KEYS,
   ESIGN_PRODUCT_ROLE_KEYS,
   ESIGN_SENDER_SCOPE_KEY,
+  ATS_PRODUCT_ROLE_KEYS,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';

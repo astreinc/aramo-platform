@@ -7,9 +7,11 @@ single ingress on 80/443, having replaced the retired front door at the cutover
 
 ## Files
 
-- `Dockerfile` — mirrors the retired front-door image: a `web-builder` stage compiles all three
-  SPAs (`ats-web → /srv/ats`, `platform-web → /srv/admin`, `portal-web → /srv/portal`,
-  with the `prisma:generate` prerequisite), runtime `nginx:stable-alpine` (pinned).
+- `Dockerfile` — mirrors the retired front-door image: a `web-builder` stage compiles all five
+  SPAs (`home-web → /srv/home` — the tenant-host App Home + `/org/*` (D-ORG-2, topology T1),
+  `ats-web → /srv/ats` — served under `/ats/`, `platform-web → /srv/admin`,
+  `portal-web → /srv/portal`, `sign-web → /srv/sign`, with the `prisma:generate` prerequisite),
+  runtime `nginx:stable-alpine` (pinned).
 - `nginx.conf` — minimal top-level config (`gzip on`, `include conf.d/*.conf`).
 - `templates/aramo.conf.template` — the three 443 server blocks + the port-80
   healthz/redirect, materialized by the official image's envsubst at container

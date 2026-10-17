@@ -398,8 +398,8 @@ TIER2_EXCLUDES=(
   "libs/identity/src/lib/role-catalog/role-catalog.view.ts"
   "libs/identity/src/tests/role-catalog.spec.ts"
   "apps/api/src/tests/settings-d5-roles-catalog.integration.spec.ts"
-  "apps/ats-web/src/users/roles.fixture.ts"
-  "apps/ats-web/src/users/RolePicker.spec.tsx"
+  "libs/org-admin-web/src/users/roles.fixture.ts"
+  "libs/org-admin-web/src/users/RolePicker.spec.tsx"
   # PR-A4 Gate 5: ATS Batch 3 R10-enforcement integration spec. Per the
   # M0R-2 Amendment v1.1 §4.5 / PR-A2 R10-spec precedent: refusal-
   # enforcement specs legitimately enumerate the forbidden Match-Class
