@@ -372,15 +372,17 @@ describe('JwtAuthGuard', () => {
   // controller source via filesystem and asserts byte-equality of the
   // literal. Failure means the two literals have drifted; HALT and surface
   // — do NOT modify either literal to "fix" this test.
-  it('keeps the cookie-name literal byte-equal between libs/auth and the auth callback controller', async () => {
+  it('D-ORG-4: libs/auth and the auth callback controller share ONE cookie-naming authority (session-cookie-names.ts) — no hand-copied literal on either side', async () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    // PR-5b: auth.controller.ts moved from apps/auth-service to libs/auth-core.
-    const authController = resolve(
-      here,
-      '../../../../libs/auth-core/src/lib/auth.controller.ts',
-    );
-    const source = await readFile(authController, 'utf8');
-    expect(source).toContain("'aramo_access_token'");
+    const authController = resolve(here, '../../../../libs/auth-core/src/lib/auth.controller.ts');
+    const guard = resolve(here, '../lib/jwt-auth.guard.ts');
+    const controllerSource = await readFile(authController, 'utf8');
+    const guardSource = await readFile(guard, 'utf8');
+    expect(controllerSource).toContain('accessCookieName(');
+    expect(controllerSource).toContain('LEGACY_ACCESS_COOKIE');
+    expect(controllerSource).not.toContain("'aramo_access_token'");
+    expect(guardSource).toContain("from './session-cookie-names.js'");
+    expect(guardSource).not.toContain("'aramo_access_token'");
   });
 });
 
@@ -462,5 +464,112 @@ describe('JwtAuthGuard — generic tier tripwire (PR-5)', () => {
     expect(() => ok('recruiter', 't-1', '/platform/x')).toThrow();
     expect(() => ok('esign', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
     expect(() => ok('ingestion', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
+  });
+});
+
+// D-ORG (§3.I) — the `org` consumer is a TENANT-tier credential: admitted on
+// tenant routes, refused on /platform/* by the tier tripwire, and never allowed to
+// carry the platform sentinel tenant.
+describe('JwtAuthGuard — org consumer is tenant-tier (D-ORG)', () => {
+  let guard: JwtAuthGuard;
+  let resolver: StubResolver;
+  const originalEnv = { ...process.env };
+  beforeEach(() => {
+    resolver = new StubResolver();
+    guard = new JwtAuthGuard(resolver);
+    process.env['AUTH_PUBLIC_KEY'] = keyPair.publicPem;
+    process.env['AUTH_AUDIENCE'] = AUDIENCE;
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+  it('an org token on a tenant route → allowed; consumer_type is carried into the AuthContext', async () => {
+    const token = await makeToken({ consumer_type: 'org' });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/v1/tenant/users');
+    expect(await guard.canActivate(makeContext(request))).toBe(true);
+    expect(request.authContext?.consumer_type).toBe('org');
+  });
+  it('an org token on a platform route → 403 (tenant_token_on_platform_route)', async () => {
+    const token = await makeToken({ consumer_type: 'org' });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/platform/tenants');
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'tenant_token_on_platform_route' } },
+    });
+  });
+  it('an org token carrying the platform sentinel tenant → 403 (sentinel_tenant_requires_platform_consumer)', async () => {
+    const token = await makeToken({ consumer_type: 'org', tenant_id: PLATFORM_TENANT_SENTINEL_ID });
+    const request = makeRequest({ Authorization: `Bearer ${token}` }, {}, '/v1/consents');
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'sentinel_tenant_requires_platform_consumer' } },
+    });
+  });
+});
+
+// D-ORG-4 (§3.G) — consumer-isolated cookies at the API guard: the front end names
+// its consumer; the guard reads THAT consumer's cookie, verifies the token's own
+// consumer_type against the declaration, falls back to the legacy cookie during the
+// transition, and refuses an ambiguous header-less jar.
+describe('JwtAuthGuard — consumer-isolated session cookies (D-ORG-4)', () => {
+  let guard: JwtAuthGuard;
+  let resolver: StubResolver;
+  const originalEnv = { ...process.env };
+  beforeEach(() => {
+    resolver = new StubResolver();
+    guard = new JwtAuthGuard(resolver);
+    process.env['AUTH_PUBLIC_KEY'] = keyPair.publicPem;
+    process.env['AUTH_AUDIENCE'] = AUDIENCE;
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+  it('X-Aramo-Consumer selects that consumer\'s cookie even when another consumer\'s cookie is present', async () => {
+    const recruiter = await makeToken({ consumer_type: 'recruiter' });
+    const org = await makeToken({ consumer_type: 'org' });
+    const request = makeRequest({ 'X-Aramo-Consumer': 'org' }, { aramo_access_token_recruiter: recruiter, aramo_access_token_org: org });
+    expect(await guard.canActivate(makeContext(request))).toBe(true);
+    expect(request.authContext?.consumer_type).toBe('org');
+  });
+  it('a declared consumer whose cookie carries ANOTHER consumer\'s token → 401 consumer_header_mismatch (no session stands in for another)', async () => {
+    const recruiter = await makeToken({ consumer_type: 'recruiter' });
+    const request = makeRequest({ 'X-Aramo-Consumer': 'org' }, { aramo_access_token_org: recruiter });
+    await expect(guard.canActivate(makeContext(request))).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
+      context: { details: { reason: 'consumer_header_mismatch', declared: 'org', actual: 'recruiter' } },
+    });
+  });
+  it('transition: a declared consumer with only the LEGACY cookie present is read (and must still match the token\'s consumer)', async () => {
+    const recruiter = await makeToken({ consumer_type: 'recruiter' });
+    const ok = makeRequest({ 'X-Aramo-Consumer': 'recruiter' }, { aramo_access_token: recruiter });
+    expect(await guard.canActivate(makeContext(ok))).toBe(true);
+    const bad = makeRequest({ 'X-Aramo-Consumer': 'esign' }, { aramo_access_token: recruiter });
+    await expect(guard.canActivate(makeContext(bad))).rejects.toMatchObject({ code: 'INVALID_TOKEN', context: { details: { reason: 'consumer_header_mismatch' } } });
+  });
+  it('no header: a single consumer cookie is unambiguous and used; two consumer cookies → 401 ambiguous_consumer_cookie (fail closed)', async () => {
+    const org = await makeToken({ consumer_type: 'org' });
+    const one = makeRequest({}, { aramo_access_token_org: org });
+    expect(await guard.canActivate(makeContext(one))).toBe(true);
+    expect(one.authContext?.consumer_type).toBe('org');
+    const recruiter = await makeToken({ consumer_type: 'recruiter' });
+    const two = makeRequest({}, { aramo_access_token_org: org, aramo_access_token_recruiter: recruiter });
+    await expect(guard.canActivate(makeContext(two))).rejects.toMatchObject({
+      code: 'AUTH_REQUIRED',
+      statusCode: 401,
+      context: { details: { reason: 'ambiguous_consumer_cookie' } },
+    });
+  });
+  it('an unknown consumer header → 401 invalid_consumer_header; a Bearer header always wins over cookies', async () => {
+    const org = await makeToken({ consumer_type: 'org' });
+    await expect(guard.canActivate(makeContext(makeRequest({ 'X-Aramo-Consumer': 'bogus' }, { aramo_access_token_org: org })))).rejects.toMatchObject({
+      code: 'AUTH_REQUIRED',
+      context: { details: { reason: 'invalid_consumer_header' } },
+    });
+    const bearer = makeRequest({ Authorization: `Bearer ${org}`, 'X-Aramo-Consumer': 'org' }, { aramo_access_token_recruiter: await makeToken({ consumer_type: 'recruiter' }) });
+    expect(await guard.canActivate(makeContext(bearer))).toBe(true);
+    expect(bearer.authContext?.consumer_type).toBe('org');
   });
 });
