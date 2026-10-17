@@ -2208,6 +2208,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-bookmarks.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2496,6 +2502,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.service.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
         "project": "consent",
         "status": "excluded"
@@ -2684,6 +2702,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/duplicate-check-pr.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -4485,6 +4509,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/consent/src/tests/consent-recruiter-create-default.integration.spec.ts",
+        "project": "consent",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/consent/src/tests/consent.controller.spec.ts",
         "project": "consent",
         "status": "excluded"
@@ -5888,6 +5918,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9001,6 +9037,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/recruiter-create-consent-default.spec.ts",
         "project": "api",
         "status": "excluded"
       },
