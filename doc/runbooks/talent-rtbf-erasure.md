@@ -338,6 +338,77 @@ residual identifiers — they are the forensic proof the erasure was performed.
 
 ---
 
+## S2 write-guard triggers — break-glass recovery (unexpected write failures)
+
+S2 (PR #949) attaches a `BEFORE INSERT OR UPDATE` guard trigger to every talent-keyed
+table (`trg_s2_guard_talent_write`) plus one contact-keyed guard on
+`sourced_talent."SourcedTalent"` (`trg_s2_guard_contact_write`). Each guarded write takes a
+SHARED transaction advisory lock on the talent and is refused only if the talent id is
+recorded in `consent."TalentErasureRun"` (an erased talent). Expected count on a database
+where every talent-keyed table exists (PROD as of the S2 release): **45**.
+
+Use this procedure ONLY when those triggers cause unexpected failures of normal writes
+(e.g. talent create/update, pipeline, notes, documents returning 5xx with a trigger or
+`s2_guard_*` error in the api/postgres logs). Proven end-to-end on a local HEAD stack
+2026-10-17 (fault injected → writes failed → level A restored writes → restore re-armed
+all guards and erasure protection).
+
+> ⚠ **An image rollback does NOT remove these triggers** — they live in the database.
+> Rolling back containers alone will not resolve a trigger fault.
+>
+> ⚠ **While the guards are disabled, Talent Erasure execution is PROHIBITED.** The guards
+> are what serialize writers against an erasure; do not run `erase-talent --execute` or
+> `--resume` until the restore below is complete and verified.
+
+### 0. Capture (before changing anything)
+```bash
+sudo docker logs --since 15m aramo-prod-api 2>&1 | grep -iE "s2_guard|has been erased|trigger" | tail -20
+sudo docker exec -i aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' <<'SQL'
+SELECT tgenabled, count(*) FROM pg_trigger
+ WHERE tgname IN ('trg_s2_guard_talent_write','trg_s2_guard_contact_write') GROUP BY 1;
+SQL
+```
+`O` = enabled. Record the count (expected 45 enabled).
+
+### Level A — disable ONLY the S2 guard triggers (no schema or data change)
+```bash
+sudo docker exec -i aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' <<'SQL'
+DO $$ DECLARE r RECORD; BEGIN
+  FOR r IN SELECT n.nspname s, c.relname t, tg.tgname g FROM pg_trigger tg
+           JOIN pg_class c ON c.oid = tg.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE tg.tgname IN ('trg_s2_guard_talent_write','trg_s2_guard_contact_write') LOOP
+    EXECUTE format('ALTER TABLE %I.%I DISABLE TRIGGER %I', r.s, r.t, r.g);
+  END LOOP; END $$;
+SQL
+```
+Verify: the step-0 query now reports the guards as `D` (disabled) and **0** enabled. Re-run the
+failing operation — normal writes must succeed. Nothing else in the schema is touched; no other
+trigger (e.g. the IC-1 `user_tenant_no_repoint`, audit immutability) is affected.
+
+### Restore — re-arm the guards (after the cause is understood/fixed)
+Re-apply the S2 write-serialization migration. It is idempotent (`CREATE OR REPLACE FUNCTION`,
+`DROP TRIGGER IF EXISTS` + `CREATE TRIGGER`), so it re-creates the guard functions and every
+trigger ENABLED, on every talent-keyed table that exists:
+```bash
+cd /opt/aramo
+sudo docker exec -i aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 --single-transaction -q' \
+  < libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql
+```
+Verify: the step-0 query reports **45** enabled again; a normal write succeeds; and the erasure
+guard is armed — if any erased talent exists, a write naming it is refused with
+`talent <id> has been erased: <table> may not name it (S2)`.
+
+If the fault is in the guard FUNCTION itself and is not yet fixed, stay on level A (guards
+disabled, erasure execution prohibited) and escalate; do not re-apply until a corrected
+migration is released.
+
+### Level B (last resort) — database restore
+Only if level A does not restore service: the release's pre-migration backup
+(`/opt/aramo-backups/pre-<sha>-backup-*.sql`) is the restore point. A DB restore is a deliberate,
+PO-authorized operation — surface it, do not auto-execute (see `RELEASE-box.md` ROLLBACK).
+
+---
+
 ## Notes
 
 - **Orphan sweep does NOT do this for you.** The S3 lifecycle `orphan-pending`

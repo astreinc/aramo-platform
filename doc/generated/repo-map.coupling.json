@@ -18455,6 +18455,11 @@
       "to": "doc/06-lead-review-checklist.md"
     },
     {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/talent-rtbf-erasure.md"
+    },
+    {
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -18614,6 +18619,11 @@
       "from": "doc/runbooks/t2p3b-selection-rebaseline-prod-reconciliation.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/runbooks/talent-rtbf-erasure.md",
+      "status": "unscoped",
+      "to": "libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql"
     },
     {
       "from": "doc/runbooks/tenant-llm-key-onboarding.md",
