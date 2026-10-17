@@ -69,10 +69,20 @@ export interface StructuredGenerationRequest {
   readonly transport?: StructuredGenerationTransportMode;
 }
 
+/**
+ * Safe failure diagnostics for operators: the provider's HTTP status and its
+ * machine error code/type (e.g. 'insufficient_quota', 'model_not_found',
+ * 'invalid_request_error'). NEVER upstream message text or request content.
+ */
+export interface StructuredGenerationFailureDiagnostic {
+  readonly http_status?: number;
+  readonly provider_error_code?: string;
+}
+
 export type StructuredGenerationOutcome =
   | { readonly kind: 'ok'; readonly parsed: unknown; readonly transport: StructuredGenerationTransport }
-  | { readonly kind: 'retryable'; readonly category: StructuredGenerationErrorCategory }
-  | { readonly kind: 'terminal'; readonly category: StructuredGenerationErrorCategory };
+  | { readonly kind: 'retryable'; readonly category: StructuredGenerationErrorCategory; readonly diagnostic?: StructuredGenerationFailureDiagnostic }
+  | { readonly kind: 'terminal'; readonly category: StructuredGenerationErrorCategory; readonly diagnostic?: StructuredGenerationFailureDiagnostic };
 
 /**
  * Provider-neutral structured-generation port. The Anthropic implementation is
