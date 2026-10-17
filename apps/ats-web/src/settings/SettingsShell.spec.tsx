@@ -6,17 +6,14 @@ import { describe, expect, it } from 'vitest';
 import { AdminGate } from '../admin/AdminGate';
 
 import { SettingsShell, SETTINGS_NAV } from './SettingsShell';
-import { TenantProfileSection } from './sections/TenantProfileSection';
+import { SettingsView } from './SettingsView';
 import { BranchesSection } from './sections/BranchesSection';
 import {
   ApplySection,
-  BillingSection,
   EmailSection,
   FieldsSection,
   IntegrationsSection,
-  LocalizationSection,
   PortalSection,
-  SecuritySection,
 } from './sections/SeamSections';
 
 // Settings Rebuild Directive 1 — the shell + rail + seam honesty.
@@ -49,12 +46,12 @@ function renderAt(path: string, session: Session) {
                   <Route element={<SettingsShell />}>
                     <Route
                       index
-                      element={<Navigate to="/admin/settings/profile" replace />}
+                      element={<Navigate to="/admin/settings/recruiting" replace />}
                     />
                     <Route
-                      path="settings/profile"
+                      path="settings/recruiting"
                       element={
-                        <TenantProfileSection
+                        <SettingsView
                           fetchFn={() =>
                             Promise.resolve({
                               'compensation.display_default': 'both',
@@ -65,8 +62,6 @@ function renderAt(path: string, session: Session) {
                       }
                     />
                     <Route path="settings/branches" element={<BranchesSection />} />
-                    <Route path="settings/localization" element={<LocalizationSection />} />
-                    <Route path="settings/security" element={<SecuritySection />} />
                     <Route path="settings/portal" element={<PortalSection />} />
                     <Route path="settings/apply" element={<ApplySection />} />
                     <Route path="settings/email" element={<EmailSection />} />
@@ -75,7 +70,6 @@ function renderAt(path: string, session: Session) {
                       path="settings/integrations"
                       element={<IntegrationsSection />}
                     />
-                    <Route path="settings/billing" element={<BillingSection />} />
                   </Route>
                 </Routes>
               </AdminGate>
@@ -88,18 +82,19 @@ function renderAt(path: string, session: Session) {
 }
 
 describe('Settings shell + rail', () => {
-  it('renders every grouped section in the rail (16 capabilities present)', () => {
-    renderAt('/admin/settings/profile', makeSession(['tenant:admin:settings']));
+  it('renders every grouped ATS-owned section in the rail + the Organization link (D-ORG-3)', () => {
+    renderAt('/admin/settings/recruiting', makeSession(['tenant:admin:settings']));
     const nav = screen.getByRole('navigation', { name: /settings sections/i });
-    // All six group headings.
+    // The ATS-owned group headings (People & access / Account moved to /org/*).
     for (const heading of [
+      'Organization',
       'Workspace',
-      'People & access',
       'Talent experience',
       'Communication',
+      'Recruiting',
+      'Documents',
       'Data',
       'Connect',
-      'Account',
     ]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
@@ -110,11 +105,22 @@ describe('Settings shell + rail', () => {
     }
     // The residual admin-tools affordance (ruling C).
     expect(screen.getByTestId('settings-nav-tools')).toBeInTheDocument();
+    // D-ORG-3 — the organization-owned sections are NOT in this rail; the rail
+    // links OUT to Organization administration with a host-level anchor (the
+    // ATS basename must not be applied — it is a different SPA on this host).
+    for (const gone of ['profile', 'users', 'roles', 'security', 'domain', 'localization', 'billing', 'audit']) {
+      expect(screen.queryByTestId(`settings-nav-${gone}`)).toBeNull();
+    }
+    expect(within(nav).queryByText('People & access')).toBeNull();
+    expect(within(nav).queryByText('Account')).toBeNull();
+    const org = screen.getByTestId('settings-nav-organization');
+    expect(org.tagName).toBe('A');
+    expect(org).toHaveAttribute('href', '/org/');
   });
 
   it('marks the active section with aria-current', () => {
-    renderAt('/admin/settings/profile', makeSession(['tenant:admin:settings']));
-    expect(screen.getByTestId('settings-nav-profile')).toHaveAttribute(
+    renderAt('/admin/settings/recruiting', makeSession(['tenant:admin:settings']));
+    expect(screen.getByTestId('settings-nav-recruiting-settings')).toHaveAttribute(
       'aria-current',
       'page',
     );
@@ -124,15 +130,15 @@ describe('Settings shell + rail', () => {
   });
 
   it('blocks a non-admin from the whole settings subtree (ForbiddenState)', () => {
-    renderAt('/admin/settings/profile', makeSession(['talent:read']));
+    renderAt('/admin/settings/recruiting', makeSession(['talent:read']));
     expect(screen.getByText(/don't have permission/i)).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: /settings sections/i })).toBeNull();
   });
 
-  it('the index redirects into the settings rail (Tenant profile)', async () => {
+  it('the index redirects into the settings rail (Recruiting settings — D-ORG-3)', async () => {
     renderAt('/admin', makeSession(['tenant:admin:settings']));
     expect(
-      await screen.findByRole('heading', { name: 'Tenant profile' }),
+      await screen.findByRole('heading', { name: /recruiting settings/i }),
     ).toBeInTheDocument();
   });
 });
@@ -140,13 +146,12 @@ describe('Settings shell + rail', () => {
 describe('Honest seams — no dead knobs', () => {
   it('every seam section is clearly marked coming-soon / on the roadmap', () => {
     const cases: [string, () => void][] = [
-      ['settings/localization', () => undefined],
-      ['settings/security', () => undefined],
+      // 'settings/localization', 'settings/security', 'settings/billing' moved to
+      // Organization administration (D-ORG-3) — covered by libs/org-admin-web.
       // 'settings/email' is now LIVE (D-EMAIL-TPL-1 ET-6) — covered by EmailTemplatesPanel.spec.
       ['settings/fields', () => undefined],
       ['settings/integrations', () => undefined],
-      ['settings/billing', () => undefined],
-      // 'settings/audit' is now LIVE (Directive 2) — covered by AuditLogView.spec.
+      // 'settings/audit' is now LIVE (Directive 2) — moved to /org/audit (D-ORG-3).
     ];
     for (const [path] of cases) {
       const { unmount } = renderAt(
@@ -182,7 +187,7 @@ describe('Honest seams — no dead knobs', () => {
   //    the stale "Soon" badge is dropped and nothing implies Connector-B /
   //    provider selection / production onboarding. ──
   it('presents Integrations as a live section — no stale "Soon" badge', () => {
-    renderAt('/admin/settings/profile', makeSession(['tenant:admin:settings']));
+    renderAt('/admin/settings/recruiting', makeSession(['tenant:admin:settings']));
     const link = screen.getByTestId('settings-nav-integrations');
     expect(link).toHaveTextContent('Integrations');
     expect(link.textContent).not.toContain('Soon');

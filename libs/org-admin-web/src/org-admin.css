@@ -1,0 +1,212 @@
+/* Aramo Organization Administration (libs/org-admin-web) — module styles.
+ * Moved from apps/ats-web (ui/ui.css + settings/settings.css) at D-ORG-3 with
+ * the modules they style: the users role picker + role-assign diff, the audit
+ * log filters/rows, the roles & permissions matrix and the tenant profile form.
+ * Structural only; the per-app token layer (--brand, --line, …) is supplied by
+ * the host app (apps/home-web theme.css), exactly like fe-foundation ui.css.
+ */
+
+/* Users — role picker (checkbox list) + role-assign diff block (FE
+ * Consolidation Directive 5, PR3). Logic preserved verbatim from S5b; these
+ * are the Confident-Blue visual styles for the ported markup. */
+
+.rc-role-picker { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+
+.rc-role-picker__row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px;
+  border-radius: var(--r-sm, 6px); cursor: pointer;
+}
+
+.rc-role-picker__row:hover { background: var(--surface-2, var(--c-surface-2)); }
+
+.rc-role-picker__row[data-disabled='true'] { opacity: 0.55; cursor: not-allowed; }
+
+.rc-role-picker__check { margin-top: 3px; }
+
+.rc-role-picker__labels { display: flex; flex-direction: column; gap: 1px; }
+
+.rc-role-picker__label { font-weight: 600; color: var(--ink, var(--c-text)); }
+
+.rc-role-picker__helper { color: var(--muted, var(--c-text-muted)); font-size: 0.82rem; }
+
+.rc-diff {
+  display: grid; grid-template-columns: auto 1fr; gap: 4px 12px;
+  margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md, 9px);
+  background: var(--surface-2, var(--c-surface-2));
+}
+
+.rc-diff__label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted, var(--c-text-muted)); }
+
+.rc-diff__value { color: var(--ink, var(--c-text)); }
+
+/* ── Audit log (Directive 2) ── */
+.rc-audit-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+}
+.rc-audit-filters .rc-ifield {
+  gap: 4px;
+}
+.rc-audit-filters .rc-ifield > span {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.rc-audit-filters__actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+.rc-audit-event {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.rc-audit-event__label {
+  font-weight: 600;
+}
+.rc-audit-detail {
+  color: var(--muted);
+}
+.rc-audit-subject {
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+.rc-audit-more {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+/* ── Roles & permissions matrix (Directive 5, read-only) ── */
+.rc-roles-matrix {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .rc-roles-matrix {
+    grid-template-columns: 1fr;
+  }
+}
+.rc-roles-list {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rc-roles-list__tier {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--faint);
+  padding: 10px 8px 4px;
+}
+.rc-roles-list__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  cursor: pointer;
+}
+.rc-roles-list__item:hover {
+  background: var(--surface-2);
+}
+.rc-roles-list__item.on {
+  background: var(--brand-tint);
+  color: var(--brand-strong);
+  font-weight: 600;
+}
+.rc-roles-list__name {
+  flex: 1;
+  min-width: 0;
+}
+.rc-roles-list__count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--faint);
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 1px 7px;
+}
+.rc-roles-list__item.on .rc-roles-list__count {
+  background: #fff;
+  color: var(--brand);
+}
+.rc-role-brief__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 4px;
+}
+.rc-role-brief__head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.rc-role-brief__groups {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 18px;
+  margin-top: 12px;
+}
+@media (max-width: 620px) {
+  .rc-role-brief__groups {
+    grid-template-columns: 1fr;
+  }
+}
+.rc-role-brief__cat {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--brand);
+  margin-bottom: 4px;
+}
+.rc-role-brief__scopes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rc-role-brief__scopes li {
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+/* ── Tenant profile form (Directive 3) ── */
+.rc-pf-group {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: 14px 0 0;
+  padding: 14px 0 0;
+}
+.rc-pf-group > legend {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--faint);
+  padding: 0;
+}

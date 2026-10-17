@@ -28,11 +28,12 @@ import { AtsAppShell } from './AtsAppShell';
 import { BreadcrumbProvider } from './breadcrumb';
 import { useMe } from './me-api';
 
-// The tenant-profile route — the existing destination for the user menu's
-// Settings link (also the /admin default redirect target). Gated behind admin
-// access (it lives under the tenant:admin:* admin surface), so the link is
-// shown only to a principal who can reach it.
-const SETTINGS_PROFILE_PATH = '/admin/settings/profile';
+// The ATS settings landing — the user menu's Settings link (also the /admin
+// default redirect target). Gated behind admin access (it lives under the
+// tenant:admin:* admin surface), so the link is shown only to a principal who
+// can reach it. D-ORG-3: the organization profile moved to the App Home (/org/);
+// the ATS landing is now Recruiting settings.
+const SETTINGS_PROFILE_PATH = '/admin/settings/recruiting';
 // Personal settings — every signed-in user (NOT admin-gated). The account menu's
 // "My Settings" entry; distinct from the admin "Settings" above.
 const MY_SETTINGS_PATH = '/settings/me';

@@ -2,23 +2,35 @@ import { Link } from 'react-router-dom';
 
 import { Card } from '../../ui';
 import { SettingCardHead, SettingHint, SettingsSection } from '../components';
-import { SitesPanel } from '../sites/SitesPanel';
 
-// Settings Rebuild Directive 1 + 4 — Branches & teams.
+// Settings Rebuild Directive 1 + 4 — Teams & organisation.
 //
-// Branches (sites) are now LIVE (Directive 4 — full CRUD + hierarchy over the
-// Site model, replacing the D1 honest seam). Teams + org are LIVE entry points
-// (the built modules re-homed here; the full surfaces render at /admin/teams
-// and /admin/org inside this same shell).
+// D-ORG-3: Branches (sites) are ORGANIZATION structure and moved to Organization
+// Administration (/org/sites on the App Home) — linked from here, never
+// duplicated. Teams (recruiting pods) + the reporting hierarchy are ATS-owned
+// and stay LIVE here (the full surfaces render at /admin/teams and /admin/org
+// inside this same shell).
 
 export function BranchesSection() {
   return (
     <SettingsSection
-      title="Branches & teams"
-      description="Aramo is multi-tenant with multi-branch capability. Branches (sites), teams, and the reporting hierarchy are all live."
+      title="Teams & organisation"
+      description="Recruiting teams and the reporting hierarchy — live. Sites (branches) are organization structure, managed in Organization administration."
     >
-      {/* LIVE — Branches (sites) CRUD + hierarchy (Directive 4) */}
-      <SitesPanel />
+      {/* D-ORG-3 — Sites moved to Organization Administration (/org/sites). */}
+      <Card flush>
+        <SettingCardHead title="Sites & branches" sub="Your organization's locations are shared by every Aramo product." />
+        <div className="rc-card--pad">
+          <p className="set-muted">
+            Sites are managed in Organization administration on the App Home.
+          </p>
+          <div className="rc-formfoot">
+            <a href="/org/sites" className="rc-link-action" data-testid="branches-sites-link">
+              Manage sites
+            </a>
+          </div>
+        </div>
+      </Card>
 
       {/* LIVE — Teams */}
       <Card flush>

@@ -40,24 +40,17 @@ import { SourcingPoolView } from './sourcing/SourcingPoolView';
 import { SettingsView } from './settings/SettingsView';
 import { MySettingsView } from './settings/MySettingsView';
 import { SettingsShell } from './settings/SettingsShell';
-import { TenantProfileSection } from './settings/sections/TenantProfileSection';
 import { BranchesSection } from './settings/sections/BranchesSection';
 import { ImportSection } from './settings/sections/ImportSection';
 import { ComplianceSection } from './settings/sections/ComplianceSection';
 import { EngagementPolicySection } from './settings/sections/EngagementPolicySection';
 import {
   ApplySection,
-  BillingSection,
   EmailSection,
   FieldsSection,
   IntegrationsSection,
-  LocalizationSection,
   PortalSection,
-  SecuritySection,
 } from './settings/sections/SeamSections';
-import { AuditSection } from './settings/audit/AuditSection';
-import { DomainVerificationSection } from './settings/sections/DomainVerificationSection';
-import { RolesSection } from './settings/roles/RolesSection';
 import { DocumentTemplatesSection } from './settings/documents/DocumentTemplatesSection';
 import { RtrTemplateDetail } from './settings/documents/RtrTemplateDetail';
 import { RtrDraftEditor } from './settings/documents/RtrDraftEditor';
@@ -74,7 +67,6 @@ import { RecruiterShell } from './shell/RecruiterShell';
 import { TalentListView } from './talent/TalentListView';
 import { TeamMembersView } from './teams/TeamMembersView';
 import { TeamsListView } from './teams/TeamsListView';
-import { UsersListView } from './users/UsersListView';
 import { ShellPreview } from './ui/ShellPreview';
 import { UiGallery } from './ui/UiGallery';
 
@@ -654,12 +646,15 @@ export function App() {
                               <Route
                                 index
                                 element={
-                                  <Navigate to="/admin/settings/profile" replace />
+                                  <Navigate to="/admin/settings/recruiting" replace />
                                 }
                               />
                               {/* Re-homed live modules (render in-shell at
-                                  their existing, test-covered paths). */}
-                              <Route path="users" element={<UsersListView />} />
+                                  their existing, test-covered paths). D-ORG-3:
+                                  Users (directory / invitations / roles) moved
+                                  to Organization Administration (/org/users on
+                                  the App Home) — the ATS keeps its product-
+                                  owned teams + reporting hierarchy. */}
                               <Route path="org" element={<OrgHierarchyView />} />
                               <Route path="teams" element={<TeamsListView />} />
                               <Route
@@ -674,10 +669,10 @@ export function App() {
                                   + its route test). */}
                               <Route path="settings" element={<SettingsView />} />
                               {/* The settings sections. */}
-                              <Route
-                                path="settings/profile"
-                                element={<TenantProfileSection />}
-                              />
+                              {/* D-ORG-3 — settings/profile, /roles, /security,
+                                  /domain, /localization, /billing and /audit are
+                                  ORGANIZATION-owned and moved to /org/* (App
+                                  Home); the ATS settings rail links there. */}
                               <Route
                                 path="settings/branches"
                                 element={<BranchesSection />}
@@ -717,22 +712,6 @@ export function App() {
                                 element={<SettingsView />}
                               />
                               <Route
-                                path="settings/localization"
-                                element={<LocalizationSection />}
-                              />
-                              <Route
-                                path="settings/roles"
-                                element={<RolesSection />}
-                              />
-                              <Route
-                                path="settings/security"
-                                element={<SecuritySection />}
-                              />
-                              <Route
-                                path="settings/domain"
-                                element={<DomainVerificationSection />}
-                              />
-                              <Route
                                 path="settings/portal"
                                 element={<PortalSection />}
                               />
@@ -761,14 +740,6 @@ export function App() {
                                   `requisition:import:read` (P3), served by the
                                   isolated route above — OUTSIDE this
                                   `tenant:admin:*` AdminGate subtree. */}
-                              <Route
-                                path="settings/billing"
-                                element={<BillingSection />}
-                              />
-                              <Route
-                                path="settings/audit"
-                                element={<AuditSection />}
-                              />
                               {/* Residual admin-tools (Lead ruling C): consent +
                                   assignment-discovery lookups stay reachable. */}
                               <Route path="tools" element={<AdminSection />} />

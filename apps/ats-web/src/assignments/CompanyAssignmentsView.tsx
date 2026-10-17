@@ -407,8 +407,8 @@ export function CompanyAssignmentsView({
                 </span>
                 <div className="rc-team__addnote">
                   The member keeps their user role — roles are managed in{' '}
-                  <a href="/settings/users" className="rc-link-strong">
-                    Settings → Users &amp; roles
+                  <a href="/org/users" className="rc-link-strong">
+                    Organization administration → Users
                   </a>
                   .
                 </div>
