@@ -10873,6 +10873,11 @@
       "to": "apps/esign-service/tsconfig.app.json"
     },
     {
+      "from": "apps/home-web/playwright.topology.config.ts",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
       "from": "apps/home-web/project.json",
       "status": "unscoped",
       "to": "apps/home-web/vite.config.ts"
@@ -18529,6 +18534,16 @@
       "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
       "status": "unscoped",
       "to": "infrastructure/environments/prod/talent-intake.tf"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "apps/home-web/e2e/topology.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "apps/home-web/playwright.topology.config.ts"
     },
     {
       "from": "doc/runbooks/RELEASE-app-home-org.md",
