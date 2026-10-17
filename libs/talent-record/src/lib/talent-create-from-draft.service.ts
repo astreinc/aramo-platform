@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError } from '@aramo/common';
 import { type AuthContextType } from '@aramo/auth';
@@ -16,6 +16,11 @@ import type { TalentRecordView } from './dto/talent-record.view.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
 import { ResumeEditionIngestionService } from './resume-extraction/resume-edition-ingestion.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
+import {
+  RECRUITER_CREATE_CONSENT_DEFAULT,
+  applyRecruiterCreateConsentDefault,
+  type RecruiterCreateConsentDefaultPort,
+} from './recruiter-create-consent-default.port.js';
 
 // The SHARED CREATE-from-draft promotion authority (TI-1F-B), extracted verbatim
 // from TalentRecordController so BOTH the synchronous create()-with-draft path AND
@@ -50,6 +55,13 @@ export class TalentCreateFromDraftService {
     @Optional() private readonly editionIngestion?: ResumeEditionIngestionService,
     @Optional() private readonly resumeText?: ResumeTextService,
     @Optional() private readonly resumeParser?: ResumeParserService,
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 — the at-create contact-consent default
+    // port (email + phone), recorded on BOTH recruiter create compositions here
+    // (draft confirm + intake promotion). @Optional + STRING token + appended LAST
+    // (positional alignment for hand-wired specs); apps/api binds it.
+    @Optional()
+    @Inject(RECRUITER_CREATE_CONSENT_DEFAULT)
+    private readonly recruiterCreateConsentDefault?: RecruiterCreateConsentDefaultPort,
   ) {}
 
   async confirmCreateFromDraftUpload(
@@ -148,6 +160,15 @@ export class TalentCreateFromDraftService {
         id: reservedId,
       });
     }
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 §2 — résumé-first draft confirm + the
+    // governed intake promotion: record the email + phone contact-consent default
+    // once the Talent exists. Fail-soft (§5); a retry that reuses the reserved
+    // Talent is a no-op (deterministic per-Talent key + the §4 non-empty-ledger skip).
+    await applyRecruiterCreateConsentDefault(this.recruiterCreateConsentDefault, {
+      talent_record_id: reservedId,
+      authContext,
+      requestId,
+    });
 
     // PHASE 3 — only NOW does the draft cross into a durable Talent: ACCEPTED.
     // Guarded READY_FOR_REVIEW→ACCEPTED (idempotent; a prior success is a no-op).
@@ -225,6 +246,14 @@ export class TalentCreateFromDraftService {
         requestId,
         ...(reservedId !== undefined ? { id: reservedId } : {}),
       }));
+    // CONSENT-RECRUITER-CREATE-DEFAULT-1 §2 — the extraction-decoupled intake
+    // promotion: record the email + phone contact-consent default once the Talent
+    // exists. Fail-soft (§5); idempotent on a reserved-id replay.
+    await applyRecruiterCreateConsentDefault(this.recruiterCreateConsentDefault, {
+      talent_record_id: created.id,
+      authContext,
+      requestId,
+    });
 
     // Best-effort provenance/evidence block — the Talent IS created; a document/
     // edition/evidence hiccup never fails the create (mirrors the manual path).

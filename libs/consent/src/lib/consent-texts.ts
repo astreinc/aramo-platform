@@ -153,3 +153,60 @@ export function hashRecruiterCaptureConsentText(
   const hash = createHash('sha256').update(text, 'utf8').digest('hex');
   return { version, hash };
 }
+
+// ============================================================================
+// Recruiter-create DEFAULT registry — CONSENT-RECRUITER-CREATE-DEFAULT-1
+// (Amendment v1.0 LOCKED §3.4).
+//
+// The at-create contact-consent grant recorded when a RECRUITER creates a Talent
+// (captured_method='recruiter_create_default'). Worded as a recruiter-verification
+// POLICY basis, NOT as a Talent statement and NOT as a recruiter attestation that
+// the Talent authorized anything — so neither the portal text ("I authorize …")
+// nor recruiter-capture-v1-draft ("I confirm that I obtained …") is reused (§3.4).
+//
+// ONE text for all three granted scopes (profile_storage, matching, contacting):
+// the amendment fixes a single wording, so each scope's event carries the same
+// reproducible {version, hash} preimage; the scope itself is on the ledger row.
+// {recruiter} is rendered with the creating recruiter's stable actor id
+// (authContext.sub — the same id recorded as captured_by_actor_id), mirroring the
+// portal text naming its recipient by tenant_id: a stable identifier available on
+// both the write path and the ledger event, so the preimage is reproducible.
+// ADD-not-rename: this version is FROZEN; a wording change is a new version.
+export const CONSENT_TEXT_RECRUITER_CREATE_DEFAULT_VERSION = 'recruiter-create-default-v1';
+
+export interface RecruiterCreateDefaultTextContext {
+  recruiter_actor_id: string;
+}
+
+// version id → deterministic renderer. Existing entries are FROZEN.
+const RECRUITER_CREATE_DEFAULT_TEMPLATES: Record<
+  string,
+  (ctx: RecruiterCreateDefaultTextContext) => string
+> = {
+  'recruiter-create-default-v1': (ctx) =>
+    `Recorded at profile creation by ${ctx.recruiter_actor_id}. Aramo's policy ` +
+    `for recruiter-created profiles: the recruiter verified the Talent before ` +
+    `creating the profile, and email and phone contact is permitted until the ` +
+    `Talent or a recruiter withdraws it.`,
+};
+
+export function renderRecruiterCreateDefaultConsentText(
+  version: string,
+  ctx: RecruiterCreateDefaultTextContext,
+): string {
+  const tpl = RECRUITER_CREATE_DEFAULT_TEMPLATES[version];
+  if (tpl === undefined) {
+    throw new Error(`unknown recruiter-create-default consent text version: ${version}`);
+  }
+  return tpl(ctx);
+}
+
+// The D7 evidence pair: {version, sha256hex(exact rendered text)}.
+export function hashRecruiterCreateDefaultConsentText(
+  version: string,
+  ctx: RecruiterCreateDefaultTextContext,
+): { version: string; hash: string } {
+  const text = renderRecruiterCreateDefaultConsentText(version, ctx);
+  const hash = createHash('sha256').update(text, 'utf8').digest('hex');
+  return { version, hash };
+}

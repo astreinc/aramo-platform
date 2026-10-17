@@ -13,7 +13,7 @@ import {
 import type { ConsentDecisionDto } from './dto/consent-decision.dto.js';
 import {
   PROFILE_CONSENT_SCOPES,
-  type ConsentCapturedMethodValue,
+  type ConsentLedgerCapturedMethodValue,
   type ConsentScopeValue,
 } from './dto/consent-grant-request.dto.js';
 import type { ConsentGrantResponseDto } from './dto/consent-grant-response.dto.js';
@@ -41,7 +41,9 @@ export interface RecordConsentEventInput {
   talent_record_id: string;
   action: ConsentActionValue;
   scope: ConsentScopeValue;
-  captured_method: ConsentCapturedMethodValue;
+  // Ledger vocabulary: HTTP methods + the server-only recruiter_create_default
+  // (CONSENT-RECRUITER-CREATE-DEFAULT-1 §3.3).
+  captured_method: ConsentLedgerCapturedMethodValue;
   captured_by_actor_id: string | null;
   consent_version: string;
   // grant-only field; revoke ignores

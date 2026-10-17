@@ -8,10 +8,13 @@ import { ConsentRepository, SCOPE_DEPENDENCY_CHAIN } from './consent.repository.
 import {
   CONSENT_TEXT_CURRENT_VERSION,
   CONSENT_TEXT_RECRUITER_CAPTURE_VERSION,
+  CONSENT_TEXT_RECRUITER_CREATE_DEFAULT_VERSION,
   hashPortalConsentText,
   hashRecruiterCaptureConsentText,
+  hashRecruiterCreateDefaultConsentText,
   renderPortalConsentText,
   renderRecruiterCaptureConsentText,
+  renderRecruiterCreateDefaultConsentText,
 } from './consent-texts.js';
 import { NOTICE_TEXT_CURRENT_VERSION } from './notice-texts.js';
 import type { ConsentCheckRequestDto } from './dto/consent-check-request.dto.js';
@@ -47,6 +50,22 @@ import {
 // NOT tenant config; NO cron. A grant records expires_at = occurred_at + this;
 // the state read derives expiry. Renewal = a fresh grant (append-only).
 export const CONSENT_DEFAULT_TERM_MONTHS = 12;
+
+// CONSENT-RECRUITER-CREATE-DEFAULT-1 §3.1/§3.2 — the at-create default grant set
+// (dependency order: prerequisites first, matching SCOPE_DEPENDENCY_CHAIN) and the
+// contact channels it permits. SMS / portal / other are NOT granted (§3.2).
+export const RECRUITER_CREATE_DEFAULT_SCOPES = [
+  'profile_storage',
+  'matching',
+  'contacting',
+] as const;
+export const RECRUITER_CREATE_DEFAULT_CHANNELS = ['email', 'phone'] as const;
+// Deterministic per-Talent idempotency namespace (fanned out per scope).
+export const RECRUITER_CREATE_DEFAULT_IDEMPOTENCY_PREFIX = 'recruiter-create-default';
+
+export type RecruiterCreateDefaultResult =
+  | { status: 'recorded'; results: ConsentCaptureScopeResult[] }
+  | { status: 'skipped'; reason: 'not_recruiter' | 'consent_ledger_not_empty' };
 
 // Service trusts the controller boundary's class-validator pass.
 // Tenant id and (when applicable) actor id come from the JWT, not the body.
@@ -193,6 +212,114 @@ export class ConsentService {
       consent_version: version,
       results,
     };
+  }
+
+  // ===========================================================================
+  // CONSENT-RECRUITER-CREATE-DEFAULT-1 (Amendment v1.0 LOCKED) — the at-create
+  // contact-consent DEFAULT for a recruiter-created Talent. The amendment §7
+  // CARVES OUT the "no auto-grant" rule above for THIS method only; the capture
+  // endpoint (captureProfileConsent) is unchanged and still records only attested
+  // scopes. Server-only: reached from the talent-record create paths through an
+  // apps/api-bound port, never from an HTTP request body.
+  //
+  //   §3.1 scopes profile_storage → matching → contacting (dependency order)
+  //   §3.2 contacting carries metadata.permitted_channels ['email','phone']
+  //   §3.3 captured_method 'recruiter_create_default'
+  //   §3.4 text version recruiter-create-default-v1 (frozen, hashed)
+  //   §3.5 actor = the creating recruiter (authContext.sub); audit actor_type
+  //        derives to 'recruiter' in recordConsentEvent
+  //   §3.6 standard 12-month term (CONSENT_DEFAULT_TERM_MONTHS)
+  //   §3.7 through the ONE authoritative writer (recordConsentEvent)
+  //   §4   never widens an existing denial: if the Talent already has ANY consent
+  //        ledger event (any scope/method), nothing is written
+  //
+  // Recruiter consumers only (a non-recruiter caller is a no-op). Idempotent per
+  // Talent: the key is deterministic on talent_record_id, fanned out per scope.
+  // Errors PROPAGATE — the talent-record caller owns the §5 fail-soft.
+  // ===========================================================================
+
+  async recordRecruiterCreateDefault(input: {
+    talent_record_id: string;
+    authContext: AuthContextType;
+    requestId: string;
+    now?: Date;
+  }): Promise<RecruiterCreateDefaultResult> {
+    if (input.authContext.consumer_type !== 'recruiter') {
+      return { status: 'skipped', reason: 'not_recruiter' };
+    }
+    const tenant_id = input.authContext.tenant_id;
+
+    // §4 precedence guard — an existing ledger (a revocation, a prior grant, or a
+    // replay of this default) is never overridden or re-granted. A brand-new
+    // Talent has an empty ledger, so the default proceeds. Existing read only.
+    const prior = await this.consentRepo.resolveHistory({
+      tenant_id,
+      talent_record_id: input.talent_record_id,
+      limit: 1,
+      requestId: input.requestId,
+    });
+    if (prior.events.length > 0) {
+      return { status: 'skipped', reason: 'consent_ledger_not_empty' };
+    }
+
+    const now = input.now ?? new Date();
+    const expiresAt = new Date(now);
+    expiresAt.setMonth(expiresAt.getMonth() + CONSENT_DEFAULT_TERM_MONTHS);
+    const actorId = input.authContext.sub;
+    const version = CONSENT_TEXT_RECRUITER_CREATE_DEFAULT_VERSION;
+    const textCtx = { recruiter_actor_id: actorId };
+    const text = renderRecruiterCreateDefaultConsentText(version, textCtx);
+    const hash = hashRecruiterCreateDefaultConsentText(version, textCtx).hash;
+
+    const results: ConsentCaptureScopeResult[] = [];
+    for (const scope of RECRUITER_CREATE_DEFAULT_SCOPES) {
+      const metadata =
+        scope === 'contacting'
+          ? { permitted_channels: [...RECRUITER_CREATE_DEFAULT_CHANNELS] }
+          : undefined;
+      const event = await this.consentRepo.recordConsentEvent({
+        action: 'granted',
+        tenant_id,
+        talent_record_id: input.talent_record_id,
+        scope,
+        captured_method: 'recruiter_create_default',
+        captured_by_actor_id: actorId,
+        consent_version: version,
+        consent_text_snapshot: text,
+        occurred_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+        ...(metadata !== undefined ? { metadata } : {}),
+        idempotencyKey: `${RECRUITER_CREATE_DEFAULT_IDEMPOTENCY_PREFIX}:${input.talent_record_id}:${scope}`,
+        // Stable across replays (server timestamps excluded) so a re-run under
+        // the same deterministic key is a replay, never a 409.
+        requestHash: hashCanonicalizedBody({
+          recruiter_create_default: {
+            talent_record_id: input.talent_record_id,
+            scope,
+            consent_version: version,
+          },
+        }),
+        requestId: input.requestId,
+        consent_evidence: {
+          consent_text_hash: hash,
+          consent_text_version: version,
+          // No platform notice is presented to the Talent at a recruiter create,
+          // so none is recorded (the evidence field is nullable by contract).
+          notice_version: null,
+          channel: 'recruiter_create_default',
+        },
+      });
+      results.push({
+        scope,
+        event_id: event.event_id,
+        consent_version: event.consent_version,
+        consent_text_hash: hash,
+        occurred_at: event.occurred_at,
+        expires_at: event.expires_at,
+        recorded_at: event.recorded_at,
+      });
+    }
+    return { status: 'recorded', results };
   }
 
   /**
