@@ -6694,3 +6694,8 @@ a.rc-tboard__menu-item { box-sizing: border-box; text-decoration: none; }
 .rc-redition__reject:disabled,
 .rc-redition__archive:disabled { opacity: 0.55; cursor: default; }
 .rc-redition-archived { margin-top: 8px; }
+
+/* Talent list row "Open Talent 360" icon link (replaces the retired triage drawer's Preview button). */
+.rc-iconlink { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: var(--brand); }
+.rc-iconlink:hover, .rc-iconlink:focus-visible { background: var(--brand-tint); }
+.rc-iconlink svg { width: 15px; height: 15px; }

@@ -1357,7 +1357,6 @@
     "apps/ats-web/src/talent/components/LastContactCell.tsx",
     "apps/ats-web/src/talent/components/ListsPanel.spec.tsx",
     "apps/ats-web/src/talent/components/ListsPanel.tsx",
-    "apps/ats-web/src/talent/components/TalentTriageDrawer.tsx",
     "apps/ats-web/src/talent/components/TrustPanel.spec.tsx",
     "apps/ats-web/src/talent/components/TrustPanel.tsx",
     "apps/ats-web/src/talent/consent.ts",
