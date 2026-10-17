@@ -345,6 +345,11 @@ services:
       # release-blocking, exactly as for TR-3).
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # SES credentials — same as api's. Without them the AWS SDK falls back to the
+      # Lightsail instance role, which is NOT allowed ses:SendEmail (mail silently dropped).
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
     depends_on:
       postgres:
         condition: service_healthy
@@ -368,6 +373,12 @@ services:
       # E-Sign signer notifications ride the standing SES mailer path (SigningNotificationPort → MailerPort).
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # SES credentials — same as api's. Without them the AWS SDK falls back to the
+      # Lightsail instance role, which is NOT allowed ses:SendEmail: every signer
+      # invitation/reminder failed with "not authorized to perform ses:SendEmail".
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
       # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
       # token is appended in-memory inside esign-service and never leaves it).
       - ESIGN_SIGN_WEB_BASE_URL
