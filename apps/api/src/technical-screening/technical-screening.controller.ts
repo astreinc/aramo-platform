@@ -354,7 +354,11 @@ function requireIdempotencyKey(key: string | undefined, requestId: string): stri
   return key;
 }
 
-type Body = Record<string, unknown> | undefined;
+// Named so it never collides with the `@Body()` decorator VALUE: with
+// emitDecoratorMetadata a type alias called `Body` is emitted as the imported
+// `Body` decorator function, and the global ValidationPipe (forbidNonWhitelisted)
+// then rejects every field (guarded by decorator-metadata-param-type-collision.spec).
+type ScreeningRequestBody = Record<string, unknown> | undefined;
 
 @Controller('v1/talent-records/:talentId/screening-sessions')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
@@ -371,7 +375,7 @@ export class TalentScreeningSessionsController {
   @RequireScopes('screening:create')
   async create(
     @Param('talentId', ParseUUIDPipe) talentId: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
     @Req() req: Request,
@@ -492,7 +496,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit', 'communication:meeting:create')
   async scheduleMeeting(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<{ meeting: ScreeningMeetingScheduleResult; session: ScreeningSessionDetailView }> {
@@ -541,7 +545,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async generateQuestions(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
     @Req() req: Request,
@@ -578,7 +582,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async addQuestion(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -601,7 +605,7 @@ export class ScreeningSessionController {
   async updateQuestion(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('questionId', ParseUUIDPipe) questionId: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -626,7 +630,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async addNote(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -643,7 +647,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async suggest(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -674,7 +678,7 @@ export class ScreeningSessionController {
   async actionSuggestion(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('suggestionId', ParseUUIDPipe) suggestionId: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -699,7 +703,7 @@ export class ScreeningSessionController {
   async reviewFinding(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('findingId', ParseUUIDPipe) findingId: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -734,7 +738,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async addFinding(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -756,7 +760,7 @@ export class ScreeningSessionController {
   async editFinding(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('findingId', ParseUUIDPipe) findingId: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -805,7 +809,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:confirm')
   async confirm(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
@@ -846,7 +850,7 @@ export class ScreeningSessionController {
   @RequireScopes('screening:edit')
   async voidSession(
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() body: Body,
+    @Body() body: ScreeningRequestBody,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
   ): Promise<ScreeningSessionDetailView> {
@@ -914,7 +918,7 @@ export class ScreeningSessionController {
   }
 }
 
-function findingInput(body: Body) {
+function findingInput(body: ScreeningRequestBody) {
   return {
     skill_raw: body?.['skill_raw'],
     basis: body?.['basis'],
