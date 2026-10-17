@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { v7 as uuidv7 } from 'uuid';
 
-import { ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
+import { ATS_PRODUCT_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS } from './dto/role.dto.js';
 import { IdentityAuditService } from './audit/identity-audit.service.js';
 import type { ExternalIdentityDto } from './dto/external-identity.dto.js';
 import type { InvitationDto } from './dto/invitation.dto.js';
@@ -490,10 +490,19 @@ export class IdentityService {
   // carries a product role through the platform-admin DTO. Fires BEFORE the
   // D5 union check and BEFORE any write, so an unentitled Sign role never
   // reaches the membership tables.
+  //
+  // D-ORG (§3.F) — `provisioning_capabilities`: the provisioning saga creates the
+  // owner membership BEFORE it writes the TenantEntitlement rows (Cognito → identity
+  // tx → entitlement tx, Lead ruling 7 compensation order), so a live read would see
+  // an unentitled newborn tenant. The saga therefore passes the capability set it is
+  // about to grant and the gate evaluates against THAT set — the same product rule,
+  // evaluated on the tenant's declared subscription instead of a not-yet-written row.
+  // Only the provisioning path sets it; every other caller reads live.
   private async assertRoleKeysAssignable(args: {
     role_keys: readonly string[];
     tenant_id: string;
     allow_platform_roles?: boolean;
+    provisioning_capabilities?: readonly string[];
     request_id: string;
   }): Promise<void> {
     if (args.allow_platform_roles === true) return;
@@ -514,8 +523,30 @@ export class IdentityService {
     const esignKeys = args.role_keys.filter((k) =>
       (ESIGN_PRODUCT_ROLE_KEYS as readonly string[]).includes(k),
     );
+    const atsKeys = args.role_keys.filter((k) =>
+      (ATS_PRODUCT_ROLE_KEYS as readonly string[]).includes(k),
+    );
+    if (esignKeys.length === 0 && atsKeys.length === 0) return;
+    const capabilities: ReadonlySet<string> =
+      args.provisioning_capabilities !== undefined
+        ? new Set(args.provisioning_capabilities)
+        : await this.entitlements.getCapabilities(args.tenant_id);
+    // D-ORG (§3.F) — the ATS product partition is assignable only where the tenant
+    // holds `ats` (symmetric with the Sign partition below). A Sign-only or
+    // PERSONAL tenant therefore cannot be handed an ATS role; its owner keeps the
+    // product-neutral org_admin. No automatic grant happens when a product is added.
+    if (atsKeys.length > 0 && !capabilities.has('ats')) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'ATS roles require the ats capability on the tenant',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'ats_role_not_entitled', role_keys: atsKeys, missing_capabilities: ['ats'] },
+        },
+      );
+    }
     if (esignKeys.length > 0) {
-      const capabilities = await this.entitlements.getCapabilities(args.tenant_id);
       if (!capabilities.has('esign')) {
         throw new AramoError(
           'VALIDATION_ERROR',
@@ -546,6 +577,9 @@ export class IdentityService {
     request_id: string;
     // IC-2 PR-5 — only the platform-admin invite (sentinel tenant) sets this.
     allow_platform_roles?: boolean;
+    // D-ORG — provisioning only: the capability set the saga grants right after
+    // this write (the product-role gate evaluates against it, not a live read).
+    provisioning_capabilities?: readonly string[];
   }): Promise<{ user: UserDto; membership_id: string }> {
     await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an

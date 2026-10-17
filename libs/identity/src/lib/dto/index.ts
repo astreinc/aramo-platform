@@ -8,6 +8,7 @@ export {
   ORG_ADMIN_SCOPE_KEYS,
   ESIGN_PRODUCT_ROLE_KEYS,
   ESIGN_SENDER_SCOPE_KEY,
+  ATS_PRODUCT_ROLE_KEYS,
 } from './role.dto.js';
 export type { RoleDto, SeedRoleKey } from './role.dto.js';
 export {

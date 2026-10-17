@@ -321,6 +321,10 @@ export class PlatformInvitationService {
         role_ids,
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
+        // D-ORG (§3.F) — the owner role is product-partitioned (tenant_owner = ATS,
+        // org_admin = neutral); the entitlement rows are written in step 3, so the
+        // gate evaluates against the set this saga is about to grant.
+        provisioning_capabilities: desired,
       });
       owner_user_id = created.user.id;
       membership_id = created.membership_id;

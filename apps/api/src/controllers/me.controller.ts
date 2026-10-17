@@ -9,7 +9,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { IdentityService, type MeView } from '@aramo/identity';
+import { IdentityService, ProductAvailabilityService, type MeView, type ProductAvailabilityView } from '@aramo/identity';
 
 // Aramo-Identity-Me-Endpoint-UserMenu-Directive-v1_0 — GET /v1/me.
 //
@@ -42,7 +42,10 @@ import { IdentityService, type MeView } from '@aramo/identity';
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
 export class MeController {
-  constructor(private readonly identity: IdentityService) {}
+  constructor(
+    private readonly identity: IdentityService,
+    private readonly productAvailability: ProductAvailabilityService,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -61,5 +64,20 @@ export class MeController {
       });
     }
     return view;
+  }
+
+  // D-ORG (R5 / §3.D) — GET /v1/me/products: the backend-authoritative product
+  // availability for App Home. Implicit-self scoping exactly like GET /v1/me (sub +
+  // tenant_id from the JWT only; no scope required — every authenticated member of
+  // the tenant may ask which products it may enter). Answers per product whether
+  // the TENANT subscribes, whether THIS USER is authorized, and whether the entry
+  // is activated; exposes nothing else.
+  @Get('products')
+  @HttpCode(HttpStatus.OK)
+  async products(@AuthContext() authContext: AuthContextType): Promise<ProductAvailabilityView> {
+    return this.productAvailability.forPrincipal({
+      user_id: authContext.sub,
+      tenant_id: authContext.tenant_id,
+    });
   }
 }

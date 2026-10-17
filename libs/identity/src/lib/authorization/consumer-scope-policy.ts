@@ -28,10 +28,10 @@
 
 import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
 
-export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
+export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
 
 export type ConsumerCapabilityRequirement =
-  | { kind: 'capability'; capability: 'ats' | 'esign' }
+  | { kind: 'capability'; capability: 'ats' | 'esign' | 'core' }
   | { kind: 'exempt' }
   | { kind: 'unsupported' };
 
@@ -43,6 +43,11 @@ export function requiredCapabilityForConsumer(consumer: string | undefined): Con
       return { kind: 'capability', capability: 'ats' };
     case 'esign':
       return { kind: 'capability', capability: 'esign' };
+    // D-ORG (R2) — the organization credential needs the tenant to BE an Aramo
+    // organization (`core`), never a product subscription: a Sign-only, ATS-only,
+    // ATS+Sign or PERSONAL tenant all mint it.
+    case 'org':
+      return { kind: 'capability', capability: 'core' };
     case 'platform':
       return { kind: 'exempt' };
     default:
@@ -77,6 +82,14 @@ export function filterScopesForConsumer(args: {
         : [];
     case 'platform':
       return args.scopes.filter((s) => s.startsWith(PLATFORM_SCOPE_PREFIX));
+    // D-ORG (R2 / §3.C) — the organization credential carries EXACTLY the
+    // organization-administration subset the principal holds (ORG_ADMIN_SCOPE_KEYS
+    // ∩ held): never an ATS product scope, never esign:*, never platform:*.
+    // Possession of `core` is NOT possession of org_admin — an ordinary member
+    // resolves only the baseline marker(s) its roles carry (e.g. auth:session:read),
+    // which is enough for App Home (/v1/me needs no scope) and nothing else.
+    case 'org':
+      return args.scopes.filter((s) => (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s));
     default:
       // portal (fixed set, handled upstream) and unknown consumers: nothing.
       return [];
