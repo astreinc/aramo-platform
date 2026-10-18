@@ -8,6 +8,9 @@ import { AppModule } from './app/app.module.js';
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3003;
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // PX-1 — sender PDF upload travels as base64 JSON (25 MiB source ceiling →
+  // ≈34 MiB encoded). Express's default JSON limit (100 KB) would refuse it.
+  app.useBodyParser('json', { limit: '36mb' });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );

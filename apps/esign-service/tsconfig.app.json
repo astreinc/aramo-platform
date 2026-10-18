@@ -10,6 +10,13 @@
     "types": ["node"],
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/auth": ["../../dist/libs/auth/src/index.d.ts"],
+      "@aramo/authorization": ["../../dist/libs/authorization/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/identity": ["../../dist/libs/identity/src/index.d.ts"],
+      "@aramo/auth-storage": ["../../dist/libs/auth-storage/src/index.d.ts"],
+      "@aramo/identity-index": ["../../dist/libs/identity-index/src/index.d.ts"],
+      "@aramo/portal-identity": ["../../dist/libs/portal-identity/src/index.d.ts"],
       "@aramo/esign": ["../../dist/libs/esign/src/index.d.ts"],
       "@aramo/documents-contracts": ["../../dist/libs/documents-contracts/src/index.d.ts"],
       "@aramo/documents-rendering": ["../../dist/libs/documents-rendering/src/index.d.ts"],

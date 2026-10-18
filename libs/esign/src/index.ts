@@ -5,6 +5,13 @@ export const ESIGN_SCHEMA = 'esign' as const;
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export { EsignModule } from './lib/esign.module.js';
 export {
+  EsignSenderRepository,
+  type SenderEnvelopeListFilter,
+  type SenderRecipientInput,
+  type SenderFieldInput,
+  type SenderDocumentRow,
+} from './lib/sender-workspace.repository.js';
+export {
   EsignRepository,
   type CreateEnvelopeInput,
   type AddDocumentInput,
@@ -79,6 +86,7 @@ export {
   hashSigningToken,
   signingSessionExpiresAt,
   SIGNING_TOKEN_BYTES,
+  SIGNING_SESSION_TTL_MS,
 } from './lib/signing-token.js';
 export { computeEventHash, type EventHashInput } from './lib/hash-chain.js';
 export {

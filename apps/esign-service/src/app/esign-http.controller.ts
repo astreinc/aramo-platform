@@ -37,7 +37,7 @@ import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.
 //      here on purpose (no dark, unauthenticated send API).
 //   3. v1/esign/signing    — capability-token signer transport (below).
 
-function toHttp(e: unknown, requestId: string): AramoError {
+export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof EnvelopeNotFoundError) return new AramoError('ENVELOPE_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof EnvelopeIllegalTransitionError) return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', e.message, 409, { requestId });
   // ES-1 — any signer action on a terminal (COMPLETED|DECLINED|VOIDED|EXPIRED) envelope.

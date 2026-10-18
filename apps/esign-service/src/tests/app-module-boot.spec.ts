@@ -1,10 +1,12 @@
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { DOCUMENT_SOURCE_PROVIDER_PORT } from '@aramo/esign';
+import { DOCUMENT_SOURCE_PROVIDER_PORT, DOCUMENT_STORAGE_PORT } from '@aramo/esign';
 
 import { AppModule } from '../app/app.module.js';
 import { EsignSignerController } from '../app/esign-http.controller.js';
 import { NativeAramoSignatureProvider } from '../app/native-aramo-signature.provider.js';
+import { EsignSenderController } from '../app/sender/esign-sender.controller.js';
+import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js';
 
 // PX-V1 F3 — real Nest AppModule compile/boot regression. Its ONLY job is to
 // resolve the full runtime DI graph, catching provider/export-boundary failures
@@ -50,6 +52,17 @@ describe('esign-service AppModule boot (PX-V1 F3 DI regression)', () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     const provider = moduleRef.get(NativeAramoSignatureProvider, { strict: false });
     expect((provider as unknown as { notifier?: unknown }).notifier).toBeDefined();
+    await moduleRef.close();
+  });
+
+  // PX-1 — the authenticated sender zone: the controller, its services, the
+  // owned-source storage port (crosses the EsignModule boundary via extraExports)
+  // and the auth/entitlement/resolver graph behind EsignSenderBoundary all resolve.
+  it('resolves the sender controller, its services and the owned-source storage port', async () => {
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    expect(moduleRef.get(EsignSenderController, { strict: false })).toBeDefined();
+    expect(moduleRef.get(SenderEnvelopeService, { strict: false })).toBeDefined();
+    expect(moduleRef.get(DOCUMENT_STORAGE_PORT, { strict: false })).toBeDefined();
     await moduleRef.close();
   });
 });
