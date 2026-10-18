@@ -64,10 +64,10 @@ describe('RecruiterShell', () => {
     expect(screen.queryByRole('link', { name: 'Placements' })).not.toBeInTheDocument();
   });
 
-  it('rail head row: Aramo mark + aramo.ai wordmark + Collapse sidebar (rail spec §3)', () => {
+  it('rail head row: Aramo mark + aramo.ai wordmark (a link to My desk) + Collapse sidebar (rail spec §3)', () => {
     renderShell(makeSession(['talent:read']));
     const rail = screen.getByRole('complementary', { name: 'Main navigation' });
-    expect(within(rail).getByTitle('Aramo')).toBeInTheDocument();
+    expect(within(rail).getByRole('link', { name: 'aramo.ai, go to My desk' })).toHaveAttribute('href', '/');
     expect(within(rail).getByText('aramo')).toHaveTextContent('aramo.ai');
     expect(within(rail).getByRole('button', { name: 'Collapse sidebar' })).toHaveAttribute('aria-expanded', 'true');
   });

@@ -69,6 +69,8 @@ export function HomeShell({ session, children }: HomeShellProps) {
       userInitials={initialsOf(displayName || '?')}
       userName={displayName}
       tenantName={tenantName}
+      homeTo="/"
+      homeLabel="App Home"
     />
   );
 

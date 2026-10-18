@@ -97,6 +97,8 @@ export function AppRail({ primary, work, admin, userInitials, userName, tenantNa
       userInitials={userInitials}
       userName={userName}
       tenantName={tenantName}
+      homeTo="/"
+      homeLabel="My desk"
     />
   );
 }

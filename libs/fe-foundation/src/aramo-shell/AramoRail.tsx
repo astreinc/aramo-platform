@@ -40,6 +40,10 @@ export interface AramoRailProps {
   readonly userInitials: string;
   readonly userName: string;
   readonly tenantName: string | null;
+  /** Where the brand (mark + wordmark) links: this app's home. Default `/`. */
+  readonly homeTo?: string;
+  /** Name of that home for the link's accessible label. Default `Home`. */
+  readonly homeLabel?: string;
 }
 
 function AramoMark(): JSX.Element {
@@ -96,7 +100,7 @@ function RailSection({ label }: { label: string }): JSX.Element {
   );
 }
 
-export function AramoRail({ sections, activeKey, userInitials, userName, tenantName }: AramoRailProps): JSX.Element {
+export function AramoRail({ sections, activeKey, userInitials, userName, tenantName, homeTo = '/', homeLabel = 'Home' }: AramoRailProps): JSX.Element {
   const { collapsed, toggle } = useNavCollapse();
   return (
     <aside className={`ats-rail${collapsed ? ' ats-rail--collapsed' : ''}`} aria-label="Main navigation">
@@ -115,12 +119,14 @@ export function AramoRail({ sections, activeKey, userInitials, userName, tenantN
           </Button>
         ) : (
           <>
-            <span className="ats-rail__logo" title="Aramo">
-              <AramoMark />
-            </span>
-            <span className="ats-rail__word">
-              aramo<span className="ats-rail__ai">.ai</span>
-            </span>
+            <Link to={homeTo} className="ats-rail__home" title={`Go to ${homeLabel}`} aria-label={`aramo.ai, go to ${homeLabel}`}>
+              <span className="ats-rail__logo">
+                <AramoMark />
+              </span>
+              <span className="ats-rail__word">
+                aramo<span className="ats-rail__ai">.ai</span>
+              </span>
+            </Link>
             <Button
               unstyled
               type="button"
