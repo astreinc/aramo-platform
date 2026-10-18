@@ -39,9 +39,27 @@
   top: 56px;
   height: calc(100vh - 56px);
   overflow: auto;
+  /* Scrollable by wheel, trackpad, touch and keyboard, without a visible bar:
+   * the bar overlapped the item badges. */
+  scrollbar-width: none;
   border-right: 1px solid var(--line);
   background: var(--surface);
-  padding: 16px 12px;
+  padding: 16px 12px 0;
+}
+.set-subnav::-webkit-scrollbar {
+  display: none;
+}
+/* Bottom fade that signals more items below. It is sticky, so it pins to the
+ * bottom edge while scrolling and rests in its own space after the last item,
+ * never covering it. It also provides the bottom spacing. */
+.set-subnav::after {
+  content: '';
+  position: sticky;
+  bottom: 0;
+  display: block;
+  height: 32px;
+  background: linear-gradient(to bottom, transparent, var(--surface));
+  pointer-events: none;
 }
 .set-sgrp {
   font-size: 0.66rem;
