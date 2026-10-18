@@ -91,6 +91,41 @@ interface Adopted {
 // A field filled in an earlier visit (value not returned by the server).
 const FILLED_MARK = '\u2713';
 
+// A drawn signature is saved CROPPED to its ink (plus a small margin) so it fills
+// the field box the sender sized, on the page and in the signed PDF. The pad is
+// transparent, so ink = any pixel with alpha. Falls back to the full pad.
+export function trimmedSignaturePng(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) return canvas.toDataURL('image/png');
+  const { width, height } = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((data[(y * width + x) * 4 + 3] ?? 0) > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return canvas.toDataURL('image/png');
+  const pad = 6;
+  const sx = Math.max(0, minX - pad);
+  const sy = Math.max(0, minY - pad);
+  const sw = Math.min(width, maxX + pad + 1) - sx;
+  const sh = Math.min(height, maxY + pad + 1) - sy;
+  const out = document.createElement('canvas');
+  out.width = sw;
+  out.height = sh;
+  out.getContext('2d')?.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  return out.toDataURL('image/png');
+}
+
 function base64ToBlobUrl(b64: string, type: string): string {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
@@ -244,7 +279,7 @@ function AdoptDialog({
   const ready = tab === 'TYPED' ? typed.trim().length > 0 : drawn;
   const adopt = () => {
     if (tab === 'TYPED') onAdopt({ method: 'TYPED', value: typed.trim(), display: typed.trim() });
-    else onAdopt({ method: 'DRAWN', value: canvasRef.current?.toDataURL('image/png') ?? '', display: 'Drawn' });
+    else onAdopt({ method: 'DRAWN', value: canvasRef.current ? trimmedSignaturePng(canvasRef.current) : '', display: 'Drawn' });
   };
 
   return (
