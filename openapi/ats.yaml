@@ -12205,6 +12205,7 @@ components:
             - type: 'null'
     ESignatureOverview:
       type: object
+      additionalProperties: false
       required: [active_provider, providers, availability, recent_changes]
       properties:
         active_provider:
@@ -12214,6 +12215,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: false
             required: [provider, status, selectable]
             properties:
               provider:
@@ -12230,6 +12232,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: false
             required: [from_provider, to_provider, actor_id, occurred_at]
             properties:
               from_provider: { type: string }
