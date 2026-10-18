@@ -26,8 +26,11 @@
     "libs/job-domain",
     "libs/matching",
     "libs/metering",
+<<<<<<< HEAD
     "libs/subscription",
     "libs/signature-routing",
+=======
+>>>>>>> feat/esign-plan-allowance
     "libs/object-storage",
     "libs/outbox-publisher",
     "libs/pipeline",
@@ -45,6 +48,7 @@
     "libs/sourced-talent",
     "libs/submittal",
     "libs/submittal-eligibility",
+    "libs/subscription",
     "libs/talent-embedding",
     "libs/talent-evidence",
     "libs/talent-reconcile",
