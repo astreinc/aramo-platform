@@ -5737,6 +5737,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [xAdobeSignClientId]
                 properties:
                   xAdobeSignClientId: { type: string }
@@ -5769,6 +5770,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [xAdobeSignClientId]
                 properties:
                   xAdobeSignClientId: { type: string }
