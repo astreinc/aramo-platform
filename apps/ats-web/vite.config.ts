@@ -48,6 +48,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
+      // Unified UX — the read-only roles reference + audit log view.
+      '@aramo/org-admin-web': resolve(root, '../../libs/org-admin-web/src/index.ts'),
     },
   },
   server: {

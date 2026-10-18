@@ -21,6 +21,10 @@ export interface DeskActorContext {
   readonly visibility: VisibilityContextShape;
   readonly visible_requisition_ids: ReadonlySet<string> | null;
   readonly visible_contact_ids: ReadonlySet<string> | null;
+  // Whether the tenant holds the Aramo Sign subscription. Sending an RTR needs it,
+  // so without it the desk offers no "Send RTR" work item. Absent ⇒ treated as
+  // subscribed (back-compat for callers that do not resolve it).
+  readonly sign_subscribed?: boolean;
 }
 
 // task.type values the desk maps to a queue kind (subset that the desk renders).

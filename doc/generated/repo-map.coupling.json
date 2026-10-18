@@ -10814,6 +10814,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -20463,6 +20468,16 @@
       "from": "libs/fe-foundation/project.json",
       "status": "unscoped",
       "to": "libs/fe-foundation/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoAppShell.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AtsAppShell.tsx"
+    },
+    {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoRail.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AppRail.tsx"
     },
     {
       "from": "libs/fe-foundation/src/auth/session.ts",

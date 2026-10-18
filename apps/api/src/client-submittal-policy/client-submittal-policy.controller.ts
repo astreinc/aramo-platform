@@ -3,6 +3,7 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { COMPANY_CLIENT_CHECK_PORT, type CompanyClientCheckPort } from '@aramo/requisition';
+import { EntitlementRepository } from '@aramo/entitlement';
 import {
   ClientSubmittalPolicyService,
   DEFAULT_OVERRIDE_POLICY,
@@ -21,6 +22,7 @@ export class ClientSubmittalPolicyController {
   constructor(
     private readonly policy: ClientSubmittalPolicyService,
     @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
+    private readonly entitlements: EntitlementRepository,
   ) {}
 
   /**
@@ -167,6 +169,19 @@ export class ClientSubmittalPolicyController {
         });
       }
       scope_ref = dto.scope_ref;
+    }
+    // A Right to Represent can only be satisfied by an RTR executed through Aramo
+    // Sign (the DOC-5 gate) and sending one needs the tenant's Sign subscription.
+    // Requiring RTR without Sign would block every submittal it governs with no
+    // path forward, so publishing such a policy is refused.
+    if (dto.requirements.some((r) => r.key === 'rtr_present' && r.disposition === 'REQUIRED')) {
+      const caps = await this.entitlements.getCapabilities(auth.tenant_id);
+      if (!caps.has('esign')) {
+        throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'Requiring a Right to Represent needs the Aramo Sign subscription', 422, {
+          requestId,
+          details: { reason: 'RTR_REQUIRES_SIGN', key: 'rtr_present' },
+        });
+      }
     }
     const definition = {
       requirements: dto.requirements.map((r) => ({

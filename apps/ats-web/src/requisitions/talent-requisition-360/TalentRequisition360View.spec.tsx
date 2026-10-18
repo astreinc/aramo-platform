@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { SignSubscriptionProvider } from '../../rtr/rtr-access';
+
 import { TalentRequisition360View } from './TalentRequisition360View';
 
 const REQ = {
@@ -129,7 +131,8 @@ function LocationProbe(): JSX.Element {
 function mount(scopes: readonly string[], path = '/requisitions/req-1/talent/tal-1'): void {
   render(
     <ToastProvider>
-      <MemoryRouter initialEntries={[path]}>
+      <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route
             path="/requisitions/:reqId/talent/:talentId"
@@ -143,6 +146,7 @@ function mount(scopes: readonly string[], path = '/requisitions/req-1/talent/tal
           <Route path="/requisitions/:reqId" element={<div data-testid="req-route" />} />
         </Routes>
       </MemoryRouter>
+</SignSubscriptionProvider>
     </ToastProvider>,
   );
 }

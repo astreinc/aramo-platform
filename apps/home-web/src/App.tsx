@@ -1,15 +1,17 @@
 import { RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
-import { OrgAdminRoutes } from '@aramo/org-admin-web';
+import { OrgAdminRoutes, hasOrgAdminScope } from '@aramo/org-admin-web';
 import { Route, Routes } from 'react-router-dom';
 
 import { AppHomeView } from './home/AppHomeView';
 import { LegacyAtsRedirect } from './home/LegacyAtsRedirect';
+import { PreferencesView } from './home/PreferencesView';
 import { LoginPage } from './routes/LoginPage';
 import { HomeShell } from './shell/HomeShell';
 
 // D-ORG-2/3 — the Aramo App Home (apps/home-web): the permanent, product-neutral
 // tenant entry on `<slug>.aramo.ai` (§3.A), topology T1 (§3.B):
 //   /            App Home — the product tiles (backend-authoritative availability)
+//   /preferences My preferences (shared account, default landing page)
 //   /org/*       Organization Administration (libs/org-admin-web)
 //   /login       the session-less login landing (?error=<CODE> pages)
 //   /signed-out  the public signed-out landing (Cognito logout returns here)
@@ -31,7 +33,19 @@ export function App() {
             <RouteGuard sessionStateOverride={state}>
               {state.status === 'authenticated' ? (
                 <HomeShell session={state.session}>
-                  <AppHomeView />
+                  <AppHomeView isOrgAdmin={hasOrgAdminScope(state.session)} />
+                </HomeShell>
+              ) : null}
+            </RouteGuard>
+          }
+        />
+        <Route
+          path="/preferences"
+          element={
+            <RouteGuard sessionStateOverride={state}>
+              {state.status === 'authenticated' ? (
+                <HomeShell session={state.session}>
+                  <PreferencesView />
                 </HomeShell>
               ) : null}
             </RouteGuard>

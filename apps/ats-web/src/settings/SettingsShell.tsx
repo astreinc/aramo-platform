@@ -4,14 +4,18 @@ import {
   IconBranch,
   IconBrowser,
   IconBuilding,
+  IconCard,
   IconFile,
   IconForm,
+  IconGlobe,
+  IconHistory,
   IconMail,
   IconPlug,
   IconShield,
   IconShieldCheck,
   IconSliders,
   IconUpload,
+  orgHref,
 } from '@aramo/fe-foundation';
 
 // Settings Rebuild Directive 1 — the settings shell.
@@ -19,6 +23,9 @@ import {
 // The six-group inner rail (the consolidation pattern): every section is a
 // nested route under one settings shell, rendered through <Outlet/>. The rail
 // is the mockup's grouped left nav reconciled to Confident Blue.
+//
+// Unified multi-product UX: the first group links OUT to Organization
+// administration (App Home /org/*) with the current page as the return context.
 //
 // SCOPE: the whole subtree already sits behind <AdminGate> (the tenant:admin:*
 // family gate, server-enforced) — the rail items are NOT individually scope-
@@ -53,7 +60,7 @@ interface NavItem {
   readonly match: string;
   readonly status: Status;
   /** Rail badge ("New" for the freshly-live Import; "Soon" for seams). */
-  readonly badge?: { readonly text: string; readonly soon: boolean };
+  readonly badge?: { readonly text: string; readonly soon: boolean; readonly app?: boolean };
   /** D-ORG-3 — a host-level link to another SPA on this host (App Home /org/),
    *  rendered as a plain anchor so the ATS router basename is not applied. */
   readonly external?: boolean;
@@ -64,171 +71,108 @@ interface NavGroup {
   readonly items: readonly NavItem[];
 }
 
+
+// Unified multi-product UX (accepted Settings & navigation change log A1, frozen
+// Settings prototype 2026-10-18) — group order: ORGANIZATION · SHARED (one link
+// out to Organization administration, tagged APP HOME), ATS TEAMS & ACCESS, then
+// the ATS-owned groups. Nothing organization-owned is duplicated here.
 const SOON = { text: 'Soon', soon: true } as const;
+const NEW = { text: 'New', soon: false } as const;
+const APP_HOME = { text: 'App Home', soon: false, app: true } as const;
 
 export const SETTINGS_NAV: readonly NavGroup[] = [
   {
-    // D-ORG-3 — organization-owned administration (profile, sites, domain, users,
-    // roles, security, billing, audit) lives on the App Home at /org/*. The ATS
-    // settings rail links OUT to it (a host-level anchor — it is a different SPA
-    // beside this one, not an ATS route). Nothing organization-owned is
-    // duplicated here.
-    heading: 'Organization',
+    heading: 'Organization · shared',
     items: [
       {
         key: 'organization',
-        label: 'Organization administration',
+        label: 'Manage organization',
         icon: <IconBuilding />,
-        to: '/org/',
+        // Resolved at render with the current page as the return context.
+        to: '/org/profile',
         match: '/org',
         status: 'live',
         external: true,
+        badge: APP_HOME,
       },
     ],
   },
   {
-    heading: 'Workspace',
+    heading: 'ATS teams & access',
     items: [
       {
         key: 'branches',
-        label: 'Teams & organisation',
+        label: 'Teams & reporting hierarchy',
         icon: <IconBranch />,
         to: '/admin/settings/branches',
         match: '/admin/settings/branches',
         status: 'live',
+      },
+      {
+        key: 'roles',
+        label: 'ATS roles & permissions',
+        icon: <IconShieldCheck />,
+        to: '/admin/settings/roles',
+        match: '/admin/settings/roles',
+        status: 'live',
+      },
+      {
+        key: 'localization',
+        label: 'Localization',
+        icon: <IconGlobe />,
+        to: '/admin/settings/localization',
+        match: '/admin/settings/localization',
+        status: 'soon',
+        badge: SOON,
       },
     ],
   },
   {
     heading: 'Talent experience',
     items: [
-      {
-        key: 'portal',
-        label: 'Career portal',
-        icon: <IconBrowser />,
-        to: '/admin/settings/portal',
-        match: '/admin/settings/portal',
-        status: 'soon',
-        badge: SOON,
-      },
-      {
-        key: 'apply',
-        label: 'Apply flow',
-        icon: <IconForm />,
-        to: '/admin/settings/apply',
-        match: '/admin/settings/apply',
-        status: 'soon',
-        badge: SOON,
-      },
+      { key: 'portal', label: 'Career portal', icon: <IconBrowser />, to: '/admin/settings/portal', match: '/admin/settings/portal', status: 'soon', badge: SOON },
+      { key: 'apply', label: 'Apply flow', icon: <IconForm />, to: '/admin/settings/apply', match: '/admin/settings/apply', status: 'soon', badge: SOON },
     ],
   },
   {
     heading: 'Communication',
     items: [
-      {
-        // D-EMAIL-TPL-1 (ET-6) — LIVE: tenant email-template management (system
-        // default + override). Notification preferences remain deferred (D-9).
-        key: 'email',
-        label: 'Email & notifications',
-        icon: <IconMail />,
-        to: '/admin/settings/email',
-        match: '/admin/settings/email',
-        status: 'live',
-      },
+      // D-EMAIL-TPL-1 (ET-6) — LIVE (the landed implementation wins over the
+      // prototype's "Soon" tag).
+      { key: 'email', label: 'Email & notifications', icon: <IconMail />, to: '/admin/settings/email', match: '/admin/settings/email', status: 'live' },
     ],
   },
   {
-    // COMM-C3 — Engagement Policy is a recruiting governance control (the Submit-
-    // to-Client enforcement boundary). It answers "what evidence is required?";
-    // provider setup ("how is evidence produced?") stays under Integrations.
     heading: 'Recruiting',
     items: [
-      {
-        key: 'engagement-policy',
-        label: 'Engagement policy',
-        icon: <IconShieldCheck />,
-        to: '/admin/settings/engagement-policy',
-        match: '/admin/settings/engagement-policy',
-        status: 'live',
-      },
-      {
-        // Recruiting-behaviour defaults (Compensation display + the financials
-        // grant + Resume extraction) — the ATS landing section (the /admin index
-        // redirects here since D-ORG-3 moved the organization profile to /org).
-        key: 'recruiting-settings',
-        label: 'Recruiting settings',
-        icon: <IconSliders />,
-        to: '/admin/settings/recruiting',
-        match: '/admin/settings/recruiting',
-        status: 'live',
-      },
+      { key: 'engagement-policy', label: 'Engagement policy', icon: <IconShieldCheck />, to: '/admin/settings/engagement-policy', match: '/admin/settings/engagement-policy', status: 'live' },
+      { key: 'recruiting-settings', label: 'Recruiting settings', icon: <IconSliders />, to: '/admin/settings/recruiting', match: '/admin/settings/recruiting', status: 'live' },
     ],
   },
   {
-    // DOC-TEMPLATE-ADMIN-RTR-1 (§5) — tenant document-template governance. Placed
-    // AFTER Recruiting, before Data (prototype IA). Right to Represent is the one
-    // tenant-configurable type this increment; others listed honestly. The NEW tag
-    // marks the freshly-live section. document_template:read/:manage gate it.
-    heading: 'Documents',
+    heading: 'Documents & data',
     items: [
-      {
-        key: 'document-templates',
-        label: 'Document templates',
-        icon: <IconFile />,
-        to: '/admin/settings/document-templates',
-        match: '/admin/settings/document-templates',
-        status: 'live',
-        badge: { text: 'New', soon: false },
-      },
+      { key: 'document-templates', label: 'Document templates', icon: <IconFile />, to: '/admin/settings/document-templates', match: '/admin/settings/document-templates', status: 'live', badge: NEW },
+      { key: 'import', label: 'Import data', icon: <IconUpload />, to: '/admin/settings/import', match: '/admin/settings/import', status: 'live', badge: NEW },
+      { key: 'compliance', label: 'Data & compliance', icon: <IconShieldCheck />, to: '/admin/settings/compliance', match: '/admin/settings/compliance', status: 'live' },
+      { key: 'fields', label: 'Custom fields', icon: <IconSliders />, to: '/admin/settings/fields', match: '/admin/settings/fields', status: 'soon', badge: SOON },
     ],
   },
   {
-    heading: 'Data',
-    items: [
-      {
-        key: 'import',
-        label: 'Import data',
-        icon: <IconUpload />,
-        to: '/admin/settings/import',
-        match: '/admin/settings/import',
-        status: 'live',
-      },
-      {
-        key: 'compliance',
-        label: 'Data & compliance',
-        icon: <IconShieldCheck />,
-        to: '/admin/settings/compliance',
-        match: '/admin/settings/compliance',
-        status: 'live',
-      },
-      {
-        key: 'fields',
-        label: 'Custom fields',
-        icon: <IconSliders />,
-        to: '/admin/settings/fields',
-        match: '/admin/settings/fields',
-        status: 'soon',
-        badge: SOON,
-      },
-    ],
-  },
-  {
-    // The mockup's 7th group ("Connect"). LIVE as of T10-B1/F-010: the
-    // Integrations section hosts requisition-ingestion monitoring (T8-P3,
-    // `requisition:import:read`) and connector connection management
-    // (T8-CONNECTOR-A, `integration:read`) — real substrate, so the stale
-    // "Soon" badge is dropped. This does NOT imply Connector-B, provider
-    // selection, or production onboarding (those remain out of scope).
+    // T10-B1/F-010 — Integrations is LIVE (requisition-ingestion monitoring +
+    // connector connections); no Connector-B / provider-onboarding implication.
     heading: 'Connect',
     items: [
-      {
-        key: 'integrations',
-        label: 'Integrations',
-        icon: <IconPlug />,
-        to: '/admin/settings/integrations',
-        match: '/admin/settings/integrations',
-        status: 'live',
-      },
+      { key: 'integrations', label: 'Integrations', icon: <IconPlug />, to: '/admin/settings/integrations', match: '/admin/settings/integrations', status: 'live' },
+    ],
+  },
+  {
+    // Accepted change log A7 — ATS-owned: Plan & billing (seam) and the ATS Audit
+    // log stay in the ATS.
+    heading: 'Account',
+    items: [
+      { key: 'billing', label: 'Plan & billing', icon: <IconCard />, to: '/admin/settings/billing', match: '/admin/settings/billing', status: 'soon', badge: SOON },
+      { key: 'audit', label: 'Audit log', icon: <IconHistory />, to: '/admin/settings/audit', match: '/admin/settings/audit', status: 'live' },
     ],
   },
 ];
@@ -251,10 +195,15 @@ function isActive(pathname: string, item: NavItem): boolean {
 
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
   if (item.external) {
+    // A host-level link to Organization administration (App Home SPA), carrying
+    // the exact current ATS page as the return context ("Back to ATS Settings").
+    const here = typeof window === 'undefined' ? '' : `${window.location.pathname}${window.location.search}`;
+    const href = orgHref(item.to.replace(/^\/org\//, ''), { app: 'ats', path: here });
     return (
-      <a href={item.to} className="set-navbtn" data-testid={`settings-nav-${item.key}`}>
+      <a href={href} className="set-navbtn" data-testid={`settings-nav-${item.key}`}>
         {item.icon}
         <span>{item.label}</span>
+        {item.badge != null ? <span className="set-navbtn__badge set-navbtn__badge--app">{item.badge.text}</span> : null}
       </a>
     );
   }
