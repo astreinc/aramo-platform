@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
 import type { Request } from 'express';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
@@ -167,7 +167,13 @@ export class EsignProviderController {
   }
 }
 
+// The signer page (sign-web) maps failures by error CODE (SIGNING_SESSION_INVALID,
+// SIGNING_SESSION_EXPIRED, ENVELOPE_ALREADY_EXECUTED, …) to its dedicated end
+// states; the canonical envelope {error:{code,message,request_id}} carries it.
+// Without this filter Nest emitted {statusCode,message} and every bad or expired
+// link fell to the generic "Something went wrong" screen.
 @Controller('v1/esign/signing')
+@UseFilters(AramoExceptionFilter)
 export class EsignSignerController {
   constructor(
     private readonly service: EsignService,

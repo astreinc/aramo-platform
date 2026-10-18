@@ -436,11 +436,13 @@ export function App(): JSX.Element {
     setView(v);
     setDocUrls(urls);
     setDocB64(b64);
-    // Restore progress after a reload: the backend reports which fields are filled
-    // (never their values), so they show as completed marks.
+    // Restore progress after a reload: the backend returns this signer's own
+    // entries, so the page shows the actual signature / date / text in place.
     setFilled((m) => {
       const next = { ...m };
-      for (const f of v.fields) if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = FILLED_MARK;
+      for (const f of v.fields) {
+        if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = typeof f.value === 'string' && f.value.length > 0 ? f.value : FILLED_MARK;
+      }
       return next;
     });
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
@@ -462,7 +464,7 @@ export function App(): JSX.Element {
   const fields = useMemo(() => view?.fields ?? [], [view]);
   const required = fields.filter((f) => f.required);
   const doneRequired = required.filter((f) => filled[f.field_id] !== undefined).length;
-  const progress = `${doneRequired} of ${required.length} required complete`;
+  const progress = `${doneRequired} of ${required.length} required fields filled`;
   const nextField = fields.find((f) => f.required && filled[f.field_id] === undefined) ?? fields.find((f) => filled[f.field_id] === undefined) ?? null;
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
 
@@ -673,7 +675,7 @@ export function App(): JSX.Element {
                     {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number + 1}
                   </span>
                   <span className={filled[f.field_id] !== undefined ? 'sg-ok' : 'sg-muted'}>
-                    {filled[f.field_id] !== undefined ? 'Completed' : f.required ? 'Required' : 'Optional · skipped'}
+                    {filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped'}
                   </span>
                 </li>
               ))}
@@ -750,7 +752,7 @@ export function App(): JSX.Element {
                       </span>
                     </span>
                     {done ? (
-                      <span className="sg-ok">Completed</span>
+                      <span className="sg-ok">Filled</span>
                     ) : (
                       <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
                         {ACTION_LABEL[f.field_type] ?? 'Complete'}

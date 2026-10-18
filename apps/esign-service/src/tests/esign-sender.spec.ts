@@ -156,3 +156,12 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     expect(r).toEqual({ ok: false, problems: ['Priya needs a signature field'] });
   });
 });
+
+describe('EsignSignerController — canonical error envelope for the signer page', () => {
+  it('mounts AramoExceptionFilter so invalid / expired links reach their dedicated screens', async () => {
+    const { EsignSignerController } = await import('../app/esign-http.controller.js');
+    const { AramoExceptionFilter } = await import('@aramo/common');
+    const filters = Reflect.getMetadata('__exceptionFilters__', EsignSignerController) as unknown[];
+    expect(filters).toContain(AramoExceptionFilter);
+  });
+});

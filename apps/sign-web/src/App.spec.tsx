@@ -79,21 +79,21 @@ describe('signer app', () => {
   it('walks landing → disclosure → workspace → adopt → review → signed, with progress and no link into any Aramo app', async () => {
     const calls = transport();
     await toWorkspace();
-    expect(screen.getAllByText('0 of 3 required complete').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('0 of 3 required fields filled').length).toBeGreaterThan(0);
     // Start → the first required field (initials) → adopt dialog (Type).
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     const dialog = await screen.findByRole('dialog', { name: 'Adopt your initials' });
     fireEvent.change(screen.getByLabelText('Your initials'), { target: { value: 'RS' } });
     fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
-    await screen.findAllByText('1 of 3 required complete');
+    await screen.findAllByText('1 of 3 required fields filled');
     // Next field → signature → adopt; then date applies with one tap.
     fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
     fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
     fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
-    await screen.findAllByText('2 of 3 required complete');
+    await screen.findAllByText('2 of 3 required fields filled');
     fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
-    await screen.findAllByText('3 of 3 required complete');
+    await screen.findAllByText('3 of 3 required fields filled');
     fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
     expect(await screen.findByText(/You've signed Right to Represent/)).toBeInTheDocument();
@@ -118,7 +118,7 @@ describe('signer app', () => {
         if (input) fireEvent.change(input, { target: { value: 'Ravi Shankar' } });
         fireEvent.click(screen.getByRole('button', { name: /Adopt &/ }));
       }
-      await screen.findAllByText(`${i + 1} of 3 required complete`);
+      await screen.findAllByText(`${i + 1} of 3 required fields filled`);
     }
     fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));

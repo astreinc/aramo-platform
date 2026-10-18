@@ -108,7 +108,7 @@ export function PdfDocument({
                     tabIndex={0}
                     className={cls}
                     style={box}
-                    aria-label={shown !== null ? `${label(f)}, completed. Select to change` : `${actionLabel(f)}: ${label(f)}, page ${i + 1}${f.required ? ', required' : ''}`}
+                    aria-label={shown !== null ? `${label(f)}, filled. Select to change` : `${actionLabel(f)}: ${label(f)}, page ${i + 1}${f.required ? ', required' : ''}`}
                     onClick={() => onField(f)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') {

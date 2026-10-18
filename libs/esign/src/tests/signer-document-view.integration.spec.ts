@@ -77,11 +77,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F3 signer d
     expect(view.fields).toHaveLength(2);
     // Sorted by page/y/x → SIGNATURE (y120) before SIGN_DATE (y150).
     expect(view.fields[0]).toMatchObject({ document_id: docId, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 120, required: true, filled: false });
-    // PX-2 — a filled field reports filled:true (progress survives a reload); the value is never echoed.
+    // PX-2 — a filled field reports filled:true and the signer's own value (progress survives a reload).
     await service.fillField(ctx, view.fields[0]?.field_id ?? '', { value: 'Jane Doe', signature_method: 'TYPED' });
     const again = await service.getSignerDocumentView(ctx);
-    expect(again.fields[0]).toMatchObject({ filled: true });
-    expect(again.fields[0]).not.toHaveProperty('value');
+    expect(again.fields[0]).toMatchObject({ filled: true, value: 'Jane Doe' });
+    expect(again.fields[1]).toMatchObject({ filled: false, value: null });
     expect(view.fields[1]).toMatchObject({ field_type: 'SIGN_DATE', y: 150 });
     // The decisive privacy invariant: the client-facing view carries no tenant id.
     expect(JSON.stringify(view)).not.toContain(TENANT);

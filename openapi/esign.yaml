@@ -333,6 +333,9 @@ paths:
                         filled:
                           type: boolean
                           description: True once this signer has filled the field (lets the signer page restore progress).
+                        value:
+                          type: [string, 'null']
+                          description: The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
