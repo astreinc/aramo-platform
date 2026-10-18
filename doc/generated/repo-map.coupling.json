@@ -11120,6 +11120,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/adobe-sign/adobe-sign-webhook.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/esignature-providers/docusign/docusign-webhook.controller.ts"
     },
     {

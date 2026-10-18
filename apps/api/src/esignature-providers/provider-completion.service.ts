@@ -28,10 +28,15 @@ export class ProviderCompletionService {
     @Inject(EXTERNAL_SIGNATURE_ADAPTERS) private readonly adapters: readonly ExternalSignatureAdapter[],
   ) {}
 
-  async handle(input: { provider: ExternalProviderKey; provider_account_id: string; envelope_ref: string; requestId: string }): Promise<CompletionOutcome> {
+  /**
+   * @param provider_account_id the account the callback names, when the provider signs it
+   *   (DocuSign); null when it does not (Adobe) — then the binding is the route plus the
+   *   read with that tenant's own token.
+   */
+  async handle(input: { provider: ExternalProviderKey; provider_account_id: string | null; envelope_ref: string; requestId: string }): Promise<CompletionOutcome> {
     const route = await this.routing.findRouteByEnvelope(input.provider, input.envelope_ref);
     if (route === null) return 'IGNORED';
-    if (!(await this.credentials.accountMatches(route.tenant_id, input.provider, input.provider_account_id))) {
+    if (input.provider_account_id !== null && !(await this.credentials.accountMatches(route.tenant_id, input.provider, input.provider_account_id))) {
       logger.warn({ event: 'esignature.callback_account_mismatch', provider: input.provider, tenant_id: route.tenant_id });
       return 'IGNORED';
     }
