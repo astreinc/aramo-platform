@@ -1,3 +1,7 @@
+/* Moved from apps/ats-web/src/shell/app-rail.css (unified multi-product shell,
+   move-not-fork). Class names keep the historical `ats-` prefix so existing
+   ATS specs and selectors are unchanged; the rail is now shared by App Home,
+   Organization administration and the ATS. */
 /* Shared main left nav (app rail) + page grid — values transcribed from the
    design authority platform/Requisitions CRM.dc.html (railVals()). Normative;
    do not restyle. */
@@ -184,6 +188,13 @@
 }
 
 /* Footer */
+/* A section of items (AramoRail): keeps the items' flex-column rhythm. */
+.ats-rail__group {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+}
+
 .ats-rail__foot {
   margin-top: auto;
   display: flex;

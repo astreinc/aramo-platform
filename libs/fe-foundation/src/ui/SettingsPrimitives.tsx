@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 
 import { IconClock, IconInfo } from './icons';
 
@@ -14,6 +14,14 @@ import { IconClock, IconInfo } from './icons';
 // mistaken for a live control. That is the no-dead-knobs invariant expressed
 // in a component.
 
+// Unified shell — a host page that already renders the section title (e.g. the
+// Organization administration header + tab row) provides this context so the
+// section renders its description as an intro line instead of a second H1.
+const SettingsHeadlessContext = createContext(false);
+export function SettingsHeadlessProvider({ children }: { readonly children: ReactNode }) {
+  return <SettingsHeadlessContext.Provider value={true}>{children}</SettingsHeadlessContext.Provider>;
+}
+
 // ── Section head: title + description + optional right-aligned actions ──
 export function SettingsSection({
   title,
@@ -26,6 +34,21 @@ export function SettingsSection({
   readonly actions?: ReactNode;
   readonly children: ReactNode;
 }) {
+  const headless = useContext(SettingsHeadlessContext);
+  if (headless) {
+    return (
+      <section className="set-content set-content--embedded" aria-label={title}>
+        {description != null || actions != null ? (
+          <div className="set-intro">
+            {description != null ? <p>{description}</p> : null}
+            <div className="set-head__grow" />
+            {actions != null ? <div className="set-head__actions">{actions}</div> : null}
+          </div>
+        ) : null}
+        {children}
+      </section>
+    );
+  }
   return (
     <section className="set-content" aria-label={title}>
       <div className="set-head">
