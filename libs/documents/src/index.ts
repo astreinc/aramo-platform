@@ -57,6 +57,8 @@ export {
   DocumentExecutedWriteBackService,
   type StoreExecutedInput,
   type StoreExecutedResult,
+  type StoreProviderExecutedInput,
+  type StoreProviderExecutedResult,
 } from './lib/executed-write-back.service.js';
 export { RevisionSourceService } from './lib/revision-source.service.js';
 export {

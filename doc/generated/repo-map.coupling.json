@@ -104,6 +104,7 @@
     },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
+    { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "README.md", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -11119,6 +11120,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/docusign/docusign-webhook.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/integrations/esign/esign-events.controller.ts"
     },
     {
@@ -18620,6 +18626,11 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "doc/runbooks/esignature-external-providers.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
+    },
+    {
       "from": "doc/runbooks/frontdoor-cutover.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -22679,6 +22690,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261016160000_doc_template_version_internal_notes/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

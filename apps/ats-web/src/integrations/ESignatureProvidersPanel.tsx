@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
-import { Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
+import { Button, Card, ErrorState, LoadingState, safeErrorMessage } from '../ui';
 import { SettingCardHead, StatChip } from '../settings/components';
 
 import {
+  connectESignatureProvider as defaultConnect,
+  disconnectESignatureProvider as defaultDisconnect,
   getESignatureOverview as defaultLoad,
   selectESignatureProvider as defaultSelect,
   type ESignatureOverview,
@@ -80,16 +82,31 @@ interface Props {
   readonly sessionOverride?: Session;
   readonly loadFn?: () => Promise<ESignatureOverview>;
   readonly selectFn?: (provider: ESignatureProvider) => Promise<ESignatureOverview>;
+  readonly connectFn?: (provider: ESignatureProvider) => Promise<{ authorize_url: string }>;
+  readonly disconnectFn?: (provider: ESignatureProvider) => Promise<ESignatureOverview>;
+  /** Full-page navigation to the provider's sign-in (overridable in tests). */
+  readonly navigate?: (url: string) => void;
+  /** The ?esignature=<provider>-<outcome> flag the OAuth callback lands with. */
+  readonly connectOutcome?: string | null;
+}
+
+function outcomeFromLocation(): string | null {
+  if (typeof window === 'undefined') return null;
+  return new URLSearchParams(window.location.search).get('esignature');
 }
 
 type State = { status: 'loading' } | { status: 'ready'; overview: ESignatureOverview } | { status: 'error'; message: string };
 
-export function ESignatureProvidersPanel({ sessionOverride, loadFn, selectFn }: Props) {
+export function ESignatureProvidersPanel({ sessionOverride, loadFn, selectFn, connectFn, disconnectFn, navigate, connectOutcome }: Props) {
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const toast = useToast();
   const load = loadFn ?? defaultLoad;
   const doSelect = selectFn ?? defaultSelect;
+  const doConnect = connectFn ?? defaultConnect;
+  const doDisconnect = disconnectFn ?? defaultDisconnect;
+  const go = navigate ?? ((url: string) => window.location.assign(url));
+  const outcome = connectOutcome === undefined ? outcomeFromLocation() : connectOutcome;
   const canRead = session !== null && hasScope(session, 'integration:read');
   const canWrite = session !== null && hasScope(session, 'integration:write');
   const [state, setState] = useState<State>({ status: 'loading' });
@@ -107,6 +124,14 @@ export function ESignatureProvidersPanel({ sessionOverride, loadFn, selectFn }: 
     refresh();
   }, [canRead, refresh]);
 
+  // The provider's OAuth redirect lands back here with an outcome flag.
+  useEffect(() => {
+    if (!canRead || outcome === null) return;
+    const [provider, result] = outcome.split('-') as [string, string];
+    const label = provider in META ? META[provider as ESignatureProvider].label : 'The provider';
+    toast.show(result === 'connected' ? `${label} is connected.` : `${label} could not be connected. Try again.`);
+  }, [canRead, outcome]);
+
   if (!canRead) return null;
 
   const onSelect = async (provider: ESignatureProvider) => {
@@ -116,6 +141,29 @@ export function ESignatureProvidersPanel({ sessionOverride, loadFn, selectFn }: 
       toast.show(`${META[provider].label} is now your e-signature provider. Documents already sent stay with their provider.`);
     } catch (e) {
       toast.show(safeErrorMessage(e, 'Failed to change the e-signature provider.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onConnect = async (provider: ESignatureProvider) => {
+    setBusy(true);
+    try {
+      const { authorize_url } = await doConnect(provider);
+      go(authorize_url);
+    } catch (e) {
+      toast.show(safeErrorMessage(e, 'Could not start connecting.'));
+      setBusy(false);
+    }
+  };
+
+  const onDisconnect = async (provider: ESignatureProvider) => {
+    setBusy(true);
+    try {
+      setState({ status: 'ready', overview: await doDisconnect(provider) });
+      toast.show(`${META[provider].label} is disconnected.`);
+    } catch (e) {
+      toast.show(safeErrorMessage(e, 'Could not disconnect.'));
     } finally {
       setBusy(false);
     }
@@ -182,8 +230,21 @@ export function ESignatureProvidersPanel({ sessionOverride, loadFn, selectFn }: 
                     <span className="set-llm__note">{meta.note}</span>
                   </span>
                   <span className="set-llm__tag" data-testid={`esign-status-${p.provider}`}>
-                    <StatChip tone={tag.tone}>{tag.label}</StatChip>
+                    <StatChip tone={p.needs_reconnect ? 'warn' : tag.tone}>{p.needs_reconnect ? 'Reconnect needed' : tag.label}</StatChip>
                   </span>
+                  {canWrite && p.connectable && (
+                    <span className="set-esign__actions">
+                      {p.status === 'CONNECTED' ? (
+                        <Button variant="secondary" disabled={busy} onClick={() => onDisconnect(p.provider)} data-testid={`esign-disconnect-${p.provider}`}>
+                          Disconnect
+                        </Button>
+                      ) : (
+                        <Button disabled={busy} onClick={() => onConnect(p.provider)} data-testid={`esign-connect-${p.provider}`}>
+                          {p.needs_reconnect ? 'Reconnect' : 'Connect'}
+                        </Button>
+                      )}
+                    </span>
+                  )}
                 </label>
               );
             })}

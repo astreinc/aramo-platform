@@ -77,6 +77,7 @@
     "apps/api/src/tenant-llm/tenant-llm.controller.ts": "AP",
     "apps/api/src/document-signing/signature-availability.controller.ts": "AP",
     "apps/api/src/document-signing/esignature-integration.controller.ts": "AP",
+    "apps/api/src/esignature-providers/docusign/docusign-webhook.controller.ts": "XP",
     "apps/api/src/webhooks/indeed-apply.controller.ts": "XP",
     "apps/esign-service/src/app/esign-http.controller.ts": "SS",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",

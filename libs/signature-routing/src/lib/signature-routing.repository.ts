@@ -1,4 +1,7 @@
+import { createHash, randomBytes } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
+import { recordUsage } from '@aramo/metering';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
@@ -70,4 +73,58 @@ export class SignatureRoutingRepository {
     if (row === null || !isSignatureProvider(row.provider)) return null;
     return { provider: row.provider, provider_envelope_ref: row.provider_envelope_ref, created_at: row.created_at };
   }
+
+  /** The request a provider envelope belongs to (used to route provider callbacks). */
+  async findRouteByEnvelope(
+    provider: SignatureProviderKey,
+    provider_envelope_ref: string,
+  ): Promise<{ tenant_id: string; document_id: string; document_revision_id: string } | null> {
+    return this.prisma.signatureRequestRoute.findFirst({
+      where: { provider, provider_envelope_ref },
+      select: { tenant_id: true, document_id: true, document_revision_id: true },
+    });
+  }
+
+  /** Operational usage of an external provider (its own plan governs the quota). */
+  async recordExternalSend(tenant_id: string, provider: SignatureProviderKey): Promise<void> {
+    await recordUsage(this.prisma, { tenant_id, event_type: `esign.external.envelope.sent.${provider}` });
+  }
+
+  /** Start an OAuth connect: returns the opaque state value for the authorize URL. */
+  async createOAuthState(input: { tenant_id: string; user_id: string; provider: SignatureProviderKey; code_verifier: string; ttl_ms: number }): Promise<{ state: string }> {
+    const state = randomBytes(32).toString('base64url');
+    await this.prisma.providerOAuthState.create({
+      data: {
+        state_hash: hashState(state),
+        tenant_id: input.tenant_id,
+        user_id: input.user_id,
+        provider: input.provider,
+        code_verifier: input.code_verifier,
+        expires_at: new Date(Date.now() + input.ttl_ms),
+      },
+    });
+    return { state };
+  }
+
+  /**
+   * Consume a state exactly once, only for the same tenant, user and provider, and
+   * only before it expires. Returns the PKCE verifier, or null (never says why).
+   */
+  async consumeOAuthState(input: { state: string; tenant_id: string; user_id: string; provider: SignatureProviderKey }): Promise<{ code_verifier: string } | null> {
+    const rows = await this.prisma.$queryRaw<{ code_verifier: string }[]>`
+      UPDATE "signature_routing"."ProviderOAuthState"
+         SET consumed_at = now()
+       WHERE state_hash = ${hashState(input.state)}
+         AND tenant_id = ${input.tenant_id}::uuid
+         AND user_id = ${input.user_id}
+         AND provider = ${input.provider}
+         AND consumed_at IS NULL
+         AND expires_at > now()
+      RETURNING code_verifier`;
+    return rows[0] ?? null;
+  }
+}
+
+function hashState(state: string): string {
+  return createHash('sha256').update(state).digest('hex');
 }

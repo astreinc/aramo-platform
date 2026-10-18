@@ -135,4 +135,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-4 Documents w
       }),
     ).rejects.toBeInstanceOf(ExecutedArtifactHashMismatchError);
   });
+
+  // Multi-Provider directive §F — an external provider's completion converges into the
+  // same EXECUTED Document status, and its own completion evidence is stored under its
+  // own role (never relabelled as the Aramo EXECUTION_CERTIFICATE).
+  it('stores a provider completion: EXECUTED + PROVIDER_COMPLETION_EVIDENCE, provenance in the event, idempotently', async () => {
+    const { documentId, revisionId } = await seedDocument();
+    const evidence = Buffer.from('DOCUSIGN-CERTIFICATE-OF-COMPLETION');
+    const input = {
+      tenant_id: TENANT, document_id: documentId, revision_id: revisionId,
+      executed_bytes: executed, evidence_bytes: evidence,
+      provider: 'docusign', provider_envelope_ref: 'ds-env-1', evidence_kind: 'DOCUSIGN_CERTIFICATE_OF_COMPLETION',
+      actor_id: ACTOR, requestId: 'rq-3', idempotency_key: `docusign-writeback:${randomUUID()}`,
+    };
+    const r1 = await service.storeProviderExecuted(input);
+    expect(r1.document_status).toBe('EXECUTED');
+    const arts = await db.query(`SELECT artifact_role, sha256 FROM "documents"."DocumentArtifact" WHERE document_id=$1 ORDER BY artifact_role`, [documentId]);
+    expect(arts.rows.map((x) => x.artifact_role)).toEqual(['EXECUTED', 'PROVIDER_COMPLETION_EVIDENCE']);
+    expect(arts.rows.map((x) => x.sha256)).toEqual([hex(executed), hex(evidence)]);
+    const ev = await db.query(`SELECT payload FROM "documents"."DocumentEvent" WHERE document_id=$1 AND event_type='DOCUMENT_EXECUTED'`, [documentId]);
+    expect(ev.rows[0].payload).toMatchObject({ provider: 'docusign', provider_envelope_ref: 'ds-env-1', evidence_kind: 'DOCUSIGN_CERTIFICATE_OF_COMPLETION', executed_sha256: hex(executed) });
+    const r2 = await service.storeProviderExecuted(input);
+    expect(r2.executed_artifact_id).toBe(r1.executed_artifact_id);
+    const n = await db.query(`SELECT count(*)::int AS n FROM "documents"."DocumentArtifact" WHERE document_id=$1`, [documentId]);
+    expect(n.rows[0].n).toBe(2);
+  });
 });

@@ -55,4 +55,9 @@ export class SignatureRoutingService implements SignatureRouter {
   async recordRoute(input: Parameters<SignatureRouter['recordRoute']>[0]): Promise<void> {
     await this.routing.recordRoute(input);
   }
+
+  async recordAccepted(tenant_id: string, provider: SignatureProviderKey): Promise<void> {
+    // Aramo Sign usage is charged against the allowance at the native send seam.
+    if (provider !== 'aramo_sign') await this.routing.recordExternalSend(tenant_id, provider);
+  }
 }

@@ -53,5 +53,23 @@ model SignatureRequestRoute {
 
   @@unique([tenant_id, provider, provider_envelope_ref])
   @@index([tenant_id, document_id, document_revision_id])
+  @@index([provider, provider_envelope_ref])
+  @@schema("signature_routing")
+}
+
+// §G — external-provider OAuth connect state. Single-use, expiring, bound to the
+// tenant + admin + provider. Only the SHA-256 of the state value is stored.
+model ProviderOAuthState {
+  state_hash    String    @id
+  tenant_id     String    @db.Uuid
+  user_id       String
+  // CHECK: docusign | adobe_sign
+  provider      String
+  code_verifier String
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at    DateTime  @db.Timestamptz(6)
+  consumed_at   DateTime? @db.Timestamptz(6)
+
+  @@index([expires_at])
   @@schema("signature_routing")
 }

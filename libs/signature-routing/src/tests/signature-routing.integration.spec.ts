@@ -12,7 +12,11 @@ import { SignatureRoutingRepository } from '../lib/signature-routing.repository.
 // Multi-Provider directive §E — explicit, audited provider selection; a provider
 // switch never rewrites the route frozen on an existing request.
 
-const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261018130000_init_signature_routing/migration.sql');
+const MIGRATIONS = [
+  '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+  '../../prisma/migrations/20261018130000_init_signature_routing/migration.sql',
+  '../../prisma/migrations/20261018140500_provider_oauth_state/migration.sql',
+].map((p) => resolve(__dirname, p));
 const T1 = '0190bbbb-0000-7000-8000-000000000001';
 const T2 = '0190bbbb-0000-7000-8000-000000000002';
 const DOC = '0190cccc-0000-7000-8000-000000000001';
@@ -28,7 +32,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('signature routing
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     pg = new Client({ connectionString: container.getConnectionUri() });
     await pg.connect();
-    await pg.query(readFileSync(MIGRATION, 'utf8'));
+    for (const m of MIGRATIONS) await pg.query(readFileSync(m, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     repo = new SignatureRoutingRepository(prisma);
@@ -70,5 +74,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('signature routing
 
   it('only known providers can be stored', async () => {
     await expect(pg.query(`INSERT INTO signature_routing."TenantSignatureProvider" (tenant_id, provider, selected_by) VALUES ($1, 'acme_sign', 'x')`, [T2])).rejects.toThrow(/provider_check/);
+  });
+
+  // §G — OAuth connect state: single-use, bound to the tenant + user + provider that
+  // started it, expiring; a replayed or foreign state is refused.
+  it('OAuth state is single-use, expiring and bound to tenant, user and provider', async () => {
+    const st = await repo.createOAuthState({ tenant_id: T1, user_id: 'admin-1', provider: 'docusign', code_verifier: 'v'.repeat(64), ttl_ms: 600_000 });
+    expect(st.state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await repo.consumeOAuthState({ state: st.state, tenant_id: T2, user_id: 'admin-1', provider: 'docusign' })).toBeNull();
+    expect(await repo.consumeOAuthState({ state: st.state, tenant_id: T1, user_id: 'other', provider: 'docusign' })).toBeNull();
+    expect(await repo.consumeOAuthState({ state: st.state, tenant_id: T1, user_id: 'admin-1', provider: 'adobe_sign' })).toBeNull();
+    expect(await repo.consumeOAuthState({ state: st.state, tenant_id: T1, user_id: 'admin-1', provider: 'docusign' })).toEqual({ code_verifier: 'v'.repeat(64) });
+    expect(await repo.consumeOAuthState({ state: st.state, tenant_id: T1, user_id: 'admin-1', provider: 'docusign' })).toBeNull();
+    const old = await repo.createOAuthState({ tenant_id: T1, user_id: 'admin-1', provider: 'docusign', code_verifier: 'x', ttl_ms: -1 });
+    expect(await repo.consumeOAuthState({ state: old.state, tenant_id: T1, user_id: 'admin-1', provider: 'docusign' })).toBeNull();
+  });
+
+  it('a provider envelope resolves back to its tenant, document and revision', async () => {
+    await repo.recordRoute({ tenant_id: T1, document_id: DOC, document_revision_id: REV, provider: 'docusign', provider_envelope_ref: 'ds-77' });
+    expect(await repo.findRouteByEnvelope('docusign', 'ds-77')).toMatchObject({ tenant_id: T1, document_id: DOC, document_revision_id: REV });
+    expect(await repo.findRouteByEnvelope('adobe_sign', 'ds-77')).toBeNull();
+  });
+
+  it('an accepted external send is recorded in the usage stream (operational, not a quota)', async () => {
+    await repo.recordExternalSend(T1, 'docusign');
+    const r = await pg.query(`SELECT event_type FROM metering."UsageEvent" WHERE tenant_id = $1`, [T1]);
+    expect(r.rows.map((x) => x.event_type)).toEqual(['esign.external.envelope.sent.docusign']);
   });
 });

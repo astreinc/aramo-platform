@@ -5,6 +5,9 @@ import { SignatureRoutingStoreModule, type SignatureProviderKey } from '@aramo/s
 import { SubscriptionModule } from '@aramo/subscription';
 
 import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
+import type { ExternalSignatureAdapter } from '../esignature-providers/external-signature-adapter.js';
+import { ExternalSignatureProvidersModule } from '../esignature-providers/external-signature-providers.module.js';
+import { EXTERNAL_SIGNATURE_ADAPTERS } from '../esignature-providers/provider-completion.service.js';
 
 import { SignatureAvailabilityService } from './signature-availability.service.js';
 import { SIGNATURE_PROVIDER_REGISTRY } from './signature-router.js';
@@ -19,18 +22,18 @@ import { SignatureRoutingService } from './signature-routing.service.js';
 // Acrobat Sign adapters register here when they land (PR 4/5). A selected
 // provider missing from the registry reads PROVIDER_UNAVAILABLE.
 @Module({
-  imports: [EntitlementModule, SubscriptionModule, SignatureRoutingStoreModule],
+  imports: [EntitlementModule, SubscriptionModule, SignatureRoutingStoreModule, ExternalSignatureProvidersModule],
   providers: [
     EsignServiceHttpProvider,
     {
       provide: SIGNATURE_PROVIDER_REGISTRY,
-      useFactory: (aramoSign: EsignServiceHttpProvider): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> =>
-        new Map<SignatureProviderKey, SignatureProviderPort>([['aramo_sign', aramoSign]]),
-      inject: [EsignServiceHttpProvider],
+      useFactory: (aramoSign: EsignServiceHttpProvider, external: readonly ExternalSignatureAdapter[]): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> =>
+        new Map<SignatureProviderKey, SignatureProviderPort>([['aramo_sign', aramoSign], ...external.map((a) => [a.provider, a] as const)]),
+      inject: [EsignServiceHttpProvider, EXTERNAL_SIGNATURE_ADAPTERS],
     },
     SignatureAvailabilityService,
     SignatureRoutingService,
   ],
-  exports: [SignatureAvailabilityService, SignatureRoutingService, SignatureRoutingStoreModule, SIGNATURE_PROVIDER_REGISTRY],
+  exports: [SignatureAvailabilityService, SignatureRoutingService, SignatureRoutingStoreModule, SIGNATURE_PROVIDER_REGISTRY, ExternalSignatureProvidersModule],
 })
 export class SignatureRoutingModule {}
