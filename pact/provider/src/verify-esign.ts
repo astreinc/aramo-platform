@@ -5,11 +5,16 @@ import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { Test, type TestingModule } from '@nestjs/testing';
-import type { INestApplication } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
+import cookieParser from 'cookie-parser';
 import { Client } from 'pg';
 import { Verifier } from '@pact-foundation/pact';
+import { SignJWT, exportSPKI, generateKeyPair } from 'jose';
+import { PDFDocument } from 'pdf-lib';
 import { afterAll, beforeAll, describe, it } from 'vitest';
 import { AppModule } from '@aramo/esign-service';
+import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/esign';
 
 // DOC-3 — Pact provider verifier for apps/esign-service.
 //
@@ -35,9 +40,25 @@ function esignMigrations(): string[] {
     .sort()
     .map((n) => resolve(dir, n, 'migration.sql'));
 }
+// PX-1 (PX-V1 §12) — the authenticated sender surface needs the identity +
+// entitlement schemas: JwtAuthGuard resolves effective scopes server-side through
+// the identity resolver (AuthorizationVersion → membership → roles → scopes, with
+// the `esign` consumer filter reading the tenant entitlement), EntitlementGuard
+// reads entitlement."TenantEntitlement", and the sender context reads Tenant/User.
+// ALL migrations of each schema, whole-file, in order (the Prisma clients SELECT
+// every column; several identity migrations carry DO/$$ blocks and guard SELECTs).
+function migrationsOf(lib: string): string[] {
+  const dir = resolve(ROOT, `libs/${lib}/prisma/migrations`);
+  return readdirSync(dir)
+    .filter((n) => /^\d/.test(n))
+    .sort()
+    .map((n) => resolve(dir, n, 'migration.sql'));
+}
 const PACT_FILE = resolve(ROOT, 'pact/pacts/aramo-core-esign-service.json');
 // DOC-4C (R1 seam A) — the sign-web → esign-service signer-session pact.
 const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-esign-service.json');
+// PX-1 (PX-V1 §12) — the esign-web → esign-service sender-console pact.
+const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/esign-web-esign-service.json');
 
 // Fixed ids — MUST match pact/consumers/esign-consumer/src/esign.consumer.test.ts.
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
@@ -92,15 +113,184 @@ const C_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000d6';
 const C_SIGNER2_ID = '7a000000-0000-7000-8000-0000000000d5';
 const TOKEN_COMPLETE = 'sign-web-pact-token-complete';
 
+// PX-1 — esign-web sender-console fixtures. MUST match
+// pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts. The
+// sender tenant is DISTINCT from TENANT_ID (the internal-surface fixtures) so the
+// sender list reads only sender fixtures. Every mutating op names its OWN envelope
+// via the provider-state `envelope_id` param (SignatureEvent is append-only).
+const SENDER_TENANT_ID = 'e5000000-0000-7000-8000-000000000001';
+const SENDER_USER_ID = 'e5000000-0000-7000-8000-000000000002';
+const SENDER_MEMBERSHIP_ID = 'e5000000-0000-7000-8000-000000000003';
+const SENDER_ROLE_ID = 'e5000000-0000-7000-8000-000000000004';
+const SENDER_SCOPES: readonly (readonly [string, string])[] = [
+  ['e5000000-0000-7000-8000-000000000011', 'esign:envelope:read'],
+  ['e5000000-0000-7000-8000-000000000012', 'esign:envelope:create'],
+  ['e5000000-0000-7000-8000-000000000013', 'esign:envelope:send'],
+];
+// The consumer's placeholder session cookie; the requestFilter swaps in a real token.
+const SENDER_COOKIE_NAME = 'aramo_access_token_esign';
+const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
+const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
+// Per-fixture child ids derive from the envelope id's last two hex chars:
+// …X1 envelope, …X2 document, …X3 signer, …X4 field (consumer uses …d2/…d3).
+const childId = (envelopeId: string, n: number): string => `${envelopeId.slice(0, -1)}${String(n)}`;
+
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
   'pact provider verification — esign-service (apps/esign-service)',
   () => {
     let container: StartedPostgreSqlContainer;
     let db: Client;
-    let app: INestApplication;
+    let app: NestExpressApplication;
     let module: TestingModule;
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
+    let senderJwt = '';
+    let letterPdf: Uint8Array = new Uint8Array();
+
+    // PX-1 — in-memory OWNED source storage (DOCUMENT_STORAGE_PORT) so uploads and
+    // the server-side field-geometry validation (which re-reads the source PDF)
+    // run without S3. Same key/sha256 contract as EsignObjectStorageDocumentAdapter.
+    const ownedSources = new Map<string, Uint8Array>();
+    const inMemoryStorage: DocumentStoragePort = {
+      async putOwnedSource(input: PutOwnedSourceInput) {
+        const source_object_key = `esign/source/${input.tenant_id}/${input.envelope_id}/${randomUUID()}`;
+        ownedSources.set(source_object_key, new Uint8Array(input.bytes));
+        return {
+          source_object_key,
+          byte_size: input.bytes.byteLength,
+          source_sha256: createHash('sha256').update(input.bytes).digest('hex'),
+        };
+      },
+      async getOwnedSource(source_object_key: string) {
+        const bytes = ownedSources.get(source_object_key);
+        if (bytes === undefined) throw new Error(`owned source ${source_object_key} not found`);
+        return bytes;
+      },
+    };
+
+    // PX-1 — the sender principal, seeded through the REAL authorization substrate
+    // (no resolver override): a BUSINESS ACTIVE tenant entitled core + esign, a user
+    // owned by it with one active membership, and the `esign_sender` role granting
+    // esign:envelope:read/create/send; AuthorizationVersion pinned at 1 (the token's
+    // authz_version). Idempotent — every sender state calls it.
+    async function seedSender(): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at)
+         VALUES ($1,'Pact Sign Co','pact-sign','BUSINESS','ACTIVE',true, now())
+         ON CONFLICT (id) DO NOTHING`,
+        [SENDER_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+         VALUES ($1,'sam.sender@example.com','Sam Sender',$2, now())
+         ON CONFLICT (id) DO NOTHING`,
+        [SENDER_USER_ID, SENDER_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at)
+         VALUES ($1,$2,$3, now())
+         ON CONFLICT (id) DO NOTHING`,
+        [SENDER_MEMBERSHIP_ID, SENDER_USER_ID, SENDER_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."Role" (id, key, description, updated_at)
+         VALUES ($1,'esign_sender','Aramo Sign sender', now())
+         ON CONFLICT (key) DO NOTHING`,
+        [SENDER_ROLE_ID],
+      );
+      for (const [scopeId, key] of SENDER_SCOPES) {
+        await db.query(`INSERT INTO identity."Scope" (id, key) VALUES ($1,$2) ON CONFLICT (key) DO NOTHING`, [scopeId, key]);
+        await db.query(
+          `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+           SELECT gen_random_uuid(), r.id, s.id FROM identity."Role" r, identity."Scope" s
+           WHERE r.key = 'esign_sender' AND s.key = $1
+           ON CONFLICT (role_id, scope_id) DO NOTHING`,
+          [key],
+        );
+      }
+      await db.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'esign_sender'
+         ON CONFLICT (membership_id, role_id) DO NOTHING`,
+        [SENDER_MEMBERSHIP_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at)
+         VALUES (gen_random_uuid(),$1,$2,1, now())
+         ON CONFLICT (tenant_id, principal_id) DO NOTHING`,
+        [SENDER_TENANT_ID, SENDER_USER_ID],
+      );
+      for (const capability of ['core', 'esign']) {
+        await db.query(
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+           VALUES ($1, $2::entitlement."Capability")
+           ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          [SENDER_TENANT_ID, capability],
+        );
+      }
+    }
+
+    // PX-1 — one sender-authored (OWNED-source) envelope fixture. NO deletes:
+    // SignatureEvent is append-only; each interaction names its own envelope id.
+    // The OWNED document's source bytes are a real one-page 612x792 PDF placed in
+    // the in-memory store under the row's source_object_key, so field geometry is
+    // validated against a real page.
+    async function seedSenderEnvelope(f: {
+      envelopeId: string;
+      status: 'DRAFT' | 'SENT';
+      document?: boolean;
+      recipient?: boolean;
+      signatureField?: boolean;
+    }): Promise<void> {
+      await seedSender();
+      const sent = f.status === 'SENT';
+      await db.query(
+        `INSERT INTO "esign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at)
+         VALUES ($1,$2,'Offer letter',$3,'SINGLE_SIGNATURE',$4, ${sent ? 'now()' : 'NULL'})
+         ON CONFLICT (id) DO NOTHING`,
+        [f.envelopeId, SENDER_TENANT_ID, f.status, SENDER_USER_ID],
+      );
+      const docId = childId(f.envelopeId, 2);
+      const signerId = childId(f.envelopeId, 3);
+      if (f.document === true) {
+        const key = `esign/source/${SENDER_TENANT_ID}/${f.envelopeId}/pact-seed`;
+        ownedSources.set(key, letterPdf);
+        await db.query(
+          `INSERT INTO "esign"."EnvelopeDocument"
+             (id, tenant_id, envelope_id, source_mode, source_object_key, content_type, byte_size, title, source_sha256, ordinal)
+           VALUES ($1,$2,$3,'OWNED',$4,'application/pdf',$5,'Offer letter',$6,1)
+           ON CONFLICT (id) DO NOTHING`,
+          [docId, SENDER_TENANT_ID, f.envelopeId, key, letterPdf.byteLength, createHash('sha256').update(letterPdf).digest('hex')],
+        );
+      }
+      if (f.recipient === true) {
+        await db.query(
+          `INSERT INTO "esign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status)
+           VALUES ($1,$2,$3,'jane@example.com','Jane Doe',1,'PENDING')
+           ON CONFLICT (id) DO NOTHING`,
+          [signerId, SENDER_TENANT_ID, f.envelopeId],
+        );
+      }
+      if (f.signatureField === true) {
+        await db.query(
+          `INSERT INTO "esign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required)
+           VALUES ($1,$2,$3,$4,'SIGNATURE',0,72,100,180,40,true)
+           ON CONFLICT (id) DO NOTHING`,
+          [childId(f.envelopeId, 4), SENDER_TENANT_ID, docId, signerId],
+        );
+      }
+      await db.query(
+        `INSERT INTO "esign"."SignatureEvent" (id, tenant_id, envelope_id, event_type, actor_type, actor_ref, previous_event_hash, event_hash)
+         VALUES ($1,$2,$3,$4,'SERVICE',$5,NULL,$6)
+         ON CONFLICT (id) DO NOTHING`,
+        [childId(f.envelopeId, 9), SENDER_TENANT_ID, f.envelopeId, sent ? 'ENVELOPE_SENT' : 'ENVELOPE_CREATED', SENDER_USER_ID, `ew-seed-${f.envelopeId}`],
+      );
+    }
+    const envelopeParam = (params: unknown): string => {
+      const id = (params as { envelope_id?: unknown } | undefined)?.envelope_id;
+      if (typeof id !== 'string') throw new Error('provider state requires an envelope_id param');
+      return id;
+    };
 
     // Seed a signature envelope (+ document, signer, one hash-chained event) so
     // the GET and evidence interactions resolve. Idempotent (delete-then-insert).
@@ -257,16 +447,62 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await db.connect();
       // Whole-file apply — the SignatureEvent append-only trigger is $$-quoted.
       for (const m of esignMigrations()) await db.query(readFileSync(m, 'utf8'));
+      // PX-1 — identity + entitlement for the authenticated sender surface.
+      for (const m of [...migrationsOf('identity'), ...migrationsOf('entitlement')]) {
+        await db.query(readFileSync(m, 'utf8'));
+      }
+
+      // PX-1 — a deterministic one-page US-Letter source PDF for the OWNED fixtures.
+      const pdf = await PDFDocument.create({ updateMetadata: false });
+      pdf.addPage([612, 792]);
+      letterPdf = await pdf.save({ useObjectStreams: false });
+
+      // PX-1 — a per-run RS256 keypair; JwtAuthGuard verifies against AUTH_PUBLIC_KEY.
+      const kp = await generateKeyPair('RS256');
+      const publicPem = await exportSPKI(kp.publicKey);
 
       savedEnv = {
         DATABASE_URL: process.env['DATABASE_URL'],
         MAILER_PROVIDER: process.env['MAILER_PROVIDER'],
+        AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'],
+        AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
+        REDIS_URL: process.env['REDIS_URL'],
       };
       process.env['DATABASE_URL'] = url;
       process.env['MAILER_PROVIDER'] = 'stub';
+      process.env['AUTH_AUDIENCE'] = AUTH_AUDIENCE;
+      process.env['AUTH_PUBLIC_KEY'] = publicPem;
+      // In-memory authorization scope cache (no Redis in the harness).
+      delete process.env['REDIS_URL'];
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
-      app = module.createNestApplication();
+      // The compact `esign` access token auth-service would mint for the sender:
+      // NO scopes claim — effective scopes resolve server-side from the seeded RBAC.
+      const now = Math.floor(Date.now() / 1000);
+      senderJwt = await new SignJWT({
+        sub: SENDER_USER_ID,
+        actor_kind: 'user',
+        consumer_type: 'esign',
+        tenant_id: SENDER_TENANT_ID,
+        authz_version: 1,
+      })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(AUTH_ISSUER)
+        .setAudience(AUTH_AUDIENCE)
+        .setSubject(SENDER_USER_ID)
+        .setIssuedAt(now)
+        .setExpirationTime(now + 15 * 60)
+        .sign(kp.privateKey);
+
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(DOCUMENT_STORAGE_PORT)
+        .useValue(inMemoryStorage)
+        .compile();
+      app = module.createNestApplication<NestExpressApplication>();
+      // Mirror apps/esign-service/src/main.ts: JSON body ceiling for base64 PDF
+      // uploads, cookieParser (the sender console's session cookie), ValidationPipe.
+      app.useBodyParser('json', { limit: '36mb' });
+      app.use(cookieParser());
+      app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
       await app.init();
       const server = await app.listen(0);
       const address = server.address() as AddressInfo;
@@ -283,11 +519,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }, 60_000);
 
-    it('verifies the aramo-core → esign-service and sign-web → esign-service pacts', async () => {
+    it('verifies the aramo-core, sign-web and esign-web → esign-service pacts', async () => {
       const verifier = new Verifier({
         provider: 'esign-service',
         providerBaseUrl: `http://127.0.0.1:${port}`,
-        pactUrls: [PACT_FILE, SIGN_WEB_PACT_FILE],
+        pactUrls: [PACT_FILE, SIGN_WEB_PACT_FILE, ESIGN_WEB_PACT_FILE],
+        // PX-1 — the esign-web consumer sends a PLACEHOLDER consumer-isolated
+        // session cookie (`aramo_access_token_esign`); swap in the real RS256 token.
+        // A request without that cookie (the 401 interaction, and every other
+        // consumer's request) is forwarded untouched.
+        requestFilter: (req, _res, next) => {
+          const cookie = req.headers['cookie'];
+          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
+            req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
+          }
+          next();
+        },
         stateHandlers: {
           'no prior envelope for the request': async () => undefined,
           'a signature envelope exists': async () => {
@@ -316,6 +563,31 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a sent signature envelope with an incomplete signer exists': async () => {
             await seedRtrEnvelope();
+          },
+          // PX-1 — the authenticated sender console (esign-web → esign-service).
+          'an esign sender session exists': async () => {
+            await seedSender();
+            return undefined;
+          },
+          'a sender-authored envelope exists': async (params?: unknown) => {
+            await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT', document: true, recipient: true, signatureField: true });
+            return undefined;
+          },
+          'a sender draft envelope exists': async (params?: unknown) => {
+            await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT' });
+            return undefined;
+          },
+          'a sender draft envelope with a document and a recipient exists': async (params?: unknown) => {
+            await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT', document: true, recipient: true });
+            return undefined;
+          },
+          'a sender draft envelope is ready to send': async (params?: unknown) => {
+            await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT', document: true, recipient: true, signatureField: true });
+            return undefined;
+          },
+          'a sent sender envelope exists': async (params?: unknown) => {
+            await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'SENT', document: true, recipient: true, signatureField: true });
+            return undefined;
           },
         },
       });

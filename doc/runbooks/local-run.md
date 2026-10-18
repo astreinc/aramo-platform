@@ -96,8 +96,25 @@ registered URLs, so the app client needs, per local origin you use:
 |---|---|---|
 | `http://localhost:4205` (App Home topology) | `/auth/org/callback`, `/auth/recruiter/callback` | `/signed-out` |
 | `http://localhost:4201` (ATS directly) | `/auth/recruiter/callback` (existing) | `/signed-out` |
+| `http://localhost:4206` (Aramo Sign sender console) | `/auth/esign/callback` | `/signed-out` |
 
-A missing one shows Cognito's `redirect_mismatch` page. Each SPA dev server keeps its own Vite dependency cache
+A missing one shows Cognito's `redirect_mismatch` page.
+
+## Aramo Sign sender console locally (PX-1)
+
+`tools/local-stack.sh up` also starts the Sign sender console (`apps/esign-web`) on **http://localhost:4206** — the local
+stand-in for `esign.aramo.ai`. It signs in as the `esign` consumer and proxies `/auth` → auth-service and
+`/v1/esign/sender` → esign-service. `/` opens the workspace the backend assigns: `/sign/` for a business tenant,
+`/personal/` for a personal tenant. Requirements:
+
+- the tenant holds the Sign subscription (`entitlement."TenantEntitlement"` row `esign`) and the user a Sign role
+  (`esign_owner` / `esign_admin` / `esign_sender` to send, `esign_viewer` to read);
+- `/auth/esign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
+- PDF uploads use the same local object storage as résumés (`S3_RESUME_BUCKET` / `S3_ENDPOINT` from `.env`).
+
+Signers still open `http://localhost:4204/s/<token>` (sign-web); the link arrives by email (the stub mailer never
+logs it). The console's links back to App Home / Organization use `ESIGN_TENANT_HOST_URL_TEMPLATE`
+(local-stack default `http://localhost:4205`). Each SPA dev server keeps its own Vite dependency cache
 (`node_modules/.vite/<app>`); if a page ever renders blank with `504 Outdated Optimize Dep` in the console, stop the
 server, delete that app's cache folder and start it again.
 
