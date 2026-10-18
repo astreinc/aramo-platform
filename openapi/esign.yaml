@@ -10,6 +10,9 @@ info:
     surface is the public signer transport — tenant context is resolved from the
     capability token, never accepted from the client. Transport only: no
     RTR/Submittal/Offer/recruiter-workflow logic (those consume this seam in DOC-5/6).
+tags:
+  - name: sender
+    description: The authenticated Aramo Sign sender console API (esign.aramo.ai).
 paths:
   /v1/esign/envelopes:
     post:
@@ -363,8 +366,781 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: Disclosure not yet accepted for this signer.
+  /v1/esign/sender/context:
+    get:
+      operationId: getSenderContext
+      summary: The authenticated sender context (user, tenant, kind, workspace, permissions).
+      description: >
+        Resolved entirely server-side from the verified esign session. BUSINESS tenants get workspace sign, PERSONAL tenants get workspace personal (sending not enabled). Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderContext'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/summary:
+    get:
+      operationId: getSenderSummary
+      summary: Dashboard counts, six-month volume and expiring envelopes.
+      description: >
+        Counts of sender-authored envelopes by status, completed this month, monthly sent / completed / declined-or-expired for six months, and envelopes expiring within three days. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/envelopes:
+    get:
+      operationId: listSenderEnvelopes
+      summary: List sender-authored envelopes.
+      description: >
+        Filter by tab (all, drafts, waiting, completed, declined, voided, expired), free-text q (subject or recipient), and days (created within). ATS/Core-sourced envelopes are excluded. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/SenderTab'
+        - $ref: '#/components/parameters/SenderQuery'
+        - $ref: '#/components/parameters/SenderDays'
+        - $ref: '#/components/parameters/SenderLimit'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSenderEnvelope
+      summary: Create a DRAFT envelope.
+      description: >
+        Creates an empty DRAFT owned by the calling user. Refused for a PERSONAL tenant (personal_sending_not_enabled). Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+                  maxLength: 200
+      responses:
+        '201':
+          description: The created draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderDraftCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/envelopes/{id}:
+    get:
+      operationId: getSenderEnvelope
+      summary: Envelope detail with documents, recipients and positioned fields.
+      description: >
+        Field geometry is PDF-native - page_number 0-based, points, bottom-left origin. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      operationId: updateSenderEnvelope
+      summary: Rename a DRAFT envelope.
+      description: >
+        DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject]
+              properties:
+                subject:
+                  type: string
+                  maxLength: 200
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/events:
+    get:
+      operationId: listSenderEnvelopeEvents
+      summary: The envelope hash-chained activity ledger.
+      description: >
+        Oldest first, with display-safe detail only. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SenderLedgerEvent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/sender/envelopes/{id}/documents:
+    post:
+      operationId: uploadSenderDocument
+      summary: Upload a PDF to a DRAFT envelope (E-Sign-owned source).
+      description: >
+        Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_base64]
+              properties:
+                filename:
+                  type: string
+                title:
+                  type: string
+                content_base64:
+                  type: string
+      responses:
+        '201':
+          description: The attached document with its page geometry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderUploadedDocument'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/documents/order:
+    put:
+      operationId: reorderSenderDocuments
+      summary: Reorder the documents of a DRAFT envelope.
+      description: >
+        The order lists every document id exactly once. DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [order]
+              properties:
+                order:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/documents/{documentId}:
+    patch:
+      operationId: renameSenderDocument
+      summary: Rename a document of a DRAFT envelope.
+      description: >
+        DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: removeSenderDocument
+      summary: Remove a document (and its fields) from a DRAFT envelope.
+      description: >
+        DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/documents/{documentId}/source:
+    get:
+      operationId: getSenderDocumentSource
+      summary: The frozen source PDF bytes.
+      description: >
+        For the prepare editor and preview. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/sender/envelopes/{id}/recipients:
+    put:
+      operationId: replaceSenderRecipients
+      summary: Replace the recipients of a DRAFT envelope.
+      description: >
+        Keeps listed existing ids, creates new recipients, deletes the rest with their fields. All recipients sign in parallel. DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipients]
+              properties:
+                recipients:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: object
+                    required: [name, email]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/fields:
+    put:
+      operationId: replaceSenderFields
+      summary: Replace the positioned fields of a DRAFT envelope.
+      description: >
+        Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires esign:envelope:create.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fields]
+              properties:
+                fields:
+                  type: array
+                  maxItems: 500
+                  items:
+                    $ref: '#/components/schemas/SenderFieldInput'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/send:
+    post:
+      operationId: sendSenderEnvelope
+      summary: Send a DRAFT envelope for signature.
+      description: >
+        Requires at least one document, one recipient and a SIGNATURE field per recipient; issues signer capability sessions and emails each signer a secure link. Requires esign:envelope:send.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/remind:
+    post:
+      operationId: remindSenderEnvelope
+      summary: Send a reminder to every incomplete signer.
+      description: >
+        Same envelope; prior links are revoked and a fresh link is emailed. Requires esign:envelope:send.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/void:
+    post:
+      operationId: voidSenderEnvelope
+      summary: Void a non-terminal envelope.
+      description: >
+        A reason is required. Requires esign:envelope:send.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderEnvelopeDetail'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/executed:
+    get:
+      operationId: getSenderExecutedDocuments
+      summary: Executed documents and the execution certificate (base64).
+      description: >
+        COMPLETED envelopes only. Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/esign/sender/envelopes/{id}/evidence:
+    get:
+      operationId: getSenderEnvelopeEvidence
+      summary: The signed evidence summary.
+      description: >
+        Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/sender/documents:
+    get:
+      operationId: listSenderDocuments
+      summary: Documents across sender-authored envelopes.
+      description: >
+        Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/contacts:
+    get:
+      operationId: listSenderContacts
+      summary: Past recipients (derived; no contact store).
+      description: >
+        Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/activity:
+    get:
+      operationId: listSenderActivity
+      summary: Tenant-wide envelope activity (newest first).
+      description: >
+        Requires esign:envelope:read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/SenderLimit'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SenderLedgerEvent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
 components:
+  securitySchemes:
+    senderSession:
+      type: apiKey
+      in: cookie
+      name: aramo_access_token_esign
+      description: The HttpOnly esign consumer session cookie (sent with X-Aramo-Consumer esign).
+    senderBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: The shared auth-service access token for the esign consumer.
   parameters:
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      description: The envelope document id (UUID).
+      schema:
+        type: string
+        format: uuid
+    SenderTab:
+      name: tab
+      in: query
+      required: false
+      description: Status tab.
+      schema:
+        type: string
+        enum: [all, drafts, waiting, completed, declined, voided, expired]
+    SenderQuery:
+      name: q
+      in: query
+      required: false
+      description: Free text matched against subject and recipient name or email.
+      schema:
+        type: string
+    SenderDays:
+      name: days
+      in: query
+      required: false
+      description: Only envelopes created within this many days.
+      schema:
+        type: integer
+        minimum: 1
+    SenderLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum rows.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
     EnvelopeId:
       name: id
       in: path
@@ -374,6 +1150,18 @@ components:
         type: string
         format: uuid
   responses:
+    SenderUnauthorized:
+      description: No valid esign session.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    SenderForbidden:
+      description: Not the esign consumer, the tenant lacks the esign capability, the scope is missing, or a PERSONAL tenant attempted a write.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     BadRequest:
       description: The request failed validation.
       content:
@@ -399,6 +1187,150 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    SenderContext:
+      type: object
+      required: [user, tenant, workspace, permissions, can_send, personal_sending_enabled]
+      properties:
+        user:
+          type: object
+        tenant:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            kind:
+              type: string
+              enum: [BUSINESS, PERSONAL]
+        workspace:
+          type: string
+          enum: [sign, personal]
+        permissions:
+          type: object
+        can_send:
+          type: boolean
+        personal_sending_enabled:
+          type: boolean
+        organization_url:
+          type: [string, 'null']
+        app_home_url:
+          type: [string, 'null']
+    SenderEnvelopeList:
+      type: object
+      required: [items, counts]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+        counts:
+          type: object
+    SenderDraftCreated:
+      type: object
+      required: [id, status, subject]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        subject:
+          type: string
+    SenderEnvelopeDetail:
+      type: object
+      required: [id, subject, status, documents, recipients, fields, editable]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, SENT, IN_PROGRESS, COMPLETED, DECLINED, VOIDED, EXPIRED]
+        editable:
+          type: boolean
+        documents:
+          type: array
+          items:
+            type: object
+        recipients:
+          type: array
+          items:
+            type: object
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/SenderFieldInput'
+    SenderFieldInput:
+      type: object
+      description: PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner.
+      required: [envelope_document_id, signer_id, field_type, page_number, x, y, width, height]
+      properties:
+        envelope_document_id:
+          type: string
+          format: uuid
+        signer_id:
+          type: string
+          format: uuid
+        field_type:
+          type: string
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+        page_number:
+          type: integer
+          minimum: 0
+        x:
+          type: number
+          minimum: 0
+        y:
+          type: number
+          minimum: 0
+        width:
+          type: number
+          exclusiveMinimum: 0
+        height:
+          type: number
+          exclusiveMinimum: 0
+        required:
+          type: boolean
+    SenderUploadedDocument:
+      type: object
+      required: [id, title, page_count, pages]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        page_count:
+          type: integer
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              width:
+                type: number
+              height:
+                type: number
+    SenderLedgerEvent:
+      type: object
+      required: [id, event_type, occurred_at, actor, event_hash]
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+        actor:
+          type: string
+        event_hash:
+          type: string
     ErrorResponse:
       type: object
       description: The canonical Aramo error envelope.

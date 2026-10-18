@@ -118,14 +118,16 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
-  it('recipients: name and valid email required, no duplicate emails', async () => {
+  it('recipients: name and valid email required; V1 allows exactly one signer (PX-V1 §15)', async () => {
     const { svc, repo } = envelopeService();
     await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: '', email: 'a@x.test' }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'nope' }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     await expect(
-      svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }, { name: 'B', email: 'A@X.test' }] }, 'r'),
-    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+      svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }, { name: 'B', email: 'b@x.test' }] }, 'r'),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'v1_single_signer' } } });
     expect(repo.replaceDraftRecipients).not.toHaveBeenCalled();
+    await svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }] }, 'r');
+    expect(repo.replaceDraftRecipients).toHaveBeenCalledTimes(1);
   });
 
   it('fields: unknown type, negative page, non-positive size and out-of-page boxes are refused', async () => {
@@ -134,7 +136,7 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     pdf.addPage([612, 792]);
     sources.getSourcePdf.mockResolvedValue(await pdf.save());
     const base = { envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72, y: 72, width: 200, height: 40 };
-    for (const bad of [{ field_type: 'STAMP' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
+    for (const bad of [{ field_type: 'STAMP' }, { field_type: 'CHECKBOX' }, { field_type: 'SIGNER_NAME' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
       await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, ...bad }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
     expect(repo.replaceDraftFields).not.toHaveBeenCalled();

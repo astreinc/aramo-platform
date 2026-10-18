@@ -318,6 +318,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return `${f.filter((x) => x.required).length} required · ${f.filter((x) => !x.required).length} optional`;
   };
   const inList = (email: string) => list.some((r) => r.email.trim().toLowerCase() === email.toLowerCase());
+  // PX-V1 §15 — one signer per envelope in V1.
+  const full = list.length >= 1;
 
   return (
     <>
@@ -370,16 +372,19 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               </div>
             </section>
           ))}
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <Btn onClick={() => add()} data-testid="add-recipient">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Btn onClick={() => add()} disabled={full} data-testid="add-recipient">
               + Add recipient
             </Btn>
             {ctx.user.email !== null && !inList(ctx.user.email) ? (
-              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')}>+ Add me as counter-signer</Btn>
+              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')} disabled={full}>
+                + Add me as counter-signer
+              </Btn>
             ) : null}
+            {full ? <span className="sg-tag sg-tag--grey">Multiple signers · Not in V1</span> : null}
           </div>
           <p className="sg-muted" style={{ fontSize: 12.5 }}>
-            Everyone signs in parallel. Sequential routing is a roadmap capability and is not offered here.
+            This version sends each envelope to one signer. Multiple signers, signing in parallel or in order, are planned for a later version.
           </p>
           {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
         </div>
@@ -393,7 +398,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 <div className="sg-row__t">{c.name}</div>
                 <div className="sg-row__s sg-ellipsis">{c.email}</div>
               </div>
-              <LinkBtn disabled={inList(c.email)} onClick={() => add(c.name, c.email)}>
+              <LinkBtn disabled={inList(c.email) || full} onClick={() => add(c.name, c.email)}>
                 {inList(c.email) ? 'Added' : 'Add'}
               </LinkBtn>
             </div>

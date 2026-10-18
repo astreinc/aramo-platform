@@ -45,5 +45,9 @@ const PRODUCT_CONSUMER: Record<Exclude<ProductKey, 'org'>, 'recruiter' | 'esign'
 export function productEntryHref(product: ProductAvailability): string | null {
   if (!product.available || product.entry_path === null) return null;
   if (product.key === 'org') return product.entry_path;
+  // A product on its OWN host (Sign at esign.aramo.ai — Lead Host & Workspace
+  // Ruling v1.0) is opened directly: that host runs its own consumer login and
+  // access check. Only http(s) URLs are honoured.
+  if (/^https?:\/\//i.test(product.entry_path)) return product.entry_path;
   return `/auth/${PRODUCT_CONSUMER[product.key]}/login?return_to=${encodeURIComponent(product.entry_path)}`;
 }

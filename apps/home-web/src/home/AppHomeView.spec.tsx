@@ -54,11 +54,11 @@ describe('AppHomeView — product tiles', () => {
     expect(await screen.findByTestId('home-tile-esign')).toHaveTextContent(/not included in your organization's subscription/i);
   });
 
-  it('an esign entry goes through the esign consumer login', async () => {
+  it('an esign entry opens the Sign product host directly (its own login + access check)', async () => {
     renderHome({
       tenant_id: 't-1',
-      products: [{ key: 'esign', subscribed: true, authorized: true, available: true, entry_path: '/sign/', reason: null }],
+      products: [{ key: 'esign', subscribed: true, authorized: true, available: true, entry_path: 'https://esign.aramo.ai/', reason: null }],
     });
-    expect(await screen.findByTestId('home-tile-esign')).toHaveAttribute('href', '/auth/esign/login?return_to=%2Fsign%2F');
+    expect(await screen.findByTestId('home-tile-esign')).toHaveAttribute('href', 'https://esign.aramo.ai/');
   });
 });

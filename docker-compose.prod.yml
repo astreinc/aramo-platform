@@ -79,6 +79,7 @@ services:
       - NGINX_PORTAL_SERVER_NAME=${NGINX_PORTAL_SERVER_NAME:-portal.localhost}
       # DOC-4 (R-4-10) — external-signer SPA host (DEPLOY=NO until provisioned).
       - NGINX_SIGN_SERVER_NAME=${NGINX_SIGN_SERVER_NAME:-sign.localhost}
+      - NGINX_ESIGN_SERVER_NAME=${NGINX_ESIGN_SERVER_NAME:-esign.localhost}
       - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
     ports:
       - '80:80'
@@ -392,6 +393,14 @@ services:
       - DOCUMENTS_API_URL
       - ESIGN_WEBHOOK_TARGET_URL
       - ESIGN_WEBHOOK_SIGNING_SECRET
+      # PX-1 — the authenticated sender zone (/v1/esign/sender/*, esign.aramo.ai).
+      # JwtAuthGuard verifies the shared auth-service JWT; OWNED source PDFs live in
+      # the platform document bucket. The console's links back to the tenant host use
+      # the code default https://{slug}.aramo.ai (ESIGN_TENANT_HOST_URL_TEMPLATE).
+      - AUTH_AUDIENCE
+      - AUTH_PUBLIC_KEY
+      - S3_RESUME_BUCKET
+      - S3_ENDPOINT
     depends_on:
       postgres:
         condition: service_healthy

@@ -77,6 +77,7 @@
     "apps/api/src/tenant-llm/tenant-llm.controller.ts": "AP",
     "apps/api/src/webhooks/indeed-apply.controller.ts": "XP",
     "apps/esign-service/src/app/esign-http.controller.ts": "SS",
+    "apps/esign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",

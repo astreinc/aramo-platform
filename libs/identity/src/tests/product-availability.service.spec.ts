@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { ProductAvailabilityService } from '../lib/authorization/product-availability.service.js';
+import { ProductAvailabilityService, signEntryUrl } from '../lib/authorization/product-availability.service.js';
 import type { RoleService } from '../lib/role.service.js';
 import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 
@@ -53,7 +53,7 @@ describe('ProductAvailabilityService (D-ORG)', () => {
   it('Sign entry activation flag turns an authorized, subscribed Sign into available with its entry path — and nothing else changes', async () => {
     process.env['ARAMO_SIGN_ENTRY_ENABLED'] = 'true';
     const p = byKey(await svc(['core', 'ats', 'portal', 'esign'], [...RECRUITER, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['esign']).toEqual({ key: 'esign', subscribed: true, authorized: true, available: true, entry_path: '/sign/', reason: null });
+    expect(p['esign']).toEqual({ key: 'esign', subscribed: true, authorized: true, available: true, entry_path: 'https://esign.aramo.ai/', reason: null });
     expect(p['ats'].available).toBe(true);
     expect(p['org']).toMatchObject({ available: false, reason: 'not_authorized' });
   });
@@ -97,5 +97,12 @@ describe('ProductAvailabilityService (D-ORG)', () => {
   it('V1 parity: a tenant-wide member (membership site null) is read from the tenant-wide reader; the site reader is never consulted', async () => {
     const p = byKey(await svc(['core', 'ats', 'portal'], RECRUITER, null).forPrincipal({ user_id: U, tenant_id: T }));
     expect(p['ats'].available).toBe(true);
+  });
+
+  it('Sign entry URL: the esign.aramo.ai product host by default, ARAMO_SIGN_ENTRY_URL when absolute, never a tenant-host path', () => {
+    expect(signEntryUrl({})).toBe('https://esign.aramo.ai/');
+    expect(signEntryUrl({ ARAMO_SIGN_ENTRY_URL: 'http://localhost:4206' })).toBe('http://localhost:4206/');
+    expect(signEntryUrl({ ARAMO_SIGN_ENTRY_URL: '/sign/' })).toBe('https://esign.aramo.ai/');
+    expect(signEntryUrl({ ARAMO_SIGN_ENTRY_URL: 'javascript:alert(1)' })).toBe('https://esign.aramo.ai/');
   });
 });

@@ -32,6 +32,8 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
   ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓', w: 400, h: 26 },
 };
 const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
+// PX-V1 §15 — V1 field types; the rest are shown but not placeable ("Not in V1").
+export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT']);
 
 interface EdField {
   key: string;
@@ -254,14 +256,30 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
           </div>
           <div className="sg-panel">
             <div className="sg-panel__t">Fields · click a type, then the page</div>
-            {TYPE_KEYS.map((t) => (
-              <Bare key={t} className={tool === t ? 'sg-tool sg-tool--on' : 'sg-tool'} aria-pressed={tool === t} onClick={() => setTool(tool === t ? null : t)} data-testid={`tool-${t}`}>
-                <span className="sg-tool__g" aria-hidden="true">
-                  {TYPES[t].glyph}
-                </span>
-                {TYPES[t].label}
-              </Bare>
-            ))}
+            {TYPE_KEYS.map((t) => {
+              const v1 = V1_TYPES.has(t);
+              return (
+                <Bare
+                  key={t}
+                  className={tool === t ? 'sg-tool sg-tool--on' : 'sg-tool'}
+                  aria-pressed={tool === t}
+                  disabled={!v1}
+                  title={v1 ? undefined : 'Not available in this version of Aramo Sign'}
+                  onClick={() => setTool(tool === t ? null : t)}
+                  data-testid={`tool-${t}`}
+                >
+                  <span className="sg-tool__g" aria-hidden="true">
+                    {TYPES[t].glyph}
+                  </span>
+                  {TYPES[t].label}
+                  {v1 ? null : (
+                    <span className="sg-tag sg-tag--grey" style={{ marginLeft: 'auto' }}>
+                      Not in V1
+                    </span>
+                  )}
+                </Bare>
+              );
+            })}
             {tool !== null ? (
               <Btn size="sm" block onClick={placeKeyboard} data-testid="place-keyboard">
                 Place on page 1 (keyboard)

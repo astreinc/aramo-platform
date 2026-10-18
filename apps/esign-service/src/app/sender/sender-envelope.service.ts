@@ -29,10 +29,14 @@ import { SenderContextService } from './sender-context.service.js';
 // with the origin at the page's BOTTOM-LEFT corner and (x, y) the field box's
 // lower-left corner. The sender UI converts from its top-left canvas frame.
 
-export const FIELD_TYPES = ['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT'] as const;
+// PX-V1 §1 / §15 — V1 scope: ONE signer per envelope, and field types limited to
+// signature, date, initials and text. Multi-signer / signing order and the other
+// engine field types (SIGNER_NAME, CHECKBOX, ACKNOWLEDGEMENT) are explicitly OUT
+// of V1; enabling them needs a directive amendment, not a UI switch.
+export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT'] as const;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
+export const MAX_SIGNERS_V1 = 1;
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
-const MAX_RECIPIENTS = 20;
 const MAX_FIELDS = 500;
 const MAX_TITLE = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -424,7 +428,9 @@ export class SenderEnvelopeService {
   async replaceRecipients(auth: AuthContextType, envelope_id: string, body: { recipients?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
-    if (body.recipients.length > MAX_RECIPIENTS) throw bad(requestId, `at most ${MAX_RECIPIENTS} recipients`);
+    if (body.recipients.length > MAX_SIGNERS_V1) {
+      throw bad(requestId, 'This version supports one signer per envelope', { reason: 'v1_single_signer', max: MAX_SIGNERS_V1 });
+    }
     const seen = new Set<string>();
     const recipients = body.recipients.map((r: unknown, i: number) => {
       const o = (r ?? {}) as Record<string, unknown>;
@@ -454,7 +460,9 @@ export class SenderEnvelopeService {
         return v;
       };
       const field_type = o['field_type'];
-      if (typeof field_type !== 'string' || !FIELD_TYPE_SET.has(field_type)) throw bad(requestId, `field ${i + 1}: unknown field_type`, { index: i });
+      if (typeof field_type !== 'string' || !FIELD_TYPE_SET.has(field_type)) {
+        throw bad(requestId, `field ${i + 1}: field type not available in this version`, { index: i, reason: 'v1_field_type', allowed: FIELD_TYPES });
+      }
       if (typeof o['envelope_document_id'] !== 'string' || typeof o['signer_id'] !== 'string') throw bad(requestId, `field ${i + 1}: document and recipient are required`, { index: i });
       const page_number = num('page_number');
       if (!Number.isInteger(page_number) || page_number < 0) throw bad(requestId, `field ${i + 1}: page_number must be 0 or more`, { index: i });
