@@ -234,7 +234,7 @@ describe('RecruiterShell', () => {
     expect(screen.queryByText('Tenant Admin · Recruiter')).not.toBeInTheDocument();
   });
 
-  it('surfaces name, email, full role line and My Settings in the top-right user menu', async () => {
+  it('surfaces name, email, full role line and the unified account rows in the top-right user menu', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue(ME);
     renderShell(makeSession(['talent:read', 'tenant:admin:settings']));
     fireEvent.click(
@@ -243,20 +243,17 @@ describe('RecruiterShell', () => {
     expect(screen.getByText('purush@astreinc.com')).toBeInTheDocument();
     // The FULL joined role line lives in the roomy account menu.
     expect(screen.getByText('Tenant Admin · Recruiter')).toBeInTheDocument();
-    // Admin → the admin Settings link to the ATS settings landing is present
-    // (D-ORG-3: Recruiting settings — the organization profile moved to /org/).
-    expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
-      'href',
-      '/admin/settings/recruiting',
-    );
-    // Every user gets personal "My Settings".
-    expect(screen.getByRole('menuitem', { name: 'My Settings' })).toHaveAttribute(
-      'href',
-      '/settings/me',
-    );
+    // Unified account menu (App Home handoff §3): role badge, My preferences
+    // (App Home, a host-level link), the ATS-only personal settings, Switch
+    // application, Sign out. The admin Settings area is reached from the rail.
+    expect(screen.getByText('ADMIN')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /My preferences/ })).toHaveAttribute('href', '/preferences');
+    expect(screen.getByRole('menuitem', { name: /My ATS settings/ })).toHaveAttribute('href', '/settings/me');
+    expect(screen.getByRole('menuitem', { name: /Switch application/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Settings' })).not.toBeInTheDocument();
   });
 
-  it('hides the user-menu Settings link from a non-admin principal', async () => {
+  it('shows a MEMBER badge (no admin shortcut) for a non-admin principal', async () => {
     vi.spyOn(apiClient, 'get').mockResolvedValue({
       ...ME,
       roles: ['Recruiter'],
@@ -265,6 +262,7 @@ describe('RecruiterShell', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Account: Purush Pichaimuthu' }),
     );
+    expect(screen.getByText('MEMBER')).toBeInTheDocument();
     expect(
       screen.queryByRole('menuitem', { name: 'Settings' }),
     ).not.toBeInTheDocument();

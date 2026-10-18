@@ -1,4 +1,4 @@
-import { PageHeader, Input } from '@aramo/fe-foundation';
+import { PageHeader, Input, orgHref } from '@aramo/fe-foundation';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -66,19 +66,18 @@ export function AdminSection() {
       />
 
       <Card>
-        <CardHead title="Users" />
+        <CardHead title="Users & invitations ↗" />
         <p className="rc-muted-line rc-mt-8">
-          Users, invitations and roles are managed in Organization administration
-          on the App Home (shared by every Aramo product).
+          Managed in Organization administration (shared by all Aramo apps).
         </p>
         <div className="rc-formfoot">
           {/* D-ORG-3 — a host-level anchor to the App Home SPA (not an ATS route). */}
           <a
-            href="/org/users"
+            href={orgHref('users', { app: 'ats', path: '/ats/admin/tools' })}
             className="rc-link-action"
             data-testid="admin-users-link"
           >
-            Open Organization administration
+            Open Organization
           </a>
         </div>
       </Card>
