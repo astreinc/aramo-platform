@@ -583,3 +583,38 @@ describe('IC-4 PR-9 — personal Sign tenant never mints an ATS credential', () 
     expect(await adapter(makeDeps(personal)).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
 });
+
+// D-ORG (R2 / §3.C) — the `org` consumer mints on ANY tenant that is an Aramo
+// organization (`core`): ATS-only, Sign-only, ATS+Sign and PERSONAL alike; it is a
+// TENANT consumer for every other gate (status, host binding, membership) and is
+// refused only where the tenant lacks core (an impossible state for a real tenant,
+// proven anyway) or the consumer is unknown.
+describe('D-ORG — org consumer mint and refresh', () => {
+  const ORG = { ...SESSION_INPUT, consumer: 'org' as const };
+  it.each([
+    ['ATS-only', ['core', 'ats', 'portal']],
+    ['Sign-only', ['core', 'esign']],
+    ['ATS+Sign', ['core', 'ats', 'portal', 'esign']],
+    ['PERSONAL', ['core', 'esign']],
+  ])('%s tenant → org session resolved', async (_label, capabilities) => {
+    const r = await adapter(makeDeps({ capabilities })).resolveSession(ORG);
+    expect(r.kind).toBe('resolved');
+  });
+  it('a tenant WITHOUT core → denied consumer_not_entitled (no scopes read); an entitlement-store failure fails closed', async () => {
+    const d = makeDeps({ capabilities: ['ats'] });
+    expect(await adapter(d).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
+    expect(await adapter(makeDeps({ capabilities: 'throws' })).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+  });
+  it('status gate and host binding apply to org exactly as to any tenant consumer', async () => {
+    expect(await adapter(makeDeps({ status: 'SUSPENDED' })).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+    expect(await adapter(makeDeps({ status: 'CLOSED' })).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'tenant_closed' });
+    expect((await adapter(makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'] })).resolveSession(ORG)).kind).toBe('resolved');
+  });
+  it('refresh re-proves core for org; an org token never refreshes as another consumer', async () => {
+    const ok = await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
+    expect(ok.kind).toBe('resolved');
+    const noCore = await adapter(makeDeps({ capabilities: ['esign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
+    expect(noCore).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+  });
+});

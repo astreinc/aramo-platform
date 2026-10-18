@@ -31,6 +31,23 @@ export function getAuthConsumer(): string {
   return authConsumer;
 }
 
+// D-ORG-2 (topology T1) — the path PREFIX this app is served under on the tenant
+// host: '' for App Home at `/` (apps/home-web), '/ats' for the ATS app at `/ats/`
+// (apps/ats-web). Router `basename` handles in-app links; this value is for the
+// few HOST-level navigations the foundation performs itself (the `/login?error=`
+// landing, `return_to` on the login redirect). Call ONCE at bootstrap.
+let appBasePath = '';
+export function configureAppBasePath(basePath: string): void {
+  appBasePath = basePath.replace(/\/+$/, '');
+}
+export function getAppBasePath(): string {
+  return appBasePath;
+}
+/** Prefix an in-app absolute path with the app base: appPath('/login') → '/ats/login'. */
+export function appPath(path: string): string {
+  return `${appBasePath}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
 export type AuthPathKind =
   | 'login'
   | 'session'

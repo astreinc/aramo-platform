@@ -21,6 +21,8 @@ export {
   MICROSOFT_SIGN_OUT_URL,
   SESSION_PATH,
   TENANT_ACCESS_DENIED_PATH,
+  accessDeniedPath,
+  currentReturnTo,
   fetchSession,
   loginUrl,
   logout,
@@ -32,7 +34,7 @@ export type { LoginOptions, Session, SessionState } from './auth/session';
 // Inc-2 PR-2 — single auth-consumer bootstrap point (default 'recruiter';
 // platform-web calls this with 'platform'). Parameterizes the /auth/:consumer/*
 // paths in session.ts + api/client.ts.
-export { configureAuthConsumer, getAuthConsumer } from './auth/consumer';
+export { configureAuthConsumer, getAuthConsumer, configureAppBasePath, getAppBasePath, appPath } from './auth/consumer';
 export { hasScope } from './auth/scopes';
 export { RouteGuard } from './auth/RouteGuard';
 
@@ -90,3 +92,5 @@ export * from './ui';
 // surfaces so the re-point is a pure import-path change.
 export * from './ui/icons';
 export * as Icons from './ui/icons';
+// format — D-ORG-3: the shared date/instant formatters (moved from ats-web).
+export { formatDate, formatInstant } from './format/date';

@@ -11,6 +11,7 @@ import { IdentityAuditService } from '../lib/audit/identity-audit.service.js';
 import { AuthorizationVersionService } from '../lib/authorization-version.service.js';
 import { IdentityEffectiveAuthorizationResolver } from '../lib/authorization/identity-effective-authorization-resolver.js';
 import { InMemoryScopeCache } from '../lib/authorization/in-memory-scope-cache.js';
+import { ProductAvailabilityService } from '../lib/authorization/product-availability.service.js';
 import { ESIGN_SENDER_SCOPE_KEY, ORG_ADMIN_SCOPE_KEYS } from '../lib/dto/role.dto.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
 import { IdentityService } from '../lib/identity.service.js';
@@ -136,6 +137,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
 
   it('#2 — the personal User cannot acquire a membership in a business tenant (DB cardinality: UNIQUE(user_id) + composite owner FK)', async () => {
     const business = await tenantSvc.provisionTenant({ name: 'Acme Business', owner_email: 'owner@acme-business.corp', actor_user_id: ACTOR });
+    caps.set(business.id, new Set(['core', 'ats', 'portal']));
     expect(business.kind).toBe('BUSINESS');
     await expect(
       prisma.userTenantMembership.create({ data: { id: nextId(), user_id: personalUserId, tenant_id: business.id, is_active: true } }),
@@ -145,6 +147,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
 
   it('#3 — the registered personal email cannot create a second tenant identity: service guard (409 EMAIL_UNAVAILABLE, details {}) and the DB unique', async () => {
     const other = await tenantSvc.provisionTenant({ name: 'Other Corp', owner_email: 'owner@other-corp.example', actor_user_id: ACTOR });
+    caps.set(other.id, new Set(['core', 'ats', 'portal'])); // D-ORG: ATS roles need ats on the TARGET tenant
     await expect(identitySvc.createUserFromInvitation({
       email: PERSONAL_EMAIL.toUpperCase(), display_name: null, provider: 'cognito', provider_subject: 'cog-jane-2',
       tenant_id: other.id, role_keys: ['recruiter'], role_ids: [SEED_IDS.roles.recruiter], actor_user_id: ACTOR, request_id: 'rq-pr9-3',
@@ -185,6 +188,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
       role_keys: ['org_admin', 'esign_sender'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.esign_sender], request_id: 'rq-pr9-6b',
     })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'esign_role_not_entitled' } } });
     caps.set(personalTenantId, new Set(['core', 'esign']));
+  });
+
+  it('D-ORG — product availability on the real spine: the PERSONAL owner (org_admin + esign_owner) sees Organization available, Sign subscribed+authorized but not_activated, ATS not_subscribed; the ATS-role gate refuses a recruiter role in this tenant', async () => {
+    const products = new ProductAvailabilityService(roleSvc, entitlements);
+    const v = await products.forPrincipal({ user_id: personalUserId, tenant_id: personalTenantId });
+    const by = Object.fromEntries(v.products.map((p) => [p.key, p]));
+    expect(by['org']).toMatchObject({ subscribed: true, authorized: true, available: true, entry_path: '/org/' });
+    expect(by['esign']).toMatchObject({ subscribed: true, authorized: true, available: false, reason: 'not_activated' });
+    expect(by['ats']).toMatchObject({ subscribed: false, authorized: false, available: false, reason: 'not_subscribed' });
+    await expect(identitySvc.replaceMembershipRoles({
+      membership_id: personalMembershipId, tenant_id: personalTenantId,
+      role_keys: ['org_admin', 'esign_owner', 'recruiter'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.esign_owner, SEED_IDS.roles.recruiter], request_id: 'rq-dorg-1',
+    })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'ats_role_not_entitled' } } });
   });
 
   it('#11 — a Talent Portal identity with the SAME normalized email coexists in portal_identity: separate row, no tenant, no User pointer, no FK', async () => {

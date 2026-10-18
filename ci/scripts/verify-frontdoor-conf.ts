@@ -22,6 +22,11 @@
 //       Ruling-1 defaults (E19 — always-defined so envsubst never leaves a literal).
 //   (i) the nginx command chains through `/docker-entrypoint.sh nginx` (E18 — the
 //       inner exec must re-enter the image entrypoint so the template renders).
+//   (j) D-ORG-2 T1 topology on the TENANT host: `location /ats/` aliases /srv/ats/
+//       with an `/ats/index.html` fallback (ATS deep links + refresh), and the
+//       catch-all `location /` roots /srv/home with an `/index.html` fallback
+//       (App Home + `/org/*`). The tenant catch-all must NOT root /srv/ats any
+//       more (the ATS app never owns the product-neutral host root, §3.A).
 //
 // PATH-COUPLING (standing lesson): this script references files by literal path.
 // Any future move of deploy/nginx/** or the constants file must grep for it.
@@ -149,6 +154,25 @@ function checkRepo(): Issue[] {
       if (!/proxy_pass\s+http:\/\/api:3000/.test(locBody)) {
         issues.push({ where: TEMPLATE, reason: '(a) webhook location does not proxy_pass to api:3000' });
       }
+    }
+  }
+
+  // (j) D-ORG-2 — T1 topology on the tenant host.
+  if (tenant) {
+    const atsLoc = locationBody(tenant.body, 'location /ats/');
+    if (!atsLoc) {
+      issues.push({ where: TEMPLATE, reason: '(j) tenant block missing `location /ats/` (ATS SPA under /ats/)' });
+    } else {
+      if (!/alias\s+\/srv\/ats\/;/.test(atsLoc)) issues.push({ where: TEMPLATE, reason: '(j) `location /ats/` must `alias /srv/ats/;`' });
+      if (!/try_files[^;]*\/ats\/index\.html;/.test(atsLoc)) issues.push({ where: TEMPLATE, reason: '(j) `location /ats/` must fall back to /ats/index.html (deep links + refresh)' });
+    }
+    const rootLoc = locationBody(tenant.body, 'location / ');
+    if (!rootLoc) {
+      issues.push({ where: TEMPLATE, reason: '(j) tenant block missing the catch-all `location /`' });
+    } else {
+      if (!/root\s+\/srv\/home;/.test(rootLoc)) issues.push({ where: TEMPLATE, reason: '(j) tenant catch-all `location /` must `root /srv/home;` (App Home), never the ATS SPA' });
+      if (/\/srv\/ats/.test(rootLoc)) issues.push({ where: TEMPLATE, reason: '(j) tenant catch-all `location /` references /srv/ats — the ATS app must not own the host root' });
+      if (!/try_files[^;]*\/index\.html;/.test(rootLoc)) issues.push({ where: TEMPLATE, reason: '(j) tenant catch-all `location /` must fall back to /index.html (App Home + /org/* client routing)' });
     }
   }
 

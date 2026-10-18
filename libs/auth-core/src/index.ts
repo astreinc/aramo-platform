@@ -50,7 +50,7 @@ export { PortalLoginService } from './lib/portal-login.service.js';
 export type { PortalConsumeResult } from './lib/portal-login.service.js';
 export { PRINCIPAL_DIRECTORY } from './lib/principal-directory.port.js';
 export type { ResolveSessionInput, ResolveSessionResult, ResolveScopesInput, ResolveScopesResult, PrincipalDirectory } from './lib/principal-directory.port.js';
-export { isDevPosture, parseHost, isDevHostname, deriveBaseFromHost, classifyHostByEnv, resolvePublicBaseUrl, deriveRedirectUri, derivePostLoginRedirect, deriveSignoutRedirect } from './lib/redirect-uri.js';
+export { isDevPosture, parseHost, isDevHostname, deriveBaseFromHost, classifyHostByEnv, resolvePublicBaseUrl, deriveRedirectUri, derivePostLoginRedirect, deriveSignoutRedirect, defaultPostLoginPath, sanitizeReturnTo, CONSUMER_APP_BASE } from './lib/redirect-uri.js';
 export type { ParsedHost, EnvHostClass } from './lib/redirect-uri.js';
 export { RefreshOrchestratorService } from './lib/refresh-orchestrator.service.js';
 export type { RefreshInput, RefreshResult } from './lib/refresh-orchestrator.service.js';

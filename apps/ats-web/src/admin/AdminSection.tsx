@@ -68,16 +68,18 @@ export function AdminSection() {
       <Card>
         <CardHead title="Users" />
         <p className="rc-muted-line rc-mt-8">
-          Invite users, edit their roles, and disable access across the tenant.
+          Users, invitations and roles are managed in Organization administration
+          on the App Home (shared by every Aramo product).
         </p>
         <div className="rc-formfoot">
-          <Link
-            to="/admin/users"
+          {/* D-ORG-3 — a host-level anchor to the App Home SPA (not an ATS route). */}
+          <a
+            href="/org/users"
             className="rc-link-action"
             data-testid="admin-users-link"
           >
-            Open users
-          </Link>
+            Open Organization administration
+          </a>
         </div>
       </Card>
 

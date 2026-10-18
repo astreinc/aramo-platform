@@ -8161,6 +8161,61 @@ paths:
       security:
         - BearerAuth: []
 
+  # D-ORG (Lead disposition 2026-10-17, R5 / §3.D) — App Home product availability.
+  /v1/me/products:
+    get:
+      operationId: getMyProducts
+      summary: Backend-authoritative product availability for the calling member (App Home).
+      description: |
+        Implicit-self (sub + tenant_id from the session only; no scope required — every
+        authenticated tenant member may ask). For each Aramo product answers three DISTINCT
+        questions: `subscribed` (the TENANT holds the product capability — live entitlement
+        read), `authorized` (THIS USER holds at least one scope in the product's namespace,
+        resolved with the same per-consumer filter the session resolver applies) and
+        `available` (subscribed AND authorized AND the product entry is activated in this
+        deployment). Never grants anything; never lists roles, scopes, members or commercial
+        data. `entry_path` is the relative path on the tenant host (App Home topology:
+        `/ats/`, `/org/`; Sign reports `not_activated` with a null path until its web entry
+        is activated).
+      responses:
+        '200':
+          description: Per-product availability for the caller in their one tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [tenant_id, products]
+                properties:
+                  tenant_id: { type: string, format: uuid }
+                  products:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [key, subscribed, authorized, available, entry_path, reason]
+                      properties:
+                        key:
+                          type: string
+                          enum: [ats, esign, org]
+                        subscribed: { type: boolean }
+                        authorized: { type: boolean }
+                        available: { type: boolean }
+                        entry_path:
+                          oneOf:
+                            - type: string
+                            - type: 'null'
+                        reason:
+                          oneOf:
+                            - type: string
+                              enum: [not_subscribed, not_authorized, not_activated]
+                            - type: 'null'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   # DOC-5 — RTR (Right to Represent) recruiter orchestration.
   /v1/rtr:
     post:

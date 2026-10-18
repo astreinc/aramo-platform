@@ -15,6 +15,13 @@ import {
 import { AramoError } from '@aramo/common';
 import {
   CONSUMER_TYPES,
+  LEGACY_ACCESS_COOKIE,
+  LEGACY_PKCE_COOKIE,
+  LEGACY_REFRESH_COOKIE,
+  accessCookieName,
+  allRefreshCookieNames,
+  pkceCookieName,
+  refreshCookieName,
   EFFECTIVE_AUTHORIZATION_RESOLVER,
   type ConsumerType,
   type EffectiveAuthorizationResolver,
@@ -35,6 +42,7 @@ import { PkceService } from './pkce.service.js';
 import {
   deriveRedirectUri,
   derivePostLoginRedirect,
+  sanitizeReturnTo,
   deriveSignoutRedirect,
   resolvePublicBaseUrl,
 } from './redirect-uri.js';
@@ -47,9 +55,10 @@ import {
 } from './session-orchestrator.service.js';
 import type { SessionResponseDto } from './dto/session-response.dto.js';
 
-const ACCESS_COOKIE = 'aramo_access_token';
-const REFRESH_COOKIE = 'aramo_refresh_token';
-const PKCE_COOKIE = 'aramo_pkce_state';
+// D-ORG-4 — cookie names are CONSUMER-ISOLATED (`aramo_access_token_<consumer>` …),
+// resolved through the single naming authority in @aramo/auth
+// (session-cookie-names.ts). The legacy unsuffixed names remain readable as a
+// transition fallback and are cleared on every logout. See that module's header.
 const ACCESS_MAX_AGE_MS = 900 * 1000;
 const REFRESH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const PKCE_MAX_AGE_MS = 600 * 1000;
@@ -75,8 +84,8 @@ function parseConsumer(value: string, requestId: string): ConsumerType {
   return value as ConsumerType;
 }
 
-function setAccessCookie(res: Response, value: string): void {
-  res.cookie(ACCESS_COOKIE, value, {
+function setAccessCookie(res: Response, consumer: ConsumerType, value: string): void {
+  res.cookie(accessCookieName(consumer), value, {
     httpOnly: true,
     secure: shouldSetSecure(),
     sameSite: 'lax',
@@ -85,8 +94,8 @@ function setAccessCookie(res: Response, value: string): void {
   });
 }
 
-function setRefreshCookie(res: Response, value: string): void {
-  res.cookie(REFRESH_COOKIE, value, {
+function setRefreshCookie(res: Response, consumer: ConsumerType, value: string): void {
+  res.cookie(refreshCookieName(consumer), value, {
     httpOnly: true,
     secure: shouldSetSecure(),
     sameSite: 'strict',
@@ -95,28 +104,33 @@ function setRefreshCookie(res: Response, value: string): void {
   });
 }
 
-function clearAccessCookie(res: Response): void {
-  res.cookie(ACCESS_COOKIE, '', {
-    httpOnly: true,
-    secure: shouldSetSecure(),
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 0,
-  });
+// Clears the consumer's cookie AND the legacy unsuffixed cookie (transition).
+function clearAccessCookie(res: Response, consumer: ConsumerType): void {
+  for (const name of [accessCookieName(consumer), LEGACY_ACCESS_COOKIE]) {
+    res.cookie(name, '', {
+      httpOnly: true,
+      secure: shouldSetSecure(),
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 0,
+    });
+  }
 }
 
-function clearRefreshCookie(res: Response): void {
-  res.cookie(REFRESH_COOKIE, '', {
-    httpOnly: true,
-    secure: shouldSetSecure(),
-    sameSite: 'strict',
-    path: '/auth',
-    maxAge: 0,
-  });
+function clearRefreshCookie(res: Response, consumer: ConsumerType): void {
+  for (const name of [refreshCookieName(consumer), LEGACY_REFRESH_COOKIE]) {
+    res.cookie(name, '', {
+      httpOnly: true,
+      secure: shouldSetSecure(),
+      sameSite: 'strict',
+      path: '/auth',
+      maxAge: 0,
+    });
+  }
 }
 
-function setPkceCookie(res: Response, value: string): void {
-  res.cookie(PKCE_COOKIE, value, {
+function setPkceCookie(res: Response, consumer: ConsumerType, value: string): void {
+  res.cookie(pkceCookieName(consumer), value, {
     httpOnly: true,
     secure: shouldSetSecure(),
     sameSite: 'lax',
@@ -125,14 +139,24 @@ function setPkceCookie(res: Response, value: string): void {
   });
 }
 
-function clearPkceCookie(res: Response): void {
-  res.cookie(PKCE_COOKIE, '', {
-    httpOnly: true,
-    secure: shouldSetSecure(),
-    sameSite: 'lax',
-    path: '/auth',
-    maxAge: 0,
-  });
+function clearPkceCookie(res: Response, consumer: ConsumerType): void {
+  for (const name of [pkceCookieName(consumer), LEGACY_PKCE_COOKIE]) {
+    res.cookie(name, '', {
+      httpOnly: true,
+      secure: shouldSetSecure(),
+      sameSite: 'lax',
+      path: '/auth',
+      maxAge: 0,
+    });
+  }
+}
+
+// Read a consumer's cookie, falling back to the legacy unsuffixed name.
+function readCookie(req: RequestWithCookies, name: string, legacy: string): string | undefined {
+  const own = req.cookies?.[name];
+  if (own !== undefined && own.length > 0) return own;
+  const old = req.cookies?.[legacy];
+  return old !== undefined && old.length > 0 ? old : undefined;
 }
 
 function sha256Base64Url(s: string): string {
@@ -178,6 +202,7 @@ export class AuthController {
     // exact value '1' is honoured, and the forwarded prompt is a fixed constant —
     // no caller-supplied value ever reaches the authorize URL.
     @Query('select_account') selectAccount?: string,
+    @Query('return_to') returnTo?: string,
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
@@ -217,8 +242,10 @@ export class AuthController {
       issued_at: Math.floor(Date.now() / 1000),
       host_class: hostClass ?? null,
       context_id: contextId ?? null,
+      // D-ORG-2 — same-host relative deep link, validated against the consumer's app base.
+      return_to: sanitizeReturnTo(returnTo, c),
     });
-    setPkceCookie(res, cipher);
+    setPkceCookie(res, c, cipher);
     const url = new URL(`https://${domain}/oauth2/authorize`);
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('response_type', 'code');
@@ -257,7 +284,7 @@ export class AuthController {
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
-    const pkceCookie = req.cookies?.[PKCE_COOKIE];
+    const pkceCookie = readCookie(req, pkceCookieName(c), LEGACY_PKCE_COOKIE);
     // PR-3.1 §3d.1: derive the base from THIS (callback) request's host and
     // thread it into the exchange leg — same browser host as login (via the front door),
     // so the exchange redirect_uri == authorize redirect_uri by construction.
@@ -280,11 +307,11 @@ export class AuthController {
     });
 
     // Always clear pkce_state on /callback completion (success or error).
-    clearPkceCookie(res);
+    clearPkceCookie(res, c);
 
     if (result.kind === 'success') {
-      setAccessCookie(res, result.accessJwt);
-      setRefreshCookie(res, result.refreshTokenPlaintext);
+      setAccessCookie(res, c, result.accessJwt);
+      setRefreshCookie(res, c, result.refreshTokenPlaintext);
       // The hosted-UI callback is a TOP-LEVEL browser redirect (Cognito
       // 302s the browser to this endpoint), so a bodyless 204 would leave
       // the browser stranded on a blank page. After the session cookies
@@ -304,7 +331,7 @@ export class AuthController {
       // host (${derivedBase}${AUTH_POST_LOGIN_PATH ?? '/'}); an unvalidated host
       // falls back to the legacy full-URL AUTH_POST_LOGIN_REDIRECT (existing
       // behavior). The throw survives when neither resolves.
-      const postLogin = derivePostLoginRedirect(derivedBase);
+      const postLogin = derivePostLoginRedirect(derivedBase, c, result.returnTo);
       if (postLogin === null) {
         throw new AramoError(
           'INTERNAL_ERROR',
@@ -488,7 +515,7 @@ export class AuthController {
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
-    const refreshCookie = req.cookies?.[REFRESH_COOKIE];
+    const refreshCookie = readCookie(req, refreshCookieName(c), LEGACY_REFRESH_COOKIE);
     // IC-2 PR-5 — the refresh request's host class/context ride to the
     // orchestrator (bound against the STORED token tenant; F-5/F-6 posture).
     const { hostClass, contextId } = await this.hostBase.resolve(requestHost(req));
@@ -499,15 +526,23 @@ export class AuthController {
       contextId,
     });
     if (result.kind === 'success') {
-      setAccessCookie(res, result.accessJwt);
-      setRefreshCookie(res, result.refreshTokenPlaintext);
+      setAccessCookie(res, c, result.accessJwt);
+      setRefreshCookie(res, c, result.refreshTokenPlaintext);
+      // D-ORG-4 upgrade transition: a jar minted BEFORE the consumer-suffixed
+      // names (legacy `aramo_refresh_token`) is migrated by this re-mint — the
+      // rotated token now lives only under the consumer name, so the legacy
+      // pair is retired here (it would otherwise linger holding a consumed token).
+      if (req.cookies?.[refreshCookieName(c)] === undefined && req.cookies?.[LEGACY_REFRESH_COOKIE] !== undefined) {
+        res.cookie(LEGACY_ACCESS_COOKIE, '', { httpOnly: true, secure: shouldSetSecure(), sameSite: 'lax', path: '/', maxAge: 0 });
+        res.cookie(LEGACY_REFRESH_COOKIE, '', { httpOnly: true, secure: shouldSetSecure(), sameSite: 'strict', path: '/auth', maxAge: 0 });
+      }
       res.status(200).end();
       return;
     }
     if (result.kind === 'token_invalid') {
       // Clear BOTH cookies on every 401 path per §8.3.
-      clearAccessCookie(res);
-      clearRefreshCookie(res);
+      clearAccessCookie(res, c);
+      clearRefreshCookie(res, c);
       throw new AramoError(
         'REFRESH_TOKEN_INVALID',
         'Refresh token invalid',
@@ -533,7 +568,7 @@ export class AuthController {
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
-    const refreshCookie = req.cookies?.[REFRESH_COOKIE];
+    const refreshCookie = readCookie(req, refreshCookieName(c), LEGACY_REFRESH_COOKIE);
     if (refreshCookie !== undefined && refreshCookie.length > 0) {
       const tokenHash = sha256Base64Url(refreshCookie);
       const found = await this.refreshTokens.findByHash({ token_hash: tokenHash });
@@ -579,8 +614,8 @@ export class AuthController {
         });
       }
     }
-    clearAccessCookie(res);
-    clearRefreshCookie(res);
+    clearAccessCookie(res, c);
+    clearRefreshCookie(res, c);
     res.status(204).end();
   }
 
@@ -649,10 +684,59 @@ export class AuthController {
         { requestId, details: { reason: 'signout_redirect_missing' } },
       );
     }
+    // D-ORG-4 — GLOBAL sign-out semantics: this redirect ends the Cognito (SSO)
+    // session for the browser, so EVERY consumer session on this host is revoked
+    // and cleared first (the refresh cookies all live under path '/auth', so each
+    // consumer's refresh token is visible here). POST /auth/{consumer}/logout keeps
+    // its per-consumer (single product) semantics.
+    await this.revokeAllConsumerSessions(req, res);
     const url = new URL(`https://${domain}/logout`);
     url.searchParams.set('client_id', clientId);
     url.searchParams.set('logout_uri', signOutRedirect);
     res.redirect(302, url.toString());
+  }
+
+  // Revoke + clear every consumer session cookie present on the request (plus the
+  // legacy unsuffixed cookies). Best-effort per consumer: a missing or already-
+  // revoked token is skipped; the cookies are always cleared.
+  private async revokeAllConsumerSessions(req: RequestWithCookies, res: Response): Promise<void> {
+    // Cookie-less call (already signed out) → idempotent no-op: nothing to revoke,
+    // nothing to clear (the Cognito redirect still happens).
+    const jar: Record<string, unknown> = req.cookies ?? {};
+    const anyPresent = Object.entries(jar).some(
+      ([name, value]) =>
+        typeof value === 'string' && value.length > 0 && (name.startsWith(LEGACY_ACCESS_COOKIE) || name.startsWith(LEGACY_REFRESH_COOKIE)),
+    );
+    if (!anyPresent) return;
+    const seen = new Set<string>();
+    for (const { consumer, name } of allRefreshCookieNames()) {
+      const plain = req.cookies?.[name];
+      if (plain === undefined || plain.length === 0 || seen.has(plain)) continue;
+      seen.add(plain);
+      await this.revokeRefreshPlaintext(plain, consumer, 'logout_all');
+    }
+    const legacy = req.cookies?.[LEGACY_REFRESH_COOKIE];
+    if (legacy !== undefined && legacy.length > 0 && !seen.has(legacy)) {
+      await this.revokeRefreshPlaintext(legacy, null, 'logout_all');
+    }
+    for (const consumer of CONSUMER_TYPES) {
+      clearAccessCookie(res, consumer);
+      clearRefreshCookie(res, consumer);
+    }
+  }
+
+  private async revokeRefreshPlaintext(plain: string, consumer: ConsumerType | null, reason: string): Promise<void> {
+    const found = await this.refreshTokens.findByHash({ token_hash: sha256Base64Url(plain) });
+    if (found === null) return;
+    if (consumer !== null && found.consumer_type !== consumer) return;
+    await this.refreshTokens.revoke({ id: found.id });
+    await this.auditSink.record({
+      event_type: 'identity.session.revoked',
+      actor_id: found.user_id,
+      context_id: found.tenant_id,
+      subject_id: found.user_id,
+      payload: { reason, consumer: found.consumer_type },
+    });
   }
 
   // §8.5 — GET /auth/{consumer}/session
@@ -663,7 +747,7 @@ export class AuthController {
   ): Promise<SessionResponseDto> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
-    const cookie = req.cookies?.[ACCESS_COOKIE];
+    const cookie = readCookie(req, accessCookieName(c), LEGACY_ACCESS_COOKIE);
     if (cookie === undefined || cookie.length === 0) {
       throw new AramoError(
         'INVALID_TOKEN',

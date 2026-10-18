@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 81 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 82 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -50,6 +50,7 @@
     "@aramo/metering": "./libs/metering/src/index.ts",
     "@aramo/microsoft-graph": "./libs/microsoft-graph/src/index.ts",
     "@aramo/object-storage": "./libs/object-storage/src/index.ts",
+    "@aramo/org-admin-web": "./libs/org-admin-web/src/index.ts",
     "@aramo/outbox-publisher": "./libs/outbox-publisher/src/index.ts",
     "@aramo/pipeline": "./libs/pipeline/src/index.ts",
     "@aramo/placement": "./libs/placement/src/index.ts",
@@ -152,12 +153,22 @@
       "AuthContext",
       "AuthContextType",
       "AuthModule",
+      "CONSUMER_HEADER",
       "CONSUMER_TYPES",
       "EFFECTIVE_AUTHORIZATION_RESOLVER",
       "JwtAuthGuard",
+      "LEGACY_ACCESS_COOKIE",
+      "LEGACY_PKCE_COOKIE",
+      "LEGACY_REFRESH_COOKIE",
       "PLATFORM_TENANT_SENTINEL_ID",
+      "accessCookieName",
+      "allAccessCookieNames",
+      "allRefreshCookieNames",
       "assertTierTripwire",
-      "isPlatformRoutePath"
+      "isPlatformRoutePath",
+      "pkceCookieName",
+      "refreshCookieName",
+      "selectAccessCookie"
     ],
     "@aramo/auth-core": [
       "ACCESS_TOKEN_TTL_SECONDS",
@@ -165,6 +176,7 @@
       "ALLOW_UNBOUND_HOST_ENV",
       "AUDIT_SINK",
       "AuthController",
+      "CONSUMER_APP_BASE",
       "CognitoVerificationError",
       "CognitoVerifierService",
       "CookieVerifierService",
@@ -193,6 +205,7 @@
       "buildPortalLoginUrl",
       "classifyHostByEnv",
       "computeKid",
+      "defaultPostLoginPath",
       "deriveBaseFromHost",
       "derivePostLoginRedirect",
       "deriveRedirectUri",
@@ -204,7 +217,8 @@
       "parseHost",
       "readHostBindingMode",
       "renderPortalLoginEmail",
-      "resolvePublicBaseUrl"
+      "resolvePublicBaseUrl",
+      "sanitizeReturnTo"
     ],
     "@aramo/auth-service": ["AuthServiceModule"],
     "@aramo/auth-storage": [
@@ -817,9 +831,16 @@
       "TextField",
       "ToastProvider",
       "WrongAccountRecovery",
+      "accessDeniedPath",
       "apiClient",
+      "appPath",
+      "configureAppBasePath",
       "configureAuthConsumer",
+      "currentReturnTo",
       "fetchSession",
+      "formatDate",
+      "formatInstant",
+      "getAppBasePath",
       "getAuthConsumer",
       "hasScope",
       "loginUrl",
@@ -856,12 +877,15 @@
     ],
     "@aramo/identity": [
       "ACTOR_TYPES",
+      "ATS_ENTRY_PATH",
+      "ATS_PRODUCT_ROLE_KEYS",
       "AUDIT_FINANCIALS_GATE",
       "AUTHORIZATION_SCOPE_CACHE",
       "AUTHZ_RESOLVER_CONFIG",
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "CursorDecodeError",
+      "DEFAULT_SIGN_ENTRY_PATH",
       "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
       "DOMAIN_VERIFICATION_STATUSES",
@@ -887,10 +911,13 @@
       "ManagementEdgeRepository",
       "NodeDnsAdapter",
       "ORG_ADMIN_SCOPE_KEYS",
+      "ORG_ENTRY_PATH",
       "PERSONAL_TENANT_CAPABILITIES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
+      "PRODUCT_KEYS",
       "PrismaService",
+      "ProductAvailabilityService",
       "RedisScopeCache",
       "RoleBundleValidator",
       "RoleRepository",
@@ -934,7 +961,8 @@
       "isTenantStatus",
       "normalizeEmail",
       "normalizeSlug",
-      "requiredCapabilityForConsumer"
+      "requiredCapabilityForConsumer",
+      "signEntryActivated"
     ],
     "@aramo/identity-index": [
       "CLUSTER_PURGE_STATEMENTS",
@@ -1151,6 +1179,16 @@
       "buildResumeObjectKey",
       "hashIdentifierForLog",
       "parseResumeObjectKey"
+    ],
+    "@aramo/org-admin-web": [
+      "ME_PATH",
+      "ORG_ADMIN_SCOPE_PREFIX",
+      "ORG_NAV",
+      "OrgAdminRoutes",
+      "OrgAdminShell",
+      "fetchMe",
+      "hasOrgAdminScope",
+      "useMe"
     ],
     "@aramo/outbox-publisher": [
       "EventBridgeOutboxPublisher",
@@ -6596,12 +6634,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/admin/admin-users-route.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/assignments/CompanyAssignmentsView.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7016,31 +7048,7 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/domain/DomainVerificationPanel.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/profile/TenantProfileForm.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/sections/ComplianceSection.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/sites/SiteDialog.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/sites/SitesPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -7152,48 +7160,13 @@
         "project": "aramo-ats-web",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/users/DisableConfirmDialog.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/users/InviteDialog.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/users/RoleAssignEditor.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/users/UsersListView.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.ts",
-        "from": "apps/ats-web/src/users/error-messages.spec.ts",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.ts",
-        "from": "apps/ats-web/src/users/users-api.spec.ts",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
       { "project": "aramo-ats-web", "status": "production" },
       {
         "from": "apps/ats-web/visual/harness/harness.tsx",
         "project": "aramo-ats-web",
         "status": "unscoped"
       },
+      { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
@@ -7237,7 +7210,74 @@
         "project": "aramo-portal-web",
         "status": "excluded"
       },
-      { "project": "aramo-portal-web", "status": "production" }
+      { "project": "aramo-portal-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/profile/TenantProfileForm.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/sites/SiteDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/sites/SitesPanel.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/tests/org-users-route.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/DisableConfirmDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/InviteDialog.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/RoleAssignEditor.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/users/UsersListView.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "libs/org-admin-web/src/users/error-messages.spec.ts",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "libs/org-admin-web/src/users/users-api.spec.ts",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      { "project": "org-admin-web", "status": "production" }
     ],
     "@aramo/field-masking": [
       { "project": "api", "status": "production" },
@@ -7852,6 +7892,7 @@
       { "project": "resume-parse", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
+    "@aramo/org-admin-web": [{ "project": "aramo-home-web", "status": "production" }],
     "@aramo/outbox-publisher": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9386,6 +9427,13 @@
       "targets": ["build", "e2e", "lint", "preview", "serve", "test"]
     },
     {
+      "name": "aramo-home-web",
+      "root": "apps/home-web",
+      "sourceRoot": "apps/home-web/src",
+      "tags": [],
+      "targets": ["build", "lint", "preview", "serve", "test"]
+    },
+    {
       "name": "aramo-pact-provider",
       "root": "pact/provider",
       "sourceRoot": "pact/provider/src",
@@ -9767,6 +9815,13 @@
       "name": "object-storage",
       "root": "libs/object-storage",
       "sourceRoot": "libs/object-storage/src",
+      "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "org-admin-web",
+      "root": "libs/org-admin-web",
+      "sourceRoot": "libs/org-admin-web/src",
       "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },

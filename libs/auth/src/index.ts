@@ -1,5 +1,19 @@
 export { AuthModule } from './lib/auth.module.js';
 export { JwtAuthGuard, assertTierTripwire, isPlatformRoutePath } from './lib/jwt-auth.guard.js';
+// D-ORG-4 — consumer-isolated session cookie names (single naming authority).
+export {
+  LEGACY_ACCESS_COOKIE,
+  LEGACY_REFRESH_COOKIE,
+  LEGACY_PKCE_COOKIE,
+  CONSUMER_HEADER,
+  accessCookieName,
+  refreshCookieName,
+  pkceCookieName,
+  allAccessCookieNames,
+  allRefreshCookieNames,
+  selectAccessCookie,
+  type CookieSelection,
+} from './lib/session-cookie-names.js';
 export { AuthContext } from './lib/auth-context.decorator.js';
 export {
   ACTOR_KINDS,

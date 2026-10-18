@@ -278,8 +278,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(res.status).toBe(302);
       const cookies = res.headers['set-cookie'] as unknown as string[];
-      const access = cookies.find((c) => c.startsWith('aramo_access_token='));
-      const refresh = cookies.find((c) => c.startsWith('aramo_refresh_token='));
+      const access = cookies.find((c) => c.startsWith('aramo_access_token_portal='));
+      const refresh = cookies.find((c) => c.startsWith('aramo_refresh_token_portal='));
       expect(access).toBeTruthy();
       expect(refresh).toBeTruthy();
 
@@ -292,7 +292,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(users[0].cluster_id).not.toBeNull();
 
       // The access JWT is a portal token whose sub is the PortalUser id.
-      const jwt = /aramo_access_token=([^;]+)/.exec(access!)?.[1];
+      const jwt = /aramo_access_token_portal=([^;]+)/.exec(access!)?.[1];
       const claims = decodeJwt(decodeURIComponent(jwt!));
       expect(claims.consumer_type).toBe('portal');
       expect(claims.sub).toBe(users[0].id);

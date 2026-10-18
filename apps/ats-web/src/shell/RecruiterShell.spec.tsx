@@ -243,10 +243,11 @@ describe('RecruiterShell', () => {
     expect(screen.getByText('purush@astreinc.com')).toBeInTheDocument();
     // The FULL joined role line lives in the roomy account menu.
     expect(screen.getByText('Tenant Admin · Recruiter')).toBeInTheDocument();
-    // Admin → the admin Settings link to the profile route is present.
+    // Admin → the admin Settings link to the ATS settings landing is present
+    // (D-ORG-3: Recruiting settings — the organization profile moved to /org/).
     expect(screen.getByRole('menuitem', { name: 'Settings' })).toHaveAttribute(
       'href',
-      '/admin/settings/profile',
+      '/admin/settings/recruiting',
     );
     // Every user gets personal "My Settings".
     expect(screen.getByRole('menuitem', { name: 'My Settings' })).toHaveAttribute(

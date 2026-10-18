@@ -4,19 +4,14 @@ import {
   IconBranch,
   IconBrowser,
   IconBuilding,
-  IconCard,
   IconFile,
   IconForm,
-  IconGlobe,
-  IconHistory,
-  IconLock,
   IconMail,
   IconPlug,
   IconShield,
   IconShieldCheck,
   IconSliders,
   IconUpload,
-  IconUsers,
 } from '@aramo/fe-foundation';
 
 // Settings Rebuild Directive 1 — the settings shell.
@@ -28,6 +23,13 @@ import {
 // SCOPE: the whole subtree already sits behind <AdminGate> (the tenant:admin:*
 // family gate, server-enforced) — the rail items are NOT individually scope-
 // gated; the section gate covers them. UI hide is UX; the API is the boundary.
+//
+// D-ORG-3 (Organization Administration carve): this rail now holds ONLY what
+// the ATS product owns (teams, talent experience, email templates, recruiting,
+// document templates, import/compliance/custom fields, integrations). The
+// organization-owned sections (profile, sites, domain, users, roles, security,
+// billing, audit) moved to the App Home at /org/* (libs/org-admin-web) and the
+// first rail group links out to them.
 //
 // Section status (the no-dead-knobs map):
 //   • live    — fully wired to a real backend (Users, Branches&teams,
@@ -52,6 +54,9 @@ interface NavItem {
   readonly status: Status;
   /** Rail badge ("New" for the freshly-live Import; "Soon" for seams). */
   readonly badge?: { readonly text: string; readonly soon: boolean };
+  /** D-ORG-3 — a host-level link to another SPA on this host (App Home /org/),
+   *  rendered as a plain anchor so the ATS router basename is not applied. */
+  readonly external?: boolean;
 }
 
 interface NavGroup {
@@ -63,71 +68,33 @@ const SOON = { text: 'Soon', soon: true } as const;
 
 export const SETTINGS_NAV: readonly NavGroup[] = [
   {
-    heading: 'Workspace',
+    // D-ORG-3 — organization-owned administration (profile, sites, domain, users,
+    // roles, security, billing, audit) lives on the App Home at /org/*. The ATS
+    // settings rail links OUT to it (a host-level anchor — it is a different SPA
+    // beside this one, not an ATS route). Nothing organization-owned is
+    // duplicated here.
+    heading: 'Organization',
     items: [
       {
-        key: 'profile',
-        label: 'Tenant profile',
+        key: 'organization',
+        label: 'Organization administration',
         icon: <IconBuilding />,
-        to: '/admin/settings/profile',
-        match: '/admin/settings/profile',
+        to: '/org/',
+        match: '/org',
         status: 'live',
-      },
-      {
-        key: 'branches',
-        label: 'Branches & teams',
-        icon: <IconBranch />,
-        to: '/admin/settings/branches',
-        match: '/admin/settings/branches',
-        status: 'live',
-      },
-      {
-        key: 'localization',
-        label: 'Localization',
-        icon: <IconGlobe />,
-        to: '/admin/settings/localization',
-        match: '/admin/settings/localization',
-        status: 'soon',
-        badge: SOON,
+        external: true,
       },
     ],
   },
   {
-    heading: 'People & access',
+    heading: 'Workspace',
     items: [
       {
-        key: 'users',
-        label: 'Users',
-        icon: <IconUsers />,
-        to: '/admin/users',
-        match: '/admin/users',
-        status: 'live',
-      },
-      {
-        // Settings Rebuild D5 — Roles & permissions is now LIVE (read-only matrix).
-        key: 'roles',
-        label: 'Roles & permissions',
-        icon: <IconShieldCheck />,
-        to: '/admin/settings/roles',
-        match: '/admin/settings/roles',
-        status: 'live',
-      },
-      {
-        key: 'security',
-        label: 'Security & SSO',
-        icon: <IconLock />,
-        to: '/admin/settings/security',
-        match: '/admin/settings/security',
-        status: 'soon',
-        badge: SOON,
-      },
-      {
-        // Domain-Enforcement P2b — LIVE: prove DNS ownership of the locked domain.
-        key: 'domain',
-        label: 'Domain verification',
-        icon: <IconShieldCheck />,
-        to: '/admin/settings/domain',
-        match: '/admin/settings/domain',
+        key: 'branches',
+        label: 'Teams & organisation',
+        icon: <IconBranch />,
+        to: '/admin/settings/branches',
+        match: '/admin/settings/branches',
         status: 'live',
       },
     ],
@@ -185,11 +152,9 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         status: 'live',
       },
       {
-        // Recruiting-behaviour defaults (Compensation display + Resume
-        // extraction). Home for the previously-unlinked SettingsView; two of
-        // its controls directly govern recruiting/Add-Talent behaviour. The
-        // financial-auditor grant is an authorization control and moves to
-        // Roles & permissions in a follow-up.
+        // Recruiting-behaviour defaults (Compensation display + the financials
+        // grant + Resume extraction) — the ATS landing section (the /admin index
+        // redirects here since D-ORG-3 moved the organization profile to /org).
         key: 'recruiting-settings',
         label: 'Recruiting settings',
         icon: <IconSliders />,
@@ -266,29 +231,6 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
       },
     ],
   },
-  {
-    heading: 'Account',
-    items: [
-      {
-        key: 'billing',
-        label: 'Plan & billing',
-        icon: <IconCard />,
-        to: '/admin/settings/billing',
-        match: '/admin/settings/billing',
-        status: 'soon',
-        badge: SOON,
-      },
-      {
-        // Settings Rebuild D2 — Audit log is now LIVE (real read surface).
-        key: 'audit',
-        label: 'Audit log',
-        icon: <IconHistory />,
-        to: '/admin/settings/audit',
-        match: '/admin/settings/audit',
-        status: 'live',
-      },
-    ],
-  },
 ];
 
 // The residual admin-tools affordance (Lead ruling C): consent + the per-record
@@ -308,6 +250,14 @@ function isActive(pathname: string, item: NavItem): boolean {
 }
 
 function RailLink({ item, active }: { item: NavItem; active: boolean }) {
+  if (item.external) {
+    return (
+      <a href={item.to} className="set-navbtn" data-testid={`settings-nav-${item.key}`}>
+        {item.icon}
+        <span>{item.label}</span>
+      </a>
+    );
+  }
   return (
     <Link
       to={item.to}

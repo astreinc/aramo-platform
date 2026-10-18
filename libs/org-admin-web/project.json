@@ -1,0 +1,31 @@
+{
+  "name": "org-admin-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/org-admin-web/src",
+  "projectType": "library",
+  "tags": ["scope:shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/org-admin-web",
+        "main": "libs/org-admin-web/src/index.ts",
+        "tsConfig": "libs/org-admin-web/tsconfig.lib.json",
+        "assets": [{ "input": "libs/org-admin-web/src", "glob": "**/*.css", "output": "src" }]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/org-admin-web/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/org-admin-web"
+      }
+    }
+  }
+}

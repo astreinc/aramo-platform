@@ -10654,6 +10654,11 @@
       "to": "libs/selection/src/lib/dto/outreach-draft-request.dto.ts"
     },
     {
+      "from": "apps/ats-web/src/settings/settings.css",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/settings.css"
+    },
+    {
       "from": "apps/ats-web/src/settings/types.ts",
       "status": "production",
       "to": "libs/settings/src/lib/known-settings.ts"
@@ -10794,11 +10799,6 @@
       "to": "libs/fe-foundation/src/ui/ui.css"
     },
     {
-      "from": "apps/ats-web/src/users/types.ts",
-      "status": "production",
-      "to": "libs/identity/src/lib/identity.repository.ts"
-    },
-    {
       "from": "apps/ats-web/visual/harness/index.html",
       "status": "unscoped",
       "to": "apps/ats-web/index.html"
@@ -10871,6 +10871,26 @@
       "from": "apps/esign-service/project.json",
       "status": "unscoped",
       "to": "apps/esign-service/tsconfig.app.json"
+    },
+    {
+      "from": "apps/home-web/playwright.topology.config.ts",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "apps/home-web/project.json",
+      "status": "unscoped",
+      "to": "apps/home-web/vite.config.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/index.ts"
     },
     {
       "from": "apps/platform-admin/Dockerfile",
@@ -11848,6 +11868,76 @@
       "from": "doc/09-identity-portal-interoperability-boundary.md",
       "status": "unscoped",
       "to": "libs/portal-identity/src/tests/portal-identity-boundary.spec.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "apps/api/src/controllers/me.controller.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/users/users-api.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "apps/home-web/src/home/LegacyAtsRedirect.tsx"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/cookie-verifier.service.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/redirect-uri.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/auth-context.types.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/session-cookie-names.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/api/client.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization/consumer-scope-policy.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/authorization/product-availability.service.ts"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
     },
     {
       "from": "doc/adr/0001-pr1-precedent-decisions.md",
@@ -18445,6 +18535,26 @@
       "status": "unscoped",
       "to": "infrastructure/environments/prod/talent-intake.tf"
     },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "apps/home-web/e2e/topology.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "apps/home-web/playwright.topology.config.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "deploy/build-images.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-app-home-org.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-platform-console.md"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
@@ -18639,11 +18749,6 @@
       "from": "doc/settings-rebuild-substrate-audit.md",
       "status": "unscoped",
       "to": "apps/api/src/controllers/tenant-settings.controller.ts"
-    },
-    {
-      "from": "doc/settings-rebuild-substrate-audit.md",
-      "status": "unscoped",
-      "to": "apps/ats-web/src/users/types.ts"
     },
     {
       "from": "doc/settings-rebuild-substrate-audit.md",
@@ -18976,16 +19081,6 @@
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
-      "to": "apps/ats-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
-      "to": "apps/ats-web/src/users/roles.fixture.ts"
-    },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
       "to": "apps/platform-admin/src/tests/platform-negative-control.spec.ts"
     },
     {
@@ -19085,6 +19180,16 @@
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "libs/matching/src/tests/i15-negative-control.spec.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
     },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     {
@@ -20365,6 +20470,31 @@
       "to": "apps/ats-web/src/index.css"
     },
     {
+      "from": "libs/fe-foundation/src/format/date.ts",
+      "status": "production",
+      "to": "apps/ats-web/src/format/date.ts"
+    },
+    {
+      "from": "libs/fe-foundation/src/ui/SettingsPrimitives.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/settings/components.tsx"
+    },
+    {
+      "from": "libs/fe-foundation/src/ui/errors.ts",
+      "status": "production",
+      "to": "apps/ats-web/src/ui/errors.ts"
+    },
+    {
+      "from": "libs/fe-foundation/src/ui/pills.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/ui/pills.tsx"
+    },
+    {
+      "from": "libs/fe-foundation/src/ui/settings.css",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/settings.css"
+    },
+    {
       "from": "libs/fe-foundation/src/ui/ui.css",
       "status": "unscoped",
       "to": "apps/ats-web/src/ui/ui.css"
@@ -20499,12 +20629,6 @@
       "from": "libs/identity/src/lib/util/tenant-lifecycle.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "libs/identity/src/tests/displayed-status.spec.ts",
-      "status": "excluded",
-      "to": "apps/ats-web/src/users/user-status.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -20733,6 +20857,26 @@
       "from": "libs/object-storage/src/lib/s3-client.factory.ts",
       "status": "production",
       "to": "libs/ai-draft/src/lib/secrets/secret-cache.service.ts"
+    },
+    {
+      "from": "libs/org-admin-web/project.json",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
+      "from": "libs/org-admin-web/project.json",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/org-admin-web/src/users/types.ts",
+      "status": "production",
+      "to": "libs/identity/src/lib/identity.repository.ts"
+    },
+    {
+      "from": "libs/org-admin-web/src/users/users-api.ts",
+      "status": "production",
+      "to": "apps/ats-web/src/users/users-api.ts"
     },
     {
       "from": "libs/outbox-publisher/project.json",
@@ -23660,16 +23804,6 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
-      "to": "apps/ats-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
-      "to": "apps/ats-web/src/users/roles.fixture.ts"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
       "to": "ci/scripts/verify-ats-refusal.ts"
     },
     {
@@ -23888,6 +24022,16 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/import/src/tests/mapping-suggestion.service.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
@@ -24226,6 +24370,7 @@
       "status": "unscoped",
       "to": "libs/object-storage/src/index.ts"
     },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/org-admin-web/src/index.ts" },
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
@@ -24401,6 +24546,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/evidence/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/examination/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/export/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/fe-foundation/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/field-masking/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity-index/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/identity/src/index.ts" },
@@ -24418,6 +24564,7 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/metering/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/microsoft-graph/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/object-storage/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/org-admin-web/src/index.ts" },
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",

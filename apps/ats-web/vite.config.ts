@@ -8,6 +8,10 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 
 export default defineConfig({
   root,
+  // D-ORG-2 (topology T1) — the ATS app is served under /ats/ on the tenant host;
+  // App Home (apps/home-web) owns `/`. Assets, the router basename and the
+  // nginx `location /ats/` all derive from this one value.
+  base: '/ats/',
   plugins: [react()],
   // Pre-bundle the lazily imported Word→HTML converter at dev-server start.
   // Discovered only on first preview, it forced a mid-session re-optimize and

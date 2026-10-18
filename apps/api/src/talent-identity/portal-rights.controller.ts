@@ -8,7 +8,15 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
+import {
+  AuthContext,
+  JwtAuthGuard,
+  LEGACY_ACCESS_COOKIE,
+  LEGACY_REFRESH_COOKIE,
+  accessCookieName,
+  refreshCookieName,
+  type AuthContextType,
+} from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
@@ -23,8 +31,10 @@ import {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const ACCESS_COOKIE = 'aramo_access_token';
-const REFRESH_COOKIE = 'aramo_refresh_token';
+// D-ORG-4 — the portal consumer's isolated cookie names plus the legacy
+// unsuffixed names (cleared together during the transition).
+const ACCESS_COOKIES = [accessCookieName('portal'), LEGACY_ACCESS_COOKIE] as const;
+const REFRESH_COOKIES = [refreshCookieName('portal'), LEGACY_REFRESH_COOKIE] as const;
 
 function shouldSetSecure(): boolean {
   if (process.env['NODE_ENV'] === 'production') return true;
@@ -72,20 +82,24 @@ export class PortalRightsController {
 
     // Session destruction (D-3): drop both HttpOnly cookies immediately (the
     // server-side refresh-token revoke happens inside eraseSelf).
-    res.cookie(ACCESS_COOKIE, '', {
-      httpOnly: true,
-      secure: shouldSetSecure(),
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 0,
-    });
-    res.cookie(REFRESH_COOKIE, '', {
-      httpOnly: true,
-      secure: shouldSetSecure(),
-      sameSite: 'strict',
-      path: '/auth',
-      maxAge: 0,
-    });
+    for (const name of ACCESS_COOKIES) {
+      res.cookie(name, '', {
+        httpOnly: true,
+        secure: shouldSetSecure(),
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 0,
+      });
+    }
+    for (const name of REFRESH_COOKIES) {
+      res.cookie(name, '', {
+        httpOnly: true,
+        secure: shouldSetSecure(),
+        sameSite: 'strict',
+        path: '/auth',
+        maxAge: 0,
+      });
+    }
 
     return { erased: true };
   }

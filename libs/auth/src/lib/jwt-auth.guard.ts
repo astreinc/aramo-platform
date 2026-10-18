@@ -30,6 +30,7 @@ import {
   EFFECTIVE_AUTHORIZATION_RESOLVER,
   type EffectiveAuthorizationResolver,
 } from './effective-authorization-resolver.port.js';
+import { CONSUMER_HEADER, selectAccessCookie } from './session-cookie-names.js';
 
 const ISSUER = 'Aramo Core Auth';
 const ALG = 'RS256';
@@ -132,6 +133,16 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const ctx = await this.toAuthContext(payload, requestId);
+    // D-ORG-4 — a consumer named by the front end must be the consumer the token
+    // was minted for: a recruiter cookie presented under `X-Aramo-Consumer: org`
+    // (or vice versa) is refused, so no consumer session can stand in for another.
+    const declared = request.header(CONSUMER_HEADER);
+    if (declared !== undefined && declared !== ctx.consumer_type) {
+      throw new AramoError('INVALID_TOKEN', 'Session consumer does not match the declared consumer', 401, {
+        requestId,
+        details: { reason: 'consumer_header_mismatch', declared, actual: ctx.consumer_type },
+      });
+    }
     assertTierTripwire(ctx, request.path ?? request.url ?? '', requestId);
     request.authContext = ctx;
     return true;
@@ -166,8 +177,26 @@ export class JwtAuthGuard implements CanActivate {
       }
       return token;
     }
-    const cookieValue = request.cookies?.['aramo_access_token'];
-    if (cookieValue === undefined || cookieValue.length === 0) {
+    // D-ORG-4 — consumer-isolated cookies: the front end names its consumer in
+    // `X-Aramo-Consumer`, which selects `aramo_access_token_<consumer>` (legacy
+    // `aramo_access_token` as a transition fallback). Without the header the legacy
+    // cookie or the SINGLE present consumer cookie is used; two or more consumer
+    // cookies without a header is ambiguous and refused (fail closed). The selected
+    // token's `consumer_type` claim is verified against the header in canActivate.
+    const selection = selectAccessCookie(request.cookies, request.header(CONSUMER_HEADER));
+    if (selection.kind === 'invalid_header') {
+      throw new AramoError('AUTH_REQUIRED', 'Unknown consumer header', 401, {
+        requestId,
+        details: { reason: 'invalid_consumer_header' },
+      });
+    }
+    if (selection.kind === 'ambiguous') {
+      throw new AramoError('AUTH_REQUIRED', 'Ambiguous session cookies — name the consumer', 401, {
+        requestId,
+        details: { reason: 'ambiguous_consumer_cookie', present: selection.present },
+      });
+    }
+    if (selection.kind === 'absent') {
       throw new AramoError(
         'AUTH_REQUIRED',
         'Authorization required',
@@ -175,7 +204,7 @@ export class JwtAuthGuard implements CanActivate {
         { requestId },
       );
     }
-    return cookieValue;
+    return selection.token;
   }
 
   private async resolveKey(pem: string): Promise<VerifyKey> {

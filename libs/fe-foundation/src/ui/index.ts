@@ -9,6 +9,9 @@
 // structural CSS ships in ./ui.css (side-effect-imported below); the token
 // VARIABLES it consumes stay per-app (see the ui.css header's token contract).
 import './ui.css';
+// D-ORG-3 — the shared settings-surface grammar (shell rail, section head, rows,
+// chips, seams, hints), moved from ats-web so both settings rails render it.
+import './settings.css';
 
 export {
   AppShell,
@@ -46,3 +49,19 @@ export {
   type CursorPage,
   type CursorPagerState,
 } from './CursorPager';
+// D-ORG-3 (Organization Administration carve) — shared view atoms moved from
+// apps/ats-web/src/ui (move-not-fork): the surface card, the domain-neutral
+// chips, the product-safe error fallback and the settings section primitives.
+// ats-web re-exports them from its own ui/ + settings/ barrels (call-sites
+// unchanged); libs/org-admin-web imports them from here.
+export { SurfaceCard, SurfaceCardHead } from './SurfaceCard';
+export { StatusPill, Tag, TagList, type PillTone } from './pills';
+export { safeErrorMessage } from './errors';
+export {
+  SettingsSection,
+  StatChip,
+  SettingRow,
+  SettingCardHead,
+  SettingHint,
+  SettingsSeam,
+} from './SettingsPrimitives';

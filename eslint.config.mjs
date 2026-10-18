@@ -386,8 +386,8 @@ export default [
       'libs/identity/src/lib/role-catalog/role-catalog.view.ts',
       'libs/identity/src/tests/role-catalog.spec.ts',
       'apps/api/src/tests/settings-d5-roles-catalog.integration.spec.ts',
-      'apps/ats-web/src/users/roles.fixture.ts',
-      'apps/ats-web/src/users/RolePicker.spec.tsx',
+      'libs/org-admin-web/src/users/roles.fixture.ts',
+      'libs/org-admin-web/src/users/RolePicker.spec.tsx',
       // PR-A8-2: the import-seam INBOUND-vocabulary synonym table. The
       // talent_record identity-field synonym sets accept "candidate" /
       // "applicant" as inbound CSV-header aliases (every OpenCATS /

@@ -42,6 +42,15 @@ describe('LoginPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  // D-ORG (§3.D) — product not in the subscription: no retry loop, App Home link.
+  it('renders the product-not-available page for TENANT_CAPABILITY_NOT_ENTITLED with an App Home link (no retry)', () => {
+    const onMount = renderAt('/login?error=TENANT_CAPABILITY_NOT_ENTITLED');
+    expect(onMount).not.toHaveBeenCalled();
+    expect(screen.getByText('Product not available')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /try signing in again/i })).toBeNull();
+    expect(screen.getByTestId('login-open-app-home')).toHaveAttribute('href', '/');
+  });
+
   it('renders the generic auth-failure (with retry) for any other code', () => {
     renderAt('/login?error=INVALID_TOKEN');
     expect(screen.getByText('Sign-in failed')).toBeInTheDocument();

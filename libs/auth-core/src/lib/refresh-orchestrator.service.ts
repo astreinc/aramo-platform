@@ -26,7 +26,7 @@ const DEFAULT_GRACE_SECONDS = 30;
 
 export interface RefreshInput {
   // AUTHZ-2: 'platform' is the 4th consumer_type (Lead ruling 3).
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
   refreshCookie: string | undefined;
   // IC-2 PR-5 — the refresh request's host class + context (HostBaseResolver).
   // Compared with the STORED token tenant under the PR-4 session-surface policy:
