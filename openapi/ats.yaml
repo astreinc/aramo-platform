@@ -7248,6 +7248,7 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [authorize_url]
                 properties:
                   authorize_url: { type: string, format: uri }
@@ -12298,6 +12299,7 @@ components:
           type: boolean
     DocumentSigningAvailability:
       type: object
+      additionalProperties: false
       required: [provider, available, reason, allowance]
       properties:
         provider:
@@ -12314,6 +12316,7 @@ components:
             - type: 'null'
     ESignatureOverview:
       type: object
+      additionalProperties: false
       required: [active_provider, providers, availability, recent_changes]
       properties:
         active_provider:
@@ -12323,6 +12326,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: false
             required: [provider, status, selectable, connectable, needs_reconnect]
             properties:
               provider:
@@ -12343,6 +12347,7 @@ components:
           type: array
           items:
             type: object
+            additionalProperties: false
             required: [from_provider, to_provider, actor_id, occurred_at]
             properties:
               from_provider: { type: string }
@@ -12351,6 +12356,7 @@ components:
               occurred_at: { type: string, format: date-time }
     SignatureAllowance:
       type: object
+      additionalProperties: false
       required: [limit, used, remaining, period_start, period_end, threshold]
       properties:
         limit: { type: integer }
