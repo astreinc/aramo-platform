@@ -2,7 +2,6 @@
   "$comment": "CANONICAL integration-root registry (PR-B, Dev Execution Model v1.4 §12). The SINGLE source of truth for which Nx projects run the ARAMO_RUN_INTEGRATION lane. Every runner (ci-integration.sh, prepush.ts, package.json tests:integration) DERIVES from this file — no runner may embed its own root list or --root chain. The default-deny guard (ci/scripts/check-integration-roots.ts) proves this file covers every integration-bearing project. Counts are NEVER frozen here or in any runner; they are derived at runtime. Ordering is deterministic (ascending) and guard-enforced.",
   "roots": [
     "apps/api",
-    "apps/api/src/tests/tenant-reset.integration.spec.ts",
     "apps/auth-service",
     "apps/platform-admin",
     "libs/ai-draft",
@@ -51,8 +50,7 @@
     "libs/talent-reconcile",
     "libs/talent-record",
     "libs/talent-trust",
-    "libs/technical-screening",
-    "libs/tenant-reset"
+    "libs/technical-screening"
   ],
   "coverageAliases": [
     {
