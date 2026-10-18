@@ -26,6 +26,9 @@ import { AramoError } from '@aramo/common';
 //                       invitations and their links can be read and opened
 //                       (tools/local-mail.cjs). No network. Refused outright when
 //                       NODE_ENV=production (fail loud).
+//   MAILER_OUTBOX_DELIVER_TO — optional, outbox mode only: comma-separated
+//                       recipients that ALSO get a real SES email (needs
+//                       SES_FROM_ADDRESS); all other addresses stay local.
 
 export type MailerProvider = 'ses' | 'stub' | 'outbox';
 
@@ -75,7 +78,8 @@ export function loadMailerConfig(): MailerConfig {
 
   // SES mode REQUIRES a from-address — fail loud at config load (i.e. at
   // module binding) rather than discovering it on the first send attempt.
-  if (provider === 'ses' && fromAddress === null) {
+  const deliverReal = (process.env['MAILER_OUTBOX_DELIVER_TO'] ?? '').trim().length > 0;
+  if ((provider === 'ses' || (provider === 'outbox' && deliverReal)) && fromAddress === null) {
     throw new AramoError(
       'INTERNAL_ERROR',
       'SES_FROM_ADDRESS env-var is required when MAILER_PROVIDER=ses',

@@ -18607,6 +18607,11 @@
     {
       "from": "doc/runbooks/RELEASE-esign-sender.md",
       "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
       "to": "deploy/build-images.sh"
     },
     {
@@ -18618,6 +18623,11 @@
       "from": "doc/runbooks/RELEASE-esign-sender.md",
       "status": "unscoped",
       "to": "libs/auth-core/src/lib/host-binding.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
     },
     {
       "from": "doc/runbooks/RELEASE-platform-console.md",
@@ -25170,6 +25180,7 @@
         { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },

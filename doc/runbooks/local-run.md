@@ -120,6 +120,14 @@ invitation, reminder and completion email is written there. Read them, with thei
 node tools/local-mail.cjs        # latest 10 (or: node tools/local-mail.cjs 30)
 ```
 
+To also receive real emails in your own inbox, list your address(es) in `.env` — only these go through SES (needs
+`SES_FROM_ADDRESS` and the local AWS credentials), every other recipient stays in the local outbox:
+
+```sh
+MAILER_OUTBOX_DELIVER_TO=you@example.com
+SES_FROM_ADDRESS="Aramo <support@aramo.ai>"
+```
+
 `LOCAL_MAIL=stub tools/local-stack.sh up` restores the log-only stub. The outbox mailer refuses to start when
 `NODE_ENV=production`. The console's links back to App Home / Organization use `ESIGN_TENANT_HOST_URL_TEMPLATE`
 (local-stack default `http://localhost:4205`). Each SPA dev server keeps its own Vite dependency cache
