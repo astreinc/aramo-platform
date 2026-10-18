@@ -25,6 +25,8 @@ export interface SignatureRouter {
     provider: SignatureProviderKey;
     provider_envelope_ref: string;
   }): Promise<void>;
+  /** An external provider accepted the send: recorded as operational usage (not a quota). */
+  recordAccepted(tenant_id: string, provider: SignatureProviderKey): Promise<void>;
 }
 
 /** A fixed Aramo Sign router: for tests and fakes that exercise signing mechanics only. */
@@ -34,5 +36,6 @@ export function staticSignatureRouter(port: SignatureProviderPort): SignatureRou
     forNewSend: async () => routed,
     forDocument: async () => routed,
     recordRoute: async () => undefined,
+    recordAccepted: async () => undefined,
   };
 }

@@ -160,6 +160,7 @@ export class GovernedDocumentSigningService {
       provider_envelope_ref: envelope.envelope_id,
     });
     const sent = await target.port.sendEnvelope(input.tenant_id, envelope.envelope_id);
+    await this.router.recordAccepted(input.tenant_id, target.provider);
     return { document_id: input.document_id, envelope_id: envelope.envelope_id, status: sent.status };
   }
 

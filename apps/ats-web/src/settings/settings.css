@@ -299,3 +299,21 @@
   margin-top: 1px;
   color: var(--ok);
 }
+
+/* Multi-Provider E-Sign §E/§H — Settings → Integrations → E-Signature. Reuses the
+   .set-llm provider rows; adds provider avatars and the allowance meter. */
+.set-esign__av--aramo_sign { background: #e6ebfd; color: #022ac0; }
+.set-esign__av--docusign { background: #fff4d6; color: #8a5a00; }
+.set-esign__av--adobe_sign { background: #fde6e6; color: #b3261e; }
+.set-esign__allowance { display: grid; gap: 8px; }
+.set-esign__allowhead { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.set-esign__allowlabel { font-weight: 600; }
+.set-esign__allowcount { color: var(--rc-muted, #5b6472); }
+.set-esign__meter { height: 8px; border-radius: 999px; background: #eef0f4; overflow: hidden; }
+.set-esign__meterfill { display: block; height: 100%; border-radius: inherit; background: #022ac0; }
+.set-esign__meter--warning .set-esign__meterfill { background: #b26a00; }
+.set-esign__meter--exhausted .set-esign__meterfill { background: #b3261e; }
+.set-esign__msg { margin: 0; font-size: 13px; line-height: 1.5; }
+.set-esign__msg--warn { color: #8a5a00; }
+.set-esign__msg--stop { color: #b3261e; }
+.set-esign__actions { margin-left: 8px; display: inline-flex; gap: 6px; }

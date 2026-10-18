@@ -26,6 +26,7 @@ function make(existing: EnvelopeSummary | null, refuse = false) {
     }),
     forDocument: vi.fn(async () => ({ provider: 'aramo_sign' as const, port })),
     recordRoute: vi.fn(async () => undefined),
+    recordAccepted: vi.fn(async () => undefined),
   };
   const documents = {
     getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA' })),

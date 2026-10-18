@@ -29,6 +29,34 @@ export interface StoreExecutedInput {
   correlation_id?: string;
 }
 
+/**
+ * Multi-Provider directive §F — an external provider's completion. The executed PDF
+ * becomes the EXECUTED artifact (the same Document -> EXECUTED transition the RTR
+ * gate reads); the provider's own evidence is stored as PROVIDER_COMPLETION_EVIDENCE
+ * with its kind recorded, never as the Aramo EXECUTION_CERTIFICATE. Hashes are
+ * computed here from the bytes pulled from the provider.
+ */
+export interface StoreProviderExecutedInput {
+  tenant_id: string;
+  document_id: string;
+  revision_id: string;
+  executed_bytes: Buffer;
+  evidence_bytes: Buffer;
+  provider: string;
+  provider_envelope_ref: string;
+  /** e.g. DOCUSIGN_CERTIFICATE_OF_COMPLETION, ADOBE_SIGN_AUDIT_REPORT */
+  evidence_kind: string;
+  actor_id: string;
+  requestId: string;
+  idempotency_key: string;
+}
+
+export interface StoreProviderExecutedResult {
+  executed_artifact_id: string;
+  evidence_artifact_id: string;
+  document_status: string;
+}
+
 export interface StoreExecutedResult {
   executed_artifact_id: string;
   certificate_artifact_id: string;
@@ -125,6 +153,85 @@ export class DocumentExecutedWriteBackService {
       if (DocumentIdempotencyService.isUniqueViolation(e)) {
         const post = await this.idempotency.lookup(input.tenant_id, input.idempotency_key, request_hash);
         if (post.kind === 'replay') return post.response_body as StoreExecutedResult;
+      }
+      throw e;
+    }
+  }
+
+  async storeProviderExecuted(input: StoreProviderExecutedInput): Promise<StoreProviderExecutedResult> {
+    const executed_sha256 = sha256Hex(input.executed_bytes);
+    const evidence_sha256 = sha256Hex(input.evidence_bytes);
+    const doc = await this.prisma.document.findFirst({ where: { tenant_id: input.tenant_id, id: input.document_id } });
+    if (doc === null) throw new DocumentNotFoundError(input.document_id);
+
+    const request_hash = DocumentIdempotencyService.hashRequest({
+      revision_id: input.revision_id,
+      provider: input.provider,
+      provider_envelope_ref: input.provider_envelope_ref,
+      executed_sha256,
+      evidence_sha256,
+    });
+    const pre = await this.idempotency.lookup(input.tenant_id, input.idempotency_key, request_hash);
+    if (pre.kind === 'replay') return pre.response_body as StoreProviderExecutedResult;
+    if (pre.kind === 'conflict') {
+      const { DocumentIdempotencyConflictError } = await import('./domain/errors.js');
+      throw new DocumentIdempotencyConflictError(input.idempotency_key);
+    }
+
+    const executedKey = `documents/${input.tenant_id}/${input.document_id}/executed/${executed_sha256}.pdf`;
+    const evidenceKey = `documents/${input.tenant_id}/${input.document_id}/provider-evidence/${evidence_sha256}.pdf`;
+    await this.storage.putArtifact({ storage_key: executedKey, body: input.executed_bytes, content_type: 'application/pdf', requestId: input.requestId });
+    await this.storage.putArtifact({ storage_key: evidenceKey, body: input.evidence_bytes, content_type: 'application/pdf', requestId: input.requestId });
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const executedArtifactId = randomUUID();
+        const evidenceArtifactId = randomUUID();
+        await tx.documentArtifact.create({
+          data: {
+            id: executedArtifactId, tenant_id: input.tenant_id, revision_id: input.revision_id, document_id: input.document_id,
+            artifact_role: 'EXECUTED', storage_provider: 'aramo-s3', storage_locator: executedKey,
+            mime_type: 'application/pdf', byte_size: input.executed_bytes.byteLength, sha256: executed_sha256,
+            immutability_state: 'FROZEN', retention_class: 'DOCUMENT_EXECUTED', created_by: input.actor_id,
+          },
+        });
+        await tx.documentArtifact.create({
+          data: {
+            id: evidenceArtifactId, tenant_id: input.tenant_id, revision_id: input.revision_id, document_id: input.document_id,
+            artifact_role: 'PROVIDER_COMPLETION_EVIDENCE', storage_provider: 'aramo-s3', storage_locator: evidenceKey,
+            mime_type: 'application/pdf', byte_size: input.evidence_bytes.byteLength, sha256: evidence_sha256,
+            immutability_state: 'FROZEN', retention_class: 'DOCUMENT_CERTIFICATE', created_by: input.actor_id,
+          },
+        });
+        await tx.document.update({ where: { id: input.document_id }, data: { status: 'EXECUTED', current_revision_id: input.revision_id } });
+        await tx.documentEvent.create({
+          data: {
+            id: randomUUID(), tenant_id: input.tenant_id, document_id: input.document_id, revision_id: input.revision_id,
+            event_type: 'DOCUMENT_EXECUTED', actor_type: 'SYSTEM', actor_id: input.actor_id,
+            correlation_id: null, request_id: input.requestId,
+            payload: {
+              executed_sha256,
+              evidence_sha256,
+              provider: input.provider,
+              provider_envelope_ref: input.provider_envelope_ref,
+              evidence_kind: input.evidence_kind,
+            },
+          },
+        });
+        const result: StoreProviderExecutedResult = {
+          executed_artifact_id: executedArtifactId,
+          evidence_artifact_id: evidenceArtifactId,
+          document_status: 'EXECUTED',
+        };
+        await tx.idempotencyKey.create({
+          data: { id: randomUUID(), tenant_id: input.tenant_id, key: input.idempotency_key, request_hash, response_status: 201, response_body: result as never },
+        });
+        return result;
+      });
+    } catch (e) {
+      if (DocumentIdempotencyService.isUniqueViolation(e)) {
+        const post = await this.idempotency.lookup(input.tenant_id, input.idempotency_key, request_hash);
+        if (post.kind === 'replay') return post.response_body as StoreProviderExecutedResult;
       }
       throw e;
     }

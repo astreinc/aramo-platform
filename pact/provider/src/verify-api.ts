@@ -505,6 +505,12 @@ const DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261016160000_doc_template_version_internal_notes/migration.sql',
 );
+// Multi-Provider E-Sign §F — widens the DocumentArtifact role CHECK with
+// PROVIDER_COMPLETION_EVIDENCE (a returned artifact_role value) → registered.
+const DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3725,6 +3731,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_DOC2_MIGRATION,
         DOCUMENTS_TEMPLATE_ADMIN_MIGRATION,
         DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION,
+        DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

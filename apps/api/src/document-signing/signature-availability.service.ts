@@ -3,6 +3,8 @@ import { EntitlementRepository } from '@aramo/entitlement';
 import { SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/signature-routing';
 import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, type AllowanceThreshold } from '@aramo/subscription';
 
+import { isExternalAdapter } from '../esignature-providers/external-signature-adapter.js';
+
 import { SIGNATURE_PROVIDER_REGISTRY, type SignatureProviderRegistry } from './signature-router.js';
 
 // Multi-Provider directive §D — the ONE backend decision for document signing
@@ -67,14 +69,16 @@ export class SignatureAvailabilityService {
     if (actorScopes !== undefined && !SIGNATURE_SEND_SCOPES.every((s) => actorScopes.includes(s))) {
       return result('NOT_AUTHORIZED');
     }
-    if (!this.registry.has(provider)) {
+    const port = this.registry.get(provider);
+    if (port === undefined) {
       // The selected provider has no working integration in this build.
       return result('PROVIDER_UNAVAILABLE');
     }
     if (provider !== 'aramo_sign') {
-      // External providers are governed by the tenant's own provider contract;
-      // connection health is reported by the provider adapter (PR 4/5).
-      return result(null);
+      // External providers are governed by the tenant's own provider contract; Aramo
+      // checks only that the tenant's connection is healthy.
+      const state = isExternalAdapter(port) ? await port.connectionState(tenant_id) : 'NOT_CONNECTED';
+      return result(state === 'CONNECTED' ? null : 'PROVIDER_DISCONNECTED');
     }
     const caps = await this.entitlements.getCapabilities(tenant_id);
     if (!caps.has('esign')) return result('NOT_SUBSCRIBED');
