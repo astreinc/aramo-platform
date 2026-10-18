@@ -2,17 +2,41 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import react from '@vitejs/plugin-react';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 const root = resolve(fileURLToPath(import.meta.url), '..');
 
+// D-ORG-2 dev parity: production nginx answers `/ats` with `301 /ats/`
+// (deploy/nginx/templates/aramo.conf.template). Vite would otherwise show its
+// "did you mean /ats/?" page for the bare path.
+const atsTrailingSlash = (): Plugin => ({
+  name: 'aramo-ats-trailing-slash',
+  configureServer(server) {
+    server.middlewares.use((req, res, next) => {
+      const [path, query] = (req.url ?? '').split('?');
+      if (path === '/ats') {
+        res.statusCode = 301;
+        res.setHeader('Location', `/ats/${query !== undefined ? `?${query}` : ''}`);
+        res.end();
+        return;
+      }
+      next();
+    });
+  },
+});
+
 export default defineConfig({
   root,
+  // Per-app dependency cache. Without it every SPA dev server resolves the SAME
+  // node_modules/.vite and they overwrite each other's pre-bundled deps, so a page
+  // requests a bundle hash another server already replaced (504 "Outdated Optimize
+  // Dep") and renders blank. Dev-only; builds are unaffected.
+  cacheDir: resolve(root, '../../node_modules/.vite/ats-web'),
   // D-ORG-2 (topology T1) — the ATS app is served under /ats/ on the tenant host;
   // App Home (apps/home-web) owns `/`. Assets, the router basename and the
   // nginx `location /ats/` all derive from this one value.
   base: '/ats/',
-  plugins: [react()],
+  plugins: [react(), atsTrailingSlash()],
   // Pre-bundle the lazily imported Word→HTML converter at dev-server start.
   // Discovered only on first preview, it forced a mid-session re-optimize and
   // the in-flight dynamic import 504'd ("Failed to fetch dynamically imported

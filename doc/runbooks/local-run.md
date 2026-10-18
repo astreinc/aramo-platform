@@ -82,6 +82,25 @@ Faster restarts: `SKIP_BUILD=1 tools/local-stack.sh up` (reuse `dist/`),
 `SKIP_SEED=1` (skip the catalog seed). A schema change still needs
 `tools/db-sync-local.sh` (auto-run by `up`).
 
+## App Home and the tenant-host topology locally (D-ORG)
+
+Production serves one tenant host: App Home at `/`, Organization Administration at `/org/`, the ATS at `/ats/`
+(nginx). Locally the same topology lives on **http://localhost:4205** — the App Home dev server forwards `/ats/` to
+the ATS dev server (:4201), so App Home → ATS works on one origin with one cookie jar. The ATS is also reachable
+directly at http://localhost:4201/ats/ (`/` and `/ats` redirect to `/ats/`).
+
+Each consumer signs in through its own callback, derived from the host you browse on. Cognito accepts only exact
+registered URLs, so the app client needs, per local origin you use:
+
+| Origin | Callback URLs | Sign-out URL |
+|---|---|---|
+| `http://localhost:4205` (App Home topology) | `/auth/org/callback`, `/auth/recruiter/callback` | `/signed-out` |
+| `http://localhost:4201` (ATS directly) | `/auth/recruiter/callback` (existing) | `/signed-out` |
+
+A missing one shows Cognito's `redirect_mismatch` page. Each SPA dev server keeps its own Vite dependency cache
+(`node_modules/.vite/<app>`); if a page ever renders blank with `504 Outdated Optimize Dep` in the console, stop the
+server, delete that app's cache folder and start it again.
+
 ## test-39 (auth.integration) — fixed
 
 `auth.integration` test-39 (`/callback` issues cookies) drives the login-success
