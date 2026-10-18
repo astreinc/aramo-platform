@@ -62,6 +62,22 @@ export class ExecutionService implements ExecutionProducerPort {
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const results: ExecutedProductionResult[] = [];
+    // PX-2 — each signer's Signature ID is the hash of their SIGNER_SIGNED entry
+    // in the append-only, hash-chained ledger. The stamp prints its first 15
+    // characters; the execution certificate prints it in full beside the signer,
+    // so a signature on the page can be matched to the certificate and ledger.
+    const signedEvents = await this.prisma.signatureEvent.findMany({
+      where: { tenant_id, envelope_id, event_type: 'SIGNER_SIGNED' },
+      select: { signer_id: true, event_hash: true },
+    });
+    const signatureIds = new Map<string, string>();
+    // The ledger stores the hash base64url-encoded; the Signature ID is the same
+    // bytes as uppercase hex (lossless, DocuSign-style).
+    for (const e of signedEvents) if (e.signer_id !== null) signatureIds.set(e.signer_id, Buffer.from(e.event_hash, 'base64url').toString('hex').toUpperCase());
+    const stampFor = (signer_id: string | null): { label: string; id: string } => {
+      const full = signer_id !== null ? signatureIds.get(signer_id) : undefined;
+      return { label: 'Signed by:', id: full !== undefined ? `${full.slice(0, 15)}...` : '' };
+    };
 
     for (const doc of full.documents) {
       const sourcePdf = await this.source.getSourcePdf({
@@ -93,7 +109,7 @@ export class ExecutionService implements ExecutionProducerPort {
             image_format: parsed.format,
             width: f.width ?? undefined,
             height: f.height ?? undefined,
-            ...(f.field_type === 'SIGNATURE' ? { stamp: signatureStamp(f.id, f.value) } : {}),
+            ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
           });
         } else if (f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS') {
           // PX-2 — typed signatures / initials render in the handwriting font, a
@@ -108,7 +124,7 @@ export class ExecutionService implements ExecutionProducerPort {
             font: 'SCRIPT',
             ...(f.width !== null ? { width: f.width } : {}),
             ...(f.height !== null ? { height: f.height } : {}),
-            ...(f.field_type === 'SIGNATURE' ? { stamp: signatureStamp(f.id, f.value) } : {}),
+            ...(f.field_type === 'SIGNATURE' ? { stamp: stampFor(f.signer_id) } : {}),
           });
         } else {
           placements.push({ field_key: f.id, page_number: f.page_number, x: f.x, y: f.y, value: f.value });
@@ -158,10 +174,13 @@ export class ExecutionService implements ExecutionProducerPort {
         text: `Doc ${r.envelope_document_id} — source ${r.source_sha256.slice(0, 16)}… executed ${r.executed_sha256.slice(0, 16)}…`,
       })),
       { type: 'HEADING', text: 'Signers' },
-      ...full.signers.map((s): RenderBlock => ({
-        type: 'TEXT',
-        text: `${s.name} <${maskEmail(s.email)}> — ${s.status}${s.signed_at ? ` signed ${s.signed_at.toISOString()}` : ''}`,
-      })),
+      ...full.signers.flatMap((s): RenderBlock[] => [
+        {
+          type: 'TEXT',
+          text: `${s.name} <${maskEmail(s.email)}> — ${s.status}${s.signed_at ? ` signed ${s.signed_at.toISOString()}` : ''}`,
+        },
+        ...(signatureIds.has(s.id) ? [{ type: 'TEXT', text: `Signature ID: ${signatureIds.get(s.id) ?? ''}` } as RenderBlock] : []),
+      ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
     ];
@@ -219,11 +238,4 @@ export class ExecutionService implements ExecutionProducerPort {
 
     return results;
   }
-}
-
-// PX-2 — the short signature id printed under a signature stamp: a stable hash of
-// the field and its signed value (uppercase hex, truncated like DocuSign's id).
-function signatureStamp(field_id: string, value: string): { label: string; id: string } {
-  const id = createHash('sha256').update(`${field_id}:${value}`).digest('hex').toUpperCase().slice(0, 15);
-  return { label: 'Signed by:', id: `${id}...` };
 }

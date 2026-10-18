@@ -473,6 +473,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
       // PX-2 — the handwriting font is embedded only when a placement asks for it,
       // so documents without typed signatures are byte-identical to before.
       let script: PDFFont | null = null;
+      const bold = placements.some((p) => p.stamp !== undefined) ? await doc.embedFont(StandardFonts.HelveticaBold) : font;
       if (placements.some((p) => p.font === 'SCRIPT')) {
         doc.registerFontkit(fontkit);
         script = await doc.embedFont(Buffer.from(SIGNATURE_SCRIPT_FONT_BASE64, 'base64'), { subset: true });
@@ -497,8 +498,8 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
               : await doc.embedJpg(p.image_bytes);
           if (p.stamp !== undefined) {
             const box = stampBox(p);
-            drawStamp(page, box, p.stamp, font);
-            const inner = { x: box.x + 5, y: box.y + 7, w: box.w - 7, h: box.h - 15 };
+            drawStamp(page, box, p.stamp, font, bold);
+            const inner = { x: box.x + 8, y: box.y + 6, w: box.w - 10, h: box.h - 10 };
             const k = Math.min(inner.w / img.width, inner.h / img.height);
             page.drawImage(img, { x: inner.x, y: inner.y + (inner.h - img.height * k) / 2, width: img.width * k, height: img.height * k });
           } else {
@@ -510,8 +511,8 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           }
           if (p.font === 'SCRIPT' && script !== null) {
             const box = stampBox(p);
-            if (p.stamp !== undefined) drawStamp(page, box, p.stamp, font);
-            const inner = p.stamp !== undefined ? { x: box.x + 5, y: box.y + 7, w: box.w - 8, h: box.h - 15 } : { x: box.x, y: box.y, w: box.w, h: box.h };
+            if (p.stamp !== undefined) drawStamp(page, box, p.stamp, font, bold);
+            const inner = p.stamp !== undefined ? { x: box.x + 8, y: box.y + 6, w: box.w - 10, h: box.h - 10 } : { x: box.x, y: box.y, w: box.w, h: box.h };
             const size = Math.max(6, Math.min(inner.h * 0.62, (inner.w / Math.max(1, script.widthOfTextAtSize(p.value, 1))) * 0.98));
             page.drawText(p.value, { x: inner.x, y: inner.y + (inner.h - size) / 2 + size * 0.22, size, font: script, color: rgb(0.08, 0.12, 0.32) });
           } else {
@@ -558,16 +559,19 @@ function stampBox(p: PreparedField): { x: number; y: number; w: number; h: numbe
   return { x: p.x, y: p.y, w: p.width ?? 220, h: p.height ?? 48 };
 }
 
-// PX-2 — DocuSign-style signature frame: a left bracket with top and bottom
-// ticks, the label above the signature and the short signature id beneath.
-function drawStamp(page: PDFPage, box: { x: number; y: number; w: number; h: number }, stamp: { label: string; id: string }, font: PDFFont): void {
-  const blue = rgb(0.2, 0.27, 0.86);
-  const tick = Math.min(box.w * 0.35, 70);
-  const top = box.y + box.h - 1;
-  const bottom = box.y + 5;
-  page.drawLine({ start: { x: box.x, y: bottom }, end: { x: box.x, y: top }, thickness: 1, color: blue });
-  page.drawLine({ start: { x: box.x, y: top }, end: { x: box.x + tick, y: top }, thickness: 1, color: blue });
-  page.drawLine({ start: { x: box.x, y: bottom }, end: { x: box.x + tick, y: bottom }, thickness: 1, color: blue });
-  page.drawText(stamp.label, { x: box.x + 4, y: top - 6.5, size: 5.5, font, color: rgb(0.15, 0.15, 0.2) });
-  page.drawText(stamp.id, { x: box.x + 4, y: bottom - 6, size: 5, font, color: rgb(0.35, 0.35, 0.4) });
+// PX-2 — DocuSign-style signature frame: a rounded left bracket whose top and
+// bottom arms carry the "Signed by:" label (bold) and the Signature ID — the
+// signer's ledger entry hash, also printed in the execution certificate.
+function drawStamp(page: PDFPage, box: { x: number; y: number; w: number; h: number }, stamp: { label: string; id: string }, font: PDFFont, bold: PDFFont): void {
+  const blue = rgb(0.23, 0.29, 0.86);
+  const r = Math.min(6, box.h / 4);
+  const arm = Math.min(box.w * 0.42, 86);
+  const topY = box.y + box.h - 2; // PDF y of the top arm
+  const botY = box.y + 4; // PDF y of the bottom arm
+  const h = topY - botY;
+  // SVG path in a y-down frame anchored at the top-left (box.x, topY).
+  const path = `M ${arm} 0 L ${r} 0 Q 0 0 0 ${r} L 0 ${h - r} Q 0 ${h} ${r} ${h} L ${arm} ${h}`;
+  page.drawSvgPath(path, { x: box.x, y: topY, borderColor: blue, borderWidth: 1.1 });
+  page.drawText(stamp.label, { x: box.x + r + 1.5, y: topY + 1.8, size: 5.8, font: bold, color: rgb(0.12, 0.12, 0.16) });
+  if (stamp.id.length > 0) page.drawText(stamp.id, { x: box.x + r + 1.5, y: botY - 6.3, size: 5.2, font, color: rgb(0.3, 0.3, 0.36) });
 }

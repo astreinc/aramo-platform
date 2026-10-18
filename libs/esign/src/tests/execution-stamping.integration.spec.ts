@@ -104,4 +104,43 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
     expect(executed?.executed_sha256).not.toBe(executed?.source_sha256);
     expect((executed?.byte_size ?? 0) > 0).toBe(true);
   });
+
+  // PX-2 — the Signature ID under a stamped signature is the signer's
+  // SIGNER_SIGNED ledger hash (as uppercase hex), and the execution certificate
+  // prints the same ID in full, so the two can be matched.
+  it('stamps typed signatures in the Signed by frame with the ledger Signature ID, also in the certificate', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Agreement', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({
+      tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(),
+      title: 'agreement.pdf', source_sha256: 'seed', ordinal: 1,
+    });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'jane@x.com', name: 'Jane', signing_order: 1 });
+    const field = await repo.addField({
+      tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 120, width: 220, height: 48, required: true,
+    });
+    await prisma.signatureField.update({ where: { id: field.id }, data: { value: 'Jane Doe', signature_method: 'TYPED', filled_at: new Date() } });
+    const eventHash = await prisma.$transaction((tx) =>
+      repo.appendEvent(tx, { tenant_id: TENANT, envelope_id: env.id, signer_id: signer.id, event_type: 'SIGNER_SIGNED', actor_type: 'SIGNER', actor_ref: signer.id }),
+    );
+    const signatureId = Buffer.from(eventHash, 'base64url').toString('hex').toUpperCase();
+
+    const real = new PdfLibDocumentRenderingAdapter();
+    const captured: PreparedField[][] = [];
+    const generated: string[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: async (src, placements, opts): Promise<RenderedOutput> => {
+        captured.push(placements);
+        return real.prepareFromSource(src, placements, opts);
+      },
+      renderGenerated: (model) => {
+        generated.push(JSON.stringify(model));
+        return real.renderGenerated(model);
+      },
+    };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf });
+    await execution.produce(TENANT, env.id);
+
+    expect(captured[0]?.[0]).toMatchObject({ value: 'Jane Doe', font: 'SCRIPT', stamp: { label: 'Signed by:', id: `${signatureId.slice(0, 15)}...` } });
+    expect(generated.join('')).toContain(`Signature ID: ${signatureId}`);
+  });
 });
