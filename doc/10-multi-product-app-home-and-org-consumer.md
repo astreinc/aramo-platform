@@ -145,3 +145,29 @@ No security invariant beyond the rulings was changed; no HALT condition was met.
 
 Not merged, not deployed, Sign PRODUCT-host login not activated, no Cognito/DNS/nginx production change. The external
 activation steps are in `doc/runbooks/RELEASE-app-home-org.md`.
+
+## 8. Unified multi-product experience (shared shell, app switcher, return context)
+
+Implements the PO "Unified Multi-Product Experience" directive on top of D-ORG, against the frozen accepted
+prototypes (`archive/accepted-2026-10-18-settings-nav/`) and the App Home, Settings & navigation and Sign handoffs.
+
+- **One shell** for App Home, Organization administration and the ATS: `AramoAppShell` + `AramoRail` +
+  `nav-collapse` live in `@aramo/fe-foundation` (moved from `apps/ats-web/src/shell`). One collapse preference,
+  `aramo.nav.collapsed`, shared by every app on the tenant host.
+- **App switcher** in every top bar (`AppSwitcher`, `buildAppSwitcherItems`): rows come only from
+  `GET /v1/me/products`; an unavailable product is not a link; each product checks access again when it opens.
+  The external signer app is never a row.
+- **Organization administration** sections: Profile · Users & invitations · Users & product access · Sites ·
+  Domain · Settings · Audit. Role assignment stays in Users & product access (the existing
+  `PATCH /v1/tenant/users/:id/roles` path); Users & invitations owns invite and lifecycle.
+- **ATS Settings** keeps what the ATS owns and links out once ("Manage organization"); ATS roles & permissions is a
+  read-only reference; the ATS Audit log and Plan & billing seam are ATS-owned; old ATS organization pages redirect
+  once to `/org/*`.
+- **Return context**: `/org/<section>?from=<ats|sign>&return=<path>` shows "Back to ATS Settings" / "Back to Sign
+  Settings". Validated like `return_to` (known app, relative path inside that app's base, bounded); never
+  authorization.
+- **Signer app** (`sign.aramo.ai/s/:token`): reached only through a signing link; no navigation into Aramo; built on
+  the seven existing `/v1/esign/signing/*` calls.
+- **Not built (backend dependencies)**: a per-user preference store (saved start page, language, time zone), a
+  self-profile write, the Sign sender console and its `v1/esign/sender/*` API, Sign settings storage, and
+  product-scoped audit filtering. My preferences shows the start page as an honest seam.

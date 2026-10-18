@@ -801,6 +801,9 @@
     "@aramo/fe-foundation": [
       "ApiClient",
       "ApiError",
+      "AppSwitcher",
+      "AramoAppShell",
+      "AramoRail",
       "Button",
       "Card",
       "Checkbox",
@@ -815,6 +818,9 @@
       "LOGOUT_PATH",
       "Label",
       "MICROSOFT_SIGN_OUT_URL",
+      "MY_PRODUCTS_PATH",
+      "NAV_COLLAPSED_KEY",
+      "NavCollapseProvider",
       "NavLink",
       "PageHeader",
       "RadioGroup",
@@ -834,9 +840,12 @@
       "accessDeniedPath",
       "apiClient",
       "appPath",
+      "buildAppSwitcherItems",
+      "clearReturnContext",
       "configureAppBasePath",
       "configureAuthConsumer",
       "currentReturnTo",
+      "fetchMyProducts",
       "fetchSession",
       "formatDate",
       "formatInstant",
@@ -845,11 +854,22 @@
       "hasScope",
       "loginUrl",
       "logout",
+      "orgHref",
+      "parseReturnContext",
+      "productByKey",
+      "productEntryHref",
+      "readNavCollapsed",
+      "readRememberedReturnContext",
       "redirectToAccessDenied",
       "redirectToLogin",
+      "rememberReturnContext",
+      "useCompactRailPage",
+      "useMyProducts",
+      "useNavCollapse",
       "useOptionalToast",
       "useSession",
-      "useToast"
+      "useToast",
+      "validReturnPath"
     ],
     "@aramo/field-masking": [
       "COMPANY_COMMERCIAL_FIELD_KEYS",
@@ -1181,13 +1201,17 @@
       "parseResumeObjectKey"
     ],
     "@aramo/org-admin-web": [
+      "AuditLogView",
       "ME_PATH",
       "ORG_ADMIN_SCOPE_PREFIX",
-      "ORG_NAV",
+      "ORG_DENIED_NOTICE",
+      "ORG_SECTIONS",
       "OrgAdminRoutes",
       "OrgAdminShell",
+      "RolesMatrixView",
       "fetchMe",
       "hasOrgAdminScope",
+      "orgSectionLabel",
       "useMe"
     ],
     "@aramo/outbox-publisher": [
@@ -7166,6 +7190,12 @@
         "project": "aramo-ats-web",
         "status": "unscoped"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/home/AppHomeView.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
       { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -7892,7 +7922,10 @@
       { "project": "resume-parse", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/org-admin-web": [{ "project": "aramo-home-web", "status": "production" }],
+    "@aramo/org-admin-web": [
+      { "project": "aramo-ats-web", "status": "production" },
+      { "project": "aramo-home-web", "status": "production" }
+    ],
     "@aramo/outbox-publisher": [
       {
         "excludedBy": "src/tests/**/*",
