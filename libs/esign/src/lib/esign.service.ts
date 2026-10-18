@@ -60,6 +60,8 @@ export interface SignerFieldView {
   width: number | null;
   height: number | null;
   required: boolean;
+  // PX-2 — true once this signer has filled the field (restores progress on reload).
+  filled: boolean;
 }
 
 export interface SignerDocumentMeta {
@@ -293,6 +295,9 @@ export class EsignService {
           width: f.width,
           height: f.height,
           required: f.required,
+          // PX-2 — lets the signer page restore progress after a reload (the value
+          // itself is never echoed back).
+          filled: f.filled_at !== null,
         })),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);

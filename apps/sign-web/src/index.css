@@ -103,3 +103,18 @@ p { line-height: 1.5; margin: 0 0 12px; }
   .sg-dialog { border-radius: 18px 18px 0 0; max-width: none; }
   .sg-head { padding: 10px 12px; flex-wrap: wrap; }
 }
+
+/* PX-2 — the actual document, rendered page by page, with the signer's fields in place. */
+.sg-pages { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.sg-page { position: relative; background: #fff; box-shadow: 0 1px 3px rgba(20, 24, 31, 0.15), 0 8px 24px rgba(20, 24, 31, 0.08); flex: none; }
+.sg-page canvas { display: block; width: 100%; height: 100%; }
+.sg-onpage { position: absolute; display: flex; align-items: center; justify-content: center; border: 2px dashed #c58a00; background: rgba(255, 213, 79, 0.28); border-radius: 4px; cursor: pointer; overflow: visible; }
+.sg-onpage:hover { background: rgba(255, 213, 79, 0.42); }
+.sg-onpage:focus-visible, .sg-onpage--active { outline: 3px solid var(--sg-accent, #2447d8); outline-offset: 2px; }
+.sg-onpage--optional { border-color: #9aa3b2; background: rgba(154, 163, 178, 0.14); }
+.sg-onpage--done { border: 1px solid transparent; background: transparent; }
+.sg-onpage--done:hover { border-color: rgba(36, 71, 216, 0.4); background: rgba(36, 71, 216, 0.05); }
+.sg-onpage__cta { font-size: 12px; font-weight: 700; color: #7a5300; background: #fff3c4; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.sg-onpage__sig { font-family: 'Segoe Script', 'Brush Script MT', 'Snell Roundhand', cursive; font-size: clamp(14px, 2.2vw, 26px); color: #14306b; white-space: nowrap; overflow: hidden; }
+.sg-onpage__val { font-size: 13px; color: #14181f; white-space: nowrap; }
+.sg-onpage__img { max-width: 100%; max-height: 100%; object-fit: contain; }

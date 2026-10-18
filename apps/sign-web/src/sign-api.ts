@@ -29,6 +29,8 @@ export interface SignField {
   width: number | null;
   height: number | null;
   required: boolean;
+  // PX-2 — true once this signer has filled the field (restores progress on reload).
+  filled?: boolean;
 }
 
 export interface SignDocumentMeta {

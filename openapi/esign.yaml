@@ -330,6 +330,9 @@ paths:
                         width: { type: [number, 'null'] }
                         height: { type: [number, 'null'] }
                         required: { type: boolean }
+                        filled:
+                          type: boolean
+                          description: True once this signer has filled the field (lets the signer page restore progress).
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':

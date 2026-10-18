@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
+import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SignApiError, signApi, type SignField, type SignerDocumentView } from './sign-api.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
@@ -86,6 +87,9 @@ interface Adopted {
   readonly value: string;
   readonly display: string;
 }
+
+// A field filled in an earlier visit (value not returned by the server).
+const FILLED_MARK = '\u2713';
 
 function base64ToBlobUrl(b64: string, type: string): string {
   const bin = atob(b64);
@@ -375,6 +379,10 @@ export function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
+  // PX-2 — the source bytes (base64) per document, rendered page by page with the
+  // signer's fields in place; the browser PDF viewer is only the fallback.
+  const [docB64, setDocB64] = useState<Record<string, string>>({});
+  const [renderFailed, setRenderFailed] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
   const [filled, setFilled] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(false);
@@ -389,6 +397,7 @@ export function App(): JSX.Element {
   const [activeField, setActiveField] = useState<string | null>(null);
 
   const fail = useCallback((e: unknown) => setScreen(screenForError(e)), []);
+  const onRenderError = useCallback(() => setRenderFailed(true), []);
 
   const open = useCallback(() => {
     if (token.length === 0) return;
@@ -413,10 +422,12 @@ export function App(): JSX.Element {
   const loadWorkspace = async () => {
     const v = await signApi.documentView(token);
     const urls: Record<string, string> = {};
+    const b64: Record<string, string> = {};
     for (const d of v.documents) {
       try {
         const src = await signApi.source(token, d.document_id);
         urls[d.document_id] = base64ToBlobUrl(src.source_base64, src.content_type);
+        b64[d.document_id] = src.source_base64;
       } catch (e) {
         if (e instanceof SignApiError && e.code !== 'NETWORK') throw e;
         // A document that fails to load shows its own message in the viewer.
@@ -424,6 +435,14 @@ export function App(): JSX.Element {
     }
     setView(v);
     setDocUrls(urls);
+    setDocB64(b64);
+    // Restore progress after a reload: the backend reports which fields are filled
+    // (never their values), so they show as completed marks.
+    setFilled((m) => {
+      const next = { ...m };
+      for (const f of v.fields) if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = FILLED_MARK;
+      return next;
+    });
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
     setScreen('workspace');
   };
@@ -508,6 +527,16 @@ export function App(): JSX.Element {
   };
 
   const suggestedName = adopted.SIGNATURE?.method === 'TYPED' ? adopted.SIGNATURE.display : '';
+
+  // What a filled field shows on the page: the drawn image, the typed / entered
+  // text, or a completed mark (restored from an earlier visit).
+  const displayOf = (f: SignField): FieldDisplay | null => {
+    const v = filled[f.field_id];
+    if (v === undefined) return null;
+    if (v.startsWith('data:image/')) return { kind: 'image', value: v };
+    if (f.field_type === 'CHECKBOX' || f.field_type === 'ACKNOWLEDGEMENT' || v === FILLED_MARK) return { kind: 'mark', value: FILLED_MARK };
+    return { kind: 'text', value: v };
+  };
 
   // ── End states ──
   if (screen === 'invalid')
@@ -641,7 +670,7 @@ export function App(): JSX.Element {
               {fields.map((f) => (
                 <li key={f.field_id}>
                   <span>
-                    {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number}
+                    {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number + 1}
                   </span>
                   <span className={filled[f.field_id] !== undefined ? 'sg-ok' : 'sg-muted'}>
                     {filled[f.field_id] !== undefined ? 'Completed' : f.required ? 'Required' : 'Optional · skipped'}
@@ -676,7 +705,20 @@ export function App(): JSX.Element {
                 ))}
               </div>
             ) : null}
-            {url ? (
+            {doc && docB64[doc.document_id] !== undefined && !renderFailed ? (
+              <PdfDocument
+                base64={docB64[doc.document_id] ?? ''}
+                fields={fields.filter((f) => f.document_id === doc.document_id)}
+                display={displayOf}
+                activeField={activeField}
+                label={(f) => FIELD_LABEL[f.field_type] ?? f.field_type}
+                actionLabel={(f) => ACTION_LABEL[f.field_type] ?? 'Complete'}
+                onField={(f) => {
+                  if (!busy) act(f);
+                }}
+                onError={onRenderError}
+              />
+            ) : url ? (
               <iframe className="sg-frame" title={doc?.title ?? 'Document'} src={url} />
             ) : (
               <div className="sg-frame sg-frame--missing" role="status">
@@ -703,14 +745,14 @@ export function App(): JSX.Element {
                     <span className="sg-field__text">
                       <span className="sg-field__name">{FIELD_LABEL[f.field_type] ?? f.field_type}</span>
                       <span className="sg-field__meta">
-                        {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number}
+                        {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
                       </span>
                     </span>
                     {done ? (
                       <span className="sg-ok">Completed</span>
                     ) : (
-                      <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number}`}>
+                      <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
                         {ACTION_LABEL[f.field_type] ?? 'Complete'}
                       </Btn>
                     )}

@@ -1572,8 +1572,6 @@
     "apps/home-web/src/App.tsx",
     "apps/home-web/src/home.css",
     "apps/home-web/src/home/AppHomeView.spec.tsx",
-    "apps/home-web/src/home/AppHomeView.spec.tsx",
-    "apps/home-web/src/home/AppHomeView.spec.tsx",
     "apps/home-web/src/home/AppHomeView.tsx",
     "apps/home-web/src/home/LegacyAtsRedirect.spec.tsx",
     "apps/home-web/src/home/LegacyAtsRedirect.tsx",
