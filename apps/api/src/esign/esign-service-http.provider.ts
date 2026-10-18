@@ -32,11 +32,15 @@ export class EsignServiceHttpProvider implements SignatureProviderPort {
     const text = await res.text();
     const json: unknown = text.length > 0 ? JSON.parse(text) : {};
     if (!res.ok) {
-      const err = (json as { error?: { code?: string; message?: string } }).error;
+      const err = (json as { error?: { code?: string; message?: string; details?: Record<string, unknown> } }).error;
       const code = (err?.code ?? 'INTERNAL_ERROR') as ErrorCode;
       // requestId is filled by the AramoExceptionFilter from the live request
-      // context; the adapter carries an empty placeholder.
-      throw new AramoError(code, err?.message ?? 'esign-service error', res.status, { requestId: '' });
+      // context; the adapter carries an empty placeholder. Details (e.g. the
+      // allowance refusal reason, limit and period end) pass through unchanged.
+      throw new AramoError(code, err?.message ?? 'esign-service error', res.status, {
+        requestId: '',
+        ...(err?.details !== undefined ? { details: err.details } : {}),
+      });
     }
     return json as T;
   }

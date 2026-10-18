@@ -1,0 +1,75 @@
+// Per-module Prisma schema for the `signature_routing` module.
+//
+// Aramo-E-Sign-Multi-Provider-Plan-Entitlements-Usage-Directive-v1_0-LOCKED §D/§E —
+// the provider integration layer: which e-signature provider a tenant uses, the
+// audit trail of every change, and the provider frozen on each signature request.
+// Separate from the plan/allowance authority (libs/subscription) and from the
+// signing engine (libs/esign). Cross-schema references are UUID-only (§7.3).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["signature_routing"]
+}
+
+// One active provider per tenant (V1). No row = the built-in Aramo Sign.
+model TenantSignatureProvider {
+  tenant_id   String   @id @db.Uuid
+  // CHECK: aramo_sign | docusign | adobe_sign
+  provider    String
+  selected_by String
+  selected_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("signature_routing")
+}
+
+// Append-only audit of provider changes.
+model SignatureProviderSelectionEvent {
+  id            String   @id @db.Uuid
+  tenant_id     String   @db.Uuid
+  from_provider String
+  to_provider   String
+  actor_id      String
+  occurred_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, occurred_at])
+  @@schema("signature_routing")
+}
+
+// The provider frozen on a created signature request. Later reminders, status
+// reads and completion handling route by this row, never by today's selection.
+model SignatureRequestRoute {
+  id                    String   @id @db.Uuid
+  tenant_id             String   @db.Uuid
+  document_id           String   @db.Uuid
+  document_revision_id  String   @db.Uuid
+  provider              String
+  provider_envelope_ref String
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenant_id, provider, provider_envelope_ref])
+  @@index([tenant_id, document_id, document_revision_id])
+  @@index([provider, provider_envelope_ref])
+  @@schema("signature_routing")
+}
+
+// §G — external-provider OAuth connect state. Single-use, expiring, bound to the
+// tenant + admin + provider. Only the SHA-256 of the state value is stored.
+model ProviderOAuthState {
+  state_hash    String    @id
+  tenant_id     String    @db.Uuid
+  user_id       String
+  // CHECK: docusign | adobe_sign
+  provider      String
+  code_verifier String
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  expires_at    DateTime  @db.Timestamptz(6)
+  consumed_at   DateTime? @db.Timestamptz(6)
+
+  @@index([expires_at])
+  @@schema("signature_routing")
+}

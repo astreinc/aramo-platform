@@ -152,6 +152,14 @@ export class TenantRepository {
   // Platform-Console Increment-2 PR-1 — single-tenant read for the platform
   // console detail endpoint (GET /platform/tenants/:id). Returns null for an
   // unknown id (controller maps to NOT_FOUND).
+  // PX-1 — the tenant's subdomain label (`<slug>.aramo.ai`), or null. Lets a
+  // product host (esign.aramo.ai) link back to the tenant host's Organization
+  // administration without widening TenantDto.
+  async findSlugById(id: string): Promise<string | null> {
+    const row = await this.prisma.tenant.findUnique({ where: { id }, select: { slug: true } });
+    return row?.slug ?? null;
+  }
+
   async findById(id: string): Promise<TenantDto | null> {
     const row = await this.prisma.tenant.findUnique({ where: { id } });
     return row === null ? null : toTenantDto(row);

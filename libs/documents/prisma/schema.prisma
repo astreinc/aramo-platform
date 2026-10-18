@@ -113,7 +113,7 @@ model DocumentArtifact {
   tenant_id         String    @db.Uuid
   revision_id       String    @db.Uuid
   document_id       String    @db.Uuid
-  artifact_role     String // CHECK: TEMPLATE_SOURCE|SOURCE_UPLOAD|RENDERED_UNSIGNED|EXECUTED|EXECUTION_CERTIFICATE|PREVIEW|ATTACHMENT
+  artifact_role     String // CHECK: TEMPLATE_SOURCE|SOURCE_UPLOAD|RENDERED_UNSIGNED|EXECUTED|EXECUTION_CERTIFICATE|PREVIEW|ATTACHMENT|PROVIDER_COMPLETION_EVIDENCE
   storage_profile_id String?  @db.Uuid
   storage_provider  String
   storage_locator   String

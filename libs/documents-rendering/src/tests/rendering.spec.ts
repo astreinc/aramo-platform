@@ -285,6 +285,30 @@ describe('PdfLibDocumentRenderingAdapter (UPLOADED_PDF path)', () => {
     expect(a.sha256).toBe(b.sha256);
   });
 
+  // PX-2 — DocuSign-style signature stamp: the typed name in the embedded
+  // handwriting font inside a "Signed by:" frame with a short signature id.
+  it('renders a typed signature in the handwriting font inside a Signed by stamp, hash-stably', async () => {
+    const source = await makeSourcePdf();
+    const field = { field_key: 'sig', page_number: 0, x: 72, y: 120, value: 'Jane Doe', font: 'SCRIPT' as const, width: 220, height: 48, stamp: { label: 'Signed by:', id: '7EF4C0E78D484E8...' } };
+    const a = await adapter.prepareFromSource(source, [field]);
+    const b = await adapter.prepareFromSource(source, [field]);
+    expect(a.sha256).toBe(b.sha256);
+    const raw = Buffer.from(a.bytes).toString('latin1');
+    expect(raw).toMatch(/HomemadeApple/);
+    const plain = await adapter.prepareFromSource(source, [{ field_key: 'sig', page_number: 0, x: 72, y: 120, value: 'Jane Doe' }]);
+    expect(Buffer.from(plain.bytes).toString('latin1')).not.toMatch(/HomemadeApple/);
+    expect(a.provenance.render_manifest_sha256).not.toBe(plain.provenance.render_manifest_sha256);
+  });
+
+  it('frames a drawn signature image in the stamp', async () => {
+    const source = await makeSourcePdf();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    const out = await adapter.prepareFromSource(source, [
+      { field_key: 'sig', page_number: 0, x: 72, y: 120, kind: 'IMAGE', image_bytes: new Uint8Array(png), image_format: 'PNG', width: 220, height: 48, stamp: { label: 'Signed by:', id: 'ABC...' } },
+    ]);
+    expect(out.page_count).toBe(1);
+  });
+
   it('rejects an out-of-bounds placement (RenderFailedError)', async () => {
     const source = await makeSourcePdf();
     await expect(
@@ -388,6 +412,25 @@ describe('SafePdfPipeline (B6 — governed upload safety)', () => {
     const tampered = Buffer.concat([Buffer.from(source), Buffer.from('\n/OpenAction 1 0 R\n', 'latin1')]);
     await expect(pipeline.accept(new Uint8Array(tampered))).rejects.toThrow(/active content/i);
   });
+
+  // A PDF NAME token ends at whitespace or a delimiter. Font subset tags such as
+  // /AAAAAA+Calibri (Word, Chrome "Save as PDF") merely START with "AA" and are not
+  // the /AA additional-actions key — they must not be rejected as active content.
+  it('accepts a font subset name that merely begins with an active-content token (/AAAAAA+Calibri)', async () => {
+    const source = await makeSourcePdf();
+    const benign = Buffer.concat([Buffer.from(source), Buffer.from('\n<< /BaseFont /AAAAAA+Calibri /FontName /JSFontish >>\n', 'latin1')]);
+    const accepted = await pipeline.accept(new Uint8Array(benign));
+    expect(accepted.byteLength).toBe(benign.byteLength);
+  });
+
+  it.each(['/AA<<', '/AA <<', '/JS (app.alert(1))', '/JavaScript', '/Launch', '/EmbeddedFile\n', '/RichMedia[', '/OpenAction%c'])(
+    'still rejects the whole-name active-content key in %j',
+    async (snippet) => {
+      const source = await makeSourcePdf();
+      const tampered = Buffer.concat([Buffer.from(source), Buffer.from(`\n${snippet}\n`, 'latin1')]);
+      await expect(pipeline.accept(new Uint8Array(tampered))).rejects.toThrow(/active content/i);
+    },
+  );
 
   it('rejects an encrypted PDF marker (/Encrypt) — never ignoreEncryption', async () => {
     const source = await makeSourcePdf();

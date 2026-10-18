@@ -15,6 +15,7 @@ export type {
 } from './lib/mailer.port.js';
 export { SesMailerAdapter } from './lib/ses-mailer.adapter.js';
 export { StubMailerAdapter } from './lib/stub-mailer.adapter.js';
+export { OutboxMailerAdapter } from './lib/outbox-mailer.adapter.js';
 export { SesMailerClientFactory } from './lib/ses-mailer-client.factory.js';
 export {
   loadMailerConfig,

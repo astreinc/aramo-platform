@@ -36,7 +36,7 @@ function baseReq(fields?: CreateEnvelopeRequest['fields']): CreateEnvelopeReques
 describe('NativeAramoSignatureProvider.createEnvelope — PX-V1 F2 fields', () => {
   it('adds each supplied field with the resolved envelope_document_id + signer_id', async () => {
     const addField = vi.fn(async () => ({ id: 'f' }));
-    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), undefined);
+    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), {} as never, undefined);
 
     await provider.createEnvelope(
       baseReq([
@@ -56,14 +56,14 @@ describe('NativeAramoSignatureProvider.createEnvelope — PX-V1 F2 fields', () =
 
   it('is backward-compatible: no fields supplied → addField never called (ATS RTR/Offer path)', async () => {
     const addField = vi.fn(async () => ({ id: 'f' }));
-    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), undefined);
+    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), {} as never, undefined);
     await provider.createEnvelope(baseReq(undefined));
     expect(addField).not.toHaveBeenCalled();
   });
 
   it('fails closed on an invalid field and writes no field row', async () => {
     const addField = vi.fn(async () => ({ id: 'f' }));
-    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), undefined);
+    const provider = new NativeAramoSignatureProvider(mkRepo(addField), mkService(), {} as never, undefined);
     await expect(
       provider.createEnvelope(baseReq([{ document_ordinal: 9, field_type: 'SIGNATURE', page_number: 0, x: 1, y: 1 }])),
     ).rejects.toThrow(/document_ordinal 9/);

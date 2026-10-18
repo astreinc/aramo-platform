@@ -64,7 +64,13 @@ export async function fetchMyProducts(): Promise<ProductAvailabilityView> {
 // authorization ("Each app checks your access again when it opens").
 export function productEntryHref(product: ProductAvailability): string | null {
   if (!product.available || product.entry_path === null) return null;
-  return product.entry_path;
+  // A tenant-host path (/ats/, /org/) or an absolute http(s) URL for a product on
+  // its own host (Sign: https://esign.aramo.ai/ — Lead Host & Workspace Ruling
+  // v1.0). Anything else (javascript:, protocol-relative //host) is never a link.
+  const p = product.entry_path;
+  if (/^https?:\/\//i.test(p)) return p;
+  if (p.startsWith('/') && !p.startsWith('//')) return p;
+  return null;
 }
 
 export type ProductsState =

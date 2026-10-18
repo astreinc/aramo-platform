@@ -19,7 +19,7 @@ function make(isClient: (id: string) => boolean) {
   const controller = new ClientSubmittalPolicyController(
     { resolveEffectiveView, readLayers, history } as never,
     { isClientCompany } as never,
-    { getCapabilities: async () => new Set(['core', 'ats']) } as never,
+    {} as never,
   );
   return { controller, resolveEffectiveView, readLayers, history, isClientCompany };
 }

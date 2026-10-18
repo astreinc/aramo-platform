@@ -3,6 +3,7 @@ import { DynamicModule, Module, ModuleMetadata, Provider } from '@nestjs/common'
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
 import { EsignService } from './esign.service.js';
+import { EsignSenderRepository } from './sender-workspace.repository.js';
 import { EVIDENCE_MANIFEST_SIGNER_PORT, SoftwareEvidenceManifestSigner } from './ports/evidence-manifest-signer.port.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
@@ -35,10 +36,12 @@ export class EsignModule {
         PrismaService,
         EsignRepository,
         EsignService,
+        // PX-1 — sender workspace reads + DRAFT authoring writes.
+        EsignSenderRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, ...(opts?.extraExports ?? [])],
     };
   }
 }

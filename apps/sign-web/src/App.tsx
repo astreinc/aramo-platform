@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
+import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SignApiError, signApi, type SignField, type SignerDocumentView } from './sign-api.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
@@ -85,6 +86,44 @@ interface Adopted {
   readonly method: 'TYPED' | 'DRAWN';
   readonly value: string;
   readonly display: string;
+}
+
+// A field filled in an earlier visit (value not returned by the server).
+const FILLED_MARK = '\u2713';
+
+// A drawn signature is saved CROPPED to its ink (plus a small margin) so it fills
+// the field box the sender sized, on the page and in the signed PDF. The pad is
+// transparent, so ink = any pixel with alpha. Falls back to the full pad.
+export function trimmedSignaturePng(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext('2d');
+  if (ctx === null) return canvas.toDataURL('image/png');
+  const { width, height } = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if ((data[(y * width + x) * 4 + 3] ?? 0) > 16) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return canvas.toDataURL('image/png');
+  const pad = 6;
+  const sx = Math.max(0, minX - pad);
+  const sy = Math.max(0, minY - pad);
+  const sw = Math.min(width, maxX + pad + 1) - sx;
+  const sh = Math.min(height, maxY + pad + 1) - sy;
+  const out = document.createElement('canvas');
+  out.width = sw;
+  out.height = sh;
+  out.getContext('2d')?.drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  return out.toDataURL('image/png');
 }
 
 function base64ToBlobUrl(b64: string, type: string): string {
@@ -240,7 +279,7 @@ function AdoptDialog({
   const ready = tab === 'TYPED' ? typed.trim().length > 0 : drawn;
   const adopt = () => {
     if (tab === 'TYPED') onAdopt({ method: 'TYPED', value: typed.trim(), display: typed.trim() });
-    else onAdopt({ method: 'DRAWN', value: canvasRef.current?.toDataURL('image/png') ?? '', display: 'Drawn' });
+    else onAdopt({ method: 'DRAWN', value: canvasRef.current ? trimmedSignaturePng(canvasRef.current) : '', display: 'Drawn' });
   };
 
   return (
@@ -375,6 +414,10 @@ export function App(): JSX.Element {
   const [screen, setScreen] = useState<Screen>(token.length === 0 ? 'invalid' : 'loading');
   const [view, setView] = useState<SignerDocumentView | null>(null);
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
+  // PX-2 — the source bytes (base64) per document, rendered page by page with the
+  // signer's fields in place; the browser PDF viewer is only the fallback.
+  const [docB64, setDocB64] = useState<Record<string, string>>({});
+  const [renderFailed, setRenderFailed] = useState(false);
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
   const [filled, setFilled] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(false);
@@ -389,6 +432,7 @@ export function App(): JSX.Element {
   const [activeField, setActiveField] = useState<string | null>(null);
 
   const fail = useCallback((e: unknown) => setScreen(screenForError(e)), []);
+  const onRenderError = useCallback(() => setRenderFailed(true), []);
 
   const open = useCallback(() => {
     if (token.length === 0) return;
@@ -413,10 +457,12 @@ export function App(): JSX.Element {
   const loadWorkspace = async () => {
     const v = await signApi.documentView(token);
     const urls: Record<string, string> = {};
+    const b64: Record<string, string> = {};
     for (const d of v.documents) {
       try {
         const src = await signApi.source(token, d.document_id);
         urls[d.document_id] = base64ToBlobUrl(src.source_base64, src.content_type);
+        b64[d.document_id] = src.source_base64;
       } catch (e) {
         if (e instanceof SignApiError && e.code !== 'NETWORK') throw e;
         // A document that fails to load shows its own message in the viewer.
@@ -424,6 +470,16 @@ export function App(): JSX.Element {
     }
     setView(v);
     setDocUrls(urls);
+    setDocB64(b64);
+    // Restore progress after a reload: the backend returns this signer's own
+    // entries, so the page shows the actual signature / date / text in place.
+    setFilled((m) => {
+      const next = { ...m };
+      for (const f of v.fields) {
+        if (f.filled === true && next[f.field_id] === undefined) next[f.field_id] = typeof f.value === 'string' && f.value.length > 0 ? f.value : FILLED_MARK;
+      }
+      return next;
+    });
     setActiveDoc(v.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.document_id ?? null);
     setScreen('workspace');
   };
@@ -443,7 +499,7 @@ export function App(): JSX.Element {
   const fields = useMemo(() => view?.fields ?? [], [view]);
   const required = fields.filter((f) => f.required);
   const doneRequired = required.filter((f) => filled[f.field_id] !== undefined).length;
-  const progress = `${doneRequired} of ${required.length} required complete`;
+  const progress = `${doneRequired} of ${required.length} required fields filled`;
   const nextField = fields.find((f) => f.required && filled[f.field_id] === undefined) ?? fields.find((f) => filled[f.field_id] === undefined) ?? null;
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
 
@@ -462,17 +518,29 @@ export function App(): JSX.Element {
     }
   };
 
+  // Every field stays editable until Finish signing (the backend accepts a new
+  // value while the session is live): a filled signature / initials reopens the
+  // adopt dialog to change it, a filled text field reopens its editor.
   const act = (f: SignField) => {
     setActiveField(f.field_id);
     if (f.document_id !== activeDoc) setActiveDoc(f.document_id);
     const t = f.field_type;
+    const done = filled[f.field_id] !== undefined;
     if (t === 'SIGNATURE' || t === 'INITIALS') {
       const a = adopted[t];
-      if (a) void fill(f, a.value, a.method);
+      if (a && !done) void fill(f, a.value, a.method);
       else setAdoptFor(f);
-    } else if (t === 'SIGN_DATE') void fill(f, today());
-    else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') void fill(f, 'true');
-    else setTextFor(f);
+    } else if (t === 'SIGN_DATE') {
+      if (!done) void fill(f, today());
+    } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
+      if (!done) void fill(f, 'true');
+    } else setTextFor(f);
+  };
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && f.field_type !== 'CHECKBOX' && f.field_type !== 'ACKNOWLEDGEMENT';
+  // The typed text already in a field (never a drawn image or a restored mark).
+  const typedIn = (f: SignField | null): string => {
+    const v = f === null ? undefined : filled[f.field_id];
+    return v !== undefined && !v.startsWith('data:image/') && v !== FILLED_MARK ? v : '';
   };
 
   const finish = async () => {
@@ -508,6 +576,16 @@ export function App(): JSX.Element {
   };
 
   const suggestedName = adopted.SIGNATURE?.method === 'TYPED' ? adopted.SIGNATURE.display : '';
+
+  // What a filled field shows on the page: the drawn image, the typed / entered
+  // text, or a completed mark (restored from an earlier visit).
+  const displayOf = (f: SignField): FieldDisplay | null => {
+    const v = filled[f.field_id];
+    if (v === undefined) return null;
+    if (v.startsWith('data:image/')) return { kind: 'image', value: v };
+    if (f.field_type === 'CHECKBOX' || f.field_type === 'ACKNOWLEDGEMENT' || v === FILLED_MARK) return { kind: 'mark', value: FILLED_MARK };
+    return { kind: 'text', value: v };
+  };
 
   // ── End states ──
   if (screen === 'invalid')
@@ -641,10 +719,10 @@ export function App(): JSX.Element {
               {fields.map((f) => (
                 <li key={f.field_id}>
                   <span>
-                    {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number}
+                    {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number + 1}
                   </span>
                   <span className={filled[f.field_id] !== undefined ? 'sg-ok' : 'sg-muted'}>
-                    {filled[f.field_id] !== undefined ? 'Completed' : f.required ? 'Required' : 'Optional · skipped'}
+                    {filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped'}
                   </span>
                 </li>
               ))}
@@ -676,7 +754,20 @@ export function App(): JSX.Element {
                 ))}
               </div>
             ) : null}
-            {url ? (
+            {doc && docB64[doc.document_id] !== undefined && !renderFailed ? (
+              <PdfDocument
+                base64={docB64[doc.document_id] ?? ''}
+                fields={fields.filter((f) => f.document_id === doc.document_id)}
+                display={displayOf}
+                activeField={activeField}
+                label={(f) => FIELD_LABEL[f.field_type] ?? f.field_type}
+                actionLabel={(f) => ACTION_LABEL[f.field_type] ?? 'Complete'}
+                onField={(f) => {
+                  if (!busy) act(f);
+                }}
+                onError={onRenderError}
+              />
+            ) : url ? (
               <iframe className="sg-frame" title={doc?.title ?? 'Document'} src={url} />
             ) : (
               <div className="sg-frame sg-frame--missing" role="status">
@@ -703,14 +794,21 @@ export function App(): JSX.Element {
                     <span className="sg-field__text">
                       <span className="sg-field__name">{FIELD_LABEL[f.field_type] ?? f.field_type}</span>
                       <span className="sg-field__meta">
-                        {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number}
+                        {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
                       </span>
                     </span>
                     {done ? (
-                      <span className="sg-ok">Completed</span>
+                      <span className="sg-done-actions">
+                        <span className="sg-ok">Filled</span>
+                        {editable(f) ? (
+                          <Btn variant="quiet" disabled={busy} onClick={() => act(f)} aria-label={`Change ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
+                            Change
+                          </Btn>
+                        ) : null}
+                      </span>
                     ) : (
-                      <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number}`}>
+                      <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
                         {ACTION_LABEL[f.field_type] ?? 'Complete'}
                       </Btn>
                     )}
@@ -737,7 +835,7 @@ export function App(): JSX.Element {
       {adoptFor ? (
         <AdoptDialog
           kind={adoptFor.field_type === 'INITIALS' ? 'INITIALS' : 'SIGNATURE'}
-          suggestedName={suggestedName}
+          suggestedName={typedIn(adoptFor) !== '' ? typedIn(adoptFor) : suggestedName}
           onClose={() => setAdoptFor(null)}
           onAdopt={(a) => {
             const f = adoptFor;
@@ -751,7 +849,7 @@ export function App(): JSX.Element {
       {textFor ? (
         <TextDialog
           title={FIELD_LABEL[textFor.field_type] ?? 'Text'}
-          initial={textFor.field_type === 'SIGNER_NAME' ? suggestedName : ''}
+          initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' ? suggestedName : ''}
           onClose={() => setTextFor(null)}
           onSave={(v) => {
             const f = textFor;

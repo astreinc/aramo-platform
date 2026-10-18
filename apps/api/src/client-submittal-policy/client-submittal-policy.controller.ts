@@ -3,14 +3,19 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { COMPANY_CLIENT_CHECK_PORT, type CompanyClientCheckPort } from '@aramo/requisition';
-import { EntitlementRepository } from '@aramo/entitlement';
 import {
   ClientSubmittalPolicyService,
   DEFAULT_OVERRIDE_POLICY,
   type ClientSubmittalPolicyScope,
 } from '@aramo/client-submittal-policy';
 
+import { SignatureAvailabilityService } from '../document-signing/signature-availability.service.js';
+
 import { PublishClientSubmittalPolicyDto } from './dto/client-submittal-policy.dto.js';
+
+// Signature states that mean the tenant cannot send a Right to Represent at all.
+// Temporary states (allowance used up, provider disconnected) do not block authoring.
+const RTR_UNSENDABLE = new Set(['NO_PROVIDER', 'NOT_SUBSCRIBED', 'PROVIDER_UNAVAILABLE']);
 
 // CSP PR-2 — the Client Submittal Policy admin HTTP surface (DARK: authoring +
 // effective read only; NO submit-command reference — that wiring is PR-3). CLIENT-
@@ -22,7 +27,7 @@ export class ClientSubmittalPolicyController {
   constructor(
     private readonly policy: ClientSubmittalPolicyService,
     @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
-    private readonly entitlements: EntitlementRepository,
+    private readonly signatures: SignatureAvailabilityService,
   ) {}
 
   /**
@@ -170,16 +175,16 @@ export class ClientSubmittalPolicyController {
       }
       scope_ref = dto.scope_ref;
     }
-    // A Right to Represent can only be satisfied by an RTR executed through Aramo
-    // Sign (the DOC-5 gate) and sending one needs the tenant's Sign subscription.
-    // Requiring RTR without Sign would block every submittal it governs with no
-    // path forward, so publishing such a policy is refused.
+    // Multi-Provider directive §D — a required RTR must be sendable by this tenant;
+    // otherwise every submittal to this client would stall with no way forward.
+    // (Supersedes the capability-only check: NOT_SUBSCRIBED covers a tenant without
+    // the esign capability.)
     if (dto.requirements.some((r) => r.key === 'rtr_present' && r.disposition === 'REQUIRED')) {
-      const caps = await this.entitlements.getCapabilities(auth.tenant_id);
-      if (!caps.has('esign')) {
-        throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'Requiring a Right to Represent needs the Aramo Sign subscription', 422, {
+      const signing = await this.signatures.evaluate(auth.tenant_id);
+      if (signing.reason !== null && RTR_UNSENDABLE.has(signing.reason)) {
+        throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'Requiring a Right to Represent needs a working e-signature provider', 422, {
           requestId,
-          details: { reason: 'RTR_REQUIRES_SIGN', key: 'rtr_present' },
+          details: { reason: 'RTR_REQUIRES_SIGN', key: 'rtr_present', signature_reason: signing.reason, provider: signing.provider },
         });
       }
     }

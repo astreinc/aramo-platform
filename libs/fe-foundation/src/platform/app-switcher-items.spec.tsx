@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildAppSwitcherItems } from './app-switcher-items';
-import type { ProductAvailabilityView } from './products';
+import { productEntryHref, type ProductAvailabilityView } from './products';
 
 // App switcher rows (App Home handoff §3) — strictly from the backend
 // availability read; the external signer app is never a row.
@@ -50,5 +50,17 @@ describe('buildAppSwitcherItems', () => {
     const items = buildAppSwitcherItems({ current: 'home', products: null });
     expect(items.filter((i) => i.state === 'open')).toEqual([]);
     expect(JSON.stringify(items)).not.toContain('/s/');
+  });
+});
+
+describe('productEntryHref — Sign on its own host', () => {
+  const base = { subscribed: true, authorized: true, available: true, reason: null } as const;
+  it('opens an absolute https product-host entry directly, and tenant-host paths as-is', () => {
+    expect(productEntryHref({ key: 'esign', ...base, entry_path: 'https://esign.aramo.ai/' })).toBe('https://esign.aramo.ai/');
+    expect(productEntryHref({ key: 'ats', ...base, entry_path: '/ats/' })).toBe('/ats/');
+  });
+  it('never links a non-http(s) or protocol-relative entry', () => {
+    expect(productEntryHref({ key: 'esign', ...base, entry_path: 'javascript:alert(1)' })).toBeNull();
+    expect(productEntryHref({ key: 'esign', ...base, entry_path: '//evil.example/' })).toBeNull();
   });
 });

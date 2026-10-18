@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
 import type { Request } from 'express';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
@@ -37,7 +37,7 @@ import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.
 //      here on purpose (no dark, unauthenticated send API).
 //   3. v1/esign/signing    — capability-token signer transport (below).
 
-function toHttp(e: unknown, requestId: string): AramoError {
+export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof EnvelopeNotFoundError) return new AramoError('ENVELOPE_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof EnvelopeIllegalTransitionError) return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', e.message, 409, { requestId });
   // ES-1 — any signer action on a terminal (COMPLETED|DECLINED|VOIDED|EXPIRED) envelope.
@@ -56,6 +56,10 @@ function validate(cond: boolean, message: string, requestId: string): void {
   if (!cond) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
 }
 
+// The canonical error envelope ({ error: { code, message, details } }) so the ATS
+// adapter receives typed refusals (e.g. the Aramo Sign allowance) rather than a
+// bare 500.
+@UseFilters(AramoExceptionFilter)
 @Controller('v1/esign/envelopes')
 export class EsignProviderController {
   constructor(private readonly provider: NativeAramoSignatureProvider) {}
@@ -167,7 +171,13 @@ export class EsignProviderController {
   }
 }
 
+// The signer page (sign-web) maps failures by error CODE (SIGNING_SESSION_INVALID,
+// SIGNING_SESSION_EXPIRED, ENVELOPE_ALREADY_EXECUTED, …) to its dedicated end
+// states; the canonical envelope {error:{code,message,request_id}} carries it.
+// Without this filter Nest emitted {statusCode,message} and every bad or expired
+// link fell to the generic "Something went wrong" screen.
 @Controller('v1/esign/signing')
+@UseFilters(AramoExceptionFilter)
 export class EsignSignerController {
   constructor(
     private readonly service: EsignService,

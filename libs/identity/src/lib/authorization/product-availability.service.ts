@@ -33,7 +33,9 @@ export interface ProductAvailability {
   readonly subscribed: boolean;
   readonly authorized: boolean;
   readonly available: boolean;
-  // Relative entry path on the tenant host (D-ORG topology T1); null while dark.
+  // Where the product opens; null while dark. A path relative to the tenant host
+  // (D-ORG topology T1: /ats/, /org/), or an ABSOLUTE URL for a product on its own
+  // host (Sign: https://esign.aramo.ai/ — Lead Host & Workspace Ruling v1.0).
   readonly entry_path: string | null;
   readonly reason: ProductUnavailableReason | null;
 }
@@ -44,14 +46,27 @@ export interface ProductAvailabilityView {
 }
 
 // T1 topology (§3.B): App Home at `/`, ATS at `/ats/`, Organization Administration
-// at `/org/`. Sign's entry is a PX-V1 activation item (apps/esign-web) and is
-// reported dark until ARAMO_SIGN_ENTRY_ENABLED=true names its path.
+// at `/org/`. Sign is NOT on the tenant host: its sender application is
+// apps/esign-web on its own product host, esign.aramo.ai, for business and
+// personal accounts alike (Lead Host & Workspace Ruling v1.0 amends the earlier
+// tenant-host `/sign/` assumption). The entry stays dark until
+// ARAMO_SIGN_ENTRY_ENABLED=true; ARAMO_SIGN_ENTRY_URL overrides the host
+// (e.g. http://localhost:4206/ locally). The Sign app resolves /sign/ vs
+// /personal/ itself from the backend context.
 export const ATS_ENTRY_PATH = '/ats/';
 export const ORG_ENTRY_PATH = '/org/';
-export const DEFAULT_SIGN_ENTRY_PATH = '/sign/';
+export const DEFAULT_SIGN_ENTRY_URL = 'https://esign.aramo.ai/';
 
 export function signEntryActivated(env: NodeJS.ProcessEnv = process.env): boolean {
   return env['ARAMO_SIGN_ENTRY_ENABLED'] === 'true';
+}
+
+// The Sign entry URL: ARAMO_SIGN_ENTRY_URL when it is an absolute http(s) URL,
+// else the production product host. Never a tenant-host path.
+export function signEntryUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const v = env['ARAMO_SIGN_ENTRY_URL'];
+  if (v !== undefined && /^https?:\/\/[^/\s]+/i.test(v)) return v.endsWith('/') ? v : `${v}/`;
+  return DEFAULT_SIGN_ENTRY_URL;
 }
 
 // The organization scope(s) every tenant role carries as a session marker; holding
@@ -95,7 +110,7 @@ export class ProductAvailabilityService {
     const signActivated = signEntryActivated();
     const products: ProductAvailability[] = [
       product('ats', capabilities.has('ats'), atsScopes.length > 0, true, ATS_ENTRY_PATH),
-      product('esign', tenantHasEsign, signScopes.length > 0, signActivated, signActivated ? DEFAULT_SIGN_ENTRY_PATH : null),
+      product('esign', tenantHasEsign, signScopes.length > 0, signActivated, signActivated ? signEntryUrl() : null),
       product('org', capabilities.has('core'), orgScopes.length > 0, true, ORG_ENTRY_PATH),
     ];
     return { tenant_id: args.tenant_id, products };

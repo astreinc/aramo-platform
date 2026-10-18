@@ -1,0 +1,93 @@
+// Per-module Prisma schema for the `subscription` module.
+//
+// Aramo-E-Sign-Multi-Provider-Plan-Entitlements-Usage-Directive-v1_0-LOCKED §B/§C
+// — the commercial allowance authority, kept SEPARATE from the signing engine
+// (envelope lifecycle) and from provider routing:
+//
+//   Plan + PlanAllowance  the plan catalog; allowances are configurable rows
+//                         (the Aramo Sign 100/month is DATA, never a constant).
+//   TenantSubscription    which plan a tenant is on and its billing-period anchor.
+//                         No payment status is modelled (no billing provider is
+//                         selected — nothing here may be fabricated).
+//   AllowanceUsage        one row per metered send, keyed by a stable send
+//                         identity, with a reserve → consume | release protocol.
+//
+// Cross-schema references are UUID-only without FK constraints (§7.3).
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["subscription"]
+}
+
+model Plan {
+  id            String               @id @db.Uuid
+  // Stable catalog key (e.g. "aramo-sign-included-v1"); never a display name.
+  key           String               @unique
+  name          String
+  created_at    DateTime             @default(now()) @db.Timestamptz(6)
+  allowances    PlanAllowance[]
+  subscriptions TenantSubscription[]
+
+  @@schema("subscription")
+}
+
+model PlanAllowance {
+  plan_id           String @db.Uuid
+  // Metered feature, e.g. "esign.envelopes".
+  allowance_key     String
+  // Included quantity per period. No rollover of the included allowance.
+  included_quantity Int
+  // CHECK: MONTHLY (the only period V1 supports).
+  period            String @default("MONTHLY")
+  plan              Plan   @relation(fields: [plan_id], references: [id])
+
+  @@id([plan_id, allowance_key])
+  @@schema("subscription")
+}
+
+model TenantSubscription {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  plan_id       String    @db.Uuid
+  // Billing periods start at this instant and every calendar month after it
+  // (day clamped to the month's length).
+  period_anchor DateTime  @db.Timestamptz(6)
+  // CHECK: MANUAL | DEVELOPMENT. DEVELOPMENT rows come only from the governed
+  // local/test seed, which refuses to run in production.
+  source        String
+  started_at    DateTime  @default(now()) @db.Timestamptz(6)
+  ended_at      DateTime? @db.Timestamptz(6)
+  created_by    String
+  plan          Plan      @relation(fields: [plan_id], references: [id])
+
+  // At most one open subscription per tenant (partial unique index in SQL).
+  @@index([tenant_id])
+  @@schema("subscription")
+}
+
+model AllowanceUsage {
+  id             String    @id @db.Uuid
+  tenant_id      String    @db.Uuid
+  allowance_key  String
+  // Stable send identity, e.g. "aramo-sign:envelope:<envelope_id>".
+  send_key       String
+  // The billing period the send is charged to (fixed at reservation).
+  period_start   DateTime  @db.Timestamptz(6)
+  // CHECK: RESERVED | CONSUMED | RELEASED
+  state          String
+  // CHECK: SEND | HISTORICAL (backfilled from an existing sent record)
+  origin         String    @default("SEND")
+  reserved_at    DateTime  @default(now()) @db.Timestamptz(6)
+  // A RESERVED row older than this is resolved by reconciliation before counting.
+  reserved_until DateTime  @db.Timestamptz(6)
+  finalized_at   DateTime? @db.Timestamptz(6)
+
+  @@unique([tenant_id, allowance_key, send_key])
+  @@index([tenant_id, allowance_key, period_start])
+  @@schema("subscription")
+}

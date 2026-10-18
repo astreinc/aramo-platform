@@ -108,10 +108,13 @@ export class EsignSenderConsumerGuard implements CanActivate {
 }
 
 // The composed boundary a Sign sender route mounts. Method- or class-level.
-export function EsignSenderBoundary(): MethodDecorator & ClassDecorator {
+// PX-1 — the route's required Sign scope is a parameter (default unchanged:
+// esign:envelope:send). Read routes pass esign:envelope:read, draft authoring
+// passes esign:envelope:create; the consumer + capability layers are identical.
+export function EsignSenderBoundary(scope: string = ESIGN_SENDER_SCOPE_KEY): MethodDecorator & ClassDecorator {
   return applyDecorators(
     UseGuards(JwtAuthGuard, EsignSenderConsumerGuard, EntitlementGuard, RolesGuard),
     RequireCapability('esign'),
-    RequireScopes(ESIGN_SENDER_SCOPE_KEY),
+    RequireScopes(scope),
   );
 }

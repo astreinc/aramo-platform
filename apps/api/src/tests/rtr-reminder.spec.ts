@@ -3,6 +3,7 @@ import { AramoError } from '@aramo/common';
 import type { SignatureProviderPort, EnvelopeSummary } from '@aramo/documents-contracts';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
+import { staticSignatureRouter } from '../document-signing/signature-router.js';
 import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 
@@ -59,7 +60,7 @@ function makeOrchestrator(opts: {
   };
   // The common send/remind mechanics live in the shared signing service — fed the SAME mocked
   // documents + signature, so the duplicate-guard + reminder assertions below still hold.
-  const signing = new GovernedDocumentSigningService(documents as never, {} as never /* render — unused on send/remind */, signature);
+  const signing = new GovernedDocumentSigningService(documents as never, {} as never /* render — unused on send/remind */, staticSignatureRouter(signature));
   const orch = new RtrOrchestratorService(
     documents as never,
     signing,

@@ -13,6 +13,7 @@ import { RequisitionIngestionView } from '../../requisition-imports/RequisitionI
 import { IntegrationConnectionsPanel } from '../../integrations/IntegrationConnectionsPanel';
 import { CommunicationsProvidersPanel } from '../../communications/CommunicationsProvidersPanel';
 import { LlmProvidersPanel } from '../../integrations/LlmProvidersPanel';
+import { ESignatureProvidersPanel } from '../../integrations/ESignatureProvidersPanel';
 
 // Settings Rebuild Directive 1 — the honest seams.
 //
@@ -133,6 +134,11 @@ export function IntegrationsSection() {
           integration:read/write (absent scope => absent + no fetch). Write-only:
           keys are never displayed; unwired providers render as "coming soon". */}
       <LlmProvidersPanel />
+
+      {/* Multi-Provider E-Sign §E/§H — Settings → Integrations → E-Signature. Self-gates
+          on integration:read/write (absent scope => absent + no fetch). One active
+          provider; the Aramo Sign allowance comes from the backend. */}
+      <ESignatureProvidersPanel />
 
       <SettingsSeam
         icon={<IconPlug />}

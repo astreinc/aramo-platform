@@ -104,6 +104,7 @@
     },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
+    { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "README.md", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -10883,6 +10884,16 @@
       "to": "apps/esign-service/tsconfig.app.json"
     },
     {
+      "from": "apps/esign-web/project.json",
+      "status": "unscoped",
+      "to": "apps/esign-web/vite.config.ts"
+    },
+    {
+      "from": "apps/esign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
       "from": "apps/home-web/playwright.topology.config.ts",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
@@ -11104,12 +11115,32 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/document-signing/esignature-integration.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/document-signing/signature-availability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/adobe-sign/adobe-sign-webhook.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/docusign/docusign-webhook.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11295,6 +11326,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11686,6 +11722,11 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "libs/identity/src/lib/dto/scope.dto.ts"
     },
     {
@@ -11908,6 +11949,11 @@
       "from": "doc/10-multi-product-app-home-and-org-consumer.md",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-esign-sender.md"
     },
     {
       "from": "doc/10-multi-product-app-home-and-org-consumer.md",
@@ -12858,6 +12904,11 @@
       "from": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-esign-allowance.md"
     },
     {
       "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
@@ -18580,6 +18631,41 @@
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
+      "from": "doc/runbooks/RELEASE-esign-allowance.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-allowance.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "deploy/build-images.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/host-binding.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -18598,6 +18684,11 @@
       "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/runbooks/esignature-external-providers.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
     },
     {
       "from": "doc/runbooks/frontdoor-cutover.md",
@@ -18640,6 +18731,7 @@
       "to": "apps/ats-web/e2e/README.md"
     },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-run-link.sh" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
@@ -20801,6 +20893,16 @@
       "to": "libs/mailer/tsconfig.lib.json"
     },
     {
+      "from": "libs/mailer/src/lib/mailer.config.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
+    },
+    {
+      "from": "libs/mailer/src/lib/outbox-mailer.adapter.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
+    },
+    {
       "from": "libs/matching/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -21765,6 +21867,16 @@
       "to": "libs/settings/tsconfig.lib.json"
     },
     {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/tsconfig.lib.json"
+    },
+    {
       "from": "libs/skills-taxonomy/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -21882,6 +21994,16 @@
       "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
       "status": "excluded",
       "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "libs/subscription/project.json",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "libs/subscription/project.json",
+      "status": "unscoped",
+      "to": "libs/subscription/tsconfig.lib.json"
     },
     {
       "from": "libs/talent-embedding/prisma/schema.prisma",
@@ -22225,6 +22347,11 @@
     {
       "from": "package.json",
       "status": "unscoped",
+      "to": "libs/signature-routing/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
       "to": "libs/skills-taxonomy/prisma/schema.prisma"
     },
     {
@@ -22238,6 +22365,16 @@
       "to": "libs/submittal-eligibility/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/submittal/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/seed-development-subscription.ts"
+    },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -22374,6 +22511,16 @@
       "from": "pact/consumers/esign-source-consumer/src/webhook.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/esign-web/src/api.ts"
+    },
+    {
+      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-esign.ts"
     },
     {
       "from": "pact/consumers/ingestion-consumer/src/ingestion.consumer.test.ts",
@@ -22634,6 +22781,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261016160000_doc_template_version_internal_notes/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -23558,7 +23710,17 @@
     {
       "from": "pact/provider/src/verify-esign.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/main.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
       "to": "pact/consumers/esign-consumer/src/esign.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-esign.ts",
@@ -23824,6 +23986,11 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
+      "to": "apps/sign-web/public/fonts/HomemadeApple-LICENSE.txt"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
       "to": "ci/scripts/verify-ats-refusal.ts"
     },
     {
@@ -23972,6 +24139,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/consent/src/tests/stale-consent.integration.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/fonts/HomemadeApple-LICENSE.txt"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
@@ -24237,6 +24409,7 @@
       "status": "unscoped",
       "to": "tools/enable-e2e-recruiter.ts"
     },
+    { "from": "tools/local-mail.cjs", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
       "from": "tools/local-run-link.sh",
       "status": "unscoped",
@@ -24246,6 +24419,7 @@
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "libs/identity/prisma/seed.ts" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-run-link.sh" },
     {
       "from": "tools/local-stack.sh",
@@ -24430,6 +24604,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/skills-taxonomy/src/index.ts"
     },
     {
@@ -24443,6 +24622,7 @@
       "to": "libs/submittal-eligibility/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/submittal/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/subscription/src/index.ts" },
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
@@ -24613,6 +24793,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/saved-list/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/skills-taxonomy/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sourced-talent/src/index.ts" },
     {
@@ -24621,6 +24806,7 @@
       "to": "libs/submittal-eligibility/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/submittal/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/subscription/src/index.ts" },
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",
@@ -24661,7 +24847,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 77,
+    "files": 78,
     "huskyPresent": false
   },
   "scripts": [
@@ -25018,6 +25204,10 @@
       "references": [{ "kind": "npm-run", "path": "tools/local-stack.sh" }]
     },
     {
+      "name": "prisma:seed-dev-subscription",
+      "references": [{ "kind": "npm-run", "path": "tools/local-stack.sh" }]
+    },
+    {
       "name": "prisma:seed-entitlements",
       "references": [
         { "kind": "npm-run", "path": "deploy/seed-prod.sh" },
@@ -25097,6 +25287,7 @@
         { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },

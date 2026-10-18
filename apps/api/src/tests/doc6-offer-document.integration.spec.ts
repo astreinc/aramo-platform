@@ -24,6 +24,7 @@ import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/p
 import { type TalentRecordRepository } from '@aramo/talent-record';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
+import { staticSignatureRouter } from '../document-signing/signature-router.js';
 import { OfferDocumentOrchestratorService, OFFER_LETTER_TYPE_ID } from '../offer-document/offer-document-orchestrator.service.js';
 
 // DOC-6 B4 (R-6-10, PL-1/PL-2) — the load-bearing offer-letter proof on real Postgres
@@ -121,7 +122,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 offer-docum
 
     offers = new OfferRepository(placementPrisma, new OfferTransitionPolicyService(new PolicyStore(storePrisma)));
     const documentsRepo = new DocumentsRepository(docsPrisma, new DocumentIdempotencyService(docsPrisma));
-    const signing = new GovernedDocumentSigningService(documentsRepo, render, signature);
+    const signing = new GovernedDocumentSigningService(documentsRepo, render, staticSignatureRouter(signature));
     orchestrator = new OfferDocumentOrchestratorService(signing, talent, offers);
 
     // Publish a permissive offer package so the Offer can reach SENT.

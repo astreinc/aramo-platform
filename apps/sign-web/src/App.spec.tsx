@@ -2,6 +2,21 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from './App.js';
+import { fieldBox } from './field-geometry.js';
+
+// The page renderer (pdfjs) cannot load under jsdom; this stand-in renders each
+// field as an on-page button so the signing flow is still exercised end to end.
+vi.mock('./pdf-view.js', () => ({
+  PdfDocument: ({ fields, onField, actionLabel, label }: { fields: { field_id: string }[]; onField: (f: unknown) => void; actionLabel: (f: unknown) => string; label: (f: unknown) => string }) => (
+    <div data-testid="sg-pages">
+      {fields.map((f) => (
+        <button key={f.field_id} type="button" data-testid="sg-onpage-field" onClick={() => onField(f)}>
+          On page · {label(f)} ({actionLabel(f).length})
+        </button>
+      ))}
+    </div>
+  ),
+}));
 
 // The external signer app (signer handoff §5–§7; RTR signing storyboard) against
 // a mocked signer transport: the full journey, decline, and each token state.
@@ -61,24 +76,45 @@ async function toWorkspace() {
 }
 
 describe('signer app', () => {
+  it('lets a filled signature be changed until Finish signing', async () => {
+    const calls = transport();
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(await screen.findByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    await screen.findAllByText('1 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await screen.findAllByText('2 of 3 required fields filled');
+    // Change the filled signature: the adopt dialog reopens with the current name.
+    fireEvent.click(screen.getByRole('button', { name: /^Change Signature/ }));
+    const name = await screen.findByLabelText('Your full name');
+    expect(name).toHaveValue('Ravi Shankar');
+    fireEvent.change(name, { target: { value: 'Ravi S. Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/fill') && JSON.stringify(c.body).includes('Ravi S. Shankar'))).toBe(true));
+    await screen.findAllByText('2 of 3 required fields filled');
+  });
+
   it('walks landing → disclosure → workspace → adopt → review → signed, with progress and no link into any Aramo app', async () => {
     const calls = transport();
     await toWorkspace();
-    expect(screen.getAllByText('0 of 3 required complete').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('0 of 3 required fields filled').length).toBeGreaterThan(0);
     // Start → the first required field (initials) → adopt dialog (Type).
     fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     const dialog = await screen.findByRole('dialog', { name: 'Adopt your initials' });
     fireEvent.change(screen.getByLabelText('Your initials'), { target: { value: 'RS' } });
     fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());
-    await screen.findAllByText('1 of 3 required complete');
+    await screen.findAllByText('1 of 3 required fields filled');
     // Next field → signature → adopt; then date applies with one tap.
     fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
     fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
     fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
-    await screen.findAllByText('2 of 3 required complete');
+    await screen.findAllByText('2 of 3 required fields filled');
     fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
-    await screen.findAllByText('3 of 3 required complete');
+    await screen.findAllByText('3 of 3 required fields filled');
     fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
     expect(await screen.findByText(/You've signed Right to Represent/)).toBeInTheDocument();
@@ -103,7 +139,7 @@ describe('signer app', () => {
         if (input) fireEvent.change(input, { target: { value: 'Ravi Shankar' } });
         fireEvent.click(screen.getByRole('button', { name: /Adopt &/ }));
       }
-      await screen.findAllByText(`${i + 1} of 3 required complete`);
+      await screen.findAllByText(`${i + 1} of 3 required fields filled`);
     }
     fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
@@ -165,5 +201,17 @@ describe('signer app', () => {
     await toWorkspace();
     fireEvent.click(screen.getByRole('button', { name: /Add date/ }));
     expect(await screen.findByRole('alert')).toHaveTextContent("That didn't save");
+  });
+});
+
+describe('PX-2 field geometry', () => {
+  it('maps a PDF bottom-left box to top-left page percentages', () => {
+    const box = fieldBox({ field_type: 'SIGNATURE', x: 72, y: 144, width: 220, height: 48 }, { width: 612, height: 792 });
+    expect(box.left).toBe(`${(72 / 612) * 100}%`);
+    expect(box.top).toBe(`${((792 - 144 - 48) / 792) * 100}%`);
+    expect(box.width).toBe(`${(220 / 612) * 100}%`);
+  });
+  it('uses the type default size when width/height are absent', () => {
+    expect(fieldBox({ field_type: 'SIGN_DATE', x: 0, y: 0, width: null, height: null }, { width: 612, height: 792 }).height).toBe(`${(22 / 792) * 100}%`);
   });
 });

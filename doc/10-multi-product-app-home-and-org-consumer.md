@@ -54,7 +54,12 @@ Policy code: `libs/identity/src/lib/authorization/consumer-scope-policy.ts` (`re
 `subscribed` (the tenant holds the capability), `authorized` (the caller holds a scope/role that can use it), `available`
 (subscribed ∧ authorized ∧ activated), `entry_path`, `reason` (`not_subscribed` | `not_authorized` | `not_activated`).
 The FE renders these booleans and never derives entitlement; no role is granted automatically. `authorized` is read the way a session mint reads scopes (the membership's site selects the tenant-wide or the site-aware reader — PR-4 §2.4 invariant 6), so App Home never marks a product unavailable for someone the product session would authorize (Gate-6 V1, proven on a real site-scoped membership). Sign's entry is reported
-`not_activated` until `ARAMO_SIGN_ENTRY_ENABLED=true` (its path then `/sign/`) — the Sign PRODUCT host stays dark (§3.H).
+`not_activated` until `ARAMO_SIGN_ENTRY_ENABLED=true` — the Sign PRODUCT host stays dark (§3.H). Amended by
+`Aramo-E-Sign-Host-and-Workspace-Architecture-Ruling-v1_0-LOCKED` (2026-10-18): Sign is NOT served under `/sign/` on
+the tenant host. Its single sender application is `apps/esign-web` on `esign.aramo.ai` (business accounts at `/sign/`,
+personal accounts at `/personal/`, chosen from the backend context), so the activated entry is the absolute URL
+`https://esign.aramo.ai/` (`ARAMO_SIGN_ENTRY_URL` overrides it) and App Home opens it directly. See
+`doc/runbooks/RELEASE-esign-sender.md`.
 
 A product tile enters the product through that product's consumer login with the entry path sealed as `return_to`
 (`/auth/recruiter/login?return_to=%2Fats%2F`), so a product session is minted by its own consumer — the `org` session is

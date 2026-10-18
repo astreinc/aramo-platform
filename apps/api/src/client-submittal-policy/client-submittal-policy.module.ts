@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
-import { EntitlementModule } from '@aramo/entitlement';
 import { CLIENT_SUBMITTAL_POLICY_GATEWAY, ClientSubmittalPolicyService } from '@aramo/client-submittal-policy';
 import { PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+
+import { SignatureRoutingModule } from '../document-signing/signature-routing.module.js';
 
 import {
   CLIENT_SUBMITTAL_POLICY_DB,
@@ -17,7 +18,7 @@ import { ClientSubmittalPolicyController } from './client-submittal-policy.contr
 // read only; the submit command does NOT consume this yet (PR-3). CompanyClientCheck
 // is provided @Global (reused ownership seam).
 @Module({
-  imports: [AuthModule, AuthorizationModule, EntitlementModule],
+  imports: [AuthModule, AuthorizationModule, SignatureRoutingModule],
   controllers: [ClientSubmittalPolicyController],
   providers: [
     PolicyStorePrismaService,

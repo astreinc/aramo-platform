@@ -160,6 +160,27 @@ export function validateEnvPassthrough(
   return violations;
 }
 
+// ASSERTION 3 — local-development settings never reach production. These are read
+// by code only to make a laptop stack usable (local mailbox, LocalStack endpoints,
+// local tenant-host links, the dark Sign tile switch); none may appear in the prod
+// compose. And every service that sends mail must run NODE_ENV=production — the
+// guard that makes the local outbox mailer refuse to start there.
+export const LOCAL_ONLY_VARS: readonly RegExp[] = [/\bMAILER_OUTBOX_[A-Z_]*\b/, /\bSES_ENDPOINT\b/, /\bLOCAL_MAIL\b/, /MAILER_PROVIDER\s*=\s*outbox/];
+
+export function validateLocalOnly(composeText: string): string[] {
+  const problems: string[] = [];
+  for (const re of LOCAL_ONLY_VARS) {
+    if (re.test(composeText)) problems.push(`local-development setting ${re.source} appears in docker-compose.prod.yml`);
+  }
+  const doc = parse(composeText) as { services?: Record<string, { environment?: unknown }> } | null;
+  for (const [svc, def] of Object.entries(doc?.services ?? {})) {
+    const env = Array.isArray(def.environment) ? def.environment.map(String) : Object.entries((def.environment ?? {}) as Record<string, unknown>).map(([k, v]) => `${k}=${String(v)}`);
+    const sendsMail = env.some((e) => e === 'MAILER_PROVIDER' || e.startsWith('MAILER_PROVIDER='));
+    if (sendsMail && !env.includes('NODE_ENV=production')) problems.push(`service "${svc}" sends mail but does not set NODE_ENV=production`);
+  }
+  return problems;
+}
+
 // ── Embedded selftest (isolated fixtures; the "seeded missing-passthrough" proof) ────────
 function selftest(): void {
   // Fixture 1 — a service that DROPS a required passthrough (assertion 1).
@@ -211,9 +232,19 @@ services:
     (anchorModel.passthroughByService['api'] ?? []).includes('ARAMO_IDENTITY_PEPPER') &&
     (anchorModel.passthroughByService['auth-service'] ?? []).includes('ARAMO_IDENTITY_PEPPER');
 
-  if (!caughtDrop || !caughtUndoc || !resolvedBoth) {
+  // Fixture 4 — a local-only setting and a mail service without NODE_ENV=production.
+  const localProblems = validateLocalOnly(`
+services:
+  esign-service:
+    environment:
+      - MAILER_PROVIDER
+      - MAILER_OUTBOX_DIR=/tmp/mail
+`);
+  const caughtLocal = localProblems.some((x) => x.includes('MAILER_OUTBOX')) && localProblems.some((x) => x.includes('NODE_ENV=production'));
+
+  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal) {
     console.error(
-      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth}).`,
+      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal}).`,
     );
     process.exit(2);
   }
@@ -224,6 +255,12 @@ function main(): void {
   const model = parseComposeEnv(readFileSync(COMPOSE, 'utf8'));
   const documented = documentedKeys(readFileSync(ENV_EXAMPLE, 'utf8'));
   const violations = validateEnvPassthrough(model, documented);
+  const localOnly = validateLocalOnly(readFileSync(COMPOSE, 'utf8'));
+  if (localOnly.length > 0) {
+    console.error('✗ local-development settings would reach production:');
+    for (const p of localOnly) console.error(`  - ${p}`);
+    process.exit(1);
+  }
   if (violations.length > 0) {
     console.error('✗ env-passthrough parity violations:');
     for (const v of violations) {
