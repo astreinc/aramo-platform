@@ -125,9 +125,8 @@ describe('PlacementDetailView — placement product composition', () => {
     listEventsMock.mockResolvedValue({ items: [] });
     getAssignmentMock.mockResolvedValue({ assignment: assignment() });
     const { container } = renderDetail(READ);
-    await screen.findByTestId('placement-detail');
-    // Placement information is visible…
-    expect(screen.getByTestId('placement-state').textContent).toBe('Ready to start');
+    // The detail shell renders while loading; wait for the loaded placement card.
+    expect((await screen.findByTestId('placement-state')).textContent).toBe('Ready to start');
     // …but the composition wires no transition-write handler → no dead control.
     expect(container.querySelectorAll('.placement-card__action')).toHaveLength(0);
   });
@@ -169,7 +168,8 @@ describe('PlacementDetailView — placement product composition', () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    await screen.findByTestId('placement-detail');
+    // Assert only after the placement has loaded (otherwise the empty crumb is vacuous).
+    await screen.findByTestId('placement-state');
     expect(screen.getByTestId('crumb-probe')).toHaveTextContent('');
   });
 
@@ -179,8 +179,7 @@ describe('PlacementDetailView — placement product composition', () => {
     listEventsMock.mockResolvedValue({ items: [event()] });
     getAssignmentMock.mockResolvedValue({ assignment: assignment() });
     renderDetail(READ);
-    await screen.findByTestId('placement-detail');
-    expect(screen.getByTestId('placement-timeline')).toBeInTheDocument();
+    expect(await screen.findByTestId('placement-timeline')).toBeInTheDocument();
   });
 
   // Proof I + K — AssignmentLifecyclePanel mounted on the same detail; ACTIVE rendered.
@@ -215,7 +214,7 @@ describe('PlacementDetailView — placement product composition', () => {
     renderDetail(READ);
     // Parent finishes loading (placement card visible).
     expect(await screen.findByTestId('placement-detail')).toBeInTheDocument();
-    expect(screen.getByTestId('placement-state')).toBeInTheDocument();
+    expect(await screen.findByTestId('placement-state')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByTestId('placement-detail-loading')).toBeNull());
     // Child terminal empty; no END; no fabricated lifecycle.
     expect(await screen.findByTestId('assignment-empty')).toBeInTheDocument();
