@@ -64,4 +64,5 @@ export {
   SettingCardHead,
   SettingHint,
   SettingsSeam,
+  SettingsHeadlessProvider,
 } from './SettingsPrimitives';

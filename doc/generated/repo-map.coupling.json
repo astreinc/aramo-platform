@@ -10814,6 +10814,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -18675,6 +18680,7 @@
       "to": "apps/ats-web/e2e/README.md"
     },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-run-link.sh" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
@@ -20505,6 +20511,16 @@
       "to": "libs/fe-foundation/tsconfig.lib.json"
     },
     {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoAppShell.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AtsAppShell.tsx"
+    },
+    {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoRail.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AppRail.tsx"
+    },
+    {
       "from": "libs/fe-foundation/src/auth/session.ts",
       "status": "production",
       "to": "openapi/auth.yaml"
@@ -20824,6 +20840,16 @@
       "from": "libs/mailer/project.json",
       "status": "unscoped",
       "to": "libs/mailer/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/mailer/src/lib/mailer.config.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
+    },
+    {
+      "from": "libs/mailer/src/lib/outbox-mailer.adapter.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
     },
     {
       "from": "libs/matching/prisma/schema.prisma",
@@ -24282,6 +24308,7 @@
       "status": "unscoped",
       "to": "tools/enable-e2e-recruiter.ts"
     },
+    { "from": "tools/local-mail.cjs", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
       "from": "tools/local-run-link.sh",
       "status": "unscoped",
@@ -24291,6 +24318,7 @@
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "libs/identity/prisma/seed.ts" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-run-link.sh" },
     {
       "from": "tools/local-stack.sh",
@@ -24706,7 +24734,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 77,
+    "files": 78,
     "huskyPresent": false
   },
   "scripts": [

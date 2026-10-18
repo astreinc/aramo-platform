@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGua
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import {
   RtrOrchestratorService,
@@ -14,8 +15,17 @@ import {
 // DOC-5 (R-5-5) — recruiter-facing RTR endpoints. Thin HTTP surface over the
 // RtrOrchestratorService; recruiter-only (consumer_type gate). tenant_id +
 // actor come authoritatively from the auth context, never the body.
+//
+// Tenant capability (PO ruling 2026-10-18): every RTR route needs the tenant's
+// `ats` capability; EXECUTING an RTR (request the document, send it for
+// signature, remind) additionally needs the Aramo Sign subscription (`esign`).
+// Handler-level @RequireCapability OVERRIDES the class list (getAllAndOverride),
+// so the execution routes restate `ats`. Reads stay `ats`-only, so a tenant
+// that drops Sign still sees its RTR history. EntitlementGuard runs before
+// RolesGuard: an unentitled tenant gets TENANT_CAPABILITY_NOT_ENTITLED (403).
 @Controller('v1/rtr')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
+@RequireCapability('ats')
 export class RtrController {
   constructor(private readonly orchestrator: RtrOrchestratorService) {}
 
@@ -26,6 +36,7 @@ export class RtrController {
   }
 
   @Post()
+  @RequireCapability('ats', 'esign')
   @RequireScopes('document:create')
   @HttpCode(HttpStatus.CREATED)
   async request(
@@ -53,6 +64,7 @@ export class RtrController {
   }
 
   @Post(':documentId/send')
+  @RequireCapability('ats', 'esign')
   @RequireScopes('document:execute')
   @HttpCode(HttpStatus.OK)
   async send(
@@ -79,6 +91,7 @@ export class RtrController {
   // (same authority as send). Allowed only while AWAITING_SIGNATURE. Never
   // re-renders, re-resolves a template, or creates a new envelope.
   @Post(':documentId/remind')
+  @RequireCapability('ats', 'esign')
   @RequireScopes('document:execute')
   @HttpCode(HttpStatus.OK)
   async remind(

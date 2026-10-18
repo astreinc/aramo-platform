@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { getCurrentRtr, remindRtr } from '../rtr/rtr-api';
 import { withCurrency } from '../talent/stated-fields';
 import { initialsOf } from '../ui';
+import { canExecuteRtr, useSignSubscribed } from '../rtr/rtr-access';
 
 import {
   getRequisitionTalentBoard,
@@ -242,7 +243,8 @@ function BoardCard({
   const rtrKind = rtrAffordanceKind(card);
   // Same-envelope RTR reminder (COMM-RECRUITER-W1 W1-C3) — the List view's RtrPanel gate
   // (document:execute). Resolves the authoritative current RTR, then re-notifies it.
-  const canRemind = rtrKind === 'awaiting' && scopes.includes('document:execute');
+  const signSubscribed = useSignSubscribed();
+  const canRemind = rtrKind === 'awaiting' && canExecuteRtr(scopes, signSubscribed);
   const sendReminder = (): void => {
     if (reminding) return;
     setReminding(true);

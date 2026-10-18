@@ -12,6 +12,7 @@ import {
   type DocumentRenderingPort,
 } from '@aramo/documents-rendering';
 import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
+import { EntitlementModule } from '@aramo/entitlement';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 // DOC-TEMPLATE-ADMIN-RTR-1 T2b — authoritative sources for the expanded RTR binding
@@ -48,7 +49,7 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
-  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule],
+  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, EntitlementModule],
   controllers: [RtrController],
   providers: [
     { provide: RTR_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },

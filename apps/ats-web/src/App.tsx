@@ -41,11 +41,16 @@ import { SettingsView } from './settings/SettingsView';
 import { MySettingsView } from './settings/MySettingsView';
 import { SettingsShell } from './settings/SettingsShell';
 import { BranchesSection } from './settings/sections/BranchesSection';
+import { AtsRolesSection } from './settings/sections/AtsRolesSection';
+import { AtsAuditSection } from './settings/sections/AtsAuditSection';
+import { LegacyOrgRedirect } from './settings/LegacyOrgRedirect';
 import { ImportSection } from './settings/sections/ImportSection';
 import { ComplianceSection } from './settings/sections/ComplianceSection';
 import { EngagementPolicySection } from './settings/sections/EngagementPolicySection';
 import {
   ApplySection,
+  BillingSection,
+  LocalizationSection,
   EmailSection,
   FieldsSection,
   IntegrationsSection,
@@ -656,6 +661,17 @@ export function App() {
                                   the App Home) — the ATS keeps its product-
                                   owned teams + reporting hierarchy. */}
                               <Route path="org" element={<OrgHierarchyView />} />
+                              {/* Accepted change log A2 — moved to Organization
+                                  administration; old links redirect once. */}
+                              <Route path="users" element={<LegacyOrgRedirect section="users" />} />
+                              <Route path="settings/profile" element={<LegacyOrgRedirect section="profile" />} />
+                              <Route path="settings/domain" element={<LegacyOrgRedirect section="domain" />} />
+                              <Route path="settings/security" element={<LegacyOrgRedirect section="domain" />} />
+                              {/* ATS-owned (change log A1/A4/A7). */}
+                              <Route path="settings/roles" element={<AtsRolesSection />} />
+                              <Route path="settings/localization" element={<LocalizationSection />} />
+                              <Route path="settings/billing" element={<BillingSection />} />
+                              <Route path="settings/audit" element={<AtsAuditSection />} />
                               <Route path="teams" element={<TeamsListView />} />
                               <Route
                                 path="teams/:teamId"

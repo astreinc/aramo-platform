@@ -14,6 +14,7 @@ import { listTasksForOwner } from '../task/task-api';
 import type { TaskView } from '../task/types';
 import { resolveUserNames } from '../users/users-api';
 import { RtrPanel } from '../rtr/RtrPanel';
+import { canExecuteRtr, canSendRtr, useSignSubscribed } from '../rtr/rtr-access';
 import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
@@ -1266,6 +1267,8 @@ function TalentJourney({
   readonly talentView: 'list' | 'board';
   readonly onTalentView: (next: 'list' | 'board') => void;
 }) {
+  // RTR execution: both document permissions + the tenant's Sign subscription (rtr-access.tsx).
+  const signSubscribed = useSignSubscribed();
   // Find Talent ▾ menu (prototype): the two sourcing entry points.
   const [findOpen, setFindOpen] = useState(false);
   const [knownTalentOpen, setKnownTalentOpen] = useState(false);
@@ -1529,8 +1532,8 @@ function TalentJourney({
                     companyId={req.company_id}
                     hideHeading
                     canRead={scopes.includes('document:read')}
-                    canRequest={scopes.includes('document:create')}
-                    canSend={scopes.includes('document:execute')}
+                    canRequest={canSendRtr(scopes, signSubscribed)}
+                    canSend={canExecuteRtr(scopes, signSubscribed)}
                     talentName={name}
                     clientName={companyName}
                     requisitionTitle={req.title}

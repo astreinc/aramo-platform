@@ -1,7 +1,9 @@
 import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import {
@@ -11,7 +13,15 @@ import {
 } from './requisition-talent-board-api';
 
 // The card ⋯ menu carries a router Link ("View talent" → Talent 360).
-const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter });
+// Sign-subscribed tenant by default (RTR execution needs it — rtr-access.tsx).
+function Subscribed({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <SignSubscriptionProvider subscribed>
+      <MemoryRouter>{children}</MemoryRouter>
+    </SignSubscriptionProvider>
+  );
+}
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: Subscribed });
 
 // TB-2 — the read-only Board surface. The backend is authoritative for column placement,
 // owner attribution, Closed derivation, resume linkage and Qualified band; these tests pin the

@@ -1309,3 +1309,160 @@ button.rc-link-action {
  * Consolidation Directive 4; reusable by the remaining people-list ports). */
 
 .rc-cell-sub { color: var(--muted); font-size: 0.82rem; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Unified multi-product shell — app switcher (App Home handoff §3) and the
+ * account-menu additions (role badge, two-line rows, red Sign out).
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+.ar-switch {
+  position: relative;
+}
+
+.ar-switch__trigger {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.ar-switch__trigger:hover,
+.ar-switch__trigger[aria-expanded='true'] {
+  color: var(--brand);
+  border-color: var(--line-2);
+  background: var(--surface-2);
+}
+
+.ar-switch__panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 300px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 8px 28px rgba(20, 35, 48, 0.12), 0 2px 6px rgba(20, 35, 48, 0.06);
+  padding: 8px;
+  z-index: 40;
+}
+
+.ar-switch__head {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--faint);
+  padding: 8px 10px 6px;
+}
+
+.ar-switch__row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.ar-switch__row--open:hover {
+  background: var(--surface-2);
+}
+
+.ar-switch__row--current {
+  background: var(--brand-tint);
+}
+
+.ar-switch__row--unavailable {
+  color: var(--faint);
+  cursor: default;
+}
+
+.ar-switch__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--r-md);
+  background: var(--brand-tint);
+  color: var(--brand);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.ar-switch__row--unavailable .ar-switch__icon {
+  background: var(--surface-2);
+  color: var(--faint);
+}
+
+.ar-switch__icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.ar-switch__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ar-switch__label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.ar-switch__row--unavailable .ar-switch__label {
+  font-weight: 500;
+}
+
+.ar-switch__sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ar-switch__row--unavailable .ar-switch__sub {
+  color: var(--faint);
+}
+
+.ar-switch__foot {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding: 10px 10px 4px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.rc-usermenu__badge {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.rc-usermenu__itemtext {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.rc-usermenu__itemsub {
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.rc-usermenu__item--signout {
+  color: var(--danger);
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+

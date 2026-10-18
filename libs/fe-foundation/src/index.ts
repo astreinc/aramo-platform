@@ -94,3 +94,42 @@ export * from './ui/icons';
 export * as Icons from './ui/icons';
 // format — D-ORG-3: the shared date/instant formatters (moved from ats-web).
 export { formatDate, formatInstant } from './format/date';
+// Unified multi-product shell — the shared rail + page grid + collapse preference
+// (moved from apps/ats-web), the app switcher, the product-availability client
+// (moved from apps/home-web) and the cross-app return context.
+export { AramoAppShell } from './aramo-shell/AramoAppShell';
+export { AramoRail, type AramoRailItem, type AramoRailProps, type AramoRailSection } from './aramo-shell/AramoRail';
+export {
+  NAV_COLLAPSED_KEY,
+  NavCollapseProvider,
+  readNavCollapsed,
+  useCompactRailPage,
+  useNavCollapse,
+  type NavCollapse,
+} from './aramo-shell/nav-collapse';
+export { AppSwitcher, type AppSwitcherItem } from './ui/AppSwitcher';
+export type { UserMenuItem } from './ui/UserMenu';
+export {
+  MY_PRODUCTS_PATH,
+  fetchMyProducts,
+  productByKey,
+  productEntryHref,
+  useMyProducts,
+  type ProductAvailability,
+  type ProductAvailabilityView,
+  type ProductKey,
+  type ProductUnavailableReason,
+  type ProductsState,
+} from './platform/products';
+export { buildAppSwitcherItems, type AramoAppKey } from './platform/app-switcher-items';
+export {
+  clearReturnContext,
+  orgHref,
+  parseReturnContext,
+  readRememberedReturnContext,
+  rememberReturnContext,
+  validReturnPath,
+  type ReturnApp,
+  type ReturnContext,
+} from './navigation/return-context';
+

@@ -210,3 +210,63 @@
   color: var(--faint);
   padding: 0;
 }
+
+/* ── Organization administration page (unified multi-product UX; frozen App Home
+   prototype 2026-10-18): header, section tabs, Back to <app> Settings. ── */
+.org-page {
+  padding: 24px 28px 70px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.org-back {
+  align-self: flex-start;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--brand-strong);
+  text-decoration: none;
+  margin-bottom: 12px;
+}
+.org-back:hover {
+  text-decoration: underline;
+}
+.org-head h1 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}
+.org-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+.org-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--line);
+  margin: 20px 0 18px;
+}
+.org-tab {
+  padding: 10px 12px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.org-tab:hover {
+  color: var(--ink);
+}
+.org-tab--on {
+  color: var(--brand);
+  font-weight: 600;
+  border-bottom-color: var(--brand);
+}
+.org-body {
+  min-width: 0;
+}
+
