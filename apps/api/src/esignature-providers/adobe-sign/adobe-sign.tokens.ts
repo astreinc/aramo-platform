@@ -1,0 +1,1 @@
+export const ADOBE_SIGN_CONFIG = 'ADOBE_SIGN_CONFIG';

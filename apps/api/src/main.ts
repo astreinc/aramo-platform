@@ -21,6 +21,10 @@ import {
   ESIGN_EVENTS_MAX_BODY_BYTES,
   ESIGN_EVENTS_WEBHOOK_ROUTE,
 } from './integrations/esign/esign-webhook.constants.js';
+import {
+  DOCUSIGN_WEBHOOK_MAX_BODY_BYTES,
+  DOCUSIGN_WEBHOOK_ROUTE,
+} from './esignature-providers/docusign/docusign-connect.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -63,6 +67,12 @@ async function bootstrap(): Promise<void> {
   app.use(
     ESIGN_EVENTS_WEBHOOK_ROUTE,
     express.raw({ type: () => true, limit: ESIGN_EVENTS_MAX_BODY_BYTES }),
+  );
+  // Multi-Provider E-Sign §G — route-scoped RAW body for the DocuSign Connect
+  // webhook ONLY: the X-DocuSign-Signature-N HMAC covers the exact raw bytes.
+  app.use(
+    DOCUSIGN_WEBHOOK_ROUTE,
+    express.raw({ type: () => true, limit: DOCUSIGN_WEBHOOK_MAX_BODY_BYTES }),
   );
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).

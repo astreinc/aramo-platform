@@ -1,0 +1,1 @@
+export const DOCUSIGN_CONFIG = 'DOCUSIGN_CONFIG';

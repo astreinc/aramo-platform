@@ -6198,6 +6198,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/external-signature-providers.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6443,6 +6449,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine.controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/external-signature-providers.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7901,6 +7913,7 @@
       { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "selection", "status": "production" },
+      { "project": "signature-routing", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "subscription", "status": "production" }
     ],
@@ -8880,6 +8893,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/external-signature-providers.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9010,6 +9029,12 @@
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/subscription": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/external-signature-providers.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",

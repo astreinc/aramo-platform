@@ -316,3 +316,4 @@
 .set-esign__msg { margin: 0; font-size: 13px; line-height: 1.5; }
 .set-esign__msg--warn { color: #8a5a00; }
 .set-esign__msg--stop { color: #b3261e; }
+.set-esign__actions { margin-left: 8px; display: inline-flex; gap: 6px; }

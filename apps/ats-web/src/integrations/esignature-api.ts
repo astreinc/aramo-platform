@@ -33,7 +33,13 @@ export interface SigningAvailability {
 
 export interface ESignatureOverview {
   readonly active_provider: ESignatureProvider;
-  readonly providers: ReadonlyArray<{ provider: ESignatureProvider; status: ESignatureProviderStatus; selectable: boolean }>;
+  readonly providers: ReadonlyArray<{
+    provider: ESignatureProvider;
+    status: ESignatureProviderStatus;
+    selectable: boolean;
+    connectable: boolean;
+    needs_reconnect: boolean;
+  }>;
   readonly availability: SigningAvailability;
   readonly recent_changes: ReadonlyArray<{ from_provider: string; to_provider: string; actor_id: string; occurred_at: string }>;
 }
@@ -44,4 +50,12 @@ export async function getESignatureOverview(): Promise<ESignatureOverview> {
 
 export async function selectESignatureProvider(provider: ESignatureProvider): Promise<ESignatureOverview> {
   return apiClient.put<ESignatureOverview>('/v1/integrations/esignature/active-provider', { provider });
+}
+
+export async function connectESignatureProvider(provider: ESignatureProvider): Promise<{ authorize_url: string }> {
+  return apiClient.post<{ authorize_url: string }>(`/v1/integrations/esignature/${provider}/connect`, {});
+}
+
+export async function disconnectESignatureProvider(provider: ESignatureProvider): Promise<ESignatureOverview> {
+  return apiClient.post<ESignatureOverview>(`/v1/integrations/esignature/${provider}/disconnect`, {});
 }
