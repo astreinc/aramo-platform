@@ -12,6 +12,10 @@ import { SignatureRoutingRepository, SignatureRoutingStoreModule } from '@aramo/
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 
+import { AdobeSignAdapter } from './adobe-sign/adobe-sign.adapter.js';
+import { adobeSignConfigFromEnv, type AdobeSignConfig } from './adobe-sign/adobe-sign.config.js';
+import { ADOBE_SIGN_CONFIG } from './adobe-sign/adobe-sign.tokens.js';
+import { AdobeSignWebhookController } from './adobe-sign/adobe-sign-webhook.controller.js';
 import { DocuSignAdapter } from './docusign/docusign.adapter.js';
 import { docuSignConfigFromEnv, type DocuSignConfig } from './docusign/docusign.config.js';
 import { DOCUSIGN_CONFIG } from './docusign/docusign.tokens.js';
@@ -29,7 +33,7 @@ const EXT_DOCS_STORAGE = 'EXT_SIGN_DOCS_STORAGE';
 
 @Module({
   imports: [IntegrationModule, ObjectStorageModule, SignatureRoutingStoreModule],
-  controllers: [DocuSignWebhookController],
+  controllers: [DocuSignWebhookController, AdobeSignWebhookController],
   providers: [
     { provide: EXT_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
     {
@@ -50,19 +54,22 @@ const EXT_DOCS_STORAGE = 'EXT_SIGN_DOCS_STORAGE';
     },
     ProviderCredentialStore,
     { provide: DOCUSIGN_CONFIG, useFactory: (): DocuSignConfig | null => docuSignConfigFromEnv() },
+    { provide: ADOBE_SIGN_CONFIG, useFactory: (): AdobeSignConfig | null => adobeSignConfigFromEnv() },
     {
       provide: EXTERNAL_SIGNATURE_ADAPTERS,
       useFactory: (
         docusign: DocuSignConfig | null,
+        adobe: AdobeSignConfig | null,
         store: ProviderCredentialStore,
         routes: SignatureRoutingRepository,
         source: RevisionSourceService,
       ): ExternalSignatureAdapter[] => {
         const adapters: ExternalSignatureAdapter[] = [];
         if (docusign !== null) adapters.push(new DocuSignAdapter(docusign, store, routes, source));
+        if (adobe !== null) adapters.push(new AdobeSignAdapter(adobe, store, routes, source));
         return adapters;
       },
-      inject: [DOCUSIGN_CONFIG, ProviderCredentialStore, SignatureRoutingRepository, RevisionSourceService],
+      inject: [DOCUSIGN_CONFIG, ADOBE_SIGN_CONFIG, ProviderCredentialStore, SignatureRoutingRepository, RevisionSourceService],
     },
     ProviderCompletionService,
   ],

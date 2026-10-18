@@ -73,6 +73,15 @@ The new directive names only the V1 Implementation directive as amended (its :5)
 | A1-22 | Provider failures are typed `ESIGN_SEND_UNAVAILABLE` with `PROVIDER_REFUSED` (4xx, with the provider error code), `PROVIDER_UNAVAILABLE` (5xx/429/network) or `PROVIDER_DISCONNECTED`; never a fallback to another provider. An accepted external send is recorded in the metering stream as `esign.external.envelope.sent.<provider>` (operational only; the tenant's own provider plan governs its quota). |
 | A1-23 | Validation status: contract-tested against the documented DocuSign OAuth, eSignature REST v2.1 and Connect HMAC behaviour. **Live sandbox validation is pending** (no developer-account credentials). Items to confirm in the sandbox: Connect payload shape (both the wrapped `data.*` and flat shapes are accepted), signature-tab placement on the last page, and the reminder resend body. |
 
+### PR 5 — Adobe Acrobat Sign adapter
+
+| # | Decision |
+|---|---|
+| A1-24 | Adobe Acrobat Sign REST v6 behind the same `ExternalSignatureAdapter`: OAuth v2 authorization code (confidential client) exchanged, refreshed and revoked at the account's `api_access_point`, which is trusted only when it is an HTTPS Adobe Sign host (a tampered callback cannot route the code, secret or tokens elsewhere). Account from `users/me`; a USER-scope `AGREEMENT_WORKFLOW_COMPLETED` webhook is registered at connect. |
+| A1-25 | Agreements: frozen PDF uploaded as a transient document; agreement created `DRAFT`, sent `IN_PROCESS`; void = `CANCELLED` with a comment; reminders to the next participants. Completion: `combinedDocument` → EXECUTED, `auditTrail` → PROVIDER_COMPLETION_EVIDENCE (`ADOBE_SIGN_AUDIT_REPORT`). |
+| A1-26 | Webhook: Adobe's verification of intent (our client id in `X-AdobeSign-ClientId`, echoed on success; any other id refused). It is not a signature, so the callback is a hint only: the agreement must be routed here and completion is confirmed with the tenant's own token (the callback carries no account identity; `provider_account_id` is null). |
+| A1-27 | Validation status: contract-tested against the documented OAuth v2, REST v6 and webhook behaviour. **Live sandbox validation is pending.** To confirm: the `DRAFT` → `IN_PROCESS` state change, the cancellation body, the `auditTrail` path, the transient-document field names, and webhook scope for non-admin users. |
+
 ## 4. Release dependencies
 
 Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.

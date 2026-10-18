@@ -133,6 +133,13 @@ describe('ProviderCompletionService — callbacks are hints, not authority', () 
     }));
   });
 
+  it('a provider callback without an account identity (Adobe) is bound by the route and the tenant’s own read', async () => {
+    const { svc, writeBack, adapter } = make();
+    expect(await svc.handle({ ...input, provider_account_id: null })).toBe('PROCESSED');
+    expect(adapter.fetchCompletion).toHaveBeenCalledWith(T, 'env-1');
+    expect(writeBack.storeProviderExecuted).toHaveBeenCalled();
+  });
+
   it('an envelope this platform never routed is ignored', async () => {
     const { svc, writeBack } = make({ route: null });
     expect(await svc.handle(input)).toBe('IGNORED');
