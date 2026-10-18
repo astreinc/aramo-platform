@@ -6,18 +6,18 @@ import type { Request, Response } from 'express';
 
 import { ProviderCompletionService } from '../provider-completion.service.js';
 
-import { parseDocuSignEvent, verifyDocuSignHmac } from './docusign-connect.js';
+import { hasDocuSignSignature, parseDocuSignEvent, verifyDocuSignHmac } from './docusign-connect.js';
 import { DOCUSIGN_CONFIG } from './docusign.tokens.js';
 import type { DocuSignConfig } from './docusign.config.js';
 
 // Multi-Provider directive §G — DocuSign Connect inbound webhook
 // (POST /v1/webhooks/esignature/docusign). DELIBERATELY UN-GUARDED like the Zoom and
-// Indeed webhooks: DocuSign calls with no Aramo session. The SOLE authority is the
-// Connect HMAC over the raw body; the tenant is resolved only afterwards, and the
+// Indeed webhooks: DocuSign calls with no Aramo session. The callback is a HINT:
+// the tenant is resolved from the routed envelope + connected account, and the
 // completion is confirmed against the DocuSign API (ProviderCompletionService).
 // Bare statuses (external machine ingress, not the Aramo client error contract):
 //   503 — DocuSign not configured in this environment (dark by construction)
-//   401 — missing or invalid HMAC
+//   401 — a signature header that is not ours (forged)
 //   400 — malformed body after a valid HMAC
 //   204 — accepted (processed, duplicate, not completed, unknown or foreign envelope:
 //         uniform, so no existence oracle)
@@ -38,7 +38,12 @@ export class DocuSignWebhookController {
       return;
     }
     const raw = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-    if (!verifyDocuSignHmac(raw, req.headers, this.config.connectHmacKey)) {
+    // Per-envelope callbacks arrive unsigned (each tenant's DocuSign account holds its
+    // own HMAC keys), so a signature is never the authority: the completion service
+    // binds the envelope to its route + the tenant's connected account and confirms
+    // completion against the DocuSign API. A signature that IS present must be ours
+    // (an Aramo-account Connect configuration); anything else is forged → 401.
+    if (hasDocuSignSignature(req.headers) && (this.config.connectHmacKey === null || !verifyDocuSignHmac(raw, req.headers, this.config.connectHmacKey))) {
       res.status(401);
       return;
     }

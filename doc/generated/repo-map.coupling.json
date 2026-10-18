@@ -18691,6 +18691,11 @@
       "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
     },
     {
+      "from": "doc/runbooks/esignature-external-providers.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
       "from": "doc/runbooks/frontdoor-cutover.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"

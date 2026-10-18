@@ -7,14 +7,30 @@ addendum `doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-
 `docker-compose.prod.yml`; without them the provider reads "Not available yet" and
 its webhook answers 503.
 
+## How it works (two levels)
+- **Aramo, once per environment:** register Aramo's app with the provider and set the
+  variables below on the api. The provider then shows **Connect** for every tenant.
+- **Each tenant, self-service:** a tenant admin clicks **Connect** in Settings →
+  Integrations → E-Signature, signs in to their own provider account, and selects it.
+  Tenants configure nothing inside their provider account.
+
+## Local token custody
+Locally, provider tokens (and Microsoft delegated tokens and tenant LLM keys) are kept
+in **LocalStack Secrets Manager**, never the real AWS account: `tools/local-stack.sh`
+sets `AWS_SECRETS_MANAGER_ENDPOINT=http://localhost:4566` (local-only; refused with
+`NODE_ENV=production`, needs `ARAMO_ENV=local|test`, forbidden in
+`docker-compose.prod.yml` by `env:passthrough-check`). Opt out with an empty value.
+
 ## DocuSign (developer account → local)
-1. In the DocuSign developer account create an app (integration key) with
-   Authorization Code Grant, a secret key, and the redirect URI
-   `http://localhost:3000/v1/integrations/esignature/docusign/callback`
-   (production: `https://<tenant-host>/v1/integrations/esignature/docusign/callback`).
-2. Create a Connect configuration (JSON, REST v2.1) for **Envelope Completed**,
-   pointing at `https://<public-tunnel>/v1/webhooks/esignature/docusign`, with HMAC enabled.
-3. Set in the api environment:
+1. In the DocuSign developer account (developers.docusign.com) create an app
+   (integration key) with Authorization Code Grant and a secret key, and add the
+   redirect URI `http://localhost:4205/v1/integrations/esignature/docusign/callback`
+   (App Home's dev server proxies `/v1` to the api, so the session cookie travels;
+   production: `https://<tenant-host>/v1/integrations/esignature/docusign/callback`).
+2. Expose the api webhook publicly (e.g. `cloudflared tunnel --url http://localhost:3000`).
+   **No Connect configuration is needed**: every envelope requests its own completion
+   callback (`eventNotification`) at `DOCUSIGN_WEBHOOK_URL`.
+3. Set in the api environment (`.env`):
 
    | Variable | Value |
    |---|---|
@@ -22,10 +38,10 @@ its webhook answers 503.
    | `DOCUSIGN_CLIENT_SECRET` | secret key |
    | `DOCUSIGN_OAUTH_BASE_URL` | `https://account-d.docusign.com` |
    | `DOCUSIGN_REDIRECT_URI` | the redirect URI above |
-   | `DOCUSIGN_CONNECT_HMAC_KEY` | the Connect HMAC key |
+   | `DOCUSIGN_WEBHOOK_URL` | `https://<public-tunnel>/v1/webhooks/esignature/docusign` |
+   | `DOCUSIGN_CONNECT_HMAC_KEY` | optional — only for an Aramo-account Connect configuration |
 
 4. Restart the api. Settings → Integrations → E-Signature shows DocuSign with **Connect**.
-   Tokens go to the `connector/*` Secrets Manager namespace (`ARAMO_ENV` scoped).
 
 ## What to verify in the sandbox (pending — A1-23)
 - Connect: OAuth round trip lands on Settings with "DocuSign is connected".
@@ -38,7 +54,7 @@ its webhook answers 503.
 ## Adobe Acrobat Sign (developer account → local)
 1. Create an API application (Acrobat Sign → Account → API Information → API Applications),
    configure OAuth with the redirect URI
-   `http://localhost:3000/v1/integrations/esignature/adobe_sign/callback` and enable the
+   `http://localhost:4205/v1/integrations/esignature/adobe_sign/callback` and enable the
    scopes `user_read`, `agreement_read`, `agreement_write`, `agreement_send`,
    `webhook_read`, `webhook_write` (modifier `account`).
 2. The webhook must be public HTTPS on port 443 or 8443 (use a tunnel locally).

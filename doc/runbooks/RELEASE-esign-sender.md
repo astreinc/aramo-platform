@@ -54,7 +54,7 @@ No database migration. No new scope or role (the `esign:envelope:*` scopes and `
 
 Before any deploy: `npm run env:passthrough-check`, `node --import jiti/register ci/scripts/verify-frontdoor-conf.ts`,
 `git diff origin/main -- docker-compose.prod.yml` reviewed line by line, and confirm the box's `/opt/aramo/.env` has no
-`MAILER_OUTBOX_*`, `LOCAL_MAIL` or `SES_ENDPOINT` entries.
+`MAILER_OUTBOX_*`, `LOCAL_MAIL`, `SES_ENDPOINT` or `AWS_SECRETS_MANAGER_ENDPOINT` entries.
 
 ## Rollback
 

@@ -119,4 +119,7 @@ export { ARAMO_POSTGRES_TEST_IMAGE } from './lib/testing/postgres-test-image.js'
 
 // Lane 7 / L7-D — the ONE canonical commercial arithmetic (spread/margin/markup).
 export { deriveCommercialMetrics } from './lib/commercial/commercial-metrics.js';
+
+// Secrets Manager client configuration (LocalStack override is local-only, guarded).
+export { secretsManagerClientConfig, type SecretsManagerClientConfig } from './lib/aws/secrets-manager-client-config.js';
 export type { CommercialMetrics } from './lib/commercial/commercial-metrics.js';

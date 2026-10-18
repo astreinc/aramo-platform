@@ -56,7 +56,9 @@ services:
     image: localstack/localstack:3
     container_name: aramo-local-localstack
     environment:
-      SERVICES: events,sqs
+      # secretsmanager — local custody for connector / e-signature provider tokens and
+      # tenant LLM keys (AWS_SECRETS_MANAGER_ENDPOINT, local-only; never real AWS locally).
+      SERVICES: events,sqs,secretsmanager
       DEBUG: '0'
       EAGER_SERVICE_LOADING: '1'
     ports:

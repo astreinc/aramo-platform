@@ -163,7 +163,7 @@ describe('ProviderCompletionService — callbacks are hints, not authority', () 
 describe('DocuSign Connect webhook endpoint', () => {
   const body = Buffer.from(JSON.stringify({ event: 'envelope-completed', data: { accountId: 'acct-1', envelopeId: 'env-1' } }));
   const sign = (b: Buffer, key = 'hmac-key') => createHmac('sha256', key).update(b).digest('base64');
-  const CONFIG = { integrationKey: 'i', clientSecret: 's', oauthBaseUrl: 'o', redirectUri: 'r', connectHmacKey: 'hmac-key' };
+  const CONFIG = { integrationKey: 'i', clientSecret: 's', oauthBaseUrl: 'o', redirectUri: 'r', webhookUrl: 'w', connectHmacKey: 'hmac-key' as string | null };
 
   async function call(opts: { config?: typeof CONFIG | null; headers?: Record<string, string>; raw?: Buffer; handle?: () => Promise<string> }) {
     const completion = { handle: vi.fn(opts.handle ?? (async () => 'PROCESSED')) } as unknown as ProviderCompletionService;
@@ -177,10 +177,22 @@ describe('DocuSign Connect webhook endpoint', () => {
   it('503 when DocuSign is not configured in this environment', async () => {
     expect((await call({ config: null })).status).toBe(503);
   });
-  it('401 for a missing or forged signature, before anything is read', async () => {
+  it('401 for a forged signature (a signature is present but is not ours), before anything is read', async () => {
     const r = await call({ headers: { 'x-docusign-signature-1': sign(body, 'attacker') } });
     expect(r.status).toBe(401);
     expect(r.completion.handle).not.toHaveBeenCalled();
+  });
+
+  it('an unsigned envelope-level notification is a hint: handled, then confirmed against DocuSign by the completion service', async () => {
+    const r = await call({ headers: {} });
+    expect(r.status).toBe(204);
+    expect(r.completion.handle).toHaveBeenCalledWith(expect.objectContaining({ provider_account_id: 'acct-1', envelope_ref: 'env-1' }));
+  });
+
+  it('works with no Connect HMAC key configured (per-envelope callbacks only)', async () => {
+    const r = await call({ config: { ...CONFIG, connectHmacKey: null }, headers: {} });
+    expect(r.status).toBe(204);
+    expect(r.completion.handle).toHaveBeenCalled();
   });
   it('204 and completion handling for a signed envelope-completed event', async () => {
     const r = await call({ headers: { 'x-docusign-signature-1': sign(body) } });

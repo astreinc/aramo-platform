@@ -6,6 +6,7 @@ import {
   ResourceExistsException,
   SecretsManagerClient,
 } from '@aws-sdk/client-secrets-manager';
+import { secretsManagerClientConfig } from '@aramo/common';
 
 import type { SecretsManagerPort } from './secrets-manager.port.js';
 import type { SecretsManagerWriterPort } from './secrets-manager-writer.port.js';
@@ -25,9 +26,9 @@ export class AwsSecretsManagerAdapter implements SecretsManagerPort, SecretsMana
 
   private sm(): SecretsManagerClient {
     if (this.client === null) {
-      this.client = new SecretsManagerClient({
-        region: process.env['AWS_REGION'] ?? 'us-east-1',
-      });
+      // Real AWS in every deployed environment; LocalStack on a local box only
+      // (AWS_SECRETS_MANAGER_ENDPOINT, guarded in secretsManagerClientConfig).
+      this.client = new SecretsManagerClient(secretsManagerClientConfig());
     }
     return this.client;
   }

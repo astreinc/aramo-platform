@@ -82,6 +82,13 @@ The new directive names only the V1 Implementation directive as amended (its :5)
 | A1-26 | Webhook: Adobe's verification of intent (our client id in `X-AdobeSign-ClientId`, echoed on success; any other id refused). It is not a signature, so the callback is a hint only: the agreement must be routed here and completion is confirmed with the tenant's own token (the callback carries no account identity; `provider_account_id` is null). |
 | A1-27 | Validation status: contract-tested against the documented OAuth v2, REST v6 and webhook behaviour. **Live sandbox validation is pending.** To confirm: the `DRAFT` → `IN_PROCESS` state change, the cancellation body, the `auditTrail` path, the transient-document field names, and webhook scope for non-admin users. |
 
+### Follow-up — tenant self-service and local custody
+
+| # | Decision |
+|---|---|
+| A1-28 | DocuSign completion callbacks are requested per envelope (`eventNotification` → `DOCUSIGN_WEBHOOK_URL`, `includeHMAC=false`), so a tenant configures nothing in their own DocuSign account. Those callbacks are unsigned (each tenant's account holds its own HMAC keys); per A1-21 they are hints, bound by route + connected account and confirmed against the DocuSign API. A signature header that is present must be Aramo's (optional `DOCUSIGN_CONNECT_HMAC_KEY`), otherwise 401. Supersedes the "HMAC-verified" first step of A1-21 for per-envelope callbacks. |
+| A1-29 | Local token custody uses LocalStack Secrets Manager (`AWS_SECRETS_MANAGER_ENDPOINT`, one guarded helper `secretsManagerClientConfig` shared by the connector writer/reader and the tenant-LLM reader): refused with `NODE_ENV=production`, requires `ARAMO_ENV=local|test`, dummy credentials, and forbidden in `docker-compose.prod.yml` (env:passthrough-check ASSERTION 3). A developer box never reads or writes the real AWS account. |
+
 ## 4. Release dependencies
 
 Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.
