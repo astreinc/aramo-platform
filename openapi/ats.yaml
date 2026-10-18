@@ -12136,6 +12136,7 @@ components:
           type: boolean
     DocumentSigningAvailability:
       type: object
+      additionalProperties: false
       required: [provider, available, reason, allowance]
       properties:
         provider:
@@ -12152,6 +12153,7 @@ components:
             - type: 'null'
     SignatureAllowance:
       type: object
+      additionalProperties: false
       required: [limit, used, remaining, period_start, period_end, threshold]
       properties:
         limit: { type: integer }
