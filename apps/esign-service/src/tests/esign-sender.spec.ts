@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
-import { AramoError } from '@aramo/common';
+import { AramoError, AramoExceptionFilter } from '@aramo/common';
 import { JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, REQUIRED_CAPABILITIES_KEY } from '@aramo/entitlement';
@@ -160,7 +160,6 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
 describe('EsignSignerController — canonical error envelope for the signer page', () => {
   it('mounts AramoExceptionFilter so invalid / expired links reach their dedicated screens', async () => {
     const { EsignSignerController } = await import('../app/esign-http.controller.js');
-    const { AramoExceptionFilter } = await import('@aramo/common');
     const filters = Reflect.getMetadata('__exceptionFilters__', EsignSignerController) as unknown[];
     expect(filters).toContain(AramoExceptionFilter);
   });

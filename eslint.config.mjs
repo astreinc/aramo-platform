@@ -110,6 +110,9 @@ export default [
       '**/prisma/generated/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      // Generated data module: the embedded Apache-2.0 signature font as one
+      // base64 string (too large for the parser; nothing to lint).
+      'libs/documents-rendering/src/lib/fonts/*.font.ts',
       // I15 negative-control fixture: a committed, deliberate scope:cip →
       // scope:ats import that must NOT red the real gate. The wall-fires spec
       // (libs/matching/src/tests/i15-negative-control.spec.ts) lints it
