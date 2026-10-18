@@ -3077,6 +3077,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esignature-integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine.controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6292,6 +6298,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esignature-integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6834,6 +6846,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/identity-advisories/IdentityAdvisoriesView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/integrations/ESignatureProvidersPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -8854,6 +8872,12 @@
       { "project": "reporting", "status": "production" }
     ],
     "@aramo/signature-routing": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/esignature-integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",

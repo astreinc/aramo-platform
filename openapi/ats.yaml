@@ -7180,6 +7180,58 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  /v1/integrations/esignature/overview:
+    get:
+      operationId: getESignatureIntegrationOverview
+      summary: The tenant's e-signature provider, provider statuses, availability and recent changes.
+      description: >-
+        Settings → Integrations → E-Signature (Multi-Provider E-Sign directive §E).
+        One active provider per tenant; providers without a working integration are
+        reported NOT_AVAILABLE and are not selectable. Guarded by `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignatureOverview' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/active-provider:
+    put:
+      operationId: selectESignatureProvider
+      summary: Select the tenant's active e-signature provider (audited).
+      description: >-
+        Explicit, audited, backend-validated provider change. Existing signature
+        requests keep the provider frozen on them. A provider that is not
+        selectable is refused (VALIDATION_ERROR, details.reason). Guarded by
+        `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:
+                  type: string
+                  enum: [aramo_sign, docusign, adobe_sign]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignatureOverview' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
   /v1/integrations/llm/overview:
     get:
       operationId: getTenantLlmOverview
@@ -12150,6 +12202,39 @@ components:
           oneOf:
             - $ref: '#/components/schemas/SignatureAllowance'
             - type: 'null'
+    ESignatureOverview:
+      type: object
+      required: [active_provider, providers, availability, recent_changes]
+      properties:
+        active_provider:
+          type: string
+          enum: [aramo_sign, docusign, adobe_sign]
+        providers:
+          type: array
+          items:
+            type: object
+            required: [provider, status, selectable]
+            properties:
+              provider:
+                type: string
+                enum: [aramo_sign, docusign, adobe_sign]
+              status:
+                type: string
+                enum: [BUILT_IN, CONNECTED, NOT_CONNECTED, NOT_AVAILABLE]
+              selectable:
+                type: boolean
+        availability:
+          $ref: '#/components/schemas/DocumentSigningAvailability'
+        recent_changes:
+          type: array
+          items:
+            type: object
+            required: [from_provider, to_provider, actor_id, occurred_at]
+            properties:
+              from_provider: { type: string }
+              to_provider: { type: string }
+              actor_id: { type: string }
+              occurred_at: { type: string, format: date-time }
     SignatureAllowance:
       type: object
       required: [limit, used, remaining, period_start, period_end, threshold]

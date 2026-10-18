@@ -53,6 +53,14 @@ The new directive names only the V1 Implementation directive as amended (its :5)
 | A1-12 | Policy authoring: publishing a policy that REQUIRES `rtr_present` is refused (422 `CLIENT_SUBMITTAL_POLICY_INVALID`, `details.reason = RTR_REQUIRES_SIGN`, `signature_reason`) when the tenant cannot send at all (NO_PROVIDER, NOT_SUBSCRIBED, PROVIDER_UNAVAILABLE). Temporary states (LIMIT_REACHED, PROVIDER_DISCONNECTED) do not block authoring; they block the send, and the RTR requirement stays enforced (DOC-5 gate unchanged). |
 | A1-13 | Read for the UI: `GET /v1/document-signing/availability` (`document:read`, ATS capability), judged for the calling user. Frontend adoption lands with PR 3 so it reconciles with PR #959's recruiter UI instead of duplicating it. |
 
+### PR 3 — Settings → Integrations → E-Signature
+
+| # | Decision |
+|---|---|
+| A1-14 | `GET /v1/integrations/esignature/overview` (`integration:read`) and `PUT /v1/integrations/esignature/active-provider` (`integration:write`, held by tenant admins/owners). A change writes the append-only selection event and a structured log line. Only providers this build can send through are selectable; external providers read NOT_AVAILABLE (not "connected") until their adapters land. |
+| A1-15 | ats-web Settings → Integrations → E-Signature panel renders the backend overview: active provider, provider statuses, Aramo Sign allowance (used of limit, renewal date, meter), the 80% warning and the 100% pause with contact-your-account-team guidance (no purchasing workflow exists). |
+| A1-16 | Recruiter-surface adoption of `GET /v1/document-signing/availability` (T×R 360, board, list, My Desk) follows PR #959, which owns those surfaces' current "Requires Aramo Sign" behaviour: once #959 and this program land, #959's client-side subscription context is fed from the availability endpoint and its reason map gains LIMIT_REACHED and the provider reasons. |
+
 ## 4. Release dependencies
 
 Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.

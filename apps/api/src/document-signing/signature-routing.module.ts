@@ -31,6 +31,6 @@ import { SignatureRoutingService } from './signature-routing.service.js';
     SignatureAvailabilityService,
     SignatureRoutingService,
   ],
-  exports: [SignatureAvailabilityService, SignatureRoutingService],
+  exports: [SignatureAvailabilityService, SignatureRoutingService, SignatureRoutingStoreModule, SIGNATURE_PROVIDER_REGISTRY],
 })
 export class SignatureRoutingModule {}

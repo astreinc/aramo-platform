@@ -11099,6 +11099,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/document-signing/esignature-integration.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/document-signing/signature-availability.controller.ts"
     },
     {
