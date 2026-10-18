@@ -43,6 +43,45 @@ The new directive names only the V1 Implementation directive as amended (its :5)
 | A1-7 | A send refused or failed before acceptance leaves its envelope in DRAFT; the governed ATS send now sends that DRAFT envelope on retry instead of reporting it as already sent. |
 | A1-8 | Historical reconciliation: `AllowanceService.recordHistorical` records only real sent envelopes, into their own period, idempotently. |
 
+### PR 2 — availability and routing
+
+| # | Decision |
+|---|---|
+| A1-9 | Provider integration layer: `libs/signature-routing` (schema `signature_routing`). `TenantSignatureProvider` holds one active provider per tenant (no row = the built-in Aramo Sign); `SignatureProviderSelectionEvent` is an append-only audit of every change (enforced by trigger); `SignatureRequestRoute` freezes the provider on each created request. |
+| A1-10 | One backend decision: `SignatureAvailabilityService.evaluate(tenant, actorScopes?)` returns provider, availability, a typed reason (NO_PROVIDER, NOT_SUBSCRIBED, NOT_AUTHORIZED, LIMIT_REACHED, PROVIDER_DISCONNECTED, PROVIDER_UNAVAILABLE, PROVIDER_REFUSED) and, for Aramo Sign, the allowance. Aramo Sign needs the `esign` capability AND an open subscription with allowance left. A selected provider with no adapter in this build reads PROVIDER_UNAVAILABLE. |
+| A1-11 | Enforcement immediately before the send: `GovernedDocumentSigningService` (the single RTR/Offer send path) asks `SignatureRoutingService.forNewSend` before preparing the document or creating anything; a refusal is `ESIGN_SEND_UNAVAILABLE` (409, `details.reason`). It never falls back to another provider. Existing requests (resend of a DRAFT, reminders) route by their frozen provider; requests created before routing existed are Aramo Sign. |
+| A1-12 | Policy authoring: publishing a policy that REQUIRES `rtr_present` is refused (422 `CLIENT_SUBMITTAL_POLICY_INVALID`, `details.reason = RTR_REQUIRES_SIGN`, `signature_reason`) when the tenant cannot send at all (NO_PROVIDER, NOT_SUBSCRIBED, PROVIDER_UNAVAILABLE). Temporary states (LIMIT_REACHED, PROVIDER_DISCONNECTED) do not block authoring; they block the send, and the RTR requirement stays enforced (DOC-5 gate unchanged). |
+| A1-13 | Read for the UI: `GET /v1/document-signing/availability` (`document:read`, ATS capability), judged for the calling user. Frontend adoption lands with PR 3 so it reconciles with PR #959's recruiter UI instead of duplicating it. |
+
+### PR 3 — Settings → Integrations → E-Signature
+
+| # | Decision |
+|---|---|
+| A1-14 | `GET /v1/integrations/esignature/overview` (`integration:read`) and `PUT /v1/integrations/esignature/active-provider` (`integration:write`, held by tenant admins/owners). A change writes the append-only selection event and a structured log line. Only providers this build can send through are selectable; external providers read NOT_AVAILABLE (not "connected") until their adapters land. |
+| A1-15 | ats-web Settings → Integrations → E-Signature panel renders the backend overview: active provider, provider statuses, Aramo Sign allowance (used of limit, renewal date, meter), the 80% warning and the 100% pause with contact-your-account-team guidance (no purchasing workflow exists). |
+| A1-16 | Recruiter-surface adoption of `GET /v1/document-signing/availability` (T×R 360, board, list, My Desk) follows PR #959, which owns those surfaces' current "Requires Aramo Sign" behaviour: once #959 and this program land, #959's client-side subscription context is fed from the availability endpoint and its reason map gains LIMIT_REACHED and the provider reasons. |
+
+### PR 4 — DocuSign adapter (shared external-provider framework)
+
+| # | Decision |
+|---|---|
+| A1-17 | External adapters extend `SignatureProviderPort` (`ExternalSignatureAdapter`: connection state, OAuth, disconnect, completion retrieval). An adapter is registered only when its app registration is configured in the environment; otherwise the provider reads NOT_AVAILABLE everywhere. No production values are configured (no activation). |
+| A1-18 | Credential custody reuses `IntegrationConnection` + the existing `connector/*` Secrets Manager namespace (no IAM change). Tokens are write-only, never in Postgres, logs or the browser; disconnect tombstones and disables. A rejected refresh marks the connection degraded → PROVIDER_DISCONNECTED and "Reconnect needed". |
+| A1-19 | OAuth connect: Authorization Code + PKCE (S256); state stored as a SHA-256 hash, single-use, 10-minute expiry, bound to tenant + admin + provider (the callback is authenticated by the same admin's session cookie). The callback always redirects back to Settings with an outcome flag. This deliberately does not reuse the Microsoft state pattern (unverified nonce, replayable within its window). |
+| A1-20 | Evidence: the provider's signed PDF is the EXECUTED artifact (same Document -> EXECUTED transition the RTR gate reads); the provider's own completion evidence is stored as the new `PROVIDER_COMPLETION_EVIDENCE` role with its kind (e.g. `DOCUSIGN_CERTIFICATE_OF_COMPLETION`) — never relabelled as the Aramo `EXECUTION_CERTIFICATE`. Migration `documents/20261018140000_provider_completion_evidence_role` (registered in the Pact provider). |
+| A1-21 | Callbacks are hints: HMAC-verified (DocuSign Connect, raw body, constant time) → the envelope must be one this platform routed → the callback account must be the account that tenant connected → completion is confirmed by reading the envelope from the provider API. Idempotent per provider envelope. Uniform 204 (no oracle). |
+| A1-22 | Provider failures are typed `ESIGN_SEND_UNAVAILABLE` with `PROVIDER_REFUSED` (4xx, with the provider error code), `PROVIDER_UNAVAILABLE` (5xx/429/network) or `PROVIDER_DISCONNECTED`; never a fallback to another provider. An accepted external send is recorded in the metering stream as `esign.external.envelope.sent.<provider>` (operational only; the tenant's own provider plan governs its quota). |
+| A1-23 | Validation status: contract-tested against the documented DocuSign OAuth, eSignature REST v2.1 and Connect HMAC behaviour. **Live sandbox validation is pending** (no developer-account credentials). Items to confirm in the sandbox: Connect payload shape (both the wrapped `data.*` and flat shapes are accepted), signature-tab placement on the last page, and the reminder resend body. |
+
+### PR 5 — Adobe Acrobat Sign adapter
+
+| # | Decision |
+|---|---|
+| A1-24 | Adobe Acrobat Sign REST v6 behind the same `ExternalSignatureAdapter`: OAuth v2 authorization code (confidential client) exchanged, refreshed and revoked at the account's `api_access_point`, which is trusted only when it is an HTTPS Adobe Sign host (a tampered callback cannot route the code, secret or tokens elsewhere). Account from `users/me`; a USER-scope `AGREEMENT_WORKFLOW_COMPLETED` webhook is registered at connect. |
+| A1-25 | Agreements: frozen PDF uploaded as a transient document; agreement created `DRAFT`, sent `IN_PROCESS`; void = `CANCELLED` with a comment; reminders to the next participants. Completion: `combinedDocument` → EXECUTED, `auditTrail` → PROVIDER_COMPLETION_EVIDENCE (`ADOBE_SIGN_AUDIT_REPORT`). |
+| A1-26 | Webhook: Adobe's verification of intent (our client id in `X-AdobeSign-ClientId`, echoed on success; any other id refused). It is not a signature, so the callback is a hint only: the agreement must be routed here and completion is confirmed with the tenant's own token (the callback carries no account identity; `provider_account_id` is null). |
+| A1-27 | Validation status: contract-tested against the documented OAuth v2, REST v6 and webhook behaviour. **Live sandbox validation is pending.** To confirm: the `DRAFT` → `IN_PROCESS` state change, the cancellation body, the `auditTrail` path, the transient-document field names, and webhook scope for non-admin users. |
+
 ## 4. Release dependencies
 
 Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.

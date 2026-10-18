@@ -10,14 +10,14 @@ import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
 } from '@aramo/documents-rendering';
-import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { OfferRepository } from '@aramo/placement';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
-import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
+import { SignatureRoutingModule } from '../document-signing/signature-routing.module.js';
+import { SignatureRoutingService } from '../document-signing/signature-routing.service.js';
 import { OfferModule } from '../offer/offer.module.js';
 
 import { OfferDocumentController } from './offer-document.controller.js';
@@ -42,7 +42,7 @@ const OFFER_DOCS_RENDER_SERVICE = 'OFFER_DOCS_RENDER_SERVICE';
 const OFFER_DOCS_SIGNING = 'OFFER_DOCS_SIGNING';
 
 @Module({
-  imports: [ObjectStorageModule, TalentRecordModule, OfferModule],
+  imports: [ObjectStorageModule, TalentRecordModule, OfferModule, SignatureRoutingModule],
   controllers: [OfferDocumentController],
   providers: [
     { provide: OFFER_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
@@ -52,7 +52,6 @@ const OFFER_DOCS_SIGNING = 'OFFER_DOCS_SIGNING';
       inject: [ObjectStorageService],
     },
     { provide: OFFER_DOCS_RENDERING, useFactory: (): DocumentRenderingPort => new PdfLibDocumentRenderingAdapter() },
-    { provide: SIGNATURE_PROVIDER_PORT, useClass: EsignServiceHttpProvider },
     {
       provide: OFFER_DOCS_REPO,
       useFactory: (prisma: DocumentsPrismaService): DocumentsRepository =>
@@ -70,9 +69,9 @@ const OFFER_DOCS_SIGNING = 'OFFER_DOCS_SIGNING';
       useFactory: (
         documents: DocumentsRepository,
         render: RenderService,
-        signature: SignatureProviderPort,
-      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, signature),
-      inject: [OFFER_DOCS_REPO, OFFER_DOCS_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT],
+        router: SignatureRoutingService,
+      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, router),
+      inject: [OFFER_DOCS_REPO, OFFER_DOCS_RENDER_SERVICE, SignatureRoutingService],
     },
     {
       provide: OfferDocumentOrchestratorService,

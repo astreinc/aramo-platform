@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
+import { staticSignatureRouter } from '../document-signing/signature-router.js';
 import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
@@ -136,7 +137,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Slice 1 (C) — request() derives the CLIENT company from the requisition; the
       // supplied company_id must match it.
       const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY } as never;
-      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, fakeSignature), fakeTalent, resolver, binding, {} as never, {} as never, fakeRequisitions);
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, staticSignatureRouter(fakeSignature)), fakeTalent, resolver, binding, {} as never, {} as never, fakeRequisitions);
     }, 180_000);
 
     afterAll(async () => {

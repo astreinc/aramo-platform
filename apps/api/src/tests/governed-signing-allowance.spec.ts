@@ -4,41 +4,64 @@ import type { EnvelopeSummary, SignatureProviderPort } from '@aramo/documents-co
 import type { DocumentsRepository, RenderService } from '@aramo/documents';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
+import type { SignatureRouter } from '../document-signing/signature-router.js';
 import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
 
-// Multi-Provider directive §B/§D — a send refused for the allowance must stay
-// recoverable: the envelope it left in DRAFT is sent on the next attempt (not
-// reported as already sent), and the refusal reaches the caller with its reason.
+// Multi-Provider directive §B/§D/§E — governed sends route through the provider
+// router: availability is asserted before anything is created, the provider is
+// frozen on the new request, and a DRAFT left by a refused send is sent on retry.
 
 const env = (over: Partial<EnvelopeSummary> = {}): EnvelopeSummary => ({ envelope_id: 'E1', status: 'SENT', signers: [], ...over });
 
-function make(existing: EnvelopeSummary | null) {
-  const signature = {
+function make(existing: EnvelopeSummary | null, refuse = false) {
+  const port = {
     findEnvelopeForDocument: vi.fn(async () => existing),
     createEnvelope: vi.fn(async () => env({ envelope_id: 'E-new', status: 'DRAFT' })),
     sendEnvelope: vi.fn(async (_t: string, id: string) => env({ envelope_id: id, status: 'SENT' })),
   } as unknown as SignatureProviderPort;
+  const router: SignatureRouter = {
+    forNewSend: vi.fn(async () => {
+      if (refuse) throw new AramoError('ESIGN_SEND_UNAVAILABLE', 'no', 409, { requestId: 'r1', details: { reason: 'LIMIT_REACHED' } });
+      return { provider: 'aramo_sign' as const, port };
+    }),
+    forDocument: vi.fn(async () => ({ provider: 'aramo_sign' as const, port })),
+    recordRoute: vi.fn(async () => undefined),
+    recordAccepted: vi.fn(async () => undefined),
+  };
   const documents = {
     getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA' })),
     prepareDocument: vi.fn(async () => undefined),
   } as unknown as DocumentsRepository;
-  const svc = new GovernedDocumentSigningService(documents, {} as RenderService, signature);
+  const svc = new GovernedDocumentSigningService(documents, {} as RenderService, router);
   const input = { tenant_id: 't1', document_id: 'doc-1', subject: 'RTR', execution_mode: 'SINGLE_SIGNATURE', recipient: { email: 'a@b.test', name: 'A' }, created_by: 'u1', requestId: 'r1' };
-  return { svc, signature, input };
+  return { svc, port, router, documents, input };
 }
 
-describe('GovernedDocumentSigningService.send — allowance recovery', () => {
+describe('GovernedDocumentSigningService.send — routing and allowance recovery', () => {
+  it('a new send freezes the selected provider on the request', async () => {
+    const { svc, router, input } = make(null);
+    await expect(svc.send(input)).resolves.toEqual({ document_id: 'doc-1', envelope_id: 'E-new', status: 'SENT' });
+    expect(router.recordRoute).toHaveBeenCalledWith({ tenant_id: 't1', document_id: 'doc-1', document_revision_id: 'rev-1', provider: 'aramo_sign', provider_envelope_ref: 'E-new' });
+  });
+
+  it('an unavailable send is refused before the document is prepared or an envelope is created', async () => {
+    const { svc, port, documents, input } = make(null, true);
+    await expect(svc.send(input)).rejects.toMatchObject({ code: 'ESIGN_SEND_UNAVAILABLE' });
+    expect(documents.prepareDocument).not.toHaveBeenCalled();
+    expect(port.createEnvelope).not.toHaveBeenCalled();
+  });
+
   it('a DRAFT envelope left by a refused send is SENT on retry, never minted twice', async () => {
-    const { svc, signature, input } = make(env({ envelope_id: 'E1', status: 'DRAFT' }));
+    const { svc, port, input } = make(env({ envelope_id: 'E1', status: 'DRAFT' }));
     await expect(svc.send(input)).resolves.toEqual({ document_id: 'doc-1', envelope_id: 'E1', status: 'SENT' });
-    expect(signature.sendEnvelope).toHaveBeenCalledWith('t1', 'E1');
-    expect(signature.createEnvelope).not.toHaveBeenCalled();
+    expect(port.sendEnvelope).toHaveBeenCalledWith('t1', 'E1');
+    expect(port.createEnvelope).not.toHaveBeenCalled();
   });
 
   it('an envelope already in flight is returned as is (duplicate guard unchanged)', async () => {
-    const { svc, signature, input } = make(env({ envelope_id: 'E1', status: 'SENT' }));
+    const { svc, port, input } = make(env({ envelope_id: 'E1', status: 'SENT' }));
     await expect(svc.send(input)).resolves.toMatchObject({ envelope_id: 'E1', status: 'SENT' });
-    expect(signature.sendEnvelope).not.toHaveBeenCalled();
+    expect(port.sendEnvelope).not.toHaveBeenCalled();
   });
 });
 

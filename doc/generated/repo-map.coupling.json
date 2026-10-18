@@ -104,6 +104,7 @@
     },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
+    { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "CLAUDE.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "README.md", "status": "unscoped", "to": "apps/api/src/app.module.ts" },
@@ -11099,12 +11100,32 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/document-signing/esignature-integration.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/document-signing/signature-availability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/engagement/engagement.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/adobe-sign/adobe-sign-webhook.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/esignature-providers/docusign/docusign-webhook.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -18610,6 +18631,11 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "doc/runbooks/esignature-external-providers.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
+    },
+    {
       "from": "doc/runbooks/frontdoor-cutover.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -21765,6 +21791,16 @@
       "to": "libs/settings/tsconfig.lib.json"
     },
     {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/tsconfig.lib.json"
+    },
+    {
       "from": "libs/skills-taxonomy/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -22235,6 +22271,11 @@
     {
       "from": "package.json",
       "status": "unscoped",
+      "to": "libs/signature-routing/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
       "to": "libs/skills-taxonomy/prisma/schema.prisma"
     },
     {
@@ -22654,6 +22695,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261016160000_doc_template_version_internal_notes/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -24450,6 +24496,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/skills-taxonomy/src/index.ts"
     },
     {
@@ -24634,6 +24685,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/saved-list/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/skills-taxonomy/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sourced-talent/src/index.ts" },
     {

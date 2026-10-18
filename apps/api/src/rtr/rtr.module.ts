@@ -11,7 +11,6 @@ import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
 } from '@aramo/documents-rendering';
-import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 // DOC-TEMPLATE-ADMIN-RTR-1 T2b — authoritative sources for the expanded RTR binding
@@ -24,7 +23,8 @@ import { IdentityCoreModule, IdentityRepository, TenantRepository } from '@aramo
 
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
-import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
+import { SignatureRoutingModule } from '../document-signing/signature-routing.module.js';
+import { SignatureRoutingService } from '../document-signing/signature-routing.service.js';
 
 import { RtrController } from './rtr.controller.js';
 import { RtrOrchestratorService } from './rtr-orchestrator.service.js';
@@ -48,7 +48,7 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
-  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule],
+  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, SignatureRoutingModule],
   controllers: [RtrController],
   providers: [
     { provide: RTR_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
@@ -58,7 +58,6 @@ const RTR_SIGNING = 'RTR_SIGNING';
       inject: [ObjectStorageService],
     },
     { provide: RTR_DOCS_RENDERING, useFactory: (): DocumentRenderingPort => new PdfLibDocumentRenderingAdapter() },
-    { provide: SIGNATURE_PROVIDER_PORT, useClass: EsignServiceHttpProvider },
     {
       provide: RTR_DOCS_REPO,
       useFactory: (prisma: DocumentsPrismaService): DocumentsRepository =>
@@ -103,9 +102,9 @@ const RTR_SIGNING = 'RTR_SIGNING';
       useFactory: (
         documents: DocumentsRepository,
         render: RenderService,
-        signature: SignatureProviderPort,
-      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, signature),
-      inject: [RTR_DOCS_REPO, RTR_RENDER_SERVICE, SIGNATURE_PROVIDER_PORT],
+        router: SignatureRoutingService,
+      ): GovernedDocumentSigningService => new GovernedDocumentSigningService(documents, render, router),
+      inject: [RTR_DOCS_REPO, RTR_RENDER_SERVICE, SignatureRoutingService],
     },
     {
       provide: RtrOrchestratorService,

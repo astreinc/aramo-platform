@@ -9,7 +9,13 @@ import {
   type ClientSubmittalPolicyScope,
 } from '@aramo/client-submittal-policy';
 
+import { SignatureAvailabilityService } from '../document-signing/signature-availability.service.js';
+
 import { PublishClientSubmittalPolicyDto } from './dto/client-submittal-policy.dto.js';
+
+// Signature states that mean the tenant cannot send a Right to Represent at all.
+// Temporary states (allowance used up, provider disconnected) do not block authoring.
+const RTR_UNSENDABLE = new Set(['NO_PROVIDER', 'NOT_SUBSCRIBED', 'PROVIDER_UNAVAILABLE']);
 
 // CSP PR-2 — the Client Submittal Policy admin HTTP surface (DARK: authoring +
 // effective read only; NO submit-command reference — that wiring is PR-3). CLIENT-
@@ -21,6 +27,7 @@ export class ClientSubmittalPolicyController {
   constructor(
     private readonly policy: ClientSubmittalPolicyService,
     @Inject(COMPANY_CLIENT_CHECK_PORT) private readonly clientCheck: CompanyClientCheckPort,
+    private readonly signatures: SignatureAvailabilityService,
   ) {}
 
   /**
@@ -167,6 +174,17 @@ export class ClientSubmittalPolicyController {
         });
       }
       scope_ref = dto.scope_ref;
+    }
+    // Multi-Provider directive §D — a required RTR must be sendable by this tenant;
+    // otherwise every submittal to this client would stall with no way forward.
+    if (dto.requirements.some((r) => r.key === 'rtr_present' && r.disposition === 'REQUIRED')) {
+      const signing = await this.signatures.evaluate(auth.tenant_id);
+      if (signing.reason !== null && RTR_UNSENDABLE.has(signing.reason)) {
+        throw new AramoError('CLIENT_SUBMITTAL_POLICY_INVALID', 'Requiring a Right to Represent needs a working e-signature provider', 422, {
+          requestId,
+          details: { reason: 'RTR_REQUIRES_SIGN', key: 'rtr_present', signature_reason: signing.reason, provider: signing.provider },
+        });
+      }
     }
     const definition = {
       requirements: dto.requirements.map((r) => ({

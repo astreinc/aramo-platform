@@ -5719,6 +5719,100 @@ paths:
         '503':
           description: Webhook dark — signing secret not provisioned.
 
+  /v1/webhooks/esignature/adobe-sign:
+    get:
+      operationId: adobeSignWebhookVerification
+      summary: Adobe Acrobat Sign webhook registration check (verification of intent).
+      description: |
+        Surface class XP (Multi-Provider E-Sign §G). Adobe sends our client id in
+        X-AdobeSign-ClientId when the webhook is registered or re-activated; it is echoed
+        in the response header and body. Any other client id is refused (never 2xx).
+        503 until Adobe Acrobat Sign is configured in the environment.
+      security:
+        - AdobeSignClientId: []
+      responses:
+        '200':
+          description: Verified; the client id is echoed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [xAdobeSignClientId]
+                properties:
+                  xAdobeSignClientId: { type: string }
+        '403':
+          description: Missing or foreign client id.
+        '503':
+          description: Adobe Acrobat Sign is not configured in this environment.
+    post:
+      operationId: adobeSignWebhookNotification
+      summary: Inbound Adobe Acrobat Sign agreement notification.
+      description: |
+        Surface class XP. Verified by the echoed client id (not a signature), so the
+        payload is a hint: the agreement must be one this platform routed to Adobe, and
+        completion is confirmed with the tenant's own Adobe token before the signed PDF
+        and audit report are stored. 200 with the echo is uniform (no oracle).
+      security:
+        - AdobeSignClientId: []
+      requestBody:
+        required: true
+        description: The Adobe webhook notification (opaque, Adobe-defined JSON).
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Accepted; the client id is echoed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [xAdobeSignClientId]
+                properties:
+                  xAdobeSignClientId: { type: string }
+        '403':
+          description: Missing or foreign client id.
+        '500':
+          description: Transient failure while storing; Adobe retries.
+        '503':
+          description: Adobe Acrobat Sign is not configured in this environment.
+  /v1/webhooks/esignature/docusign:
+    post:
+      operationId: docuSignConnectWebhook
+      summary: Inbound DocuSign Connect webhook (external provider, HMAC-authenticated).
+      description: |
+        External provider (DocuSign) inbound webhook — surface class XP (Multi-Provider
+        E-Sign §G). No Aramo session; the SOLE authority is the Connect HMAC over the raw
+        body. Dark by construction: 503 until DocuSign is configured in the environment.
+        The payload is a hint only: the envelope must be one this platform routed to
+        DocuSign, the account must be the one the tenant connected, and completion is
+        confirmed by reading the envelope from the DocuSign API before the signed PDF and
+        Certificate of Completion are stored. Bare statuses; 204 is uniform (no oracle).
+      security:
+        - DocuSignHmacSignature: []
+      requestBody:
+        required: true
+        description: The raw DocuSign Connect JSON payload (opaque; the signed bytes).
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '204':
+          description: Accepted (processed, duplicate, not completed, unknown or foreign envelope).
+        '400':
+          description: Malformed body after a valid signature.
+        '401':
+          description: Missing or invalid HMAC.
+        '500':
+          description: Transient failure while storing; DocuSign retries.
+        '503':
+          description: DocuSign is not configured in this environment.
   /v1/webhooks/communications/zoom:
     post:
       operationId: zoomCommunicationsWebhook
@@ -7158,6 +7252,148 @@ paths:
           $ref: 'common.yaml#/components/responses/NotFound'
         '409':
           $ref: 'common.yaml#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+  /v1/document-signing/availability:
+    get:
+      operationId: getDocumentSigningAvailability
+      summary: Whether the caller can send a document for signature now, and through which provider.
+      description: >-
+        The backend-owned signing availability (Multi-Provider E-Sign directive §D):
+        the tenant's selected e-signature provider, whether the calling user can send
+        now, the typed reason when not, and (Aramo Sign) the included allowance for
+        the current billing period. Advisory for the UI; every send re-checks
+        immediately before it happens. Guarded by `document:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentSigningAvailability' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/overview:
+    get:
+      operationId: getESignatureIntegrationOverview
+      summary: The tenant's e-signature provider, provider statuses, availability and recent changes.
+      description: >-
+        Settings → Integrations → E-Signature (Multi-Provider E-Sign directive §E).
+        One active provider per tenant; providers without a working integration are
+        reported NOT_AVAILABLE and are not selectable. Guarded by `integration:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignatureOverview' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/{provider}/connect:
+    post:
+      operationId: connectESignatureProvider
+      summary: Start connecting the tenant's external e-signature account (OAuth).
+      description: >-
+        Returns the provider's sign-in URL. The OAuth state is single-use, expires in
+        10 minutes and is bound to the tenant, the calling admin and the provider; the
+        PKCE verifier never leaves the server. Guarded by `integration:write`.
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [docusign, adobe_sign] } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [authorize_url]
+                properties:
+                  authorize_url: { type: string, format: uri }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/{provider}/callback:
+    get:
+      operationId: completeESignatureProviderConnect
+      summary: OAuth redirect target for an external e-signature provider.
+      description: >-
+        A top-level browser navigation from the provider. The session cookie must be the
+        admin who started the connect; the state must be theirs, unused and unexpired.
+        Always redirects (302) to Settings → Integrations with an outcome flag; provider
+        errors and tokens are never echoed. Guarded by `integration:write`.
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [docusign, adobe_sign] } }
+        - { name: code, in: query, required: false, schema: { type: string } }
+        - { name: state, in: query, required: false, schema: { type: string } }
+      responses:
+        '302':
+          description: Redirect back to Settings → Integrations.
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/{provider}/disconnect:
+    post:
+      operationId: disconnectESignatureProvider
+      summary: Disconnect the tenant's external e-signature account.
+      description: >-
+        Tombstones the stored tokens and disables the connection. Does not switch the
+        tenant's active provider: if this provider is active, sends read
+        PROVIDER_DISCONNECTED until an admin reconnects or selects another provider.
+        Guarded by `integration:write`.
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [docusign, adobe_sign] } }
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignatureOverview' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/integrations/esignature/active-provider:
+    put:
+      operationId: selectESignatureProvider
+      summary: Select the tenant's active e-signature provider (audited).
+      description: >-
+        Explicit, audited, backend-validated provider change. Existing signature
+        requests keep the provider frozen on them. A provider that is not
+        selectable is refused (VALIDATION_ERROR, details.reason). Guarded by
+        `integration:write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider]
+              properties:
+                provider:
+                  type: string
+                  enum: [aramo_sign, docusign, adobe_sign]
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ESignatureOverview' }
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
   /v1/integrations/llm/overview:
@@ -9225,6 +9461,22 @@ components:
     # `v0:{x-zm-request-timestamp}:{raw body}`, not a bearer token. This header carries the
     # COMPUTED signature only; the app-level signing secret is resolved from an opaque
     # reference (ZOOM_WEBHOOK_SECRET_REF) through Secrets Manager and never appears here.
+    AdobeSignClientId:
+      type: apiKey
+      in: header
+      name: x-adobesign-clientid
+      description: |
+        Adobe Acrobat Sign verification of intent: our application's client id, sent by
+        Adobe on every webhook call and echoed back on success. Not a signature; the
+        payload is confirmed against the Adobe API before anything is stored.
+    DocuSignHmacSignature:
+      type: apiKey
+      in: header
+      name: x-docusign-signature-1
+      description: |
+        DocuSign Connect HMAC-SHA256 (base64) over the raw request body, one header per
+        configured key (x-docusign-signature-1..N; any one match authenticates). The key
+        is server-side configuration and never documented.
     ZoomHmacSignature:
       type: apiKey
       in: header
@@ -12114,6 +12366,76 @@ components:
         provider: { $ref: '#/components/schemas/WiredLlmProvider' }
         configured:
           type: boolean
+    DocumentSigningAvailability:
+      type: object
+      additionalProperties: false
+      required: [provider, available, reason, allowance]
+      properties:
+        provider:
+          type: [string, 'null']
+          enum: [aramo_sign, docusign, adobe_sign, null]
+        available:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [NO_PROVIDER, NOT_SUBSCRIBED, NOT_AUTHORIZED, LIMIT_REACHED, PROVIDER_DISCONNECTED, PROVIDER_UNAVAILABLE, PROVIDER_REFUSED, null]
+        allowance:
+          oneOf:
+            - $ref: '#/components/schemas/SignatureAllowance'
+            - type: 'null'
+    ESignatureOverview:
+      type: object
+      additionalProperties: false
+      required: [active_provider, providers, availability, recent_changes]
+      properties:
+        active_provider:
+          type: string
+          enum: [aramo_sign, docusign, adobe_sign]
+        providers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [provider, status, selectable, connectable, needs_reconnect]
+            properties:
+              provider:
+                type: string
+                enum: [aramo_sign, docusign, adobe_sign]
+              status:
+                type: string
+                enum: [BUILT_IN, CONNECTED, NOT_CONNECTED, NOT_AVAILABLE]
+              selectable:
+                type: boolean
+              connectable:
+                type: boolean
+              needs_reconnect:
+                type: boolean
+        availability:
+          $ref: '#/components/schemas/DocumentSigningAvailability'
+        recent_changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [from_provider, to_provider, actor_id, occurred_at]
+            properties:
+              from_provider: { type: string }
+              to_provider: { type: string }
+              actor_id: { type: string }
+              occurred_at: { type: string, format: date-time }
+    SignatureAllowance:
+      type: object
+      additionalProperties: false
+      required: [limit, used, remaining, period_start, period_end, threshold]
+      properties:
+        limit: { type: integer }
+        used: { type: integer }
+        remaining: { type: integer }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        threshold:
+          type: string
+          enum: [OK, WARNING, EXHAUSTED]
     TenantLlmOverview:
       type: object
       additionalProperties: false

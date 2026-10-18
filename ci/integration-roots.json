@@ -39,6 +39,7 @@
     "libs/resume-parse",
     "libs/selection",
     "libs/settings",
+    "libs/signature-routing",
     "libs/skills-taxonomy",
     "libs/sourced-talent",
     "libs/submittal",

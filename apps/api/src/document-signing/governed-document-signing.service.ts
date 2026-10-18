@@ -1,8 +1,9 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { DocumentsRepository, RenderService } from '@aramo/documents';
-import { SIGNATURE_PROVIDER_PORT, type SignatureProviderPort } from '@aramo/documents-contracts';
 import { type RenderModel } from '@aramo/documents-rendering';
+
+import type { SignatureRouter } from './signature-router.js';
 
 // GOVERNED DOCUMENT SIGNING — the single reusable application-level capability that owns the
 // common mechanics of preparing, sending, reminding, and reading the state of a governed,
@@ -41,7 +42,10 @@ export class GovernedDocumentSigningService {
   constructor(
     private readonly documents: DocumentsRepository,
     private readonly render: RenderService,
-    @Inject(SIGNATURE_PROVIDER_PORT) private readonly signature: SignatureProviderPort,
+    // Multi-Provider directive §D/§E — the provider is chosen per request: new
+    // requests go to the tenant's selected provider after the availability check;
+    // existing requests stay with the provider frozen on them.
+    private readonly router: SignatureRouter,
   ) {}
 
   // The SINGLE canonical derived signing status (DOC-5/DOC-6/journey parity): a read-model label
@@ -112,24 +116,27 @@ export class GovernedDocumentSigningService {
     }
     // Duplicate-envelope guard (W1-C1/§19): never mint a second active envelope for the same
     // (tenant, document, frozen revision). >1 live ⇒ ESIGN_ENVELOPE_AMBIGUOUS from the port.
-    const existing = await this.signature.findEnvelopeForDocument(input.tenant_id, input.document_id, revision.id);
+    const frozen = await this.router.forDocument(input.tenant_id, input.document_id, revision.id);
+    const existing = await frozen.port.findEnvelopeForDocument(input.tenant_id, input.document_id, revision.id);
     if (existing !== null) {
       // A DRAFT envelope is one whose send was refused or failed before acceptance
       // (e.g. the Aramo Sign allowance was used up): send it now rather than report
       // it as already sent. Anything else is in flight and is returned as is.
       if (existing.status === 'DRAFT') {
-        const sent = await this.signature.sendEnvelope(input.tenant_id, existing.envelope_id);
+        const sent = await frozen.port.sendEnvelope(input.tenant_id, existing.envelope_id);
         return { document_id: input.document_id, envelope_id: existing.envelope_id, status: sent.status };
       }
       return { document_id: input.document_id, envelope_id: existing.envelope_id, status: existing.status };
     }
+    // Asserted BEFORE anything is prepared or created: a refused send leaves no trace.
+    const target = await this.router.forNewSend(input.tenant_id, input.requestId);
     await this.documents.prepareDocument({
       tenant_id: input.tenant_id,
       document_id: input.document_id,
       actor_id: input.created_by,
       request_id: input.requestId,
     });
-    const envelope = await this.signature.createEnvelope({
+    const envelope = await target.port.createEnvelope({
       tenant_id: input.tenant_id,
       subject: input.subject,
       execution_mode: input.execution_mode,
@@ -145,7 +152,15 @@ export class GovernedDocumentSigningService {
       ],
       signers: [{ email: input.recipient.email, name: input.recipient.name, signing_order: 1 }],
     });
-    const sent = await this.signature.sendEnvelope(input.tenant_id, envelope.envelope_id);
+    await this.router.recordRoute({
+      tenant_id: input.tenant_id,
+      document_id: input.document_id,
+      document_revision_id: revision.id,
+      provider: target.provider,
+      provider_envelope_ref: envelope.envelope_id,
+    });
+    const sent = await target.port.sendEnvelope(input.tenant_id, envelope.envelope_id);
+    await this.router.recordAccepted(input.tenant_id, target.provider);
     return { document_id: input.document_id, envelope_id: envelope.envelope_id, status: sent.status };
   }
 
@@ -172,14 +187,15 @@ export class GovernedDocumentSigningService {
         details: { document_id: input.document_id },
       });
     }
-    const envelope = await this.signature.findEnvelopeForDocument(input.tenant_id, input.document_id, revision.id);
+    const frozen = await this.router.forDocument(input.tenant_id, input.document_id, revision.id);
+    const envelope = await frozen.port.findEnvelopeForDocument(input.tenant_id, input.document_id, revision.id);
     if (envelope === null) {
       throw new AramoError('ESIGN_ENVELOPE_NOT_FOUND_FOR_DOCUMENT', 'no active signature envelope for this document', 404, {
         requestId: input.requestId,
         details: { document_id: input.document_id },
       });
     }
-    await this.signature.remindEnvelopeSigner(input.tenant_id, envelope.envelope_id);
+    await frozen.port.remindEnvelopeSigner(input.tenant_id, envelope.envelope_id);
     return { document_id: input.document_id, status: derived, reminder_sent: true };
   }
 
