@@ -285,6 +285,30 @@ describe('PdfLibDocumentRenderingAdapter (UPLOADED_PDF path)', () => {
     expect(a.sha256).toBe(b.sha256);
   });
 
+  // PX-2 — DocuSign-style signature stamp: the typed name in the embedded
+  // handwriting font inside a "Signed by:" frame with a short signature id.
+  it('renders a typed signature in the handwriting font inside a Signed by stamp, hash-stably', async () => {
+    const source = await makeSourcePdf();
+    const field = { field_key: 'sig', page_number: 0, x: 72, y: 120, value: 'Jane Doe', font: 'SCRIPT' as const, width: 220, height: 48, stamp: { label: 'Signed by:', id: '7EF4C0E78D484E8...' } };
+    const a = await adapter.prepareFromSource(source, [field]);
+    const b = await adapter.prepareFromSource(source, [field]);
+    expect(a.sha256).toBe(b.sha256);
+    const raw = Buffer.from(a.bytes).toString('latin1');
+    expect(raw).toMatch(/HomemadeApple/);
+    const plain = await adapter.prepareFromSource(source, [{ field_key: 'sig', page_number: 0, x: 72, y: 120, value: 'Jane Doe' }]);
+    expect(Buffer.from(plain.bytes).toString('latin1')).not.toMatch(/HomemadeApple/);
+    expect(a.provenance.render_manifest_sha256).not.toBe(plain.provenance.render_manifest_sha256);
+  });
+
+  it('frames a drawn signature image in the stamp', async () => {
+    const source = await makeSourcePdf();
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+    const out = await adapter.prepareFromSource(source, [
+      { field_key: 'sig', page_number: 0, x: 72, y: 120, kind: 'IMAGE', image_bytes: new Uint8Array(png), image_format: 'PNG', width: 220, height: 48, stamp: { label: 'Signed by:', id: 'ABC...' } },
+    ]);
+    expect(out.page_count).toBe(1);
+  });
+
   it('rejects an out-of-bounds placement (RenderFailedError)', async () => {
     const source = await makeSourcePdf();
     await expect(

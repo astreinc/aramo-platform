@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 import { fieldBox, type PageSize } from './field-geometry.js';
@@ -99,7 +99,7 @@ export function PdfDocument({
               .map((f) => {
                 const shown = display(f);
                 const box = fieldBox(f, page);
-                const cls = `sg-onpage${shown !== null ? ' sg-onpage--done' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
+                const cls = `sg-onpage${shown !== null ? ' sg-onpage--done' : ''}${shown !== null && f.field_type === 'SIGNATURE' ? ' sg-onpage--stamp' : ''}${f.required ? '' : ' sg-onpage--optional'}${activeField === f.field_id ? ' sg-onpage--active' : ''}`;
                 return (
                   <div
                     key={f.field_id}
@@ -123,7 +123,7 @@ export function PdfDocument({
                     ) : shown.kind === 'image' ? (
                       <img src={shown.value} alt="Your signature" className="sg-onpage__img" />
                     ) : (
-                      <span className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'}>{shown.value}</span>
+                      <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
                   </div>
                 );
@@ -160,5 +160,28 @@ function Page({ doc, index, size, cssWidth, children }: { doc: Pdf; index: numbe
       <canvas ref={canvas} aria-hidden="true" />
       {children}
     </div>
+  );
+}
+
+// Shrinks text to fit its field box (like the PDF stamp, which fits the name to
+// the field width): start from ~60% of the box height and step down until the
+// text no longer overflows.
+function FitText({ text, className }: { readonly text: string; readonly className: string }): JSX.Element {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const box = el?.parentElement;
+    if (!el || !box) return;
+    let size = Math.max(8, box.clientHeight * 0.62);
+    el.style.fontSize = `${size}px`;
+    for (let i = 0; i < 40 && el.scrollWidth > box.clientWidth - 8 && size > 7; i += 1) {
+      size -= 1;
+      el.style.fontSize = `${size}px`;
+    }
+  });
+  return (
+    <span ref={ref} className={className}>
+      {text}
+    </span>
   );
 }

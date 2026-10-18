@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
+import fontkit from '@pdf-lib/fontkit';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 
 import {
@@ -16,6 +17,7 @@ import {
   type SignatureFieldPlacement,
 } from './document-rendering.port.js';
 import { RenderFailedError } from './errors.js';
+import { SIGNATURE_SCRIPT_FONT_BASE64 } from './fonts/signature-script.font.js';
 
 // DOC-2 boundary 5 — the pdf-lib implementation of DocumentRenderingPort. pdf-lib
 // is the initial engine and is confined to THIS file. Determinism is DESIGNED:
@@ -468,6 +470,13 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
       const doc = await PDFDocument.load(sourcePdf);
       this.pinMetadata(doc);
       const font = await doc.embedFont(StandardFonts.Helvetica);
+      // PX-2 — the handwriting font is embedded only when a placement asks for it,
+      // so documents without typed signatures are byte-identical to before.
+      let script: PDFFont | null = null;
+      if (placements.some((p) => p.font === 'SCRIPT')) {
+        doc.registerFontkit(fontkit);
+        script = await doc.embedFont(Buffer.from(SIGNATURE_SCRIPT_FONT_BASE64, 'base64'), { subset: true });
+      }
       const pages = doc.getPages();
       for (const p of placements) {
         const page = pages[p.page_number];
@@ -486,12 +495,28 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
             p.image_format === 'PNG'
               ? await doc.embedPng(p.image_bytes)
               : await doc.embedJpg(p.image_bytes);
-          page.drawImage(img, { x: p.x, y: p.y, width: p.width ?? img.width, height: p.height ?? img.height });
+          if (p.stamp !== undefined) {
+            const box = stampBox(p);
+            drawStamp(page, box, p.stamp, font);
+            const inner = { x: box.x + 5, y: box.y + 7, w: box.w - 7, h: box.h - 15 };
+            const k = Math.min(inner.w / img.width, inner.h / img.height);
+            page.drawImage(img, { x: inner.x, y: inner.y + (inner.h - img.height * k) / 2, width: img.width * k, height: img.height * k });
+          } else {
+            page.drawImage(img, { x: p.x, y: p.y, width: p.width ?? img.width, height: p.height ?? img.height });
+          }
         } else {
           if (p.value === undefined) {
             throw new RenderFailedError(`text placement ${p.field_key} missing value`);
           }
-          page.drawText(p.value, { x: p.x, y: p.y, size: p.size ?? 11, font, color: rgb(0, 0, 0) });
+          if (p.font === 'SCRIPT' && script !== null) {
+            const box = stampBox(p);
+            if (p.stamp !== undefined) drawStamp(page, box, p.stamp, font);
+            const inner = p.stamp !== undefined ? { x: box.x + 5, y: box.y + 7, w: box.w - 8, h: box.h - 15 } : { x: box.x, y: box.y, w: box.w, h: box.h };
+            const size = Math.max(6, Math.min(inner.h * 0.62, (inner.w / Math.max(1, script.widthOfTextAtSize(p.value, 1))) * 0.98));
+            page.drawText(p.value, { x: inner.x, y: inner.y + (inner.h - size) / 2 + size * 0.22, size, font: script, color: rgb(0.08, 0.12, 0.32) });
+          } else {
+            page.drawText(p.value, { x: p.x, y: p.y, size: p.size ?? 11, font, color: rgb(0, 0, 0) });
+          }
         }
       }
       const bytes = await this.save(doc);
@@ -514,6 +539,8 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           height: p.height,
           image_format: p.image_format,
           image_sha256: p.image_bytes ? sha256Hex(p.image_bytes) : undefined,
+          font: p.font,
+          stamp: p.stamp,
         }))),
         source_artifact_sha256,
         output_sha256,
@@ -524,4 +551,23 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
       throw new RenderFailedError(e instanceof Error ? e.message : String(e));
     }
   }
+}
+
+// PX-2 — the field box of a signature placement (PDF points, bottom-left origin).
+function stampBox(p: PreparedField): { x: number; y: number; w: number; h: number } {
+  return { x: p.x, y: p.y, w: p.width ?? 220, h: p.height ?? 48 };
+}
+
+// PX-2 — DocuSign-style signature frame: a left bracket with top and bottom
+// ticks, the label above the signature and the short signature id beneath.
+function drawStamp(page: PDFPage, box: { x: number; y: number; w: number; h: number }, stamp: { label: string; id: string }, font: PDFFont): void {
+  const blue = rgb(0.2, 0.27, 0.86);
+  const tick = Math.min(box.w * 0.35, 70);
+  const top = box.y + box.h - 1;
+  const bottom = box.y + 5;
+  page.drawLine({ start: { x: box.x, y: bottom }, end: { x: box.x, y: top }, thickness: 1, color: blue });
+  page.drawLine({ start: { x: box.x, y: top }, end: { x: box.x + tick, y: top }, thickness: 1, color: blue });
+  page.drawLine({ start: { x: box.x, y: bottom }, end: { x: box.x + tick, y: bottom }, thickness: 1, color: blue });
+  page.drawText(stamp.label, { x: box.x + 4, y: top - 6.5, size: 5.5, font, color: rgb(0.15, 0.15, 0.2) });
+  page.drawText(stamp.id, { x: box.x + 4, y: bottom - 6, size: 5, font, color: rgb(0.35, 0.35, 0.4) });
 }

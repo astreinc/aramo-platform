@@ -93,6 +93,22 @@ export class ExecutionService implements ExecutionProducerPort {
             image_format: parsed.format,
             width: f.width ?? undefined,
             height: f.height ?? undefined,
+            ...(f.field_type === 'SIGNATURE' ? { stamp: signatureStamp(f.id, f.value) } : {}),
+          });
+        } else if (f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS') {
+          // PX-2 — typed signatures / initials render in the handwriting font, a
+          // signature inside the DocuSign-style "Signed by:" stamp. Presentation
+          // only: the stored value and the evidence are unchanged.
+          placements.push({
+            field_key: f.id,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            value: f.value,
+            font: 'SCRIPT',
+            ...(f.width !== null ? { width: f.width } : {}),
+            ...(f.height !== null ? { height: f.height } : {}),
+            ...(f.field_type === 'SIGNATURE' ? { stamp: signatureStamp(f.id, f.value) } : {}),
           });
         } else {
           placements.push({ field_key: f.id, page_number: f.page_number, x: f.x, y: f.y, value: f.value });
@@ -203,4 +219,11 @@ export class ExecutionService implements ExecutionProducerPort {
 
     return results;
   }
+}
+
+// PX-2 — the short signature id printed under a signature stamp: a stable hash of
+// the field and its signed value (uppercase hex, truncated like DocuSign's id).
+function signatureStamp(field_id: string, value: string): { label: string; id: string } {
+  const id = createHash('sha256').update(`${field_id}:${value}`).digest('hex').toUpperCase().slice(0, 15);
+  return { label: 'Signed by:', id: `${id}...` };
 }
