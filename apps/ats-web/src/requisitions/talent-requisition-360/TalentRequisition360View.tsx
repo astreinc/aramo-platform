@@ -20,6 +20,7 @@ import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { getCurrentRtr, remindRtr } from '../../rtr/rtr-api';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
+import { canExecuteRtr, canSendRtr as canSendRtrFor, useSignSubscribed } from '../../rtr/rtr-access';
 import { withCurrency } from '../../talent/stated-fields';
 import { availabilityLabel, journeyOwnerLabel } from '../../talent-360/t360-vocab';
 import { workAuthLabel } from '../../talent-360/t360-model';
@@ -218,9 +219,11 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canReadMeetings = scopes.includes('communication:meeting:read');
   const canCall = scopes.includes('communication:voice:call');
   const canEditTalent = scopes.includes('talent:edit');
-  const canSendRtr = scopes.includes('document:create');
-  // Same-envelope reminder (COMM-RECRUITER-W1 W1-C3) — the RtrPanel's gate.
-  const canRemindRtr = scopes.includes('document:execute');
+  // RTR execution: both document permissions + the tenant's Sign subscription (rtr-access.tsx).
+  const signSubscribed = useSignSubscribed();
+  const canSendRtr = canSendRtrFor(scopes, signSubscribed);
+  // Same-envelope reminder (COMM-RECRUITER-W1 W1-C3) — document:execute + Sign.
+  const canRemindRtr = canExecuteRtr(scopes, signSubscribed);
   const [reminding, setReminding] = useState(false);
 
   // Route chrome: edge-to-edge content (the app shell — main nav + top bar — is

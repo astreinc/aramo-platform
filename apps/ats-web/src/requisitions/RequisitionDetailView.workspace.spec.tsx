@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 import { BreadcrumbProvider } from '../shell/breadcrumb';
 
 import { RequisitionDetailView } from './RequisitionDetailView';
@@ -147,7 +148,8 @@ function mount(scopes: string[], opts: MockOpts = {}) {
   return render(
     <ToastProvider>
       <BreadcrumbProvider>
-        <MemoryRouter initialEntries={['/requisitions/req-1']}>
+        <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
           <Routes>
             <Route
               path="/requisitions/:reqId"
@@ -155,6 +157,7 @@ function mount(scopes: string[], opts: MockOpts = {}) {
             />
           </Routes>
         </MemoryRouter>
+</SignSubscriptionProvider>
       </BreadcrumbProvider>
     </ToastProvider>,
   );
@@ -232,7 +235,8 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -244,6 +248,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -261,7 +266,8 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
     const { container } = render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -271,6 +277,7 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -397,7 +404,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -405,6 +413,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -424,7 +433,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -432,6 +442,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -510,7 +521,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -526,6 +538,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               <Route path="/requisitions/:reqId/talent/:talentId" element={<div data-testid="tr360-route" />} />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -675,7 +688,7 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
       column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT',
       next_actions: [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: '/x', required_scope: 'pipeline:change-status' }],
     });
-    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status', 'document:create'], {
+    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status', 'document:create', 'document:execute'], {
       pipelines: PIPELINE_TAL1,
       board: boardWith([{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }]),
     });

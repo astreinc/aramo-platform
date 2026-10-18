@@ -7,6 +7,7 @@ import {
   hasScope,
   logout,
   useMyProducts,
+  productByKey,
   type Session,
 } from '@aramo/fe-foundation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -21,6 +22,7 @@ import {
   initialsOf,
 } from '../ui';
 import { CommandPalette } from '../search/CommandPalette';
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 
 import { AppRail, type RailItem, type RailKey } from './AppRail';
 import { AtsAppShell } from './AtsAppShell';
@@ -143,6 +145,7 @@ function RecruiterShellInner({
   // the SAME backend-authoritative availability as App Home; the account menu's
   // "Switch application" opens it.
   const products = useMyProducts();
+  const signSubscribed = products.status === 'ready' ? (productByKey(products.view, 'esign')?.subscribed ?? false) : null;
   const [switcherSignal, setSwitcherSignal] = useState(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -247,7 +250,8 @@ function RecruiterShellInner({
           access or your data.
         </div>
       ) : null}
-      {children}
+      {/* RTR execution needs the tenant's Sign subscription (rtr-access.tsx). */}
+      <SignSubscriptionProvider subscribed={signSubscribed}>{children}</SignSubscriptionProvider>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </AtsAppShell>
   );
