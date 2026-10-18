@@ -169,15 +169,30 @@ function Page({ doc, index, size, cssWidth, children }: { doc: Pdf; index: numbe
 function FitText({ text, className }: { readonly text: string; readonly className: string }): JSX.Element {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
-    const el = ref.current;
-    const box = el?.parentElement;
-    if (!el || !box) return;
-    let size = Math.max(8, box.clientHeight * 0.62);
-    el.style.fontSize = `${size}px`;
-    for (let i = 0; i < 40 && el.scrollWidth > box.clientWidth - 8 && size > 7; i += 1) {
-      size -= 1;
+    const fit = () => {
+      const el = ref.current;
+      const box = el?.parentElement;
+      if (!el || !box) return;
+      let size = Math.max(8, box.clientHeight * 0.62);
       el.style.fontSize = `${size}px`;
-    }
+      for (let i = 0; i < 60 && el.scrollWidth > box.clientWidth - 8 && size > 6; i += 1) {
+        size -= 1;
+        el.style.fontSize = `${size}px`;
+      }
+    };
+    fit();
+    // The handwriting web font loads asynchronously; measuring with the fallback
+    // font under-sizes the box, so fit again once fonts are ready.
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    let live = true;
+    void fonts?.ready.then(() => {
+      if (live) fit();
+    });
+    fonts?.addEventListener?.('loadingdone', fit);
+    return () => {
+      live = false;
+      fonts?.removeEventListener?.('loadingdone', fit);
+    };
   });
   return (
     <span ref={ref} className={className}>

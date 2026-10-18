@@ -483,17 +483,29 @@ export function App(): JSX.Element {
     }
   };
 
+  // Every field stays editable until Finish signing (the backend accepts a new
+  // value while the session is live): a filled signature / initials reopens the
+  // adopt dialog to change it, a filled text field reopens its editor.
   const act = (f: SignField) => {
     setActiveField(f.field_id);
     if (f.document_id !== activeDoc) setActiveDoc(f.document_id);
     const t = f.field_type;
+    const done = filled[f.field_id] !== undefined;
     if (t === 'SIGNATURE' || t === 'INITIALS') {
       const a = adopted[t];
-      if (a) void fill(f, a.value, a.method);
+      if (a && !done) void fill(f, a.value, a.method);
       else setAdoptFor(f);
-    } else if (t === 'SIGN_DATE') void fill(f, today());
-    else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') void fill(f, 'true');
-    else setTextFor(f);
+    } else if (t === 'SIGN_DATE') {
+      if (!done) void fill(f, today());
+    } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
+      if (!done) void fill(f, 'true');
+    } else setTextFor(f);
+  };
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && f.field_type !== 'CHECKBOX' && f.field_type !== 'ACKNOWLEDGEMENT';
+  // The typed text already in a field (never a drawn image or a restored mark).
+  const typedIn = (f: SignField | null): string => {
+    const v = f === null ? undefined : filled[f.field_id];
+    return v !== undefined && !v.startsWith('data:image/') && v !== FILLED_MARK ? v : '';
   };
 
   const finish = async () => {
@@ -752,7 +764,14 @@ export function App(): JSX.Element {
                       </span>
                     </span>
                     {done ? (
-                      <span className="sg-ok">Filled</span>
+                      <span className="sg-done-actions">
+                        <span className="sg-ok">Filled</span>
+                        {editable(f) ? (
+                          <Btn variant="quiet" disabled={busy} onClick={() => act(f)} aria-label={`Change ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
+                            Change
+                          </Btn>
+                        ) : null}
+                      </span>
                     ) : (
                       <Btn variant={f.required ? 'primary' : 'secondary'} disabled={busy} onClick={() => act(f)} aria-label={`${ACTION_LABEL[f.field_type] ?? 'Complete'}: ${FIELD_LABEL[f.field_type] ?? f.field_type}, page ${f.page_number + 1}`}>
                         {ACTION_LABEL[f.field_type] ?? 'Complete'}
@@ -781,7 +800,7 @@ export function App(): JSX.Element {
       {adoptFor ? (
         <AdoptDialog
           kind={adoptFor.field_type === 'INITIALS' ? 'INITIALS' : 'SIGNATURE'}
-          suggestedName={suggestedName}
+          suggestedName={typedIn(adoptFor) !== '' ? typedIn(adoptFor) : suggestedName}
           onClose={() => setAdoptFor(null)}
           onAdopt={(a) => {
             const f = adoptFor;
@@ -795,7 +814,7 @@ export function App(): JSX.Element {
       {textFor ? (
         <TextDialog
           title={FIELD_LABEL[textFor.field_type] ?? 'Text'}
-          initial={textFor.field_type === 'SIGNER_NAME' ? suggestedName : ''}
+          initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' ? suggestedName : ''}
           onClose={() => setTextFor(null)}
           onSave={(v) => {
             const f = textFor;

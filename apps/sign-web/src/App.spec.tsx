@@ -76,6 +76,27 @@ async function toWorkspace() {
 }
 
 describe('signer app', () => {
+  it('lets a filled signature be changed until Finish signing', async () => {
+    const calls = transport();
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Start' }));
+    fireEvent.change(await screen.findByLabelText('Your initials'), { target: { value: 'RS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & initial' }));
+    await screen.findAllByText('1 of 3 required fields filled');
+    fireEvent.click(screen.getByRole('button', { name: 'Next field' }));
+    fireEvent.change(await screen.findByLabelText('Your full name'), { target: { value: 'Ravi Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await screen.findAllByText('2 of 3 required fields filled');
+    // Change the filled signature: the adopt dialog reopens with the current name.
+    fireEvent.click(screen.getByRole('button', { name: /^Change Signature/ }));
+    const name = await screen.findByLabelText('Your full name');
+    expect(name).toHaveValue('Ravi Shankar');
+    fireEvent.change(name, { target: { value: 'Ravi S. Shankar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Adopt & sign' }));
+    await waitFor(() => expect(calls.some((c) => c.path.endsWith('/fill') && JSON.stringify(c.body).includes('Ravi S. Shankar'))).toBe(true));
+    await screen.findAllByText('2 of 3 required fields filled');
+  });
+
   it('walks landing → disclosure → workspace → adopt → review → signed, with progress and no link into any Aramo app', async () => {
     const calls = transport();
     await toWorkspace();
