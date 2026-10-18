@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { Button } from '../../ui';
+import { RTR_UNAVAILABLE, useSignState } from '../../rtr/rtr-access';
 import {
   getClientSubmittalHistory,
   getClientSubmittalLayers,
@@ -85,6 +87,9 @@ export function ClientSubmittalPolicyEditor({
   const [initial, setInitial] = useState<Record<SubmittalKey, RowState> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  // Requiring an RTR needs the Aramo Sign subscription (the server refuses the publish).
+  const signState = useSignState();
 
   const load = useMemo(
     () => async () => {
@@ -134,7 +139,7 @@ export function ClientSubmittalPolicyEditor({
 
   const publish = async (): Promise<void> => {
     setPublishing(true);
-    setError(null);
+    setPublishError(null);
     try {
       const requirements: ClientSubmittalRequirementDef[] = SUBMITTAL_KEYS.filter((k) => rows[k].choice !== 'inherit').map(
         (k) => ({
@@ -148,8 +153,12 @@ export function ClientSubmittalPolicyEditor({
       // §31 — never trust a local effective: refetch the authoritative layers.
       await load();
       onPublished?.();
-    } catch {
-      setError('Publish failed. Your changes were not saved.');
+    } catch (e) {
+      setPublishError(
+        e instanceof ApiError && e.details?.['reason'] === 'RTR_REQUIRES_SIGN'
+          ? `Not published. Requiring a Right to Represent needs Aramo Sign, which isn't part of your plan. Your organization admin can add it.`
+          : 'Publish failed. Your changes were not saved.',
+      );
     } finally {
       setPublishing(false);
     }
@@ -209,6 +218,11 @@ export function ClientSubmittalPolicyEditor({
                     </div>
                   )}
                   <span className={`rc-delta${deltaChanged ? ' rc-delta--changed' : ''}`}>{delta}</span>
+                  {k === 'rtr_present' && showOverride && signState === false ? (
+                    <span className="rc-delta rc-delta--warn" role="note">
+                      {RTR_UNAVAILABLE.not_subscribed.label} — recruiters can't send a Right to Represent without it.
+                    </span>
+                  ) : null}
                 </div>
                 <div className="rc-editor-row__src">{prov !== undefined ? <PolicySourceBadge provenance={prov} /> : null}</div>
                 <div className="rc-editor-row__ovr">
@@ -231,6 +245,11 @@ export function ClientSubmittalPolicyEditor({
         </ul>
         <AddRequirementButton catalog={[]} emptyText="Every submittal requirement Aramo can verify today is already shown for this client." />
       </div>
+      {publishError !== null ? (
+        <p className="rc-delta rc-delta--warn" role="alert">
+          {publishError}
+        </p>
+      ) : null}
       <PublishBar
         changes={changes.map((k) => `${submittalLabel(k)}: ${describeChoice(initial[k])} → ${describeChoice(rows[k])}`)}
         publishing={publishing}

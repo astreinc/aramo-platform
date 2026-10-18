@@ -2312,6 +2312,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3079,6 +3085,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6373,6 +6385,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       { "project": "calendar", "status": "production" },
@@ -6725,6 +6743,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/companies/CompanyDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/companies/policies/ClientSubmittalPolicyEditor.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

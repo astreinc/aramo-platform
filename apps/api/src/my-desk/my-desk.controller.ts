@@ -15,7 +15,7 @@ import {
   RequireSiteMatch,
   RolesGuard,
 } from '@aramo/authorization';
-import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+import { EntitlementGuard, EntitlementRepository, RequireCapability } from '@aramo/entitlement';
 
 import type { MyDeskView } from './dto/my-desk.view.js';
 import { MyDeskService } from './my-desk.service.js';
@@ -38,7 +38,10 @@ const APP_TIME_ZONE = resolveAppTimeZone();
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('ats')
 export class MyDeskController {
-  constructor(private readonly service: MyDeskService) {}
+  constructor(
+    private readonly service: MyDeskService,
+    private readonly entitlements: EntitlementRepository,
+  ) {}
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -49,11 +52,12 @@ export class MyDeskController {
     @Query('site_id') siteIdFromQuery: string | undefined,
     @Req() req: Request,
   ): Promise<MyDeskView> {
-    const [visibility, visible_requisition_ids, visible_contact_ids] =
+    const [visibility, visible_requisition_ids, visible_contact_ids, capabilities] =
       await Promise.all([
         req.resolveVisibility!(),
         req.resolveVisibleRequisitionIds!(),
         req.resolveVisibleContactIds!(),
+        this.entitlements.getCapabilities(authContext.tenant_id),
       ]);
     return this.service.compose(
       {
@@ -63,6 +67,7 @@ export class MyDeskController {
         visibility,
         visible_requisition_ids,
         visible_contact_ids,
+        sign_subscribed: capabilities.has('esign'),
       },
       Date.now(),
       APP_TIME_ZONE,

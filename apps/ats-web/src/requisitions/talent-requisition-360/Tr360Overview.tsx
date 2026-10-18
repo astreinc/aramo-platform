@@ -21,6 +21,9 @@ export interface QualRow {
   readonly cta: string | null;
   readonly ctaPrimary: boolean;
   readonly onCta?: () => void;
+  // A visible-but-unavailable action (e.g. Send RTR without Aramo Sign): rendered
+  // disabled with this explanation as its tooltip and accessible description.
+  readonly ctaDisabledReason?: string;
 }
 
 export interface RecruiterFact {
@@ -96,7 +99,11 @@ export function Tr360Overview({
                   <span className="tr360-rowtext__why">{r.sub}</span>
                 </span>
                 <span className={`tr360-pill tr360-tone--${r.tone}`}>{r.pill}</span>
-                {r.cta !== null && r.onCta !== undefined ? (
+                {r.cta !== null && r.ctaDisabledReason !== undefined ? (
+                  <Button unstyled type="button" className="tr360-btn tr360-btn--sm" disabled title={r.ctaDisabledReason} aria-label={`${r.cta} — ${r.ctaDisabledReason}`}>
+                    {r.cta}
+                  </Button>
+                ) : r.cta !== null && r.onCta !== undefined ? (
                   <Button
                     unstyled
                     type="button"

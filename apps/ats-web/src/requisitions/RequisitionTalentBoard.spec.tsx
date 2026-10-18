@@ -489,6 +489,21 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(screen.getByText('RTR · Not sent')).toBeInTheDocument();
   });
 
+  it('a recruiter with the RTR permissions on a tenant without Sign sees a disabled "Requires Aramo Sign" chip', async () => {
+    const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT' });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    rtlRender(
+      <MemoryRouter>
+        <SignSubscriptionProvider subscribed={false}>
+          <RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} scopes={['document:create', 'document:execute']} />
+        </SignSubscriptionProvider>
+      </MemoryRouter>,
+    );
+    const chip = await screen.findByRole('button', { name: 'Send RTR · Requires Aramo Sign' });
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute('title', expect.stringContaining('needs Aramo Sign'));
+  });
+
   it('shows "Due before qualifying" (muted) for a pre-responded card with RTR required & not sent', async () => {
     const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'contacted', rtr_status: 'NOT_SENT' });
     mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
