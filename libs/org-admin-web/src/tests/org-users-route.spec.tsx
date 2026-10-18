@@ -60,6 +60,11 @@ function mockApi() {
     if (url.startsWith('/v1/tenant/roles-catalog')) return okJson(CATALOG);
     if (url.startsWith('/v1/tenant/settings')) return okJson({ 'audit.financials_enabled': false });
     if (url.startsWith('/v1/tenant/users')) return okJson(ROSTER);
+    if (url.startsWith('/v1/tenant/sites')) return okJson({ items: [] });
+    if (url.startsWith('/v1/tenant/audit-events')) return okJson({ items: [], next_cursor: null });
+    if (url.startsWith('/v1/tenant/domain-verification'))
+      return okJson({ status: 'UNVERIFIED', allowed_domain: 'acme.test', record_name: null, record_value: null, verified_at: null, token_issued_at: null });
+    if (url.startsWith('/v1/tenant/profile')) return okJson({ id: 't', name: 'Acme', legal_name: null, display_name: null, address_line1: null, address_line2: null, city: null, state_province: null, postal_code: null, country_code: null, tax_id: null, registration_number: null, primary_contact_name: null, primary_contact_email: null });
     return okJson({});
   });
 }

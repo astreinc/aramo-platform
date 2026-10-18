@@ -104,6 +104,8 @@
 .set-navbtn__badge--app {
   color: #fff;
   background: var(--ink);
+  white-space: nowrap;
+  flex: none;
 }
 .set-navbtn__badge--soon {
   color: var(--faint);
