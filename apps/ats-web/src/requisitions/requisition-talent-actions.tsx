@@ -9,6 +9,7 @@ import type { PipelineView } from '../pipeline/types';
 import type { PlacementView } from '../placement/types';
 import { getPreStartRequirements } from '../pre-start/pre-start-api';
 import { SendRtrLauncher } from '../rtr/SendRtrLauncher';
+import { canSendRtr as canSendRtrFor, useSignSubscribed } from '../rtr/rtr-access';
 import { findSubmittalForTalentJob } from '../submittals/submittals-api';
 import { SUBMITTAL_STATE_LABELS } from '../submittals/types';
 import type { TalentRecordView } from '../talent/types';
@@ -30,7 +31,6 @@ const PRE_START_READ = 'pre_start_requirement:read';
 // The "Send RTR" affordance initiates the governed request→send lifecycle; without
 // document:create the actor cannot start it, so the affordance degrades to a muted
 // status (presentation least-visibility; the server re-authorizes regardless).
-const RTR_INITIATE = 'document:create';
 
 export interface RequisitionTalentActions {
   // Open a talent → the Talent × Requisition 360 page (same tab; Back returns here).
@@ -131,7 +131,8 @@ export function useRequisitionTalentActions({
 
   const canReadClient = scopes.includes(SUBMITTAL_READ);
   const canReadPreStart = scopes.includes(PRE_START_READ);
-  const canSendRtr = scopes.includes(RTR_INITIATE);
+  const signSubscribed = useSignSubscribed();
+  const canSendRtr = canSendRtrFor(scopes, signSubscribed);
 
   // Fetch ONE talent's authoritative CLIENT + PRE-START values (one read pair per
   // talent, cached). No speculative values; failures + absences collapse to "—".

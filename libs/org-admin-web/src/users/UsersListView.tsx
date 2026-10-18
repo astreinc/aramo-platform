@@ -12,6 +12,8 @@ import {
 } from '@aramo/fe-foundation';
 import { SettingsSection } from '@aramo/fe-foundation';
 
+import { fetchRolesCatalog, type RoleCatalogView } from '../roles/roles-catalog-api';
+
 import { DisableConfirmDialog } from './DisableConfirmDialog';
 import { EditEmailDialog } from './EditEmailDialog';
 import { InviteDialog } from './InviteDialog';
@@ -51,6 +53,28 @@ interface Props {
   // Invite-S3 — the inline lifecycle actions (test seams).
   enableFn?: typeof enableTenantUser;
   resendFn?: typeof resendTenantInvitation;
+  /**
+   * Unified multi-product UX (accepted App Home prototype, 2026-10-18):
+   *  - 'invitations' — Users & invitations: Person · Organization · ATS · Sign,
+   *    status, invite / resend / revoke / enable / disable. No role editing.
+   *  - 'access'      — Users & product access: who can use which app, with which
+   *    role; Edit roles (the existing authoritative role-assignment path,
+   *    PATCH /v1/tenant/users/:id/roles). No lifecycle actions.
+   *  - 'all' (default) — the combined pre-split view.
+   */
+  variant?: 'all' | 'invitations' | 'access';
+  /** Test seam — the roles catalog with scopes (invitations variant). */
+  catalogFn?: () => Promise<readonly RoleCatalogView[]>;
+}
+
+// The product a role belongs to, for DISPLAY in the Users & invitations columns
+// only (never an access decision — the server authorizes every request). Sign
+// roles are the `esign_*` partition (the E-Sign catalog tier); `org_admin` is the
+// product-neutral organization role; every other tenant role is an ATS role
+// (ATS_PRODUCT_ROLE_KEYS on the server). "Organization admin" = the person holds
+// a role whose catalog scopes include an organization permission (tenant:admin:*).
+function rolesFor(product: 'ats' | 'sign', role_keys: readonly string[]): string[] {
+  return role_keys.filter((k) => (product === 'sign' ? k.startsWith('esign_') : !k.startsWith('esign_') && k !== 'org_admin'));
 }
 
 type LoadState =
@@ -97,13 +121,35 @@ export function UsersListView({
   rolesFn,
   enableFn,
   resendFn,
+  variant = 'all',
+  catalogFn,
 }: Props = {}) {
   const fetchUsers = fetchUsersFn ?? fetchTenantUsers;
   const probe = probeFinancialsFn ?? probeFinancialsToggle;
   const loadRoles = rolesFn ?? fetchPickerRoles;
   const enable = enableFn ?? enableTenantUser;
   const resend = resendFn ?? resendTenantInvitation;
+  const loadCatalog = catalogFn ?? fetchRolesCatalog;
   const toast = useToast();
+  const [catalog, setCatalog] = useState<readonly RoleCatalogView[]>([]);
+
+  useEffect(() => {
+    if (variant !== 'invitations') return;
+    let cancelled = false;
+    loadCatalog()
+      .then((c) => {
+        if (!cancelled) setCatalog(c);
+      })
+      .catch(() => {
+        /* the organization column degrades to "Member" — display only */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [variant, loadCatalog]);
+
+  const isOrgAdmin = (u: TenantUserView): boolean =>
+    u.role_keys.some((k) => catalog.find((r) => r.key === k)?.scopes.some((sc) => sc.startsWith('tenant:admin:')) ?? false);
 
   const [state, setState] = useState<LoadState>({ status: 'loading' });
   const [financialsToggle, setFinancialsToggle] =
@@ -202,16 +248,31 @@ export function UsersListView({
     }
   };
 
-  const columns: ReadonlyArray<TableColumn<TenantUserView>> = [
+  const allColumns: ReadonlyArray<TableColumn<TenantUserView>> = [
     {
       key: 'name',
-      header: 'Name',
+      header: variant === 'all' ? 'Name' : 'Person',
       render: (u) => (
         <>
           <div>{u.display_name ?? '—'}</div>
           <div className="rc-cell-sub">{u.email}</div>
         </>
       ),
+    },
+    {
+      key: 'organization',
+      header: 'Organization',
+      render: (u) => (isOrgAdmin(u) ? 'Organization admin' : 'Member'),
+    },
+    {
+      key: 'ats',
+      header: 'ATS',
+      render: (u) => <RoleChips role_keys={rolesFor('ats', u.role_keys)} labelOf={roleLabelOf} />,
+    },
+    {
+      key: 'sign',
+      header: 'Sign',
+      render: (u) => <RoleChips role_keys={rolesFor('sign', u.role_keys)} labelOf={roleLabelOf} />,
     },
     {
       key: 'status',
@@ -335,6 +396,29 @@ export function UsersListView({
     },
   ];
 
+  const VARIANT_COLUMNS: Record<'all' | 'invitations' | 'access', readonly string[]> = {
+    all: ['name', 'status', 'roles', 'permissions', 'invitations', 'access'],
+    invitations: ['name', 'organization', 'ats', 'sign', 'status', 'invitations', 'access'],
+    access: ['name', 'status', 'roles', 'permissions'],
+  };
+  const columns = VARIANT_COLUMNS[variant]
+    .map((k) => allColumns.find((c) => c.key === k))
+    .filter((c): c is TableColumn<TenantUserView> => c !== undefined);
+  const heading =
+    variant === 'invitations'
+      ? {
+          title: 'Users & invitations',
+          description:
+            'Everyone in your organization and the Aramo apps they use. Invite people, resend invitations and manage who can sign in. Roles are assigned in Users & product access.',
+        }
+      : variant === 'access'
+        ? {
+            title: 'Users & product access',
+            description:
+              'Who can use which Aramo app, and with which role. Roles are assigned here; each app shows them read-only.',
+          }
+        : { title: 'Users', description: 'Invite, edit roles, and disable users in your tenant.' };
+
   return (
     // People & access — Users renders inside the SettingsShell rail alongside
     // Roles & permissions, so it uses the SAME section grammar (SettingsSection
@@ -343,10 +427,7 @@ export function UsersListView({
     // tenant-console PageHeader, which has no styling in ats-web — leaving the
     // page flush/full-width with an unstyled oversized title, misaligned with
     // its rail-mates.)
-    <SettingsSection
-      title="Users"
-      description="Invite, edit roles, and disable users in your tenant."
-    >
+    <SettingsSection title={heading.title} description={heading.description}>
       <div className="rc-stack">
         <div className="rc-formfoot">
           <span className="rc-muted-line">
@@ -354,9 +435,11 @@ export function UsersListView({
               ? `${state.users.length} user${state.users.length === 1 ? '' : 's'}`
               : ''}
           </span>
-          <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
-            Invite user
-          </Button>
+          {variant !== 'access' ? (
+            <Button onClick={() => setInviteOpen(true)} data-testid="open-invite">
+              Invite user
+            </Button>
+          ) : null}
         </div>
         {state.status === 'loading' && (
           <p className="rc-muted-line">Loading users…</p>

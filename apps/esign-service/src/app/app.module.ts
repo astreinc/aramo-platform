@@ -18,6 +18,10 @@ import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { SubscriptionModule } from '@aramo/subscription';
+import { AuthModule } from '@aramo/auth';
+import { AuthorizationModule } from '@aramo/authorization';
+import { EntitlementModule } from '@aramo/entitlement';
+import { AuthorizationResolverModule, IdentityCoreModule } from '@aramo/identity';
 
 import { EsignProviderController, EsignSignerController } from './esign-http.controller.js';
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
@@ -30,6 +34,9 @@ import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-docume
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
+import { EsignSenderController } from './sender/esign-sender.controller.js';
+import { SenderContextService } from './sender/sender-context.service.js';
+import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -43,6 +50,16 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
     CommonModule,
     // Multi-Provider directive §B — the plan/subscription allowance authority.
     SubscriptionModule,
+    // PX-V1 §8 (D-2) — the authenticated sender zone (v1/esign/sender/*). The
+    // shared JwtAuthGuard resolves effective scopes SERVER-SIDE through the
+    // authorization resolver (identity + entitlement reads, same DATABASE_URL);
+    // EntitlementGuard enforces the tenant `esign` capability; RolesGuard the scope.
+    // Signer + internal surfaces mount none of these guards and are unchanged.
+    AuthModule,
+    AuthorizationModule,
+    IdentityCoreModule,
+    EntitlementModule,
+    AuthorizationResolverModule.forRoot({ portalScopes: [], scopeCacheTtlSeconds: 300 }),
     EsignModule.forRoot({
       imports: [MailerModule, ObjectStorageModule],
       // PX-V1 F3 — EsignSignerController (declared at AppModule level) injects the
@@ -51,7 +68,7 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
       // (an AppModule provider) @Optional-injects it, and while it was unexported the
       // notifier resolved to undefined — envelopes went SENT but the signer
       // invitation email was silently never sent (prod RTR, 2026-10-16).
-      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT],
+      extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
         useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),
@@ -76,8 +93,8 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
       ],
     }),
   ],
-  controllers: [EsignProviderController, EsignSignerController],
-  providers: [NativeAramoSignatureProvider, AramoSignAllowanceGate],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController],
+  providers: [NativeAramoSignatureProvider, AramoSignAllowanceGate, SenderContextService, SenderEnvelopeService],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

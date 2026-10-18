@@ -60,6 +60,11 @@ export interface SignerFieldView {
   width: number | null;
   height: number | null;
   required: boolean;
+  // PX-2 — true once this signer has filled the field (restores progress on reload).
+  filled: boolean;
+  // PX-2 — the signer's own entered value (typed text, date, or a drawn-signature
+  // data URL); null for unfilled or unassigned fields.
+  value: string | null;
 }
 
 export interface SignerDocumentMeta {
@@ -293,6 +298,11 @@ export class EsignService {
           width: f.width,
           height: f.height,
           required: f.required,
+          // PX-2 — restores the signer's own progress after a reload. The value is
+          // returned ONLY for this session's own fields (capability token + accepted
+          // disclosure), so the page shows the signer's actual entries in place.
+          filled: f.filled_at !== null,
+          value: f.signer_id === ctx.signer_id ? (f.value ?? null) : null,
         })),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);

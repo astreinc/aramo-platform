@@ -10815,6 +10815,11 @@
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/org-admin-web/src/index.ts"
+    },
+    {
       "from": "apps/auth-service/Dockerfile",
       "status": "unscoped",
       "to": "doc/runbooks/run-layer.md"
@@ -10877,6 +10882,16 @@
       "from": "apps/esign-service/project.json",
       "status": "unscoped",
       "to": "apps/esign-service/tsconfig.app.json"
+    },
+    {
+      "from": "apps/esign-web/project.json",
+      "status": "unscoped",
+      "to": "apps/esign-web/vite.config.ts"
+    },
+    {
+      "from": "apps/esign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
     },
     {
       "from": "apps/home-web/playwright.topology.config.ts",
@@ -11315,6 +11330,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
     },
     {
@@ -11702,6 +11722,11 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "libs/identity/src/lib/dto/scope.dto.ts"
     },
     {
@@ -11924,6 +11949,11 @@
       "from": "doc/10-multi-product-app-home-and-org-consumer.md",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "doc/10-multi-product-app-home-and-org-consumer.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-esign-sender.md"
     },
     {
       "from": "doc/10-multi-product-app-home-and-org-consumer.md",
@@ -18611,6 +18641,31 @@
       "to": "tools/local-stack.sh"
     },
     {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "deploy/build-images.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/host-binding.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -18676,6 +18731,7 @@
       "to": "apps/ats-web/e2e/README.md"
     },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-run-link.sh" },
     { "from": "doc/runbooks/local-run.md", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
@@ -20506,6 +20562,16 @@
       "to": "libs/fe-foundation/tsconfig.lib.json"
     },
     {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoAppShell.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AtsAppShell.tsx"
+    },
+    {
+      "from": "libs/fe-foundation/src/aramo-shell/AramoRail.tsx",
+      "status": "production",
+      "to": "apps/ats-web/src/shell/AppRail.tsx"
+    },
+    {
       "from": "libs/fe-foundation/src/auth/session.ts",
       "status": "production",
       "to": "openapi/auth.yaml"
@@ -20825,6 +20891,16 @@
       "from": "libs/mailer/project.json",
       "status": "unscoped",
       "to": "libs/mailer/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/mailer/src/lib/mailer.config.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
+    },
+    {
+      "from": "libs/mailer/src/lib/outbox-mailer.adapter.ts",
+      "status": "production",
+      "to": "tools/local-mail.cjs"
     },
     {
       "from": "libs/matching/prisma/schema.prisma",
@@ -22437,6 +22513,16 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/esign-web/src/api.ts"
+    },
+    {
+      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-esign.ts"
+    },
+    {
       "from": "pact/consumers/ingestion-consumer/src/ingestion.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ingestion.yaml"
@@ -23624,7 +23710,17 @@
     {
       "from": "pact/provider/src/verify-esign.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/main.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
       "to": "pact/consumers/esign-consumer/src/esign.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-esign.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-esign.ts",
@@ -23890,6 +23986,11 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
+      "to": "apps/sign-web/public/fonts/HomemadeApple-LICENSE.txt"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
       "to": "ci/scripts/verify-ats-refusal.ts"
     },
     {
@@ -24038,6 +24139,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/consent/src/tests/stale-consent.integration.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/fonts/HomemadeApple-LICENSE.txt"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
@@ -24303,6 +24409,7 @@
       "status": "unscoped",
       "to": "tools/enable-e2e-recruiter.ts"
     },
+    { "from": "tools/local-mail.cjs", "status": "unscoped", "to": "tools/local-stack.sh" },
     {
       "from": "tools/local-run-link.sh",
       "status": "unscoped",
@@ -24312,6 +24419,7 @@
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "doc/runbooks/local-run.md" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "libs/identity/prisma/seed.ts" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-mail.cjs" },
     { "from": "tools/local-stack.sh", "status": "unscoped", "to": "tools/local-run-link.sh" },
     {
       "from": "tools/local-stack.sh",
@@ -24739,7 +24847,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 77,
+    "files": 78,
     "huskyPresent": false
   },
   "scripts": [
@@ -25179,6 +25287,7 @@
         { "kind": "prose", "path": "ci/scripts/release-manifest.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-aggregate-gate.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-api-contract-parity.ts" },
+        { "kind": "prose", "path": "ci/scripts/verify-env-passthrough.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-error-codes.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },

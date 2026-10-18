@@ -83,6 +83,11 @@ const SCOPE_DEP_CONSTRAINTS = [
   // sign.aramo.ai). It must NOT reach scope:ats, scope:cip, scope:platform, or
   // scope:portal — it talks only to the E-Sign public signer transport over HTTP.
   { sourceTag: 'scope:sign', onlyDependOnLibsWithTags: ['scope:sign', 'scope:boundary', 'scope:shared'] },
+  // PX-V1 §8 (D-4) — scope:esign-sender is the Aramo Sign SENDER console wall
+  // (apps/esign-web at esign.aramo.ai). It must NOT reach scope:ats, scope:cip,
+  // scope:platform, scope:portal or scope:sign — it talks only to the authenticated
+  // sender surface (/v1/esign/sender/*) over HTTP.
+  { sourceTag: 'scope:esign-sender', onlyDependOnLibsWithTags: ['scope:esign-sender', 'scope:boundary', 'scope:shared'] },
   // Auth-Decoupling PR-5b (ADR-0021 §4) — scope:auth is the portable identity core
   // (libs/auth-core). It must NOT reach scope:ats, scope:cip, scope:platform, or
   // scope:portal; its legal closure is scope:auth + scope:boundary + scope:shared
@@ -105,6 +110,9 @@ export default [
       '**/prisma/generated/**',
       '**/playwright-report/**',
       '**/test-results/**',
+      // Generated data module: the embedded Apache-2.0 signature font as one
+      // base64 string (too large for the parser; nothing to lint).
+      'libs/documents-rendering/src/lib/fonts/*.font.ts',
       // I15 negative-control fixture: a committed, deliberate scope:cip →
       // scope:ats import that must NOT red the real gate. The wall-fires spec
       // (libs/matching/src/tests/i15-negative-control.spec.ts) lints it

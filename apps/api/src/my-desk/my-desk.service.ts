@@ -225,7 +225,7 @@ export class MyDeskService {
       ...tasks.map((t) =>
         this.toPriorityItem(t, nowMs, timeZone, reqLabel, talentNames, talentToReq, contactability),
       ),
-      ...toDerivedItems(readinessRows, reqLabel, talentNames),
+      ...toDerivedItems(readinessRows, reqLabel, talentNames, ctx.sign_subscribed !== false),
     ].sort(comparePriorityItems);
 
     const interviews_today = interviewsToday
@@ -496,6 +496,7 @@ function toDerivedItems(
   rows: readonly DeskReadinessRow[],
   reqLabel: ReadonlyMap<string, string>,
   talentNames: ReadonlyMap<string, string>,
+  signSubscribed = true,
 ): DeskPriorityItemView[] {
   const items: DeskPriorityItemView[] = [];
   for (const row of rows) {
@@ -523,7 +524,9 @@ function toDerivedItems(
         },
       });
     }
-    if (row.rtr_required) {
+    // Sending an RTR needs the Aramo Sign subscription; without it the desk does
+    // not offer a Send RTR item the recruiter cannot complete.
+    if (row.rtr_required && signSubscribed) {
       items.push({
         ...base,
         id: `rtr:${row.requisition_id}:${row.talent_id}`,

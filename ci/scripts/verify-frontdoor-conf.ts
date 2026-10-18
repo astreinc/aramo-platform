@@ -76,6 +76,8 @@ function serverBlocks(template: string): Array<{ tag: string; body: string }> {
     if (body.includes('${NGINX_TENANT_SERVER_NAME}')) tag = 'tenant';
     else if (body.includes('${NGINX_ADMIN_SERVER_NAME}')) tag = 'admin';
     else if (body.includes('${NGINX_PORTAL_SERVER_NAME}')) tag = 'portal';
+    else if (body.includes('${NGINX_ESIGN_SERVER_NAME}')) tag = 'esign';
+    else if (body.includes('${NGINX_SIGN_SERVER_NAME}')) tag = 'sign';
     else if (/listen\s+80\b/.test(body)) tag = 'port80';
     out.push({ tag, body });
     i = j + 1;
@@ -118,12 +120,28 @@ function checkRepo(): Issue[] {
   const tenant = blocks.find((b) => b.tag === 'tenant');
   const admin = blocks.find((b) => b.tag === 'admin');
   const portal = blocks.find((b) => b.tag === 'portal');
-  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal'].includes(b.tag));
+  const esign = blocks.find((b) => b.tag === 'esign');
+  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal', 'esign'].includes(b.tag));
 
-  if (!tenant || !admin || !portal) {
-    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal server blocks' });
+  if (!tenant || !admin || !portal || !esign) {
+    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal/esign server blocks' });
     return issues;
   }
+
+  // (k) PX-1 — esign.aramo.ai (Aramo Sign sender console). Its ONLY /v1 location is
+  // the authenticated sender zone, proxied to esign-service with an upload-sized
+  // body limit; the SPA is served from /srv/esign. Never apps/api, never the
+  // internal envelopes or signer surfaces.
+  const esignV1 = [...esign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1]);
+  if (esignV1.length !== 1 || esignV1[0] !== '/v1/esign/sender/') {
+    issues.push({ where: TEMPLATE, reason: `(k) esign block must expose exactly one /v1 location, /v1/esign/sender/ (found: ${esignV1.join(', ') || 'none'})` });
+  } else {
+    const loc = locationBody(esign.body, 'location /v1/esign/sender/') ?? '';
+    if (!/proxy_pass\s+http:\/\/esign-service:3003;/.test(loc)) issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/sender/ must proxy_pass to esign-service:3003' });
+    if (!/client_max_body_size\s+\d+m;/.test(loc)) issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/sender/ must set client_max_body_size (PDF upload)' });
+  }
+  const esignRoot = locationBody(esign.body, 'location / {') ?? '';
+  if (!/root\s+\/srv\/esign;/.test(esignRoot)) issues.push({ where: TEMPLATE, reason: '(k) esign catch-all `location /` must `root /srv/esign;`' });
 
   // (a) webhook parity — constant appears in the tenant block as an exact-match
   // location carrying client_max_body_size 3m.
@@ -268,6 +286,7 @@ function checkRepo(): Issue[] {
     ['NGINX_TENANT_SERVER_NAME', 'localhost'],
     ['NGINX_ADMIN_SERVER_NAME', 'admin.localhost'],
     ['NGINX_PORTAL_SERVER_NAME', 'portal.localhost'],
+    ['NGINX_ESIGN_SERVER_NAME', 'esign.localhost'],
     ['NGINX_CERT_DIR', '/etc/letsencrypt/live/aramo.ai'],
   ];
   for (const [varName, def] of nginxDefaults) {

@@ -96,8 +96,41 @@ registered URLs, so the app client needs, per local origin you use:
 |---|---|---|
 | `http://localhost:4205` (App Home topology) | `/auth/org/callback`, `/auth/recruiter/callback` | `/signed-out` |
 | `http://localhost:4201` (ATS directly) | `/auth/recruiter/callback` (existing) | `/signed-out` |
+| `http://localhost:4206` (Aramo Sign sender console) | `/auth/esign/callback` | `/signed-out` |
 
-A missing one shows Cognito's `redirect_mismatch` page. Each SPA dev server keeps its own Vite dependency cache
+A missing one shows Cognito's `redirect_mismatch` page.
+
+## Aramo Sign sender console locally (PX-1)
+
+`tools/local-stack.sh up` also starts the Sign sender console (`apps/esign-web`) on **http://localhost:4206** — the local
+stand-in for `esign.aramo.ai`. It signs in as the `esign` consumer and proxies `/auth` → auth-service and
+`/v1/esign/sender` → esign-service. `/` opens the workspace the backend assigns: `/sign/` for a business tenant,
+`/personal/` for a personal tenant. Requirements:
+
+- the tenant holds the Sign subscription (`entitlement."TenantEntitlement"` row `esign`) and the user a Sign role
+  (`esign_owner` / `esign_admin` / `esign_sender` to send, `esign_viewer` to read);
+- `/auth/esign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
+- PDF uploads use the same local object storage as résumés (`S3_RESUME_BUCKET` / `S3_ENDPOINT` from `.env`).
+
+Signers open `http://localhost:4204/s/<token>` (sign-web). Local email goes to a **local outbox** instead of any
+email service: `tools/local-stack.sh` sets `MAILER_PROVIDER=outbox` and `MAILER_OUTBOX_DIR=.local-stack/mail`, so every
+invitation, reminder and completion email is written there. Read them, with their links, with:
+
+```sh
+node tools/local-mail.cjs        # latest 10 (or: node tools/local-mail.cjs 30)
+```
+
+To also receive real emails in your own inbox, list your address(es) in `.env` — only these go through SES (needs
+`SES_FROM_ADDRESS` and the local AWS credentials), every other recipient stays in the local outbox:
+
+```sh
+MAILER_OUTBOX_DELIVER_TO=you@example.com
+SES_FROM_ADDRESS="Aramo <support@aramo.ai>"
+```
+
+`LOCAL_MAIL=stub tools/local-stack.sh up` restores the log-only stub. The outbox mailer refuses to start when
+`NODE_ENV=production`. The console's links back to App Home / Organization use `ESIGN_TENANT_HOST_URL_TEMPLATE`
+(local-stack default `http://localhost:4205`). Each SPA dev server keeps its own Vite dependency cache
 (`node_modules/.vite/<app>`); if a page ever renders blank with `504 Outdated Optimize Dep` in the console, stop the
 server, delete that app's cache folder and start it again.
 

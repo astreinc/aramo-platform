@@ -1,12 +1,136 @@
-/* DOC-4 (R-4-8) — minimal standalone styling for the external-signer SPA. */
-:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-body { margin: 0; }
-.sign-shell { max-width: 40rem; margin: 3rem auto; padding: 0 1.25rem; }
-.sign-shell h1 { font-size: 1.25rem; }
-.sign-shell section { margin-top: 1.5rem; }
-.sign-shell button { padding: 0.6rem 1rem; font-size: 1rem; cursor: pointer; }
-.sign-shell input[type='text'], .sign-shell input:not([type]) { display: block; margin: 0.5rem 0; padding: 0.5rem; width: 100%; box-sizing: border-box; }
-.sign-shell .pad { border: 1px solid #888; border-radius: 4px; touch-action: none; }
-.sign-shell .method { display: flex; gap: 1rem; margin: 0.75rem 0; }
-.sign-shell .hint { color: #a15c00; }
-.sign-shell .err { color: #b00020; }
+/* PX-2 — the same handwriting font the executed PDF stamps typed signatures in
+   (Homemade Apple, Apache-2.0; see /fonts/HomemadeApple-LICENSE.txt), so what the
+   signer adopts on screen matches the signed document. */
+@font-face {
+  font-family: 'Aramo Signature';
+  src: url('/fonts/HomemadeApple-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
+/* Aramo Sign — the external signer app (sign.aramo.ai/s/:token). Values from the
+ * accepted "Aramo Sign RTR Signing" storyboard, 9a mini style sheet: accent
+ * #022AC0 (hover #3355E0), ink #151A22 (muted #5A6372), surface #F4F6F9 / #FFFFFF,
+ * line #E2E6EB, success #1E7F4F (bg #E4F4EA), field to do #FFF4CC / #B7791F,
+ * destructive #B3402A. Touch targets >= 44px. No product shell, no navigation. */
+:root {
+  --sg-accent: #022ac0;
+  --sg-accent-hover: #3355e0;
+  --sg-ink: #151a22;
+  --sg-muted: #5a6372;
+  --sg-bg: #f4f6f9;
+  --sg-surface: #ffffff;
+  --sg-line: #e2e6eb;
+  --sg-ok: #1e7f4f;
+  --sg-ok-bg: #e4f4ea;
+  --sg-todo: #fff4cc;
+  --sg-todo-ink: #8a5a00;
+  --sg-danger: #b3402a;
+  font-family: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--sg-ink);
+  background: var(--sg-bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--sg-bg); font-size: 15px; }
+h1 { font-size: 24px; font-weight: 800; margin: 0 0 10px; line-height: 1.25; }
+h2 { font-size: 19px; font-weight: 800; margin: 0 0 10px; }
+p { line-height: 1.5; margin: 0 0 12px; }
+.sg-muted { color: var(--sg-muted); }
+.sg-small { font-size: 13px; }
+.sg-ok { color: var(--sg-ok); font-weight: 600; font-size: 13px; }
+.sg-error { color: var(--sg-danger); font-size: 14px; }
+
+/* Header — brand + security note (+ subject, progress, Help, Decline in the workspace). */
+.sg-head { position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 20px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); }
+.sg-mark { width: 36px; height: 36px; border-radius: 9px; background: var(--sg-accent); color: #fff; display: grid; place-items: center; font-weight: 800; flex: none; }
+.sg-head__text { display: flex; flex-direction: column; min-width: 0; }
+.sg-head__title { font-weight: 700; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sg-head__sub { color: var(--sg-muted); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.sg-head__grow { flex: 1; }
+.sg-help { position: absolute; right: 20px; top: calc(100% + 6px); max-width: 340px; background: var(--sg-ink); color: #fff; font-size: 13px; line-height: 1.5; padding: 12px 14px; border-radius: 10px; z-index: 5; }
+
+/* Buttons */
+.sg-btn { min-height: 44px; padding: 0 18px; border-radius: 10px; font: inherit; font-weight: 600; font-size: 15px; cursor: pointer; border: 1px solid transparent; }
+.sg-btn:disabled { cursor: not-allowed; background: #e2e6eb; color: #8b94a3; border-color: #e2e6eb; }
+.sg-btn--primary { background: var(--sg-accent); color: #fff; }
+.sg-btn--primary:not(:disabled):hover { background: var(--sg-accent-hover); }
+.sg-btn--secondary { background: var(--sg-surface); color: var(--sg-ink); border-color: var(--sg-line); }
+.sg-btn--quiet { background: transparent; color: var(--sg-muted); }
+.sg-btn--quiet:hover { color: var(--sg-ink); }
+.sg-btn--danger { background: var(--sg-danger); color: #fff; }
+.sg-btn--block { width: 100%; margin-top: 10px; }
+.sg-btn:focus-visible, .sg-input:focus-visible, .sg-pad:focus-visible { outline: 3px solid var(--sg-accent-hover); outline-offset: 2px; }
+
+/* Centered cards (landing, disclosure, review, end states) */
+.sg-center { display: flex; justify-content: center; padding: 32px 16px 64px; }
+.sg-card { width: 100%; max-width: 560px; background: var(--sg-surface); border: 1px solid var(--sg-line); border-radius: 16px; padding: 28px 24px; }
+.sg-card--wide { max-width: 720px; }
+.sg-card--ok h1 { color: var(--sg-ok); }
+.sg-card--error h1 { color: var(--sg-danger); }
+.sg-eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--sg-muted); margin-bottom: 8px; }
+.sg-disclosure { border: 1px solid var(--sg-line); border-radius: 12px; padding: 16px; max-height: 320px; overflow: auto; margin: 12px 0 16px; }
+.sg-agree { display: flex; gap: 10px; align-items: center; min-height: 44px; }
+.sg-check { width: 20px; height: 20px; accent-color: var(--sg-accent); }
+
+/* Workspace: document viewer + your fields, sticky progress bar */
+.sg-work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: 1fr auto; gap: 0; height: calc(100vh - 61px); }
+.sg-viewer { display: flex; flex-direction: column; min-width: 0; background: #e9edf2; }
+.sg-doctabs { display: flex; gap: 4px; padding: 8px 12px; background: var(--sg-surface); border-bottom: 1px solid var(--sg-line); overflow-x: auto; }
+.sg-tab--on { color: var(--sg-accent); box-shadow: inset 0 -2px 0 var(--sg-accent); border-radius: 0; }
+.sg-frame { flex: 1; width: 100%; border: 0; background: #fff; }
+.sg-frame--missing { display: grid; place-items: center; padding: 24px; color: var(--sg-muted); text-align: center; }
+.sg-fields { border-left: 1px solid var(--sg-line); background: var(--sg-surface); padding: 18px; overflow: auto; }
+.sg-fields ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sg-field { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; border: 1px dashed #b7791f; background: var(--sg-todo); }
+.sg-field--active { border: 2px solid var(--sg-accent); background: #e8edfb; }
+.sg-field--done { border: 1px solid #b9dfc8; background: var(--sg-ok-bg); }
+.sg-field__text { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sg-field__name { font-weight: 600; font-size: 14px; }
+.sg-field__meta { font-size: 12px; color: var(--sg-todo-ink); }
+.sg-field--done .sg-field__meta { color: var(--sg-ok); }
+.sg-bar { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; padding: 10px 16px; background: var(--sg-surface); border-top: 1px solid var(--sg-line); }
+.sg-progress { flex: 1; height: 4px; border-radius: 4px; background: var(--sg-line); overflow: hidden; }
+.sg-progress span { display: block; height: 100%; background: var(--sg-ok); }
+.sg-summary { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
+.sg-summary li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--sg-line); }
+
+/* Dialogs (radius 16, scrim rgba(10,14,20,.5); bottom sheet on mobile) */
+.sg-scrim { position: fixed; inset: 0; background: rgba(10, 14, 20, 0.5); display: grid; place-items: center; padding: 16px; z-index: 20; }
+.sg-dialog { width: 100%; max-width: 620px; background: var(--sg-surface); border-radius: 16px; padding: 22px; box-shadow: 0 20px 40px rgba(10, 14, 20, 0.25); }
+.sg-dialog__foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.sg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--sg-line); margin-bottom: 14px; }
+.sg-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+.sg-input { min-height: 44px; padding: 10px 12px; border: 1px solid var(--sg-line); border-radius: 10px; font: inherit; font-size: 15px; width: 100%; }
+.sg-input--area { min-height: 90px; resize: vertical; }
+.sg-preview { min-height: 72px; border: 1px solid var(--sg-line); border-radius: 10px; display: flex; align-items: center; padding: 0 16px; font-family: 'Aramo Signature', 'Segoe Script', 'Brush Script MT', cursive; font-size: 30px; margin-bottom: 12px; }
+.sg-pad { width: 100%; height: 160px; border: 1px dashed var(--sg-line); border-radius: 10px; touch-action: none; background: #fff; display: block; margin-bottom: 8px; }
+
+@media (max-width: 900px) {
+  .sg-work { grid-template-columns: 1fr; grid-template-rows: minmax(55vh, 1fr) auto auto; height: auto; }
+  .sg-fields { border-left: 0; border-top: 1px solid var(--sg-line); }
+  .sg-bar { position: sticky; bottom: 0; }
+  .sg-scrim { align-items: end; padding: 0; }
+  .sg-dialog { border-radius: 18px 18px 0 0; max-width: none; }
+  .sg-head { padding: 10px 12px; flex-wrap: wrap; }
+}
+
+/* PX-2 — the actual document, rendered page by page, with the signer's fields in place. */
+.sg-pages { flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.sg-page { position: relative; background: #fff; box-shadow: 0 1px 3px rgba(20, 24, 31, 0.15), 0 8px 24px rgba(20, 24, 31, 0.08); flex: none; }
+.sg-page canvas { display: block; width: 100%; height: 100%; }
+.sg-onpage { position: absolute; display: flex; align-items: center; justify-content: center; border: 2px dashed #c58a00; background: rgba(255, 213, 79, 0.28); border-radius: 4px; cursor: pointer; overflow: visible; }
+.sg-onpage:hover { background: rgba(255, 213, 79, 0.42); }
+.sg-onpage:focus-visible, .sg-onpage--active { outline: 3px solid var(--sg-accent, #2447d8); outline-offset: 2px; }
+.sg-onpage--optional { border-color: #9aa3b2; background: rgba(154, 163, 178, 0.14); }
+.sg-onpage--done { border: 1px solid transparent; background: transparent; }
+.sg-onpage--done:hover { border-color: rgba(36, 71, 216, 0.4); background: rgba(36, 71, 216, 0.05); }
+.sg-onpage__cta { font-size: 12px; font-weight: 700; color: #7a5300; background: #fff3c4; padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
+.sg-onpage__sig { font-family: 'Aramo Signature', 'Segoe Script', 'Brush Script MT', cursive; color: #14306b; white-space: nowrap; line-height: 1.1; max-width: 100%; overflow: hidden; }
+.sg-onpage__val { font-size: 13px; color: #14181f; white-space: nowrap; }
+.sg-onpage__img { width: 100%; height: 100%; object-fit: contain; object-position: left center; }
+/* The on-screen counterpart of the executed-PDF stamp: a rounded bracket with
+   "Signed by:" on its top arm. */
+.sg-onpage--stamp { justify-content: flex-start; padding-left: 9px; border: 0; border-radius: 0; }
+.sg-onpage--stamp::after { content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 40%; border: 1.5px solid #3b4adb; border-right: 0; border-radius: 7px 0 0 7px; pointer-events: none; }
+.sg-onpage--stamp::before { content: 'Signed by:'; position: absolute; top: -6px; left: 8px; padding: 0 2px; background: #fff; font-size: 7.5px; font-weight: 700; color: #20232b; font-family: 'Hanken Grotesk', system-ui, sans-serif; z-index: 1; }
+.sg-done-actions { display: inline-flex; align-items: center; gap: 8px; }
+.sg-onpage--stamp .sg-onpage__img { padding: 9px 4px 3px 2px; box-sizing: border-box; }

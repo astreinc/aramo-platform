@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link as RouterLink } from 'react-router-dom';
 
 import { Avatar } from './Avatar';
@@ -31,6 +31,26 @@ interface UserMenuProps {
   readonly settingsHref?: string;
   /** "My Settings" (personal, every user) — present for any signed-in user. */
   readonly mySettingsHref?: string;
+  /** Unified shell: a short role badge under the email (e.g. ADMIN / MEMBER). */
+  readonly roleBadge?: string;
+  /**
+   * Unified shell (App Home handoff §3): the account rows, rendered in order
+   * before Sign out. When supplied, they replace the legacy Settings / My
+   * Settings rows.
+   */
+  readonly items?: readonly UserMenuItem[];
+}
+
+export interface UserMenuItem {
+  readonly key: string;
+  readonly label: string;
+  readonly sub?: string;
+  readonly icon: ReactNode;
+  /** Router path in the current SPA. */
+  readonly to?: string;
+  /** Full-navigation href (another SPA on this host). */
+  readonly href?: string;
+  readonly onSelect?: () => void;
 }
 
 export function UserMenu({
@@ -40,6 +60,8 @@ export function UserMenu({
   onSignOut,
   settingsHref,
   mySettingsHref,
+  roleBadge,
+  items,
 }: UserMenuProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,9 +104,51 @@ export function UserMenu({
               {roleLine ? (
                 <div className="rc-usermenu__role">{roleLine}</div>
               ) : null}
+              {roleBadge ? <span className="rc-usermenu__badge">{roleBadge}</span> : null}
             </div>
           ) : null}
-          {settingsHref ? (
+          {items !== undefined
+            ? items.map((it) => {
+                const inner = (
+                  <>
+                    {it.icon}
+                    <span className="rc-usermenu__itemtext">
+                      <span>{it.label}</span>
+                      {it.sub ? <span className="rc-usermenu__itemsub">{it.sub}</span> : null}
+                    </span>
+                  </>
+                );
+                if (it.to !== undefined) {
+                  return (
+                    <RouterLink key={it.key} to={it.to} role="menuitem" className="rc-usermenu__item" onClick={() => setOpen(false)}>
+                      {inner}
+                    </RouterLink>
+                  );
+                }
+                if (it.href !== undefined) {
+                  return (
+                    <a key={it.key} href={it.href} role="menuitem" className="rc-usermenu__item">
+                      {inner}
+                    </a>
+                  );
+                }
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    role="menuitem"
+                    className="rc-usermenu__item"
+                    onClick={() => {
+                      setOpen(false);
+                      it.onSelect?.();
+                    }}
+                  >
+                    {inner}
+                  </button>
+                );
+              })
+            : null}
+          {items === undefined && settingsHref ? (
             <RouterLink
               to={settingsHref}
               role="menuitem"
@@ -95,7 +159,7 @@ export function UserMenu({
               <span>Settings</span>
             </RouterLink>
           ) : null}
-          {mySettingsHref ? (
+          {items === undefined && mySettingsHref ? (
             <RouterLink
               to={mySettingsHref}
               role="menuitem"
@@ -109,7 +173,7 @@ export function UserMenu({
           <button
             type="button"
             role="menuitem"
-            className="rc-usermenu__item"
+            className={`rc-usermenu__item${items !== undefined ? ' rc-usermenu__item--signout' : ''}`}
             onClick={() => {
               setOpen(false);
               onSignOut();

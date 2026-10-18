@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 import { BreadcrumbProvider } from '../shell/breadcrumb';
 
 import { RequisitionDetailView } from './RequisitionDetailView';
@@ -142,12 +143,13 @@ function mockApi(opts: MockOpts = {}): { urls: string[] } {
   return { urls };
 }
 
-function mount(scopes: string[], opts: MockOpts = {}) {
+function mount(scopes: string[], opts: MockOpts = {}, signSubscribed = true) {
   mockApi(opts);
   return render(
     <ToastProvider>
       <BreadcrumbProvider>
-        <MemoryRouter initialEntries={['/requisitions/req-1']}>
+        <SignSubscriptionProvider subscribed={signSubscribed}>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
           <Routes>
             <Route
               path="/requisitions/:reqId"
@@ -155,6 +157,7 @@ function mount(scopes: string[], opts: MockOpts = {}) {
             />
           </Routes>
         </MemoryRouter>
+</SignSubscriptionProvider>
       </BreadcrumbProvider>
     </ToastProvider>,
   );
@@ -232,7 +235,8 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -244,6 +248,7 @@ describe('RequisitionDetailView workspace — tab availability (scope-gated)', (
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -261,7 +266,8 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
     const { container } = render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -271,6 +277,7 @@ describe('RequisitionDetailView workspace — prototype structure (no MetaStrip 
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -397,7 +404,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -405,6 +413,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -424,7 +433,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -432,6 +442,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -510,7 +521,8 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -526,6 +538,7 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
               <Route path="/requisitions/:reqId/talent/:talentId" element={<div data-testid="tr360-route" />} />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -675,7 +688,7 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
       column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT',
       next_actions: [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: '/x', required_scope: 'pipeline:change-status' }],
     });
-    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status', 'document:create'], {
+    mount(['requisition:read', 'pipeline:read', 'pipeline:change-status', 'document:create', 'document:execute'], {
       pipelines: PIPELINE_TAL1,
       board: boardWith([{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }]),
     });
@@ -690,6 +703,19 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     const actionCell = row.querySelector('.rc-tip__next');
     expect(within(actionCell as HTMLElement).getByRole('button', { name: 'Start qualifying' })).toBeInTheDocument();
     expect(within(actionCell as HTMLElement).queryByRole('button', { name: /Send RTR/ })).toBeNull();
+  });
+
+  it('List — without the Sign subscription the RTR column shows a disabled Send RTR with "Requires Aramo Sign"', async () => {
+    const c = card({ column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT' });
+    mount(['requisition:read', 'pipeline:read', 'document:create', 'document:execute'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }]),
+    }, false);
+    const row = (await screen.findByText('Marcus Adeyemi')).closest('.rc-tip__row');
+    if (row === null) throw new Error('no talent-in-play row');
+    const rtrCell = row.querySelector('.rc-tip__rtrcell') as HTMLElement;
+    expect(within(rtrCell).getByRole('button', { name: 'Send RTR — Requires Aramo Sign' })).toBeDisabled();
+    expect(within(rtrCell).getByText('Requires Aramo Sign')).toBeInTheDocument();
   });
 
   it('List — RTR status states: Awaiting signature + reminder, ✓ Signed + view', async () => {

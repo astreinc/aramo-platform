@@ -55,7 +55,7 @@ describe('AppRail — shared main nav (rail spec)', () => {
 
   it('renders the items in spec order with WORK / ADMINISTRATION labels and a tenant footer', () => {
     mount();
-    expect(within(rail()).getAllByRole('link').map((a) => a.textContent)).toEqual([
+    expect(within(rail()).getAllByRole('link').filter((a) => a.classList.contains('ats-rail__item')).map((a) => a.textContent)).toEqual([
       'My desk', 'Requisitions2', 'Placements', 'Talent', 'Companies', 'Contacts',
       'Sourcing', 'Tasks', 'Identity Advisories', 'Portal Disputes', 'Trust Proposals', 'Reports', 'Settings',
     ]);

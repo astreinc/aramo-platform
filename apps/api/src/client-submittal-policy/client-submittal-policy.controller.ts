@@ -177,6 +177,8 @@ export class ClientSubmittalPolicyController {
     }
     // Multi-Provider directive §D — a required RTR must be sendable by this tenant;
     // otherwise every submittal to this client would stall with no way forward.
+    // (Supersedes the capability-only check: NOT_SUBSCRIBED covers a tenant without
+    // the esign capability.)
     if (dto.requirements.some((r) => r.key === 'rtr_present' && r.disposition === 'REQUIRED')) {
       const signing = await this.signatures.evaluate(auth.tenant_id);
       if (signing.reason !== null && RTR_UNSENDABLE.has(signing.reason)) {

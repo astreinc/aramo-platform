@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 import { BreadcrumbProvider, useBreadcrumbEntity } from '../shell/breadcrumb';
 
 import { RequisitionDetailView } from './RequisitionDetailView';
@@ -42,7 +43,7 @@ const SESSION: Session = {
   // so the funnel/talent-table content renders on first paint (as before).
   // document:read/create — a recruiter session can request RTR (the RtrPanel
   // gates Request on document:create per least-visibility, §21).
-  scopes: ['requisition:read', 'pipeline:read', 'document:read', 'document:create'],
+  scopes: ['requisition:read', 'pipeline:read', 'document:read', 'document:create', 'document:execute'],
   iat: 0,
   exp: 0,
 };
@@ -119,7 +120,8 @@ function mountDetail() {
   return render(
     <ToastProvider>
       <BreadcrumbProvider>
-        <MemoryRouter initialEntries={['/requisitions/req-1']}>
+        <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
           <Routes>
             <Route
               path="/requisitions/:reqId"
@@ -131,6 +133,7 @@ function mountDetail() {
             />
           </Routes>
         </MemoryRouter>
+</SignSubscriptionProvider>
       </BreadcrumbProvider>
     </ToastProvider>,
   );
@@ -278,7 +281,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <Routes>
               <Route
                 path="/requisitions/:reqId"
@@ -293,6 +297,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );
@@ -325,7 +330,8 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     render(
       <ToastProvider>
         <BreadcrumbProvider>
-          <MemoryRouter initialEntries={['/requisitions/req-1']}>
+          <SignSubscriptionProvider subscribed>
+<MemoryRouter initialEntries={['/requisitions/req-1']}>
             <CrumbProbe />
             <Routes>
               <Route
@@ -334,6 +340,7 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
               />
             </Routes>
           </MemoryRouter>
+</SignSubscriptionProvider>
         </BreadcrumbProvider>
       </ToastProvider>,
     );

@@ -11,6 +11,7 @@ import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
 } from '@aramo/documents-rendering';
+import { EntitlementModule } from '@aramo/entitlement';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record';
 // DOC-TEMPLATE-ADMIN-RTR-1 T2b — authoritative sources for the expanded RTR binding
@@ -48,7 +49,9 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
-  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, SignatureRoutingModule],
+  // EntitlementModule — EntitlementGuard for the RTR controller's `esign` capability
+  // gate; SignatureRoutingModule — provider routing + availability for the send path.
+  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, EntitlementModule, SignatureRoutingModule],
   controllers: [RtrController],
   providers: [
     { provide: RTR_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },

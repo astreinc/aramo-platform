@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { getCurrentRtr, remindRtr } from '../rtr/rtr-api';
 import { withCurrency } from '../talent/stated-fields';
 import { initialsOf } from '../ui';
+import { RTR_UNAVAILABLE, canExecuteRtr, rtrUnavailable, useSignState, useSignSubscribed } from '../rtr/rtr-access';
 
 import {
   getRequisitionTalentBoard,
@@ -242,7 +243,9 @@ function BoardCard({
   const rtrKind = rtrAffordanceKind(card);
   // Same-envelope RTR reminder (COMM-RECRUITER-W1 W1-C3) — the List view's RtrPanel gate
   // (document:execute). Resolves the authoritative current RTR, then re-notifies it.
-  const canRemind = rtrKind === 'awaiting' && scopes.includes('document:execute');
+  const signSubscribed = useSignSubscribed();
+  const canRemind = rtrKind === 'awaiting' && canExecuteRtr(scopes, signSubscribed);
+  const rtrBlocked = rtrUnavailable(scopes, useSignState());
   const sendReminder = (): void => {
     if (reminding) return;
     setReminding(true);
@@ -321,6 +324,17 @@ function BoardCard({
                 onClick={(e) => { e.stopPropagation(); onSendRtr(card.talent_record_id, name); }}
               >
                 Send RTR ›
+              </Button>
+            ) : rtrKind === 'send' && rtrBlocked !== null ? (
+              <Button
+                unstyled
+                type="button"
+                className="rc-tboard__pill rc-tboard__pill--mute rc-tboard__pill-btn"
+                disabled
+                title={RTR_UNAVAILABLE[rtrBlocked].detail}
+                onClick={(e) => e.stopPropagation()}
+              >
+                Send RTR · {RTR_UNAVAILABLE[rtrBlocked].label}
               </Button>
             ) : rtrKind === 'awaiting' ? (
               <Button

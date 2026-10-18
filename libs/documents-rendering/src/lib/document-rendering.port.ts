@@ -100,6 +100,14 @@ export interface PreparedField {
   image_format?: 'PNG' | 'JPG';
   width?: number;
   height?: number;
+  // PX-2 (additive) — signature presentation. Absent ⇒ the placement renders
+  // exactly as before. `font: 'SCRIPT'` draws TEXT in the embedded handwriting
+  // font, fitted to the field box (width/height). `stamp` frames a signature
+  // DocuSign-style: a bracket, the label (e.g. "Signed by:") and a short
+  // signature id beneath. Pure presentation — the stored values, evidence
+  // manifest and certificate are unchanged.
+  font?: 'SCRIPT';
+  stamp?: { label: string; id: string };
 }
 
 // Durable provenance — the AUTHORITATIVE reproducibility proof (byte-equality is

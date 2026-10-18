@@ -1,6 +1,13 @@
 import {
+  AppSwitcher,
+  IconColumns,
+  IconSliders,
+  IconUser,
+  buildAppSwitcherItems,
   hasScope,
   logout,
+  useMyProducts,
+  productByKey,
   type Session,
 } from '@aramo/fe-foundation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -15,6 +22,7 @@ import {
   initialsOf,
 } from '../ui';
 import { CommandPalette } from '../search/CommandPalette';
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 
 import { AppRail, type RailItem, type RailKey } from './AppRail';
 import { AtsAppShell } from './AtsAppShell';
@@ -28,14 +36,12 @@ import { AtsAppShell } from './AtsAppShell';
 import { BreadcrumbProvider } from './breadcrumb';
 import { useMe } from './me-api';
 
-// The ATS settings landing — the user menu's Settings link (also the /admin
-// default redirect target). Gated behind admin access (it lives under the
-// tenant:admin:* admin surface), so the link is shown only to a principal who
-// can reach it. D-ORG-3: the organization profile moved to the App Home (/org/);
-// the ATS landing is now Recruiting settings.
-const SETTINGS_PROFILE_PATH = '/admin/settings/recruiting';
-// Personal settings — every signed-in user (NOT admin-gated). The account menu's
-// "My Settings" entry; distinct from the admin "Settings" above.
+// Unified multi-product shell — the shared account page (App Home, a sibling SPA
+// on this host; a host-level href, never an ATS route).
+const MY_PREFERENCES_HREF = '/preferences';
+// ATS personal settings (connected Microsoft mailbox) — every signed-in user
+// (NOT admin-gated). The account menu's "My ATS settings" row. The admin
+// Settings area is reached from the rail (Administration → Settings).
 const MY_SETTINGS_PATH = '/settings/me';
 
 // RecruiterShell — Phase 2A. The app-layer chrome that REPLACES the frozen
@@ -135,6 +141,12 @@ function RecruiterShellInner({
   // into the SAME /v1/search authority as the full Search page (the palette is a lean consumer
   // of that contract, not a second search). ⌘K opens it; the palette owns Escape/close.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Unified multi-product shell — the app switcher (accepted change log A6) reads
+  // the SAME backend-authoritative availability as App Home; the account menu's
+  // "Switch application" opens it.
+  const products = useMyProducts();
+  const signSubscribed = products.status === 'ready' ? (productByKey(products.view, 'esign')?.subscribed ?? false) : null;
+  const [switcherSignal, setSwitcherSignal] = useState(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
@@ -193,6 +205,11 @@ function RecruiterShellInner({
       {/* Org-context label (M365 pattern) — the tenant display_name as plain
           text, NOT a logo. The internal brand stays pure-Aramo (ShellBrand);
           the tenant appears ONLY here. Hidden until /me resolves. */}
+      <AppSwitcher
+        organizationName={me?.tenant.display_name ?? null}
+        items={buildAppSwitcherItems({ current: 'ats', products: products.status === 'ready' ? products.view : null })}
+        openSignal={switcherSignal}
+      />
       {me ? (
         <span className="rc-orglabel" title={me.tenant.display_name}>
           {me.tenant.display_name}
@@ -203,10 +220,14 @@ function RecruiterShellInner({
         email={me?.user.email ?? ''}
         roleLine={roleLine}
         onSignOut={handleLogout}
-        settingsHref={
-          hasAdminScope(session) ? SETTINGS_PROFILE_PATH : undefined
-        }
-        mySettingsHref={MY_SETTINGS_PATH}
+        roleBadge={hasAdminScope(session) ? 'ADMIN' : 'MEMBER'}
+        items={[
+          // The shared account page lives on App Home (a sibling SPA on this host).
+          { key: 'prefs', label: 'My preferences', sub: 'Start page · App Home', icon: <IconSliders />, href: MY_PREFERENCES_HREF },
+          // ATS-only personal settings (connected Microsoft mailbox).
+          { key: 'my-ats', label: 'My ATS settings', sub: 'Connected accounts', icon: <IconUser />, to: MY_SETTINGS_PATH },
+          { key: 'switch', label: 'Switch application', icon: <IconColumns />, onSelect: () => setSwitcherSignal((n) => n + 1) },
+        ]}
       />
     </TopBar>
   );
@@ -229,7 +250,8 @@ function RecruiterShellInner({
           access or your data.
         </div>
       ) : null}
-      {children}
+      {/* RTR execution needs the tenant's Sign subscription (rtr-access.tsx). */}
+      <SignSubscriptionProvider subscribed={signSubscribed}>{children}</SignSubscriptionProvider>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </AtsAppShell>
   );

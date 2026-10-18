@@ -68,6 +68,8 @@ function groupScopes(scopes: readonly string[]): ScopeGroup[] {
 
 interface Props {
   readonly fetchFn?: () => Promise<readonly RoleCatalogView[]>;
+  /** Unified UX — a product's read-only reference shows only that product's roles. */
+  readonly roleFilter?: (role: RoleCatalogView) => boolean;
 }
 
 type State =
@@ -75,7 +77,7 @@ type State =
   | { status: 'ready'; roles: readonly RoleCatalogView[] }
   | { status: 'error'; message: string };
 
-export function RolesMatrixView({ fetchFn }: Props = {}) {
+export function RolesMatrixView({ fetchFn, roleFilter }: Props = {}) {
   const load = fetchFn ?? fetchRolesCatalog;
   const [state, setState] = useState<State>({ status: 'loading' });
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -83,7 +85,8 @@ export function RolesMatrixView({ fetchFn }: Props = {}) {
   useEffect(() => {
     let cancelled = false;
     load()
-      .then((roles) => {
+      .then((all) => {
+        const roles = roleFilter === undefined ? all : all.filter(roleFilter);
         if (cancelled) return;
         setState({ status: 'ready', roles });
         setSelectedKey(roles[0]?.key ?? null);

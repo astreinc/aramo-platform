@@ -51,6 +51,17 @@ load_env() {
   export ESIGN_SERVICE_URL="${ESIGN_SERVICE_URL:-http://localhost:3003}"
   export ESIGN_SIGN_WEB_BASE_URL="${ESIGN_SIGN_WEB_BASE_URL:-http://localhost:4204}"
   export DOCUMENTS_API_URL="${DOCUMENTS_API_URL:-http://localhost:3000}"
+  # PX-1 — the Sign sender console (esign-web :4206) links back to the tenant host's
+  # App Home / Organization administration; locally that host is the App Home dev
+  # server (:4205).
+  export ESIGN_TENANT_HOST_URL_TEMPLATE="${ESIGN_TENANT_HOST_URL_TEMPLATE:-http://localhost:4205}"
+  # Local email → a local outbox folder (nothing is sent anywhere; read it with
+  # `node tools/local-mail.cjs`). Signer invitations then carry real, clickable
+  # links to sign-web (:4204). LOCAL_MAIL=stub restores the log-only stub.
+  if [ "${LOCAL_MAIL:-outbox}" = "outbox" ]; then
+    export MAILER_PROVIDER=outbox
+    export MAILER_OUTBOX_DIR="${MAILER_OUTBOX_DIR:-$ROOT/$RUN_DIR/mail}"
+  fi
 }
 
 compose() { docker compose "$@"; }
@@ -162,7 +173,7 @@ cmd_up() {
     ARAMO_ENV=local ARAMO_SUBSCRIPTION_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-dev-subscription
   fi
 
-  log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, home-web :4205, talent-intake-consumer"
+  log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, home-web :4205, esign-web :4206, talent-intake-consumer"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   # E-Sign: without it "Send for signature" fails (api → localhost:3003 refused).
@@ -171,6 +182,10 @@ cmd_up() {
   start_app sign-web     npx nx serve aramo-sign-web
   # D-ORG — App Home + Organization Administration; forwards /ats/ to :4201 like nginx.
   start_app home-web     npx nx serve aramo-home-web
+  # PX-1 — Aramo Sign sender console (esign.aramo.ai in production): /sign/ for
+  # business accounts, /personal/ for personal accounts. Proxies /auth → :3001 and
+  # /v1/esign/sender → esign-service :3003.
+  start_app esign-web    npx nx serve aramo-esign-web
   # ADR-0033 dev-only SQS consumer runner — LocalStack SQS → the SAME
   # processTalentIntakeSqsBatch seam the prod Lambda uses. Redis-INDEPENDENT.
   start_app talent-intake-consumer node tools/talent-intake-dev-consumer.cjs
@@ -180,17 +195,19 @@ cmd_up() {
   log "         http://localhost:4201/ats/ (ATS dev server directly)"
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
   log "  esign → http://localhost:3003   signer page (sign-web) → http://localhost:4204"
+  log "  Sign sender console (esign-web) → http://localhost:4206"
+  log "  local mailbox (outbox) → node tools/local-mail.cjs"
   log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
   log "  logs → $RUN_DIR/{auth-service,api,ats-web,talent-intake-consumer}.log   (tools/local-stack.sh down to stop)"
 }
 
 cmd_down() {
-  stop_app talent-intake-consumer; stop_app home-web; stop_app sign-web; stop_app ats-web; stop_app esign-service; stop_app api; stop_app auth-service
+  stop_app talent-intake-consumer; stop_app esign-web; stop_app home-web; stop_app sign-web; stop_app ats-web; stop_app esign-service; stop_app api; stop_app auth-service
   if command -v docker >/dev/null; then log "infra: docker compose down"; compose down; fi
 }
 
 cmd_status() {
-  for name in auth-service api esign-service ats-web sign-web home-web talent-intake-consumer; do
+  for name in auth-service api esign-service ats-web sign-web home-web esign-web talent-intake-consumer; do
     local pidf="$RUN_DIR/$name.pid"
     if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
       printf '  %-13s UP   (pid %s)\n' "$name" "$(cat "$pidf")"

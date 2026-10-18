@@ -1,7 +1,9 @@
 import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+
+import { SignSubscriptionProvider } from '../rtr/rtr-access';
 
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import {
@@ -11,7 +13,15 @@ import {
 } from './requisition-talent-board-api';
 
 // The card ⋯ menu carries a router Link ("View talent" → Talent 360).
-const render = (ui: ReactElement) => rtlRender(ui, { wrapper: MemoryRouter });
+// Sign-subscribed tenant by default (RTR execution needs it — rtr-access.tsx).
+function Subscribed({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <SignSubscriptionProvider subscribed>
+      <MemoryRouter>{children}</MemoryRouter>
+    </SignSubscriptionProvider>
+  );
+}
+const render = (ui: ReactElement) => rtlRender(ui, { wrapper: Subscribed });
 
 // TB-2 — the read-only Board surface. The backend is authoritative for column placement,
 // owner attribution, Closed derivation, resume linkage and Qualified band; these tests pin the
@@ -477,6 +487,21 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     await screen.findByLabelText('Talent board');
     expect(screen.queryByRole('button', { name: 'Send RTR ›' })).not.toBeInTheDocument();
     expect(screen.getByText('RTR · Not sent')).toBeInTheDocument();
+  });
+
+  it('a recruiter with the RTR permissions on a tenant without Sign sees a disabled "Requires Aramo Sign" chip', async () => {
+    const c = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT' });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    rtlRender(
+      <MemoryRouter>
+        <SignSubscriptionProvider subscribed={false}>
+          <RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} onSelectCard={vi.fn()} scopes={['document:create', 'document:execute']} />
+        </SignSubscriptionProvider>
+      </MemoryRouter>,
+    );
+    const chip = await screen.findByRole('button', { name: 'Send RTR · Requires Aramo Sign' });
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute('title', expect.stringContaining('needs Aramo Sign'));
   });
 
   it('shows "Due before qualifying" (muted) for a pre-responded card with RTR required & not sent', async () => {

@@ -6,6 +6,7 @@ import { MAILER_PORT } from './tokens.js';
 import { SesMailerAdapter } from './ses-mailer.adapter.js';
 import { SesMailerClientFactory } from './ses-mailer-client.factory.js';
 import { StubMailerAdapter } from './stub-mailer.adapter.js';
+import { OutboxMailerAdapter } from './outbox-mailer.adapter.js';
 
 // Email-S1 §1 / §3 — MailerModule: a CLEAN, SINGLE-IMPORT LEAF module.
 //
@@ -36,6 +37,7 @@ import { StubMailerAdapter } from './stub-mailer.adapter.js';
     SesMailerClientFactory,
     SesMailerAdapter,
     StubMailerAdapter,
+    OutboxMailerAdapter,
     {
       provide: 'SesMailerAdapterLogger',
       useFactory: () => createAramoLogger(SesMailerAdapter.name),
@@ -46,13 +48,13 @@ import { StubMailerAdapter } from './stub-mailer.adapter.js';
     },
     {
       provide: MAILER_PORT,
-      useFactory: (ses: SesMailerAdapter, stub: StubMailerAdapter) => {
-        // Fails loud on misconfig (unset/invalid provider, or ses without
-        // a from-address) — never returns a silently-degraded mailer.
+      useFactory: (ses: SesMailerAdapter, stub: StubMailerAdapter, outbox: OutboxMailerAdapter) => {
+        // Fails loud on misconfig (unset/invalid provider, ses without a
+        // from-address, outbox in production) — never a silently-degraded mailer.
         const { provider } = loadMailerConfig();
-        return provider === 'ses' ? ses : stub;
+        return provider === 'ses' ? ses : provider === 'outbox' ? outbox : stub;
       },
-      inject: [SesMailerAdapter, StubMailerAdapter],
+      inject: [SesMailerAdapter, StubMailerAdapter, OutboxMailerAdapter],
     },
   ],
   exports: [MAILER_PORT],

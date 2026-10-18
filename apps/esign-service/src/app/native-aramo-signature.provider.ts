@@ -78,13 +78,17 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // memory, to construct the signer URL, and is never persisted, logged, returned
   // to Core, or emitted in telemetry.
   //
+  // PX-1 — `actor_ref` (optional) records the authenticated sender who acted;
+  // the internal ATS path omits it and keeps the envelope creator as the actor.
+  //
   // Multi-Provider directive §B/§C — the Aramo Sign allowance is reserved before the
-  // send and charged once it is accepted (AramoSignAllowanceGate). Signer emails go
-  // out after the charge: a delivery failure never un-charges an accepted send.
-  async sendEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
+  // send and charged once it is accepted (AramoSignAllowanceGate), for every caller
+  // (ATS RTR/Offer and the sender console). Signer emails go out after the charge:
+  // a delivery failure never un-charges an accepted send.
+  async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const { sessions } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
-      this.service.send(tenant_id, envelope_id, env.created_by),
+      this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by),
     );
     await this.dispatchSigningRequests(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
@@ -130,9 +134,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return this.summarize(tenant_id, envelope_id);
   }
 
-  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string): Promise<EnvelopeSummary> {
+  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor_ref?: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    await this.service.voidEnvelope(tenant_id, envelope_id, env.created_by, reason);
+    await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason);
     return this.summarize(tenant_id, envelope_id);
   }
 
@@ -153,9 +157,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // SIGNATURE_REMINDER link per newly-issued session and record each delivery
   // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
   // in-memory here to build the signer URL; never persisted/logged/returned).
-  async remindEnvelopeSigner(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor_ref?: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, env.created_by);
+    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
   }

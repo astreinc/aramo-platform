@@ -248,6 +248,45 @@ server {
   }
 }
 
+# ── esign.aramo.ai — the Aramo Sign SENDER console (PX-V1 §8 D-4) ───────────────
+# One sender application for business (/sign/) and personal (/personal/) accounts
+# (Lead Host & Workspace Ruling v1.0). Wildcard *.aramo.ai cert covers the host.
+# Shared login via auth-service (/auth/ — the `esign` consumer) and ONE API
+# surface: the authenticated sender zone /v1/esign/sender/* on esign-service —
+# never the internal envelopes surface, never the signer surface, never apps/api.
+# A stray /v1/<other> falls through to the SPA, never to tenant data. PDF uploads
+# travel as base64 JSON (25 MiB source → ≈34 MiB). DEPLOY=NO until provisioned.
+server {
+  listen 443 ssl;
+  server_name ${NGINX_ESIGN_SERVER_NAME};
+
+  ssl_certificate     ${NGINX_CERT_DIR}/fullchain.pem;
+  ssl_certificate_key ${NGINX_CERT_DIR}/privkey.pem;
+  ssl_protocols       TLSv1.2 TLSv1.3;
+
+  proxy_set_header Host              $host;
+  proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Host  $host;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  location /v1/esign/sender/ {
+    client_max_body_size 40m;
+    proxy_pass http://esign-service:3003;
+  }
+  location /auth/ {
+    proxy_pass http://auth-service:3001;
+    # HF1-A — the auth callback sets several cookies; widen the header buffers.
+    proxy_buffer_size       32k;
+    proxy_buffers           8 32k;
+    proxy_busy_buffers_size 64k;
+  }
+
+  location / {
+    root /srv/esign;
+    try_files $uri /index.html;
+  }
+}
+
 # ── Port-80: healthcheck target then blanket HTTPS redirect ─────────────────────
 # No ACME HTTP-01 provisions (DNS-01 only). /healthz answers before the redirect
 # so the container healthcheck (busybox wget) gets a 200 without following a 301.

@@ -751,6 +751,7 @@
       "EsignIdempotencyConflictError",
       "EsignModule",
       "EsignRepository",
+      "EsignSenderRepository",
       "EsignService",
       "ExecutionService",
       "LocalEventPublisher",
@@ -759,6 +760,7 @@
       "PrismaService",
       "ReminderNotAllowedError",
       "SIGNING_NOTIFICATION_PORT",
+      "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
       "SignatureFieldIncompleteError",
       "SignerNotFoundError",
@@ -803,6 +805,9 @@
     "@aramo/fe-foundation": [
       "ApiClient",
       "ApiError",
+      "AppSwitcher",
+      "AramoAppShell",
+      "AramoRail",
       "Button",
       "Card",
       "Checkbox",
@@ -817,6 +822,9 @@
       "LOGOUT_PATH",
       "Label",
       "MICROSOFT_SIGN_OUT_URL",
+      "MY_PRODUCTS_PATH",
+      "NAV_COLLAPSED_KEY",
+      "NavCollapseProvider",
       "NavLink",
       "PageHeader",
       "RadioGroup",
@@ -836,9 +844,12 @@
       "accessDeniedPath",
       "apiClient",
       "appPath",
+      "buildAppSwitcherItems",
+      "clearReturnContext",
       "configureAppBasePath",
       "configureAuthConsumer",
       "currentReturnTo",
+      "fetchMyProducts",
       "fetchSession",
       "formatDate",
       "formatInstant",
@@ -847,11 +858,22 @@
       "hasScope",
       "loginUrl",
       "logout",
+      "orgHref",
+      "parseReturnContext",
+      "productByKey",
+      "productEntryHref",
+      "readNavCollapsed",
+      "readRememberedReturnContext",
       "redirectToAccessDenied",
       "redirectToLogin",
+      "rememberReturnContext",
+      "useCompactRailPage",
+      "useMyProducts",
+      "useNavCollapse",
       "useOptionalToast",
       "useSession",
-      "useToast"
+      "useToast",
+      "validReturnPath"
     ],
     "@aramo/field-masking": [
       "COMPANY_COMMERCIAL_FIELD_KEYS",
@@ -887,7 +909,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "CursorDecodeError",
-      "DEFAULT_SIGN_ENTRY_PATH",
+      "DEFAULT_SIGN_ENTRY_URL",
       "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
       "DOMAIN_VERIFICATION_STATUSES",
@@ -964,7 +986,8 @@
       "normalizeEmail",
       "normalizeSlug",
       "requiredCapabilityForConsumer",
-      "signEntryActivated"
+      "signEntryActivated",
+      "signEntryUrl"
     ],
     "@aramo/identity-index": [
       "CLUSTER_PURGE_STATEMENTS",
@@ -1095,6 +1118,7 @@
     "@aramo/mailer": [
       "MAILER_PORT",
       "MailerModule",
+      "OutboxMailerAdapter",
       "SesMailerAdapter",
       "SesMailerClientFactory",
       "StubMailerAdapter",
@@ -1183,13 +1207,17 @@
       "parseResumeObjectKey"
     ],
     "@aramo/org-admin-web": [
+      "AuditLogView",
       "ME_PATH",
       "ORG_ADMIN_SCOPE_PREFIX",
-      "ORG_NAV",
+      "ORG_DENIED_NOTICE",
+      "ORG_SECTIONS",
       "OrgAdminRoutes",
       "OrgAdminShell",
+      "RolesMatrixView",
       "fetchMe",
       "hasOrgAdminScope",
+      "orgSectionLabel",
       "useMe"
     ],
     "@aramo/outbox-publisher": [
@@ -2317,6 +2345,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/selection-create.negative-shape.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2631,6 +2665,13 @@
         "status": "excluded"
       },
       { "project": "entitlement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" },
       { "project": "examination", "status": "production" },
       { "project": "export", "status": "production" },
       {
@@ -3093,6 +3134,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
       {
@@ -3119,6 +3166,13 @@
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -4785,6 +4839,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/sender-workspace.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/signer-document-view.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
@@ -4798,6 +4858,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -6460,6 +6526,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/signature-availability.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6477,6 +6549,13 @@
       { "project": "company", "status": "production" },
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" },
       { "project": "export", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -6516,6 +6595,11 @@
       { "project": "task", "status": "production" }
     ],
     "@aramo/esign": [
+      {
+        "from": "pact/provider/src/verify-esign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/app-module-boot.spec.ts",
@@ -6828,6 +6912,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/companies/CompanyDetailView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/companies/policies/ClientSubmittalPolicyEditor.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -7299,6 +7389,19 @@
         "project": "aramo-ats-web",
         "status": "unscoped"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/esign-web/src/App.spec.tsx",
+        "project": "aramo-esign-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-esign-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/home/AppHomeView.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
       { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -7589,6 +7692,13 @@
         "status": "excluded"
       },
       { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -8027,7 +8137,10 @@
       { "project": "resume-parse", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
-    "@aramo/org-admin-web": [{ "project": "aramo-home-web", "status": "production" }],
+    "@aramo/org-admin-web": [
+      { "project": "aramo-ats-web", "status": "production" },
+      { "project": "aramo-home-web", "status": "production" }
+    ],
     "@aramo/outbox-publisher": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9611,6 +9724,13 @@
       "targets": ["build", "e2e", "lint", "preview", "serve", "test"]
     },
     {
+      "name": "aramo-esign-web",
+      "root": "apps/esign-web",
+      "sourceRoot": "apps/esign-web/src",
+      "tags": ["scope:esign-sender"],
+      "targets": ["build", "lint", "preview", "serve", "test"]
+    },
+    {
       "name": "aramo-home-web",
       "root": "apps/home-web",
       "sourceRoot": "apps/home-web/src",
@@ -9866,6 +9986,13 @@
       "name": "esign-source-consumer-pact",
       "root": "pact/consumers/esign-source-consumer",
       "sourceRoot": "pact/consumers/esign-source-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "esign-web-consumer-pact",
+      "root": "pact/consumers/esign-web-consumer",
+      "sourceRoot": "pact/consumers/esign-web-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
     },

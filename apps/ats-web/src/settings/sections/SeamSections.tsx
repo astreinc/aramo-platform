@@ -1,4 +1,6 @@
 import {
+  IconCard,
+  IconGlobe,
   IconBrowser,
   IconForm,
   IconPlug,
@@ -25,9 +27,49 @@ import { ESignatureProvidersPanel } from '../../integrations/ESignatureProviders
 //   • REFUSAL-LAYER FORBIDDEN (Career portal, Apply flow): no substrate AND
 //     forbidden by the refusal layer — seams by mandate, never wired/stubbed.
 
-// D-ORG-3 — Localization, Security & SSO and Plan & billing (organization-owned
-// seams) and the live Roles & permissions / Audit log sections moved to
-// Organization Administration (libs/org-admin-web, /org/* on the App Home).
+// Unified multi-product UX (accepted change log A1/A7): Localization and Plan &
+// billing are listed in the ATS rail again as ATS seams; Security & SSO lives in
+// Organization administration (Domain).
+
+export function LocalizationSection() {
+  return (
+    <SettingsSection
+      title="Localization"
+      description="ATS defaults for language, currency, time zone and formats — with per-site overrides."
+    >
+      <SettingsSeam
+        icon={<IconGlobe />}
+        title="Language & regional formats"
+        vision={[
+          'ATS default currency, date and number formats for requisitions and placements.',
+          'Per-site overrides so one office can differ from another.',
+        ]}
+      >
+        There is no locale substrate yet (requisition currency is per-record text, not a tenant default).
+        When it lands, these become enforced ATS defaults.
+      </SettingsSeam>
+    </SettingsSection>
+  );
+}
+
+export function BillingSection() {
+  return (
+    <SettingsSection title="Plan & billing" description="Your ATS subscription, seats and usage.">
+      <SettingsSeam
+        icon={<IconCard />}
+        title="Subscription & invoices"
+        vision={[
+          'Current plan, seat usage and AI-credit usage.',
+          'Invoice history and payment method.',
+          'Plan changes and entitlement gates.',
+        ]}
+      >
+        There is no billing/subscription/payment substrate — entitlement gates are capability flags and
+        metering is a write-only usage log, neither is billing. This is a deferred Phase-B track.
+      </SettingsSeam>
+    </SettingsSection>
+  );
+}
 
 // D-EMAIL-TPL-1 (ET-6) — Email & notifications is now a LIVE template-management
 // surface (system default + tenant override, RBAC-gated, server-authoritative

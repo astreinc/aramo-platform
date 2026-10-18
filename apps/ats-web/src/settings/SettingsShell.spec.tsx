@@ -82,19 +82,21 @@ function renderAt(path: string, session: Session) {
 }
 
 describe('Settings shell + rail', () => {
-  it('renders every grouped ATS-owned section in the rail + the Organization link (D-ORG-3)', () => {
+  it('renders the accepted rail groups: ORGANIZATION · SHARED link-out, ATS TEAMS & ACCESS, then the ATS-owned groups (unified UX)', () => {
+    // The browser URL carries the ATS base (/ats/…) in production; the router
+    // under test is a MemoryRouter, so set the document URL the link reads.
+    window.history.pushState({}, '', '/ats/admin/settings/recruiting');
     renderAt('/admin/settings/recruiting', makeSession(['tenant:admin:settings']));
     const nav = screen.getByRole('navigation', { name: /settings sections/i });
-    // The ATS-owned group headings (People & access / Account moved to /org/*).
     for (const heading of [
-      'Organization',
-      'Workspace',
+      'Organization · shared',
+      'ATS teams & access',
       'Talent experience',
       'Communication',
       'Recruiting',
-      'Documents',
-      'Data',
+      'Documents & data',
       'Connect',
+      'Account',
     ]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
@@ -103,19 +105,21 @@ describe('Settings shell + rail', () => {
     for (const key of keys) {
       expect(screen.getByTestId(`settings-nav-${key}`)).toBeInTheDocument();
     }
-    // The residual admin-tools affordance (ruling C).
     expect(screen.getByTestId('settings-nav-tools')).toBeInTheDocument();
-    // D-ORG-3 — the organization-owned sections are NOT in this rail; the rail
-    // links OUT to Organization administration with a host-level anchor (the
-    // ATS basename must not be applied — it is a different SPA on this host).
-    for (const gone of ['profile', 'users', 'roles', 'security', 'domain', 'localization', 'billing', 'audit']) {
+    // ATS-owned again (change log A1/A4/A7): ATS roles reference, Localization,
+    // Plan & billing, Audit log. Organization-owned pages are NOT in this rail.
+    for (const k of ['roles', 'localization', 'billing', 'audit']) {
+      expect(screen.getByTestId(`settings-nav-${k}`)).toBeInTheDocument();
+    }
+    for (const gone of ['profile', 'users', 'security', 'domain']) {
       expect(screen.queryByTestId(`settings-nav-${gone}`)).toBeNull();
     }
-    expect(within(nav).queryByText('People & access')).toBeNull();
-    expect(within(nav).queryByText('Account')).toBeNull();
+    // "Manage organization" is a host-level anchor to the App Home SPA carrying
+    // the exact current ATS page as the return context.
     const org = screen.getByTestId('settings-nav-organization');
     expect(org.tagName).toBe('A');
-    expect(org).toHaveAttribute('href', '/org/');
+    expect(org.getAttribute('href')).toBe(`/org/profile?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`);
+    expect(org).toHaveTextContent('App Home');
   });
 
   it('marks the active section with aria-current', () => {
