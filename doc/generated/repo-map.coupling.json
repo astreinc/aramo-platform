@@ -23905,6 +23905,11 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
+      "to": "apps/sign-web/public/fonts/HomemadeApple-LICENSE.txt"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
       "to": "ci/scripts/verify-ats-refusal.ts"
     },
     {
@@ -24053,6 +24058,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/consent/src/tests/stale-consent.integration.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/documents-rendering/src/lib/fonts/HomemadeApple-LICENSE.txt"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
