@@ -10806,6 +10806,11 @@
     {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {

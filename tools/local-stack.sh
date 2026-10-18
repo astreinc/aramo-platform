@@ -159,19 +159,22 @@ cmd_up() {
     ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
   fi
 
-  log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, talent-intake-consumer"
+  log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, home-web :4205, talent-intake-consumer"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   # E-Sign: without it "Send for signature" fails (api → localhost:3003 refused).
   start_app esign-service env PORT=3003 node dist/apps/esign-service/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web
   start_app sign-web     npx nx serve aramo-sign-web
+  # D-ORG — App Home + Organization Administration; forwards /ats/ to :4201 like nginx.
+  start_app home-web     npx nx serve aramo-home-web
   # ADR-0033 dev-only SQS consumer runner — LocalStack SQS → the SAME
   # processTalentIntakeSqsBatch seam the prod Lambda uses. Redis-INDEPENDENT.
   start_app talent-intake-consumer node tools/talent-intake-dev-consumer.cjs
 
   log "stack up:"
-  log "  FE   → http://localhost:4201"
+  log "  FE   → http://localhost:4205 (App Home, /org/, /ats/ — the tenant-host topology)"
+  log "         http://localhost:4201/ats/ (ATS dev server directly)"
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
   log "  esign → http://localhost:3003   signer page (sign-web) → http://localhost:4204"
   log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
@@ -179,12 +182,12 @@ cmd_up() {
 }
 
 cmd_down() {
-  stop_app talent-intake-consumer; stop_app sign-web; stop_app ats-web; stop_app esign-service; stop_app api; stop_app auth-service
+  stop_app talent-intake-consumer; stop_app home-web; stop_app sign-web; stop_app ats-web; stop_app esign-service; stop_app api; stop_app auth-service
   if command -v docker >/dev/null; then log "infra: docker compose down"; compose down; fi
 }
 
 cmd_status() {
-  for name in auth-service api esign-service ats-web sign-web talent-intake-consumer; do
+  for name in auth-service api esign-service ats-web sign-web home-web talent-intake-consumer; do
     local pidf="$RUN_DIR/$name.pid"
     if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
       printf '  %-13s UP   (pid %s)\n' "$name" "$(cat "$pidf")"

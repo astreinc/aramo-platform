@@ -123,27 +123,23 @@ authority or `//`, ≤ 2000 chars) inside that consumer's own app base (`sanitiz
 and applied at the callback (`derivePostLoginRedirect`). Anything else silently falls back to the consumer's default
 landing. Landing precedence (Gate-6 V4): `AUTH_POST_LOGIN_PATH_<CONSUMER>` → the consumer's built-in base → the legacy global `AUTH_POST_LOGIN_PATH` only for a consumer without a built-in base.
 
-## 6. Governance reconciliation (§4) — amendments prepared, RATIFICATION PENDING
+## 6. Governance reconciliation (§4) — amendments RATIFIED and LOCKED
 
-Prepared by the Executor under the D-ORG authorization §4 and filed to `OneDrive/Aramo/documents/` (NOT `locked/`,
-which holds ratified instruments only) with SHA-256 sidecars; to be filed LOCKED on Lead ratification:
+Ratified by the Lead Architect (2026-10-17, "D-ORG — Final Governance Ratification") and filed byte-for-byte to
+`OneDrive/Aramo/locked/` (filename-only transition from `-RATIFICATION-PENDING` to `-LOCKED`; SHA-256 unchanged;
+`.sha256` sidecars beside each; filing record `Aramo/documents/ARAMO-D-ORG-Amendments-Filing-Record-20261017.md`):
 
-1. `Aramo-D-ORG-Amendment-A1-IC-0-F2-Rules-3-4-Org-Consumer-v1_0-RATIFICATION-PENDING.md` — IC-0 Gate-0 Report §F.2
-   rules 3, 4 and 7 (the `org` consumer → `core`; the organization scope subset; cookies stay host-only, now
-   consumer-suffixed).
-2. `Aramo-Auth-Decoupling-PR-4-Directive-Amendment-A3-Consumer-Isolated-Sessions-and-Return-To-v1_0-RATIFICATION-PENDING.md`
-   — PR-4 §2.4 invariant 5 / A2 §1 ("the cookie-clearing contract of every 401 path is unchanged") / A2 §2.3
-   (session-surface host binding): consumer-suffixed cookies, the consumer header, global GET sign-out, `return_to`,
-   the TENANT-class binding of `org`.
-3. `Aramo-AUTHZ-2-Platform-Tier-Directive-Amendment-A1-Sixth-Consumer-Org-v1_0-RATIFICATION-PENDING.md` — AUTHZ-2 §1
-   ("a 4th `consumer_type = platform`") is now six consumers; the DDR §13.1 both-direction tripwire is unchanged and
-   `org` never carries `platform:*`.
+| LOCKED instrument | SHA-256 | Reconciles |
+|---|---|---|
+| `Aramo-D-ORG-Amendment-A1-IC-0-F2-Rules-3-4-Org-Consumer-v1_0-LOCKED.md` | `67c2f27ba8bca58a1506c1260e0e7d6fa6cea8b72dd836f8aafd78e642870440` | IC-0 Gate-0 Report §F.2 rules 3, 4 and 7: `org` → `core`; the organization scope subset; host-only, consumer-suffixed cookies; availability parity (V1) |
+| `Aramo-Auth-Decoupling-PR-4-Directive-Amendment-A3-Consumer-Isolated-Sessions-and-Return-To-v1_0-LOCKED.md` | `01deac383845a1eafb365898e41e9769f9bd307bac222a2b2fd1c6e1d905f7d7` | PR-4 §2.4 invariant 5, A2 §1 row 2, A2 §2 item 3: consumer-suffixed cookies, the consumer header, global GET sign-out, legacy-cookie retirement, `return_to`, governed landing precedence |
+| `Aramo-AUTHZ-2-Platform-Tier-Directive-Amendment-A1-Sixth-Consumer-Org-v1_0-LOCKED.md` | `b943a357a9945550b3da3c68c6d2419c4cb760b57b89b8e471b68faa1099d2ab` | AUTHZ-2 §1: six consumers; the DDR §13.1 both-direction tripwire unchanged; `org` never carries `platform:*` |
 
 No security invariant beyond the rulings was changed; no HALT condition was met.
 
-## 7. What is NOT done by this branch (§1/§6 constraints)
+## 7. Release status
 
-Not merged, not deployed, Sign PRODUCT-host login not activated, no Cognito/DNS/nginx production change. The external
+Merged to `main` 2026-10-18 (PR #957, merge commit `e478e7ac`). Not deployed, Sign PRODUCT-host login not activated, no Cognito/DNS/nginx production change. The external
 activation steps are in `doc/runbooks/RELEASE-app-home-org.md`.
 
 ## 8. Unified multi-product experience (shared shell, app switcher, return context)

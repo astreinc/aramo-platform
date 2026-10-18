@@ -11,9 +11,15 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 // app is served beside it at /ats/ (apps/ats-web, base '/ats/'); nginx routes
 // `/ats/` to that bundle and everything else to this one.
 //   - port 4205 (ats-web 4201, platform-web 4202, portal-web 4203, sign-web 4204)
-//   - dev proxies mirror ats-web: /auth → auth-service, /v1 → api
+//   - dev proxies mirror ats-web: /auth → auth-service, /v1 → api; /ats → the ATS dev
+//     server (:4201) so :4205 behaves like the production tenant host
 export default defineConfig({
   root,
+  // Per-app dependency cache. Without it every SPA dev server resolves the SAME
+  // node_modules/.vite and they overwrite each other's pre-bundled deps, so a page
+  // requests a bundle hash another server already replaced (504 "Outdated Optimize
+  // Dep") and renders blank. Dev-only; builds are unaffected.
+  cacheDir: resolve(root, '../../node_modules/.vite/home-web'),
   plugins: [react()],
   resolve: {
     alias: {
@@ -27,6 +33,10 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://localhost:3001', changeOrigin: false, secure: false },
       '/v1': { target: 'http://localhost:3000', changeOrigin: false, secure: false },
+      // D-ORG-2 dev parity with nginx `location /ats/`: the tenant host serves the
+      // ATS SPA under /ats/. Locally it is the ATS dev server (:4201, base /ats/),
+      // so App Home → ATS works on ONE origin, cookies and all (HMR via ws).
+      '/ats': { target: 'http://localhost:4201', changeOrigin: false, secure: false, ws: true },
     },
   },
   preview: { port: 4305, host: '127.0.0.1' },

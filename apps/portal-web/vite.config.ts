@@ -13,6 +13,11 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 // cookie is present. Ports pick the next free pair (serve 4203 / preview 4303).
 export default defineConfig({
   root,
+  // Per-app dependency cache. Without it every SPA dev server resolves the SAME
+  // node_modules/.vite and they overwrite each other's pre-bundled deps, so a page
+  // requests a bundle hash another server already replaced (504 "Outdated Optimize
+  // Dep") and renders blank. Dev-only; builds are unaffected.
+  cacheDir: resolve(root, '../../node_modules/.vite/portal-web'),
   plugins: [react()],
   resolve: {
     alias: {
