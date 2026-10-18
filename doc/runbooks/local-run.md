@@ -112,8 +112,16 @@ stand-in for `esign.aramo.ai`. It signs in as the `esign` consumer and proxies `
 - `/auth/esign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
 - PDF uploads use the same local object storage as résumés (`S3_RESUME_BUCKET` / `S3_ENDPOINT` from `.env`).
 
-Signers still open `http://localhost:4204/s/<token>` (sign-web); the link arrives by email (the stub mailer never
-logs it). The console's links back to App Home / Organization use `ESIGN_TENANT_HOST_URL_TEMPLATE`
+Signers open `http://localhost:4204/s/<token>` (sign-web). Local email goes to a **local outbox** instead of any
+email service: `tools/local-stack.sh` sets `MAILER_PROVIDER=outbox` and `MAILER_OUTBOX_DIR=.local-stack/mail`, so every
+invitation, reminder and completion email is written there. Read them, with their links, with:
+
+```sh
+node tools/local-mail.cjs        # latest 10 (or: node tools/local-mail.cjs 30)
+```
+
+`LOCAL_MAIL=stub tools/local-stack.sh up` restores the log-only stub. The outbox mailer refuses to start when
+`NODE_ENV=production`. The console's links back to App Home / Organization use `ESIGN_TENANT_HOST_URL_TEMPLATE`
 (local-stack default `http://localhost:4205`). Each SPA dev server keeps its own Vite dependency cache
 (`node_modules/.vite/<app>`); if a page ever renders blank with `504 Outdated Optimize Dep` in the console, stop the
 server, delete that app's cache folder and start it again.

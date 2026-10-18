@@ -55,6 +55,13 @@ load_env() {
   # App Home / Organization administration; locally that host is the App Home dev
   # server (:4205).
   export ESIGN_TENANT_HOST_URL_TEMPLATE="${ESIGN_TENANT_HOST_URL_TEMPLATE:-http://localhost:4205}"
+  # Local email → a local outbox folder (nothing is sent anywhere; read it with
+  # `node tools/local-mail.cjs`). Signer invitations then carry real, clickable
+  # links to sign-web (:4204). LOCAL_MAIL=stub restores the log-only stub.
+  if [ "${LOCAL_MAIL:-outbox}" = "outbox" ]; then
+    export MAILER_PROVIDER=outbox
+    export MAILER_OUTBOX_DIR="${MAILER_OUTBOX_DIR:-$ROOT/$RUN_DIR/mail}"
+  fi
 }
 
 compose() { docker compose "$@"; }
@@ -186,6 +193,7 @@ cmd_up() {
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
   log "  esign → http://localhost:3003   signer page (sign-web) → http://localhost:4204"
   log "  Sign sender console (esign-web) → http://localhost:4206"
+  log "  local mailbox (outbox) → node tools/local-mail.cjs"
   log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
   log "  logs → $RUN_DIR/{auth-service,api,ats-web,talent-intake-consumer}.log   (tools/local-stack.sh down to stop)"
 }

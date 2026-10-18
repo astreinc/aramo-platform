@@ -21,8 +21,13 @@ import { AramoError } from '@aramo/common';
 //   AWS_REGION        — SES region (default 'us-east-1', matching the S3 /
 //                       secret-cache precedent). Credentials follow the SDK
 //                       default chain — never read here.
+//   MAILER_PROVIDER=outbox — LOCAL DEVELOPMENT ONLY: every email is written as a
+//                       JSON file into MAILER_OUTBOX_DIR (required) so local
+//                       invitations and their links can be read and opened
+//                       (tools/local-mail.cjs). No network. Refused outright when
+//                       NODE_ENV=production (fail loud).
 
-export type MailerProvider = 'ses' | 'stub';
+export type MailerProvider = 'ses' | 'stub' | 'outbox';
 
 export interface MailerConfig {
   readonly provider: MailerProvider;
@@ -30,6 +35,8 @@ export interface MailerConfig {
   // never sends from a real address.
   readonly fromAddress: string | null;
   readonly region: string;
+  // Non-null only when provider === 'outbox' (local development).
+  readonly outboxDir: string | null;
 }
 
 const CONFIG_REQUEST_ID = 'mailer-config';
@@ -39,7 +46,7 @@ export function loadMailerConfig(): MailerConfig {
   if (rawProvider === undefined || rawProvider.length === 0) {
     throw new AramoError(
       'INTERNAL_ERROR',
-      'MAILER_PROVIDER env-var is not set (expected "ses" or "stub")',
+      'MAILER_PROVIDER env-var is not set (expected "ses", "stub" or "outbox")',
       500,
       {
         requestId: CONFIG_REQUEST_ID,
@@ -47,10 +54,10 @@ export function loadMailerConfig(): MailerConfig {
       },
     );
   }
-  if (rawProvider !== 'ses' && rawProvider !== 'stub') {
+  if (rawProvider !== 'ses' && rawProvider !== 'stub' && rawProvider !== 'outbox') {
     throw new AramoError(
       'INTERNAL_ERROR',
-      `MAILER_PROVIDER must be "ses" or "stub" (got "${rawProvider}")`,
+      `MAILER_PROVIDER must be "ses", "stub" or "outbox" (got "${rawProvider}")`,
       500,
       {
         requestId: CONFIG_REQUEST_ID,
@@ -80,5 +87,23 @@ export function loadMailerConfig(): MailerConfig {
     );
   }
 
-  return { provider, fromAddress, region };
+  let outboxDir: string | null = null;
+  if (provider === 'outbox') {
+    if (process.env['NODE_ENV'] === 'production') {
+      throw new AramoError('INTERNAL_ERROR', 'MAILER_PROVIDER=outbox is a local-development mailer and must not be used in production', 500, {
+        requestId: CONFIG_REQUEST_ID,
+        details: { kind: 'env_invalid', name: 'MAILER_PROVIDER' },
+      });
+    }
+    const dir = process.env['MAILER_OUTBOX_DIR'];
+    if (dir === undefined || dir.length === 0) {
+      throw new AramoError('INTERNAL_ERROR', 'MAILER_OUTBOX_DIR env-var is required when MAILER_PROVIDER=outbox', 500, {
+        requestId: CONFIG_REQUEST_ID,
+        details: { kind: 'env_missing', name: 'MAILER_OUTBOX_DIR' },
+      });
+    }
+    outboxDir = dir;
+  }
+
+  return { provider, fromAddress, region, outboxDir };
 }

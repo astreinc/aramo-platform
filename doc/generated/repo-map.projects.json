@@ -1096,6 +1096,7 @@
     "@aramo/mailer": [
       "MAILER_PORT",
       "MailerModule",
+      "OutboxMailerAdapter",
       "SesMailerAdapter",
       "SesMailerClientFactory",
       "StubMailerAdapter",
