@@ -1,0 +1,591 @@
+import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Input } from '@aramo/fe-foundation';
+
+import { errorMessage, fileToBase64, senderApi, type ContactRow, type EnvelopeDetail } from '../api';
+import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
+import { useWorkspace } from '../workspace';
+
+import { PrepareEditor } from './PrepareEditor';
+import { readinessOf } from './readiness';
+
+// Create envelope — 4 steps (prototype): 1 Documents · 2 Recipients · 3 Prepare
+// fields · 4 Review & send. DRAFT only: a sent or terminal envelope never opens
+// the wizard or the editor (falls through to the read-only detail).
+
+const MAX_BYTES = 25 * 1024 * 1024;
+
+
+export function NewEnvelope() {
+  const { base, ctx } = useWorkspace();
+  const nav = useNavigate();
+  const [error, setError] = useState('');
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current || !ctx.can_send) return;
+    started.current = true;
+    senderApi
+      .create()
+      .then((e) => nav(`${base}/envelopes/${e.id}/edit?step=1`, { replace: true }))
+      .catch((e: unknown) => setError(errorMessage(e)));
+  }, [base, nav, ctx.can_send]);
+  if (!ctx.can_send) return <Navigate to={`${base}/envelopes`} replace />;
+  return <div className="sg-page">{error !== '' ? <ErrorBox>{error}</ErrorBox> : <Loading label="Creating envelope…" />}</div>;
+}
+
+export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
+  const { id = '' } = useParams();
+  const [params] = useSearchParams();
+  const { base, ctx, refreshCounts } = useWorkspace();
+  const [env, setEnv] = useState<EnvelopeDetail | null>(null);
+  const [error, setError] = useState('');
+  const step = prepare ? 3 : Math.min(4, Math.max(1, Number(params.get('step') ?? '1') || 1));
+
+  const load = useCallback(() => {
+    senderApi
+      .detail(id)
+      .then((d) => {
+        setEnv(d);
+        setError('');
+      })
+      .catch((e: unknown) => setError(errorMessage(e)));
+  }, [id]);
+  useEffect(load, [load]);
+
+  if (error !== '' && env === null)
+    return (
+      <div className="sg-page">
+        <ErrorBox>{error}</ErrorBox>
+      </div>
+    );
+  if (env === null) return <Loading />;
+  // End-state / sent envelopes never reopen the wizard or the editor.
+  if (env.status !== 'DRAFT' || !ctx.can_send) return <Navigate to={`${base}/envelopes/${env.id}`} replace />;
+
+  const stepHref = (n: number) => `${base}/envelopes/${env.id}/${n === 3 ? 'prepare' : `edit?step=${n}`}`;
+  const steps = ['Documents', 'Recipients', 'Prepare fields', 'Review & send'];
+
+  return (
+    <div className={step === 3 ? 'sg-page sg-page--wide' : 'sg-page sg-page--wide'}>
+      <Link className="sg-back" to={`${base}/envelopes`}>
+        <Icon name="back" size={14} /> Envelopes
+      </Link>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+        <h1 className="sg-h1">{env.subject}</h1>
+        <span className="sg-mono sg-faint" style={{ fontSize: 12 }}>
+          {env.id.slice(0, 8)} · Draft · saved automatically
+        </span>
+      </div>
+      <nav className="sg-steps" aria-label="Create envelope steps">
+        {steps.map((label, i) => {
+          const n = i + 1;
+          const cls = n === step ? 'sg-step sg-step--on' : n < step ? 'sg-step sg-step--done' : 'sg-step';
+          return (
+            <Link key={label} className={cls} to={stepHref(n)} aria-current={n === step ? 'step' : undefined}>
+              <span className="sg-step__n">{n}</span>
+              {label}
+            </Link>
+          );
+        })}
+      </nav>
+      {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+      {step === 1 ? <DocumentsStep env={env} onChange={setEnv} next={stepHref(2)} /> : null}
+      {step === 2 ? <RecipientsStep env={env} onChange={setEnv} back={stepHref(1)} next={stepHref(3)} /> : null}
+      {step === 3 ? <PrepareEditor env={env} onChange={setEnv} back={stepHref(2)} next={stepHref(4)} /> : null}
+      {step === 4 ? <ReviewStep env={env} back={stepHref(3)} onSent={refreshCounts} /> : null}
+    </div>
+  );
+}
+
+// ── Step 1 · Documents ───────────────────────────────────────────────────────
+
+function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; next: string }) {
+  const { base } = useWorkspace();
+  const nav = useNavigate();
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const [over, setOver] = useState(false);
+  const [titles, setTitles] = useState<Record<string, string>>({});
+
+  const upload = async (files: FileList | File[]) => {
+    setError('');
+    for (const f of Array.from(files)) {
+      if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) {
+        setError(`${f.name} isn’t a PDF. Upload PDF files only.`);
+        continue;
+      }
+      if (f.size > MAX_BYTES) {
+        setError(`${f.name} is larger than 25 MB.`);
+        continue;
+      }
+      setBusy(`Uploading ${f.name}…`);
+      try {
+        const content_base64 = await fileToBase64(f);
+        await senderApi.upload(env.id, { filename: f.name, title: f.name.replace(/\.pdf$/i, ''), content_base64 });
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    }
+    setBusy('');
+    let d = await senderApi.detail(env.id);
+    // Prototype: an untitled envelope takes its first document's title.
+    const first = d.documents[0];
+    if (d.subject === 'Untitled envelope' && first !== undefined) d = await senderApi.rename(env.id, first.title);
+    onChange(d);
+  };
+
+  const act = async (fn: () => Promise<EnvelopeDetail>) => {
+    setError('');
+    try {
+      onChange(await fn());
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setOver(false);
+    if (e.dataTransfer.files.length > 0) void upload(e.dataTransfer.files);
+  };
+
+  return (
+    <>
+      <div className="sg-grid sg-grid--main">
+        <div>
+          <label
+            className={over ? 'sg-drop sg-drop--over' : 'sg-drop'}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setOver(true);
+            }}
+            onDragLeave={() => setOver(false)}
+            onDrop={onDrop}
+            data-testid="drop-zone"
+          >
+            <Input
+              unstyled
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              style={{ display: 'none' }}
+              aria-label="Upload PDF documents"
+              onChange={(e) => {
+                if (e.target.files !== null) void upload(e.target.files);
+                e.target.value = '';
+              }}
+            />
+            <div style={{ fontSize: 22, color: 'var(--muted)' }}>
+              <Icon name="upload" size={26} />
+            </div>
+            <div style={{ fontWeight: 600, marginTop: 6 }}>Drop PDFs here or click to upload</div>
+            <div className="sg-muted">PDF files up to 25 MB each</div>
+          </label>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+            <Btn disabled title="Templates are a future capability">
+              Use a template
+            </Btn>
+            <span className="sg-tag sg-tag--grey" style={{ alignSelf: 'center' }}>
+              Future
+            </span>
+          </div>
+          {busy !== '' ? (
+            <p className="sg-muted" role="status">
+              {busy}
+            </p>
+          ) : null}
+          {error !== '' ? (
+            <div style={{ marginTop: 10 }}>
+              <ErrorBox>{error}</ErrorBox>
+            </div>
+          ) : null}
+        </div>
+        <section className="sg-card">
+          <div className="sg-card__head">
+            Documents in this envelope <span className="sg-muted">· {env.documents.length}</span>
+          </div>
+          {env.documents.length === 0 ? <div className="sg-empty">No documents yet.</div> : null}
+          {env.documents.map((d, i) => (
+            <div key={d.id} className="sg-docrow" data-testid={`doc-${d.id}`}>
+              <span className="sg-docicon" aria-hidden="true" />
+              <TextIn
+                aria-label={`Title for document ${i + 1}`}
+                value={titles[d.id] ?? d.title}
+                onChange={(e) => setTitles((t) => ({ ...t, [d.id]: e.target.value }))}
+                onBlur={() => {
+                  const t = (titles[d.id] ?? d.title).trim();
+                  if (t !== '' && t !== d.title) void act(() => senderApi.renameDocument(env.id, d.id, t));
+                }}
+                style={{ border: 0, padding: 0, fontWeight: 600, background: 'transparent', flex: 1 }}
+              />
+              <span className="sg-muted" style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                {fmtBytes(d.byte_size)}
+              </span>
+              <Btn
+                size="sm"
+                aria-label={`Move ${d.title} up`}
+                disabled={i === 0}
+                onClick={() => {
+                  const o = env.documents.map((x) => x.id);
+                  [o[i - 1], o[i]] = [o[i] as string, o[i - 1] as string];
+                  void act(() => senderApi.reorderDocuments(env.id, o));
+                }}
+              >
+                <Icon name="up" size={14} />
+              </Btn>
+              <Btn
+                size="sm"
+                aria-label={`Move ${d.title} down`}
+                disabled={i === env.documents.length - 1}
+                onClick={() => {
+                  const o = env.documents.map((x) => x.id);
+                  [o[i + 1], o[i]] = [o[i] as string, o[i + 1] as string];
+                  void act(() => senderApi.reorderDocuments(env.id, o));
+                }}
+              >
+                <Icon name="down" size={14} />
+              </Btn>
+              <Btn size="sm" variant="danger" aria-label={`Remove ${d.title}`} onClick={() => void act(() => senderApi.removeDocument(env.id, d.id))}>
+                <Icon name="x" size={14} />
+              </Btn>
+            </div>
+          ))}
+        </section>
+      </div>
+      <div className="sg-wizfoot">
+        <Btn onClick={() => nav(`${base}/envelopes`)}>Cancel</Btn>
+        <Btn variant="primary" onClick={() => nav(next)} disabled={busy !== ''}>
+          Continue <Icon name="next" size={14} />
+        </Btn>
+      </div>
+    </>
+  );
+}
+
+// ── Step 2 · Recipients ──────────────────────────────────────────────────────
+
+interface DraftRecipient {
+  key: string;
+  id?: string;
+  name: string;
+  email: string;
+}
+
+function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
+  const { ctx } = useWorkspace();
+  const nav = useNavigate();
+  const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map((r) => ({ key: r.id, id: r.id, name: r.name, email: r.email })));
+  const [contacts, setContacts] = useState<ContactRow[]>([]);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    senderApi
+      .contacts()
+      .then((r) => setContacts(r.items))
+      .catch(() => setContacts([]));
+  }, []);
+
+  const keyGen = useRef(0);
+  const add = (name = '', email = '') => setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email }]);
+  const upd = (key: string, patch: Partial<DraftRecipient>) => setList((l) => l.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const dirty =
+    list.length !== env.recipients.length ||
+    list.some((r, i) => r.id !== env.recipients[i]?.id || r.name !== env.recipients[i]?.name || r.email !== env.recipients[i]?.email);
+
+  const save = async (to: string) => {
+    setError('');
+    if (!dirty) {
+      nav(to);
+      return;
+    }
+    setSaving(true);
+    try {
+      const d = await senderApi.recipients(
+        env.id,
+        list.map((r) => ({ ...(r.id !== undefined ? { id: r.id } : {}), name: r.name.trim(), email: r.email.trim() })),
+      );
+      onChange(d);
+      nav(to);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const fieldCounts = (id?: string) => {
+    const f = env.fields.filter((x) => x.signer_id === id);
+    return `${f.filter((x) => x.required).length} required · ${f.filter((x) => !x.required).length} optional`;
+  };
+  const inList = (email: string) => list.some((r) => r.email.trim().toLowerCase() === email.toLowerCase());
+
+  return (
+    <>
+      <div className="sg-grid sg-grid--main">
+        <div>
+          {list.length === 0 ? <div className="sg-card sg-empty">No recipients yet. Add the people who need to sign.</div> : null}
+          {list.map((r, i) => (
+            <section key={r.key} className="sg-card sg-recipient" style={{ borderLeftColor: COLORS[i % COLORS.length], marginBottom: 12 }} data-testid="recipient-card">
+              <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
+                <div className="sg-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                  <Field label="Name" htmlFor={`rn-${r.key}`}>
+                    <TextIn id={`rn-${r.key}`} value={r.name} onChange={(e) => upd(r.key, { name: e.target.value })} />
+                  </Field>
+                  <Field label="Email" htmlFor={`re-${r.key}`}>
+                    <TextIn id={`re-${r.key}`} type="email" value={r.email} onChange={(e) => upd(r.key, { email: e.target.value })} />
+                  </Field>
+                  <Field label="Role" htmlFor={`rr-${r.key}`}>
+                    <Sel id={`rr-${r.key}`} value="signer" onChange={() => undefined}>
+                      <option value="signer">Needs to sign</option>
+                      <option value="cc" disabled>
+                        Receives a copy (proposed)
+                      </option>
+                    </Sel>
+                  </Field>
+                </div>
+                <div className="sg-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }}>
+                  <Field label="Verification" htmlFor={`rv-${r.key}`}>
+                    <Sel id={`rv-${r.key}`} value="LINK" onChange={() => undefined}>
+                      <option value="LINK">Secure link</option>
+                      <option value="OTP" disabled>
+                        Link + passcode (proposal)
+                      </option>
+                      <option value="SSO" disabled>
+                        SSO verified (proposal)
+                      </option>
+                    </Sel>
+                  </Field>
+                  <Field label="Private message (proposed)" htmlFor={`rm-${r.key}`}>
+                    <Area id={`rm-${r.key}`} rows={1} disabled placeholder="Per-recipient messages are a proposed capability" />
+                  </Field>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <LinkBtn bad onClick={() => setList((l) => l.filter((x) => x.key !== r.key))}>
+                    Remove
+                  </LinkBtn>
+                  <span className="sg-faint" style={{ fontSize: 12.5 }}>
+                    {fieldCounts(r.id)}
+                  </span>
+                </div>
+              </div>
+            </section>
+          ))}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Btn onClick={() => add()} data-testid="add-recipient">
+              + Add recipient
+            </Btn>
+            {ctx.user.email !== null && !inList(ctx.user.email) ? (
+              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')}>+ Add me as counter-signer</Btn>
+            ) : null}
+          </div>
+          <p className="sg-muted" style={{ fontSize: 12.5 }}>
+            Everyone signs in parallel. Sequential routing is a roadmap capability and is not offered here.
+          </p>
+          {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+        </div>
+        <section className="sg-card">
+          <div className="sg-card__head">From contacts</div>
+          {contacts.length === 0 ? <div className="sg-empty">People you send envelopes to appear here.</div> : null}
+          {contacts.slice(0, 8).map((c) => (
+            <div key={c.email} className="sg-row">
+              <Avatar name={c.name} small />
+              <div className="sg-row__main">
+                <div className="sg-row__t">{c.name}</div>
+                <div className="sg-row__s sg-ellipsis">{c.email}</div>
+              </div>
+              <LinkBtn disabled={inList(c.email)} onClick={() => add(c.name, c.email)}>
+                {inList(c.email) ? 'Added' : 'Add'}
+              </LinkBtn>
+            </div>
+          ))}
+        </section>
+      </div>
+      <div className="sg-wizfoot">
+        <Btn onClick={() => void save(back)} disabled={saving}>
+          <Icon name="back" size={14} /> Back
+        </Btn>
+        <Btn variant="primary" onClick={() => void save(next)} disabled={saving} data-testid="recipients-continue">
+          {saving ? 'Saving…' : 'Continue'} <Icon name="next" size={14} />
+        </Btn>
+      </div>
+    </>
+  );
+}
+
+// ── Step 4 · Review & send ───────────────────────────────────────────────────
+
+function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; onSent: () => void }) {
+  const { base } = useWorkspace();
+  const nav = useNavigate();
+  const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
+  const [error, setError] = useState('');
+  const [problems, setProblems] = useState<string[]>([]);
+  const [sending, setSending] = useState(false);
+  const ready = readinessOf(env);
+
+  const send = async () => {
+    setError('');
+    setProblems([]);
+    setSending(true);
+    try {
+      // Navigate straight to the Sent screen; updating the wizard's envelope first
+      // would re-render it as SENT and redirect to the detail page instead.
+      await senderApi.send(env.id, subject.trim() === '' ? undefined : subject.trim());
+      onSent();
+      nav(`${base}/envelopes/${env.id}/sent`);
+    } catch (e) {
+      setError(errorMessage(e));
+      const det = (e as { details?: { problems?: unknown } }).details;
+      if (Array.isArray(det?.problems)) setProblems(det.problems.filter((p): p is string => typeof p === 'string'));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="sg-grid sg-grid--main">
+        <div className="sg-grid">
+          <section className="sg-card">
+            <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
+              <Field label="Email subject" htmlFor="subject">
+                <TextIn id="subject" value={subject} maxLength={200} onChange={(e) => setSubject(e.target.value)} />
+              </Field>
+              <Field label="Message to recipients (proposed)" htmlFor="message">
+                <Area id="message" rows={3} disabled placeholder="Envelope messages are a proposed capability" />
+              </Field>
+              <div className="sg-grid sg-grid--2">
+                <Field label="Signing window" htmlFor="window">
+                  <Sel id="window" value="7" disabled onChange={() => undefined}>
+                    <option value="7">{env.signing_window_days} days (V1 baseline)</option>
+                  </Sel>
+                </Field>
+                <Field label="Reminders" htmlFor="reminders">
+                  <Sel id="reminders" value="manual" disabled onChange={() => undefined}>
+                    <option value="manual">Send manually from the envelope</option>
+                  </Sel>
+                </Field>
+              </div>
+              <div className="sg-help">
+                V1 baseline: a fixed {env.signing_window_days}-day signing window with reminders sent from the envelope page. Other windows and automatic
+                reminder cadences are proposed product capabilities.
+              </div>
+            </div>
+          </section>
+          <section className="sg-card">
+            <div className="sg-card__head">Required fields per recipient</div>
+            {env.recipients.length === 0 ? <div className="sg-empty">No recipients yet.</div> : null}
+            {env.recipients.map((r, i) => {
+              const f = env.fields.filter((x) => x.signer_id === r.id);
+              return (
+                <div key={r.id} className="sg-row">
+                  <span className="sg-swatch" style={{ background: COLORS[i % COLORS.length] }} />
+                  <div className="sg-row__main">
+                    <strong>{r.name}</strong> <span className="sg-muted">· Needs to sign · Secure link</span>
+                  </div>
+                  <span className="sg-muted" style={{ fontSize: 12.5 }}>
+                    {f.filter((x) => x.required).length} required · {f.filter((x) => !x.required).length} optional
+                  </span>
+                </div>
+              );
+            })}
+          </section>
+        </div>
+        <section className="sg-card">
+          <div className="sg-card__body">
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Before sending</div>
+            {ready.items.map((it) => (
+              <div key={it.t} className="sg-check">
+                <span className={it.ok ? 'sg-check__ok' : 'sg-check__no'} aria-hidden="true">
+                  {it.ok ? '✓' : '!'}
+                </span>
+                {it.t}
+              </div>
+            ))}
+            <div className="sg-grid" style={{ marginTop: 14, gap: 8 }}>
+              <Btn variant="primary" block disabled={!ready.ok || sending} onClick={() => void send()} data-testid="send-envelope">
+                {sending ? 'Sending…' : ready.ok ? 'Send for signature' : 'Resolve the items above to send'}
+              </Btn>
+              <Btn block disabled title="Templates are a future capability">
+                Save as template · Future
+              </Btn>
+            </div>
+            <p className="sg-help" style={{ marginTop: 10 }}>
+              Each signer gets an email with a secure link to sign at sign.aramo.ai. They don’t need an Aramo account.
+            </p>
+            {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+            {problems.length > 0 ? (
+              <ul className="sg-muted" style={{ fontSize: 12.5 }}>
+                {problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </section>
+      </div>
+      <div className="sg-wizfoot">
+        <Btn onClick={() => nav(back)}>
+          <Icon name="back" size={14} /> Back
+        </Btn>
+      </div>
+    </>
+  );
+}
+
+// ── Sent ─────────────────────────────────────────────────────────────────────
+
+export function EnvelopeSent() {
+  const { id = '' } = useParams();
+  const { base } = useWorkspace();
+  const [env, setEnv] = useState<EnvelopeDetail | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    senderApi
+      .detail(id)
+      .then(setEnv)
+      .catch((e: unknown) => setError(errorMessage(e)));
+  }, [id]);
+  if (error !== '')
+    return (
+      <div className="sg-page">
+        <ErrorBox>{error}</ErrorBox>
+      </div>
+    );
+  if (env === null) return <Loading />;
+  return (
+    <div className="sg-page" style={{ maxWidth: 760 }}>
+      <section className="sg-card" data-testid="sent-screen">
+        <div className="sg-card__body" style={{ textAlign: 'center', padding: '28px 20px' }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--okbg)', color: 'var(--ok)', display: 'grid', placeItems: 'center', margin: '0 auto 10px', fontWeight: 700 }}>
+            ✓
+          </div>
+          <h1 className="sg-h1">Envelope sent</h1>
+          <p className="sg-lede">“{env.subject}” is on its way. Each signer gets an email with a secure link.</p>
+        </div>
+        {env.recipients.map((r) => (
+          <div key={r.id} className="sg-row">
+            <Avatar name={r.name} small />
+            <div className="sg-row__main">
+              <div className="sg-row__t">{r.name}</div>
+              <div className="sg-row__s">{r.email} · Secure link sent by email</div>
+            </div>
+            <RecipientPill status={r.status} />
+          </div>
+        ))}
+        <div className="sg-card__body sg-muted" style={{ fontSize: 12.5 }}>
+          Signing links go only to each signer’s inbox and are never shown here. They stay valid for {env.signing_window_days} days.
+        </div>
+      </section>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+        <Link className="sg-btn sg-btn--primary" to={`${base}/envelopes/${env.id}`}>
+          View envelope
+        </Link>
+        <Link className="sg-btn" to={`${base}/envelopes`}>
+          Back to envelopes
+        </Link>
+      </div>
+    </div>
+  );
+}
+

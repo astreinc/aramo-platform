@@ -174,4 +174,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-1 sender works
     expect((await sender.listEnvelopes({ tenant_id: TENANT, statuses: ['COMPLETED'], limit: 50 })).map((e) => e.id)).not.toContain(env.id);
     expect((await sender.listEnvelopes({ tenant_id: TENANT, created_by: randomUUID(), limit: 50 })).length).toBe(0);
   });
+
+  it('excludes ATS/Core-sourced (CORE_REF) envelopes from every sender read', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Right to Represent', execution_mode: 'SINGLE_SIGNATURE', created_by: USER });
+    await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'RTR', source_sha256: 'd'.repeat(64), ordinal: 0 });
+    await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'talent@x.test', name: 'Talent', signing_order: 1 });
+    expect((await sender.listEnvelopes({ tenant_id: TENANT, limit: 500 })).some((e) => e.id === env.id)).toBe(false);
+    await expect(sender.getEnvelopeDetail(TENANT, env.id)).rejects.toBeInstanceOf(EnvelopeNotFoundError);
+    expect(await sender.listEnvelopeEvents(TENANT, env.id)).toEqual([]);
+    expect((await sender.listTenantEvents(TENANT, 500)).some((e) => e.envelope_id === env.id)).toBe(false);
+    expect((await sender.listTenantDocuments(TENANT, 500)).some((d) => d.envelope.id === env.id)).toBe(false);
+    expect((await sender.listPastRecipients(TENANT, 500)).some((r) => r.email === 'talent@x.test')).toBe(false);
+    await expect(sender.updateDraft({ tenant_id: TENANT, envelope_id: env.id, subject: 'x' })).rejects.toBeInstanceOf(EnvelopeNotFoundError);
+    await expect(sender.replaceDraftRecipients({ tenant_id: TENANT, envelope_id: env.id, recipients: [] })).rejects.toBeInstanceOf(EnvelopeNotFoundError);
+    const counts = await sender.countByStatus(TENANT);
+    const listed = await sender.listEnvelopes({ tenant_id: TENANT, limit: 500 });
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(listed.length);
+  });
 });

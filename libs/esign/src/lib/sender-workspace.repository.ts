@@ -16,6 +16,13 @@ import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/
 // transitions (send / remind / void) stay on EsignService — this repository never
 // changes an envelope's status.
 
+// The sender workspace covers envelopes AUTHORED in Aramo Sign only: an envelope
+// with any CORE_REF document (an ATS/Core flow such as an RTR or offer letter,
+// sourced from Core Documents) is outside it. Surfacing those in the Sign console
+// is a proposed capability (Sign handoff · Integrations) and would bypass the
+// ATS's own visibility rules, so every sender read applies this predicate.
+export const SENDER_AUTHORED = { documents: { none: { source_mode: 'CORE_REF' } } } as const;
+
 type Db = Pick<PrismaService, 'signatureEnvelope' | 'envelopeDocument' | 'signer' | 'signatureField' | 'signatureEvent'>;
 
 export interface SenderEnvelopeListFilter {
@@ -73,6 +80,7 @@ export class EsignSenderRepository {
     return this.prisma.signatureEnvelope.findMany({
       where: {
         tenant_id: filter.tenant_id,
+        ...SENDER_AUTHORED,
         ...(filter.statuses !== undefined && filter.statuses.length > 0 ? { status: { in: [...filter.statuses] } } : {}),
         ...(filter.created_since !== undefined ? { created_at: { gte: filter.created_since } } : {}),
         ...(filter.created_by !== undefined ? { created_by: filter.created_by } : {}),
@@ -97,7 +105,7 @@ export class EsignSenderRepository {
   async countByStatus(tenant_id: string, created_by?: string): Promise<Record<string, number>> {
     const rows = await this.prisma.signatureEnvelope.groupBy({
       by: ['status'],
-      where: { tenant_id, ...(created_by !== undefined ? { created_by } : {}) },
+      where: { tenant_id, ...SENDER_AUTHORED, ...(created_by !== undefined ? { created_by } : {}) },
       _count: { _all: true },
     });
     const out: Record<string, number> = {};
@@ -120,7 +128,7 @@ export class EsignSenderRepository {
 
   async getEnvelopeDetail(tenant_id: string, envelope_id: string) {
     const env = await this.prisma.signatureEnvelope.findFirst({
-      where: { tenant_id, id: envelope_id },
+      where: { tenant_id, id: envelope_id, ...SENDER_AUTHORED },
       include: {
         documents: {
           orderBy: { ordinal: 'asc' },
@@ -134,14 +142,14 @@ export class EsignSenderRepository {
   }
 
   async getDocument(tenant_id: string, envelope_id: string, document_id: string) {
-    const doc = await this.prisma.envelopeDocument.findFirst({ where: { tenant_id, envelope_id, id: document_id } });
+    const doc = await this.prisma.envelopeDocument.findFirst({ where: { tenant_id, envelope_id, id: document_id, envelope: SENDER_AUTHORED } });
     if (doc === null) throw new EnvelopeNotFoundError(`${envelope_id}/${document_id}`);
     return doc;
   }
 
   async listEnvelopeEvents(tenant_id: string, envelope_id: string) {
     return this.prisma.signatureEvent.findMany({
-      where: { tenant_id, envelope_id },
+      where: { tenant_id, envelope_id, envelope: SENDER_AUTHORED },
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
       select: { id: true, event_type: true, actor_type: true, actor_ref: true, signer_id: true, payload: true, occurred_at: true, event_hash: true },
     });
@@ -152,7 +160,7 @@ export class EsignSenderRepository {
     const events = await this.prisma.signatureEvent.findMany({
       where: {
         tenant_id,
-        ...(envelope_created_by !== undefined ? { envelope: { created_by: envelope_created_by } } : {}),
+        envelope: { ...SENDER_AUTHORED, ...(envelope_created_by !== undefined ? { created_by: envelope_created_by } : {}) },
       },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: limit,
@@ -174,7 +182,7 @@ export class EsignSenderRepository {
 
   async listTenantDocuments(tenant_id: string, limit: number, created_by?: string) {
     return this.prisma.envelopeDocument.findMany({
-      where: { tenant_id, ...(created_by !== undefined ? { envelope: { created_by } } : {}) },
+      where: { tenant_id, source_mode: 'OWNED', envelope: { ...SENDER_AUTHORED, ...(created_by !== undefined ? { created_by } : {}) } },
       orderBy: [{ envelope: { created_at: 'desc' } }, { ordinal: 'asc' }],
       take: limit,
       select: {
@@ -191,7 +199,7 @@ export class EsignSenderRepository {
   // Contacts derived from past recipients (no separate contact store exists).
   async listPastRecipients(tenant_id: string, limit: number) {
     return this.prisma.signer.findMany({
-      where: { tenant_id },
+      where: { tenant_id, envelope: SENDER_AUTHORED },
       orderBy: [{ envelope: { created_at: 'desc' } }],
       take: limit * 4,
       select: { name: true, email: true, envelope: { select: { id: true, created_at: true } } },
@@ -209,12 +217,18 @@ export class EsignSenderRepository {
     });
   }
 
-  // Locks the envelope row and asserts DRAFT inside the caller's transaction.
+  // Locks the envelope row and asserts DRAFT inside the caller's transaction. An
+  // envelope holding a CORE_REF (ATS/Core) document is outside the sender
+  // workspace and reads as not found.
   private async assertDraft(tx: Pick<PrismaService, '$queryRaw'>, tenant_id: string, envelope_id: string): Promise<void> {
     const rows = await tx.$queryRaw<{ status: string }[]>`
-      SELECT status FROM esign."SignatureEnvelope"
-      WHERE id = ${envelope_id}::uuid AND tenant_id = ${tenant_id}::uuid
-      FOR UPDATE`;
+      SELECT e.status FROM esign."SignatureEnvelope" e
+      WHERE e.id = ${envelope_id}::uuid AND e.tenant_id = ${tenant_id}::uuid
+        AND NOT EXISTS (
+          SELECT 1 FROM esign."EnvelopeDocument" d
+          WHERE d.envelope_id = e.id AND d.source_mode = 'CORE_REF'
+        )
+      FOR UPDATE OF e`;
     const row = rows[0];
     if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
     if (row.status !== 'DRAFT') throw new EnvelopeIllegalTransitionError(row.status, 'edit(DRAFT-only)');

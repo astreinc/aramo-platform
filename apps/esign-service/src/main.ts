@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import cookieParser from 'cookie-parser';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from './app/app.module.js';
@@ -11,6 +12,10 @@ async function bootstrap(): Promise<void> {
   // PX-1 — sender PDF upload travels as base64 JSON (25 MiB source ceiling →
   // ≈34 MiB encoded). Express's default JSON limit (100 KB) would refuse it.
   app.useBodyParser('json', { limit: '36mb' });
+  // PX-1 — the sender console authenticates with the HttpOnly `esign` session
+  // cookie (consumer-suffixed); JwtAuthGuard reads it from req.cookies when no
+  // Authorization header is sent. Unsigned cookies only (same as api/auth-service).
+  app.use(cookieParser());
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
