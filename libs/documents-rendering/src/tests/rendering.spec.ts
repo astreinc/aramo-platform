@@ -389,6 +389,25 @@ describe('SafePdfPipeline (B6 — governed upload safety)', () => {
     await expect(pipeline.accept(new Uint8Array(tampered))).rejects.toThrow(/active content/i);
   });
 
+  // A PDF NAME token ends at whitespace or a delimiter. Font subset tags such as
+  // /AAAAAA+Calibri (Word, Chrome "Save as PDF") merely START with "AA" and are not
+  // the /AA additional-actions key — they must not be rejected as active content.
+  it('accepts a font subset name that merely begins with an active-content token (/AAAAAA+Calibri)', async () => {
+    const source = await makeSourcePdf();
+    const benign = Buffer.concat([Buffer.from(source), Buffer.from('\n<< /BaseFont /AAAAAA+Calibri /FontName /JSFontish >>\n', 'latin1')]);
+    const accepted = await pipeline.accept(new Uint8Array(benign));
+    expect(accepted.byteLength).toBe(benign.byteLength);
+  });
+
+  it.each(['/AA<<', '/AA <<', '/JS (app.alert(1))', '/JavaScript', '/Launch', '/EmbeddedFile\n', '/RichMedia[', '/OpenAction%c'])(
+    'still rejects the whole-name active-content key in %j',
+    async (snippet) => {
+      const source = await makeSourcePdf();
+      const tampered = Buffer.concat([Buffer.from(source), Buffer.from(`\n${snippet}\n`, 'latin1')]);
+      await expect(pipeline.accept(new Uint8Array(tampered))).rejects.toThrow(/active content/i);
+    },
+  );
+
   it('rejects an encrypted PDF marker (/Encrypt) — never ignoreEncryption', async () => {
     const source = await makeSourcePdf();
     const tampered = Buffer.concat([Buffer.from(source), Buffer.from('\n/Encrypt 2 0 R\n', 'latin1')]);

@@ -22,6 +22,22 @@ const DEFAULT_LIMITS: SafePdfLimits = {
 // not strip, to keep signable source evidence faithful to what was accepted).
 const ACTIVE_CONTENT_TOKENS = ['/JavaScript', '/JS', '/Launch', '/OpenAction', '/AA', '/EmbeddedFile', '/RichMedia'];
 
+// PDF whitespace (NUL, HT, LF, FF, CR, SP) and delimiters ( ) < > [ ] { } / %
+// terminate a name token (ISO 32000-1 §7.2.2). Char codes avoid a control-char regex.
+const NAME_TERMINATORS = new Set([0, 9, 10, 12, 13, 32, 40, 41, 60, 62, 91, 93, 123, 125, 47, 37]);
+
+// True when `name` (e.g. "/AA") occurs in `raw` as a COMPLETE name token.
+export function containsPdfName(raw: string, name: string): boolean {
+  let from = 0;
+  for (;;) {
+    const i = raw.indexOf(name, from);
+    if (i === -1) return false;
+    const end = i + name.length;
+    if (end >= raw.length || NAME_TERMINATORS.has(raw.charCodeAt(end))) return true;
+    from = i + 1;
+  }
+}
+
 @Injectable()
 export class SafePdfPipeline {
   // Plain field (NOT a constructor-injected dependency): SafePdfLimits is a
@@ -46,9 +62,11 @@ export class SafePdfPipeline {
     // 3. Encrypted/password detection — hard reject. NEVER ignoreEncryption.
     if (/\/Encrypt\b/.test(raw)) throw new UnsafePdfError('encrypted/password-protected PDF');
 
-    // 4. Active-content policy.
+    // 4. Active-content policy — whole PDF NAME tokens only. A name ends at
+    // whitespace or a delimiter, so /AAAAAA+Calibri (a font subset tag) is not the
+    // /AA key; a bare substring test rejected ordinary Word/Chrome exports.
     for (const token of ACTIVE_CONTENT_TOKENS) {
-      if (raw.includes(token)) throw new UnsafePdfError(`active content not allowed: ${token}`);
+      if (containsPdfName(raw, token)) throw new UnsafePdfError(`active content not allowed: ${token}`);
     }
 
     // 5. Structural validity + page/decompression-bomb bound — load with pdf-lib
