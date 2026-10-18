@@ -11099,6 +11099,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/document-signing/signature-availability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
     },
     {
@@ -21765,6 +21770,16 @@
       "to": "libs/settings/tsconfig.lib.json"
     },
     {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "libs/signature-routing/project.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/tsconfig.lib.json"
+    },
+    {
       "from": "libs/skills-taxonomy/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -22232,6 +22247,11 @@
     { "from": "package.json", "status": "unscoped", "to": "libs/saved-list/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/selection/prisma/schema.prisma" },
     { "from": "package.json", "status": "unscoped", "to": "libs/settings/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/signature-routing/prisma/schema.prisma"
+    },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -24450,6 +24470,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/skills-taxonomy/src/index.ts"
     },
     {
@@ -24634,6 +24659,11 @@
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/saved-list/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/settings/src/index.ts" },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/signature-routing/src/index.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/skills-taxonomy/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/sourced-talent/src/index.ts" },
     {

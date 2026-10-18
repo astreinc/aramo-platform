@@ -7160,6 +7160,26 @@ paths:
           $ref: 'common.yaml#/components/responses/Conflict'
       security:
         - BearerAuth: []
+  /v1/document-signing/availability:
+    get:
+      operationId: getDocumentSigningAvailability
+      summary: Whether the caller can send a document for signature now, and through which provider.
+      description: >-
+        The backend-owned signing availability (Multi-Provider E-Sign directive §D):
+        the tenant's selected e-signature provider, whether the calling user can send
+        now, the typed reason when not, and (Aramo Sign) the included allowance for
+        the current billing period. Advisory for the UI; every send re-checks
+        immediately before it happens. Guarded by `document:read`.
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentSigningAvailability' }
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/integrations/llm/overview:
     get:
       operationId: getTenantLlmOverview
@@ -12114,6 +12134,34 @@ components:
         provider: { $ref: '#/components/schemas/WiredLlmProvider' }
         configured:
           type: boolean
+    DocumentSigningAvailability:
+      type: object
+      required: [provider, available, reason, allowance]
+      properties:
+        provider:
+          type: [string, 'null']
+          enum: [aramo_sign, docusign, adobe_sign, null]
+        available:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [NO_PROVIDER, NOT_SUBSCRIBED, NOT_AUTHORIZED, LIMIT_REACHED, PROVIDER_DISCONNECTED, PROVIDER_UNAVAILABLE, PROVIDER_REFUSED, null]
+        allowance:
+          oneOf:
+            - $ref: '#/components/schemas/SignatureAllowance'
+            - type: 'null'
+    SignatureAllowance:
+      type: object
+      required: [limit, used, remaining, period_start, period_end, threshold]
+      properties:
+        limit: { type: integer }
+        used: { type: integer }
+        remaining: { type: integer }
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        threshold:
+          type: string
+          enum: [OK, WARNING, EXHAUSTED]
     TenantLlmOverview:
       type: object
       additionalProperties: false

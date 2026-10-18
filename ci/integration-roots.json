@@ -27,6 +27,7 @@
     "libs/matching",
     "libs/metering",
     "libs/subscription",
+    "libs/signature-routing",
     "libs/object-storage",
     "libs/outbox-publisher",
     "libs/pipeline",

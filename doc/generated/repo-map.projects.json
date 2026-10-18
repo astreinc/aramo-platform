@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 83 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -67,6 +67,7 @@
     "@aramo/saved-list": "./libs/saved-list/src/index.ts",
     "@aramo/selection": "./libs/selection/src/index.ts",
     "@aramo/settings": "./libs/settings/src/index.ts",
+    "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
     "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
     "@aramo/sourced-talent": "./libs/sourced-talent/src/index.ts",
     "@aramo/submittal": "./libs/submittal/src/index.ts",
@@ -1537,6 +1538,14 @@
       "isLlmActiveProvider",
       "isMetricGoalMap"
     ],
+    "@aramo/signature-routing": [
+      "DEFAULT_SIGNATURE_PROVIDER",
+      "SIGNATURE_PROVIDERS",
+      "SignatureRoutingPrismaService",
+      "SignatureRoutingRepository",
+      "SignatureRoutingStoreModule",
+      "isSignatureProvider"
+    ],
     "@aramo/skills-taxonomy": [
       "PrismaService",
       "ProposalApplyConflictError",
@@ -2051,6 +2060,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-reads.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-signature-availability.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3238,6 +3253,12 @@
       { "project": "outbox-publisher", "status": "production" }
     ],
     "@aramo/client-submittal-policy": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
@@ -5537,6 +5558,13 @@
       { "project": "settings", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/signature-routing/src/tests/signature-routing.integration.spec.ts",
+        "project": "signature-routing",
+        "status": "excluded"
+      },
+      { "project": "signature-routing", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/skills-taxonomy/src/tests/skill-alias-version.integration.spec.ts",
         "project": "skills-taxonomy",
         "status": "excluded"
@@ -6292,6 +6320,12 @@
         "project": "api",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
@@ -6397,6 +6431,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/examine.controller.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/signature-availability.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8519,6 +8559,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8807,6 +8853,15 @@
       { "project": "api", "status": "production" },
       { "project": "reporting", "status": "production" }
     ],
+    "@aramo/signature-routing": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/skills-taxonomy": [
       {
         "excludedBy": "src/tests/**/*",
@@ -8931,6 +8986,13 @@
       { "project": "requisition", "status": "production" }
     ],
     "@aramo/subscription": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/signature-availability.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
@@ -10044,6 +10106,13 @@
       "sourceRoot": "pact/consumers/sign-web-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "signature-routing",
+      "root": "libs/signature-routing",
+      "sourceRoot": "libs/signature-routing/src",
+      "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test"]
     },
     {
       "name": "skills-taxonomy",

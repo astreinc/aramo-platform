@@ -43,6 +43,16 @@ The new directive names only the V1 Implementation directive as amended (its :5)
 | A1-7 | A send refused or failed before acceptance leaves its envelope in DRAFT; the governed ATS send now sends that DRAFT envelope on retry instead of reporting it as already sent. |
 | A1-8 | Historical reconciliation: `AllowanceService.recordHistorical` records only real sent envelopes, into their own period, idempotently. |
 
+### PR 2 — availability and routing
+
+| # | Decision |
+|---|---|
+| A1-9 | Provider integration layer: `libs/signature-routing` (schema `signature_routing`). `TenantSignatureProvider` holds one active provider per tenant (no row = the built-in Aramo Sign); `SignatureProviderSelectionEvent` is an append-only audit of every change (enforced by trigger); `SignatureRequestRoute` freezes the provider on each created request. |
+| A1-10 | One backend decision: `SignatureAvailabilityService.evaluate(tenant, actorScopes?)` returns provider, availability, a typed reason (NO_PROVIDER, NOT_SUBSCRIBED, NOT_AUTHORIZED, LIMIT_REACHED, PROVIDER_DISCONNECTED, PROVIDER_UNAVAILABLE, PROVIDER_REFUSED) and, for Aramo Sign, the allowance. Aramo Sign needs the `esign` capability AND an open subscription with allowance left. A selected provider with no adapter in this build reads PROVIDER_UNAVAILABLE. |
+| A1-11 | Enforcement immediately before the send: `GovernedDocumentSigningService` (the single RTR/Offer send path) asks `SignatureRoutingService.forNewSend` before preparing the document or creating anything; a refusal is `ESIGN_SEND_UNAVAILABLE` (409, `details.reason`). It never falls back to another provider. Existing requests (resend of a DRAFT, reminders) route by their frozen provider; requests created before routing existed are Aramo Sign. |
+| A1-12 | Policy authoring: publishing a policy that REQUIRES `rtr_present` is refused (422 `CLIENT_SUBMITTAL_POLICY_INVALID`, `details.reason = RTR_REQUIRES_SIGN`, `signature_reason`) when the tenant cannot send at all (NO_PROVIDER, NOT_SUBSCRIBED, PROVIDER_UNAVAILABLE). Temporary states (LIMIT_REACHED, PROVIDER_DISCONNECTED) do not block authoring; they block the send, and the RTR requirement stays enforced (DOC-5 gate unchanged). |
+| A1-13 | Read for the UI: `GET /v1/document-signing/availability` (`document:read`, ATS capability), judged for the calling user. Frontend adoption lands with PR 3 so it reconciles with PR #959's recruiter UI instead of duplicating it. |
+
 ## 4. Release dependencies
 
 Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.

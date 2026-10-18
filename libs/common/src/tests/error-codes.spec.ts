@@ -144,6 +144,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ENVELOPE_ALREADY_EXECUTED',
       'ESIGN_NOT_SUBSCRIBED',
       'ESIGN_ALLOWANCE_EXHAUSTED',
+      'ESIGN_SEND_UNAVAILABLE',
       'SIGNER_NOT_FOUND',
       'SIGNING_SESSION_INVALID',
       'SIGNING_SESSION_EXPIRED',

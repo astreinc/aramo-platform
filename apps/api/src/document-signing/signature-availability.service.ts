@@ -1,0 +1,93 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { EntitlementRepository } from '@aramo/entitlement';
+import { SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/signature-routing';
+import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, type AllowanceThreshold } from '@aramo/subscription';
+
+import { SIGNATURE_PROVIDER_REGISTRY, type SignatureProviderRegistry } from './signature-router.js';
+
+// Multi-Provider directive §D — the ONE backend decision for document signing
+// availability. RTR, Offer, client-submittal policy authoring and the recruiter
+// surfaces all read it; React never re-derives it. Enforcement happens again
+// immediately before the actual send (SignatureRoutingService.forNewSend), and
+// the Aramo Sign allowance is charged at the native send seam in esign-service.
+
+export const SIGNATURE_UNAVAILABLE_REASONS = [
+  'NO_PROVIDER',
+  'NOT_SUBSCRIBED',
+  'NOT_AUTHORIZED',
+  'LIMIT_REACHED',
+  'PROVIDER_DISCONNECTED',
+  'PROVIDER_UNAVAILABLE',
+  'PROVIDER_REFUSED',
+] as const;
+export type SignatureUnavailableReason = (typeof SIGNATURE_UNAVAILABLE_REASONS)[number];
+
+/** Sending for signature needs both document permissions (request + execute). */
+export const SIGNATURE_SEND_SCOPES = ['document:create', 'document:execute'] as const;
+
+export interface SignatureAllowanceView {
+  readonly limit: number;
+  readonly used: number;
+  readonly remaining: number;
+  readonly period_start: string;
+  readonly period_end: string;
+  readonly threshold: AllowanceThreshold;
+}
+
+export interface SignatureAvailability {
+  readonly provider: SignatureProviderKey | null;
+  readonly available: boolean;
+  readonly reason: SignatureUnavailableReason | null;
+  /** Aramo Sign only: the tenant's included allowance for the current period. */
+  readonly allowance: SignatureAllowanceView | null;
+}
+
+@Injectable()
+export class SignatureAvailabilityService {
+  constructor(
+    private readonly routing: SignatureRoutingRepository,
+    private readonly entitlements: EntitlementRepository,
+    private readonly allowance: AllowanceService,
+    @Inject(SIGNATURE_PROVIDER_REGISTRY) private readonly registry: SignatureProviderRegistry,
+  ) {}
+
+  /**
+   * @param actorScopes the caller's scopes; omit to judge the tenant alone (e.g.
+   *   whether a policy may require a signed document at all).
+   */
+  async evaluate(tenant_id: string, actorScopes?: readonly string[]): Promise<SignatureAvailability> {
+    const { provider } = await this.routing.getSelectedProvider(tenant_id);
+    const result = (reason: SignatureUnavailableReason | null, allowance: SignatureAllowanceView | null = null): SignatureAvailability => ({
+      provider,
+      available: reason === null,
+      reason,
+      allowance,
+    });
+
+    if (actorScopes !== undefined && !SIGNATURE_SEND_SCOPES.every((s) => actorScopes.includes(s))) {
+      return result('NOT_AUTHORIZED');
+    }
+    if (!this.registry.has(provider)) {
+      // The selected provider has no working integration in this build.
+      return result('PROVIDER_UNAVAILABLE');
+    }
+    if (provider !== 'aramo_sign') {
+      // External providers are governed by the tenant's own provider contract;
+      // connection health is reported by the provider adapter (PR 4/5).
+      return result(null);
+    }
+    const caps = await this.entitlements.getCapabilities(tenant_id);
+    if (!caps.has('esign')) return result('NOT_SUBSCRIBED');
+    const status = await this.allowance.getStatus(tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
+    if (!status.subscribed) return result('NOT_SUBSCRIBED');
+    const view: SignatureAllowanceView = {
+      limit: status.limit,
+      used: status.used,
+      remaining: status.remaining,
+      period_start: status.period_start.toISOString(),
+      period_end: status.period_end.toISOString(),
+      threshold: status.threshold,
+    };
+    return result(status.remaining <= 0 ? 'LIMIT_REACHED' : null, view);
+  }
+}
