@@ -114,6 +114,13 @@ export class GovernedDocumentSigningService {
     // (tenant, document, frozen revision). >1 live ⇒ ESIGN_ENVELOPE_AMBIGUOUS from the port.
     const existing = await this.signature.findEnvelopeForDocument(input.tenant_id, input.document_id, revision.id);
     if (existing !== null) {
+      // A DRAFT envelope is one whose send was refused or failed before acceptance
+      // (e.g. the Aramo Sign allowance was used up): send it now rather than report
+      // it as already sent. Anything else is in flight and is returned as is.
+      if (existing.status === 'DRAFT') {
+        const sent = await this.signature.sendEnvelope(input.tenant_id, existing.envelope_id);
+        return { document_id: input.document_id, envelope_id: existing.envelope_id, status: sent.status };
+      }
       return { document_id: input.document_id, envelope_id: existing.envelope_id, status: existing.status };
     }
     await this.documents.prepareDocument({

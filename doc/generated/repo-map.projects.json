@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 82 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 83 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -71,6 +71,7 @@
     "@aramo/sourced-talent": "./libs/sourced-talent/src/index.ts",
     "@aramo/submittal": "./libs/submittal/src/index.ts",
     "@aramo/submittal-eligibility": "./libs/submittal-eligibility/src/index.ts",
+    "@aramo/subscription": "./libs/subscription/src/index.ts",
     "@aramo/talent-embedding": "./libs/talent-embedding/src/index.ts",
     "@aramo/talent-evidence": "./libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "./libs/talent-extraction/src/index.ts",
@@ -1600,6 +1601,19 @@
       "isSubmittalPolicyReason",
       "isSubmittalWindowStatus",
       "pipelineLinkVerdict"
+    ],
+    "@aramo/subscription": [
+      "AllowanceService",
+      "AramoSignIncludedPlanKey",
+      "ESIGN_ENVELOPE_ALLOWANCE",
+      "ESIGN_ENVELOPE_SENT_EVENT",
+      "SubscriptionModule",
+      "SubscriptionPrismaService",
+      "addMonthsClamped",
+      "assertNotProduction",
+      "billingPeriodAt",
+      "openDevelopmentSubscription",
+      "thresholdOf"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -3610,6 +3624,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4742,6 +4762,18 @@
         "project": "esign",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -5615,6 +5647,13 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/allowance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      { "project": "subscription", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-embedding/src/tests/talent-embedding.integration.spec.ts",
         "project": "talent-embedding",
         "status": "excluded"
@@ -6125,6 +6164,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/helpers/rtr-readiness-harness.ts",
         "project": "api",
         "status": "excluded"
@@ -6214,6 +6259,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6409,6 +6460,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -6416,6 +6473,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-delivery.worker.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -7780,7 +7843,8 @@
       { "project": "api", "status": "production" },
       { "project": "pipeline", "status": "production" },
       { "project": "selection", "status": "production" },
-      { "project": "submittal", "status": "production" }
+      { "project": "submittal", "status": "production" },
+      { "project": "subscription", "status": "production" }
     ],
     "@aramo/microsoft-graph": [
       {
@@ -8865,6 +8929,15 @@
       },
       { "project": "api", "status": "production" },
       { "project": "requisition", "status": "production" }
+    ],
+    "@aramo/subscription": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" }
     ],
     "@aramo/talent-embedding": [
       {
@@ -9998,6 +10071,13 @@
       "root": "libs/submittal-eligibility",
       "sourceRoot": "libs/submittal-eligibility/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "subscription",
+      "root": "libs/subscription",
+      "sourceRoot": "libs/subscription/src",
+      "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },
     {

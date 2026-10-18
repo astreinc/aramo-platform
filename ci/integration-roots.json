@@ -26,6 +26,7 @@
     "libs/job-domain",
     "libs/matching",
     "libs/metering",
+    "libs/subscription",
     "libs/object-storage",
     "libs/outbox-publisher",
     "libs/pipeline",

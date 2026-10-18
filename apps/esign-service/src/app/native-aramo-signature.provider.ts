@@ -13,6 +13,7 @@ import {
   type SigningNotificationPort,
 } from '@aramo/esign';
 
+import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import {
   type CreatedDocumentRef,
   type CreatedSignerRef,
@@ -29,6 +30,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   constructor(
     private readonly repo: EsignRepository,
     private readonly service: EsignService,
+    private readonly allowance: AramoSignAllowanceGate,
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
   ) {}
 
@@ -75,9 +77,15 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // raw capability token stays ENTIRELY inside E-Sign: it is used only here, in
   // memory, to construct the signer URL, and is never persisted, logged, returned
   // to Core, or emitted in telemetry.
+  //
+  // Multi-Provider directive §B/§C — the Aramo Sign allowance is reserved before the
+  // send and charged once it is accepted (AramoSignAllowanceGate). Signer emails go
+  // out after the charge: a delivery failure never un-charges an accepted send.
   async sendEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    const { sessions } = await this.service.send(tenant_id, envelope_id, env.created_by);
+    const { sessions } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
+      this.service.send(tenant_id, envelope_id, env.created_by),
+    );
     await this.dispatchSigningRequests(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
   }

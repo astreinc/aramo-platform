@@ -12855,6 +12855,11 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-esign-allowance.md"
+    },
+    {
       "from": "doc/directives/Aramo-Email-Notifications-Reusable-Templates-V1-Implementation-Directive-v1_0-LOCKED.md",
       "status": "unscoped",
       "to": "apps/api/src/communications/dto/requisition-contact-draft.dto.ts"
@@ -18575,6 +18580,16 @@
       "to": "doc/runbooks/talent-rtbf-erasure.md"
     },
     {
+      "from": "doc/runbooks/RELEASE-esign-allowance.md",
+      "status": "unscoped",
+      "to": "doc/directives/Aramo-E-Sign-Multi-Provider-Addendum-A1-Precedence-and-Traceability-v1_0.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-allowance.md",
+      "status": "unscoped",
+      "to": "tools/local-stack.sh"
+    },
+    {
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -21869,6 +21884,16 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "libs/subscription/project.json",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "libs/subscription/project.json",
+      "status": "unscoped",
+      "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
       "from": "libs/talent-embedding/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -22223,6 +22248,16 @@
       "to": "libs/submittal-eligibility/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/submittal/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/seed-development-subscription.ts"
+    },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -24428,6 +24463,7 @@
       "to": "libs/submittal-eligibility/src/index.ts"
     },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/submittal/src/index.ts" },
+    { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/subscription/src/index.ts" },
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
@@ -24606,6 +24642,7 @@
       "to": "libs/submittal-eligibility/src/index.ts"
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/submittal/src/index.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/subscription/src/index.ts" },
     {
       "from": "vitest.shared.ts",
       "status": "unscoped",
@@ -25000,6 +25037,10 @@
     },
     {
       "name": "prisma:seed-auth-storage",
+      "references": [{ "kind": "npm-run", "path": "tools/local-stack.sh" }]
+    },
+    {
+      "name": "prisma:seed-dev-subscription",
       "references": [{ "kind": "npm-run", "path": "tools/local-stack.sh" }]
     },
     {

@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EsignRepository, EsignService } from '@aramo/esign';
 
+import type { AramoSignAllowanceGate } from '../app/aramo-sign-allowance.gate.js';
 import { NativeAramoSignatureProvider } from '../app/native-aramo-signature.provider.js';
+
+// The allowance gate is exercised in its own spec; here it passes the send through.
+const passGate = { guardSend: <T,>(_t: string, _e: string, send: () => Promise<T>) => send() } as unknown as AramoSignAllowanceGate;
 
 function mkRepo(): EsignRepository {
   return {
@@ -33,7 +37,7 @@ describe('NativeAramoSignatureProvider.sendEnvelope — OC-1 signer delivery', (
   it('dispatches SIGNATURE_REQUEST with an in-memory Sign Web URL carrying the raw token', async () => {
     process.env['ESIGN_SIGN_WEB_BASE_URL'] = 'https://sign.aramo.ai/';
     const notifier = { notify: vi.fn(async () => ({ delivered: true })) };
-    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), notifier);
+    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), passGate, notifier);
 
     await provider.sendEnvelope('tenant-1', 'env-1');
 
@@ -50,7 +54,7 @@ describe('NativeAramoSignatureProvider.sendEnvelope — OC-1 signer delivery', (
 
   it('does not dispatch (and does not throw) when the Sign Web origin is unset', async () => {
     const notifier = { notify: vi.fn(async () => ({ delivered: true })) };
-    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), notifier);
+    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), passGate, notifier);
     await expect(provider.sendEnvelope('tenant-1', 'env-1')).resolves.toBeDefined();
     expect(notifier.notify).not.toHaveBeenCalled();
   });
@@ -58,14 +62,14 @@ describe('NativeAramoSignatureProvider.sendEnvelope — OC-1 signer delivery', (
   it('swallows a delivery-provider failure (envelope stays SENT; delivery is retryable)', async () => {
     process.env['ESIGN_SIGN_WEB_BASE_URL'] = 'https://sign.aramo.ai';
     const notifier = { notify: vi.fn(async () => { throw new Error('SES down'); }) };
-    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), notifier);
+    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), passGate, notifier);
     await expect(provider.sendEnvelope('tenant-1', 'env-1')).resolves.toBeDefined();
     expect(notifier.notify).toHaveBeenCalledTimes(1);
   });
 
   it('is a no-op notifier path when no notification port is bound', async () => {
     process.env['ESIGN_SIGN_WEB_BASE_URL'] = 'https://sign.aramo.ai';
-    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), undefined);
+    const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), passGate, undefined);
     await expect(provider.sendEnvelope('tenant-1', 'env-1')).resolves.toBeDefined();
   });
 });

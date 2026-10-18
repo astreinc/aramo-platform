@@ -157,6 +157,9 @@ cmd_up() {
     log "6/7 seed (compiled): policy-lifecycle + tenant entitlements"
     node dist/apps/api/src/policy/seed-lifecycle.js
     ARAMO_ENTITLEMENT_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-entitlements
+    # Multi-Provider directive §B — governed development subscription (Aramo Sign
+    # included allowance) so local sends work. Refuses production; never in seed-prod.sh.
+    ARAMO_ENV=local ARAMO_SUBSCRIPTION_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-dev-subscription
   fi
 
   log "7/7 start: auth-service :3001, api :3000, esign-service :3003, ats-web :4201, sign-web :4204, home-web :4205, talent-intake-consumer"

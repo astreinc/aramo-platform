@@ -17,9 +17,11 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
+import { SubscriptionModule } from '@aramo/subscription';
 
 import { EsignProviderController, EsignSignerController } from './esign-http.controller.js';
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
+import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
 import { kmsEvidenceSignerFromEnv } from './kms-evidence-manifest-signer.js';
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
@@ -39,6 +41,8 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 @Module({
   imports: [
     CommonModule,
+    // Multi-Provider directive §B — the plan/subscription allowance authority.
+    SubscriptionModule,
     EsignModule.forRoot({
       imports: [MailerModule, ObjectStorageModule],
       // PX-V1 F3 — EsignSignerController (declared at AppModule level) injects the
@@ -73,7 +77,7 @@ import { EsignDeliveryWorker } from './esign-delivery.worker.js';
     }),
   ],
   controllers: [EsignProviderController, EsignSignerController],
-  providers: [NativeAramoSignatureProvider],
+  providers: [NativeAramoSignatureProvider, AramoSignAllowanceGate],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

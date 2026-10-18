@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
 import type { Request } from 'express';
-import { AramoError, RequestId } from '@aramo/common';
+import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
@@ -56,6 +56,10 @@ function validate(cond: boolean, message: string, requestId: string): void {
   if (!cond) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
 }
 
+// The canonical error envelope ({ error: { code, message, details } }) so the ATS
+// adapter receives typed refusals (e.g. the Aramo Sign allowance) rather than a
+// bare 500.
+@UseFilters(AramoExceptionFilter)
 @Controller('v1/esign/envelopes')
 export class EsignProviderController {
   constructor(private readonly provider: NativeAramoSignatureProvider) {}

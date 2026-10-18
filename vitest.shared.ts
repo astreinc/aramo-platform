@@ -154,6 +154,8 @@ export default defineConfig({
       // $transaction arrays). Leaf: deps = @aramo/common + 'uuid'; no
       // back-edge into any domain.
       '@aramo/metering': resolve(root, 'libs/metering/src/index.ts'),
+      // Multi-Provider directive §B — plan/subscription/allowance authority.
+      '@aramo/subscription': resolve(root, 'libs/subscription/src/index.ts'),
       // Email-S1 — generic transactional mailer leaf. Invite-S2 wires
       // MailerModule into IdentityModule (the invite/acceptance email path),
       // so apps/api + libs/identity specs that boot that graph resolve

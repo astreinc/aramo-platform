@@ -1,0 +1,48 @@
+# Aramo E-Sign Multi-Provider — Addendum A1: Precedence and Traceability v1.0
+
+**Governing directive:** `Aramo-E-Sign-Multi-Provider-Plan-Entitlements-Usage-Directive-v1_0-LOCKED.md`
+(canonical: OneDrive `Aramo/locked`, sha256 `c1ecfb8e248f19cb6c03cd49bc0ba3571c58b1d144b6476955e5553ad0dc0037`;
+Lead Architect, relayed by PO 2026-10-18).
+**Authored by:** Code Executor, as the governed addendum the directive requires (§A: "Record an explicit governed amendment/addendum with precedence and traceability. Do not silently modify LOCKED originals.").
+**Status:** program record. It changes no LOCKED original; it records how the new directive sits against them.
+
+## 1. Precedence
+
+For the program scope only (commercial allowance for Aramo Sign, tenant e-signature provider selection, the common availability/routing service, and the DocuSign and Adobe Acrobat Sign adapters), the Multi-Provider directive takes precedence over these earlier deferrals. Everything else in those directives stays in force.
+
+| Earlier LOCKED clause | Effect for this program |
+|---|---|
+| E-Sign Product-Experience V1 Implementation, :10, :165, :200 (billing/plans/metering and external providers out of V1) | Superseded for program scope (the new directive names this one explicitly). |
+| E-Sign Product-Experience V1 Backlog, :626-627 | Superseded for program scope. |
+| E-Sign Dedicated-Prod-and-Subscription Backlog, :3 (do not build until activated), :144 (no plan names or quotas) | Activated for the Aramo Sign envelope allowance only. The V1 quantity (100 per monthly period) is ratified by the new directive and stored as plan-catalog data. Pricing, billing provider and payment collection stay out of scope. |
+| E-Sign Independent Digital Signature Platform, :122 and §30 :859-869 (external providers, multi-provider settings, billing, metering not authorized) | Superseded for program scope by the new directive's explicit authorization. |
+| DOC v1.1 :353 (R29 — third-party adapters remain deferred) | Superseded for program scope; the adapters implement the existing `SignatureProviderPort` as :229 anticipated. |
+| DOC-TEMPLATE-ADMIN-RTR-1 :155 ("RTR remains Documents + Native E-Sign") | RTR stays Documents-governed; the signing provider is the tenant's selected provider (directive §4). The RTR gate (DOC-5 PL-1) is unchanged: only an EXECUTED Document satisfies it. |
+
+The new directive names only the V1 Implementation directive as amended (its :5). The rows above beyond the first are recorded here as a typed divergence (precedence inferred from the directive's explicit scope, :38-41, :101-110, :131-136), for Lead confirmation.
+
+## 2. Constraints carried forward unchanged
+
+- **No plan logic in envelope state transitions** (Independent Platform :578, :902; Dedicated-Prod Backlog :132, :189). The allowance is checked and charged at the native provider's send seam (`apps/esign-service` `AramoSignAllowanceGate`), never in `libs/esign` lifecycle code.
+- **No cross-service schema shortcut** (Dedicated-Prod Backlog :188). The allowance authority is the `scope:shared` library `libs/subscription` with its own `subscription` schema, used in-process the same way `libs/entitlement` is used by every service today.
+- **Evidence sealed** (PX-V1 :197, DOC-3/4). External providers' completion artifacts are stored under their own labels; a provider artifact is never relabelled as the Aramo certificate.
+- **apps/api reaches E-Sign only through `SignatureProviderPort`** (DOC-3 :67, Operational Closure :65).
+- **Backend enforcement; frontend advisory.**
+- **No live provisioning.** No tenant is subscribed by migration or by the production seed. A DEVELOPMENT subscription exists only through the governed local/test path, which refuses production.
+
+## 3. Program decisions (executor, within the directive)
+
+| # | Decision |
+|---|---|
+| A1-1 | Plan catalog: `subscription.Plan` + `PlanAllowance` (configurable `included_quantity`). Seed: plan `aramo-sign-included-v1`, allowance `esign.envelopes` = 100, `MONTHLY`. |
+| A1-2 | Subscription: `subscription.TenantSubscription` with `period_anchor` and `source` MANUAL or DEVELOPMENT. No payment status is modelled (no billing provider has been selected). One open subscription per tenant (partial unique index). |
+| A1-3 | Period: monthly from the anchor, UTC, day clamped to month length; no rollover of the included allowance. |
+| A1-4 | Ledger: `subscription.AllowanceUsage`, unique `(tenant, allowance, send_key)`; states RESERVED, CONSUMED, RELEASED; origin SEND or HISTORICAL. Reservation is serialized per tenant and allowance by a transaction-scoped advisory lock. Overdue reservations stay counted until resolved against the envelope record. A consumed row also writes `esign.envelope.sent` to the existing `metering.UsageEvent` stream in the same transaction. |
+| A1-5 | Send identity for Aramo Sign: `aramo-sign:envelope:<envelope_id>`. A retry of the same envelope never charges twice; void, decline and expiry after a send stay counted. |
+| A1-6 | Refusals: `ESIGN_NOT_SUBSCRIBED` (403) and `ESIGN_ALLOWANCE_EXHAUSTED` (409), each with `details.reason` (`NOT_SUBSCRIBED`, `LIMIT_REACHED`), carried through the internal zone to the ATS adapter. |
+| A1-7 | A send refused or failed before acceptance leaves its envelope in DRAFT; the governed ATS send now sends that DRAFT envelope on retry instead of reporting it as already sent. |
+| A1-8 | Historical reconciliation: `AllowanceService.recordHistorical` records only real sent envelopes, into their own period, idempotently. |
+
+## 4. Release dependencies
+
+Once deployed, every Aramo Sign send (RTR, Offer, sender console) is refused `ESIGN_NOT_SUBSCRIBED` until the tenant has an open subscription. Opening production subscriptions is commercial provisioning and needs separate authorization (directive :166, :185). See `doc/runbooks/RELEASE-esign-allowance.md`.
