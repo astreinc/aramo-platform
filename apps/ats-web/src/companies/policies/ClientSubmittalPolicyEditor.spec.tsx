@@ -1,3 +1,4 @@
+import { ApiError } from '@aramo/fe-foundation';
 import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
@@ -7,6 +8,8 @@ const m = vi.hoisted(() => ({
   publishClientSubmittal: vi.fn(),
 }));
 vi.mock('../policies-api', () => m);
+
+import { SignSubscriptionProvider } from '../../rtr/rtr-access';
 
 import { ClientSubmittalPolicyEditor } from './ClientSubmittalPolicyEditor';
 
@@ -78,5 +81,25 @@ describe('ClientSubmittalPolicyEditor', () => {
     });
     // §31 — refetch the authoritative layers after publish (never trust a local effective).
     await waitFor(() => expect(m.getClientSubmittalLayers.mock.calls.length).toBeGreaterThan(loadsBefore));
+  });
+
+  it('without Aramo Sign: warns on Required RTR and explains the server refusal inline', async () => {
+    m.publishClientSubmittal.mockRejectedValue(
+      new ApiError(422, 'refused', 'CLIENT_SUBMITTAL_POLICY_INVALID', { reason: 'RTR_REQUIRES_SIGN', key: 'rtr_present' }),
+    );
+    render(
+      <SignSubscriptionProvider subscribed={false}>
+        <ClientSubmittalPolicyEditor companyId="co-1" onBack={vi.fn()} />
+      </SignSubscriptionProvider>,
+    );
+    const rtr = await screen.findByRole('group', { name: 'Right to Represent setting' });
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    fireEvent.click(within(rtr).getByText('Required'));
+    expect(await screen.findByRole('note')).toHaveTextContent('Requires Aramo Sign');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish changes' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Publish' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('needs Aramo Sign');
+    // The editor stays on screen with the unsaved choice.
+    expect(screen.getByRole('group', { name: 'Right to Represent setting' })).toBeInTheDocument();
   });
 });

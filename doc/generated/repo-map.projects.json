@@ -6790,6 +6790,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/companies/policies/ClientSubmittalPolicyEditor.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/components/InlineEditField.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"

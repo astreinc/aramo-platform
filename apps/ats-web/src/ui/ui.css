@@ -5963,6 +5963,7 @@ button.rc-tj__cell:hover { color: #022ac0; text-decoration: underline; }
 }
 .rc-delta { font-size: 11px; color: #93a0a8; }
 .rc-delta--changed { color: #022ac0; }
+.rc-delta--warn { color: #9a5b00; }
 @media (max-width: 1024px) {
   .rc-editor-head { display: none; }
   .rc-editor-card .rc-editor-row { grid-template-columns: 1fr; }

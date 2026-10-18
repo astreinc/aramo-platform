@@ -20,7 +20,7 @@ import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { getCurrentRtr, remindRtr } from '../../rtr/rtr-api';
 import { SendRtrLauncher } from '../../rtr/SendRtrLauncher';
-import { canExecuteRtr, canSendRtr as canSendRtrFor, useSignSubscribed } from '../../rtr/rtr-access';
+import { RTR_UNAVAILABLE, canExecuteRtr, canSendRtr as canSendRtrFor, rtrUnavailable, useSignState, useSignSubscribed } from '../../rtr/rtr-access';
 import { withCurrency } from '../../talent/stated-fields';
 import { availabilityLabel, journeyOwnerLabel } from '../../talent-360/t360-vocab';
 import { workAuthLabel } from '../../talent-360/t360-model';
@@ -224,6 +224,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canSendRtr = canSendRtrFor(scopes, signSubscribed);
   // Same-envelope reminder (COMM-RECRUITER-W1 W1-C3) — document:execute + Sign.
   const canRemindRtr = canExecuteRtr(scopes, signSubscribed);
+  const rtrBlocked = rtrUnavailable(scopes, useSignState());
   const [reminding, setReminding] = useState(false);
 
   // Route chrome: edge-to-edge content (the app shell — main nav + top bar — is
@@ -469,13 +470,15 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       sub:
         card?.rtr_status === 'NOT_REQUIRED'
           ? `Not required by ${clientLabel}`
-          : `Required by ${clientLabel}${signedOn !== null ? ` · signed ${signedOn}` : ''}`,
+          : `Required by ${clientLabel}${signedOn !== null ? ` · signed ${signedOn}` : ''}${card?.rtr_status === 'NOT_SENT' && rtrBlocked !== null ? ` · ${RTR_UNAVAILABLE[rtrBlocked].label}` : ''}`,
       done: rtr.done,
       glyph: rtr.done ? '✓' : '1',
       pill: rtr.pill,
       tone: rtr.tone,
       ...(card?.rtr_status === 'NOT_SENT' && canSendRtr
         ? { cta: 'Send RTR', ctaPrimary: true, onCta: () => setRtrOpen(true) }
+        : card?.rtr_status === 'NOT_SENT' && rtrBlocked !== null
+          ? { cta: 'Send RTR', ctaPrimary: false, ctaDisabledReason: RTR_UNAVAILABLE[rtrBlocked].detail }
         : card?.rtr_status === 'SENT' && canRemindRtr
           ? { cta: reminding ? 'Sending reminder…' : 'Send reminder', ctaPrimary: false, onCta: sendRtrReminder }
           : { cta: 'View', ctaPrimary: false, onCta: () => go('docs') }),

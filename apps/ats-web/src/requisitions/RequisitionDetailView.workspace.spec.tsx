@@ -143,12 +143,12 @@ function mockApi(opts: MockOpts = {}): { urls: string[] } {
   return { urls };
 }
 
-function mount(scopes: string[], opts: MockOpts = {}) {
+function mount(scopes: string[], opts: MockOpts = {}, signSubscribed = true) {
   mockApi(opts);
   return render(
     <ToastProvider>
       <BreadcrumbProvider>
-        <SignSubscriptionProvider subscribed>
+        <SignSubscriptionProvider subscribed={signSubscribed}>
 <MemoryRouter initialEntries={['/requisitions/req-1']}>
           <Routes>
             <Route
@@ -703,6 +703,19 @@ describe('RequisitionDetailView workspace — Workspace panel sections', () => {
     const actionCell = row.querySelector('.rc-tip__next');
     expect(within(actionCell as HTMLElement).getByRole('button', { name: 'Start qualifying' })).toBeInTheDocument();
     expect(within(actionCell as HTMLElement).queryByRole('button', { name: /Send RTR/ })).toBeNull();
+  });
+
+  it('List — without the Sign subscription the RTR column shows a disabled Send RTR with "Requires Aramo Sign"', async () => {
+    const c = card({ column: 'contacted', owner_state: 'talent_responded', rtr_status: 'NOT_SENT' });
+    mount(['requisition:read', 'pipeline:read', 'document:create', 'document:execute'], {
+      pipelines: PIPELINE_TAL1,
+      board: boardWith([{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }]),
+    }, false);
+    const row = (await screen.findByText('Marcus Adeyemi')).closest('.rc-tip__row');
+    if (row === null) throw new Error('no talent-in-play row');
+    const rtrCell = row.querySelector('.rc-tip__rtrcell') as HTMLElement;
+    expect(within(rtrCell).getByRole('button', { name: 'Send RTR — Requires Aramo Sign' })).toBeDisabled();
+    expect(within(rtrCell).getByText('Requires Aramo Sign')).toBeInTheDocument();
   });
 
   it('List — RTR status states: Awaiting signature + reminder, ✓ Signed + view', async () => {

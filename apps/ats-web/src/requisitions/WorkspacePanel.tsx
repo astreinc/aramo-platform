@@ -10,6 +10,7 @@ import type { TalentRecordView } from '../talent/types';
 import type { TaskView } from '../task/types';
 import { TASK_ACTIVE_STATUS_VALUES } from '../task/types';
 import { formatActivityNote } from '../activity/activity-note-format';
+import { RTR_UNAVAILABLE, rtrUnavailable, useSignState, type RtrUnavailableReason } from '../rtr/rtr-access';
 
 import { AddTalentDialog } from './AddTalentDialog';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
@@ -686,6 +687,7 @@ function TalentInPlayRow({
       : BOARD_COLUMN_LABELS[card.column];
   const cells = funnelCells(card);
   const rtrKind = rtrAffordanceKind(card);
+  const rtrBlocked = rtrUnavailable(scopes, useSignState());
 
   // Inline controls stop propagation so they never trigger the row navigation.
   const stop = (fn: () => void) => (e: MouseEvent) => {
@@ -725,7 +727,7 @@ function TalentInPlayRow({
       {cells.map((c) =>
         c.label === 'RTR' ? (
           <span key={c.label} className="rc-tip__cell rc-tip__rtrcell">
-            <RtrCell kind={rtrKind} onSendRtr={onSendRtr !== undefined ? stop(onSendRtr) : undefined} onOpen={stop(onOpen)} />
+            <RtrCell kind={rtrKind} blocked={rtrBlocked} onSendRtr={onSendRtr !== undefined ? stop(onSendRtr) : undefined} onOpen={stop(onOpen)} />
           </span>
         ) : (
           <span key={c.label} className="rc-tip__cell">
@@ -757,13 +759,27 @@ function TalentInPlayRow({
 // which remains the mutation + evidence authority. Never a second Send-RTR control.
 function RtrCell({
   kind,
+  blocked,
   onSendRtr,
   onOpen,
 }: {
   readonly kind: RtrAffordanceKind;
+  readonly blocked: RtrUnavailableReason | null;
   readonly onSendRtr?: (e: MouseEvent) => void;
   readonly onOpen: (e: MouseEvent) => void;
 }) {
+  // The recruiter holds the RTR permissions but the tenant cannot send one (no Sign
+  // subscription): show why instead of silently hiding the action.
+  if (kind === 'send' && blocked !== null) {
+    return (
+      <span className="rc-tip__rtrstack">
+        <Button unstyled type="button" className="rc-tip__rtrbtn" disabled title={RTR_UNAVAILABLE[blocked].detail} aria-label={`Send RTR — ${RTR_UNAVAILABLE[blocked].label}`}>
+          Send RTR
+        </Button>
+        <span className="rc-tip__val rc-tip__val--mute">{RTR_UNAVAILABLE[blocked].label}</span>
+      </span>
+    );
+  }
   if (kind === 'send' && onSendRtr !== undefined) {
     return (
       <Button unstyled type="button" className="rc-tip__rtrbtn" onClick={onSendRtr}>

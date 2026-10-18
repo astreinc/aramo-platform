@@ -488,6 +488,7 @@
     "apps/api/src/tests/client-decision-orchestrator.spec.ts",
     "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
     "apps/api/src/tests/client-submittal-policy/client-submittal-policy-reads.spec.ts",
+    "apps/api/src/tests/client-submittal-policy/client-submittal-policy-rtr-sign.spec.ts",
     "apps/api/src/tests/client-submittal-policy/client-submittal-policy.integration.spec.ts",
     "apps/api/src/tests/comm-b5-call-initiation.integration.spec.ts",
     "apps/api/src/tests/comm-b5-requisition-existence-adapter.spec.ts",

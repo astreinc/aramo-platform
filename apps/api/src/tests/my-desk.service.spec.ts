@@ -449,6 +449,18 @@ describe('MyDeskService.compose — domain-derived work kinds', () => {
     expect(item.primary_action?.href).toBe('/talent/tal-m/submittal/req-1');
   });
 
+  it('omits the Send RTR item when the tenant has no Aramo Sign subscription (the recruiter could not act on it)', async () => {
+    const svc = new MyDeskService(
+      fakePort({
+        listMyRequisitions: async () => REQS,
+        listQualifiedReadiness: async () => [readiness({ talent_id: 'tal-m', rtr_required: true })],
+        resolveTalentNames: async () => new Map([['tal-m', 'Marcus Lee']]),
+      }),
+    );
+    const items = (await svc.compose({ ...CTX, sign_subscribed: false }, NOW, TZ)).priority_items;
+    expect(items.some((i) => i.kind === 'rtr')).toBe(false);
+  });
+
   it('emits a voice-required engagement item with the Log voice call CTA', async () => {
     const svc = new MyDeskService(
       fakePort({
