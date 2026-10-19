@@ -460,6 +460,16 @@ services:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+      # Aramo Sign launch — public self-service signup (/v1/signup/sign/* via the
+      # esign.aramo.ai block). Dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1 (separately
+      # authorized). The verification email goes through the shared mailer (SES,
+      # same as api); links point at the Sign console origin. SIGN_SIGNUP_TERMS_REF
+      # (optional) makes terms acceptance mandatory and is stored with the request.
+      - SIGN_PUBLIC_SIGNUP_ENABLED
+      - SIGN_SIGNUP_TERMS_REF
+      - ESIGN_SENDER_WEB_BASE_URL
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
     depends_on:
       postgres:
         condition: service_healthy

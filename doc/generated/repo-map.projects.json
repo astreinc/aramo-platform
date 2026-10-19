@@ -961,6 +961,8 @@
       "SEED_ROLE_KEYS",
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
+      "SIGNUP_PROVISIONING_STALE_MS",
+      "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
       "StubTenantCognitoAdapter",
@@ -2773,6 +2775,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/support/configurable-authz-resolver.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3219,6 +3227,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -5383,6 +5397,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6631,6 +6651,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7787,6 +7813,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8082,7 +8114,14 @@
         "project": "identity",
         "status": "excluded"
       },
-      { "project": "identity", "status": "production" }
+      { "project": "identity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/matching": [
       {

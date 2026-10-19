@@ -52,6 +52,13 @@ separate authorization. This runbook is the order of operations once those are g
    Sign console. Send one envelope; usage shows 1 of 100.
 5. Live keys only after the live-charging authorization.
 
+## Vocabulary boundary
+
+Stripe's vendor-defined identifiers appear only in `libs/subscription/src/lib/billing/stripe-wire.ts`
+and its contract spec `stripe-wire.spec.ts` — the two files with a file-scoped vocabulary
+exemption (Architect ruling 2026-10-19, approved with restrictions). Every Aramo-owned model,
+column, DTO and API uses `account_ref`; the adapter itself is fully gated.
+
 ## Rollback
 
 Image rollback restores the code. The migration is additive and can stay. To stop self-service
@@ -65,5 +72,3 @@ keep their last state.
 - Terms of service, privacy notice and the electronic-signature disclosure text (D-10;
   disclosure v1 is `LEGAL_PENDING`).
 - Retention of documents and evidence after a subscription ends (they are kept today).
-- Vocabulary: the Stripe adapter carries the provider's wire names under a per-path vocabulary
-  exemption pending Lead ratification (`scripts/verify-vocabulary.sh`).

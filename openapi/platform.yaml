@@ -35,6 +35,14 @@ tags:
       is deliberately separate from lifecycle power).
   - name: Platform Admins
     description: Platform-administrator invitation (the sentinel platform tenant).
+  - name: Sign Self-Service Signup
+    description: |
+      Aramo Sign launch — the PUBLIC (session-less) BUSINESS signup, served on
+      esign.aramo.ai under `/v1/signup/sign/*`. Dark (404) unless
+      SIGN_PUBLIC_SIGNUP_ENABLED=1. `start` always answers 202 and emails a
+      24-hour link; nothing is provisioned until the link is used. `complete`
+      provisions a BUSINESS tenant with capabilities [core, esign] and an
+      org_admin owner (no send authority until a paid subscription opens).
   - name: Platform Skill Governance
     description: |
       SKILL-TAX-1F-B2 — the canonical skills-taxonomy administration surface and
@@ -46,6 +54,154 @@ tags:
       NO PII; the review queue is counts-only (never a tenant id in a response).
 
 paths:
+  /v1/signup/sign/start:
+    post:
+      operationId: startSignSignup
+      tags: [Sign Self-Service Signup]
+      summary: Request a verification link for a new Aramo Sign organization.
+      description: |
+        Always 202 for a well-formed request with a work address, whatever the
+        address's state (an address that already has an Aramo account receives a
+        sign-in email instead). Rate-limited per source IP and per address.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, organization_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                organization_name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                display_name:
+                  type: string
+                  maxLength: 100
+                accept_terms:
+                  type: boolean
+                  description: Required true when the operator has configured terms (SIGN_SIGNUP_TERMS_REF).
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted:
+                    type: boolean
+        '400':
+          description: '`VALIDATION_ERROR` — malformed input, a personal or disposable address (details.reason business_email_required), or terms not accepted.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/preview:
+    post:
+      operationId: previewSignSignup
+      tags: [Sign Self-Service Signup]
+      summary: Read what a verification link would create (no state change).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [email, organization_name, status]
+                properties:
+                  email:
+                    type: string
+                  organization_name:
+                    type: string
+                  status:
+                    type: string
+                    enum: [READY, PROVISIONED]
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/complete:
+    post:
+      operationId: completeSignSignup
+      tags: [Sign Self-Service Signup]
+      summary: Create the organization from a verification link.
+      description: |
+        Idempotent per link: a repeat answers the same; a concurrent repeat
+        answers PROVISIONING. A taken organization name is a 409 the owner
+        resolves by sending another organization_name with the same link.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                organization_name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+      responses:
+        '200':
+          description: Provisioned (or provisioning in a concurrent request).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, email, organization_name, sign_in_url]
+                properties:
+                  status:
+                    type: string
+                    enum: [PROVISIONED, PROVISIONING]
+                  email:
+                    type: string
+                  organization_name:
+                    type: string
+                  sign_in_url:
+                    type: string
+                    format: uri
+        '400':
+          description: '`VALIDATION_ERROR` — an empty organization_name.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+        '409':
+          description: '`TENANT_ALREADY_EXISTS` (details.reason organization_name_taken) or `EMAIL_UNAVAILABLE`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: '`INTERNAL_ERROR` — provisioning failed; retry with the same link (details.retryable).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
   /platform/dashboard:
     get:
       operationId: getPlatformDashboard
@@ -1350,6 +1506,12 @@ components:
         format: uuid
 
   responses:
+    SignupNotFound:
+      description: '`NOT_FOUND` — signup is not enabled, or the link is invalid, expired, superseded or over the rate budget (one answer for all).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     # 403 for every platform route: a tenant-tier token (consumer_type ≠
     # platform) or a platform token missing the operation's scope.
     PlatformForbidden:

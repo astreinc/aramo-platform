@@ -9,6 +9,7 @@ import { BillingPanel } from './pages/Billing';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage, TemplatesPage } from './pages/WorkspacePages';
 import { LoginPage } from './routes/LoginPage';
+import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
 import { ConsoleShell } from './shell';
 import { Btn } from './ui';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
@@ -20,6 +21,7 @@ import type { SenderContext } from './api';
 //   /sign/*      BUSINESS organization workspace (the prototype console)
 //   /personal/*  PERSONAL workspace (route foundation; sending not enabled)
 //   /login       login landing (?error=<CODE>), /signed-out public landing
+//   /signup      public self-service BUSINESS signup (+ /signup/verify)
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
 // The external signer never comes here — that is sign.aramo.ai/s/<token>.
@@ -31,6 +33,9 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signed-out" element={<SignedOut offerAccountSwitch />} />
+        {/* Aramo Sign launch — public self-service signup (session-less). */}
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup/verify" element={<SignupVerifyPage />} />
         <Route
           path="*"
           element={

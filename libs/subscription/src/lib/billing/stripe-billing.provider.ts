@@ -10,6 +10,7 @@ import {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
+import { isWireSubscriptionEvent, wireAccountRef, wireCheckoutAccountParams, wirePortalAccountParams } from './stripe-wire.js';
 
 // Aramo Sign launch — Stripe over its REST API (no SDK dependency).
 //
@@ -43,7 +44,6 @@ function asDate(v: unknown): Date {
 export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderSubscriptionState {
   const items = (obj['items'] as { data?: Array<{ price?: { id?: string }; current_period_start?: number; current_period_end?: number }> } | undefined)?.data ?? [];
   const metadata = (obj['metadata'] as Record<string, unknown> | undefined) ?? {};
-  const customer = obj['customer'];
   // Period fields live on the subscription in the pinned API version; newer
   // versions moved them onto the items — accept either.
   const start = obj['current_period_start'] ?? items[0]?.current_period_start;
@@ -51,7 +51,7 @@ export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderS
   return {
     provider: 'STRIPE',
     subscription_ref: String(obj['id']),
-    account_ref: typeof customer === 'string' ? customer : String((customer as { id?: string } | null)?.id ?? ''),
+    account_ref: wireAccountRef(obj),
     provider_status: String(obj['status']),
     current_period_start: asDate(start),
     current_period_end: asDate(end),
@@ -71,7 +71,7 @@ export function stripeEventSubscriptionRef(type: string, o: Record<string, unkno
   if (type === 'checkout.session.completed' || type === 'checkout.session.async_payment_succeeded') {
     return o['mode'] === 'subscription' ? ref(o['subscription']) : null;
   }
-  if (type.startsWith('customer.subscription.')) return ref(o['id']);
+  if (isWireSubscriptionEvent(type)) return ref(o['id']);
   if (type.startsWith('invoice.')) {
     return ref(o['subscription']) ?? ref((o['parent'] as { subscription_details?: { subscription?: unknown } } | undefined)?.subscription_details?.subscription);
   }
@@ -152,8 +152,7 @@ export class StripeBillingProvider implements BillingProviderPort {
       success_url: req.success_url,
       cancel_url: req.cancel_url,
       client_reference_id: req.intent_id,
-      customer: req.account_ref ?? undefined,
-      customer_email: req.account_ref === null ? req.user_email : undefined,
+      ...wireCheckoutAccountParams(req.account_ref, req.user_email),
       'metadata[tenant_id]': req.tenant_id,
       'metadata[user_id]': req.user_id,
       'metadata[intent_id]': req.intent_id,
@@ -169,7 +168,7 @@ export class StripeBillingProvider implements BillingProviderPort {
   }
 
   async createPortalSession(account_ref: string, return_url: string): Promise<{ url: string }> {
-    const s = await this.call('POST', '/v1/billing_portal/sessions', form({ customer: account_ref, return_url }));
+    const s = await this.call('POST', '/v1/billing_portal/sessions', form({ ...wirePortalAccountParams(account_ref), return_url }));
     const url = asString(s['url']);
     if (url === null) throw new BillingProviderUnavailableError('portal session without url');
     return { url };

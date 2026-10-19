@@ -85,11 +85,13 @@ export class TenantService {
     tenant_id: string;
     owner_user_id: string;
     actor_id: string;
+    // Aramo Sign launch — 'system' for the self-service signup (no operator).
+    actor_type?: 'user' | 'system';
     reason: string;
   }): Promise<void> {
     await this.audit.writeEvent({
       event_type: 'tenant.owner_invite.sent',
-      actor_type: 'user',
+      actor_type: args.actor_type ?? 'user',
       actor_id: args.actor_id,
       tenant_id: args.tenant_id,
       subject_id: args.owner_user_id,
@@ -221,6 +223,12 @@ export class TenantService {
     // provider rejection does not apply — Domain-Enforcement P1 Amendment
     // P1-A1; the owner email must still be well-formed). Unknown kind → 400.
     kind?: string;
+    // Aramo Sign launch — the creation path recorded on the birth event (default
+    // 'platform.provision'; the self-service signup passes its own) and the actor
+    // class ('system' for a signup, which has no operator). Defaults keep every
+    // existing caller's payload byte-identical.
+    audit_source?: string;
+    actor_type?: 'user' | 'system';
   }): Promise<TenantDto> {
     const kindInput: string = args.kind ?? DEFAULT_TENANT_KIND;
     if (!isTenantKind(kindInput)) {
@@ -286,13 +294,13 @@ export class TenantService {
     });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
-      actor_type: 'user',
+      actor_type: args.actor_type ?? 'user',
       actor_id: args.actor_user_id,
       tenant_id: tenant.id,
       subject_id: tenant.id,
       payload: {
         name: args.name,
-        source: 'platform.provision',
+        source: args.audit_source ?? 'platform.provision',
         allowed_domain,
         // IC-4 PR-9 — the kind is part of the birth record; BUSINESS rows keep
         // the pre-PR-9 payload plus this one key.
@@ -314,6 +322,7 @@ export class TenantService {
     tenant_id: string;
     actor_user_id: string;
     reason: string;
+    actor_type?: 'user' | 'system';
   }): Promise<void> {
     await this.tenantRepo.deactivateTenant({ id: args.tenant_id });
     await this.audit.writeEvent({
@@ -323,7 +332,7 @@ export class TenantService {
       // dedicated rollback event_type is a follow-on PR). The payload's
       // `rollback: true` + reason distinguishes this from a creation
       // event for downstream consumers.
-      actor_type: 'user',
+      actor_type: args.actor_type ?? 'user',
       actor_id: args.actor_user_id,
       tenant_id: args.tenant_id,
       subject_id: args.tenant_id,

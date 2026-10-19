@@ -76,5 +76,8 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
     TenantDocumentTemplateProvisioningService,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
+  // Aramo Sign launch — the public signup module reuses the provisioning saga
+  // and the identity store this module wires.
+  exports: [PlatformInvitationService, IdentityCoreModule],
 })
 export class PlatformModule {}

@@ -5,18 +5,19 @@ import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { BillingWebhookSignatureError } from '../lib/billing/billing-provider.port.js';
-import { StripeBillingProvider, stripeEventSubscriptionRef, stripeSubscriptionState, verifyStripeSignature } from '../lib/billing/stripe-billing.provider.js';
+import { StripeBillingProvider, stripeEventSubscriptionRef, verifyStripeSignature } from '../lib/billing/stripe-billing.provider.js';
 import { mapProviderStatus, parsePlanPrices } from '../lib/billing/subscription-lifecycle.service.js';
 
-// Aramo Sign launch — the Stripe boundary: webhook signatures (forged, stale,
+// Aramo Sign launch — the Stripe adapter: webhook signatures (forged, stale,
 // tampered), status mapping, price config, and the REST calls (against a local
-// stand-in; no network, no real keys).
+// stand-in; no network, no real keys). Vendor-shaped payload translation is
+// proven in stripe-wire.spec.ts (the vocabulary-exempt boundary spec).
 
 const SECRET = 'whsec_test_only';
 const sign = (body: string, t: number, secret = SECRET) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${body}`).digest('hex')}`;
 
 describe('verifyStripeSignature', () => {
-  const body = '{"id":"evt_1","type":"customer.subscription.updated","created":1,"data":{"object":{"id":"sub_1"}}}';
+  const body = '{"id":"evt_1","type":"invoice.paid","created":1,"data":{"object":{"subscription":"sub_1"}}}';
   const now = 1_800_000_000;
   const reason = (fn: () => void) => {
     try {
@@ -62,25 +63,12 @@ describe('status + price mapping', () => {
     ]);
     expect(parsePlanPrices(undefined).size).toBe(0);
   });
-  it('reads subscription state from either period location', () => {
-    const s = stripeSubscriptionState({
-      id: 'sub_1',
-      customer: { id: 'cus_1' },
-      status: 'active',
-      cancel_at_period_end: true,
-      metadata: { tenant_id: 't1', intent_id: 'i1' },
-      items: { data: [{ price: { id: 'price_A' }, current_period_start: 100, current_period_end: 200 }] },
-    });
-    expect(s).toMatchObject({ account_ref: 'cus_1', price_ref: 'price_A', tenant_id: 't1', intent_id: 'i1', cancel_at_period_end: true });
-    expect(s.current_period_end.getTime()).toBe(200_000);
-  });
 });
 
 describe('stripeEventSubscriptionRef', () => {
   it('resolves the subscription of checkout, subscription and invoice events only', () => {
     expect(stripeEventSubscriptionRef('checkout.session.completed', { mode: 'subscription', subscription: 'sub_1' })).toBe('sub_1');
     expect(stripeEventSubscriptionRef('checkout.session.completed', { mode: 'payment', subscription: 'sub_1' })).toBeNull();
-    expect(stripeEventSubscriptionRef('customer.subscription.deleted', { id: 'sub_2' })).toBe('sub_2');
     expect(stripeEventSubscriptionRef('invoice.payment_failed', { subscription: { id: 'sub_3' } })).toBe('sub_3');
     expect(stripeEventSubscriptionRef('invoice.paid', { parent: { subscription_details: { subscription: 'sub_4' } } })).toBe('sub_4');
     expect(stripeEventSubscriptionRef('charge.refunded', { id: 'ch_1' })).toBeNull();
@@ -101,7 +89,7 @@ describe('StripeBillingProvider (local stand-in)', () => {
         res.setHeader('content-type', 'application/json');
         if (req.url === '/v1/checkout/sessions') return res.end(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/cs_1' }));
         if (req.url === '/v1/billing_portal/sessions') return res.end(JSON.stringify({ url: 'https://billing.stripe.test/p' }));
-        if (req.url === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', customer: 'cus_1', status: 'past_due', current_period_start: 1, current_period_end: 2, items: { data: [] } }));
+        if (req.url === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', status: 'past_due', current_period_start: 1, current_period_end: 2, items: { data: [] } }));
         res.statusCode = 404;
         res.end(JSON.stringify({ error: { message: 'No such subscription' } }));
       });
@@ -129,7 +117,6 @@ describe('StripeBillingProvider (local stand-in)', () => {
     expect(params.get('mode')).toBe('subscription');
     expect(params.get('subscription_data[metadata][tenant_id]')).toBe('t1');
     expect(params.get('subscription_data[metadata][intent_id]')).toBe('i1');
-    expect(params.get('customer_email')).toBe('o@acme.test');
     expect(req.headers['idempotency-key']).toBe('aramo-checkout-i1');
     expect(req.headers['authorization']).toBe('Bearer sk_test_local');
   });

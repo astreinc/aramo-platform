@@ -11345,6 +11345,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "libs/activity/src/lib/activity.controller.ts"
     },
     {
@@ -18683,7 +18688,7 @@
     {
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
       "status": "unscoped",
-      "to": "scripts/verify-vocabulary.sh"
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
     },
     {
       "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
@@ -19417,12 +19422,12 @@
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
-      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
     },
     {
       "from": "eslint.config.mjs",
       "status": "unscoped",
-      "to": "libs/subscription/src/tests/stripe-billing.spec.ts"
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
     },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
@@ -19964,6 +19969,11 @@
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
@@ -24378,12 +24388,12 @@
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
-      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
-      "to": "libs/subscription/src/tests/stripe-billing.spec.ts"
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",

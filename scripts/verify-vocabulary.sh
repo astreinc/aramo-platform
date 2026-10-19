@@ -184,14 +184,14 @@ TIER2_EXCLUDES=(
   # (Amendment v1.1 host-word exemption via the standing lockstep mechanism).
   "libs/identity/src/lib/util/tenant-slug.ts"
   "libs/identity/src/tests/tenant-slug.spec.ts"
-  # Aramo Sign launch (commercial lane) — the Stripe REST adapter is the ONE home
-  # of the provider's wire vocabulary (its account object, checkout parameters,
-  # subscription event-type prefix: fixed third-party API names). Every
-  # Aramo-side name is tenant / account_ref. Paired in lockstep with the
-  # eslint.config.mjs entries. PENDING Lead ratification (commercial-lane
-  # per-path ruling).
-  "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
-  "libs/subscription/src/tests/stripe-billing.spec.ts"
+  # Aramo Sign launch (commercial lane) — Architect ruling 2026-10-19:
+  # vendor-integration exception, APPROVED WITH RESTRICTIONS. Exactly the Stripe
+  # wire-translation file + its boundary contract spec: ONLY Stripe's
+  # vendor-defined identifiers and their translation to Aramo's `account_ref`;
+  # no Aramo-owned logic (the adapter stripe-billing.provider.ts stays fully
+  # enforced). Paired in lockstep with the eslint.config.mjs entries.
+  "libs/subscription/src/lib/billing/stripe-wire.ts"
+  "libs/subscription/src/tests/stripe-wire.spec.ts"
   # M4 PR-3: submittal-create negative-shape spec (F23 standing pattern)
   # legitimately enumerates the forbidden Match-Class vocabulary as part
   # of its leakage-detection logic. Same structural pattern as the M3
