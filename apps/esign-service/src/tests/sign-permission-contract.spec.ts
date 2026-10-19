@@ -29,7 +29,7 @@ function ctx(kind = 'BUSINESS') {
   return new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null) } as never);
 }
 
-function envelopeSvc(owner: string, kind = 'BUSINESS', status = 'DRAFT') {
+function envelopeSvc(owner: string, kind = 'BUSINESS', status = 'DRAFT', source_application = 'aramo-sign') {
   const repo = {
     listEnvelopes: vi.fn(async () => []),
     lastEventAt: vi.fn(async () => new Map()),
@@ -37,7 +37,7 @@ function envelopeSvc(owner: string, kind = 'BUSINESS', status = 'DRAFT') {
     updateDraft: vi.fn(async () => undefined),
     replaceDraftRecipients: vi.fn(async () => []),
     getEnvelopeDetail: vi.fn(async () => ({
-      id: 'e1', subject: 'S', status, created_by: owner, created_at: new Date(), sent_at: null, completed_at: null,
+      id: 'e1', subject: 'S', status, created_by: owner, source_application, created_at: new Date(), sent_at: null, completed_at: null,
       declined_at: null, voided_at: null, documents: [], signers: [],
     })),
   };
@@ -239,5 +239,29 @@ describe('Sign member administration', () => {
   it('PERSONAL accounts have no member administration', async () => {
     const { svc } = membersSvc({ kind: 'PERSONAL', callerKeys: ['esign_owner'], targetKeys: [] });
     await expect(svc.list(admin, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'personal_account' } } });
+  });
+});
+
+describe('S-3 — envelopes from another application are visible per permission, never changed here', () => {
+  it('an ATS envelope opens for a Viewer (organization read) and reports its origin', async () => {
+    const { svc } = envelopeSvc(OTHER, 'BUSINESS', 'SENT', 'aramo-ats');
+    await expect(svc.detail(roleAuth('esign_viewer'), 'e1', 'r')).resolves.toMatchObject({ source_application: 'aramo-ats', editable: false });
+  });
+
+  it('a Sender sees their own ATS envelope but an ATS envelope of someone else reads as not found', async () => {
+    await expect(envelopeSvc(ME, 'BUSINESS', 'SENT', 'aramo-ats').svc.detail(roleAuth('esign_sender'), 'e1', 'r')).resolves.toMatchObject({ id: 'e1' });
+    await expect(envelopeSvc(OTHER, 'BUSINESS', 'SENT', 'aramo-ats').svc.detail(roleAuth('esign_sender'), 'e1', 'r')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('even the owner or an Owner cannot remind, void or edit an ATS envelope from Sign → 409 managed_by_source_application', async () => {
+    for (const [who, a] of [['owner', roleAuth('esign_sender')], ['Sign Owner', roleAuth('esign_owner')]] as const) {
+      const { svc, provider, repo } = envelopeSvc(ME, 'BUSINESS', 'SENT', 'aramo-ats');
+      await expect(svc.void(a, 'e1', { reason: 'x' }, 'r')).rejects.toMatchObject({ code: 'ENVELOPE_ILLEGAL_TRANSITION', statusCode: 409, context: { details: { reason: 'managed_by_source_application' } } });
+      await expect(svc.remind(a, 'e1', 'r')).rejects.toMatchObject({ statusCode: 409 });
+      await expect(svc.update(a, 'e1', { subject: 'y' }, 'r')).rejects.toMatchObject({ statusCode: 409 });
+      expect(provider.voidEnvelope, who).not.toHaveBeenCalled();
+      expect(provider.remindEnvelopeSigner, who).not.toHaveBeenCalled();
+      expect(repo.updateDraft, who).not.toHaveBeenCalled();
+    }
   });
 });

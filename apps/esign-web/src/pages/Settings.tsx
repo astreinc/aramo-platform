@@ -256,7 +256,7 @@ function IntegrationsSection() {
     {
       name: 'Aramo ATS',
       tag: ['Existing · domain', 'ok'],
-      text: 'ATS recruiting flows (Right to Represent, offer letters) already use the shared E-Sign engine. Surfacing those envelopes in this console is proposed.',
+      text: 'ATS recruiting flows (Right to Represent, offer letters) use Aramo Sign. Their envelopes appear in your envelope list, marked “From Aramo ATS”, and are managed in the ATS.',
       ...(ctx.app_home_url !== null ? { action: { label: 'Open Aramo ATS', href: `${ctx.app_home_url}ats/` } } : {}),
     },
     { name: 'Microsoft 365', tag: ['Conceptual', 'grey'], text: 'Send envelopes from Outlook; completed documents to SharePoint.' },

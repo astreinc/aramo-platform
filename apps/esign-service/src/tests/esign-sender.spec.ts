@@ -106,7 +106,7 @@ function envelopeService(kind = 'BUSINESS') {
     replaceDraftRecipients: vi.fn(async () => []),
     replaceDraftFields: vi.fn(async () => 0),
     createDraft: vi.fn(async () => ({ id: 'e1', status: 'DRAFT', subject: 'Untitled envelope' })),
-    getEnvelopeDetail: vi.fn(async () => ({
+    getEnvelopeDetail: vi.fn(async () => ({ source_application: 'aramo-sign',
       id: 'e1', subject: 'S', status: 'DRAFT', created_by: AUTH.sub, created_at: new Date(), sent_at: null, completed_at: null,
       declined_at: null, voided_at: null, documents: [], signers: [],
     })),

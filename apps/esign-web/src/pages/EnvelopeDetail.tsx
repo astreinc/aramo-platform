@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { errorMessage, fetchSourcePdf, senderApi, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent } from '../api';
+import { errorMessage, fetchSourcePdf, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, StatusPill, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -54,7 +54,9 @@ export function EnvelopeDetail() {
   if (env === null) return <Loading />;
   // Sign Unified Product S-1 — lifecycle actions belong to the envelope's sender
   // or a Sign Admin / Owner (the backend enforces this; the UI only mirrors it).
-  const canAct = ctx.can_send && (env.sender.id === ctx.user.id || ctx.permissions.manage_all === true);
+  // S-3 — an envelope another application sent (e.g. an ATS RTR) is managed there.
+  const fromOtherApp = sourceLabel(env.source_application);
+  const canAct = fromOtherApp === null && ctx.can_send && (env.sender.id === ctx.user.id || ctx.permissions.manage_all === true);
   if (env.status === 'DRAFT' && canAct) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
 
   const signed = env.recipients.filter((r) => r.status === 'SIGNED').length;
@@ -132,7 +134,14 @@ export function EnvelopeDetail() {
         <Icon name="back" size={14} /> Envelopes
       </Link>
       <div className="sg-pagehead" style={{ marginBottom: 4 }}>
-        <h1 className="sg-h1">{env.subject}</h1>
+        <h1 className="sg-h1">
+          {env.subject}
+          {fromOtherApp !== null ? (
+            <span className="sg-tag sg-tag--blue" style={{ marginLeft: 10, verticalAlign: 'middle' }} data-testid="envelope-source">
+              {fromOtherApp}
+            </span>
+          ) : null}
+        </h1>
         <StatusPill status={env.status} />
         <div className="sg-pagehead__end">
           {env.status === 'COMPLETED' ? (

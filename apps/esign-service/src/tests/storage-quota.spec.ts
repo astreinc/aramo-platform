@@ -51,7 +51,7 @@ describe('SenderEnvelopeService upload — storage reserved before the write', (
     const repo = {
       addDraftDocument: vi.fn(async () => ({ id: 'd1', title: 'T', ordinal: 0, byte_size: 10 })),
       removeDraftDocument: vi.fn(async () => ({ source_object_key: 'esign/source/t1/e1/obj' })),
-      getEnvelopeDetail: vi.fn(async () => ({ id: 'e1', subject: 'S', status: 'DRAFT', created_by: 'u1', created_at: new Date(), sent_at: null, completed_at: null, declined_at: null, voided_at: null, documents: [], signers: [] })),
+      getEnvelopeDetail: vi.fn(async () => ({ source_application: 'aramo-sign', id: 'e1', subject: 'S', status: 'DRAFT', created_by: 'u1', created_at: new Date(), sent_at: null, completed_at: null, declined_at: null, voided_at: null, documents: [], signers: [] })),
     };
     const ctx = { assertCanAuthor: vi.fn(async () => undefined), tenantKind: vi.fn(async () => 'BUSINESS') };
     const svc = new SenderEnvelopeService(repo as never, {} as never, ctx as never, { findUserById: vi.fn(async () => null) } as never, storage as never, {} as never, storageGate as never);

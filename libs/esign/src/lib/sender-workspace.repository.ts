@@ -16,11 +16,13 @@ import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/
 // transitions (send / remind / void) stay on EsignService — this repository never
 // changes an envelope's status.
 
-// The sender workspace covers envelopes AUTHORED in Aramo Sign only: an envelope
-// with any CORE_REF document (an ATS/Core flow such as an RTR or offer letter,
-// sourced from Core Documents) is outside it. Surfacing those in the Sign console
-// is a proposed capability (Sign handoff · Integrations) and would bypass the
-// ATS's own visibility rules, so every sender read applies this predicate.
+// Envelopes AUTHORED in Aramo Sign (no CORE_REF document). Sign Unified Product
+// S-3 (directive §4.3.5 / D-5): envelope READS now cover every envelope of the
+// tenant — including ATS-originated ones (RTR, offer letters) — and visibility is
+// decided by the Sign permission contract in esign-service (own vs organization).
+// This predicate still bounds what stays Sign-authored only: draft authoring
+// (assertDraft), the uploaded-documents library and the derived contacts list
+// (an ATS recipient is never offered as a Sign contact).
 export const SENDER_AUTHORED = { documents: { none: { source_mode: 'CORE_REF' } } } as const;
 
 type Db = Pick<PrismaService, 'signatureEnvelope' | 'envelopeDocument' | 'signer' | 'signatureField' | 'signatureEvent'>;
@@ -80,7 +82,6 @@ export class EsignSenderRepository {
     return this.prisma.signatureEnvelope.findMany({
       where: {
         tenant_id: filter.tenant_id,
-        ...SENDER_AUTHORED,
         ...(filter.statuses !== undefined && filter.statuses.length > 0 ? { status: { in: [...filter.statuses] } } : {}),
         ...(filter.created_since !== undefined ? { created_at: { gte: filter.created_since } } : {}),
         ...(filter.created_by !== undefined ? { created_by: filter.created_by } : {}),
@@ -105,7 +106,7 @@ export class EsignSenderRepository {
   async countByStatus(tenant_id: string, created_by?: string): Promise<Record<string, number>> {
     const rows = await this.prisma.signatureEnvelope.groupBy({
       by: ['status'],
-      where: { tenant_id, ...SENDER_AUTHORED, ...(created_by !== undefined ? { created_by } : {}) },
+      where: { tenant_id, ...(created_by !== undefined ? { created_by } : {}) },
       _count: { _all: true },
     });
     const out: Record<string, number> = {};
@@ -128,7 +129,7 @@ export class EsignSenderRepository {
 
   async getEnvelopeDetail(tenant_id: string, envelope_id: string) {
     const env = await this.prisma.signatureEnvelope.findFirst({
-      where: { tenant_id, id: envelope_id, ...SENDER_AUTHORED },
+      where: { tenant_id, id: envelope_id },
       include: {
         documents: {
           orderBy: { ordinal: 'asc' },
@@ -142,14 +143,14 @@ export class EsignSenderRepository {
   }
 
   async getDocument(tenant_id: string, envelope_id: string, document_id: string) {
-    const doc = await this.prisma.envelopeDocument.findFirst({ where: { tenant_id, envelope_id, id: document_id, envelope: SENDER_AUTHORED } });
+    const doc = await this.prisma.envelopeDocument.findFirst({ where: { tenant_id, envelope_id, id: document_id } });
     if (doc === null) throw new EnvelopeNotFoundError(`${envelope_id}/${document_id}`);
     return doc;
   }
 
   async listEnvelopeEvents(tenant_id: string, envelope_id: string) {
     return this.prisma.signatureEvent.findMany({
-      where: { tenant_id, envelope_id, envelope: SENDER_AUTHORED },
+      where: { tenant_id, envelope_id },
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
       select: { id: true, event_type: true, actor_type: true, actor_ref: true, signer_id: true, payload: true, occurred_at: true, event_hash: true },
     });
@@ -160,7 +161,7 @@ export class EsignSenderRepository {
     const events = await this.prisma.signatureEvent.findMany({
       where: {
         tenant_id,
-        envelope: { ...SENDER_AUTHORED, ...(envelope_created_by !== undefined ? { created_by: envelope_created_by } : {}) },
+        ...(envelope_created_by !== undefined ? { envelope: { created_by: envelope_created_by } } : {}),
       },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: limit,

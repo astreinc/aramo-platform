@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
-import { errorMessage, senderApi, type EnvelopeList as EnvelopeListData, type EnvelopeStatus } from '../api';
+import { errorMessage, senderApi, sourceLabel, type EnvelopeList as EnvelopeListData, type EnvelopeStatus } from '../api';
 import { Check, ErrorBox, Loading, Sel, StatusPill, TextIn, fmtDate, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -155,9 +155,17 @@ export function EnvelopeList() {
                       <Check aria-label={`Select ${e.subject}`} checked={sel[e.id] === true} onChange={(ev) => setSel((s) => ({ ...s, [e.id]: ev.target.checked }))} />
                     </td>
                     <td>
-                      <Link to={`${base}/envelopes/${e.id}${e.status === 'DRAFT' && ctx.can_send ? '/edit?step=1' : ''}`} style={{ color: 'var(--ink)', fontWeight: 600 }}>
+                      <Link
+                        to={`${base}/envelopes/${e.id}${e.status === 'DRAFT' && ctx.can_send && sourceLabel(e.source_application) === null ? '/edit?step=1' : ''}`}
+                        style={{ color: 'var(--ink)', fontWeight: 600 }}
+                      >
                         {e.subject}
                       </Link>
+                      {sourceLabel(e.source_application) !== null ? (
+                        <span className="sg-tag sg-tag--blue" style={{ marginLeft: 8 }}>
+                          {sourceLabel(e.source_application)}
+                        </span>
+                      ) : null}
                       <div className="sg-mono sg-faint" style={{ fontSize: 11.5 }}>
                         {e.id.slice(0, 8)}
                       </div>

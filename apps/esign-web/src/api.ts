@@ -59,6 +59,15 @@ export interface EnvelopeRow {
   last_activity_at: string | null;
   document_count: number;
   recipients: { id: string; name: string; email: string; status: RecipientStatus }[];
+  // Sign Unified Product S-3 — 'aramo-sign' or the application that sent it (e.g. 'aramo-ats').
+  source_application?: string;
+}
+
+// A short label for an envelope sent by another Aramo application, or null for Sign's own.
+export function sourceLabel(source: string | undefined): string | null {
+  if (source === undefined || source === 'aramo-sign') return null;
+  if (source === 'aramo-ats') return 'From Aramo ATS';
+  return 'From an integration';
 }
 
 export interface EnvelopeList {
@@ -104,6 +113,8 @@ export interface EnvelopeField {
 
 export interface EnvelopeDetail {
   id: string;
+  // Sign Unified Product S-3 — envelopes from another application are read-only here.
+  source_application?: string;
   subject: string;
   status: EnvelopeStatus;
   created_at: string;

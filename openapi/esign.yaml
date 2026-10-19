@@ -499,9 +499,9 @@ paths:
   /v1/esign/sender/envelopes:
     get:
       operationId: listSenderEnvelopes
-      summary: List sender-authored envelopes.
+      summary: List the organization's envelopes visible to the caller.
       description: >
-        Filter by tab (all, drafts, waiting, completed, declined, voided, expired), free-text q (subject or recipient), and days (created within). ATS/Core-sourced envelopes are excluded. Requires esign:envelope:read.
+        Filter by tab (all, drafts, waiting, completed, declined, voided, expired), free-text q (subject or recipient), and days (created within). Requires esign:envelope:read. Visibility follows the Sign permission contract — own envelopes, or every envelope of the organization with esign:envelope:read:all. Envelopes sent by another Aramo application (e.g. the ATS) are included and carry source_application; they are read-only here.
       tags: [sender]
       security:
         - senderSession: []
@@ -561,7 +561,7 @@ paths:
       operationId: getSenderEnvelope
       summary: Envelope detail with documents, recipients and positioned fields.
       description: >
-        Field geometry is PDF-native - page_number 0-based, points, bottom-left origin. Requires esign:envelope:read.
+        Field geometry is PDF-native - page_number 0-based, points, bottom-left origin. Requires esign:envelope:read, plus ownership or esign:envelope:read:all. source_application names where the envelope came from; draft changes and send/remind/void need ownership or esign:envelope:manage:all, and an envelope from another application is refused (409 managed_by_source_application).
       tags: [sender]
       security:
         - senderSession: []

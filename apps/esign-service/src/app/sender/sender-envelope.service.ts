@@ -44,6 +44,9 @@ const MAX_FIELDS = 500;
 const MAX_TITLE = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// The Sign application's own key (SignatureEnvelope.source_application).
+export const SIGN_APPLICATION = 'aramo-sign';
+
 export const ENVELOPE_TABS: Record<string, readonly string[] | undefined> = {
   all: undefined,
   drafts: ['DRAFT'],
@@ -100,6 +103,15 @@ export class SenderEnvelopeService {
   // envelope the caller cannot see reads as not found.
   private async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
     const d = await this.detail(auth, envelope_id, requestId);
+    // Sign Unified Product S-3 — an envelope that another application created
+    // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays
+    // with that application, whose workflow depends on it.
+    if (d.source_application !== SIGN_APPLICATION) {
+      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This envelope is managed by the application that sent it', 409, {
+        requestId,
+        details: { reason: 'managed_by_source_application', source_application: d.source_application },
+      });
+    }
     if (d.sender.id === auth.sub) return;
     if (auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return;
     throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Only the sender of this envelope, or a Sign Admin, can change it', 403, {
@@ -198,6 +210,7 @@ export class SenderEnvelopeService {
         completed_at: iso(e.completed_at),
         last_activity_at: iso(last.get(e.id) ?? e.updated_at),
         document_count: e.documents.length,
+        source_application: e.source_application,
         recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status })),
       })),
       counts,
@@ -223,7 +236,10 @@ export class SenderEnvelopeService {
       expires_at: env.sent_at !== null ? new Date(env.sent_at.getTime() + SIGNING_SESSION_TTL_MS).toISOString() : null,
       signing_window_days: Math.round(SIGNING_SESSION_TTL_MS / 86_400_000),
       sender: { id: env.created_by, name: sender?.display_name ?? sender?.email ?? null },
-      editable: env.status === 'DRAFT',
+      // Sign Unified Product S-3 — where the envelope came from; envelopes from
+      // another application are read-only here.
+      source_application: env.source_application,
+      editable: env.status === 'DRAFT' && env.source_application === SIGN_APPLICATION,
       documents: env.documents.map((d) => ({
         id: d.id,
         title: d.title,

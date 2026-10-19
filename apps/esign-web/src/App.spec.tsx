@@ -103,6 +103,35 @@ describe('esign-web App', () => {
     expect(screen.queryByRole('link', { name: '+ New envelope' })).not.toBeInTheDocument();
   });
 
+  // Sign Unified Product S-1 — Members appears only for holders of esign:member:manage.
+  it('Settings shows Members only when the backend grants member administration', async () => {
+    vi.stubGlobal('fetch', stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true } })));
+    const first = renderAt('/sign/settings/personal');
+    expect(await screen.findByRole('link', { name: 'Members' })).toBeInTheDocument();
+    first.unmount();
+    vi.stubGlobal('fetch', stubFetch(ctx()));
+    renderAt('/sign/settings/personal');
+    await screen.findByTestId('settings-account');
+    expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument();
+  });
+
+  // Sign Unified Product S-3 — ATS envelopes are listed with their origin.
+  it('an envelope sent by the ATS is marked "From Aramo ATS" in the list', async () => {
+    const base = stubFetch(ctx());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/v1/esign/sender/envelopes')) {
+          return json({ items: [{ id: 'e9', subject: 'Right to Represent — Jordan', status: 'SENT', created_at: '2026-10-01T00:00:00Z', sent_at: '2026-10-01T00:00:00Z', completed_at: null, last_activity_at: '2026-10-01T00:00:00Z', document_count: 1, source_application: 'aramo-ats', recipients: [] }], counts: { SENT: 1 } });
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/envelopes');
+    expect(await screen.findByText('From Aramo ATS')).toBeInTheDocument();
+  });
+
   it('Templates is labelled a future capability with no create action', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx()));
     renderAt('/sign/templates');
