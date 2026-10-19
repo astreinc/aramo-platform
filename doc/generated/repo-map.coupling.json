@@ -11844,6 +11844,11 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
+    {
+      "from": "deploy/nginx/templates/aramo.conf.template",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-one-app.md"
+    },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/seed-prod.test.sh" },
@@ -18662,6 +18667,11 @@
     {
       "from": "doc/runbooks/RELEASE-esign-sender.md",
       "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-one-app.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
       "to": "libs/auth-core/src/lib/host-binding.ts"
     },
     {
@@ -18678,6 +18688,26 @@
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/zones.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/sign-base-url.ts"
     },
     {
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
@@ -19214,6 +19244,7 @@
       "status": "unscoped",
       "to": "apps/portal-web/src/tests/portal-web-negative-control.spec.ts"
     },
+    { "from": "eslint.config.mjs", "status": "unscoped", "to": "apps/sign-web/src/zones.spec.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/02-claude-code-discipline.md" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/03-refusal-layer.md" },
     {
