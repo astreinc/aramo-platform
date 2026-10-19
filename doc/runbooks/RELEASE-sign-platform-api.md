@@ -46,8 +46,9 @@ An integration acts only on envelopes its own application created (installation 
 
 ## Activation (separately authorized)
 
-1. Back up the database. Apply the migrations `20261019160000_sign_envelope_provenance`, `20261019170000_sign_integrations`
-   and `20261019180000_sign_webhook_subscriptions` (additive), then run `seed-prod.sh`. The seed adds the S-1 scopes and grants.
+1. Back up the database. Apply the five additive migrations `20261019160000_sign_envelope_provenance`,
+   `20261019170000_sign_integrations`, `20261019180000_sign_webhook_subscriptions`, `20261019190000_sign_recipient_bindings`
+   and `20261019200000_sign_event_bound_grants`, then run `seed-prod.sh`. The seed adds the S-1 scopes and grants.
 2. Box `.env`: set `ESIGN_WEBHOOK_SECRET_KEY` (`openssl rand -base64 32`). Never reuse the legacy shared secret.
 3. ATS migration (S-6), run in order:
    1. `first-party-credential aramo-ats`, then set the api's Sign client id and secret.

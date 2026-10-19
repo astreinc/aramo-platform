@@ -42,7 +42,7 @@ No database migration.
 ## Activation (separately authorized)
 
 1. **Cognito**: register `https://sign.aramo.ai/auth/esign/callback` and the sign-out URL `https://sign.aramo.ai/signed-out`
-   on the app client. Keep the `esign.aramo.ai` entries until the compatibility window ends.
+   on the app client. Remove the `esign.aramo.ai` entries once the cutover smoke checks pass (there is no compatibility window).
 2. **Box `.env`**:
    - `AUTH_PRODUCT_HOSTS=sign.aramo.ai` (was `esign.aramo.ai`);
    - `ARAMO_SIGN_BASE_URL=https://sign.aramo.ai`;
@@ -52,12 +52,12 @@ No database migration.
 
    The seeded `auth.HostAuthProfile` PRODUCT row is a dark scaffold. The `AUTH_PRODUCT_HOSTS` env is what login uses.
 3. **Billing provider** (when Stripe is configured): the webhook endpoint is `https://sign.aramo.ai/v1/esign/billing/webhook/stripe`.
-   A 301 from the retired host is **not** followed by the provider.
+   The retired host answers 410, so the provider must be configured on `sign.aramo.ai` only.
 4. Build the images, then recreate auth-service, esign-service, platform-admin and api, then nginx. Verify `ARAMO_RELEASE_REVISION`.
 5. **Smoke checks:**
    - `curl -sI https://sign.aramo.ai/sign/` returns 200 with `Content-Security-Policy`.
    - `curl -sI https://sign.aramo.ai/s/x` returns 200 with `Cache-Control: no-store` and a CSP without third-party origins.
-   - `curl -sI 'https://esign.aramo.ai/sign/envelopes?tab=waiting'` returns 301 to the same path and query on `sign.aramo.ai`.
+   - `curl -sI 'https://esign.aramo.ai/sign/envelopes?tab=waiting'` returns **410** with no `Location` header (never a 30x).
    - `curl -s https://sign.aramo.ai/v1/esign/sender/context` returns 401 `AUTH_REQUIRED`.
    - A signer link issued **before** the release still signs (`/s/<token>` on `sign.aramo.ai` is unchanged).
    - Workspace sign-in on `sign.aramo.ai` reaches Microsoft through Cognito.
