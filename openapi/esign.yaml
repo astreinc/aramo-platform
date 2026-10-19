@@ -372,6 +372,82 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: Disclosure not yet accepted for this signer.
+  /v1/esign/signing/disclosure-text:
+    post:
+      operationId: getSignerDisclosureText
+      summary: The current server-held electronic-records-and-signature disclosure.
+      description: >-
+        Aramo Sign launch (A-7) — token-authorized. Returns the current disclosure
+        version, its exact text and the sha256 of that text. The signer app shows
+        the text and sends the version and hash back to /disclosure, which refuses
+        any version E-Sign does not hold or any mismatching hash. No tenant id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The current disclosure.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [disclosure_version, text, text_sha256]
+                properties:
+                  disclosure_version: { type: string }
+                  text: { type: string }
+                  text_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED).
+  /v1/esign/signing/executed:
+    post:
+      operationId: getSignerExecutedCopy
+      summary: The signer's signed copy of a completed envelope.
+      description: >-
+        Aramo Sign launch — authorized by the time-limited access token from the
+        completion email (not a signing session). Returns the executed document(s)
+        and the certificate of completion of a COMPLETED envelope, base64. Only the
+        token's hash is stored; tenant is resolved server-side; no tenant id in the
+        response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The signed documents and certificate.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [subject, completed_at, documents, certificate_base64]
+                properties:
+                  subject: { type: string }
+                  completed_at: { type: [string, 'null'], format: date-time }
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      required: [title, content_type, executed_base64]
+                      properties:
+                        title: { type: string }
+                        content_type: { type: string }
+                        executed_base64: { type: string }
+                  certificate_base64: { type: [string, 'null'] }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/esign/sender/context:
     get:
       operationId: getSenderContext

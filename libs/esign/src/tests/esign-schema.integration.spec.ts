@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the esign schema with the twelve tables', async () => {
+  it('creates the esign schema with the thirteen tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'esign'`,
     );
@@ -68,6 +68,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     expect([...r.rows.map((x) => x.table_name)].sort()).toEqual(
       [
         'EnvelopeDocument',
+        'ExecutedAccessGrant', // Aramo Sign launch — signer signed-copy access
         'ExecutedDocument', // DOC-4 (R-4-3)
         'ExecutionCertificate', // DOC-4 (R-4-6)
         'IdempotencyKey',

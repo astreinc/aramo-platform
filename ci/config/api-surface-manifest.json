@@ -150,6 +150,26 @@
       "method": "POST",
       "path": "/v1/esign/signing/decline",
       "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/document",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/source",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/disclosure-text",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/executed",
+      "class": "PZ"
     }
   ],
   "transitionalUndocumented": [

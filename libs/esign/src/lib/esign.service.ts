@@ -7,8 +7,10 @@ import { EsignRepository, type LockingTx } from './esign.repository.js';
 import { EXECUTION_PRODUCER_PORT, type ExecutionProducerPort } from './ports/execution-producer.port.js';
 import { generateSigningToken, hashSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import { LIVE_SESSION_STATUSES, isTerminalEnvelopeStatus as isTerminal } from './domain/envelope-lifecycle.js';
+import { findDisclosure } from './domain/disclosure.js';
 import {
   DisclosureNotAcceptedError,
+  DisclosureVersionInvalidError,
   EnvelopeAlreadyExecutedError,
   EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
@@ -24,6 +26,17 @@ import {
   type EvidenceManifestSignerPort,
   type SignedEvidenceManifest,
 } from './ports/evidence-manifest-signer.port.js';
+
+// Aramo Sign launch — how long a sent envelope stays signable before the expiry
+// sweep moves it to EXPIRED (ESIGN_ENVELOPE_TTL_DAYS, default 30). Individual
+// signing links still expire after 7 days unless a reminder re-issues them.
+export const ENVELOPE_TTL_DAYS_DEFAULT = 30;
+
+export function envelopeExpiresAt(sentAt: Date): Date {
+  const days = Number(process.env['ESIGN_ENVELOPE_TTL_DAYS'] ?? ENVELOPE_TTL_DAYS_DEFAULT);
+  const ttl = Number.isFinite(days) && days > 0 ? days : ENVELOPE_TTL_DAYS_DEFAULT;
+  return new Date(sentAt.getTime() + ttl * 24 * 60 * 60 * 1000);
+}
 
 // DOC-3 boundary 2-4 — E-Sign state-machine orchestration. TRANSPORT ONLY: no
 // RTR/Submittal/Offer/Placement/recruiter-workflow logic (that is DOC-5/6, which
@@ -124,6 +137,7 @@ export class EsignService {
         actor_ref,
         timestampField: 'sent_at',
       });
+      await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { expires_at: envelopeExpiresAt(now) } });
       const sessions: IssuedSession[] = [];
       for (const signer of full.signers) {
         const minted = generateSigningToken();
@@ -227,6 +241,11 @@ export class EsignService {
   // ── Accept the e-sign disclosure (R16). Versioned frozen text + hash. ES-1:
   // under the envelope row lock, with a live session. ──
   async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string }): Promise<void> {
+    // A-7 — only a server-held disclosure version, with its exact text hash.
+    const held = findDisclosure(input.disclosure_version);
+    if (held === undefined || held.text_sha256 !== input.disclosure_text_hash) {
+      throw new DisclosureVersionInvalidError(input.disclosure_version);
+    }
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
@@ -411,6 +430,51 @@ export class EsignService {
     await this.repo.transitionEnvelope({
       tenant_id, envelope_id, to: 'EXPIRED', event_type: 'ENVELOPE_EXPIRED', actor_type: 'SYSTEM',
     });
+  }
+
+  // ── Aramo Sign launch — the expiry sweep. Moves every SENT / IN_PROGRESS envelope
+  // whose signing window has passed to EXPIRED (compare-and-set + session
+  // revocation via expireEnvelope). Envelopes sent before expires_at existed use
+  // sent_at + the configured TTL. A concurrent completion or void simply wins the
+  // CAS and the envelope is skipped. Returns the envelopes this call expired. ──
+  async expireDueEnvelopes(now: Date, limit = 100): Promise<Array<{ tenant_id: string; envelope_id: string }>> {
+    const ttlMs = envelopeExpiresAt(now).getTime() - now.getTime();
+    const legacyCutoff = new Date(now.getTime() - ttlMs);
+    const due = await this.prisma.signatureEnvelope.findMany({
+      where: {
+        status: { in: ['SENT', 'IN_PROGRESS'] },
+        OR: [{ expires_at: { lte: now } }, { expires_at: null, sent_at: { lte: legacyCutoff } }],
+      },
+      select: { id: true, tenant_id: true },
+      orderBy: { sent_at: 'asc' },
+      take: limit,
+    });
+    const expired: Array<{ tenant_id: string; envelope_id: string }> = [];
+    for (const env of due) {
+      try {
+        await this.expireEnvelope(env.tenant_id, env.id);
+        expired.push({ tenant_id: env.tenant_id, envelope_id: env.id });
+      } catch (err) {
+        if (!(err instanceof EnvelopeIllegalTransitionError)) throw err;
+      }
+    }
+    return expired;
+  }
+
+  // ── Aramo Sign launch — resolve a signer's signed-copy access token (sent in the
+  // completion email). Valid only for a COMPLETED envelope, within the grant's
+  // window; each use is counted. Tenant comes from the grant, never the client. ──
+  async resolveExecutedAccess(rawToken: string): Promise<{ tenant_id: string; envelope_id: string; signer_id: string }> {
+    const grant = await this.prisma.executedAccessGrant.findUnique({ where: { token_hash: hashSigningToken(rawToken) } });
+    if (grant === null) throw new SigningSessionInvalidError('unknown token');
+    if (grant.expires_at.getTime() < Date.now()) throw new SigningSessionExpiredError(grant.id);
+    const env = await this.repo.getEnvelope(grant.tenant_id, grant.envelope_id);
+    if (env.status !== 'COMPLETED') throw new SigningSessionInvalidError('envelope not completed');
+    await this.prisma.executedAccessGrant.update({
+      where: { id: grant.id },
+      data: { last_accessed_at: new Date(), access_count: { increment: 1 } },
+    });
+    return { tenant_id: grant.tenant_id, envelope_id: grant.envelope_id, signer_id: grant.signer_id };
   }
 
   // ── Evidence metadata (R19). DOC-3 provides hashes + event-chain hash +

@@ -19,7 +19,7 @@ import {
   type ExecutionProducerPort,
   type ExecutedProductionResult,
 } from './ports/execution-producer.port.js';
-import { SIGNING_NOTIFICATION_PORT, type SigningNotificationPort } from './ports/signing-notification.port.js';
+import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from './envelope-notification.service.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -55,7 +55,9 @@ export class ExecutionService implements ExecutionProducerPort {
     private readonly repo: EsignRepository,
     @Inject(DOCUMENT_RENDERING_PORT) private readonly rendering: DocumentRenderingPort,
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly source: DocumentSourceProviderPort,
-    @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+    // Aramo Sign launch — completion notifications (signers get their signed copy,
+    // the console sender is told). Optional: unbound in the DOC-3 domain tests.
+    @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
     @Optional() private readonly outbox?: OutboxService,
   ) {}
 
@@ -219,20 +221,13 @@ export class ExecutionService implements ExecutionProducerPort {
       });
     }
 
-    // Completion notification (best-effort; a delivery failure never corrupts the
-    // executed record — the notification port is a retryable delivery boundary).
-    if (this.notifier !== undefined) {
-      for (const signer of full.signers) {
-        try {
-          await this.notifier.notify({
-            kind: 'SIGNATURE_COMPLETED',
-            to_email: signer.email,
-            to_name: signer.name,
-            envelope_subject: full.subject,
-          });
-        } catch {
-          // swallowed — delivery is retryable, not an envelope-corruption condition
-        }
+    // Completion notifications (best-effort; a delivery failure never corrupts the
+    // executed record — every attempt is recorded in NotificationDelivery).
+    if (this.notifications !== undefined) {
+      try {
+        await this.notifications.envelopeCompleted(tenant_id, envelope_id);
+      } catch {
+        // swallowed — delivery is retryable, not an envelope-corruption condition
       }
     }
 

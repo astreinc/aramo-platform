@@ -39,6 +39,7 @@ model SignatureEnvelope {
   signers   Signer[]
   sessions  SigningSession[]
   events    SignatureEvent[]
+  executed_access ExecutedAccessGrant[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -205,7 +206,7 @@ model NotificationDelivery {
   tenant_id         String    @db.Uuid
   envelope_id       String    @db.Uuid
   signer_id         String?   @db.Uuid
-  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED
+  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED
   status            String // CHECK: PENDING|SENT|FAILED
   attempts          Int       @default(0)
   last_error        String?
@@ -290,5 +291,26 @@ model ExecutionCertificate {
 
   @@unique([envelope_id])
   @@index([tenant_id])
+  @@schema("esign")
+}
+
+/// A time-limited capability that lets a signer download the executed document and
+/// certificate of a COMPLETED envelope (sent in the completion email). Only
+/// sha256(base64url) of the raw token is stored, exactly like SigningSession.
+model ExecutedAccessGrant {
+  id               String    @id @db.Uuid
+  tenant_id        String    @db.Uuid
+  envelope_id      String    @db.Uuid
+  signer_id        String    @db.Uuid
+  token_hash       String    @unique
+  expires_at       DateTime  @db.Timestamptz
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  last_accessed_at DateTime? @db.Timestamptz
+  access_count     Int       @default(0)
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([envelope_id])
   @@schema("esign")
 }

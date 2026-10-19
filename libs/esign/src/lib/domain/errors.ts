@@ -103,3 +103,13 @@ export class EnvelopeAmbiguousError extends Error {
     this.name = 'EnvelopeAmbiguousError';
   }
 }
+
+// Aramo Sign launch (A-7) — a disclosure acceptance named a version E-Sign does
+// not hold, or a hash that does not match that version's server-held text.
+// Mapped to VALIDATION_ERROR (400) at the esign-service HTTP boundary.
+export class DisclosureVersionInvalidError extends Error {
+  constructor(public readonly version: string) {
+    super(`disclosure version ${version} is unknown or its text hash does not match`);
+    this.name = 'DisclosureVersionInvalidError';
+  }
+}

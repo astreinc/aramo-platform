@@ -232,6 +232,14 @@ export function fileToBase64(file: Blob): Promise<string> {
 
 export function errorMessage(e: unknown, fallback = 'Something went wrong. Try again.'): string {
   if (e instanceof ApiError) {
+    // Plan / allowance refusals (Aramo Sign subscription gate) — never shown as a
+    // permission problem.
+    if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Billing.';
+    if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
+      const limit = e.details?.['limit'];
+      const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
+      return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can upgrade the plan in Settings → Billing.`;
+    }
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';

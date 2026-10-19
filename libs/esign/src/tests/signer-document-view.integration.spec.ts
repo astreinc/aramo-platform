@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../index.js';
 import { EsignRepository } from '../lib/esign.repository.js';
 import { EsignService } from '../lib/esign.service.js';
+import { currentDisclosure } from '../lib/domain/disclosure.js';
 import { SoftwareEvidenceManifestSigner } from '../lib/ports/evidence-manifest-signer.port.js';
 import { DisclosureNotAcceptedError, SigningSessionInvalidError } from '../lib/domain/errors.js';
 
@@ -25,6 +26,8 @@ function esignMigrations(): string[] {
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
 }
 
+
+const DISCLOSURE = currentDisclosure();
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F3 signer document view — real Postgres 17', () => {
   let container: StartedPostgreSqlContainer;
   let db: Client;
@@ -69,7 +72,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F3 signer d
   it('returns positioned fields + document metadata after disclosure, with no tenant leak', async () => {
     const { docId, rawToken } = await buildSentEnvelope();
     const ctx = await service.exchangeToken(rawToken);
-    await service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' });
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
 
     const view = await service.getSignerDocumentView(ctx);
     expect(view.documents).toHaveLength(1);
@@ -96,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F3 signer d
   it('resolves a server-side source descriptor (CORE_REF) and rejects an unknown document', async () => {
     const { docId, rawToken } = await buildSentEnvelope();
     const ctx = await service.exchangeToken(rawToken);
-    await service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' });
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
 
     const desc = await service.resolveSignerSource(ctx, docId);
     expect(desc).toMatchObject({ tenant_id: TENANT, source_mode: 'CORE_REF', content_type: 'application/pdf' });

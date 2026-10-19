@@ -387,6 +387,15 @@ services:
       # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
       # token is appended in-memory inside esign-service and never leaves it).
       - ESIGN_SIGN_WEB_BASE_URL
+      # Aramo Sign launch — the sender console origin used in sender emails
+      # (https://esign.aramo.ai), the envelope signing window, the signer
+      # signed-copy link lifetime, and the expiry sweep (all optional; defaults
+      # 30 days / 30 days / enabled every 5 minutes).
+      - ESIGN_SENDER_WEB_BASE_URL
+      - ESIGN_ENVELOPE_TTL_DAYS
+      - ESIGN_EXECUTED_ACCESS_TTL_DAYS
+      - ESIGN_EXPIRY_WORKER_ENABLED
+      - ESIGN_EXPIRY_INTERVAL_MS
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).

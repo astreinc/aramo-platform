@@ -6,6 +6,8 @@ import {
   type SignatureProviderPort,
 } from '@aramo/documents-contracts';
 import {
+  ENVELOPE_NOTIFICATION_SERVICE,
+  type EnvelopeNotificationService,
   EsignRepository,
   EsignService,
   type IssuedSession,
@@ -32,6 +34,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     private readonly service: EsignService,
     private readonly allowance: AramoSignAllowanceGate,
     @Optional() @Inject(SIGNING_NOTIFICATION_PORT) private readonly notifier?: SigningNotificationPort,
+    // Aramo Sign launch — delivery records + void/decline/expiry notifications.
+    @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
   ) {}
 
   private async summarize(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary> {
@@ -122,11 +126,23 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           // Never falsely imply success; never log the token/url.
           this.logger.warn(`SIGNATURE_REQUEST reported not delivered — envelope ${envelope_id} signer ${signer.id}`);
         }
+        await this.recordRequest(tenant_id, envelope_id, signer.id, result.delivered ? { ok: true } : { ok: false, error: 'provider reported not delivered' });
       } catch (err) {
         // A delivery-provider failure is a RETRYABLE condition, not envelope
         // corruption. Surface it explicitly (never the token/url).
         this.logger.warn(`SIGNATURE_REQUEST delivery failed — envelope ${envelope_id} signer ${signer.id}: ${(err as Error).message}`);
+        await this.recordRequest(tenant_id, envelope_id, signer.id, { ok: false, error: (err as Error).message });
       }
+    }
+  }
+
+  // Aramo Sign launch — the first invitation now leaves a NotificationDelivery row,
+  // like reminders always did. Recording never breaks the send.
+  private async recordRequest(tenant_id: string, envelope_id: string, signer_id: string, outcome: { ok: true } | { ok: false; error: string }): Promise<void> {
+    try {
+      await this.notifications?.recordDispatch(tenant_id, envelope_id, signer_id, 'SIGNATURE_REQUEST', outcome);
+    } catch (err) {
+      this.logger.warn(`SIGNATURE_REQUEST delivery record failed — envelope ${envelope_id}: ${(err as Error).message}`);
     }
   }
 
@@ -137,6 +153,12 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor_ref?: string): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason);
+    // Aramo Sign launch — recipients who had not finished learn it was withdrawn.
+    try {
+      await this.notifications?.envelopeVoided(tenant_id, envelope_id, reason);
+    } catch (err) {
+      this.logger.warn(`void notification failed — envelope ${envelope_id}: ${(err as Error).message}`);
+    }
     return this.summarize(tenant_id, envelope_id);
   }
 

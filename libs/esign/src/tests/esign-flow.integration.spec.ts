@@ -12,6 +12,7 @@ import { PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { PrismaService } from '../index.js';
 import { EsignRepository } from '../lib/esign.repository.js';
 import { EsignService } from '../lib/esign.service.js';
+import { currentDisclosure } from '../lib/domain/disclosure.js';
 import { ExecutionService } from '../lib/execution.service.js';
 import { OutboxService } from '../lib/outbox.service.js';
 import { LocalEventPublisher } from '../lib/ports/event-publisher.port.js';
@@ -35,6 +36,8 @@ function esignMigrations(): string[] {
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
 }
 
+
+const DISCLOSURE = currentDisclosure();
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign lifecycle — real Postgres 17', () => {
   let container: StartedPostgreSqlContainer;
   let db: Client;
@@ -94,7 +97,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     const mid = await repo.getEnvelope(TENANT, envelopeId);
     expect(mid.status).toBe('IN_PROGRESS');
 
-    await service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1', ip_address: '1.2.3.4', user_agent: 'UA' });
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256, ip_address: '1.2.3.4', user_agent: 'UA' });
     const field = await db.query(`SELECT id FROM "esign"."SignatureField" WHERE tenant_id=$1 AND signer_id=$2`, [TENANT, ctx.signer_id]);
     await service.fillField(ctx, field.rows[0].id, { value: 'Jane Doe', signature_method: 'TYPED' });
     const result = await service.completeSigner(ctx);
@@ -110,7 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     const { envelopeId } = await buildDraftEnvelope();
     const { sessions } = await service.send(TENANT, envelopeId, ACTOR);
     const ctx = await service.exchangeToken(sessions[0]!.raw_token);
-    await service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' });
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
     await expect(service.completeSigner(ctx)).rejects.toBeInstanceOf(SignatureFieldIncompleteError);
   });
 
@@ -153,7 +156,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     const { envelopeId } = await buildDraftEnvelope();
     const { sessions } = await producerService.send(TENANT, envelopeId, ACTOR);
     const ctx = await producerService.exchangeToken(sessions[0]!.raw_token);
-    await producerService.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' });
+    await producerService.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
     const field = await db.query(`SELECT id FROM "esign"."SignatureField" WHERE tenant_id=$1 AND signer_id=$2`, [TENANT, ctx.signer_id]);
     const PNG_1x1 =
       'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC';

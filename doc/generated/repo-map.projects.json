@@ -737,18 +737,24 @@
       "resolveReconcileTarget"
     ],
     "@aramo/esign": [
+      "CURRENT_DISCLOSURE_VERSION",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
       "DisclosureNotAcceptedError",
+      "DisclosureVersionInvalidError",
+      "ENVELOPE_NOTIFICATION_SERVICE",
+      "ENVELOPE_TTL_DAYS_DEFAULT",
       "ESIGN_LIFECYCLE_EVENT_VERSION",
       "ESIGN_SCHEMA",
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeAmbiguousError",
       "EnvelopeIllegalTransitionError",
       "EnvelopeNotFoundError",
+      "EnvelopeNotificationService",
       "EsignIdempotencyConflictError",
       "EsignModule",
       "EsignRepository",
@@ -760,6 +766,7 @@
       "OutboxService",
       "PrismaService",
       "ReminderNotAllowedError",
+      "SENDER_DIRECTORY_PORT",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
@@ -771,6 +778,9 @@
       "WEBHOOK_DELIVERY_PORT",
       "backoffMs",
       "computeEventHash",
+      "currentDisclosure",
+      "envelopeExpiresAt",
+      "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
       "signingSessionExpiresAt",
@@ -4810,6 +4820,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-launch-lifecycle.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-lifecycle-guard.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
@@ -6645,6 +6661,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/native-signature-provider-fields.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -7699,6 +7721,12 @@
         "project": "esign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -7990,6 +8018,12 @@
         "status": "excluded"
       },
       { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",

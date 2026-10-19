@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { DocumentSourceProviderPort, EsignService, SessionContext } from '@aramo/esign';
+import type { DocumentSourceProviderPort, EsignRepository, EsignService, SessionContext } from '@aramo/esign';
 
 import { EsignSignerController } from '../app/esign-http.controller.js';
 
@@ -23,7 +23,7 @@ describe('EsignSignerController F3 — source + document routes', () => {
       getSourcePdf: vi.fn(async (d: unknown) => { received = d; return new Uint8Array([1, 2, 3]); }),
     } as unknown as DocumentSourceProviderPort;
 
-    const controller = new EsignSignerController(service, port);
+    const controller = new EsignSignerController(service, {} as EsignRepository, port);
     const res = await controller.source({ token: 'tok', document_id: 'd1' }, 'req-1');
 
     expect(service.resolveSession).toHaveBeenCalledWith('tok');
@@ -41,7 +41,7 @@ describe('EsignSignerController F3 — source + document routes', () => {
     } as unknown as EsignService;
     const port = { getSourcePdf: vi.fn() } as unknown as DocumentSourceProviderPort;
 
-    const controller = new EsignSignerController(service, port);
+    const controller = new EsignSignerController(service, {} as EsignRepository, port);
     const res = await controller.document({ token: 'tok' }, 'req-1');
 
     expect(res).toBe(view);
