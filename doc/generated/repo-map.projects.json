@@ -2743,6 +2743,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-webhooks.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -4993,6 +4999,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -6840,6 +6852,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -7915,6 +7933,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-webhooks.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

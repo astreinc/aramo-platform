@@ -18715,6 +18715,16 @@
       "to": "libs/esign/src/lib/sign-base-url.ts"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-platform-api.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/effective-authority.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-platform-api.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
