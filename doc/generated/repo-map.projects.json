@@ -2727,6 +2727,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -4879,6 +4885,12 @@
         "status": "excluded"
       },
       { "project": "entitlement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/envelope-provenance.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
@@ -7857,6 +7869,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
