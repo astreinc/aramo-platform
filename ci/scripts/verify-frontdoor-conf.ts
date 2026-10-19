@@ -121,36 +121,78 @@ function checkRepo(): Issue[] {
   const admin = blocks.find((b) => b.tag === 'admin');
   const portal = blocks.find((b) => b.tag === 'portal');
   const esign = blocks.find((b) => b.tag === 'esign');
-  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal', 'esign'].includes(b.tag));
+  const sign = blocks.find((b) => b.tag === 'sign');
+  // Every proxied 443 block carries the four forwarding headers; the blocks that
+  // serve an application carry the /auth/ buffer tuning (the retired esign host is
+  // a redirect only — Sign Unified Product S-2).
+  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal', 'sign', 'esign'].includes(b.tag));
+  const sslAuth = blocks.filter((b) => ['tenant', 'admin', 'portal', 'sign'].includes(b.tag));
 
-  if (!tenant || !admin || !portal || !esign) {
-    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal/esign server blocks' });
+  if (!tenant || !admin || !portal || !esign || !sign) {
+    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal/sign/esign server blocks' });
     return issues;
   }
 
-  // (k) PX-1 — esign.aramo.ai (Aramo Sign sender console). Its /v1 locations are
-  // EXACTLY: the authenticated sender zone and (Aramo Sign launch — Final
-  // Implementation Authorization) self-service billing, both on esign-service,
-  // and the public signup on platform-admin. Never apps/api, never the internal
-  // envelopes or signer surfaces. The SPA is served from /srv/esign.
-  const ESIGN_V1 = new Map<string, string>([
+  // (k) Sign Unified Product S-2 (Aramo-Sign-Unified-Product-Permission-Contract-
+  // Platform-API-Directive-v1_0-LOCKED §4.1) — ONE Aramo Sign host. The sign block's
+  // /v1 locations are EXACTLY: guest signing, the authenticated sender zone and
+  // self-service billing (esign-service), and public signup (platform-admin).
+  // Never apps/api, never the internal envelopes surface. Guest signing and signup
+  // are rate-limited; the SPA is /srv/sign; security headers are set host-wide and
+  // the guest pages carry their own stricter, uncached policy.
+  const SIGN_V1 = new Map<string, string>([
+    ['/v1/esign/signing/', 'esign-service:3003'],
     ['/v1/esign/sender/', 'esign-service:3003'],
     ['/v1/esign/billing/', 'esign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
   ]);
-  const esignV1 = [...esign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
-  const expected = [...ESIGN_V1.keys()];
-  if (esignV1.length !== expected.length || [...esignV1].sort().join('|') !== [...expected].sort().join('|')) {
-    issues.push({ where: TEMPLATE, reason: `(k) esign block must expose exactly the /v1 locations ${expected.join(', ')} (found: ${esignV1.join(', ') || 'none'})` });
+  const signV1 = [...sign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
+  const expected = [...SIGN_V1.keys()];
+  if (signV1.length !== expected.length || [...signV1].sort().join('|') !== [...expected].sort().join('|')) {
+    issues.push({ where: TEMPLATE, reason: `(k) sign block must expose exactly the /v1 locations ${expected.join(', ')} (found: ${signV1.join(', ') || 'none'})` });
   } else {
-    for (const [path, upstream] of ESIGN_V1) {
-      const loc = locationBody(esign.body, `location ${path}`) ?? '';
+    for (const [path, upstream] of SIGN_V1) {
+      const loc = locationBody(sign.body, `location ${path}`) ?? '';
       if (!loc.includes(`proxy_pass http://${upstream};`)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must proxy_pass to ${upstream}` });
       if (!/client_max_body_size\s+\d+[mk];/.test(loc)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must set client_max_body_size` });
     }
+    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/esign/signing/') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
+    }
+    if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });
+    }
   }
-  const esignRoot = locationBody(esign.body, 'location / {') ?? '';
-  if (!/root\s+\/srv\/esign;/.test(esignRoot)) issues.push({ where: TEMPLATE, reason: '(k) esign catch-all `location /` must `root /srv/esign;`' });
+  if (!/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_guest:/.test(template) || !/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_signup:/.test(template)) {
+    issues.push({ where: TEMPLATE, reason: '(k) the sign_guest and sign_signup limit_req_zone definitions are missing' });
+  }
+  const signRoot = locationBody(sign.body, 'location / {') ?? '';
+  if (!/root\s+\/srv\/sign;/.test(signRoot)) issues.push({ where: TEMPLATE, reason: '(k) sign catch-all `location /` must `root /srv/sign;`' });
+  const signServerLevel = sign.body.replace(/^\s*location\b[^{]*\{[^}]*\}/gm, '');
+  for (const h of ['Content-Security-Policy', 'Strict-Transport-Security', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy']) {
+    if (!new RegExp(`add_header\\s+${h}\\s+"[^"]*"\\s+always;`).test(signServerLevel)) issues.push({ where: TEMPLATE, reason: `(k) sign block must set ${h} host-wide (add_header … always)` });
+  }
+  const guest = locationBody(sign.body, 'location ~ ^/(s|d)/') ?? '';
+  if (guest === '') {
+    issues.push({ where: TEMPLATE, reason: '(k) sign block missing the guest-signing location `~ ^/(s|d)/`' });
+  } else {
+    if (!/root\s+\/srv\/sign;/.test(guest)) issues.push({ where: TEMPLATE, reason: '(k) guest-signing location must `root /srv/sign;`' });
+    if (!/try_files\s+\/index\.html\s+=404;/.test(guest)) issues.push({ where: TEMPLATE, reason: '(k) guest-signing location must serve the shell in place (`try_files /index.html =404;`), never an internal redirect that loses its headers' });
+    if (!/add_header\s+Cache-Control\s+"no-store"\s+always;/.test(guest)) issues.push({ where: TEMPLATE, reason: '(k) guest-signing pages must be `Cache-Control: no-store`' });
+    const csp = /add_header\s+Content-Security-Policy\s+"([^"]+)"/.exec(guest)?.[1] ?? '';
+    if (csp === '' || /https?:/.test(csp)) issues.push({ where: TEMPLATE, reason: '(k) guest-signing CSP must exist and allow no third-party origin' });
+    for (const h of ['Strict-Transport-Security', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy']) {
+      if (!new RegExp(`add_header\\s+${h}\\b`).test(guest)) issues.push({ where: TEMPLATE, reason: `(k) guest-signing location must repeat ${h} (add_header is not inherited)` });
+    }
+  }
+  // (k2) the retired esign host is a compatibility redirect ONLY: no /v1, no
+  // /auth, no SPA; path and query preserved to the one Sign host.
+  if (/location\s+[=~^]*\s*\/v1/.test(esign.body) || esign.body.includes('location /auth/') || /root\s+\/srv\//.test(esign.body)) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the esign block must serve nothing — redirect only (no /v1, /auth or SPA)' });
+  }
+  if (!esign.body.includes('return 301 https://${NGINX_SIGN_SERVER_NAME}$request_uri;')) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the esign block must `return 301 https://${NGINX_SIGN_SERVER_NAME}$request_uri;`' });
+  }
 
   // (a) webhook parity — constant appears in the tenant block as an exact-match
   // location carrying client_max_body_size 3m.
@@ -237,7 +279,7 @@ function checkRepo(): Issue[] {
     [/proxy_buffers\s+8\s+32k\b/, 'proxy_buffers 8 32k'],
     [/proxy_busy_buffers_size\s+64k\b/, 'proxy_busy_buffers_size 64k'],
   ];
-  for (const b of ssl) {
+  for (const b of sslAuth) {
     const authLoc = locationBody(b.body, 'location /auth/');
     if (authLoc === null) {
       issues.push({ where: TEMPLATE, reason: `(j) ${b.tag} block missing /auth/ location` });
@@ -296,6 +338,7 @@ function checkRepo(): Issue[] {
     ['NGINX_ADMIN_SERVER_NAME', 'admin.localhost'],
     ['NGINX_PORTAL_SERVER_NAME', 'portal.localhost'],
     ['NGINX_ESIGN_SERVER_NAME', 'esign.localhost'],
+    ['NGINX_SIGN_SERVER_NAME', 'sign.localhost'],
     ['NGINX_CERT_DIR', '/etc/letsencrypt/live/aramo.ai'],
   ];
   for (const [varName, def] of nginxDefaults) {

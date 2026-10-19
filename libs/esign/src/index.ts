@@ -122,3 +122,6 @@ export {
 } from './lib/envelope-notification.service.js';
 export { SENDER_DIRECTORY_PORT, type SenderDirectoryPort, type SenderContact } from './lib/ports/sender-directory.port.js';
 export { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './lib/ports/storage-accounting.port.js';
+
+// Sign Unified Product S-2 — the one Sign base-URL setting.
+export { signBaseUrl, DEFAULT_SIGN_BASE_URL } from './lib/sign-base-url.js';

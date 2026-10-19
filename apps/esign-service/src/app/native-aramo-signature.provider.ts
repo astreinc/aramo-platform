@@ -13,6 +13,7 @@ import {
   type IssuedSession,
   SIGNING_NOTIFICATION_PORT,
   type SigningNotificationPort,
+  signBaseUrl,
 } from '@aramo/esign';
 
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
@@ -103,16 +104,16 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
 
   private async dispatchSigningRequests(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
     if (this.notifier === undefined || sessions.length === 0) return;
-    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
-    if (base === undefined || base === '') {
+    const base = signBaseUrl();
+    if (base === null) {
       // Explicit signal (no token): the envelope is SENT but no signer link can be
-      // built without a configured Sign Web origin.
-      this.logger.warn(`SIGNATURE_REQUEST not dispatched for envelope ${envelope_id}: ESIGN_SIGN_WEB_BASE_URL is unset`);
+      // built without a configured Sign origin.
+      this.logger.warn(`SIGNATURE_REQUEST not dispatched for envelope ${envelope_id}: ARAMO_SIGN_BASE_URL (or ESIGN_SIGN_WEB_BASE_URL) is unset`);
       return;
     }
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const signersById = new Map(full.signers.map((s) => [s.id, s]));
-    const origin = base.replace(/\/+$/, '');
+    const origin = base;
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
       if (signer === undefined) continue;
@@ -190,10 +191,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   }
 
   private async dispatchReminders(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
-    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const signersById = new Map(full.signers.map((s) => [s.id, s]));
-    const origin = base === undefined ? '' : base.replace(/\/+$/, '');
+    const origin = signBaseUrl() ?? '';
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
       if (signer === undefined) continue;

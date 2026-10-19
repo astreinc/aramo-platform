@@ -18,6 +18,7 @@ import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository } from '@aramo/identity';
+import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/esign';
 import {
   BILLING_PROVIDER_PORT,
   type BillingProviderPort,
@@ -83,7 +84,7 @@ function salesContactUrl(): string | null {
 }
 
 function consoleBase(): string {
-  return (process.env['ESIGN_SENDER_WEB_BASE_URL'] ?? 'https://esign.aramo.ai').trim().replace(/\/+$/, '');
+  return signBaseUrl() ?? DEFAULT_SIGN_BASE_URL;
 }
 
 export function billingHttpError(e: unknown, requestId: string): AramoError {

@@ -15,16 +15,18 @@ import { Btn } from './ui';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
 import type { SenderContext } from './api';
 
-// PX-V1 §8 (D-4) + Lead Host & Workspace Ruling v1.0 — apps/esign-web on
-// esign.aramo.ai, one sender application for BUSINESS and PERSONAL accounts:
+// The Aramo Sign WORKSPACE — the signed-in zone of the one Sign application on
+// sign.aramo.ai (Sign Unified Product S-2; directive §4.1, amending the Lead Host
+// & Workspace Ruling v1.0), one workspace for BUSINESS and PERSONAL accounts:
 //   /            resolves the workspace from the BACKEND context, then redirects
-//   /sign/*      BUSINESS organization workspace (the prototype console)
-//   /personal/*  PERSONAL workspace (route foundation; sending not enabled)
+//   /sign/*      BUSINESS organization workspace
+//   /personal/*  PERSONAL workspace (sending not enabled)
 //   /login       login landing (?error=<CODE>), /signed-out public landing
-//   /signup      public self-service BUSINESS signup (+ /signup/verify)
+//   /signup      public self-service BUSINESS signup (+ /signup/verify; dark)
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
-// The external signer never comes here — that is sign.aramo.ai/s/<token>.
+// Guest signing (/s/:token, /d/:token) is a separate zone that never loads this
+// code (src/zones.ts).
 
 export function App({ contextLoader }: { contextLoader?: () => Promise<SenderContext> }) {
   const state = useSession();

@@ -84,8 +84,14 @@ function esc(v: string): string {
   return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// Sign Unified Product S-2 — the one Sign base URL (same resolution as
+// libs/esign signBaseUrl; inlined: platform-admin does not depend on @aramo/esign).
 function consoleBase(): string {
-  return (process.env['ESIGN_SENDER_WEB_BASE_URL'] ?? 'https://esign.aramo.ai').trim().replace(/\/+$/, '');
+  for (const key of ['ARAMO_SIGN_BASE_URL', 'ESIGN_SIGN_WEB_BASE_URL', 'ESIGN_SENDER_WEB_BASE_URL']) {
+    const v = process.env[key]?.trim();
+    if (v !== undefined && v !== '') return v.replace(/\/+$/, '');
+  }
+  return 'https://sign.aramo.ai';
 }
 
 function invalidLink(requestId: string): AramoError {

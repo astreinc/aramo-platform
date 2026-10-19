@@ -64,7 +64,7 @@ function renderAt(path: string) {
   );
 }
 
-describe('esign-web App', () => {
+describe('Sign workspace App', () => {
   beforeEach(() => configureAuthConsumer('esign'));
   afterEach(() => vi.unstubAllGlobals());
 

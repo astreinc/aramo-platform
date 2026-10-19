@@ -1,5 +1,9 @@
 # Release runbook — Aramo Sign sender console (PX-1, esign.aramo.ai)
 
+> **Superseded for host topology by Sign Unified Product S-2** — the console and guest signing are one application on
+> `sign.aramo.ai`; `esign.aramo.ai` only redirects. Use `doc/runbooks/RELEASE-sign-one-app.md` for the current host,
+> Cognito and nginx steps. This runbook stays as the PX-1 record.
+
 Status: **DEPLOY=NO.** Shipping this needs its own deployment authorization. The Lead Host & Workspace Ruling v1.0
 forbids activating the production E-Sign host, enabling Personal sending or provisioning commercial entitlements without
 separate authorization.

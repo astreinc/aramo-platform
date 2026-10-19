@@ -60,8 +60,12 @@ export class SignApiError extends Error {
 async function post<T>(path: string, body: unknown): Promise<T> {
   let res: Response;
   try {
+    // Sign Unified Product S-2 — guest signing shares the host with the signed-in
+    // workspace; the capability token in the body is the ONLY authority, so the
+    // request never carries workspace cookies (credentials: 'omit').
     res = await fetch(`/v1/esign/signing/${path}`, {
       method: 'POST',
+      credentials: 'omit',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });

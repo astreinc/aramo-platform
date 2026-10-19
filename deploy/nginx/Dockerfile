@@ -35,8 +35,9 @@ RUN npx nx build aramo-home-web --skip-nx-cache
 RUN npx nx build aramo-ats-web --skip-nx-cache
 RUN npx nx build aramo-platform-web --skip-nx-cache
 RUN npx nx build aramo-portal-web --skip-nx-cache
+# Sign Unified Product S-2 — the ONE Aramo Sign application (workspace + guest
+# signing) served by the sign host; the retired esign host only redirects.
 RUN npx nx build aramo-sign-web --skip-nx-cache
-RUN npx nx build aramo-esign-web --skip-nx-cache
 
 # ---------- Stage 2: config validation gate (§2.7 — mirrors the retired front door's config validate) ---
 # Materialize the template with DEFAULT env against an EPHEMERAL self-signed cert
@@ -87,7 +88,6 @@ COPY --from=web-builder /app/dist/apps/ats-web /srv/ats
 COPY --from=web-builder /app/dist/apps/platform-web /srv/admin
 COPY --from=web-builder /app/dist/apps/portal-web /srv/portal
 COPY --from=web-builder /app/dist/apps/sign-web /srv/sign
-COPY --from=web-builder /app/dist/apps/esign-web /srv/esign
 # The validated nginx.conf (COPY --from=conf-validate forces the §2.7 gate to run,
 # and carries the byte-identical validated config forward — nothing else from the
 # validation stage reaches runtime: no ephemeral cert, no materialized conf).

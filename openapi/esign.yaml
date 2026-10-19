@@ -12,7 +12,7 @@ info:
     RTR/Submittal/Offer/recruiter-workflow logic (those consume this seam in DOC-5/6).
 tags:
   - name: sender
-    description: The authenticated Aramo Sign sender console API (esign.aramo.ai).
+    description: The Aramo Sign API — authenticated workspace, guest signing and billing on the one Sign host (sign.aramo.ai).
   - name: billing
     description: Aramo Sign self-service billing (plans, account, Stripe checkout and portal, provider webhook).
 paths:

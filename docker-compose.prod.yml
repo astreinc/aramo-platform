@@ -174,9 +174,9 @@ services:
       # Aramo Sign launch — the App Home Sign tile (GET /v1/me/products). DARK by
       # default: only the literal "true" lights it; lighting it is an activation
       # decision made in the box .env (separately authorized). The target URL
-      # defaults to https://esign.aramo.ai/ in code.
+      # defaults to https://sign.aramo.ai/ in code (Sign Unified Product S-2).
       - ARAMO_SIGN_ENTRY_ENABLED=${ARAMO_SIGN_ENTRY_ENABLED:-false}
-      - ARAMO_SIGN_ENTRY_URL=${ARAMO_SIGN_ENTRY_URL:-https://esign.aramo.ai/}
+      - ARAMO_SIGN_ENTRY_URL=${ARAMO_SIGN_ENTRY_URL:-https://sign.aramo.ai/}
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
@@ -392,9 +392,12 @@ services:
       - AWS_SECRET_ACCESS_KEY
       # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
       # token is appended in-memory inside esign-service and never leaves it).
+      # Sign Unified Product S-2 — ONE base URL for every Sign link (signer, signed
+      # copy, console, billing return); the two older names remain fallbacks.
+      - ARAMO_SIGN_BASE_URL
       - ESIGN_SIGN_WEB_BASE_URL
       # Aramo Sign launch — the sender console origin used in sender emails
-      # (https://esign.aramo.ai), the envelope signing window, the signer
+      # (pre-S-2 name; ARAMO_SIGN_BASE_URL wins), the envelope signing window, the signer
       # signed-copy link lifetime, and the expiry sweep (all optional; defaults
       # 30 days / 30 days / enabled every 5 minutes).
       - ESIGN_SENDER_WEB_BASE_URL
@@ -436,7 +439,7 @@ services:
       - DOCUMENTS_API_URL
       - ESIGN_WEBHOOK_TARGET_URL
       - ESIGN_WEBHOOK_SIGNING_SECRET
-      # PX-1 — the authenticated sender zone (/v1/esign/sender/*, esign.aramo.ai).
+      # PX-1 — the authenticated sender zone (/v1/esign/sender/*, sign.aramo.ai).
       # JwtAuthGuard verifies the shared auth-service JWT; OWNED source PDFs live in
       # the platform document bucket. The console's links back to the tenant host use
       # the code default https://{slug}.aramo.ai (ESIGN_TENANT_HOST_URL_TEMPLATE).
@@ -484,12 +487,13 @@ services:
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       # Aramo Sign launch — public self-service signup (/v1/signup/sign/* via the
-      # esign.aramo.ai block). Dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1 (separately
+      # sign.aramo.ai block). Dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1 (separately
       # authorized). The verification email goes through the shared mailer (SES,
       # same as api); links point at the Sign console origin.
       # A1: signup terms come from the versioned legal registry in code (nothing
       # approved yet ⇒ no terms are offered); there is no env override.
       - SIGN_PUBLIC_SIGNUP_ENABLED
+      - ARAMO_SIGN_BASE_URL
       - ESIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS

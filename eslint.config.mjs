@@ -79,14 +79,15 @@ const SCOPE_DEP_CONSTRAINTS = [
   { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
-  // DOC-4 (R-4-2) — scope:sign is the external-signer SPA wall (apps/sign-web at
-  // sign.aramo.ai). It must NOT reach scope:ats, scope:cip, scope:platform, or
-  // scope:portal — it talks only to the E-Sign public signer transport over HTTP.
+  // DOC-4 (R-4-2) + Sign Unified Product S-2 — scope:sign is the ONE Aramo Sign
+  // application wall (apps/sign-web at sign.aramo.ai: the signed-in workspace and
+  // guest signing). It must NOT reach scope:ats, scope:cip, scope:platform or
+  // scope:portal — it talks only to the Sign surfaces over HTTP. Its guest zone
+  // additionally imports no @aramo library at all (apps/sign-web/src/zones.spec.ts).
   { sourceTag: 'scope:sign', onlyDependOnLibsWithTags: ['scope:sign', 'scope:boundary', 'scope:shared'] },
-  // PX-V1 §8 (D-4) — scope:esign-sender is the Aramo Sign SENDER console wall
-  // (apps/esign-web at esign.aramo.ai). It must NOT reach scope:ats, scope:cip,
-  // scope:platform, scope:portal or scope:sign — it talks only to the authenticated
-  // sender surface (/v1/esign/sender/*) over HTTP.
+  // PX-V1 §8 (D-4) — scope:esign-sender was the separate sender-console wall
+  // (apps/esign-web, retired by Sign Unified Product S-2). Kept so a stray
+  // project tagged with it stays walled.
   { sourceTag: 'scope:esign-sender', onlyDependOnLibsWithTags: ['scope:esign-sender', 'scope:boundary', 'scope:shared'] },
   // Auth-Decoupling PR-5b (ADR-0021 §4) — scope:auth is the portable identity core
   // (libs/auth-core). It must NOT reach scope:ats, scope:cip, scope:platform, or

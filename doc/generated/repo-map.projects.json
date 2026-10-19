@@ -738,6 +738,7 @@
     ],
     "@aramo/esign": [
       "CURRENT_DISCLOSURE_VERSION",
+      "DEFAULT_SIGN_BASE_URL",
       "DISCLOSURE_V2_TEXT",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
@@ -786,6 +787,7 @@
       "generateSigningToken",
       "hashSigningToken",
       "listDisclosures",
+      "signBaseUrl",
       "signingSessionExpiresAt",
       "toLifecycleEvent"
     ],
@@ -7547,19 +7549,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/esign-web/src/App.spec.tsx",
-        "project": "aramo-esign-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/esign-web/src/pages/Billing.spec.tsx",
-        "project": "aramo-esign-web",
-        "status": "excluded"
-      },
-      { "project": "aramo-esign-web", "status": "production" },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/home-web/src/home/AppHomeView.spec.tsx",
         "project": "aramo-home-web",
         "status": "excluded"
@@ -7609,6 +7598,19 @@
         "status": "excluded"
       },
       { "project": "aramo-portal-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/App.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-sign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
@@ -9958,13 +9960,6 @@
       "sourceRoot": "apps/ats-web/src",
       "tags": [],
       "targets": ["build", "e2e", "lint", "preview", "serve", "test"]
-    },
-    {
-      "name": "aramo-esign-web",
-      "root": "apps/esign-web",
-      "sourceRoot": "apps/esign-web/src",
-      "tags": ["scope:esign-sender"],
-      "targets": ["build", "lint", "preview", "serve", "test"]
     },
     {
       "name": "aramo-home-web",

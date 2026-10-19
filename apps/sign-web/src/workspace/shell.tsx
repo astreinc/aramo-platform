@@ -83,7 +83,7 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
         <span className="sg-brand__mark">S</span>
         <div>
           <div className="sg-brand__name">Aramo Sign</div>
-          <div className="sg-brand__host">esign.aramo.ai · {personal ? 'personal' : 'console'}</div>
+          <div className="sg-brand__host">sign.aramo.ai · {personal ? 'personal' : 'console'}</div>
         </div>
       </div>
       <div className="sg-side__new">

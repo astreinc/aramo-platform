@@ -10884,16 +10884,6 @@
       "to": "apps/esign-service/tsconfig.app.json"
     },
     {
-      "from": "apps/esign-web/project.json",
-      "status": "unscoped",
-      "to": "apps/esign-web/vite.config.ts"
-    },
-    {
-      "from": "apps/esign-web/vite.config.ts",
-      "status": "unscoped",
-      "to": "libs/fe-foundation/src/index.ts"
-    },
-    {
       "from": "apps/home-web/playwright.topology.config.ts",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
@@ -11045,6 +11035,16 @@
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -15957,16 +15957,6 @@
     {
       "from": "doc/recon/as-built/D10-documents-esignature.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/as-built/D10-documents-esignature.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/as-built/D10-documents-esignature.md",
-      "status": "unscoped",
       "to": "libs/documents-contracts/src/lib/signature-provider.port.ts"
     },
     {
@@ -16538,16 +16528,6 @@
       "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
       "status": "unscoped",
       "to": "apps/portal-web/src/portal-api.ts"
-    },
-    {
-      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
     },
     {
       "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
@@ -17577,16 +17557,6 @@
     {
       "from": "doc/recon/gaps/G1-gap-register.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/G1-gap-register.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/gaps/G1-gap-register.md",
-      "status": "unscoped",
       "to": "ci/config/api-surface-manifest.json"
     },
     {
@@ -18348,16 +18318,6 @@
     {
       "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
-      "status": "unscoped",
       "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
     },
     {
@@ -18534,11 +18494,6 @@
       "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
       "status": "unscoped",
       "to": "apps/portal-web/src/main.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
     },
     {
       "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
@@ -22630,11 +22585,6 @@
     {
       "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
       "status": "unscoped",
-      "to": "apps/esign-web/src/api.ts"
-    },
-    {
-      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
-      "status": "unscoped",
       "to": "pact/provider/src/verify-esign.ts"
     },
     {
@@ -22651,11 +22601,6 @@
       "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ats.yaml"
-    },
-    {
-      "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
     },
     {
       "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
