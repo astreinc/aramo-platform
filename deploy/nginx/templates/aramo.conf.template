@@ -318,11 +318,12 @@ server {
   }
 }
 
-# ── esign.aramo.ai — retired sender-console host: compatibility redirect ────────
-# Sign Unified Product S-2 (directive §4.1.1, D-1): the console moved to the one
-# Sign host. Path and query are preserved (301). Compatibility window: until the
-# redirect is removed by a later release (see doc/runbooks/RELEASE-sign-one-app.md).
-# No /v1, no /auth and no SPA are served here any more.
+# ── esign.aramo.ai — RETIRED (no redirect) ──────────────────────────────────────
+# Aramo-Sign-Unified-Product-D1-Host-Retirement-Addendum-v1_0-LOCKED: sign.aramo.ai is
+# the ONLY Sign address. The retired name answers 410 Gone and serves nothing —
+# no redirect, no /v1, no /auth, no SPA. The block exists only so the wildcard
+# DNS / certificate never route the retired name to the tenant application; it
+# is removed together with the DNS record at host retirement.
 server {
   listen 443 ssl;
   server_name ${NGINX_ESIGN_SERVER_NAME};
@@ -337,7 +338,7 @@ server {
   proxy_set_header X-Forwarded-Proto $scheme;
 
   location / {
-    return 301 https://${NGINX_SIGN_SERVER_NAME}$request_uri;
+    return 410;
   }
 }
 

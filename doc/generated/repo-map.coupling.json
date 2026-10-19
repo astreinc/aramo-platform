@@ -11844,11 +11844,6 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
-    {
-      "from": "deploy/nginx/templates/aramo.conf.template",
-      "status": "unscoped",
-      "to": "doc/runbooks/RELEASE-sign-one-app.md"
-    },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "deploy/seed-prod.sh", "status": "unscoped", "to": "deploy/seed-prod.test.sh" },
