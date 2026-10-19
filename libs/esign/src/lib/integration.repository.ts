@@ -249,6 +249,18 @@ export class SignIntegrationRepository {
     });
   }
 
+  // Operator revocation by client id: the credential and every live token it issued.
+  async revokeCredentialByClientId(client_id: string): Promise<boolean> {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const cred = await tx.signCredential.findUnique({ where: { client_id }, select: { id: true } });
+      if (cred === null) return false;
+      await tx.signCredential.update({ where: { id: cred.id }, data: { status: 'REVOKED', revoked_at: now } });
+      await tx.signAccessToken.updateMany({ where: { credential_id: cred.id, revoked_at: null }, data: { revoked_at: now } });
+      return true;
+    });
+  }
+
   // ── Access tokens ──────────────────────────────────────────────────────────
   createToken(input: {
     token_hash: string;

@@ -11359,6 +11359,16 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/integration-admin.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/sign-api.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
     },
     {

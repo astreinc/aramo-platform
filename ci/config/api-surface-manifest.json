@@ -83,6 +83,8 @@
     "apps/esign-service/src/app/esign-http.controller.ts": "SS",
     "apps/esign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/esign-service/src/app/sender/esign-sender.controller.ts": "AP",
+    "apps/esign-service/src/app/integrations/integration-admin.controller.ts": "AP",
+    "apps/esign-service/src/app/integrations/sign-api.controller.ts": "XP",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-sign.controller.ts": "AP",
     "apps/platform-admin/src/app/signup/sign-signup.controller.ts": "PZ",

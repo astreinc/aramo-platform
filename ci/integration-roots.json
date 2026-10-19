@@ -3,6 +3,7 @@
   "roots": [
     "apps/api",
     "apps/auth-service",
+    "apps/esign-service",
     "apps/platform-admin",
     "libs/ai-draft",
     "libs/auth-storage",

@@ -56,22 +56,16 @@ async function main(argv: string[]): Promise<number> {
     if (cmd === 'revoke-credential') {
       const client_id = args[0];
       if (client_id === undefined) return usage();
-      const now = new Date();
-      const cred = await prisma.signCredential.findUnique({ where: { client_id } });
-      if (cred === null) {
+      if (!(await repo.revokeCredentialByClientId(client_id))) {
         console.error('no such credential');
         return 1;
       }
-      await prisma.$transaction([
-        prisma.signCredential.update({ where: { id: cred.id }, data: { status: 'REVOKED', revoked_at: now } }),
-        prisma.signAccessToken.updateMany({ where: { credential_id: cred.id, revoked_at: null }, data: { revoked_at: now } }),
-      ]);
       console.log(`revoked ${client_id}`);
       return 0;
     }
     return usage();
   } finally {
-    await prisma.$disconnect();
+    await (prisma as unknown as { $disconnect(): Promise<void> }).$disconnect();
   }
 }
 
