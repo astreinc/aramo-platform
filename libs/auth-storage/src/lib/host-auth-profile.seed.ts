@@ -25,7 +25,8 @@ export const DEFAULT_PLATFORM_HOST = 'admin.aramo.ai';
 export const DEFAULT_PORTAL_HOST = 'candidate.aramo.ai';
 // IC-2 PR-4 (F-3) — the DARK product-console host (PX-V1 D-4). Overridable via
 // AUTH_PRODUCT_HOSTS; no nginx auth route / Cognito callback exists for it yet.
-export const DEFAULT_PRODUCT_HOST = 'esign.aramo.ai';
+// Sign Unified Product S-2 — the one Aramo Sign host (was esign.aramo.ai).
+export const DEFAULT_PRODUCT_HOST = 'sign.aramo.ai';
 
 // Fixed ids so re-seeding is deterministic (mirrors the identity seed's
 // hardcoded UUIDs); the upsert keys on host_class (UNIQUE), so id only matters

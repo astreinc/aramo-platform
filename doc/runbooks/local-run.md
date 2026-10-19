@@ -100,19 +100,19 @@ registered URLs, so the app client needs, per local origin you use:
 
 A missing one shows Cognito's `redirect_mismatch` page.
 
-## Aramo Sign sender console locally (PX-1)
+## Aramo Sign locally (one app: workspace + guest signing)
 
-`tools/local-stack.sh up` also starts the Sign sender console (`apps/esign-web`) on **http://localhost:4206** — the local
-stand-in for `esign.aramo.ai`. It signs in as the `esign` consumer and proxies `/auth` → auth-service and
-`/v1/esign/sender` → esign-service. `/` opens the workspace the backend assigns: `/sign/` for a business tenant,
-`/personal/` for a personal tenant. Requirements:
+`tools/local-stack.sh up` also starts the one Aramo Sign application (`apps/sign-web`) on **http://localhost:4206** —
+the local stand-in for `sign.aramo.ai`. Its workspace signs in as the `esign` consumer; the dev server proxies `/auth` →
+auth-service, `/v1/esign/{sender,billing,signing}` → esign-service and `/v1/signup/sign` → platform-admin. `/` opens the
+workspace the backend assigns: `/sign/` for a business tenant, `/personal/` for a personal tenant. Requirements:
 
 - the tenant holds the Sign subscription (`entitlement."TenantEntitlement"` row `esign`) and the user a Sign role
-  (`esign_owner` / `esign_admin` / `esign_sender` to send, `esign_viewer` to read);
+  (Sign Owner / Admin / Sender to send — a Sender sees only their own envelopes; Sign Viewer reads every envelope);
 - `/auth/esign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
 - PDF uploads use the same local object storage as résumés (`S3_RESUME_BUCKET` / `S3_ENDPOINT` from `.env`).
 
-Signers open `http://localhost:4204/s/<token>` (sign-web). Local email goes to a **local outbox** instead of any
+Signers open `http://localhost:4206/s/<token>` (the guest-signing zone of the same app; no sign-in). Local email goes to a **local outbox** instead of any
 email service: `tools/local-stack.sh` sets `MAILER_PROVIDER=outbox` and `MAILER_OUTBOX_DIR=.local-stack/mail`, so every
 invitation, reminder and completion email is written there. Read them, with their links, with:
 

@@ -2,7 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import { EntitlementRepository } from '@aramo/entitlement';
 import { SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/signature-routing';
 import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, type AllowanceThreshold } from '@aramo/subscription';
+import type { SignatureActor } from '@aramo/documents-contracts';
 
+import { EsignServiceApiProvider } from '../esign/esign-service-api.provider.js';
 import { isExternalAdapter } from '../esignature-providers/external-signature-adapter.js';
 
 import { SIGNATURE_PROVIDER_REGISTRY, type SignatureProviderRegistry } from './signature-router.js';
@@ -59,7 +61,7 @@ export class SignatureAvailabilityService {
    * @param actorScopes the caller's scopes; omit to judge the tenant alone (e.g.
    *   whether a policy may require a signed document at all).
    */
-  async evaluate(tenant_id: string, actorScopes?: readonly string[]): Promise<SignatureAvailability> {
+  async evaluate(tenant_id: string, actorScopes?: readonly string[], actor?: SignatureActor): Promise<SignatureAvailability> {
     const { provider } = await this.routing.getSelectedProvider(tenant_id);
     const result = (reason: SignatureUnavailableReason | null, allowance: SignatureAllowanceView | null = null): SignatureAvailability => ({
       provider,
@@ -84,6 +86,19 @@ export class SignatureAvailabilityService {
     }
     const caps = await this.entitlements.getCapabilities(tenant_id);
     if (!caps.has('esign')) return result('NOT_SUBSCRIBED');
+    // Addendum S6 (D-12) — over the Sign API transport the ATS never reads Sign's
+    // subscription library: availability is Sign-owned, asked with the recruiter's
+    // delegation. Without a signed-in recruiter (a tenant-level read) only the
+    // entitlement is known; the allowance is decided by Sign at send time.
+    if (port instanceof EsignServiceApiProvider) {
+      if (actor === undefined) return result(null);
+      try {
+        const a = await port.availability(tenant_id, actor);
+        return result(a.reason, a.allowance === null ? null : { ...a.allowance, threshold: a.allowance.threshold as AllowanceThreshold });
+      } catch {
+        return result('PROVIDER_UNAVAILABLE');
+      }
+    }
     const status = await this.allowance.getStatus(tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
     if (!status.subscribed) return result('NOT_SUBSCRIBED');
     const view: SignatureAllowanceView = {

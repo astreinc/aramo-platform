@@ -38,7 +38,7 @@ tags:
   - name: Sign Self-Service Signup
     description: |
       Aramo Sign launch — the PUBLIC (session-less) BUSINESS signup, served on
-      esign.aramo.ai under `/v1/signup/sign/*`. Dark (404) unless
+      sign.aramo.ai under `/v1/signup/sign/*`. Dark (404) unless
       SIGN_PUBLIC_SIGNUP_ENABLED=1. `start` always answers 202 and emails a
       24-hour link; nothing is provisioned until the link is used. `complete`
       provisions a BUSINESS tenant with capabilities [core, esign] and an

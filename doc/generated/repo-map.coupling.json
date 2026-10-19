@@ -10884,16 +10884,6 @@
       "to": "apps/esign-service/tsconfig.app.json"
     },
     {
-      "from": "apps/esign-web/project.json",
-      "status": "unscoped",
-      "to": "apps/esign-web/vite.config.ts"
-    },
-    {
-      "from": "apps/esign-web/vite.config.ts",
-      "status": "unscoped",
-      "to": "libs/fe-foundation/src/index.ts"
-    },
-    {
       "from": "apps/home-web/playwright.topology.config.ts",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
@@ -11045,6 +11035,16 @@
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"
+    },
+    {
+      "from": "apps/sign-web/tsconfig.spec.json",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
+    },
+    {
+      "from": "apps/sign-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/index.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11355,6 +11355,21 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/esign-service/src/app/esign-http.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/inbox/recipient-inbox.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/integration-admin.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/sign-api.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11761,7 +11776,22 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/integration-admin.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/sender-envelope.service.ts"
     },
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
@@ -15947,16 +15977,6 @@
     {
       "from": "doc/recon/as-built/D10-documents-esignature.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/as-built/D10-documents-esignature.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/as-built/D10-documents-esignature.md",
-      "status": "unscoped",
       "to": "libs/documents-contracts/src/lib/signature-provider.port.ts"
     },
     {
@@ -16528,16 +16548,6 @@
       "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
       "status": "unscoped",
       "to": "apps/portal-web/src/portal-api.ts"
-    },
-    {
-      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
     },
     {
       "from": "doc/recon/as-built/D13-frontend-architecture-screens.md",
@@ -17567,16 +17577,6 @@
     {
       "from": "doc/recon/gaps/G1-gap-register.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/G1-gap-register.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/gaps/G1-gap-register.md",
-      "status": "unscoped",
       "to": "ci/config/api-surface-manifest.json"
     },
     {
@@ -18338,16 +18338,6 @@
     {
       "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D10-documents-esignature.gaps.md",
-      "status": "unscoped",
       "to": "doc/adr/0033-cross-service-durable-event-foundation.md"
     },
     {
@@ -18528,11 +18518,6 @@
     {
       "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
       "status": "unscoped",
-      "to": "apps/sign-web/src/App.tsx"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D13-frontend-architecture-screens.gaps.md",
-      "status": "unscoped",
       "to": "doc/adr/0029-pipeline-boundary-modular-monolith.md"
     },
     {
@@ -18697,6 +18682,11 @@
     {
       "from": "doc/runbooks/RELEASE-esign-sender.md",
       "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-one-app.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-esign-sender.md",
+      "status": "unscoped",
       "to": "libs/auth-core/src/lib/host-binding.ts"
     },
     {
@@ -18713,6 +18703,36 @@
       "from": "doc/runbooks/RELEASE-platform-console.md",
       "status": "unscoped",
       "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/zones.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-one-app.md",
+      "status": "unscoped",
+      "to": "libs/esign/src/lib/sign-base-url.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-platform-api.md",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/effective-authority.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-platform-api.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
     {
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
@@ -19249,6 +19269,7 @@
       "status": "unscoped",
       "to": "apps/portal-web/src/tests/portal-web-negative-control.spec.ts"
     },
+    { "from": "eslint.config.mjs", "status": "unscoped", "to": "apps/sign-web/src/zones.spec.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/02-claude-code-discipline.md" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/03-refusal-layer.md" },
     {
@@ -22613,14 +22634,19 @@
       "to": "apps/api/src/documents/esign-writeback.ts"
     },
     {
+      "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/tests/sign-api.integration.spec.ts"
+    },
+    {
+      "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-esign.ts"
+    },
+    {
       "from": "pact/consumers/esign-source-consumer/src/webhook.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
-    },
-    {
-      "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
-      "status": "unscoped",
-      "to": "apps/esign-web/src/api.ts"
     },
     {
       "from": "pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts",
@@ -22641,11 +22667,6 @@
       "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ats.yaml"
-    },
-    {
-      "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
-      "status": "unscoped",
-      "to": "apps/sign-web/src/sign-api.ts"
     },
     {
       "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",

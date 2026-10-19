@@ -175,14 +175,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-1 sender works
     expect((await sender.listEnvelopes({ tenant_id: TENANT, created_by: randomUUID(), limit: 50 })).length).toBe(0);
   });
 
-  it('excludes ATS/Core-sourced (CORE_REF) envelopes from every sender read', async () => {
-    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Right to Represent', execution_mode: 'SINGLE_SIGNATURE', created_by: USER });
+  // Sign Unified Product S-3 (D-5) — ATS/Core-sourced (CORE_REF) envelopes are now
+  // READABLE through the sender repository (visibility is decided in esign-service
+  // by the Sign permission contract), while draft authoring, the uploaded-documents
+  // library and the derived contacts list stay Sign-authored only.
+  it('reads ATS/Core-sourced (CORE_REF) envelopes; never authors them, lists their documents or offers their recipients as contacts', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Right to Represent', execution_mode: 'SINGLE_SIGNATURE', created_by: USER, source_application: 'aramo-ats' });
     await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'RTR', source_sha256: 'd'.repeat(64), ordinal: 0 });
     await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'talent@x.test', name: 'Talent', signing_order: 1 });
-    expect((await sender.listEnvelopes({ tenant_id: TENANT, limit: 500 })).some((e) => e.id === env.id)).toBe(false);
-    await expect(sender.getEnvelopeDetail(TENANT, env.id)).rejects.toBeInstanceOf(EnvelopeNotFoundError);
-    expect(await sender.listEnvelopeEvents(TENANT, env.id)).toEqual([]);
-    expect((await sender.listTenantEvents(TENANT, 500)).some((e) => e.envelope_id === env.id)).toBe(false);
+    expect((await sender.listEnvelopes({ tenant_id: TENANT, limit: 500 })).find((e) => e.id === env.id)).toMatchObject({ source_application: 'aramo-ats' });
+    expect((await sender.listEnvelopes({ tenant_id: TENANT, created_by: randomUUID(), limit: 500 })).some((e) => e.id === env.id)).toBe(false);
+    await expect(sender.getEnvelopeDetail(TENANT, env.id)).resolves.toMatchObject({ id: env.id, source_application: 'aramo-ats' });
+    expect((await sender.listEnvelopeEvents(TENANT, env.id)).length).toBeGreaterThan(0);
+    expect((await sender.listTenantEvents(TENANT, 500)).some((e) => e.envelope_id === env.id)).toBe(true);
     expect((await sender.listTenantDocuments(TENANT, 500)).some((d) => d.envelope.id === env.id)).toBe(false);
     expect((await sender.listPastRecipients(TENANT, 500)).some((r) => r.email === 'talent@x.test')).toBe(false);
     await expect(sender.updateDraft({ tenant_id: TENANT, envelope_id: env.id, subject: 'x' })).rejects.toBeInstanceOf(EnvelopeNotFoundError);
@@ -190,5 +195,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-1 sender works
     const counts = await sender.countByStatus(TENANT);
     const listed = await sender.listEnvelopes({ tenant_id: TENANT, limit: 500 });
     expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(listed.length);
+    // A different tenant never reads it.
+    await expect(sender.getEnvelopeDetail(randomUUID(), env.id)).rejects.toBeInstanceOf(EnvelopeNotFoundError);
   });
 });

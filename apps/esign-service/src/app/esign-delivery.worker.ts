@@ -1,7 +1,9 @@
-import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 // NOT `import type`: NestJS constructor injection needs the class as a runtime DI
 // token (emitted via decorator metadata) — a type-only import breaks resolution.
 import { OutboxDeliveryService } from '@aramo/esign';
+
+import { SignWebhookDeliveryService } from './integrations/webhook-delivery.service.js';
 
 // E-Sign OC v2 (DEC-B) — lifecycle-managed outbound delivery worker. No
 // @nestjs/schedule, Redis, or BullMQ: a plain interval started on bootstrap and
@@ -18,7 +20,11 @@ export class EsignDeliveryWorker implements OnApplicationBootstrap, OnApplicatio
   private draining = false;
   private stopped = false;
 
-  constructor(private readonly delivery: OutboxDeliveryService) {}
+  constructor(
+    private readonly delivery: OutboxDeliveryService,
+    // Sign Unified Product S-5 — per-subscription webhook deliveries drain on the same tick.
+    @Optional() private readonly webhooks?: SignWebhookDeliveryService,
+  ) {}
 
   onApplicationBootstrap(): void {
     if (process.env['ESIGN_DELIVERY_WORKER_ENABLED'] === '0') return;
@@ -42,6 +48,7 @@ export class EsignDeliveryWorker implements OnApplicationBootstrap, OnApplicatio
     this.draining = true;
     try {
       await this.delivery.deliverDueBatch();
+      if (this.webhooks !== undefined) await this.webhooks.deliverDueBatch();
     } catch (err) {
       this.logger.warn(`delivery tick failed: ${(err as Error).message}`);
     } finally {

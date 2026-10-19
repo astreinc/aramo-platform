@@ -122,3 +122,24 @@ export {
 } from './lib/envelope-notification.service.js';
 export { SENDER_DIRECTORY_PORT, type SenderDirectoryPort, type SenderContact } from './lib/ports/sender-directory.port.js';
 export { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './lib/ports/storage-accounting.port.js';
+
+// Sign Unified Product S-2 — the one Sign base-URL setting.
+export { signBaseUrl, DEFAULT_SIGN_BASE_URL } from './lib/sign-base-url.js';
+// Sign Unified Product S-4 — the Sign-owned application registry and installations.
+export {
+  SignIntegrationRepository,
+  type InstallationGrant,
+  type SignApplicationRow,
+  type SignInstallationRow,
+  type SignCredentialRow,
+  type SignAccessTokenRow,
+  type SignRoleMappingRow,
+  type InstallationWithApp,
+  type InstallationFull,
+  type InstallationListed,
+  SignWebhookRepository,
+  type SignWebhookSubscriptionRow,
+  type SignWebhookDeliveryRow,
+} from './lib/integration.repository.js';
+// Sign Unified Product S-7 — the recipient inbox (refinement B).
+export { RecipientInboxRepository, RECIPIENT_SESSION_TTL_MS, RECIPIENT_COPY_TTL_MS, type RecipientInboxRow } from './lib/recipient-inbox.repository.js';

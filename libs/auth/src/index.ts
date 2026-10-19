@@ -1,5 +1,5 @@
 export { AuthModule } from './lib/auth.module.js';
-export { JwtAuthGuard, assertTierTripwire, isPlatformRoutePath } from './lib/jwt-auth.guard.js';
+export { JwtAuthGuard, assertTierTripwire, isPlatformRoutePath, rawAccessToken } from './lib/jwt-auth.guard.js';
 // D-ORG-4 — consumer-isolated session cookie names (single naming authority).
 export {
   LEGACY_ACCESS_COOKIE,

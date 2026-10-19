@@ -17,7 +17,8 @@ import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { EsignSenderConsumerGuard, IdentityRepository } from '@aramo/identity';
+import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository } from '@aramo/identity';
+import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/esign';
 import {
   BILLING_PROVIDER_PORT,
   type BillingProviderPort,
@@ -50,6 +51,24 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 
 export const BILLING_MANAGE_SCOPE = 'tenant:admin:settings';
 
+// Sign Unified Product S-1 (directive §4.3.3) — billing administration is a Sign
+// permission (esign:billing:manage, Sign Owner). Organization settings authority
+// (tenant:admin:settings) stays an accepted authority so an organization can
+// subscribe before anyone holds a Sign role (the subscribing owner then receives
+// esign_owner). Either one suffices — never neither.
+export function canManageBilling(scopes: readonly string[]): boolean {
+  return scopes.includes(ESIGN_SCOPE.BILLING_MANAGE) || scopes.includes(BILLING_MANAGE_SCOPE);
+}
+
+function assertCanManageBilling(auth: AuthContextType, requestId: string): void {
+  if (!canManageBilling(auth.scopes)) {
+    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Managing the plan needs Sign billing or organization settings authority', 403, {
+      requestId,
+      details: { reason: 'billing_manage_scope_missing', missing_scopes: [ESIGN_SCOPE.BILLING_MANAGE] },
+    });
+  }
+}
+
 function BillingBoundary(scope?: string): MethodDecorator {
   return applyDecorators(
     UseGuards(JwtAuthGuard, EsignSenderConsumerGuard, EntitlementGuard, RolesGuard),
@@ -65,7 +84,7 @@ function salesContactUrl(): string | null {
 }
 
 function consoleBase(): string {
-  return (process.env['ESIGN_SENDER_WEB_BASE_URL'] ?? 'https://esign.aramo.ai').trim().replace(/\/+$/, '');
+  return signBaseUrl() ?? DEFAULT_SIGN_BASE_URL;
 }
 
 export function billingHttpError(e: unknown, requestId: string): AramoError {
@@ -143,7 +162,7 @@ export class EsignBillingController {
   account(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, async () => {
       const scopes = new Set(auth.scopes);
-      const can_manage = scopes.has(BILLING_MANAGE_SCOPE);
+      const can_manage = canManageBilling(auth.scopes);
       if (!can_manage && !scopes.has(ESIGN_READ_SCOPE)) {
         throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing the plan needs Sign access or organization settings authority', 403, {
           requestId,
@@ -168,9 +187,10 @@ export class EsignBillingController {
 
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
-  @BillingBoundary(BILLING_MANAGE_SCOPE)
+  @BillingBoundary()
   checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown }) {
     return this.run(requestId, async () => {
+      assertCanManageBilling(auth, requestId);
       await this.ctx.assertCanAuthor(auth, requestId);
       if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
         throw new AramoError('VALIDATION_ERROR', 'plan_key is required', 400, { requestId });
@@ -192,9 +212,12 @@ export class EsignBillingController {
 
   @Post('portal')
   @HttpCode(HttpStatus.CREATED)
-  @BillingBoundary(BILLING_MANAGE_SCOPE)
+  @BillingBoundary()
   portal(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
-    return this.run(requestId, () => this.lifecycle.portal(auth.tenant_id, `${consoleBase()}/sign/settings/billing`));
+    return this.run(requestId, async () => {
+      assertCanManageBilling(auth, requestId);
+      return this.lifecycle.portal(auth.tenant_id, `${consoleBase()}/sign/settings/billing`);
+    });
   }
 
   @Post('webhook/stripe')

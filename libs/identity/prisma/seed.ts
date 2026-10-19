@@ -41,6 +41,7 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 
 import { ORG_ADMIN_SCOPE_KEYS } from '../src/lib/dto/role.dto.js';
+import { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS } from '../src/lib/dto/esign-permissions.js';
 
 import { PrismaClient } from './generated/client/client.js';
 
@@ -453,6 +454,17 @@ export const SEED_IDS = {
     // TIP-E2E INC-3 A1 (§B.7) — transcript excerpt read. Dedicated clear node
     // 0x1409 (append-don't-renumber; verified free).
     'screening:transcript:read': '01900000-0000-7000-8000-000000001409',
+    // Sign Unified Product S-1 — the Sign permission contract (10 scopes, 0x140a..0x1413).
+    'esign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
+    'esign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
+    'esign:contact:read': '01900000-0000-7000-8000-00000000140c',
+    'esign:template:use': '01900000-0000-7000-8000-00000000140d',
+    'esign:template:manage': '01900000-0000-7000-8000-00000000140e',
+    'esign:report:read': '01900000-0000-7000-8000-00000000140f',
+    'esign:member:manage': '01900000-0000-7000-8000-000000001410',
+    'esign:settings:manage': '01900000-0000-7000-8000-000000001411',
+    'esign:billing:manage': '01900000-0000-7000-8000-000000001412',
+    'esign:integration:manage': '01900000-0000-7000-8000-000000001413',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2879,6 +2891,29 @@ export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
   ['esign_viewer', ['esign:envelope:read']],
 ];
 
+// Sign Unified Product S-1 — the Sign permission contract grants that complete
+// each esign_* role to ESIGN_ROLE_PERMISSIONS (esign-permissions.ts): the rows
+// ESIGN_SENDER_SEED_BUNDLES does not already hold. Range 0x1720+ (append-don't-
+// renumber; 0x1710..0x1712 is the last prior range). 23 grants. Additive only:
+// no existing grant is removed, so no holder loses a scope it had.
+export const ESIGN_ROLE_CONTRACT_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = ESIGN_ROLE_KEYS.map((role) => {
+  const prior = new Set(ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === role)?.[1] ?? []);
+  return [role, ESIGN_ROLE_PERMISSIONS[role].filter((s) => !prior.has(s))] as const;
+});
+const ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1720;
+  for (const [role, scopes] of ESIGN_ROLE_CONTRACT_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // IC-3 PR-7 — org_admin grant: the ORG_ADMIN_SCOPE_KEYS bundle (8 grants),
 // dedicated range 0x1600+ (append-don't-renumber; 0x1500+ is the last prior range).
 export const ORG_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
@@ -3330,6 +3365,17 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:create'], 'esign:envelope:create', 'PX-V1 PX-3 — create an E-Sign envelope (upload PDF, place fields). E-Sign sender product scope; NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:send'], 'esign:envelope:send', 'PX-V1 PX-3 — dispatch an E-Sign envelope for signature. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:read'], 'esign:envelope:read', 'PX-V1 PX-3 — list/track E-Sign envelopes + evidence. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  // Sign Unified Product S-1 — the Sign permission contract scopes.
+  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:read:all'], 'esign:envelope:read:all', 'Sign S-1 — read every envelope in the organization (not only own). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:manage:all'], 'esign:envelope:manage:all', 'Sign S-1 — edit drafts and remind/void any envelope in the organization. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:contact:read'], 'esign:contact:read', 'Sign S-1 — read the organization Sign contacts (past recipients). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:template:use'], 'esign:template:use', 'Sign S-1 — use Sign templates. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:template:manage'], 'esign:template:manage', 'Sign S-1 — create and maintain Sign templates. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:report:read'], 'esign:report:read', 'Sign S-1 — read Sign reports. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:member:manage'], 'esign:member:manage', 'Sign S-1 — assign and remove Sign roles for organization members. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:settings:manage'], 'esign:settings:manage', 'Sign S-1 — manage Sign settings. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:billing:manage'], 'esign:billing:manage', 'Sign S-1 — manage the Sign plan and billing. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['esign:integration:manage'], 'esign:integration:manage', 'Sign S-1 — manage applications, installations and webhooks for Sign. NO scope.created (scope-seed precedent).');
 
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);
@@ -4335,6 +4381,23 @@ export async function runIdentitySeed(
         throw new Error(
           `ESign-Sender-Role-Matrix: Missing generated RoleScope id for ${roleKey}:${scopeKey}`,
         );
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Sign Unified Product S-1 — the Sign permission contract grants (range 0x1720+).
+  for (const [roleKey, scopeKeys] of ESIGN_ROLE_CONTRACT_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Sign-Role-Contract: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({

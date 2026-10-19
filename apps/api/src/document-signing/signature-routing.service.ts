@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { DEFAULT_SIGNATURE_PROVIDER, SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/signature-routing';
+import type { SignatureActor } from '@aramo/documents-contracts';
 
 import { SignatureAvailabilityService } from './signature-availability.service.js';
 import {
@@ -32,8 +33,8 @@ export class SignatureRoutingService implements SignatureRouter {
     return { provider, port };
   }
 
-  async forNewSend(tenant_id: string, requestId: string): Promise<RoutedSignatureProvider> {
-    const a = await this.availability.evaluate(tenant_id);
+  async forNewSend(tenant_id: string, requestId: string, actor?: SignatureActor): Promise<RoutedSignatureProvider> {
+    const a = await this.availability.evaluate(tenant_id, undefined, actor);
     if (!a.available || a.provider === null) {
       throw new AramoError('ESIGN_SEND_UNAVAILABLE', 'Sending for signature is not available right now', 409, {
         requestId,

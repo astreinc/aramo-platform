@@ -43,11 +43,21 @@ import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adap
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
 import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
+import { SenderMembersService } from './sender/sender-members.service.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
+import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
+import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
+import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
+import { IntegrationAdminService } from './integrations/integration-admin.service.js';
+import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
+import { SignApiGuard } from './integrations/sign-api.guard.js';
+import { SignApiService } from './integrations/sign-api.service.js';
+import { SignTokenService } from './integrations/sign-token.service.js';
+import { SignWebhookDeliveryService } from './integrations/webhook-delivery.service.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -106,6 +116,8 @@ import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapte
         // worker that drains it (E-Sign owns reliable delivery + retry).
         { provide: WEBHOOK_DELIVERY_PORT, useClass: HttpWebhookEventPublisher },
         OutboxDeliveryService,
+        // Sign Unified Product S-5 — per-subscription webhook delivery (drained by the worker).
+        SignWebhookDeliveryService,
         EsignDeliveryWorker,
         // Aramo Sign launch — lifecycle notifications (with delivery records), the
         // console-sender directory, and the envelope expiry sweep.
@@ -119,15 +131,24 @@ import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapte
   ],
   // Aramo Sign launch — self-service billing (v1/esign/billing), the governed
   // subscribing-owner activation and the provider reconciliation sweep.
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController],
+  // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
+  // workspace's installation administration.
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
     SenderContextService,
     SenderEnvelopeService,
+    SenderMembersService,
     EsignOwnerActivationService,
     EsignBillingReconcileWorker,
     AramoSignStorageGate,
+    SignTokenService,
+    SignApiGuard,
+    SignApiService,
+    IntegrationAdminService,
+    // Sign Unified Product S-7 — the recipient inbox.
+    RecipientInboxService,
   ],
 })
 export class AppModule implements NestModule {

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { signBaseUrl } from './sign-base-url.js';
 import { EsignRepository } from './esign.repository.js';
 import { generateSigningToken } from './signing-token.js';
 import {
@@ -30,10 +31,6 @@ export const EXECUTED_ACCESS_TTL_DAYS_DEFAULT = 30;
 
 type EnvelopeFull = Awaited<ReturnType<EsignRepository['getEnvelopeFull']>>;
 
-function trimOrigin(v: string | undefined): string | null {
-  return v === undefined || v.trim() === '' ? null : v.trim().replace(/\/+$/, '');
-}
-
 @Injectable()
 export class EnvelopeNotificationService {
   private readonly logger = new Logger(EnvelopeNotificationService.name);
@@ -48,7 +45,7 @@ export class EnvelopeNotificationService {
   // ── Completion: each signer gets their signed copy; the sender is told. ──
   async envelopeCompleted(tenant_id: string, envelope_id: string): Promise<void> {
     const env = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
-    const signWeb = trimOrigin(process.env['ESIGN_SIGN_WEB_BASE_URL']);
+    const signWeb = signBaseUrl();
     for (const signer of env.signers) {
       let download_url: string | undefined;
       if (signWeb !== null) {
@@ -136,7 +133,7 @@ export class EnvelopeNotificationService {
     if (this.senders === undefined) return;
     const sender = await this.senders.findSender(env.tenant_id, env.created_by);
     if (sender === null) return;
-    const consoleWeb = trimOrigin(process.env['ESIGN_SENDER_WEB_BASE_URL']);
+    const consoleWeb = signBaseUrl();
     await this.deliver(env.tenant_id, env.id, null, {
       ...n,
       audience: 'SENDER',

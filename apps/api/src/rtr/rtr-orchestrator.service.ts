@@ -11,6 +11,7 @@ import {
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
 import { type LetterheadModel, type RenderBlock } from '@aramo/documents-rendering';
+import type { SignatureActor } from '@aramo/documents-contracts';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
@@ -212,6 +213,7 @@ export class RtrOrchestratorService {
     talent_id: string;
     created_by: string;
     requestId: string;
+    actor?: SignatureActor;
   }): Promise<RtrSendResult> {
     // RTR owns the signer resolution (the Talent on this RTR). The common send mechanics —
     // consume the frozen revision (no re-render, INV-3), duplicate-envelope guard, DRAFT→PREPARED,
@@ -237,6 +239,7 @@ export class RtrOrchestratorService {
       recipient: { email, name },
       created_by: input.created_by,
       requestId: input.requestId,
+      ...(input.actor !== undefined ? { actor: input.actor } : {}),
     });
   }
 
@@ -251,6 +254,7 @@ export class RtrOrchestratorService {
     tenant_id: string;
     document_id: string;
     requestId: string;
+    actor?: SignatureActor;
   }): Promise<RtrRemindResult> {
     // RTR-specific guard: the reminder endpoint addresses an RTR document only (concealment —
     // a non-RTR / cross-tenant id is NOT FOUND). The common same-envelope reminder mechanics
@@ -268,7 +272,7 @@ export class RtrOrchestratorService {
     if (doc.document_type_id !== RIGHT_TO_REPRESENT_TYPE_ID) {
       throw new AramoError('DOCUMENT_NOT_FOUND', `document ${input.document_id} is not an RTR`, 404, { requestId: input.requestId });
     }
-    return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId });
+    return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId, ...(input.actor !== undefined ? { actor: input.actor } : {}) });
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).

@@ -15,12 +15,13 @@ import {
 } from '@nestjs/common';
 import { AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
-import { EsignSenderBoundary } from '@aramo/identity';
+import { ESIGN_SCOPE, EsignSenderBoundary } from '@aramo/identity';
 
 import { toHttp } from '../esign-http.controller.js';
 
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SenderEnvelopeService, type UploadDocumentBody } from './sender-envelope.service.js';
+import { SenderMembersService } from './sender-members.service.js';
 
 // PX-V1 §8 (D-2) — the AUTHENTICATED SENDER surface on esign-service: the third
 // E-Sign auth zone, distinct from the internal service-to-service envelopes
@@ -28,7 +29,10 @@ import { SenderEnvelopeService, type UploadDocumentBody } from './sender-envelop
 // (v1/esign/signing). Every route mounts EsignSenderBoundary:
 //   JwtAuthGuard → consumer must be `esign` → tenant `esign` capability → scope.
 // Reads need esign:envelope:read; draft authoring esign:envelope:create; send,
-// remind and void esign:envelope:send. A PERSONAL tenant is refused every write
+// remind and void esign:envelope:send; contacts esign:contact:read; member
+// administration esign:member:manage. Sign Unified Product S-1: the service then
+// applies own-vs-organization visibility (esign:envelope:read:all) and envelope
+// ownership (esign:envelope:manage:all) on every read and change. A PERSONAL tenant is refused every write
 // in the service (Lead Host & Workspace Ruling v1.0: Personal sending not enabled).
 // tenant_id and the acting user come only from the verified auth context.
 @Controller('v1/esign/sender')
@@ -37,6 +41,7 @@ export class EsignSenderController {
   constructor(
     private readonly ctx: SenderContextService,
     private readonly envelopes: SenderEnvelopeService,
+    private readonly members: SenderMembersService,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -198,9 +203,27 @@ export class EsignSenderController {
   }
 
   @Get('contacts')
-  @EsignSenderBoundary(ESIGN_READ_SCOPE)
+  @EsignSenderBoundary(ESIGN_SCOPE.CONTACT_READ)
   contacts(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, () => this.envelopes.contacts(auth, requestId));
+  }
+
+  // Sign Unified Product S-1 — Sign member administration (esign:member:manage).
+  @Get('members')
+  @EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE)
+  listMembers(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    return this.run(requestId, () => this.members.list(auth, requestId));
+  }
+
+  @Put('members/:userId/sign-role')
+  @EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE)
+  setMemberRole(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+    @Param('userId') userId: string,
+    @Body() body: { sign_role?: unknown },
+  ) {
+    return this.run(requestId, () => this.members.setRole(auth, userId, body, requestId));
   }
 
   @Get('activity')

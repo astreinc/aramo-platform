@@ -97,6 +97,29 @@ export class JwtAuthGuard implements CanActivate {
     const requestId = request.requestId ?? 'unknown';
 
     const token = this.extractToken(request, requestId);
+    const { context: ctx } = await this.verifyAccessToken(token, requestId);
+    // D-ORG-4 — a consumer named by the front end must be the consumer the token
+    // was minted for: a recruiter cookie presented under `X-Aramo-Consumer: org`
+    // (or vice versa) is refused, so no consumer session can stand in for another.
+    const declared = request.header(CONSUMER_HEADER);
+    if (declared !== undefined && declared !== ctx.consumer_type) {
+      throw new AramoError('INVALID_TOKEN', 'Session consumer does not match the declared consumer', 401, {
+        requestId,
+        details: { reason: 'consumer_header_mismatch', declared, actual: ctx.consumer_type },
+      });
+    }
+    assertTierTripwire(ctx, request.path ?? request.url ?? '', requestId);
+    request.authContext = ctx;
+    return true;
+  }
+
+  // Sign Unified Product S-4 — verify a raw Aramo access token exactly as a
+  // protected route does (signature, issuer, audience, required claims, and the
+  // server-side effective-scope resolution with immediate revocation), WITHOUT a
+  // request. Used for OAuth token exchange, where a first-party application
+  // presents its user's access token as the subject of a delegation: the identity
+  // and authority are proven by Aramo identity infrastructure, never asserted.
+  async verifyAccessToken(token: string, requestId: string): Promise<{ context: AuthContext; authz_version: number }> {
     const audience = process.env['AUTH_AUDIENCE'];
     const publicKeyPem = process.env['AUTH_PUBLIC_KEY'];
     if (audience === undefined || publicKeyPem === undefined) {
@@ -132,20 +155,35 @@ export class JwtAuthGuard implements CanActivate {
       });
     }
 
-    const ctx = await this.toAuthContext(payload, requestId);
-    // D-ORG-4 — a consumer named by the front end must be the consumer the token
-    // was minted for: a recruiter cookie presented under `X-Aramo-Consumer: org`
-    // (or vice versa) is refused, so no consumer session can stand in for another.
-    const declared = request.header(CONSUMER_HEADER);
-    if (declared !== undefined && declared !== ctx.consumer_type) {
-      throw new AramoError('INVALID_TOKEN', 'Session consumer does not match the declared consumer', 401, {
+    const context = await this.toAuthContext(payload, requestId);
+    return { context, authz_version: payload.authz_version as number };
+  }
+
+  // Sign Unified Product S-4 — the same principal's effective scopes for ANOTHER
+  // consumer (e.g. its `esign` Sign permissions while it holds a recruiter token),
+  // resolved server-side at the token's own authorization revision. Fail closed.
+  async resolveScopesForConsumer(ctx: AuthContext, consumer: ConsumerType, authzVersion: number, requestId: string): Promise<string[]> {
+    if (this.resolver === undefined) {
+      throw new AramoError('INVALID_TOKEN', 'Authorization resolver not configured', 401, {
         requestId,
-        details: { reason: 'consumer_header_mismatch', declared, actual: ctx.consumer_type },
+        details: { reason: 'authz_resolver_unbound' },
       });
     }
-    assertTierTripwire(ctx, request.path ?? request.url ?? '', requestId);
-    request.authContext = ctx;
-    return true;
+    const resolution = await this.resolver.resolve({
+      tenant_id: ctx.tenant_id,
+      principal_id: ctx.sub,
+      consumer_type: consumer,
+      actor_kind: ctx.actor_kind,
+      token_authz_version: authzVersion,
+      ...(ctx.site_id !== undefined ? { site_id: ctx.site_id } : {}),
+    });
+    if (resolution.status !== 'ok') {
+      throw new AramoError('INVALID_TOKEN', 'Authorization could not be resolved', 401, {
+        requestId,
+        details: { reason: resolution.status === 'stale' ? 'authz_version_stale' : 'authz_unresolvable' },
+      });
+    }
+    return resolution.scopes;
   }
 
   private extractToken(
@@ -319,6 +357,20 @@ export class JwtAuthGuard implements CanActivate {
       ...(site_id !== undefined ? { site_id } : {}),
     };
   }
+}
+
+// Addendum S6 — the raw access token of an authenticated request (the same
+// Bearer-first / consumer-cookie selection JwtAuthGuard verifies), for a
+// server-side delegation such as Aramo Sign USER-mode token exchange. Returns
+// null instead of throwing; never log the value.
+export function rawAccessToken(request: Request & { cookies?: Record<string, string> }): string | null {
+  const header = request.header('authorization');
+  if (header !== undefined && header.length > 0) {
+    const m = /^Bearer\s+(.+)$/i.exec(header);
+    return m !== null && m[1] !== undefined && m[1].length > 0 ? m[1] : null;
+  }
+  const selection = selectAccessCookie(request.cookies, request.header(CONSUMER_HEADER));
+  return selection.kind === 'found' ? selection.token : null;
 }
 
 // IC-2 PR-5 — the GENERIC both-direction tier tripwire (AUTHZ-2 DDR §13.1;

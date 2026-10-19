@@ -105,6 +105,19 @@ export const SEED_SCOPE_KEYS = [
   'esign:envelope:read',        // esign_viewer+ (list/track envelopes)
   'esign:envelope:create',      // esign_sender+ (upload PDF, place fields, create envelope)
   'esign:envelope:send',        // esign_sender+ (dispatch an envelope for signature)
+  // Sign Unified Product S-1 — the Sign permission contract (esign-permissions.ts;
+  // Aramo-Sign-Unified-Product-Permission-Contract-Platform-API-Directive-v1_0-LOCKED
+  // §4.3). Granted ONLY to esign_* roles (ESIGN_ROLE_CONTRACT_SEED_BUNDLES).
+  'esign:envelope:read:all',    // esign_viewer/admin/owner (every organization envelope)
+  'esign:envelope:manage:all',  // esign_admin/owner (lifecycle + drafts of any envelope)
+  'esign:contact:read',         // esign_sender/admin/owner
+  'esign:template:use',         // esign_sender/admin/owner (templates not yet built)
+  'esign:template:manage',      // esign_admin/owner (templates not yet built)
+  'esign:report:read',          // esign_viewer/admin/owner
+  'esign:member:manage',        // esign_admin/owner (assign Sign roles)
+  'esign:settings:manage',      // esign_admin/owner
+  'esign:billing:manage',       // esign_owner only
+  'esign:integration:manage',   // esign_admin/owner (applications + installations, S-4)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context resume selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT

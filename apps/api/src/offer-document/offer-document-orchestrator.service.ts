@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { OfferRepository } from '@aramo/placement';
 import { TalentRecordRepository } from '@aramo/talent-record';
+import type { SignatureActor } from '@aramo/documents-contracts';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 
@@ -95,6 +96,7 @@ export class OfferDocumentOrchestratorService {
     offer_id: string;
     created_by: string;
     requestId: string;
+    actor?: SignatureActor;
   }): Promise<OfferDocumentSendResult> {
     const offer = await this.readOffer(input.tenant_id, input.offer_id, input.requestId);
     const talent = await this.talent.findById({ tenant_id: input.tenant_id, id: offer.talent_record_id });
@@ -114,12 +116,13 @@ export class OfferDocumentOrchestratorService {
       recipient: { email, name },
       created_by: input.created_by,
       requestId: input.requestId,
+      ...(input.actor !== undefined ? { actor: input.actor } : {}),
     });
   }
 
   // remind → same-envelope signer reminder via the shared capability (AWAITING_SIGNATURE-gated).
-  async remind(input: { tenant_id: string; document_id: string; requestId: string }): Promise<{ document_id: string; status: string; reminder_sent: true }> {
-    return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId });
+  async remind(input: { tenant_id: string; document_id: string; requestId: string; actor?: SignatureActor }): Promise<{ document_id: string; status: string; reminder_sent: true }> {
+    return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId, ...(input.actor !== undefined ? { actor: input.actor } : {}) });
   }
 
   // DERIVED status only (PL-3) — delegated to the shared signing-state read; stores no second

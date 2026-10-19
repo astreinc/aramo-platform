@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { IdentityRepository } from '@aramo/identity';
+import { ESIGN_SCOPE, IdentityRepository } from '@aramo/identity';
 import {
   DOCUMENT_SOURCE_PROVIDER_PORT,
   DOCUMENT_STORAGE_PORT,
@@ -44,6 +44,9 @@ const MAX_FIELDS = 500;
 const MAX_TITLE = 200;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// The Sign application's own key (SignatureEnvelope.source_application).
+export const SIGN_APPLICATION = 'aramo-sign';
+
 export const ENVELOPE_TABS: Record<string, readonly string[] | undefined> = {
   all: undefined,
   drafts: ['DRAFT'],
@@ -83,11 +86,38 @@ export class SenderEnvelopeService {
     private readonly storageGate: AramoSignStorageGate,
   ) {}
 
-  // Personal workspace reads are limited to the caller's own envelopes; a business
-  // workspace reads the whole tenant (Sign RBAC: esign:envelope:read).
+  // Sign Unified Product S-1 (directive §4.3.5) — visibility. A member reads the
+  // envelopes they own; the whole organization only with esign:envelope:read:all
+  // (Sign Viewer / Admin / Owner) in a BUSINESS tenant. A PERSONAL account always
+  // reads its own. Returns the owner filter (undefined = the whole tenant).
   private async ownerFilter(auth: AuthContextType, requestId: string): Promise<string | undefined> {
     const kind = await this.context.tenantKind(auth.tenant_id, requestId);
-    return kind === 'BUSINESS' ? undefined : auth.sub;
+    return kind === 'BUSINESS' && auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_READ_ALL) ? undefined : auth.sub;
+  }
+
+  // Sign Unified Product S-1 (directive §4.3.5) — ownership. Every draft change
+  // and lifecycle action (send, remind, void) is checked against the envelope's
+  // actual owner: the owner may act; anyone else needs esign:envelope:manage:all
+  // (Sign Admin / Owner). An ordinary sender never changes another member's
+  // envelope merely because they share a Business tenant. Visibility first: an
+  // envelope the caller cannot see reads as not found.
+  private async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
+    const d = await this.detail(auth, envelope_id, requestId);
+    // Sign Unified Product S-3 — an envelope that another application created
+    // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays
+    // with that application, whose workflow depends on it.
+    if (d.source_application !== SIGN_APPLICATION) {
+      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This envelope is managed by the application that sent it', 409, {
+        requestId,
+        details: { reason: 'managed_by_source_application', source_application: d.source_application },
+      });
+    }
+    if (d.sender.id === auth.sub) return;
+    if (auth.scopes.includes(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL)) return;
+    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Only the sender of this envelope, or a Sign Admin, can change it', 403, {
+      requestId,
+      details: { reason: 'envelope_not_owned', missing_scopes: [ESIGN_SCOPE.ENVELOPE_MANAGE_ALL] },
+    });
   }
 
   // ── Reads ──────────────────────────────────────────────────────────────────
@@ -180,6 +210,7 @@ export class SenderEnvelopeService {
         completed_at: iso(e.completed_at),
         last_activity_at: iso(last.get(e.id) ?? e.updated_at),
         document_count: e.documents.length,
+        source_application: e.source_application,
         recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status })),
       })),
       counts,
@@ -205,7 +236,10 @@ export class SenderEnvelopeService {
       expires_at: env.sent_at !== null ? new Date(env.sent_at.getTime() + SIGNING_SESSION_TTL_MS).toISOString() : null,
       signing_window_days: Math.round(SIGNING_SESSION_TTL_MS / 86_400_000),
       sender: { id: env.created_by, name: sender?.display_name ?? sender?.email ?? null },
-      editable: env.status === 'DRAFT',
+      // Sign Unified Product S-3 — where the envelope came from; envelopes from
+      // another application are read-only here.
+      source_application: env.source_application,
+      editable: env.status === 'DRAFT' && env.source_application === SIGN_APPLICATION,
       documents: env.documents.map((d) => ({
         id: d.id,
         title: d.title,
@@ -368,6 +402,7 @@ export class SenderEnvelopeService {
 
   async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (typeof body?.subject !== 'string' || body.subject.trim().length === 0) throw bad(requestId, 'subject is required');
     if (body.subject.length > MAX_TITLE) throw bad(requestId, `subject must be at most ${MAX_TITLE} characters`);
     await this.repo.updateDraft({ tenant_id: auth.tenant_id, envelope_id, subject: body.subject.trim() });
@@ -376,6 +411,7 @@ export class SenderEnvelopeService {
 
   async upload(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (typeof body?.content_base64 !== 'string' || body.content_base64.length === 0) throw bad(requestId, 'content_base64 is required');
     const filename = typeof body.filename === 'string' && body.filename.length > 0 ? body.filename : 'document.pdf';
     const rawTitle = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : filename.replace(/\.pdf$/i, '');
@@ -424,6 +460,7 @@ export class SenderEnvelopeService {
 
   async renameDocument(auth: AuthContextType, envelope_id: string, document_id: string, body: { title?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (typeof body?.title !== 'string' || body.title.trim().length === 0) throw bad(requestId, 'title is required');
     await this.repo.renameDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, title: body.title.trim().slice(0, MAX_TITLE) });
     return this.detail(auth, envelope_id, requestId);
@@ -431,6 +468,7 @@ export class SenderEnvelopeService {
 
   async reorderDocuments(auth: AuthContextType, envelope_id: string, body: { order?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.order) || body.order.some((x) => typeof x !== 'string')) throw bad(requestId, 'order must be an array of document ids');
     await this.repo.reorderDraftDocuments({ tenant_id: auth.tenant_id, envelope_id, order: body.order as string[] });
     return this.detail(auth, envelope_id, requestId);
@@ -438,6 +476,7 @@ export class SenderEnvelopeService {
 
   async removeDocument(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     const removed = await this.repo.removeDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, actor_ref: auth.sub });
     // A1 — removing a draft document releases its storage.
     if (removed.source_object_key !== null) await this.storageGate.release(auth.tenant_id, removed.source_object_key).catch(() => undefined);
@@ -446,6 +485,7 @@ export class SenderEnvelopeService {
 
   async replaceRecipients(auth: AuthContextType, envelope_id: string, body: { recipients?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
     if (body.recipients.length > MAX_SIGNERS_V1) {
       throw bad(requestId, 'This version supports one signer per envelope', { reason: 'v1_single_signer', max: MAX_SIGNERS_V1 });
@@ -469,6 +509,7 @@ export class SenderEnvelopeService {
 
   async replaceFields(auth: AuthContextType, envelope_id: string, body: { fields?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
     const fields = body.fields.map((f: unknown, i: number) => {
@@ -538,6 +579,7 @@ export class SenderEnvelopeService {
 
   async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     let d = await this.detail(auth, envelope_id, requestId);
     if (d.status !== 'DRAFT') throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
     if (typeof body?.subject === 'string' && body.subject.trim().length > 0 && body.subject.trim() !== d.subject) {
@@ -557,6 +599,7 @@ export class SenderEnvelopeService {
 
   async remind(auth: AuthContextType, envelope_id: string, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     await this.detail(auth, envelope_id, requestId);
     await this.provider.remindEnvelopeSigner(auth.tenant_id, envelope_id, auth.sub);
     return this.detail(auth, envelope_id, requestId);
@@ -564,6 +607,7 @@ export class SenderEnvelopeService {
 
   async void(auth: AuthContextType, envelope_id: string, body: { reason?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
     const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
     if (reason.length === 0) throw bad(requestId, 'A reason is required to void an envelope');
     if (reason.length > 500) throw bad(requestId, 'reason must be at most 500 characters');

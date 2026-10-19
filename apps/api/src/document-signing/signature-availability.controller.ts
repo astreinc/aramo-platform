@@ -1,8 +1,10 @@
-import { Controller, Get, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
+import { signatureActorFrom } from './signature-actor.js';
 import { SignatureAvailabilityService, type SignatureAvailability } from './signature-availability.service.js';
 
 // Multi-Provider directive §D/§H — the backend-owned read the recruiter surfaces
@@ -18,7 +20,8 @@ export class SignatureAvailabilityController {
   @Get('availability')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('document:read')
-  async read(@AuthContext() auth: AuthContextType): Promise<SignatureAvailability> {
-    return this.availability.evaluate(auth.tenant_id, auth.scopes);
+  async read(@AuthContext() auth: AuthContextType, @Req() req: Request): Promise<SignatureAvailability> {
+    // Addendum S6 — over the Sign API transport, availability is asked with the user's delegation.
+    return this.availability.evaluate(auth.tenant_id, auth.scopes, signatureActorFrom(req));
   }
 }

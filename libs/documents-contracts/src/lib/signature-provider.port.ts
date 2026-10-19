@@ -71,13 +71,33 @@ export interface EvidenceSummary {
   completed_at: string | null;
 }
 
+// Sign Unified Product — Addendum S6 ruling 2: the OPTIONAL typed actor credential
+// a user-initiated call carries, so the native Aramo Sign adapter can act through
+// the Sign API on the user's verified behalf (USER-mode token exchange). It is
+// provider-specific: callers pass it ONLY to the Aramo Sign adapter, never to an
+// external provider. The bearer value is non-enumerable and redacted from JSON
+// and inspection, so it cannot reach a log or a serialized payload by accident.
+export interface SignatureActor {
+  readonly kind: 'aramo-user';
+  readonly access_token: string;
+}
+
+export function signatureActor(access_token: string): SignatureActor {
+  const actor = { kind: 'aramo-user' as const };
+  Object.defineProperty(actor, 'access_token', { value: access_token, enumerable: false, writable: false });
+  Object.defineProperty(actor, 'toJSON', { value: () => ({ kind: 'aramo-user', access_token: '[redacted]' }), enumerable: false });
+  Object.defineProperty(actor, Symbol.for('nodejs.util.inspect.custom'), { value: () => "SignatureActor { kind: 'aramo-user', access_token: [redacted] }", enumerable: false });
+  return actor as SignatureActor;
+}
+
 // The caller-facing signature-provider contract. Idempotent per Invariant 16.
+// `actor` (optional, last) is honoured only by the Aramo Sign adapter (S6).
 export interface SignatureProviderPort {
-  createEnvelope(req: CreateEnvelopeRequest): Promise<EnvelopeSummary>;
-  sendEnvelope(tenant_id: string, envelope_id: string, idempotency_key?: string): Promise<EnvelopeSummary>;
-  getEnvelope(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary>;
-  voidEnvelope(tenant_id: string, envelope_id: string, reason: string): Promise<EnvelopeSummary>;
-  getEvidence(tenant_id: string, envelope_id: string): Promise<EvidenceSummary>;
+  createEnvelope(req: CreateEnvelopeRequest, actor?: SignatureActor): Promise<EnvelopeSummary>;
+  sendEnvelope(tenant_id: string, envelope_id: string, idempotency_key?: string, actor?: SignatureActor): Promise<EnvelopeSummary>;
+  getEnvelope(tenant_id: string, envelope_id: string, actor?: SignatureActor): Promise<EnvelopeSummary>;
+  voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor?: SignatureActor): Promise<EnvelopeSummary>;
+  getEvidence(tenant_id: string, envelope_id: string, actor?: SignatureActor): Promise<EvidenceSummary>;
   // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the single NON-TERMINAL envelope
   // for a document revision (E-Sign owns envelope identity; Documents never store
   // envelope_id). null = none; throws ESIGN_ENVELOPE_AMBIGUOUS when >1 exist.
@@ -85,9 +105,10 @@ export interface SignatureProviderPort {
     tenant_id: string,
     document_ref: string,
     document_revision_ref: string,
+    actor?: SignatureActor,
   ): Promise<EnvelopeSummary | null>;
   // COMM-RECRUITER-W1 (W1-C2) — same-envelope reminder for an already-sent
   // envelope. Revokes prior non-terminal signer session(s), mints a new one,
   // records a reminder event + notification. NOT sendEnvelope (no DRAFT→SENT).
-  remindEnvelopeSigner(tenant_id: string, envelope_id: string): Promise<EnvelopeSummary>;
+  remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: SignatureActor): Promise<EnvelopeSummary>;
 }

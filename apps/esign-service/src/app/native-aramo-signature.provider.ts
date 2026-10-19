@@ -4,6 +4,7 @@ import {
   type EnvelopeSummary,
   type EvidenceSummary,
   type SignatureProviderPort,
+  type SignatureActor,
 } from '@aramo/documents-contracts';
 import {
   ENVELOPE_NOTIFICATION_SERVICE,
@@ -13,6 +14,7 @@ import {
   type IssuedSession,
   SIGNING_NOTIFICATION_PORT,
   type SigningNotificationPort,
+  signBaseUrl,
 } from '@aramo/esign';
 
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
@@ -53,6 +55,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       subject: req.subject,
       execution_mode: req.execution_mode,
       created_by: req.created_by,
+      // Sign Unified Product S-1 — the internal command zone's only caller is the
+      // ATS (S-6 replaces it with the authenticated, installation-scoped API).
+      source_application: 'aramo-ats',
     });
     const createdDocs: CreatedDocumentRef[] = [];
     for (const doc of req.documents) {
@@ -100,16 +105,16 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
 
   private async dispatchSigningRequests(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
     if (this.notifier === undefined || sessions.length === 0) return;
-    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
-    if (base === undefined || base === '') {
+    const base = signBaseUrl();
+    if (base === null) {
       // Explicit signal (no token): the envelope is SENT but no signer link can be
-      // built without a configured Sign Web origin.
-      this.logger.warn(`SIGNATURE_REQUEST not dispatched for envelope ${envelope_id}: ESIGN_SIGN_WEB_BASE_URL is unset`);
+      // built without a configured Sign origin.
+      this.logger.warn(`SIGNATURE_REQUEST not dispatched for envelope ${envelope_id}: ARAMO_SIGN_BASE_URL (or ESIGN_SIGN_WEB_BASE_URL) is unset`);
       return;
     }
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const signersById = new Map(full.signers.map((s) => [s.id, s]));
-    const origin = base.replace(/\/+$/, '');
+    const origin = base;
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
       if (signer === undefined) continue;
@@ -150,7 +155,11 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return this.summarize(tenant_id, envelope_id);
   }
 
-  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor_ref?: string): Promise<EnvelopeSummary> {
+  // Inside esign-service the acting party is a resolved actor ref (string); the
+  // port's typed actor credential (Addendum S6) is an api-side concern and is
+  // never used here.
+  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+    const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason);
     // Aramo Sign launch — recipients who had not finished learn it was withdrawn.
@@ -179,7 +188,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // SIGNATURE_REMINDER link per newly-issued session and record each delivery
   // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
   // in-memory here to build the signer URL; never persisted/logged/returned).
-  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor_ref?: string): Promise<EnvelopeSummary> {
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+    const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);
@@ -187,10 +197,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   }
 
   private async dispatchReminders(tenant_id: string, envelope_id: string, sessions: IssuedSession[]): Promise<void> {
-    const base = process.env['ESIGN_SIGN_WEB_BASE_URL'];
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const signersById = new Map(full.signers.map((s) => [s.id, s]));
-    const origin = base === undefined ? '' : base.replace(/\/+$/, '');
+    const origin = signBaseUrl() ?? '';
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
       if (signer === undefined) continue;

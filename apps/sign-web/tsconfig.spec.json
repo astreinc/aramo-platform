@@ -4,9 +4,11 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["node", "vitest/globals", "vite/client"],
+    "types": ["node", "vitest/globals", "vite/client", "@testing-library/jest-dom"],
     "noEmit": true,
-    "paths": {}
+    "paths": {
+      "@aramo/fe-foundation": ["../../libs/fe-foundation/src/index.ts"]
+    }
   },
   "include": ["src/**/*.spec.ts", "src/**/*.spec.tsx", "src/test-setup.ts"]
 }

@@ -54,7 +54,7 @@ describe('GovernedDocumentSigningService.send — routing and allowance recovery
   it('a DRAFT envelope left by a refused send is SENT on retry, never minted twice', async () => {
     const { svc, port, input } = make(env({ envelope_id: 'E1', status: 'DRAFT' }));
     await expect(svc.send(input)).resolves.toEqual({ document_id: 'doc-1', envelope_id: 'E1', status: 'SENT' });
-    expect(port.sendEnvelope).toHaveBeenCalledWith('t1', 'E1');
+    expect(port.sendEnvelope).toHaveBeenCalledWith('t1', 'E1', undefined, undefined); // Addendum S6 — no actor supplied
     expect(port.createEnvelope).not.toHaveBeenCalled();
   });
 

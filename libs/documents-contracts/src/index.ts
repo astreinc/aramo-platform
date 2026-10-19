@@ -10,6 +10,8 @@ export {
   type ProviderSignerSummary,
   type EnvelopeSummary,
   type EvidenceSummary,
+  type SignatureActor,
+  signatureActor,
 } from './lib/signature-provider.port.js';
 export {
   ESIGN_S2S_SCHEME,

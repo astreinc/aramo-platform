@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { IdentityRepository, TenantRepository } from '@aramo/identity';
+import { ESIGN_SCOPE, IdentityRepository, TenantRepository } from '@aramo/identity';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -24,7 +24,18 @@ export interface SenderContextView {
   user: { id: string; email: string | null; display_name: string | null };
   tenant: { id: string; name: string; kind: string };
   workspace: SenderWorkspace;
-  permissions: { read: boolean; create: boolean; send: boolean };
+  // Sign Unified Product S-1 — the caller's effective Sign permissions (the UI
+  // shows only what these allow; esign-service enforces every one server-side).
+  permissions: {
+    read: boolean;
+    read_all: boolean;
+    create: boolean;
+    send: boolean;
+    manage_all: boolean;
+    contacts: boolean;
+    members: boolean;
+    billing: boolean;
+  };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   personal_sending_enabled: false;
@@ -69,12 +80,17 @@ export class SenderContextService {
     const user = await this.identity.findUserById(auth.sub);
     const slug = await this.tenants.findSlugById(auth.tenant_id);
     const scopes = new Set(auth.scopes);
+    const business = tenant.kind === 'BUSINESS';
     const permissions = {
       read: scopes.has(ESIGN_READ_SCOPE),
+      read_all: business && scopes.has(ESIGN_SCOPE.ENVELOPE_READ_ALL),
       create: scopes.has(ESIGN_CREATE_SCOPE),
       send: scopes.has(ESIGN_SEND_SCOPE),
+      manage_all: business && scopes.has(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL),
+      contacts: scopes.has(ESIGN_SCOPE.CONTACT_READ),
+      members: business && scopes.has(ESIGN_SCOPE.MEMBER_MANAGE),
+      billing: business && (scopes.has(ESIGN_SCOPE.BILLING_MANAGE) || scopes.has('tenant:admin:settings')),
     };
-    const business = tenant.kind === 'BUSINESS';
     const tenantBase = tenantHostBase(slug);
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null },

@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { DocumentExecutedWriteBackService } from '@aramo/documents';
 
+import { esignAtsTransport } from '../esign/esign-service-api.provider.js';
+import { SignApiClient } from '../esign/sign-api.client.js';
+
 // DOC-4 (R-4-7) — the apps/api side of the executed-artifact write-back seam.
 //   EsignExecutedArtifactsClient — pulls executed bytes + certificate FROM
 //                               esign-service (bytes never traverse the bus).
@@ -26,11 +29,22 @@ interface ExecutedArtifactsBundle {
 
 @Injectable()
 export class EsignExecutedArtifactsClient {
+  constructor(private readonly sign: SignApiClient) {}
+
   private baseUrl(): string {
     return process.env['ESIGN_SERVICE_URL'] ?? 'http://localhost:3003';
   }
 
-  async fetchExecuted(tenant_id: string, envelope_id: string): Promise<ExecutedArtifactsBundle> {
+  // Addendum S6 ruling 1 — over the Sign API transport there is no recruiter: the
+  // ATS authenticates as its own first-party client and presents the completion
+  // event it was delivered; Sign returns a five-minute read grant for exactly this
+  // envelope. Without the event the pull is refused (never the internal path).
+  async fetchExecuted(tenant_id: string, envelope_id: string, event_id?: string): Promise<ExecutedArtifactsBundle> {
+    if (esignAtsTransport() === 'api') {
+      if (event_id === undefined) throw new Error(`esign executed pull for envelope ${envelope_id} needs its completion event`);
+      const grant = await this.sign.eventGrant(event_id, tenant_id, envelope_id);
+      return this.sign.call<ExecutedArtifactsBundle>('GET', `/v1/esign/api/envelopes/${encodeURIComponent(envelope_id)}/executed`, grant);
+    }
     const url = `${this.baseUrl()}/v1/esign/envelopes/${envelope_id}/executed?tenant_id=${encodeURIComponent(tenant_id)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`esign executed pull failed for envelope ${envelope_id}: HTTP ${res.status}`);
@@ -52,8 +66,8 @@ export class EsignWriteBackOrchestrator {
 
   // Idempotent: replaying the same executed event stores nothing new (the
   // write-back service dedups on (tenant, idempotency_key)).
-  async writeBackEnvelope(input: { tenant_id: string; envelope_id: string; correlation_id?: string; requestId: string }): Promise<WriteBackResult> {
-    const bundle = await this.client.fetchExecuted(input.tenant_id, input.envelope_id);
+  async writeBackEnvelope(input: { tenant_id: string; envelope_id: string; correlation_id?: string; event_id?: string; requestId: string }): Promise<WriteBackResult> {
+    const bundle = await this.client.fetchExecuted(input.tenant_id, input.envelope_id, input.event_id);
     if (bundle.certificate === null) throw new Error(`envelope ${input.envelope_id} has no execution certificate`);
     let written = 0;
     for (const doc of bundle.documents) {

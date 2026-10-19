@@ -220,11 +220,26 @@ server {
   }
 }
 
-# ── sign.aramo.ai — the external-signer SPA (DOC-4 R-4-8, R-4-10) ───────────────
-# Wildcard *.aramo.ai cert already covers this host (G28). SCOPED to the E-Sign
-# public signer transport ONLY — never a general /v1/* proxy, so the external
-# signer reaches nothing but the signing endpoints; a stray /v1/<other> falls
-# through to the SPA fallback, never to tenant data. DEPLOY=NO until provisioned.
+# ── Aramo Sign rate limits (Sign Unified Product S-2, directive §4.1.3) ─────────
+# http-context zones (this file is included inside http {}). Guest signing and
+# public signup are session-less, so they are bounded per client address at the
+# edge. A signing session makes a burst of calls (exchange, disclosure, document,
+# one fill per field, complete) — the guest zone allows that burst.
+limit_req_zone $binary_remote_addr zone=sign_guest:10m  rate=10r/s;
+limit_req_zone $binary_remote_addr zone=sign_signup:10m rate=10r/m;
+limit_req_status 429;
+
+# ── sign.aramo.ai — the ONE Aramo Sign application (Sign Unified Product S-2) ──
+# Aramo-Sign-Unified-Product-Permission-Contract-Platform-API-Directive-v1_0-LOCKED
+# §4.1 (amends the Host & Workspace Ruling v1.0): one host, one SPA (/srv/sign),
+# three authentication zones —
+#   guest signing   /s/:token, /d/:token + /v1/esign/signing/  (capability token)
+#   public entry    /login, /signed-out, /signup + /v1/signup/sign/  (no session)
+#   workspace       everything else + /v1/esign/sender/, /v1/esign/billing/, /auth/
+# Wildcard *.aramo.ai cert covers the host. Only the Sign surfaces are proxied:
+# never apps/api, never the internal envelopes surface; a stray /v1/<other>
+# falls through to the SPA, never to tenant data. PDF uploads travel as base64
+# JSON (25 MiB source → ≈34 MiB).
 server {
   listen 443 ssl;
   server_name ${NGINX_SIGN_SERVER_NAME};
@@ -238,8 +253,63 @@ server {
   proxy_set_header X-Forwarded-Host  $host;
   proxy_set_header X-Forwarded-Proto $scheme;
 
+  # Security headers (workspace policy). A location that sets its own add_header
+  # does not inherit these, so the guest locations below repeat the full set.
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+  add_header Strict-Transport-Security "max-age=31536000" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "no-referrer" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+
+  # Guest signing transport — the capability token is the only authority.
   location /v1/esign/signing/ {
+    limit_req zone=sign_guest burst=60 nodelay;
+    client_max_body_size 2m;
     proxy_pass http://esign-service:3003;
+  }
+  # Workspace — the authenticated sender zone.
+  location /v1/esign/sender/ {
+    client_max_body_size 40m;
+    proxy_pass http://esign-service:3003;
+  }
+  # Workspace — self-service billing (plans, account, checkout, portal) and the
+  # billing-provider webhook. The webhook carries no session: esign-service
+  # verifies the provider signature over the raw body (so no body rewriting here).
+  location /v1/esign/billing/ {
+    client_max_body_size 1m;
+    proxy_pass http://esign-service:3003;
+  }
+  # Public entry — self-service signup (platform-admin owns the provisioning
+  # saga). Session-less; dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1.
+  location /v1/signup/sign/ {
+    limit_req zone=sign_signup burst=10 nodelay;
+    client_max_body_size 16k;
+    proxy_pass http://platform-admin:3002;
+  }
+  location /auth/ {
+    proxy_pass http://auth-service:3001;
+    # HF1-A — the auth callback sets several cookies; widen the header buffers.
+    proxy_buffer_size       32k;
+    proxy_buffers           8 32k;
+    proxy_busy_buffers_size 64k;
+  }
+
+  # Guest signing pages — the same SPA, a stricter policy: no third-party origin
+  # at all (self-hosted fonts only) and never cached (the path carries a token).
+  location ~ ^/(s|d)/ {
+    root /srv/sign;
+    # Serve the SPA shell IN this location (a file check, not an internal
+    # redirect — /index.html as the last argument would re-enter `location /`
+    # and lose the guest headers below).
+    try_files /index.html =404;
+    add_header Cache-Control "no-store" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
   }
 
   location / {
@@ -248,14 +318,12 @@ server {
   }
 }
 
-# ── esign.aramo.ai — the Aramo Sign SENDER console (PX-V1 §8 D-4) ───────────────
-# One sender application for business (/sign/) and personal (/personal/) accounts
-# (Lead Host & Workspace Ruling v1.0). Wildcard *.aramo.ai cert covers the host.
-# Shared login via auth-service (/auth/ — the `esign` consumer) and ONE API
-# surface: the authenticated sender zone /v1/esign/sender/* on esign-service —
-# never the internal envelopes surface, never the signer surface, never apps/api.
-# A stray /v1/<other> falls through to the SPA, never to tenant data. PDF uploads
-# travel as base64 JSON (25 MiB source → ≈34 MiB). DEPLOY=NO until provisioned.
+# ── esign.aramo.ai — RETIRED (no redirect) ──────────────────────────────────────
+# Aramo-Sign-Unified-Product-D1-Host-Retirement-Addendum-v1_0-LOCKED: sign.aramo.ai is
+# the ONLY Sign address. The retired name answers 410 Gone and serves nothing —
+# no redirect, no /v1, no /auth, no SPA. The block exists only so the wildcard
+# DNS / certificate never route the retired name to the tenant application; it
+# is removed together with the DNS record at host retirement.
 server {
   listen 443 ssl;
   server_name ${NGINX_ESIGN_SERVER_NAME};
@@ -269,34 +337,8 @@ server {
   proxy_set_header X-Forwarded-Host  $host;
   proxy_set_header X-Forwarded-Proto $scheme;
 
-  location /v1/esign/sender/ {
-    client_max_body_size 40m;
-    proxy_pass http://esign-service:3003;
-  }
-  # Aramo Sign launch — self-service billing (plans, account, checkout, portal)
-  # and the billing-provider webhook. The webhook carries no session: esign-service
-  # verifies the provider signature over the raw body (so no body rewriting here).
-  location /v1/esign/billing/ {
-    client_max_body_size 1m;
-    proxy_pass http://esign-service:3003;
-  }
-  # Aramo Sign launch — public self-service signup (platform-admin owns the
-  # provisioning saga). Session-less; dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1.
-  location /v1/signup/sign/ {
-    client_max_body_size 16k;
-    proxy_pass http://platform-admin:3002;
-  }
-  location /auth/ {
-    proxy_pass http://auth-service:3001;
-    # HF1-A — the auth callback sets several cookies; widen the header buffers.
-    proxy_buffer_size       32k;
-    proxy_buffers           8 32k;
-    proxy_busy_buffers_size 64k;
-  }
-
   location / {
-    root /srv/esign;
-    try_files $uri /index.html;
+    return 410;
   }
 }
 

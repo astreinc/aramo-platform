@@ -44,11 +44,16 @@ export class EsignEventsController {
     @RequestId() requestId: string,
   ): Promise<{ received: boolean; event_id?: string; ignored?: boolean } | undefined> {
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+    // Addendum S6 / S-5 — a delivery from the ATS's OWN webhook subscription (it
+    // names its subscription) is verified with that subscription's isolated secret;
+    // a legacy delivery (no subscription) with the shared legacy secret. Never the
+    // other way round: a subscription delivery is refused when its secret is unset.
+    const viaSubscription = firstHeader(req.headers['x-aramo-esign-subscription-id']) !== undefined;
     const verdict = verifyEsignWebhookSignature({
       rawBody,
       timestampHeader: firstHeader(req.headers[ESIGN_WEBHOOK_TIMESTAMP_HEADER]),
       signatureHeader: firstHeader(req.headers[ESIGN_WEBHOOK_SIGNATURE_HEADER]),
-      secret: process.env['ESIGN_WEBHOOK_SIGNING_SECRET'],
+      secret: viaSubscription ? process.env['ESIGN_EVENTS_SUBSCRIPTION_SECRET'] : process.env['ESIGN_WEBHOOK_SIGNING_SECRET'],
       nowSec: Math.floor(Date.now() / 1000),
       toleranceSec: ESIGN_WEBHOOK_TIMESTAMP_TOLERANCE_SEC,
     });
@@ -86,6 +91,8 @@ export class EsignEventsController {
         tenant_id: event.tenant_id,
         envelope_id: event.envelope_id,
         correlation_id: typeof event.correlation_id === 'string' ? event.correlation_id : undefined,
+        // Addendum S6 — the delivered event identifies the read grant (API transport).
+        event_id: event.event_id,
         requestId,
       });
       res.status(200);

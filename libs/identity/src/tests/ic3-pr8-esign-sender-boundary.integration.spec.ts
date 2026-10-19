@@ -226,7 +226,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
     if (esign.status === 'ok' && recruiter.status === 'ok') {
       // esign consumer: the three Sign scopes + ONLY the product-neutral
       // organization subset (IC-3 PR-7 rule) — never an ATS product scope.
-      expect(esign.scopes.filter((s) => s.startsWith('esign:')).sort()).toEqual(['esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send']);
+      expect(esign.scopes.filter((s) => s.startsWith('esign:')).sort()).toEqual(['esign:contact:read', 'esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send', 'esign:template:use']);
       expect(esign.scopes.every((s) => s.startsWith('esign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
       expect(esign.scopes).not.toContain('talent:read');
       // recruiter consumer: the ATS scopes, never a Sign scope.

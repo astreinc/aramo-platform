@@ -16,14 +16,17 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 // cannot be silently dropped or widened), the backend workspace + Personal rule
 // (Lead Host & Workspace Ruling v1.0), and fail-closed input validation.
 
-const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'executed', 'evidence', 'documents', 'contacts', 'activity'] as const;
+const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'executed', 'evidence', 'documents', 'activity'] as const;
+// Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
+const CONTACTS = ['contacts'] as const;
+const MEMBERS = ['listMembers', 'setMemberRole'] as const;
 const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields'] as const;
 const SEND = ['send', 'remind', 'void'] as const;
 
 const handler = (name: string): object => (EsignSenderController.prototype as unknown as Record<string, object>)[name] ?? {};
 
 describe('EsignSenderController — every route mounts the sender boundary', () => {
-  it.each([...READ, ...CREATE, ...SEND])('%s: JwtAuthGuard → esign consumer → entitlement → roles, capability esign', (name) => {
+  it.each([...READ, ...CREATE, ...SEND, ...CONTACTS, ...MEMBERS])('%s: JwtAuthGuard → esign consumer → entitlement → roles, capability esign', (name) => {
     expect(Reflect.getMetadata(GUARDS_METADATA, handler(name))).toEqual([JwtAuthGuard, EsignSenderConsumerGuard, EntitlementGuard, RolesGuard]);
     expect(Reflect.getMetadata(REQUIRED_CAPABILITIES_KEY, handler(name))).toEqual(['esign']);
   });
@@ -36,9 +39,15 @@ describe('EsignSenderController — every route mounts the sender boundary', () 
   it.each(SEND)('%s requires esign:envelope:send', (name) => {
     expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler(name))).toEqual(['esign:envelope:send']);
   });
+  it('contacts requires esign:contact:read', () => {
+    expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler('contacts'))).toEqual(['esign:contact:read']);
+  });
+  it.each(MEMBERS)('%s requires esign:member:manage', (name) => {
+    expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler(name))).toEqual(['esign:member:manage']);
+  });
   it('covers every route handler on the controller', () => {
     const own = Object.getOwnPropertyNames(EsignSenderController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
-    expect(own.sort()).toEqual([...READ, ...CREATE, ...SEND].sort());
+    expect(own.sort()).toEqual([...READ, ...CREATE, ...SEND, ...CONTACTS, ...MEMBERS].sort());
   });
 });
 
@@ -67,7 +76,7 @@ describe('SenderContextService — workspace and Personal rule from the backend 
     expect(view).toMatchObject({ workspace: 'sign', can_send: true, personal_sending_enabled: false, tenant: { kind: 'BUSINESS' } });
     expect(view.organization_url).toBe('https://astre.aramo.ai/org/profile');
     const viewer = await contextService('BUSINESS').context({ ...AUTH, scopes: ['esign:envelope:read'] }, 'r');
-    expect(viewer).toMatchObject({ can_send: false, permissions: { read: true, create: false, send: false } });
+    expect(viewer).toMatchObject({ can_send: false, permissions: { read: true, create: false, send: false, read_all: false, members: false } });
   });
 
   it('PERSONAL → personal workspace; never can_send, even with every scope; no organization link', async () => {
@@ -97,7 +106,7 @@ function envelopeService(kind = 'BUSINESS') {
     replaceDraftRecipients: vi.fn(async () => []),
     replaceDraftFields: vi.fn(async () => 0),
     createDraft: vi.fn(async () => ({ id: 'e1', status: 'DRAFT', subject: 'Untitled envelope' })),
-    getEnvelopeDetail: vi.fn(async () => ({
+    getEnvelopeDetail: vi.fn(async () => ({ source_application: 'aramo-sign',
       id: 'e1', subject: 'S', status: 'DRAFT', created_by: AUTH.sub, created_at: new Date(), sent_at: null, completed_at: null,
       declined_at: null, voided_at: null, documents: [], signers: [],
     })),

@@ -491,6 +491,93 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // Addendum S6 — the ATS (aramo-core) as a client of the Sign API. Fixtures MUST
+    // match pact/consumers/esign-consumer/src/sign-api-transport.consumer.test.ts.
+    // Idempotent: every API-transport state calls it. The live grants are seeded
+    // as digests exactly as the token endpoint stores them.
+    const ATS_TENANT_ID = 'a7500000-0000-7000-8000-000000000001';
+    const ATS_RECRUITER_ID = 'a7500000-0000-7000-8000-000000000002';
+    const ATS_USER_GRANT = 'sgt_pact_ats_user_grant_0123456789abcdefghij';
+    const ATS_EVENT_GRANT = 'sgt_pact_ats_event_grant_0123456789abcdefghi';
+    const ATS_CLIENT_ID = 'sgc_pact_ats';
+    const ATS_CLIENT_SECRET = 'sgs_pact_ats_secret_0123456789abcdefghijklmnop';
+    const ATS_EVENT_ID = 'a7500000-0000-7000-8000-0000000000e1';
+    const ATS_EXEC_ENVELOPE_ID = 'a7500000-0000-7000-8000-0000000000f1';
+    const ATS_INSTALLATION_ID = 'a7500000-0000-7000-8000-000000000003';
+    const ATS_CREDENTIAL_ID = 'a7500000-0000-7000-8000-000000000004';
+    const ATS_SUBSCRIPTION_ID = 'a7500000-0000-7000-8000-000000000005';
+    const sha = (raw: string): string => createHash('sha256').update(raw, 'utf8').digest('base64url');
+    async function seedAtsApi(): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,'Pact ATS Co','pact-ats','BUSINESS','ACTIVE',true, now()) ON CONFLICT (id) DO NOTHING`,
+        [ATS_TENANT_ID],
+      );
+      for (const capability of ['core', 'ats', 'esign']) {
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
+      }
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id, now(), 'DEVELOPMENT', 'pact-verify-esign' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'
+         ON CONFLICT (tenant_id) WHERE ended_at IS NULL DO NOTHING`,
+        [ATS_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO "esign"."SignInstallation" (id, tenant_id, application_id, granted_permissions, modes, first_party_auto)
+         SELECT $1, $2, a.id, a.requested_permissions, ARRAY['USER'], true FROM "esign"."SignApplication" a WHERE a.key = 'aramo-ats'
+         ON CONFLICT (tenant_id, application_id) DO NOTHING`,
+        [ATS_INSTALLATION_ID, ATS_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO "esign"."SignCredential" (id, application_id, installation_id, client_id, secret_hash)
+         SELECT $1, a.id, NULL, $2, $3 FROM "esign"."SignApplication" a WHERE a.key = 'aramo-ats' ON CONFLICT (client_id) DO NOTHING`,
+        [ATS_CREDENTIAL_ID, ATS_CLIENT_ID, sha(ATS_CLIENT_SECRET)],
+      );
+    }
+    async function seedAtsUserGrant(): Promise<void> {
+      await seedAtsApi();
+      await db.query(
+        `INSERT INTO "esign"."SignAccessToken" (id, token_hash, credential_id, installation_id, tenant_id, mode, subject_id, scopes, audience, expires_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'USER', $5, ARRAY['esign:envelope:read','esign:envelope:read:all','esign:envelope:create','esign:envelope:send','esign:envelope:manage:all'], 'aramo-sign-api', now() + interval '1 day')
+         ON CONFLICT (token_hash) DO NOTHING`,
+        [sha(ATS_USER_GRANT), ATS_CREDENTIAL_ID, ATS_INSTALLATION_ID, ATS_TENANT_ID, ATS_RECRUITER_ID],
+      );
+    }
+    async function seedAtsCompletion(): Promise<void> {
+      await seedAtsApi();
+      const doc = 'a7500000-0000-7000-8000-0000000000f2';
+      await db.query(
+        `INSERT INTO "esign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, completed_at, source_application, installation_id)
+         VALUES ($1,$2,'Right to Represent','COMPLETED','SINGLE_SIGNATURE',$3, now(),'aramo-ats',$4) ON CONFLICT (id) DO NOTHING`,
+        [ATS_EXEC_ENVELOPE_ID, ATS_TENANT_ID, ATS_RECRUITER_ID, ATS_INSTALLATION_ID],
+      );
+      await db.query(
+        `INSERT INTO "esign"."EnvelopeDocument" (id, tenant_id, envelope_id, document_ref, document_revision_ref, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,'a7500000-0000-7000-8000-0000000000d1','a7500000-0000-7000-8000-0000000000d2','RTR',$4,1) ON CONFLICT (id) DO NOTHING`,
+        [doc, ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID, SHA256],
+      );
+      await db.query(
+        `INSERT INTO "esign"."ExecutedDocument" (id, tenant_id, envelope_id, envelope_document_id, source_sha256, executed_sha256, byte_size, executed_bytes)
+         SELECT gen_random_uuid(),$1,$2,$3,$4,$5,8, decode('255044462d312e34','hex') WHERE NOT EXISTS (SELECT 1 FROM "esign"."ExecutedDocument" WHERE envelope_id = $2)`,
+        [ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID, doc, SHA256, 'b'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "esign"."ExecutionCertificate" (id, tenant_id, envelope_id, certificate_sha256, byte_size, certificate_bytes)
+         SELECT gen_random_uuid(),$1,$2,$3,4, decode('63657274','hex') WHERE NOT EXISTS (SELECT 1 FROM "esign"."ExecutionCertificate" WHERE envelope_id = $2)`,
+        [ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID, 'c'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "esign"."SignWebhookSubscription" (id, application_id, installation_id, tenant_id, target_url, secret_ciphertext, internal)
+         SELECT $1, a.id, NULL, NULL, 'http://api:3000/v1/integrations/esign/events', 'v1.pact.pact.pact', true FROM "esign"."SignApplication" a WHERE a.key = 'aramo-ats'
+         ON CONFLICT (id) DO NOTHING`,
+        [ATS_SUBSCRIPTION_ID],
+      );
+      await db.query(
+        `INSERT INTO "esign"."SignWebhookDelivery" (id, subscription_id, event_id, tenant_id, envelope_id, event_type, payload, status)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, 'esign.envelope.executed.v1', '{}'::jsonb, 'DELIVERED') ON CONFLICT (subscription_id, event_id) DO NOTHING`,
+        [ATS_SUBSCRIPTION_ID, ATS_EVENT_ID, ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID],
+      );
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       const url = container.getConnectionUri();
@@ -593,6 +680,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           next();
         },
         stateHandlers: {
+          // Addendum S6 — the ATS over the authenticated Sign API.
+          'an ATS user grant is live': async () => {
+            await seedAtsUserGrant();
+          },
+          'a completion event was delivered to the ATS': async () => {
+            await seedAtsCompletion();
+          },
+          'an ATS event grant is live': async () => {
+            await seedAtsCompletion();
+            await db.query(
+              `INSERT INTO "esign"."SignAccessToken" (id, token_hash, credential_id, installation_id, tenant_id, mode, subject_id, scopes, audience, expires_at, grant_kind, envelope_id, event_id)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, 'APPLICATION', $3, ARRAY['esign:envelope:read'], 'aramo-sign-api', now() + interval '1 day', 'EVENT_ARTIFACT', $5, $6)
+               ON CONFLICT (token_hash) DO NOTHING`,
+              [sha(ATS_EVENT_GRANT), ATS_CREDENTIAL_ID, ATS_INSTALLATION_ID, ATS_TENANT_ID, ATS_EXEC_ENVELOPE_ID, ATS_EVENT_ID],
+            );
+          },
           'no prior envelope for the request': async () => undefined,
           'a signature envelope exists': async () => {
             await seedEnvelope();

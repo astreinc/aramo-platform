@@ -55,7 +55,8 @@ export interface ProductAvailabilityView {
 // /personal/ itself from the backend context.
 export const ATS_ENTRY_PATH = '/ats/';
 export const ORG_ENTRY_PATH = '/org/';
-export const DEFAULT_SIGN_ENTRY_URL = 'https://esign.aramo.ai/';
+// Sign Unified Product S-2 — the one Aramo Sign host.
+export const DEFAULT_SIGN_ENTRY_URL = 'https://sign.aramo.ai/';
 
 export function signEntryActivated(env: NodeJS.ProcessEnv = process.env): boolean {
   return env['ARAMO_SIGN_ENTRY_ENABLED'] === 'true';

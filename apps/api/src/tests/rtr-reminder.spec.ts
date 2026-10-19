@@ -87,7 +87,7 @@ describe('W1-C1 — RTR duplicate-send guard', () => {
   it('creates+sends a new envelope when none exists for the revision', async () => {
     const { orch, createEnvelope, sendEnvelope, findEnvelopeForDocument } = makeOrchestrator({ findEnvelope: async () => null });
     const res = await orch.send({ tenant_id: TENANT, document_id: DOC, talent_id: 'tal', created_by: 'u', requestId: 'r' });
-    expect(findEnvelopeForDocument).toHaveBeenCalledWith(TENANT, DOC, REV);
+    expect(findEnvelopeForDocument).toHaveBeenCalledWith(TENANT, DOC, REV, undefined); // Addendum S6 — no actor supplied
     expect(createEnvelope).toHaveBeenCalledTimes(1);
     expect(sendEnvelope).toHaveBeenCalledTimes(1);
     expect(res.envelope_id).toBe('E-new');
@@ -101,8 +101,8 @@ describe('W1-C3 — RTR reminder orchestration', () => {
       findEnvelope: async () => envelope({ envelope_id: 'E1', status: 'SENT' }),
     });
     const res = await orch.remind({ tenant_id: TENANT, document_id: DOC, requestId: 'r' });
-    expect(findEnvelopeForDocument).toHaveBeenCalledWith(TENANT, DOC, REV); // same frozen revision
-    expect(remindEnvelopeSigner).toHaveBeenCalledWith(TENANT, 'E1'); // same envelope
+    expect(findEnvelopeForDocument).toHaveBeenCalledWith(TENANT, DOC, REV, undefined); // same frozen revision
+    expect(remindEnvelopeSigner).toHaveBeenCalledWith(TENANT, 'E1', undefined); // same envelope
     expect(createEnvelope).not.toHaveBeenCalled(); // never a new RTR/envelope
     expect(res).toEqual({ document_id: DOC, status: 'AWAITING_SIGNATURE', reminder_sent: true });
   });
