@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the esign schema with the thirteen tables', async () => {
+  it('creates the esign schema with the eighteen tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'esign'`,
     );
@@ -80,6 +80,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignatureField',
         'SignerDisclosureAcceptance',
         'SigningSession',
+        // Sign Unified Product S-4 — application registry, installations, credentials.
+        'SignAccessToken',
+        'SignApplication',
+        'SignCredential',
+        'SignInstallation',
+        'SignRoleMapping',
       ].sort(),
     );
   });

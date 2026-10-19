@@ -49,6 +49,12 @@ import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.w
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
+import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
+import { IntegrationAdminService } from './integrations/integration-admin.service.js';
+import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
+import { SignApiGuard } from './integrations/sign-api.guard.js';
+import { SignApiService } from './integrations/sign-api.service.js';
+import { SignTokenService } from './integrations/sign-token.service.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -120,7 +126,9 @@ import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapte
   ],
   // Aramo Sign launch — self-service billing (v1/esign/billing), the governed
   // subscribing-owner activation and the provider reconciliation sweep.
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController],
+  // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
+  // workspace's installation administration.
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -130,6 +138,10 @@ import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapte
     EsignOwnerActivationService,
     EsignBillingReconcileWorker,
     AramoSignStorageGate,
+    SignTokenService,
+    SignApiGuard,
+    SignApiService,
+    IntegrationAdminService,
   ],
 })
 export class AppModule implements NestModule {

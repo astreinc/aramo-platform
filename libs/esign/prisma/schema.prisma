@@ -321,3 +321,115 @@ model ExecutedAccessGrant {
   @@index([envelope_id])
   @@schema("esign")
 }
+
+// ── Sign Unified Product S-4 — application registry, installations, credentials ──
+// (Aramo-Sign-Unified-Product-Permission-Contract-Platform-API-Directive-v1_0-LOCKED §4.4)
+
+/// A registered application that integrates with Aramo Sign.
+model SignApplication {
+  id                        String   @id @db.Uuid
+  key                       String   @unique
+  name                      String
+  kind                      String // CHECK: FIRST_PARTY|THIRD_PARTY
+  status                    String   @default("ACTIVE") // CHECK: ACTIVE|DISABLED
+  requested_permissions     String[] @default([])
+  modes                     String[] @default([]) // subset of USER|APPLICATION
+  assertable_roles          String[] @default([])
+  delegation_profile        String[] @default([]) // FIRST_PARTY only
+  delegation_required_scope String?
+  created_at                DateTime @default(now()) @db.Timestamptz
+  updated_at                DateTime @default(now()) @db.Timestamptz
+
+  installations SignInstallation[]
+  credentials   SignCredential[]
+
+  @@schema("esign")
+}
+
+/// One application's installation in one tenant, with its bounded grant set.
+model SignInstallation {
+  id                     String    @id @db.Uuid
+  tenant_id              String    @db.Uuid
+  application_id         String    @db.Uuid
+  status                 String    @default("ACTIVE") // CHECK: ACTIVE|REVOKED
+  granted_permissions    String[]  @default([])
+  modes                  String[]  @default([])
+  integration_role       String? // CHECK: esign_admin|esign_sender|esign_viewer
+  role_assertion_enabled Boolean   @default(false)
+  first_party_auto       Boolean   @default(false)
+  approved_by            String?   @db.Uuid
+  approved_at            DateTime  @default(now()) @db.Timestamptz
+  revoked_by             String?   @db.Uuid
+  revoked_at             DateTime? @db.Timestamptz
+  created_at             DateTime  @default(now()) @db.Timestamptz
+  updated_at             DateTime  @default(now()) @db.Timestamptz
+
+  application   SignApplication   @relation(fields: [application_id], references: [id])
+  credentials   SignCredential[]
+  role_mappings SignRoleMapping[]
+  tokens        SignAccessToken[]
+
+  @@unique([tenant_id, application_id], map: "SignInstallation_tenant_application_key")
+  @@index([tenant_id])
+  @@schema("esign")
+}
+
+/// A client credential. installation_id null = FIRST_PARTY application-level.
+model SignCredential {
+  id              String    @id @db.Uuid
+  application_id  String    @db.Uuid
+  installation_id String?   @db.Uuid
+  client_id       String    @unique
+  secret_hash     String
+  status          String    @default("ACTIVE") // CHECK: ACTIVE|REVOKED
+  created_by      String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  expires_at      DateTime? @db.Timestamptz
+  last_used_at    DateTime? @db.Timestamptz
+  revoked_at      DateTime? @db.Timestamptz
+
+  application  SignApplication   @relation(fields: [application_id], references: [id])
+  installation SignInstallation? @relation(fields: [installation_id], references: [id])
+  tokens       SignAccessToken[]
+
+  @@index([installation_id])
+  @@schema("esign")
+}
+
+/// A tenant-approved mapping of an asserted external role to a Sign role (narrowing only).
+model SignRoleMapping {
+  installation_id String   @db.Uuid
+  external_role   String
+  sign_role       String // CHECK: esign_admin|esign_sender|esign_viewer
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  installation SignInstallation @relation(fields: [installation_id], references: [id], onDelete: Cascade)
+
+  @@id([installation_id, external_role])
+  @@schema("esign")
+}
+
+/// A short-lived integration access token (sha256 digest only).
+model SignAccessToken {
+  id              String    @id @db.Uuid
+  token_hash      String    @unique
+  credential_id   String    @db.Uuid
+  installation_id String    @db.Uuid
+  tenant_id       String    @db.Uuid
+  mode            String // CHECK: USER|APPLICATION
+  subject_id      String    @db.Uuid
+  external_actor  String?
+  external_role   String?
+  scopes          String[]
+  audience        String
+  expires_at      DateTime  @db.Timestamptz
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  revoked_at      DateTime? @db.Timestamptz
+
+  credential   SignCredential   @relation(fields: [credential_id], references: [id])
+  installation SignInstallation @relation(fields: [installation_id], references: [id])
+
+  @@index([installation_id])
+  @@index([expires_at])
+  @@schema("esign")
+}

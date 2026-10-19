@@ -412,6 +412,8 @@ export const ERROR_CODES = [
   'ESIGN_STORAGE_QUOTA_EXCEEDED',
   // Sign Unified Product S-1 — removing/demoting the organization's last Sign Owner (409).
   'ESIGN_LAST_OWNER',
+  // Sign Unified Product S-4 — an action on a revoked Sign installation (409).
+  'ESIGN_INSTALLATION_REVOKED',
   'SIGNER_NOT_FOUND',
   'SIGNING_SESSION_INVALID',
   'SIGNING_SESSION_EXPIRED',

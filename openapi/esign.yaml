@@ -15,6 +15,14 @@ tags:
     description: The Aramo Sign API — authenticated workspace, guest signing and billing on the one Sign host (sign.aramo.ai).
   - name: billing
     description: Aramo Sign self-service billing (plans, account, Stripe checkout and portal, provider webhook).
+  - name: platform
+    description: >
+      The Aramo Sign API for integrating applications (Sign Unified Product S-4). Authenticate at
+      /v1/esign/oauth/token, then call /v1/esign/api/* with the short-lived bearer token. Effective
+      authority = principal authority ∩ installation grants ∩ delegated scope. First-party exposure first;
+      public third-party activation is separately authorized.
+  - name: integrations
+    description: Installation administration in the Sign workspace (esign:integration:manage).
 paths:
   /v1/esign/envelopes:
     post:
@@ -1207,6 +1215,453 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /v1/esign/oauth/token:
+    post:
+      operationId: issueSignAccessToken
+      summary: Issue a short-lived Sign API access token.
+      description: >
+        client_credentials (APPLICATION mode; installation-bound credential) or
+        urn:ietf:params:oauth:grant-type:token-exchange (USER mode; subject_token = the user's Aramo access token,
+        verified and authority-resolved server-side). Client credentials in the body or HTTP Basic. Tokens live at most
+        300 seconds and never beyond the subject token; they are audience-bound (aramo-sign-api), tenant-scoped and
+        revoked with their installation or credential. Refusals never reveal whether a client exists (401 invalid_client).
+      tags: [platform]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignTokenRequest'
+      responses:
+        '200':
+          description: The access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/api/availability:
+    get:
+      operationId: getSignAvailability
+      summary: Whether the tenant can send now, and its allowance (Sign-owned availability, D-12).
+      description: Requires esign:envelope:read. NOT_SUBSCRIBED when no plan sends; LIMIT_REACHED when the period allowance is used.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignAvailability'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/api/envelopes:
+    post:
+      operationId: createSignApiEnvelope
+      summary: Create an envelope (and optionally send it).
+      description: >
+        Requires esign:envelope:create (and esign:envelope:send with send=true). Documents are uploaded PDFs
+        (content_base64) or — for Aramo applications only — Aramo Core document references. The envelope records its
+        owner (the token principal), source application, installation and actor kind. Every send is metered.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignApiCreateEnvelope'
+      responses:
+        '201':
+          description: The envelope summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/api/envelopes/for-document:
+    get:
+      operationId: findSignApiEnvelopeForDocument
+      summary: The integration's non-terminal envelope for an Aramo Core document revision, or null.
+      description: Requires esign:envelope:read. Envelopes outside the integration's isolation read as null.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - name: document_ref
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: document_revision_ref
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: '{ envelope } or { envelope: null }.'
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/esign/api/envelopes/{id}:
+    get:
+      operationId: getSignApiEnvelope
+      summary: Envelope status and signers.
+      description: >
+        Requires esign:envelope:read. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/api/envelopes/{id}/evidence:
+    get:
+      operationId: getSignApiEnvelopeEvidence
+      summary: Evidence summary.
+      description: >
+        Requires esign:envelope:read. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/api/envelopes/{id}/executed:
+    get:
+      operationId: getSignApiEnvelopeExecuted
+      summary: Executed documents and certificate (base64).
+      description: >
+        Requires esign:envelope:read. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/api/envelopes/{id}/send:
+    post:
+      operationId: sendSignApiEnvelope
+      summary: Send a DRAFT envelope (metered).
+      description: >
+        Requires esign:envelope:send. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/api/envelopes/{id}/remind:
+    post:
+      operationId: remindSignApiEnvelope
+      summary: Remind the signers who have not signed.
+      description: >
+        Requires esign:envelope:send. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/api/envelopes/{id}/void:
+    post:
+      operationId: voidSignApiEnvelope
+      summary: 'Void the envelope (body: reason).'
+      description: >
+        Requires esign:envelope:send. Only envelopes the integration's own application created; another member's only with
+        esign:envelope:read:all (reads) or esign:envelope:manage:all (changes). Otherwise 404 / 403.
+      tags: [platform]
+      security:
+        - signApiToken: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/esign/sender/integrations:
+    get:
+      operationId: listSignIntegrations
+      summary: Applications available and this organization’s installations (credentials listed without secrets).
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations:
+    post:
+      operationId: installSignApplication
+      summary: Approve an installation with a bounded grant set (or re-install a revoked one).
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}:
+    patch:
+      operationId: updateSignInstallation
+      summary: Change an installation’s grants, modes, integration role or role assertion.
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/revoke:
+    post:
+      operationId: revokeSignInstallation
+      summary: Revoke the installation, its credentials and every live token.
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/credentials:
+    post:
+      operationId: createSignCredential
+      summary: Issue a client credential for a third-party installation; the secret is returned once.
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/credentials/{credentialId}/revoke:
+    post:
+      operationId: revokeSignCredential
+      summary: Revoke one credential and the tokens it issued.
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: credentialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/role-mappings:
+    put:
+      operationId: setSignRoleMappings
+      summary: Replace the external-role → Sign-role mappings (narrowing only; roles the application declares).
+      description: Requires esign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/esign/sender/activity:
     get:
       operationId: listSenderActivity
@@ -1410,6 +1865,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: The shared auth-service access token for the esign consumer.
+    signApiToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque (sgt_…)
+      description: A short-lived Sign API access token from /v1/esign/oauth/token (never a session token).
   parameters:
     DocumentId:
       name: documentId
@@ -1728,6 +2188,94 @@ components:
           type: [string, 'null']
         app_home_url:
           type: [string, 'null']
+    SignTokenRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type:
+          type: string
+          enum: [client_credentials, 'urn:ietf:params:oauth:grant-type:token-exchange']
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        scope:
+          type: string
+          description: Space-separated subset of the effective permissions.
+        subject_token:
+          type: string
+          description: token-exchange only — the user's Aramo access token.
+        subject_token_type:
+          type: string
+          enum: ['urn:ietf:params:oauth:token-type:access_token']
+        external_role:
+          type: string
+          description: client_credentials only — honoured only if the installation may assert it and a mapping exists.
+        external_actor:
+          type: string
+          description: client_credentials only — the platform's own actor reference, recorded for audit.
+    SignTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scope, tenant_id, installation_id, mode]
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          enum: [Bearer]
+        expires_in:
+          type: integer
+        scope:
+          type: string
+        tenant_id:
+          type: string
+          format: uuid
+        installation_id:
+          type: string
+          format: uuid
+        mode:
+          type: string
+          enum: [USER, APPLICATION]
+    SignAvailability:
+      type: object
+      required: [available, reason, allowance]
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [NOT_SUBSCRIBED, LIMIT_REACHED, null]
+        allowance:
+          type: [object, 'null']
+    SignApiCreateEnvelope:
+      type: object
+      required: [subject, documents, signers]
+      properties:
+        subject:
+          type: string
+        documents:
+          type: array
+          items:
+            type: object
+            description: Either content_base64 (+ title, filename) or, for Aramo applications, document_ref + document_revision_ref + source_sha256.
+        signers:
+          type: array
+          items:
+            type: object
+            required: [name, email]
+            properties:
+              name:
+                type: string
+              email:
+                type: string
+              signing_order:
+                type: integer
+        fields:
+          type: array
+          items:
+            type: object
+        send:
+          type: boolean
     SignMember:
       type: object
       required: [user_id, email, active, sign_role]

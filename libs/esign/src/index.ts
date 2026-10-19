@@ -125,3 +125,16 @@ export { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './lib/ports
 
 // Sign Unified Product S-2 — the one Sign base-URL setting.
 export { signBaseUrl, DEFAULT_SIGN_BASE_URL } from './lib/sign-base-url.js';
+// Sign Unified Product S-4 — the Sign-owned application registry and installations.
+export {
+  SignIntegrationRepository,
+  type InstallationGrant,
+  type SignApplicationRow,
+  type SignInstallationRow,
+  type SignCredentialRow,
+  type SignAccessTokenRow,
+  type SignRoleMappingRow,
+  type InstallationWithApp,
+  type InstallationFull,
+  type InstallationListed,
+} from './lib/integration.repository.js';

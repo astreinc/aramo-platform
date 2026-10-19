@@ -773,6 +773,7 @@
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
       "STORAGE_ACCOUNTING_PORT",
+      "SignIntegrationRepository",
       "SignatureFieldIncompleteError",
       "SignerNotFoundError",
       "SigningSessionExpiredError",

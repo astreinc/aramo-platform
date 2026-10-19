@@ -68,7 +68,7 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'esign:template:manage': { cls: 'ACTIVE_RESERVED', reason: 'same — Sign templates not built' },
   'esign:report:read': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — dedicated Sign reports API not built; the dashboard summary follows envelope visibility' },
   'esign:settings:manage': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — no Sign-owned settings write surface yet' },
-  'esign:integration:manage': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive S-4 — application registry + installations (enforced when that surface lands)' },
+  'esign:integration:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE) → RequireScopes on the installation administration routes (apps/esign-service/src/app/integrations/integration-admin.controller.ts)' },
   // SKILL-TAX-1F-B2 — platform:skill:read / platform:skill:manage are now LITERALLY
   // enforced by the SkillGovernanceController @RequireScopes handlers (the platform
   // taxonomy-governance admin API), so their ACTIVE_RESERVED classification entries

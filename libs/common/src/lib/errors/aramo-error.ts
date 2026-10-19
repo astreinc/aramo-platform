@@ -128,6 +128,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_STORAGE_QUOTA_EXCEEDED: 409,
   // Sign Unified Product S-1 — the organization must keep at least one Sign Owner.
   ESIGN_LAST_OWNER: 409,
+  // Sign Unified Product S-4 — the installation was revoked by a Sign admin.
+  ESIGN_INSTALLATION_REVOKED: 409,
   SIGNER_NOT_FOUND: 404,
   SIGNING_SESSION_INVALID: 401,
   SIGNING_SESSION_EXPIRED: 401,

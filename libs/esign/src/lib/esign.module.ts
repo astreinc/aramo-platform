@@ -4,6 +4,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
 import { EsignService } from './esign.service.js';
 import { EsignSenderRepository } from './sender-workspace.repository.js';
+import { SignIntegrationRepository } from './integration.repository.js';
 import { EVIDENCE_MANIFEST_SIGNER_PORT, SoftwareEvidenceManifestSigner } from './ports/evidence-manifest-signer.port.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
@@ -38,10 +39,12 @@ export class EsignModule {
         EsignService,
         // PX-1 — sender workspace reads + DRAFT authoring writes.
         EsignSenderRepository,
+        // Sign Unified Product S-4 — application registry, installations, credentials.
+        SignIntegrationRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, ...(opts?.extraExports ?? [])],
     };
   }
 }
