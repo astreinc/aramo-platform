@@ -429,6 +429,10 @@ model SignAccessToken {
   expires_at      DateTime  @db.Timestamptz
   created_at      DateTime  @default(now()) @db.Timestamptz
   revoked_at      DateTime? @db.Timestamptz
+  // Addendum S6 — an EVENT_ARTIFACT grant reads ONE envelope's executed artifacts.
+  grant_kind      String    @default("STANDARD") // CHECK: STANDARD|EVENT_ARTIFACT
+  envelope_id     String?   @db.Uuid
+  event_id        String?   @db.Uuid
 
   credential   SignCredential   @relation(fields: [credential_id], references: [id])
   installation SignInstallation @relation(fields: [installation_id], references: [id])
@@ -486,6 +490,7 @@ model SignWebhookDelivery {
 
   @@unique([subscription_id, event_id], map: "SignWebhookDelivery_subscription_event_key")
   @@index([status, next_attempt_at])
+  @@index([event_id])
   @@schema("esign")
 }
 

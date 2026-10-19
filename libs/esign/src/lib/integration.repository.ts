@@ -85,6 +85,9 @@ export interface SignAccessTokenRow {
   expires_at: Date;
   created_at: Date;
   revoked_at: Date | null;
+  grant_kind: string;
+  envelope_id: string | null;
+  event_id: string | null;
 }
 export type InstallationWithApp = SignInstallationRow & { application: SignApplicationRow };
 export type InstallationFull = InstallationWithApp & { role_mappings: SignRoleMappingRow[] };
@@ -274,6 +277,10 @@ export class SignIntegrationRepository {
     scopes: string[];
     audience: string;
     expires_at: Date;
+    // Addendum S6 — event-bound executed-artifact grants.
+    grant_kind?: 'STANDARD' | 'EVENT_ARTIFACT';
+    envelope_id?: string | null;
+    event_id?: string | null;
   }): Promise<SignAccessTokenRow> {
     return this.prisma.signAccessToken.create({ data: { id: randomUUID(), ...input } });
   }
@@ -378,6 +385,26 @@ export class SignWebhookRepository {
       return { envelope, subscriptions: subscriptions.filter((s) => s.installation_id !== null || active) };
     }
     return { envelope, subscriptions };
+  }
+
+  // Addendum S6 — the deliveries of one event to the subscriptions of ONE
+  // application (Sign-owned record of who received what). Never another
+  // application's subscription.
+  deliveriesOfEventForApplication(event_id: string, application_id: string): Promise<(SignWebhookDeliveryRow & { subscription: SignWebhookSubscriptionRow })[]> {
+    return this.prisma.signWebhookDelivery.findMany({
+      where: { event_id, subscription: { application_id } },
+      include: { subscription: true },
+    });
+  }
+
+  // Operator recovery: a DEAD delivery (or every DEAD delivery of a subscription)
+  // goes back to PENDING with a fresh attempt budget.
+  async redrive(input: { delivery_id?: string; subscription_id?: string }): Promise<number> {
+    const r = await this.prisma.signWebhookDelivery.updateMany({
+      where: { status: 'DEAD', ...(input.delivery_id !== undefined ? { id: input.delivery_id } : {}), ...(input.subscription_id !== undefined ? { subscription_id: input.subscription_id } : {}) },
+      data: { status: 'PENDING', attempt_count: 0, next_attempt_at: null, last_error_code: null },
+    });
+    return r.count;
   }
 
   // Idempotent fan-out: one delivery row per (subscription, event).

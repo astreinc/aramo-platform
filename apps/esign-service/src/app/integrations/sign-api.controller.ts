@@ -55,8 +55,8 @@ export class SignApiController {
 
   @Get('availability')
   @SignApiBoundary(ESIGN_SCOPE.ENVELOPE_READ)
-  availability(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
-    return this.run(requestId, () => this.api.availability(auth));
+  availability(@AuthContext() auth: AuthContextType, @Req() req: SignApiRequest, @RequestId() requestId: string) {
+    return this.run(requestId, () => this.api.availability(auth, integration(req, requestId), requestId));
   }
 
   @Post('envelopes')

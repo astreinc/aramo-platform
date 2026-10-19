@@ -57,7 +57,8 @@ export class SignApiService {
   ) {}
 
   // D-12 — the Sign-owned availability contract (replaces direct subscription reads).
-  async availability(auth: AuthContextType) {
+  async availability(auth: AuthContextType, integ?: SignIntegrationContext, requestId = '') {
+    if (integ !== undefined) this.assertNotEventGrant(integ, requestId);
     const status = await this.allowance.getStatus(auth.tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
     if (!status.subscribed) return { available: false, reason: 'NOT_SUBSCRIBED' as const, allowance: null };
     const allowance = {
@@ -73,8 +74,29 @@ export class SignApiService {
     return { available: !exhausted, reason: exhausted ? ('LIMIT_REACHED' as const) : null, allowance };
   }
 
+  // Addendum S6 — an event-bound grant reads ONE envelope's executed documents and
+  // completion evidence, and nothing else (no availability, list, create, send,
+  // remind, void or general read).
+  private assertNotEventGrant(integ: SignIntegrationContext, requestId: string): void {
+    if (integ.grant_kind === 'EVENT_ARTIFACT') {
+      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'This grant only reads one completed document', 403, { requestId, details: { reason: 'grant_restricted' } });
+    }
+  }
+
+  private async artifactEnvelope(auth: AuthContextType, integ: SignIntegrationContext, envelope_id: string, requestId: string) {
+    if (integ.grant_kind !== 'EVENT_ARTIFACT') return this.visible(auth, integ, envelope_id, requestId);
+    if (integ.bound_envelope_id !== envelope_id) throw new AramoError('ENVELOPE_NOT_FOUND', `envelope ${envelope_id} not found`, 404, { requestId });
+    try {
+      return await this.repo.getEnvelope(auth.tenant_id, envelope_id);
+    } catch (e) {
+      if (e instanceof EnvelopeNotFoundError) throw new AramoError('ENVELOPE_NOT_FOUND', `envelope ${envelope_id} not found`, 404, { requestId });
+      throw e;
+    }
+  }
+
   // Loads the envelope only if this integration may see it (isolation + ownership).
   private async visible(auth: AuthContextType, integ: SignIntegrationContext, envelope_id: string, requestId: string) {
+    this.assertNotEventGrant(integ, requestId);
     let env;
     try {
       env = await this.repo.getEnvelope(auth.tenant_id, envelope_id);
@@ -109,16 +131,17 @@ export class SignApiService {
   }
 
   async evidence(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string) {
-    await this.visible(auth, integ, id, requestId);
+    await this.artifactEnvelope(auth, integ, id, requestId);
     return this.provider.getEvidence(auth.tenant_id, id);
   }
 
   async executed(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string) {
-    await this.visible(auth, integ, id, requestId);
+    await this.artifactEnvelope(auth, integ, id, requestId);
     return this.provider.getExecutedArtifacts(auth.tenant_id, id);
   }
 
   async forDocument(auth: AuthContextType, integ: SignIntegrationContext, document_ref: string, revision_ref: string, requestId: string) {
+    this.assertNotEventGrant(integ, requestId);
     const envelope = await this.provider.findEnvelopeForDocument(auth.tenant_id, document_ref, revision_ref);
     if (envelope === null) return { envelope: null };
     try {
@@ -146,6 +169,7 @@ export class SignApiService {
   }
 
   async create(auth: AuthContextType, integ: SignIntegrationContext, body: CreateBody, requestId: string) {
+    this.assertNotEventGrant(integ, requestId);
     const subject = typeof body?.subject === 'string' ? body.subject.trim() : '';
     if (subject === '' || subject.length > MAX_TITLE) throw bad(requestId, `subject is required (at most ${MAX_TITLE} characters)`);
     if (!Array.isArray(body.documents) || body.documents.length === 0 || body.documents.length > 20) throw bad(requestId, 'documents: 1 to 20 required');

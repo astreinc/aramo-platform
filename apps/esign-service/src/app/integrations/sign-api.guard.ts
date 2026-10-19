@@ -23,6 +23,9 @@ export interface SignIntegrationContext {
   mode: 'USER' | 'APPLICATION';
   external_actor: string | null;
   external_role: string | null;
+  // Addendum S6 — an EVENT_ARTIFACT grant is bound to ONE envelope's executed artifacts.
+  grant_kind: 'STANDARD' | 'EVENT_ARTIFACT';
+  bound_envelope_id: string | null;
 }
 
 export type SignApiRequest = Request & { authContext?: AuthContextType; signIntegration?: SignIntegrationContext; requestId?: string };
@@ -75,6 +78,8 @@ export class SignApiGuard implements CanActivate {
       mode: row.mode as 'USER' | 'APPLICATION',
       external_actor: row.external_actor,
       external_role: row.external_role,
+      grant_kind: row.grant_kind === 'EVENT_ARTIFACT' ? 'EVENT_ARTIFACT' : 'STANDARD',
+      bound_envelope_id: row.envelope_id,
     };
     return true;
   }

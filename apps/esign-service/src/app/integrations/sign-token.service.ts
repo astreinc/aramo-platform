@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { JwtAuthGuard } from '@aramo/auth';
-import { SignIntegrationRepository } from '@aramo/esign';
+import { EsignRepository, EnvelopeNotFoundError, SignIntegrationRepository, SignWebhookRepository } from '@aramo/esign';
 import { TenantEntitlementReader } from '@aramo/identity';
 
 import {
@@ -31,6 +31,11 @@ import { effectiveAuthority, type ApplicationView, type IntegrationMode } from '
 export const GRANT_CLIENT_CREDENTIALS = 'client_credentials';
 export const GRANT_TOKEN_EXCHANGE = 'urn:ietf:params:oauth:grant-type:token-exchange';
 export const TOKEN_TYPE_ACCESS_TOKEN = 'urn:ietf:params:oauth:token-type:access_token';
+// Addendum S6 ruling 1 — the event-bound executed-artifact read grant.
+export const GRANT_SIGN_EVENT = 'urn:aramo:params:oauth:grant-type:sign-event';
+// The lifecycle events whose envelope may be read through an event grant.
+const ARTIFACT_EVENT_TYPES = new Set(['esign.envelope.executed.v1']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Consumers whose user sessions may be delegated to Sign. Never platform
 // operators, portal sessions or ingestion credentials.
@@ -49,6 +54,7 @@ export interface TokenRequest {
   subject_token_type?: unknown;
   external_role?: unknown;
   external_actor?: unknown;
+  event_id?: unknown;
 }
 
 export interface TokenResponse {
@@ -59,6 +65,8 @@ export interface TokenResponse {
   tenant_id: string;
   installation_id: string;
   mode: IntegrationMode;
+  // Addendum S6 — set on an event-bound grant: the only envelope it can read.
+  envelope_id?: string;
 }
 
 function refuse(code: 'AUTH_REQUIRED' | 'INSUFFICIENT_PERMISSIONS' | 'VALIDATION_ERROR', status: number, reason: string, requestId: string, message: string): AramoError {
@@ -75,6 +83,8 @@ export class SignTokenService {
     private readonly repo: SignIntegrationRepository,
     private readonly jwt: JwtAuthGuard,
     private readonly entitlements: TenantEntitlementReader,
+    private readonly webhooks: SignWebhookRepository,
+    private readonly envelopes: EsignRepository,
   ) {}
 
   async issue(req: TokenRequest, requestId: string): Promise<TokenResponse> {
@@ -95,6 +105,8 @@ export class SignTokenService {
     }
     const app = cred.application;
     if (app.status !== 'ACTIVE') throw refuse('AUTH_REQUIRED', 401, 'invalid_client', requestId, 'Client authentication failed');
+
+    if (req.grant_type === GRANT_SIGN_EVENT) return this.issueEventGrant(req, cred, requestId);
 
     const scopeParam = req.scope;
     if (scopeParam !== undefined && (typeof scopeParam !== 'string' || scopeParam.length > 1000)) {
@@ -225,6 +237,80 @@ export class SignTokenService {
       tenant_id,
       installation_id: installation.id,
       mode,
+    };
+  }
+
+  // Addendum S6 ruling 1 — the AUTHENTICATED application presents the id of a
+  // completion event Sign delivered to its own subscription. Everything that
+  // scopes the grant comes from Sign's records: the delivery (which subscription
+  // received the event), the envelope (tenant, application, installation, status)
+  // and the installation (ACTIVE, the credential's own when installation-bound).
+  // The grant reads that ONE envelope's executed documents and completion
+  // evidence, for at most five minutes. The event id is never a bearer credential
+  // on its own: without the client's credential it is refused like any unknown
+  // client, and an event delivered to another application reads as not found.
+  private async issueEventGrant(
+    req: TokenRequest,
+    cred: NonNullable<Awaited<ReturnType<SignIntegrationRepository['findCredentialByClientId']>>>,
+    requestId: string,
+  ): Promise<TokenResponse> {
+    const event_id = typeof req.event_id === 'string' && UUID_RE.test(req.event_id) ? req.event_id : null;
+    if (event_id === null) throw refuse('VALIDATION_ERROR', 400, 'invalid_request', requestId, 'event_id is required');
+    const notAvailable = (reason: string): AramoError => {
+      this.log.warn(`event grant refused client=${cred.client_id} app=${cred.application.key} event=${event_id} reason=${reason} request=${requestId}`);
+      return refuse('INSUFFICIENT_PERMISSIONS', 403, 'event_not_available', requestId, 'No completed document is available to this application for that event');
+    };
+    const deliveries = (await this.webhooks.deliveriesOfEventForApplication(event_id, cred.application_id)).filter(
+      (d) => cred.installation_id === null || d.subscription.installation_id === cred.installation_id,
+    );
+    const delivery = deliveries[0];
+    if (delivery === undefined) throw notAvailable('not_delivered_to_client');
+    if (!ARTIFACT_EVENT_TYPES.has(delivery.event_type)) throw notAvailable('event_type');
+    const { tenant_id, envelope_id } = delivery;
+    let env;
+    try {
+      env = await this.envelopes.getEnvelope(tenant_id, envelope_id);
+    } catch (e) {
+      if (e instanceof EnvelopeNotFoundError) throw notAvailable('envelope_missing');
+      throw e;
+    }
+    if (env.status !== 'COMPLETED') throw notAvailable('not_completed');
+    if (env.source_application !== cred.application.key) throw notAvailable('other_application');
+    const installation = await this.repo.findInstallation(tenant_id, cred.application_id);
+    if (installation === null || installation.status !== 'ACTIVE') throw notAvailable('installation_inactive');
+    if (cred.installation_id !== null && cred.installation_id !== installation.id) throw notAvailable('installation_mismatch');
+    if (env.installation_id !== null && env.installation_id !== installation.id) throw notAvailable('installation_mismatch');
+    await this.assertEntitled(tenant_id, requestId);
+
+    const raw = newAccessToken();
+    const now = new Date();
+    await this.repo.createToken({
+      token_hash: digest(raw),
+      credential_id: cred.id,
+      installation_id: installation.id,
+      tenant_id,
+      mode: 'APPLICATION',
+      subject_id: installation.id,
+      external_actor: null,
+      external_role: null,
+      scopes: ['esign:envelope:read'],
+      audience: SIGN_API_AUDIENCE,
+      expires_at: new Date(now.getTime() + SIGN_ACCESS_TOKEN_TTL_SECONDS * 1000),
+      grant_kind: 'EVENT_ARTIFACT',
+      envelope_id,
+      event_id,
+    });
+    await this.repo.touchCredential(cred.id).catch(() => undefined);
+    this.log.log(`event grant issued client=${cred.client_id} app=${cred.application.key} tenant=${tenant_id} envelope=${envelope_id} event=${event_id} request=${requestId}`);
+    return {
+      access_token: raw,
+      token_type: 'Bearer',
+      expires_in: SIGN_ACCESS_TOKEN_TTL_SECONDS,
+      scope: 'esign:envelope:read',
+      tenant_id,
+      installation_id: installation.id,
+      mode: 'APPLICATION',
+      envelope_id,
     };
   }
 
