@@ -176,7 +176,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Aramo Sign launch
       for (const x of expired.filter((y) => y.envelope_id === e.envelopeId)) await notifications.envelopeExpired(x.tenant_id, x.envelope_id);
       const kinds = notifier.sent.filter((n) => n.kind === 'SIGNATURE_EXPIRED');
       expect(kinds.map((n) => n.audience ?? 'SIGNER').sort()).toEqual(['SENDER', 'SIGNER']);
-      expect(kinds.find((n) => n.audience === 'SENDER')?.console_url).toBe(`https://esign.example.test/sign/envelopes/${e.envelopeId}`);
+      // Sign Unified Product S-2 — one Sign origin: the console link uses the same
+      // base as signer links (ESIGN_SIGN_WEB_BASE_URL wins over the pre-S-2 sender name).
+      expect(kinds.find((n) => n.audience === 'SENDER')?.console_url).toBe(`https://sign.example.test/sign/envelopes/${e.envelopeId}`);
     });
   });
 
@@ -269,8 +271,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Aramo Sign launch
       await expect(service.resolveExecutedAccess(raw)).rejects.toBeInstanceOf(SigningSessionExpiredError);
     });
 
-    it('no link is minted when the signer web origin is not configured', async () => {
+    it('no link is minted when no Sign origin is configured', async () => {
+      // Sign Unified Product S-2 — ARAMO_SIGN_BASE_URL, then the two pre-S-2 names.
+      delete process.env['ARAMO_SIGN_BASE_URL'];
       delete process.env['ESIGN_SIGN_WEB_BASE_URL'];
+      delete process.env['ESIGN_SENDER_WEB_BASE_URL'];
       const e = await sendEnvelope({ signers: 1, owned: true });
       await signAll(e);
       const n = notifier.sent.find((x) => x.kind === 'SIGNATURE_COMPLETED' && (x.audience ?? 'SIGNER') === 'SIGNER')!;
