@@ -191,6 +191,16 @@ export class SubscriptionLifecycleService {
     };
   }
 
+  /** Operator support view — the tenant's most recent provider events (no payloads). */
+  async recentBillingEvents(tenant_id: string, limit = 20): Promise<{ event_type: string; outcome: string; detail: string | null; event_created_at: Date; received_at: Date }[]> {
+    return this.prisma.billingEvent.findMany({
+      where: { tenant_id },
+      orderBy: { received_at: 'desc' },
+      take: Math.min(Math.max(limit, 1), 100),
+      select: { event_type: true, outcome: true, detail: true, event_created_at: true, received_at: true },
+    });
+  }
+
   /** The subscribing owner of the tenant's open, sending SELF_SERVICE subscription. */
   async sendingOwner(tenant_id: string, at: Date = new Date()): Promise<string | null> {
     const row = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id, ended_at: null, source: 'SELF_SERVICE' } });

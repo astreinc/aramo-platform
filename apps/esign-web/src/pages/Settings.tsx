@@ -2,9 +2,9 @@ import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { logout } from '@aramo/fe-foundation';
 
 import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
+import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
-import { useWorkspace } from '../workspace';
 
 // Sign Settings (change log §B): Personal (Shared · read-only vs Sign-only),
 // Branding, Signing security, Integrations, Envelope audit, and the two links out

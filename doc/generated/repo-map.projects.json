@@ -2769,6 +2769,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6645,6 +6651,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7802,6 +7814,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -9286,7 +9304,14 @@
         "project": "esign-service",
         "status": "excluded"
       },
-      { "project": "esign-service", "status": "production" }
+      { "project": "esign-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/talent-embedding": [
       {

@@ -142,6 +142,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     const sub = billing.complete('active');
     expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), AT)).outcome).toBe('APPLIED');
     expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), AT)).outcome).toBe('DUPLICATE');
+    // Operator view: the tenant's events, newest first, no payloads.
+    const events = await svc.recentBillingEvents(t);
+    expect(events).toHaveLength(1);
+    expect(Object.keys(events[0]!).sort()).toEqual(['detail', 'event_created_at', 'event_type', 'outcome', 'received_at']);
     const again = await svc.handleEvent(event('evt_b2', sub.subscription_ref), AT);
     expect(again).toMatchObject({ outcome: 'APPLIED' });
     expect('activated_owner_user_id' in again && again.activated_owner_user_id).toBeFalsy();

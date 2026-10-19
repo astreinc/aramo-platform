@@ -128,17 +128,26 @@ function checkRepo(): Issue[] {
     return issues;
   }
 
-  // (k) PX-1 — esign.aramo.ai (Aramo Sign sender console). Its ONLY /v1 location is
-  // the authenticated sender zone, proxied to esign-service with an upload-sized
-  // body limit; the SPA is served from /srv/esign. Never apps/api, never the
-  // internal envelopes or signer surfaces.
-  const esignV1 = [...esign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1]);
-  if (esignV1.length !== 1 || esignV1[0] !== '/v1/esign/sender/') {
-    issues.push({ where: TEMPLATE, reason: `(k) esign block must expose exactly one /v1 location, /v1/esign/sender/ (found: ${esignV1.join(', ') || 'none'})` });
+  // (k) PX-1 — esign.aramo.ai (Aramo Sign sender console). Its /v1 locations are
+  // EXACTLY: the authenticated sender zone and (Aramo Sign launch — Final
+  // Implementation Authorization) self-service billing, both on esign-service,
+  // and the public signup on platform-admin. Never apps/api, never the internal
+  // envelopes or signer surfaces. The SPA is served from /srv/esign.
+  const ESIGN_V1 = new Map<string, string>([
+    ['/v1/esign/sender/', 'esign-service:3003'],
+    ['/v1/esign/billing/', 'esign-service:3003'],
+    ['/v1/signup/sign/', 'platform-admin:3002'],
+  ]);
+  const esignV1 = [...esign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
+  const expected = [...ESIGN_V1.keys()];
+  if (esignV1.length !== expected.length || [...esignV1].sort().join('|') !== [...expected].sort().join('|')) {
+    issues.push({ where: TEMPLATE, reason: `(k) esign block must expose exactly the /v1 locations ${expected.join(', ')} (found: ${esignV1.join(', ') || 'none'})` });
   } else {
-    const loc = locationBody(esign.body, 'location /v1/esign/sender/') ?? '';
-    if (!/proxy_pass\s+http:\/\/esign-service:3003;/.test(loc)) issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/sender/ must proxy_pass to esign-service:3003' });
-    if (!/client_max_body_size\s+\d+m;/.test(loc)) issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/sender/ must set client_max_body_size (PDF upload)' });
+    for (const [path, upstream] of ESIGN_V1) {
+      const loc = locationBody(esign.body, `location ${path}`) ?? '';
+      if (!loc.includes(`proxy_pass http://${upstream};`)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must proxy_pass to ${upstream}` });
+      if (!/client_max_body_size\s+\d+[mk];/.test(loc)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must set client_max_body_size` });
+    }
   }
   const esignRoot = locationBody(esign.body, 'location / {') ?? '';
   if (!/root\s+\/srv\/esign;/.test(esignRoot)) issues.push({ where: TEMPLATE, reason: '(k) esign catch-all `location /` must `root /srv/esign;`' });

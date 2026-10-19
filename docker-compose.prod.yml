@@ -171,6 +171,12 @@ services:
       # runtime behavior. Only flip to "true" per doc/runbooks/pgvector-prod-enablement.md (STEP 10),
       # AFTER the pgvector runtime + both vector migrations are verified.
       - EMBEDDING_PROCESSING_ENABLED=${EMBEDDING_PROCESSING_ENABLED:-false}
+      # Aramo Sign launch — the App Home Sign tile (GET /v1/me/products). DARK by
+      # default: only the literal "true" lights it; lighting it is an activation
+      # decision made in the box .env (separately authorized). The target URL
+      # defaults to https://esign.aramo.ai/ in code.
+      - ARAMO_SIGN_ENTRY_ENABLED=${ARAMO_SIGN_ENTRY_ENABLED:-false}
+      - ARAMO_SIGN_ENTRY_URL=${ARAMO_SIGN_ENTRY_URL:-https://esign.aramo.ai/}
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
@@ -407,6 +413,10 @@ services:
       - BILLING_PAST_DUE_GRACE_DAYS
       - ESIGN_BILLING_RECONCILE_ENABLED
       - ESIGN_BILLING_RECONCILE_INTERVAL_MS
+      # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
+      # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
+      - ESIGN_KMS_KEY_ID
+      - ESIGN_KMS_SIGNING_ALGORITHM
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).

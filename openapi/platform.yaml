@@ -405,6 +405,79 @@ paths:
         '404':
           $ref: '#/components/responses/PlatformTenantNotFound'
 
+  /platform/tenants/{tenant_id}/sign:
+    get:
+      operationId: getTenantSignAccount
+      tags: [Platform Tenants]
+      summary: Read a tenant's Aramo Sign account (operator support view).
+      description: |
+        Aramo Sign launch — READ-ONLY: the tenant's product capabilities, the
+        effective Sign subscription (plan, status, period, grace, cancellation),
+        this period's envelope usage, and the 20 most recent billing-provider
+        events (type, outcome, times; no payloads). No mutation.
+
+        Requires scope `platform:tenant:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: The tenant's Sign account.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tenant_id, tenant_kind, capabilities, sign_entitled, subscription, allowance, billing_available, billing_events]
+                properties:
+                  tenant_id:
+                    type: string
+                    format: uuid
+                  tenant_kind:
+                    type: string
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+                  sign_entitled:
+                    type: boolean
+                  subscription:
+                    type: object
+                    nullable: true
+                    description: Same shape as esign.yaml BillingAccount.subscription.
+                  allowance:
+                    type: object
+                    description: Subscribed allowance status (limit, used, remaining, period) or { subscribed false, state }.
+                  billing_available:
+                    type: boolean
+                  billing_events:
+                    type: array
+                    items:
+                      type: object
+                      required: [event_type, outcome, event_created_at, received_at]
+                      properties:
+                        event_type:
+                          type: string
+                        outcome:
+                          type: string
+                          enum: [APPLIED, IGNORED, STALE]
+                        detail:
+                          type: string
+                          nullable: true
+                        event_created_at:
+                          type: string
+                          format: date-time
+                        received_at:
+                          type: string
+                          format: date-time
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
   /platform/tenants/{tenant_id}/invitations:
     post:
       operationId: inviteUserIntoTenant

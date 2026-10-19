@@ -3,7 +3,7 @@ import { createHmac } from 'node:crypto';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import type { IdentityRepository, IdentityService } from '@aramo/identity';
-import { BillingRefusedError, StripeBillingProvider, type SubscriptionLifecycleService } from '@aramo/subscription';
+import { BillingProviderUnavailableError, BillingRefusedError, StripeBillingProvider, type SubscriptionLifecycleService } from '@aramo/subscription';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EsignBillingController, billingHttpError } from '../app/billing/esign-billing.controller.js';
@@ -79,7 +79,6 @@ describe('EsignBillingController', () => {
     const dup = setup({ handleEvent: vi.fn(async () => ({ outcome: 'DUPLICATE', tenant_id: null })) });
     expect((await dup.controller.stripeWebhook(req(body), signed(body), 'r')).outcome).toBe('DUPLICATE');
     expect(dup.owners.activate).not.toHaveBeenCalled();
-    const { BillingProviderUnavailableError } = await import('@aramo/subscription');
     const down = setup({ handleEvent: vi.fn(async () => { throw new BillingProviderUnavailableError('down'); }) });
     await expect(down.controller.stripeWebhook(req(body), signed(body), 'r')).rejects.toMatchObject({ code: 'ESIGN_BILLING_UNAVAILABLE', statusCode: 503 });
   });
