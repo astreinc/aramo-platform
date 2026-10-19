@@ -16,20 +16,26 @@ import { BillingPanel, checkoutReturn } from './Billing';
 vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
 
 const GiB = 1024 ** 3;
-const unl = (k: string) => ({ allowance_key: k, included_quantity: null, unlimited: true, period: 'MONTHLY' });
+// `available` mirrors the backend availability registry: only envelopes,
+// storage and team collaboration are built; forms, templates and AI assist are not.
+const unl = (k: string) => ({ allowance_key: k, included_quantity: null, unlimited: true, period: 'MONTHLY', available: k === 'esign.envelopes' });
 const feats = [
-  { feature_key: 'esign.ai_assist_summary', enabled: true },
-  { feature_key: 'esign.advanced_analytics', enabled: false },
-  { feature_key: 'esign.team_collaboration', enabled: true },
-  { feature_key: 'esign.custom_domain', enabled: false },
+  { feature_key: 'esign.ai_assist_summary', enabled: true, available: false },
+  { feature_key: 'esign.advanced_analytics', enabled: false, available: false },
+  { feature_key: 'esign.team_collaboration', enabled: true, available: true },
+  { feature_key: 'esign.custom_domain', enabled: false, available: false },
+];
+const caps = (storage: number) => [
+  { capacity_key: 'esign.templates', limit: null, unlimited: true, available: false },
+  { capacity_key: 'esign.storage_bytes', limit: storage, unlimited: false, available: true },
 ];
 const BUSINESS: BillingPlan = {
   key: 'aramo-sign-standard-business-v1', name: 'Standard Business', description: null, tenant_kind: 'BUSINESS', sales_model: 'SELF_SERVICE', status: 'ACTIVE',
   price: { amount_minor: 2000, currency: 'USD', interval: 'MONTH' }, reference_price: null, commitment_months: 12, eligibility: null, eligible: true, support_tier: 'BASIC', activation_note: null,
-  allowances: [unl('esign.envelopes'), unl('esign.forms')], capacities: [{ capacity_key: 'esign.templates', limit: null, unlimited: true }, { capacity_key: 'esign.storage_bytes', limit: 10 * GiB, unlimited: false }],
+  allowances: [unl('esign.envelopes'), unl('esign.forms')], capacities: caps(10 * GiB),
   features: feats, purchasable: true,
 };
-const PRO: BillingPlan = { ...BUSINESS, key: 'aramo-sign-standard-professional-v1', name: 'Standard Professional', price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' }, eligibility: 'ATS_SUBSCRIPTION', eligible: false, purchasable: false, capacities: [{ capacity_key: 'esign.templates', limit: null, unlimited: true }, { capacity_key: 'esign.storage_bytes', limit: 25 * GiB, unlimited: false }] };
+const PRO: BillingPlan = { ...BUSINESS, key: 'aramo-sign-standard-professional-v1', name: 'Standard Professional', price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' }, eligibility: 'ATS_SUBSCRIPTION', eligible: false, purchasable: false, capacities: caps(25 * GiB) };
 const ENTERPRISE: BillingPlan = { ...BUSINESS, key: 'aramo-sign-enterprise-v1', name: 'Enterprise', sales_model: 'CONTACT_SALES', price: null, commitment_months: null, support_tier: 'CONTRACTED', allowances: [], capacities: [], features: [], purchasable: false };
 const FREE: BillingPlan = { ...BUSINESS, key: 'aramo-sign-free-personal-v1', name: 'Free Personal', tenant_kind: 'PERSONAL', sales_model: 'FREE', status: 'INACTIVE', purchasable: false };
 const CATALOG = { plans: [FREE, BUSINESS, PRO, ENTERPRISE], terms: null, sales_contact_url: null };
@@ -91,11 +97,12 @@ describe('BillingPanel', () => {
     expect(business).toHaveTextContent('$20/month');
     expect(business).toHaveTextContent('12-month commitment, billed monthly · plus applicable tax');
     expect(business).toHaveTextContent('Unlimited E-Signs');
-    expect(business).toHaveTextContent('Unlimited forms');
-    expect(business).toHaveTextContent('Unlimited templates');
     expect(business).toHaveTextContent('10 GB storage');
-    expect(business).toHaveTextContent('AI assist summary');
     expect(business).toHaveTextContent('Team collaboration');
+    // Entitled but not built: never advertised as delivered.
+    expect(business).not.toHaveTextContent('forms');
+    expect(business).not.toHaveTextContent('templates');
+    expect(business).not.toHaveTextContent('AI assist');
     expect(business).not.toHaveTextContent('Advanced analytics');
     // Unsubstantiated comparison price is never shown.
     expect(business).not.toHaveTextContent('$30');

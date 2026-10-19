@@ -79,6 +79,12 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     if (e.reason === 'TERMS_NOT_ACCEPTED') {
       return new AramoError('VALIDATION_ERROR', 'Accept the terms to continue', 400, { requestId, details: { reason: e.reason } });
     }
+    if (e.reason === 'PORTAL_NOT_CONFIGURED') {
+      return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Managing billing online isn’t available yet. Contact Aramo to change your subscription.', 503, {
+        requestId,
+        details: { reason: e.reason },
+      });
+    }
     if (e.reason === 'TERMS_NOT_APPROVED') {
       return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: e.reason } });
     }

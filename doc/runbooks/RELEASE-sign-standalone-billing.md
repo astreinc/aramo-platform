@@ -18,7 +18,9 @@ Each of these needs separate authorization: deploying, live keys, charging cards
 
 - **Unlimited** is explicit: `unlimited = true` with a null quantity, never a sentinel number. Every send is still metered.
 - **"$30 original"** is stored as a reference price with `reference_price_substantiated = false`, so it is never shown. Showing it requires a governed data change after it has been substantiated.
-- **Features:** Standard plans include AI assist summary and team collaboration. Advanced analytics and custom domain are off. AI assist summary is catalogued but **not built**.
+- **Features:** Standard plans include AI assist summary and team collaboration. Advanced analytics and custom domain are off.
+- **Entitlement ≠ availability** (A1 review): `libs/subscription/src/lib/feature-availability.ts` marks what is built. Built: E-Signs, storage, team collaboration (the shared organization workspace with role-based access). Not built: forms, templates and AI assist summary. These stay in the plan definitions but are never advertised. The catalog reports `available` for each item, and the console shows only available ones.
+- **Legacy plans:** `aramo-sign-business-v1` (the superseded 100/month plan seeded by an earlier revision of the M2 migration) is retired by A1 wherever it exists. It becomes non-sellable, inactive, operator-only and out of the catalog; its subscriptions are kept. An upgrade replay test proves this.
 
 ## What ships
 
@@ -59,7 +61,8 @@ Each of these needs separate authorization: deploying, live keys, charging cards
 
 **Subscriptions and sending**
 - A subscription opens only from Stripe's verified state, re-fetched before it is applied. The checkout initiator receives `esign_owner` only if they hold `org_admin` or `tenant_owner`.
-- **Standard Professional** checkout requires the live `ats` entitlement. A later lapse is recorded as `eligibility_state = LAPSED`. Sending and the commitment are kept and the lapse is shown to the tenant and the operator. There is no automatic downgrade or price change.
+- **Standard Professional is OFF until the PO confirms the qualifying rule (D16).** The platform can prove the live `ats` entitlement on an ACTIVE tenant, but not that the ATS relationship is paid: ATS has no commercial subscription record. With `SIGN_PROFESSIONAL_ELIGIBILITY=ATS_ENTITLEMENT`, checkout requires both. A later lapse is recorded as `eligibility_state = LAPSED`. Sending and the commitment are kept and the lapse is shown to the tenant and the operator. There is no automatic downgrade or price change.
+- **Billing portal for commitment plans:** refused (`PORTAL_NOT_CONFIGURED`) unless `STRIPE_PORTAL_CONFIGURATION` names a Stripe portal configuration whose cancellation settings match the approved annual terms. This prevents the default portal from implying month-to-month cancellation.
 - **Commitment:** `commitment_end` is the anchor plus 12 months, tracked separately from the monthly `current_period_end`. Cancelling inside the commitment sets `cancel_requested_within_commitment` for follow-up. No fee is applied.
 - **Past due:** sending continues for `BILLING_PAST_DUE_GRACE_DAYS` (default 7), then stops. `unpaid` or `paused` stops at once. `canceled` ends the subscription. Envelopes already sent can always be signed and downloaded.
 
@@ -77,7 +80,7 @@ Each of these needs separate authorization: deploying, live keys, charging cards
    - Standard Professional, $15.00.
 
    The Stripe amount must equal the catalog list price.
-2. **Billing portal:** payment method, invoices. **Cancellation settings are a commercial decision**, given the 12-month commitment (D4).
+2. **Billing portal:** create a dedicated portal configuration (payment method, invoices) whose cancellation settings follow the approved annual terms (D4), and set `STRIPE_PORTAL_CONFIGURATION=bpc_…`. Without it the portal stays refused for commitment plans.
 3. **Webhook** `https://esign.aramo.ai/v1/esign/billing/webhook/stripe`, with these events:
    - `checkout.session.completed` and `checkout.session.async_payment_succeeded`;
    - the three subscription lifecycle events (created, updated, deleted);
@@ -133,3 +136,6 @@ Stripe's vendor-defined identifiers appear only in `libs/subscription/src/lib/bi
 | D13 | AI assist summary: build, data-processing disclosure, provider | PO / Lead | marketing the feature | catalogued, not built |
 | D14 | Operator capability grant/revoke and operator-opened subscriptions | Lead / PO | — | not built (read-only operator view) |
 | D15 | Host binding `enforce`; KMS evidence key and dedicated bucket (Terraform; `doc4-esign.tf:18`) | Lead / infra | hardening | `log` mode; software signer |
+| D16 | What qualifies as an ATS subscription for Standard Professional: is the live `ats` entitlement on an ACTIVE tenant enough, or is a paid ATS contract record required (none exists today)? | PO / Lead | Standard Professional sales | OFF (`SIGN_PROFESSIONAL_ELIGIBILITY` unset) |
+| D17 | Confirm "team collaboration" means the shared organization workspace with role-based Sign access (built), or something more | PO | advertising it | advertised as built |
+| D18 | The Stripe portal configuration for commitment plans (cancellation settings matching D4) | PO / Legal | online billing management | portal refused for commitment plans |

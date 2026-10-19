@@ -1492,7 +1492,7 @@ components:
           type: array
           items:
             type: object
-            required: [allowance_key, included_quantity, unlimited, period]
+            required: [allowance_key, included_quantity, unlimited, period, available]
             properties:
               allowance_key:
                 type: string
@@ -1503,11 +1503,14 @@ components:
               period:
                 type: string
                 enum: [MONTHLY]
+              available:
+                type: boolean
+                description: The capability is built and operational (an entitlement that is not available is never advertised).
         capacities:
           type: array
           items:
             type: object
-            required: [capacity_key, limit, unlimited]
+            required: [capacity_key, limit, unlimited, available]
             properties:
               capacity_key:
                 type: string
@@ -1515,16 +1518,22 @@ components:
                 type: [integer, 'null']
               unlimited:
                 type: boolean
+              available:
+                type: boolean
         features:
           type: array
           items:
             type: object
-            required: [feature_key, enabled]
+            required: [feature_key, enabled, available]
             properties:
               feature_key:
                 type: string
               enabled:
                 type: boolean
+                description: Included by the plan (entitlement).
+              available:
+                type: boolean
+                description: Built and operational (launch availability).
         purchasable:
           type: boolean
     BillingAccount:

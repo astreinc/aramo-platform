@@ -172,8 +172,8 @@ export class StripeBillingProvider implements BillingProviderPort {
     return { session_ref: id, url };
   }
 
-  async createPortalSession(account_ref: string, return_url: string): Promise<{ url: string }> {
-    const s = await this.call('POST', '/v1/billing_portal/sessions', form({ ...wirePortalAccountParams(account_ref), return_url }));
+  async createPortalSession(account_ref: string, return_url: string, configuration?: string): Promise<{ url: string }> {
+    const s = await this.call('POST', '/v1/billing_portal/sessions', form({ ...wirePortalAccountParams(account_ref), return_url, configuration }));
     const url = asString(s['url']);
     if (url === null) throw new BillingProviderUnavailableError('portal session without url');
     return { url };

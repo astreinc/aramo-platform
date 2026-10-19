@@ -62,7 +62,7 @@ import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapte
     // Multi-Provider directive §B — the plan/subscription allowance authority.
     // A1 — Standard Professional eligibility reads the live ATS entitlement.
     SubscriptionModule.forRoot({
-      imports: [EntitlementModule],
+      imports: [EntitlementModule, IdentityCoreModule],
       providers: [{ provide: PLAN_ELIGIBILITY_PORT, useClass: AtsPlanEligibilityAdapter }],
     }),
     // PX-V1 §8 (D-2) — the authenticated sender zone (v1/esign/sender/*). The

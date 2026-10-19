@@ -192,9 +192,11 @@ export interface BillingPlan {
   eligible: boolean;
   support_tier: string | null;
   activation_note: string | null;
-  allowances: { allowance_key: string; included_quantity: number | null; unlimited: boolean; period: string }[];
-  capacities: { capacity_key: string; limit: number | null; unlimited: boolean }[];
-  features: { feature_key: string; enabled: boolean }[];
+  // `available` — the capability is built and operational. Anything not
+  // available is never advertised (A1 review: entitlement ≠ launch availability).
+  allowances: { allowance_key: string; included_quantity: number | null; unlimited: boolean; period: string; available?: boolean }[];
+  capacities: { capacity_key: string; limit: number | null; unlimited: boolean; available?: boolean }[];
+  features: { feature_key: string; enabled: boolean; available?: boolean }[];
   purchasable: boolean;
 }
 

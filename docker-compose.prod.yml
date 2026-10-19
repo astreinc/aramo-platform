@@ -424,6 +424,12 @@ services:
       - ESIGN_DISCLOSURE_VERSION
       - SIGN_POST_TERMINATION_EXPORT_DAYS
       - SIGN_SALES_CONTACT_URL
+      # A1 review — Standard Professional eligibility stays OFF until the PO
+      # confirms the qualifying rule (ATS_ENTITLEMENT = live ats + ACTIVE tenant);
+      # commitment plans use only an explicit Stripe portal configuration whose
+      # cancellation settings match the approved terms (unset ⇒ portal refused).
+      - SIGN_PROFESSIONAL_ELIGIBILITY
+      - STRIPE_PORTAL_CONFIGURATION
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).

@@ -55,3 +55,4 @@ export {
   type LegalDocumentVersion,
 } from './lib/legal/legal-documents.js';
 export { LegalAcceptanceService } from './lib/legal/legal-acceptance.service.js';
+export { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } from './lib/feature-availability.js';

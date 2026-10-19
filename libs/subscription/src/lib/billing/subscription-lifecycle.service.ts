@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { type AllowanceReadResult, AllowanceService, subscriptionSends } from '../allowance.service.js';
 import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
+import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -50,6 +51,7 @@ export type BillingRefusal =
   | 'PLAN_NOT_ELIGIBLE'
   | 'TERMS_NOT_ACCEPTED'
   | 'TERMS_NOT_APPROVED'
+  | 'PORTAL_NOT_CONFIGURED'
   | 'ALREADY_SUBSCRIBED'
   | 'NO_BILLING_ACCOUNT';
 
@@ -81,9 +83,11 @@ export interface CatalogPlanView {
   eligible: boolean;
   support_tier: string | null;
   activation_note: string | null;
-  allowances: { allowance_key: string; included_quantity: number | null; unlimited: boolean; period: string }[];
-  capacities: { capacity_key: string; limit: number | null; unlimited: boolean }[];
-  features: { feature_key: string; enabled: boolean }[];
+  // `available` = the capability is built and operational (A1 review: an
+  // entitlement that is not available is never advertised as delivered).
+  allowances: { allowance_key: string; included_quantity: number | null; unlimited: boolean; period: string; available: boolean }[];
+  capacities: { capacity_key: string; limit: number | null; unlimited: boolean; available: boolean }[];
+  features: { feature_key: string; enabled: boolean; available: boolean }[];
   purchasable: boolean;
 }
 
@@ -106,7 +110,7 @@ export interface SubscriptionView {
   cancel_requested_within_commitment: boolean;
   eligibility_state: string | null;
   list_price: { amount_minor: number; currency: string; interval: string | null } | null;
-  features: { feature_key: string; enabled: boolean }[];
+  features: { feature_key: string; enabled: boolean; available: boolean }[];
   // Post-termination export access, only when the (legal-pending) window is configured.
   export_access_until: Date | null;
 }
@@ -224,7 +228,8 @@ export class SubscriptionLifecycleService {
   async catalog(tenant_id: string | null = null): Promise<CatalogPlanView[]> {
     const prices = this.prices();
     const plans = await this.prisma.plan.findMany({
-      where: { display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR } },
+      // Public catalog only: operator / legacy plans are never presented.
+      where: { display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR }, sales_model: { not: 'OPERATOR' } },
       include: { allowances: true, capacities: true, features: true },
       orderBy: [{ display_order: 'asc' }, { key: 'asc' }],
     });
@@ -246,9 +251,20 @@ export class SubscriptionLifecycleService {
         eligible,
         support_tier: p.support_tier,
         activation_note: p.activation_note,
-        allowances: p.allowances.map((a) => ({ allowance_key: a.allowance_key, included_quantity: a.included_quantity, unlimited: a.unlimited, period: a.period })),
-        capacities: p.capacities.map((c) => ({ capacity_key: c.capacity_key, limit: c.limit_quantity === null ? null : Number(c.limit_quantity), unlimited: c.unlimited })),
-        features: p.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled })),
+        allowances: p.allowances.map((a) => ({
+          allowance_key: a.allowance_key,
+          included_quantity: a.included_quantity,
+          unlimited: a.unlimited,
+          period: a.period,
+          available: isFeatureAvailable(a.allowance_key),
+        })),
+        capacities: p.capacities.map((c) => ({
+          capacity_key: c.capacity_key,
+          limit: c.limit_quantity === null ? null : Number(c.limit_quantity),
+          unlimited: c.unlimited,
+          available: isFeatureAvailable(c.capacity_key),
+        })),
+        features: p.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
         purchasable: p.sellable && p.status === 'ACTIVE' && this.billing.isConfigured() && prices.has(p.key) && eligible,
       });
     }
@@ -292,7 +308,7 @@ export class SubscriptionLifecycleService {
                 row.plan.list_price_minor !== null && row.plan.currency !== null
                   ? { amount_minor: row.plan.list_price_minor, currency: row.plan.currency, interval: row.plan.billing_interval }
                   : null,
-              features: row.plan.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled })),
+              features: row.plan.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
               export_access_until: row.ended_at !== null && exportDays !== null ? new Date(row.ended_at.getTime() + exportDays * 86_400_000) : null,
             },
       allowance,
@@ -401,7 +417,16 @@ export class SubscriptionLifecycleService {
       orderBy: { started_at: 'desc' },
     });
     if (row?.billing_account_ref == null) throw new BillingRefusedError('NO_BILLING_ACCOUNT');
-    return this.billing.createPortalSession(row.billing_account_ref, return_url);
+    // A1 review — a commitment plan must not reach the provider's DEFAULT portal,
+    // whose cancellation settings could contradict the (pending) annual terms.
+    // It needs an explicit portal configuration set up to match the approved
+    // contract (STRIPE_PORTAL_CONFIGURATION); until then the portal is refused.
+    const plan = await this.prisma.plan.findUnique({ where: { id: row.plan_id } });
+    const configuration = process.env['STRIPE_PORTAL_CONFIGURATION']?.trim() || undefined;
+    if (plan?.commitment_months != null && configuration === undefined) {
+      throw new BillingRefusedError('PORTAL_NOT_CONFIGURED', 'the billing portal for commitment plans needs an approved portal configuration');
+    }
+    return this.billing.createPortalSession(row.billing_account_ref, return_url, configuration);
   }
 
   /** A verified provider event. At most once per provider event id. */

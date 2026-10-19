@@ -1667,6 +1667,7 @@
       "CapacityService",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
+      "FEATURE_AVAILABILITY",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LegalAcceptanceService",
@@ -1682,6 +1683,7 @@
       "approvedLegalDocument",
       "assertNotProduction",
       "billingPeriodAt",
+      "isFeatureAvailable",
       "legalRef",
       "mapProviderStatus",
       "openDevelopmentSubscription",
@@ -5848,6 +5850,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-catalog-a1-upgrade.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/commercial-catalog-a1.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -7844,6 +7852,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

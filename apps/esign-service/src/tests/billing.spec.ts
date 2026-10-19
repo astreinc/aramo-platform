@@ -118,6 +118,10 @@ describe('EsignBillingController', () => {
   it('maps every billing refusal to a typed error', () => {
     expect(billingHttpError(new BillingRefusedError('BILLING_UNAVAILABLE'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_UNAVAILABLE', statusCode: 503 });
     expect(billingHttpError(new BillingRefusedError('PLAN_NOT_SELLABLE'), 'r')).toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
+    expect(billingHttpError(new BillingRefusedError('PORTAL_NOT_CONFIGURED'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_UNAVAILABLE', statusCode: 503, context: { details: { reason: 'PORTAL_NOT_CONFIGURED' } } });
+    expect(billingHttpError(new BillingRefusedError('PLAN_NOT_ELIGIBLE'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409 });
+    expect(billingHttpError(new BillingRefusedError('TERMS_NOT_APPROVED'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_UNAVAILABLE', statusCode: 503 });
+    expect(billingHttpError(new BillingRefusedError('TERMS_NOT_ACCEPTED'), 'r')).toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
     expect(billingHttpError(new BillingRefusedError('ALREADY_SUBSCRIBED'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409, context: { details: { reason: 'ALREADY_SUBSCRIBED' } } });
     expect(billingHttpError(new BillingRefusedError('NO_BILLING_ACCOUNT'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', context: { details: { reason: 'NO_BILLING_ACCOUNT' } } });
     expect(billingHttpError(new Error('secret detail'), 'r')).toMatchObject({ code: 'INTERNAL_ERROR', message: 'Billing request failed' });

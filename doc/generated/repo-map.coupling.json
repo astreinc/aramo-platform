@@ -18722,6 +18722,11 @@
     {
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/lib/legal/legal-documents.ts"
     },
     {

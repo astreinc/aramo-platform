@@ -22,6 +22,16 @@ ALTER TABLE "subscription"."Plan"
     ADD COLUMN "support_tier" TEXT,
     ADD COLUMN "activation_note" TEXT,
     ADD COLUMN "display_order" INTEGER NOT NULL DEFAULT 100;
+-- Retire the superseded single paid plan wherever an earlier revision of
+-- 20261019100000 seeded it (aramo-sign-business-v1, 100/month, sellable):
+-- legacy, non-sellable, out of the public catalog. Its subscriptions (if any)
+-- are kept untouched. Must run before "Plan_sellable_check" below. No-op on a
+-- database that never had it.
+UPDATE "subscription"."Plan"
+   SET "sellable" = false, "sales_model" = 'OPERATOR', "status" = 'INACTIVE', "display_order" = 900,
+       "activation_note" = 'Superseded by Commercial Plans Amendment A1 (100 envelopes / month). Retained for existing subscriptions only; not offered.'
+ WHERE "key" = 'aramo-sign-business-v1';
+
 ALTER TABLE "subscription"."Plan"
     ADD CONSTRAINT "Plan_tenant_kind_check" CHECK ("tenant_kind" IS NULL OR "tenant_kind" IN ('BUSINESS', 'PERSONAL')),
     ADD CONSTRAINT "Plan_sales_model_check" CHECK ("sales_model" IN ('SELF_SERVICE', 'FREE', 'CONTACT_SALES', 'OPERATOR')),

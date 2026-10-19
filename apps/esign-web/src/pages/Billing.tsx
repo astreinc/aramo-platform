@@ -14,6 +14,8 @@ import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 // substantiated; Standard Professional only for ATS-eligible organizations;
 // Enterprise is "Contact sales"; unlimited usage is a count without a ceiling;
 // storage is metered against the plan; terms are offered only once approved.
+// A1 review: a plan entitlement that is not yet built (templates, forms, AI
+// assist summary) is never advertised — only `available` capabilities show.
 
 const STATUS_LABEL: Record<string, [string, string]> = {
   TRIALING: ['Trial', 'blue'],
@@ -119,13 +121,13 @@ function Usage({ a }: { a: BillingAccount }) {
 
 function allowanceLine(p: BillingPlan, key: string, noun: string): string | null {
   const a = p.allowances.find((x) => x.allowance_key === key);
-  if (a === undefined) return null;
+  if (a === undefined || a.available !== true) return null;
   return a.unlimited ? `Unlimited ${noun}` : `${a.included_quantity ?? 0} ${noun} per month`;
 }
 
 function capacityLine(p: BillingPlan, key: string, noun: (n: number) => string, unlimitedText: string): string | null {
   const c = p.capacities.find((x) => x.capacity_key === key);
-  if (c === undefined) return null;
+  if (c === undefined || c.available !== true) return null;
   return c.unlimited || c.limit === null ? unlimitedText : noun(c.limit);
 }
 
@@ -151,7 +153,8 @@ function PlanCard({
     allowanceLine(plan, 'esign.forms', 'forms'),
     capacityLine(plan, 'esign.templates', (n) => `${n} template${n === 1 ? '' : 's'}`, 'Unlimited templates'),
     capacityLine(plan, 'esign.storage_bytes', (n) => `${bytes(n)} storage`, 'Storage by agreement'),
-    ...plan.features.filter((f) => f.enabled).map((f) => FEATURE_LABEL[f.feature_key] ?? f.feature_key),
+    // Only entitlements that are built and operational are advertised.
+    ...plan.features.filter((f) => f.enabled && f.available === true).map((f) => FEATURE_LABEL[f.feature_key] ?? f.feature_key),
     plan.support_tier === 'BASIC' ? 'Basic support' : null,
   ].filter((x): x is string => x !== null);
   const contactSales = plan.sales_model === 'CONTACT_SALES';

@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document key | `sign.terms_of_service` |
-| Version | 0.1.0 |
+| Version | 0.1.1 |
 | Status | **DRAFT — LEGAL-PENDING.** Not approved. Must not be published or presented for acceptance until a qualified legal reviewer and the PO approve it. |
 | Baseline | `Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1-v1_0-LOCKED` §3.A |
 | Operator | [Legal Company Name] — to be confirmed |
@@ -55,6 +55,9 @@ track progress and keep the completed documents with their signing evidence.
 - **Storage is limited by plan:** 15 MB (Free Personal), 10 GB (Standard Business), 25 GB (Standard
   Professional), by agreement (Enterprise). When storage is full, new uploads are refused; nothing
   already stored is removed.
+- **Not yet available:** forms, templates and the AI assist summary are included in the plan
+  definitions but are not available in the service yet. They will be offered once released; the
+  service does not present them as available before then.
 
 ## 4. Subscriber responsibilities
 

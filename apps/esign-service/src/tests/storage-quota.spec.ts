@@ -1,6 +1,7 @@
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import type { EntitlementRepository } from '@aramo/entitlement';
+import type { TenantRepository } from '@aramo/identity';
 import type { CapacityService } from '@aramo/subscription';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
@@ -87,11 +88,28 @@ describe('SenderEnvelopeService upload — storage reserved before the write', (
 });
 
 describe('AtsPlanEligibilityAdapter', () => {
-  it('Standard Professional eligibility = the live ats entitlement; unknown rules never pass', async () => {
-    const caps = new Map<string, Set<string>>([['ats-tenant', new Set(['core', 'ats', 'esign'])], ['sign-only', new Set(['core', 'esign'])]]);
-    const a = new AtsPlanEligibilityAdapter({ getCapabilities: vi.fn(async (t: string) => caps.get(t) ?? new Set()) } as unknown as EntitlementRepository);
-    expect(await a.isEligible('ats-tenant', 'ATS_SUBSCRIPTION')).toBe(true);
-    expect(await a.isEligible('sign-only', 'ATS_SUBSCRIPTION')).toBe(false);
-    expect(await a.isEligible('ats-tenant', 'SOMETHING' as never)).toBe(false);
+  const caps = new Map<string, Set<string>>([
+    ['ats-tenant', new Set(['core', 'ats', 'esign'])],
+    ['sign-only', new Set(['core', 'esign'])],
+    ['suspended-ats', new Set(['core', 'ats', 'esign'])],
+  ]);
+  const status: Record<string, string> = { 'ats-tenant': 'ACTIVE', 'sign-only': 'ACTIVE', 'suspended-ats': 'SUSPENDED' };
+  const adapter = new AtsPlanEligibilityAdapter(
+    { getCapabilities: vi.fn(async (t: string) => caps.get(t) ?? new Set()) } as unknown as EntitlementRepository,
+    { findById: vi.fn(async (t: string) => (status[t] === undefined ? null : { id: t, status: status[t] })) } as unknown as TenantRepository,
+  );
+  const ON = { SIGN_PROFESSIONAL_ELIGIBILITY: 'ATS_ENTITLEMENT' };
+
+  it('is OFF until the qualifying rule is confirmed: nobody is eligible by default', async () => {
+    expect(await adapter.isEligible('ats-tenant', 'ATS_SUBSCRIPTION', {})).toBe(false);
+    expect(await adapter.isEligible('ats-tenant', 'ATS_SUBSCRIPTION', { SIGN_PROFESSIONAL_ELIGIBILITY: 'yes' })).toBe(false);
+  });
+
+  it('with the confirmed rule: the live ats entitlement on an ACTIVE tenant; unknown rules never pass', async () => {
+    expect(await adapter.isEligible('ats-tenant', 'ATS_SUBSCRIPTION', ON)).toBe(true);
+    expect(await adapter.isEligible('sign-only', 'ATS_SUBSCRIPTION', ON)).toBe(false);
+    expect(await adapter.isEligible('suspended-ats', 'ATS_SUBSCRIPTION', ON)).toBe(false);
+    expect(await adapter.isEligible('missing', 'ATS_SUBSCRIPTION', ON)).toBe(false);
+    expect(await adapter.isEligible('ats-tenant', 'SOMETHING' as never, ON)).toBe(false);
   });
 });

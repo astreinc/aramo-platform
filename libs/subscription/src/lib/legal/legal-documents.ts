@@ -24,10 +24,10 @@ export interface LegalDocumentVersion {
 export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
   {
     key: 'sign.terms_of_service',
-    version: '0.1.0',
+    version: '0.1.1',
     status: 'DRAFT',
     path: 'doc/legal/aramo-sign/terms-of-service.md',
-    sha256: 'd1ecf9220690444910b1c72cf5709a60ba2ca5a9026a9a69b219b1d793b81ffe',
+    sha256: '2c2ccb95a13137700c8f80935f001e3548060e04eb3750949eeb11352073688b',
     url: null,
   },
   {

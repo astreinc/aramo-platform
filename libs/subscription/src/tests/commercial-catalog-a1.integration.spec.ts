@@ -141,12 +141,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(free).toMatchObject({ tenant_kind: 'PERSONAL', sales_model: 'FREE', status: 'INACTIVE', price: { amount_minor: 0, currency: 'USD', interval: 'MONTH' }, commitment_months: null, support_tier: 'BASIC', purchasable: false });
     expect(free.activation_note).toMatch(/Personal-product sending authorization/);
     expect(free.allowances).toEqual(expect.arrayContaining([
-      { allowance_key: KEY, included_quantity: 5, unlimited: false, period: 'MONTHLY' },
-      { allowance_key: 'esign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY' },
+      { allowance_key: KEY, included_quantity: 5, unlimited: false, period: 'MONTHLY', available: true },
+      { allowance_key: 'esign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: false },
     ]));
     expect(free.capacities).toEqual(expect.arrayContaining([
-      { capacity_key: 'esign.templates', limit: 1, unlimited: false },
-      { capacity_key: STORAGE, limit: 15 * 1024 * 1024, unlimited: false },
+      { capacity_key: 'esign.templates', limit: 1, unlimited: false, available: false },
+      { capacity_key: STORAGE, limit: 15 * 1024 * 1024, unlimited: false, available: true },
     ]));
     expect(free.features.every((f) => !f.enabled)).toBe(true);
 
@@ -156,18 +156,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       // "$30 original" is stored, NOT shown: it is not substantiated.
       expect(p.reference_price).toBeNull();
       expect(p.allowances).toEqual(expect.arrayContaining([
-        { allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY' },
-        { allowance_key: 'esign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY' },
+        { allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY', available: true },
+        { allowance_key: 'esign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY', available: false },
       ]));
       expect(p.capacities).toEqual(expect.arrayContaining([
-        { capacity_key: 'esign.templates', limit: null, unlimited: true },
-        { capacity_key: STORAGE, limit: storage, unlimited: false },
+        { capacity_key: 'esign.templates', limit: null, unlimited: true, available: false },
+        { capacity_key: STORAGE, limit: storage, unlimited: false, available: true },
       ]));
-      expect(Object.fromEntries(p.features.map((f) => [f.feature_key, f.enabled]))).toEqual({
-        'esign.ai_assist_summary': true,
-        'esign.advanced_analytics': false,
-        'esign.team_collaboration': true,
-        'esign.custom_domain': false,
+      // The approved ENTITLEMENT is kept; launch AVAILABILITY is separate (AI
+      // assist summary is entitled but not built, so it is not available).
+      expect(Object.fromEntries(p.features.map((f) => [f.feature_key, [f.enabled, f.available]]))).toEqual({
+        'esign.ai_assist_summary': [true, false],
+        'esign.advanced_analytics': [false, false],
+        'esign.team_collaboration': [true, true],
+        'esign.custom_domain': [false, false],
       });
     }
     expect(byKey[PRO]!.eligibility).toBe('ATS_SUBSCRIPTION');
@@ -244,6 +246,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(acc.rows).toEqual([{ document_key: 'sign.terms_of_service', version: '1.0.0', sha256: approved.sha256, context: 'CHECKOUT', context_ref: billing.last!.intent_id }]);
     const intent = await pg.query(`SELECT terms_version FROM subscription."CheckoutIntent" WHERE id = $1`, [billing.last!.intent_id]);
     expect(intent.rows[0].terms_version).toBe('1.0.0');
+  });
+
+  it('commitment plans never reach the default billing portal: an explicit portal configuration is required and passed', async () => {
+    const calls: (string | undefined)[] = [];
+    billing.createPortalSession = async (_a: string, _r: string, configuration?: string) => {
+      calls.push(configuration);
+      return { url: 'https://portal.test' };
+    };
+    await subscribe(BUSINESS, 'price_business');
+    delete process.env['STRIPE_PORTAL_CONFIGURATION'];
+    expect(await reason(svc().portal(t, 'https://e/settings'))).toBe('PORTAL_NOT_CONFIGURED');
+    process.env['STRIPE_PORTAL_CONFIGURATION'] = 'bpc_commitment_terms';
+    expect((await svc().portal(t, 'https://e/settings')).url).toBe('https://portal.test');
+    expect(calls).toEqual(['bpc_commitment_terms']);
+    delete process.env['STRIPE_PORTAL_CONFIGURATION'];
   });
 
   it('Free Personal and Enterprise cannot be bought', async () => {

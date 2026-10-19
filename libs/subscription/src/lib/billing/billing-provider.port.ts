@@ -65,7 +65,9 @@ export interface BillingProviderPort {
   // A1 — 'live' only for live credentials (live charging is separately authorized).
   mode(): 'test' | 'live';
   createCheckoutSession(req: CheckoutSessionRequest): Promise<{ session_ref: string; url: string }>;
-  createPortalSession(account_ref: string, return_url: string): Promise<{ url: string }>;
+  // `configuration` — a provider portal configuration (A1 review: commitment
+  // plans use one whose cancellation terms match the approved contract).
+  createPortalSession(account_ref: string, return_url: string, configuration?: string): Promise<{ url: string }>;
   retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent;
 }
