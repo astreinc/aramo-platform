@@ -148,6 +148,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_BILLING_UNAVAILABLE',
       'ESIGN_BILLING_CONFLICT',
       'ESIGN_STORAGE_QUOTA_EXCEEDED',
+      // Sign Unified Product S-1 — removing/demoting the organization's last Sign Owner (409).
+      'ESIGN_LAST_OWNER',
       'SIGNER_NOT_FOUND',
       'SIGNING_SESSION_INVALID',
       'SIGNING_SESSION_EXPIRED',

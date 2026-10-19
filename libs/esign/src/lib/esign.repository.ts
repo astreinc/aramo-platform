@@ -42,6 +42,11 @@ export interface CreateEnvelopeInput {
   subject: string;
   execution_mode: string;
   created_by: string;
+  // Sign Unified Product S-1 — provenance. Omitted ⇒ the column defaults
+  // ('aramo-sign', no installation, USER).
+  source_application?: string;
+  installation_id?: string | null;
+  origin_actor_kind?: 'USER' | 'APPLICATION';
 }
 
 // PX-V1 F1 — CORE_REF (legacy ATS: document_ref/document_revision_ref) OR OWNED
@@ -149,6 +154,9 @@ export class EsignRepository {
           status: 'DRAFT',
           execution_mode: input.execution_mode,
           created_by: input.created_by,
+          ...(input.source_application !== undefined ? { source_application: input.source_application } : {}),
+          ...(input.installation_id !== undefined && input.installation_id !== null ? { installation_id: input.installation_id } : {}),
+          ...(input.origin_actor_kind !== undefined ? { origin_actor_kind: input.origin_actor_kind } : {}),
         },
       });
       await this.appendEvent(tx, {

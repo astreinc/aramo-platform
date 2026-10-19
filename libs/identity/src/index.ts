@@ -43,6 +43,16 @@ export {
   type ProductAvailabilityView,
   type ProductUnavailableReason,
 } from './lib/authorization/product-availability.service.js';
+// Sign Unified Product S-1 — the Sign permission contract (scopes + built-in roles).
+export {
+  ESIGN_SCOPE,
+  ESIGN_ROLE_KEYS,
+  ESIGN_ROLE_PERMISSIONS,
+  ESIGN_ROLE_DISPLAY,
+  isEsignRoleKey,
+  type EsignScope,
+  type EsignRoleKey,
+} from './lib/dto/esign-permissions.js';
 export {
   EsignSenderBoundary,
   EsignSenderConsumerGuard,

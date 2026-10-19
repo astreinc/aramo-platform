@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import { logout } from '@aramo/fe-foundation';
 
+import { errorMessage, senderApi, type SignMember, type SignRoleKey } from '../api';
 import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -15,6 +17,7 @@ import { BillingPanel } from './Billing';
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
   { key: 'billing', label: 'Plan & billing' },
+  { key: 'members', label: 'Members' },
   { key: 'branding', label: 'Branding' },
   { key: 'security', label: 'Signing security' },
   { key: 'integrations', label: 'Integrations' },
@@ -25,7 +28,10 @@ export function SettingsPage() {
   const { section = 'personal' } = useParams();
   const { base, ctx } = useWorkspace();
   const personalWs = ctx.workspace === 'personal';
-  const allowed = personalWs ? ['personal'] : SECTIONS.map((s) => s.key);
+  // Sign Unified Product S-1 — Members only for holders of esign:member:manage.
+  const allowed = personalWs
+    ? ['personal']
+    : SECTIONS.map((s) => s.key).filter((k) => k !== 'members' || ctx.permissions.members === true);
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   return (
@@ -54,6 +60,7 @@ export function SettingsPage() {
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
           {section === 'billing' ? <BillingPanel /> : null}
+          {section === 'members' ? <MembersSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
@@ -298,6 +305,99 @@ function AuditSection() {
         <div className="sg-empty__t">No Sign settings changes recorded</div>
         Sign settings can’t be changed yet, so there is nothing to audit here. Every envelope keeps its own tamper-evident activity:{' '}
         <NavLink to={`${base}/activity`}>see all envelope activity</NavLink>.
+      </div>
+    </section>
+  );
+}
+
+// Sign Unified Product S-1 — Sign member administration. Lists the organization's
+// members with their Sign role; a holder of esign:member:manage assigns or removes
+// it. Only a Sign Owner can grant or remove Owner, and the last Owner stays — the
+// backend enforces both and its message is shown as is.
+function MembersSection() {
+  const { ctx, toast } = useWorkspace();
+  const [rows, setRows] = useState<SignMember[] | null>(null);
+  const [roles, setRoles] = useState<{ key: SignRoleKey; display: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    senderApi
+      .members()
+      .then((r) => {
+        if (!live) return;
+        setRows(r.items);
+        setRoles(r.roles);
+      })
+      .catch((e) => live && setError(errorMessage(e)));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const change = async (m: SignMember, value: string) => {
+    setBusy(m.user_id);
+    try {
+      const next = value === '' ? null : (value as SignRoleKey);
+      const updated = await senderApi.setMemberRole(m.user_id, next);
+      setRows((cur) => (cur ?? []).map((r) => (r.user_id === updated.user_id ? updated : r)));
+      toast(next === null ? `Removed Sign access for ${m.display_name ?? m.email}` : `${m.display_name ?? m.email} is now ${updated.sign_role_display ?? 'updated'}`);
+    } catch (e) {
+      toast(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="sg-card" data-testid="settings-members">
+      <div className="sg-card__head">Members</div>
+      <div className="sg-card__body">
+        <p className="sg-help" style={{ marginBottom: 12 }}>
+          Sign roles decide what each person can do in Aramo Sign. Senders work with their own envelopes; Viewers see every envelope in the organization; Admins
+          manage members and every envelope; Owners also manage the plan.
+        </p>
+        {error !== null ? <div className="sg-note">{error}</div> : null}
+        {rows === null && error === null ? <div className="sg-muted">Loading…</div> : null}
+        {rows !== null ? (
+          <table className="sg-table" data-testid="members-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Sign role</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((m) => (
+                <tr key={m.user_id}>
+                  <td>
+                    {m.display_name ?? '—'}
+                    {m.user_id === ctx.user.id ? <span className="sg-tag sg-tag--grey" style={{ marginLeft: 6 }}>You</span> : null}
+                    {!m.active ? <span className="sg-tag sg-tag--warn" style={{ marginLeft: 6 }}>Inactive</span> : null}
+                  </td>
+                  <td>{m.email}</td>
+                  <td>
+                    <Sel
+                      aria-label={`Sign role for ${m.display_name ?? m.email}`}
+                      value={m.sign_role ?? ''}
+                      disabled={busy !== null || !m.active}
+                      onChange={(e) => void change(m, e.target.value)}
+                    >
+                      <option value="">No Sign access</option>
+                      {roles.map((r) => (
+                        <option key={r.key} value={r.key}>
+                          {r.display}
+                        </option>
+                      ))}
+                    </Sel>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : null}
       </div>
     </section>
   );

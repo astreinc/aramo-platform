@@ -52,10 +52,12 @@ export function EnvelopeDetail() {
       </div>
     );
   if (env === null) return <Loading />;
-  if (env.status === 'DRAFT' && ctx.can_send) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
+  // Sign Unified Product S-1 — lifecycle actions belong to the envelope's sender
+  // or a Sign Admin / Owner (the backend enforces this; the UI only mirrors it).
+  const canAct = ctx.can_send && (env.sender.id === ctx.user.id || ctx.permissions.manage_all === true);
+  if (env.status === 'DRAFT' && canAct) return <Navigate to={`${base}/envelopes/${env.id}/edit?step=1`} replace />;
 
   const signed = env.recipients.filter((r) => r.status === 'SIGNED').length;
-  const canAct = ctx.can_send;
   const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
 
   const remind = async () => {

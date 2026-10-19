@@ -1123,7 +1123,7 @@ paths:
       operationId: listSenderContacts
       summary: Past recipients (derived; no contact store).
       description: >
-        Requires esign:envelope:read.
+        Requires esign:contact:read (Sign Sender, Admin, Owner).
       tags: [sender]
       security:
         - senderSession: []
@@ -1141,6 +1141,72 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/members:
+    get:
+      operationId: listSignMembers
+      summary: Organization members and their Sign role.
+      description: >
+        Requires esign:member:manage (Sign Admin, Owner). BUSINESS tenants only (PERSONAL → 403 personal_account). Lists every member of the caller's organization with the Sign role they hold (or null), plus the assignable Sign roles.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignMemberList'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/members/{userId}/sign-role:
+    put:
+      operationId: setSignMemberRole
+      summary: Assign, change or remove a member's Sign role.
+      description: >
+        Requires esign:member:manage. Changes ONLY the member's Sign role; every other role is kept. Only a Sign Owner may grant or remove the Sign Owner role (403 owner_role_requires_owner). The last Sign Owner cannot be removed or demoted (409 ESIGN_LAST_OWNER). A user outside the caller's organization → 404.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sign_role]
+              properties:
+                sign_role:
+                  type: [string, 'null']
+                  enum: [esign_owner, esign_admin, esign_sender, esign_viewer, null]
+      responses:
+        '200':
+          description: The member after the change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignMember'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/esign/sender/activity:
     get:
       operationId: listSenderActivity
@@ -1635,6 +1701,25 @@ components:
           enum: [sign, personal]
         permissions:
           type: object
+          description: >
+            The caller's effective Sign permissions (Sign permission contract). read_all, manage_all, members and billing are false for a PERSONAL account.
+          properties:
+            read:
+              type: boolean
+            read_all:
+              type: boolean
+            create:
+              type: boolean
+            send:
+              type: boolean
+            manage_all:
+              type: boolean
+            contacts:
+              type: boolean
+            members:
+              type: boolean
+            billing:
+              type: boolean
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -1643,6 +1728,41 @@ components:
           type: [string, 'null']
         app_home_url:
           type: [string, 'null']
+    SignMember:
+      type: object
+      required: [user_id, email, active, sign_role]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: [string, 'null']
+        active:
+          type: boolean
+        sign_role:
+          type: [string, 'null']
+          enum: [esign_owner, esign_admin, esign_sender, esign_viewer, null]
+        sign_role_display:
+          type: [string, 'null']
+    SignMemberList:
+      type: object
+      required: [items, roles]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignMember'
+        roles:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              display:
+                type: string
     SenderEnvelopeList:
       type: object
       required: [items, counts]

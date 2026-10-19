@@ -128,3 +128,29 @@ describe('IC-3 PR-8 — Sign sender authority is seeded deterministically', () =
     for (const [, scopes] of ESIGN_SENDER_SEED_BUNDLES) expect(scopes.every((s) => s.startsWith('esign:'))).toBe(true);
   });
 });
+
+// Sign Unified Product S-1 — the Sign permission contract is seeded exactly: the
+// prior ESIGN_SENDER_SEED_BUNDLES grants plus ESIGN_ROLE_CONTRACT_SEED_BUNDLES
+// equal ESIGN_ROLE_PERMISSIONS per role (no grant removed, none invented), every
+// contract scope is in the catalog with a deterministic id, and no non-Sign role
+// holds any esign:* scope.
+describe('Sign S-1 — the Sign role contract is seeded exactly', () => {
+  it('prior + contract grants = ESIGN_ROLE_PERMISSIONS for each of the four Sign roles', async () => {
+    const { ESIGN_SENDER_SEED_BUNDLES, ESIGN_ROLE_CONTRACT_SEED_BUNDLES, SEED_IDS } = await import('../../prisma/seed.js');
+    const { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS } = await import('../lib/dto/esign-permissions.js');
+    const { SEED_SCOPE_KEYS } = await import('../lib/dto/scope.dto.js');
+    let contractGrants = 0;
+    for (const role of ESIGN_ROLE_KEYS) {
+      const prior = ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === role)?.[1] ?? [];
+      const added = ESIGN_ROLE_CONTRACT_SEED_BUNDLES.find(([k]) => k === role)?.[1] ?? [];
+      contractGrants += added.length;
+      expect(added.filter((s) => prior.includes(s))).toEqual([]);
+      expect([...prior, ...added].sort()).toEqual([...ESIGN_ROLE_PERMISSIONS[role]].sort());
+      for (const s of added) {
+        expect(SEED_SCOPE_KEYS).toContain(s);
+        expect(SEED_IDS.scopes[s as keyof typeof SEED_IDS.scopes]).toMatch(/^01900000-0000-7000-8000-00000000141[0-3]$|^01900000-0000-7000-8000-00000000140[a-f]$/);
+      }
+    }
+    expect(contractGrants).toBe(23);
+  });
+});

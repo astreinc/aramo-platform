@@ -82,7 +82,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
   it('esign_sender resolves EXACTLY the esign:* scopes — no ATS scope leaks', async () => {
     const userId = await assignRoleToFreshUser('e1', SEED_IDS.roles.esign_sender);
     const scopes = await roleSvc.getScopesByUserAndTenant({ user_id: userId, tenant_id: SEED_IDS.tenant });
-    expect([...scopes].sort()).toEqual(['esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send']);
+    expect([...scopes].sort()).toEqual(['esign:contact:read', 'esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send', 'esign:template:use']);
     // The decisive partition: every resolved scope is in the esign namespace.
     expect([...scopes].every((s) => s.startsWith('esign:'))).toBe(true);
   });
@@ -107,7 +107,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
     caps.current = new Set(['core', 'ats', 'portal', 'esign']);
     const entitled = await resolver.resolve(input('esign'));
     expect(entitled.status).toBe('ok');
-    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send']);
+    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['esign:contact:read', 'esign:envelope:create', 'esign:envelope:read', 'esign:envelope:send', 'esign:template:use']);
     expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: [] });
   });
 
@@ -148,6 +148,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 esign_
   it('esign_viewer resolves read-only within the esign namespace', async () => {
     const userId = await assignRoleToFreshUser('e2', SEED_IDS.roles.esign_viewer);
     const scopes = await roleSvc.getScopesByUserAndTenant({ user_id: userId, tenant_id: SEED_IDS.tenant });
-    expect([...scopes].sort()).toEqual(['esign:envelope:read']);
+    expect([...scopes].sort()).toEqual(['esign:envelope:read', 'esign:envelope:read:all', 'esign:report:read']); // Sign S-1 Viewer: organization read + reports
   });
 });

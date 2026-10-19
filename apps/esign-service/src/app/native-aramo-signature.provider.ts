@@ -53,6 +53,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
       subject: req.subject,
       execution_mode: req.execution_mode,
       created_by: req.created_by,
+      // Sign Unified Product S-1 — the internal command zone's only caller is the
+      // ATS (S-6 replaces it with the authenticated, installation-scoped API).
+      source_application: 'aramo-ats',
     });
     const createdDocs: CreatedDocumentRef[] = [];
     for (const doc of req.documents) {

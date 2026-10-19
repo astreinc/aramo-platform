@@ -20,7 +20,18 @@ export interface SenderContext {
   user: { id: string; email: string | null; display_name: string | null };
   tenant: { id: string; name: string; kind: string };
   workspace: 'sign' | 'personal';
-  permissions: { read: boolean; create: boolean; send: boolean };
+  // Sign Unified Product S-1 — the caller's effective Sign permissions. The newer
+  // keys are optional so an older backend still renders (absent = not permitted).
+  permissions: {
+    read: boolean;
+    create: boolean;
+    send: boolean;
+    read_all?: boolean;
+    manage_all?: boolean;
+    contacts?: boolean;
+    members?: boolean;
+    billing?: boolean;
+  };
   can_send: boolean;
   personal_sending_enabled: false;
   organization_url: string | null;
@@ -247,6 +258,17 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
+export type SignRoleKey = 'esign_owner' | 'esign_admin' | 'esign_sender' | 'esign_viewer';
+
+export interface SignMember {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  active: boolean;
+  sign_role: SignRoleKey | null;
+  sign_role_display: string | null;
+}
+
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
@@ -283,6 +305,9 @@ export const senderApi = {
   evidence: (id: string) => apiClient.get<Evidence>(`${BASE}/envelopes/${enc(id)}/evidence`),
   documents: () => apiClient.get<{ items: DocumentRow[] }>(`${BASE}/documents`),
   contacts: () => apiClient.get<{ items: ContactRow[] }>(`${BASE}/contacts`),
+  members: () => apiClient.get<{ items: SignMember[]; roles: { key: SignRoleKey; display: string }[] }>(`${BASE}/members`),
+  setMemberRole: (userId: string, sign_role: SignRoleKey | null) =>
+    apiClient.put<SignMember>(`${BASE}/members/${encodeURIComponent(userId)}/sign-role`, { sign_role }),
   activity: (limit = 200) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/activity?limit=${limit}`),
 };
 

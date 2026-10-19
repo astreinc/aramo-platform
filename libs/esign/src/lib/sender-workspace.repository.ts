@@ -214,6 +214,7 @@ export class EsignSenderRepository {
       subject: input.subject,
       execution_mode: 'SINGLE_SIGNATURE',
       created_by: input.created_by,
+      source_application: 'aramo-sign',
     });
   }
 

@@ -34,6 +34,12 @@ model SignatureEnvelope {
   declined_at    DateTime? @db.Timestamptz
   voided_at      DateTime? @db.Timestamptz
   expires_at     DateTime? @db.Timestamptz
+  // Sign Unified Product S-1 — provenance. created_by is the owner (the user on
+  // whose behalf the envelope was sent). source_application: 'aramo-sign' (the
+  // Sign app) | 'aramo-ats' | a registered application key (S-4).
+  source_application String  @default("aramo-sign")
+  installation_id    String? @db.Uuid
+  origin_actor_kind  String  @default("USER") // CHECK: USER|APPLICATION
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -43,6 +49,7 @@ model SignatureEnvelope {
 
   @@index([tenant_id])
   @@index([tenant_id, status])
+  @@index([tenant_id, created_by])
   @@schema("esign")
 }
 

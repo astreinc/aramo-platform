@@ -11761,7 +11761,17 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/app/sender/sender-envelope.service.ts"
     },
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
