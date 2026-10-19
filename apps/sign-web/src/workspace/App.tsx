@@ -6,6 +6,7 @@ import { EnvelopeActivity, EnvelopeDetail } from './pages/EnvelopeDetail';
 import { EnvelopeList } from './pages/EnvelopeList';
 import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizard';
 import { BillingPanel } from './pages/Billing';
+import { InboxPage } from './pages/Inbox';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage, TemplatesPage } from './pages/WorkspacePages';
 import { LoginPage } from './routes/LoginPage';
@@ -38,6 +39,16 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
+        {/* Sign Unified Product S-7 — "Waiting for me": a recipient right, open to
+            any signed-in Sign user (with or without a Sign role). */}
+        <Route
+          path="/inbox"
+          element={
+            <RouteGuard sessionStateOverride={state}>
+              {state.status === 'authenticated' ? <InboxPage /> : null}
+            </RouteGuard>
+          }
+        />
         <Route
           path="*"
           element={
@@ -83,6 +94,9 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
     return (
       <FullState title="You don’t have access to Aramo Sign" testId="state-no-access">
         Your organization has Aramo Sign, but your account has no Sign role. Ask an organization admin for access.
+        <div style={{ marginTop: 14 }}>
+          <a href="/inbox">Documents sent to you for signature</a>
+        </div>
       </FullState>
     );
   if (ctx.status === 'error')

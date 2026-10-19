@@ -23,6 +23,11 @@ tags:
       public third-party activation is separately authorized.
   - name: integrations
     description: Installation administration in the Sign workspace (esign:integration:manage).
+  - name: inbox
+    description: >
+      "Waiting for me" (Sign Unified Product S-7). A recipient right — any signed-in Sign user, with or without a Sign
+      role. A document joins only through a recipient-specific binding (the recipient's live signing link AND the user's
+      verified email); the binding grants no membership in the sender's organization.
 paths:
   /v1/esign/envelopes:
     post:
@@ -1824,6 +1829,122 @@ paths:
                 type: object
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/inbox:
+    get:
+      operationId: listRecipientInbox
+      summary: 'The user’s bound documents: to sign, completed, other (recipient facts only).'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/inbox/claim:
+    post:
+      operationId: claimRecipientDocument
+      summary: 'Bind a document the user received by email (body: token from the signing link). 403 recipient_mismatch when the link was sent to another address.'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/inbox/{id}/sign:
+    post:
+      operationId: signFromInbox
+      summary: 'A fresh short-lived signing link for this recipient while signable; the emailed link stays valid.'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/inbox/{id}/signed-copy:
+    post:
+      operationId: signedCopyFromInbox
+      summary: 'A short-lived signed-copy link once complete and signed by this recipient.'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/inbox/{id}:
+    delete:
+      operationId: removeFromInbox
+      summary: 'Remove the binding (the user’s own only).'
+      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      tags: [inbox]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':

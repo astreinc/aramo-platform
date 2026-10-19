@@ -50,6 +50,8 @@ import { EsignOwnerActivationService } from './billing/esign-owner-activation.se
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
+import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
+import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
 import { IntegrationAdminService } from './integrations/integration-admin.service.js';
 import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
 import { SignApiGuard } from './integrations/sign-api.guard.js';
@@ -131,7 +133,7 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
   // subscribing-owner activation and the provider reconciliation sweep.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -145,6 +147,8 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
     SignApiGuard,
     SignApiService,
     IntegrationAdminService,
+    // Sign Unified Product S-7 — the recipient inbox.
+    RecipientInboxService,
   ],
 })
 export class AppModule implements NestModule {

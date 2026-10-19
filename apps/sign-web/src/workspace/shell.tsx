@@ -51,6 +51,8 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
             { to: base, label: 'Home', icon: 'home', end: true },
             { to: `${base}/envelopes`, label: 'Envelopes', icon: 'mail', count: awaiting },
             { to: `${base}/documents`, label: 'Documents', icon: 'doc' },
+            // Sign Unified Product S-7 — documents sent TO this user.
+            { to: '/inbox', label: 'Waiting for me', icon: 'mail' },
           ],
         },
         { label: 'Insights', items: [{ to: `${base}/activity`, label: 'Activity', icon: 'activity' }] },
@@ -62,6 +64,8 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
           items: [
             { to: base, label: 'Dashboard', icon: 'home', end: true },
             { to: `${base}/envelopes`, label: 'Envelopes', icon: 'mail', count: awaiting },
+            // Sign Unified Product S-7 — documents sent TO this user.
+            { to: '/inbox', label: 'Waiting for me', icon: 'mail' },
             { to: `${base}/templates`, label: 'Templates', icon: 'tpl' },
             { to: `${base}/documents`, label: 'Documents', icon: 'doc' },
             { to: `${base}/contacts`, label: 'Contacts', icon: 'contacts' },

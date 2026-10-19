@@ -767,6 +767,9 @@
       "OutboxDeliveryService",
       "OutboxService",
       "PrismaService",
+      "RECIPIENT_COPY_TTL_MS",
+      "RECIPIENT_SESSION_TTL_MS",
+      "RecipientInboxRepository",
       "ReminderNotAllowedError",
       "SENDER_DIRECTORY_PORT",
       "SIGNING_NOTIFICATION_PORT",
@@ -2731,6 +2734,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -3263,6 +3272,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -4988,6 +5003,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -6846,6 +6867,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -7915,6 +7948,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

@@ -5,6 +5,7 @@ import { EsignRepository } from './esign.repository.js';
 import { EsignService } from './esign.service.js';
 import { EsignSenderRepository } from './sender-workspace.repository.js';
 import { SignIntegrationRepository, SignWebhookRepository } from './integration.repository.js';
+import { RecipientInboxRepository } from './recipient-inbox.repository.js';
 import { EVIDENCE_MANIFEST_SIGNER_PORT, SoftwareEvidenceManifestSigner } from './ports/evidence-manifest-signer.port.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
@@ -43,10 +44,12 @@ export class EsignModule {
         SignIntegrationRepository,
         // Sign Unified Product S-5 — webhook subscriptions + per-subscription delivery.
         SignWebhookRepository,
+        // Sign Unified Product S-7 — the recipient inbox.
+        RecipientInboxRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, ...(opts?.extraExports ?? [])],
     };
   }
 }

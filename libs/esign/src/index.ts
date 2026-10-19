@@ -141,3 +141,5 @@ export {
   type SignWebhookSubscriptionRow,
   type SignWebhookDeliveryRow,
 } from './lib/integration.repository.js';
+// Sign Unified Product S-7 — the recipient inbox (refinement B).
+export { RecipientInboxRepository, RECIPIENT_SESSION_TTL_MS, RECIPIENT_COPY_TTL_MS, type RecipientInboxRow } from './lib/recipient-inbox.repository.js';

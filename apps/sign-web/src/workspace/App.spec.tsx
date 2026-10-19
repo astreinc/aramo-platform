@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { readinessOf } from './pages/readiness';
 import { clampBox, toPdf, toTopLeft } from './geometry';
-import type { EnvelopeDetail, SenderContext } from './api';
+import { tokenFromSigningLink, type EnvelopeDetail, type SenderContext } from './api';
 
 // PX-1 — the Sign sender console. The backend context decides the workspace; the
 // URL prefix never authorizes. Refusal states for an unentitled tenant and a
@@ -161,5 +161,40 @@ describe('editor geometry (top-left editor ⇄ bottom-left PDF)', () => {
   });
   it('clamps a box inside its page with a 14pt minimum', () => {
     expect(clampBox({ x: 600, y: -5, width: 220, height: 4 }, { width: 612, height: 792 })).toEqual({ x: 392, y: 0, width: 220, height: 14 });
+  });
+});
+
+// Sign Unified Product S-7 — "Waiting for me".
+describe('recipient inbox', () => {
+  const ITEM = { id: 'b1', subject: 'Offer letter', from: 'Northwind Staffing', envelope_status: 'SENT', my_status: 'PENDING', sent_at: '2026-10-01T00:00:00Z', expires_at: '2026-10-31T00:00:00Z', completed_at: null, signed_at: null, can_sign: true, can_download: false };
+
+  it('extracts the token from a pasted signing link; refuses anything else', () => {
+    expect(tokenFromSigningLink('https://sign.aramo.ai/s/abcdefghijklmnopqrstuvwxyz0123')).toBe('abcdefghijklmnopqrstuvwxyz0123');
+    expect(tokenFromSigningLink('  abcdefghijklmnopqrstuvwxyz0123 ')).toBe('abcdefghijklmnopqrstuvwxyz0123');
+    expect(tokenFromSigningLink('https://evil.example/x')).toBeNull();
+    expect(tokenFromSigningLink('short')).toBeNull();
+  });
+
+  it('lists documents waiting for the user — even a user with no Sign role', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/auth/esign/session')) return json({ ...SESSION, scopes: [] });
+        if (url.endsWith('/v1/esign/inbox')) return json({ waiting: [ITEM], completed: [], other: [] });
+        return json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } }, 403);
+      }),
+    );
+    renderAt('/inbox');
+    expect(await screen.findByText('Offer letter')).toBeInTheDocument();
+    expect(screen.getByText('Northwind Staffing')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeInTheDocument();
+  });
+
+  it('the no-Sign-role state links to the documents sent to the user', async () => {
+    vi.stubGlobal('fetch', stubFetch({ error: { code: 'INSUFFICIENT_PERMISSIONS' }, status: 403 }));
+    renderAt('/sign');
+    expect(await screen.findByTestId('state-no-access')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Documents sent to you for signature' })).toHaveAttribute('href', '/inbox');
   });
 });

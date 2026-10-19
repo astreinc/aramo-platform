@@ -370,3 +370,36 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   }
   return fallback;
 }
+
+// Sign Unified Product S-7 — the recipient inbox (/v1/esign/inbox). A recipient
+// right: available to any signed-in Aramo Sign user, limited to their own
+// recipient bindings.
+export interface InboxItem {
+  id: string;
+  subject: string;
+  from: string | null;
+  envelope_status: EnvelopeStatus;
+  my_status: RecipientStatus;
+  sent_at: string | null;
+  expires_at: string | null;
+  completed_at: string | null;
+  signed_at: string | null;
+  can_sign: boolean;
+  can_download: boolean;
+}
+
+export const inboxApi = {
+  list: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/esign/inbox'),
+  claim: (token: string) => apiClient.post<{ id: string }>('/v1/esign/inbox/claim', { token }),
+  sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/esign/inbox/${encodeURIComponent(id)}/sign`),
+  signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/esign/inbox/${encodeURIComponent(id)}/signed-copy`),
+  remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/esign/inbox/${encodeURIComponent(id)}`),
+};
+
+// The capability token from a pasted signing link (…/s/<token>) or a bare token.
+export function tokenFromSigningLink(input: string): string | null {
+  const v = input.trim();
+  const m = /\/s\/([A-Za-z0-9_-]{20,})/.exec(v);
+  if (m !== null && m[1] !== undefined) return m[1];
+  return /^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null;
+}
