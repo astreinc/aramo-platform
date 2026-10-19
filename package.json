@@ -83,7 +83,7 @@
     "@aws-sdk/s3-request-presigner": "~3.1053.0",
     "@nestjs/bullmq": "~11.0.4",
     "@nestjs/common": "~11.1.24",
-    "@nestjs/core": "~11.1.26",
+    "@nestjs/core": "~12.1.3",
     "@nestjs/platform-express": "~11.1.23",
     "@pdf-lib/fontkit": "1.1.1",
     "@prisma/adapter-pg": "~7.9.1",
