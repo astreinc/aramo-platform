@@ -147,6 +147,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_SEND_UNAVAILABLE',
       'ESIGN_BILLING_UNAVAILABLE',
       'ESIGN_BILLING_CONFLICT',
+      'ESIGN_STORAGE_QUOTA_EXCEEDED',
       'SIGNER_NOT_FOUND',
       'SIGNING_SESSION_INVALID',
       'SIGNING_SESSION_EXPIRED',

@@ -107,7 +107,8 @@ function envelopeService(kind = 'BUSINESS') {
   const identity = { findUserById: vi.fn(async () => null) };
   const storage = { putOwnedSource: vi.fn() };
   const sources = { getSourcePdf: vi.fn() };
-  const svc = new SenderEnvelopeService(repo as never, provider as never, ctx, identity as never, storage as never, sources as never);
+  const storageGate = { reserveUpload: vi.fn(async () => undefined), release: vi.fn(async () => undefined) };
+  const svc = new SenderEnvelopeService(repo as never, provider as never, ctx, identity as never, storage as never, sources as never, storageGate as never);
   return { svc, repo, provider, sources };
 }
 

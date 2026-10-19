@@ -82,6 +82,6 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
   ],
   // Aramo Sign launch — the public signup module reuses the provisioning saga
   // and the identity store this module wires.
-  exports: [PlatformInvitationService, IdentityCoreModule],
+  exports: [PlatformInvitationService, IdentityCoreModule, SubscriptionModule],
 })
 export class PlatformModule {}

@@ -7,10 +7,11 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AllowanceService } from '../lib/allowance.service.js';
+import { CapacityService } from '../lib/capacity.service.js';
 import type { BillingProviderPort, ProviderSubscriptionState } from '../lib/billing/billing-provider.port.js';
 import { BillingProviderUnavailableError } from '../lib/billing/billing-provider.port.js';
 import { BillingRefusedError, SubscriptionLifecycleService } from '../lib/billing/subscription-lifecycle.service.js';
-import { AramoSignBusinessPlanKey, openDevelopmentSubscription } from '../lib/development-subscription.js';
+import { AramoSignStandardBusinessPlanKey, openDevelopmentSubscription } from '../lib/development-subscription.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
@@ -23,6 +24,7 @@ const MIGRATIONS = [
   '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   '../../prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
   '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
+  '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'esign.envelopes';
@@ -33,6 +35,10 @@ const tenant = () => `0190bbbb-0000-7000-8000-${String(++seq).padStart(12, '0')}
 class FakeBilling implements BillingProviderPort {
   readonly provider = 'STRIPE' as const;
   configured = true;
+  live = false;
+  mode(): 'test' | 'live' {
+    return this.live ? 'live' : 'test';
+  }
   subs = new Map<string, ProviderSubscriptionState>();
   checkouts: { intent_id: string; tenant_id: string; account_ref: string | null }[] = [];
   failRetrieve = false;
@@ -92,7 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     for (const m of MIGRATIONS) await pg.query(readFileSync(m, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
-    process.env['STRIPE_PLAN_PRICES'] = `${AramoSignBusinessPlanKey}=price_business`;
+    process.env['STRIPE_PLAN_PRICES'] = `${AramoSignStandardBusinessPlanKey}=price_business,aramo-sign-standard-professional-v1=price_professional`;
     delete process.env['BILLING_PAST_DUE_GRACE_DAYS'];
   }, 180_000);
 
@@ -108,20 +114,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     t = tenant();
     billing = new FakeBilling();
     allowance = new AllowanceService(prisma);
-    svc = new SubscriptionLifecycleService(prisma, allowance, billing);
+    svc = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
   });
 
   const checkout = (tenant_id = t, user_id = 'owner-1') =>
-    svc.startCheckout({ tenant_id, user_id, user_email: 'o@acme.test', plan_key: AramoSignBusinessPlanKey, success_url: 'https://e/ok', cancel_url: 'https://e/no' });
+    svc.startCheckout({ tenant_id, user_id, user_email: 'o@acme.test', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'https://e/ok', cancel_url: 'https://e/no' });
   const event = (id: string, ref: string, type = 'subscription.updated') => ({ id, type, created: AT, subscription_ref: ref });
 
-  it('lists the seeded 100/month business plan as purchasable only when a price is configured', async () => {
-    const plans = await svc.listSellablePlans();
-    expect(plans).toEqual([
-      expect.objectContaining({ key: AramoSignBusinessPlanKey, purchasable: true, allowances: [{ allowance_key: KEY, included_quantity: 100, period: 'MONTHLY' }] }),
-    ]);
+  it('the catalog: Standard Business purchasable when a price is configured; the operator plan hidden', async () => {
+    const plans = await svc.catalog(t);
+    expect(plans.map((p) => p.key)).toEqual(['aramo-sign-free-personal-v1', AramoSignStandardBusinessPlanKey, 'aramo-sign-standard-professional-v1', 'aramo-sign-enterprise-v1']);
+    expect(plans.find((p) => p.key === AramoSignStandardBusinessPlanKey)).toMatchObject({ purchasable: true, allowances: expect.arrayContaining([{ allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY' }]) });
     billing.configured = false;
-    expect((await svc.listSellablePlans())[0]!.purchasable).toBe(false);
+    expect((await svc.catalog(t)).find((p) => p.key === AramoSignStandardBusinessPlanKey)!.purchasable).toBe(false);
   });
 
   it('checkout → paid → a SELF_SERVICE subscription opens, attributed to the subscribing owner', async () => {
@@ -131,8 +136,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     const res = await svc.handleEvent({ id: 'evt_a1', type: 'checkout.session.completed', created: AT, subscription_ref: sub.subscription_ref }, AT);
     expect(res).toMatchObject({ outcome: 'APPLIED', tenant_id: t, activated_owner_user_id: 'owner-1' });
     const acct = await svc.account(t, KEY, AT);
-    expect(acct.subscription).toMatchObject({ plan_key: AramoSignBusinessPlanKey, source: 'SELF_SERVICE', status: 'ACTIVE', sending: true, billing_managed: true });
-    expect(acct.allowance).toMatchObject({ subscribed: true, limit: 100, used: 0 });
+    expect(acct.subscription).toMatchObject({ plan_key: AramoSignStandardBusinessPlanKey, source: 'SELF_SERVICE', status: 'ACTIVE', sending: true, billing_managed: true });
+    expect(acct.allowance).toMatchObject({ subscribed: true, limit: null, unlimited: true, used: 0, remaining: null });
     const intent = await pg.query('SELECT status FROM subscription."CheckoutIntent" WHERE tenant_id = $1', [t]);
     expect(intent.rows[0].status).toBe('COMPLETED');
   });

@@ -64,6 +64,15 @@ describe('ESignatureProvidersPanel', () => {
     expect(alert).toHaveTextContent('Documents a client requires stay required');
   });
 
+  it('an unlimited plan shows the count with no meter and no pause message (Commercial Plans Amendment A1)', async () => {
+    const o = overview({}, 150);
+    const unlimited = { ...o, availability: { ...o.availability, allowance: { ...o.availability.allowance!, limit: null, unlimited: true, remaining: null, threshold: 'OK' as const } } };
+    renderPanel({ sessionOverride: session(['integration:read']), loadFn: async () => unlimited });
+    expect(await screen.findByTestId('esign-allowance')).toHaveTextContent('150 sent · unlimited');
+    expect(screen.queryByRole('progressbar')).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('a tenant without Aramo Sign is told it is not in the plan', async () => {
     renderPanel({
       sessionOverride: session(['integration:read']),

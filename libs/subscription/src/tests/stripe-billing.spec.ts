@@ -121,6 +121,16 @@ describe('StripeBillingProvider (local stand-in)', () => {
     expect(req.headers['authorization']).toBe('Bearer sk_test_local');
   });
 
+  it('reports live mode only for live credentials (live charging is separately authorized)', () => {
+    expect(new StripeBillingProvider().mode()).toBe('test');
+    const k = process.env['STRIPE_SECRET_KEY'];
+    process.env['STRIPE_SECRET_KEY'] = 'sk_live_x';
+    expect(new StripeBillingProvider().mode()).toBe('live');
+    process.env['STRIPE_SECRET_KEY'] = 'rk_live_x';
+    expect(new StripeBillingProvider().mode()).toBe('live');
+    process.env['STRIPE_SECRET_KEY'] = k;
+  });
+
   it('opens a portal session and retrieves a subscription', async () => {
     const p = new StripeBillingProvider();
     expect(await p.createPortalSession('cus_1', 'https://esign.test/settings')).toEqual({ url: 'https://billing.stripe.test/p' });

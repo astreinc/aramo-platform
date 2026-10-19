@@ -62,6 +62,8 @@ export class BillingProviderUnavailableError extends Error {
 export interface BillingProviderPort {
   readonly provider: BillingProviderKey;
   isConfigured(): boolean;
+  // A1 — 'live' only for live credentials (live charging is separately authorized).
+  mode(): 'test' | 'live';
   createCheckoutSession(req: CheckoutSessionRequest): Promise<{ session_ref: string; url: string }>;
   createPortalSession(account_ref: string, return_url: string): Promise<{ url: string }>;
   retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;

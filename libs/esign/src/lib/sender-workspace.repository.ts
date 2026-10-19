@@ -323,8 +323,8 @@ export class EsignSenderRepository {
 
   // Removes a draft document and its fields. Returns the removed object key so the
   // caller may clean up storage (the key is never exposed to the browser).
-  async removeDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; actor_ref: string }): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  async removeDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; actor_ref: string }): Promise<{ source_object_key: string | null }> {
+    return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id);
       const doc = await tx.envelopeDocument.findFirst({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id, id: input.document_id } });
       if (doc === null) throw new EnvelopeNotFoundError(`${input.envelope_id}/${input.document_id}`);
@@ -346,6 +346,7 @@ export class EsignSenderRepository {
         actor_ref: input.actor_ref,
         payload: { envelope_document_id: doc.id, title: doc.title },
       });
+      return { source_object_key: doc.source_object_key };
     });
   }
 

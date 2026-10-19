@@ -30,14 +30,28 @@ export {
   type AccountView,
   type ApplyResult,
   type BillingRefusal,
-  type SellablePlanView,
+  type CatalogPlanView,
+  STORAGE_CAPACITY_KEY,
+  postTerminationExportDays,
   type SubscriptionView,
   type WebhookResult,
 } from './lib/billing/subscription-lifecycle.service.js';
 export { addMonthsClamped, billingPeriodAt, type BillingPeriod } from './lib/billing-period.js';
-export { AramoSignBusinessPlanKey, AramoSignIncludedPlanKey, assertNotProduction, openDevelopmentSubscription } from './lib/development-subscription.js';
+export { AramoSignStandardBusinessPlanKey, AramoSignStandardProfessionalPlanKey, AramoSignIncludedPlanKey, assertNotProduction, openDevelopmentSubscription } from './lib/development-subscription.js';
 export { PrismaService as SubscriptionPrismaService } from './lib/prisma/prisma.service.js';
 
 /** The Aramo Sign envelope allowance and the usage-stream event it writes. */
 export const ESIGN_ENVELOPE_ALLOWANCE = 'esign.envelopes';
 export const ESIGN_ENVELOPE_SENT_EVENT = 'esign.envelope.sent';
+// Commercial Plans Amendment A1 — capacity (storage), eligibility, legal registry.
+export { CapacityService, type CapacityStatus, type CapacityRefusal, type CapacityReserveResult } from './lib/capacity.service.js';
+export { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './lib/billing/plan-eligibility.port.js';
+export {
+  LEGAL_DOCUMENTS,
+  LEGAL_DOCUMENT_REGISTRY,
+  approvedLegalDocument,
+  legalRef,
+  type LegalDocumentKey,
+  type LegalDocumentVersion,
+} from './lib/legal/legal-documents.js';
+export { LegalAcceptanceService } from './lib/legal/legal-acceptance.service.js';

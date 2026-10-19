@@ -28,9 +28,11 @@ export interface AllowanceStatus {
   readonly subscribed: true;
   readonly plan_key: string;
   readonly allowance_key: string;
-  readonly limit: number;
+  // A1 — null when the plan is unlimited (no numeric ceiling; usage still metered).
+  readonly limit: number | null;
+  readonly unlimited: boolean;
   readonly used: number;
-  readonly remaining: number;
+  readonly remaining: number | null;
   readonly period_start: Date;
   readonly period_end: Date;
   readonly threshold: AllowanceThreshold;
@@ -70,7 +72,8 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 interface ActivePlan {
   plan_key: string;
-  limit: number;
+  // null = unlimited (Commercial Plans Amendment A1).
+  limit: number | null;
   period: BillingPeriod;
 }
 
@@ -90,7 +93,10 @@ export class AllowanceService {
     if (!subscriptionSends(sub, at)) {
       return { ok: false, state: sub.status === 'PAST_DUE' ? 'PAST_DUE' : sub.status === 'INCOMPLETE' ? 'INCOMPLETE' : 'CANCELED' };
     }
-    return { ok: true, plan: { plan_key: sub.plan.key, limit: allowance.included_quantity, period: billingPeriodAt(sub.period_anchor, at) } };
+    return {
+      ok: true,
+      plan: { plan_key: sub.plan.key, limit: allowance.unlimited ? null : (allowance.included_quantity ?? 0), period: billingPeriodAt(sub.period_anchor, at) },
+    };
   }
 
   private async used(db: Tx | PrismaService, tenant_id: string, allowance_key: string, period_start: Date): Promise<number> {
@@ -105,11 +111,12 @@ export class AllowanceService {
       plan_key: plan.plan_key,
       allowance_key,
       limit: plan.limit,
+      unlimited: plan.limit === null,
       used,
-      remaining: Math.max(0, plan.limit - used),
+      remaining: plan.limit === null ? null : Math.max(0, plan.limit - used),
       period_start: plan.period.start,
       period_end: plan.period.end,
-      threshold: thresholdOf(used, plan.limit),
+      threshold: plan.limit === null ? 'OK' : thresholdOf(used, plan.limit),
     };
   }
 
@@ -146,7 +153,9 @@ export class AllowanceService {
         return { ok: true, already: true, status: this.statusOf(plan, input.allowance_key, used) } as const;
       }
       const used = await this.used(tx, input.tenant_id, input.allowance_key, plan.period.start);
-      if (used >= plan.limit) {
+      // A1 — an unlimited plan has no ceiling; the reservation is still written
+      // (metering, capacity planning, abuse detection).
+      if (plan.limit !== null && used >= plan.limit) {
         return { ok: false, reason: 'LIMIT_REACHED', status: this.statusOf(plan, input.allowance_key, used) } as const;
       }
       const reserved_until = new Date(at.getTime() + (input.ttl_ms ?? DEFAULT_RESERVATION_TTL_MS));

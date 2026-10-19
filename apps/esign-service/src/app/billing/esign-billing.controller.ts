@@ -26,6 +26,7 @@ import {
   BillingWebhookSignatureError,
   ESIGN_ENVELOPE_ALLOWANCE,
   SubscriptionLifecycleService,
+  approvedLegalDocument,
   type WebhookResult,
 } from '@aramo/subscription';
 import { Inject } from '@nestjs/common';
@@ -57,6 +58,12 @@ function BillingBoundary(scope?: string): MethodDecorator {
   );
 }
 
+/** Optional "Contact sales" link for Enterprise (SIGN_SALES_CONTACT_URL, http(s) only). */
+function salesContactUrl(): string | null {
+  const v = process.env['SIGN_SALES_CONTACT_URL']?.trim();
+  return v !== undefined && /^(https?:|mailto:)/.test(v) ? v : null;
+}
+
 function consoleBase(): string {
   return (process.env['ESIGN_SENDER_WEB_BASE_URL'] ?? 'https://esign.aramo.ai').trim().replace(/\/+$/, '');
 }
@@ -68,6 +75,15 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     }
     if (e.reason === 'PLAN_NOT_SELLABLE') {
       return new AramoError('VALIDATION_ERROR', 'That plan is not available for purchase', 400, { requestId, details: { reason: e.reason } });
+    }
+    if (e.reason === 'TERMS_NOT_ACCEPTED') {
+      return new AramoError('VALIDATION_ERROR', 'Accept the terms to continue', 400, { requestId, details: { reason: e.reason } });
+    }
+    if (e.reason === 'TERMS_NOT_APPROVED') {
+      return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: e.reason } });
+    }
+    if (e.reason === 'PLAN_NOT_ELIGIBLE') {
+      return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }
     return new AramoError('ESIGN_BILLING_CONFLICT', e.reason === 'ALREADY_SUBSCRIBED' ? 'Your organization already has a subscription; manage it in billing' : 'Your organization has no billing account yet', 409, {
       requestId,
@@ -103,8 +119,17 @@ export class EsignBillingController {
 
   @Get('plans')
   @BillingBoundary()
-  plans(@RequestId() requestId: string) {
-    return this.run(requestId, async () => ({ plans: await this.lifecycle.listSellablePlans() }));
+  plans(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    return this.run(requestId, async () => {
+      // A1 — the catalog for this tenant (eligibility evaluated), and the terms
+      // a checkout must accept (null while no version is approved).
+      const terms = approvedLegalDocument('sign.terms_of_service');
+      return {
+        plans: await this.lifecycle.catalog(auth.tenant_id),
+        terms: terms === null ? null : { version: terms.version, url: terms.url },
+        sales_contact_url: salesContactUrl(),
+      };
+    });
   }
 
   @Get('account')
@@ -138,7 +163,7 @@ export class EsignBillingController {
   @Post('checkout')
   @HttpCode(HttpStatus.CREATED)
   @BillingBoundary(BILLING_MANAGE_SCOPE)
-  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown }) {
+  checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown }) {
     return this.run(requestId, async () => {
       await this.ctx.assertCanAuthor(auth, requestId);
       if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
@@ -154,6 +179,7 @@ export class EsignBillingController {
         plan_key: body.plan_key,
         success_url: `${base}/sign/settings/billing?checkout=success`,
         cancel_url: `${base}/sign/settings/billing?checkout=canceled`,
+        accept_terms: body.accept_terms === true,
       });
     });
   }

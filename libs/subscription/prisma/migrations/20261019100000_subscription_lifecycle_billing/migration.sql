@@ -36,15 +36,8 @@ ALTER TABLE "subscription"."Plan"
     ADD COLUMN "sellable" BOOLEAN NOT NULL DEFAULT false,
     ADD COLUMN "description" TEXT;
 
--- The launch plan: 100 Aramo Sign envelopes per BUSINESS tenant per monthly
--- billing period, no rollover (ratified). Catalog row only; nobody is subscribed.
-INSERT INTO "subscription"."Plan" ("id", "key", "name", "sellable", "description")
-VALUES ('019a0000-5150-7000-8000-000000000002'::uuid, 'aramo-sign-business-v1', 'Aramo Sign Business', true,
-        '100 envelopes per month for your organization. Unused envelopes do not roll over.')
-ON CONFLICT ("key") DO NOTHING;
-INSERT INTO "subscription"."PlanAllowance" ("plan_id", "allowance_key", "included_quantity", "period")
-VALUES ('019a0000-5150-7000-8000-000000000002'::uuid, 'esign.envelopes', 100, 'MONTHLY')
-ON CONFLICT ("plan_id", "allowance_key") DO NOTHING;
+-- The sellable catalog is seeded by 20261019140000_sign_commercial_catalog_a1
+-- (Commercial Plans Amendment A1 superseded the single 100/month plan).
 
 -- 3. Who started a checkout, for which tenant and plan. The subscribing-owner
 -- activation reads this; it is never inferred from the payment alone.

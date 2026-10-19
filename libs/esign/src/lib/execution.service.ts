@@ -20,6 +20,7 @@ import {
   type ExecutedProductionResult,
 } from './ports/execution-producer.port.js';
 import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from './envelope-notification.service.js';
+import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -59,6 +60,9 @@ export class ExecutionService implements ExecutionProducerPort {
     // the console sender is told). Optional: unbound in the DOC-3 domain tests.
     @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
     @Optional() private readonly outbox?: OutboxService,
+    // A1 — storage measurement of kept artifacts (never refuses). Last, so the
+    // existing positional constructions stay valid.
+    @Optional() @Inject(STORAGE_ACCOUNTING_PORT) private readonly storageAccounting?: StorageAccountingPort,
   ) {}
 
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
@@ -156,6 +160,7 @@ export class ExecutionService implements ExecutionProducerPort {
         },
       });
 
+      await this.recordKept(tenant_id, `esign:executed:${doc.id}`, rendered.bytes.byteLength);
       results.push({
         envelope_document_id: doc.id,
         source_sha256,
@@ -205,6 +210,8 @@ export class ExecutionService implements ExecutionProducerPort {
       },
     });
 
+    await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.bytes.byteLength);
+
     // DOC-4 (R-4-7) — enqueue the transactional-outbox event (refs only, no
     // bytes/PII). A drain publishes it to the operational bus; apps/api's
     // idempotent consumer pulls the bytes + evidence + certificate.
@@ -232,5 +239,14 @@ export class ExecutionService implements ExecutionProducerPort {
     }
 
     return results;
+  }
+
+  private async recordKept(tenant_id: string, ref: string, bytes: number): Promise<void> {
+    if (this.storageAccounting === undefined) return;
+    try {
+      await this.storageAccounting.recordKept({ tenant_id, ref, bytes });
+    } catch {
+      // Measurement only: a ledger failure never affects the signed record.
+    }
   }
 }

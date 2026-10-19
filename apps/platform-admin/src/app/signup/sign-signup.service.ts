@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   IdentityRepository,
@@ -12,6 +12,14 @@ import {
   normalizeEmail,
 } from '@aramo/identity';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
+import {
+  LEGAL_DOCUMENTS,
+  LEGAL_DOCUMENT_REGISTRY,
+  LegalAcceptanceService,
+  approvedLegalDocument,
+  legalRef,
+  type LegalDocumentVersion,
+} from '@aramo/subscription';
 
 import { PlatformInvitationService } from '../platform/platform-invitation.service.js';
 
@@ -110,7 +118,20 @@ export class SignSignupService {
     private readonly provisioning: PlatformInvitationService,
     @Inject(MAILER_PORT) private readonly mailer: MailerPort,
     private readonly budget: SignupBudget,
-  ) {}
+    // A1 — signup terms evidence (versioned registry; nothing approved yet).
+    private readonly acceptances: LegalAcceptanceService,
+    @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
+  ) {
+    this.legal = legal ?? LEGAL_DOCUMENTS;
+  }
+
+  private readonly legal: readonly LegalDocumentVersion[];
+
+  /** The terms a signup must accept — null while no version is APPROVED (no unapproved terms are ever presented). */
+  currentTerms(): { version: string; url: string } | null {
+    const t = approvedLegalDocument('sign.terms_of_service', this.legal);
+    return t === null || t.url === null ? null : { version: t.version, url: t.url };
+  }
 
   async start(input: { email?: unknown; organization_name?: unknown; display_name?: unknown; accept_terms?: unknown; ip: string; request_id: string; now?: Date }): Promise<void> {
     const now = input.now ?? new Date();
@@ -120,8 +141,9 @@ export class SignSignupService {
     if (email === null || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || organization_name === null || organization_name.length < 2 || (input.display_name && display_name === null)) {
       throw new AramoError('VALIDATION_ERROR', 'Enter your work email, your organization name and your name', 400, { requestId: input.request_id });
     }
-    const terms_ref = process.env['SIGN_SIGNUP_TERMS_REF']?.trim() || null;
-    if (terms_ref !== null && input.accept_terms !== true) {
+    const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
+    const terms_ref = terms === null ? null : legalRef(terms);
+    if (terms !== null && input.accept_terms !== true) {
       throw new AramoError('VALIDATION_ERROR', 'Accept the terms to continue', 400, { requestId: input.request_id, details: { reason: 'terms_not_accepted' } });
     }
     const normalized = normalizeEmail(email);
@@ -200,6 +222,7 @@ export class SignSignupService {
         actor_type: 'system',
       });
       await this.requests.markProvisioned(row.id, res.tenant_id, res.owner_user_id, new Date());
+      await this.recordSignupTerms(row, res.tenant_id, res.owner_user_id);
       this.log.log(`self-service signup provisioned tenant ${res.tenant_id}`);
       return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl };
     } catch (err) {
@@ -212,6 +235,7 @@ export class SignSignupService {
         const adopted = await this.adopt(row, organization_name);
         if (adopted !== null) {
           await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
+          await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
           return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl };
         }
       }
@@ -231,6 +255,23 @@ export class SignSignupService {
         requestId: input.request_id,
         details: { retryable: true },
       });
+    }
+  }
+
+  // A1 — the accepted terms version (stored on the request at start) becomes an
+  // acceptance record for the new tenant. Failure is logged, never undoes the
+  // tenant (the request row keeps terms_ref as the primary evidence).
+  private async recordSignupTerms(row: { id: string; email: string; terms_ref: string | null; created_at: Date }, tenant_id: string, user_id: string): Promise<void> {
+    if (row.terms_ref === null) return;
+    const doc = this.legal.find((d) => legalRef(d) === row.terms_ref);
+    if (doc === undefined) {
+      this.log.warn(`signup ${row.id}: accepted terms ${row.terms_ref} not in the registry`);
+      return;
+    }
+    try {
+      await this.acceptances.record({ document: doc, context: 'SIGNUP', context_ref: row.id, tenant_id, user_id, subject_email: row.email, accepted_at: row.created_at });
+    } catch (err) {
+      this.log.error(`signup ${row.id}: terms acceptance not recorded: ${(err as Error).message}`);
     }
   }
 

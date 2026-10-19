@@ -28,7 +28,9 @@ describe('signup pages', () => {
   });
 
   it('/signup needs no session and posts only the form fields', async () => {
-    const fetch = vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/v1/signup/sign/start') ? json({ accepted: true }, 202) : json({}, 401)));
+    const fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/v1/signup/sign/start') ? json({ accepted: true }, 202) : String(input).endsWith('/v1/signup/sign/terms') ? json({ terms: null }) : json({}, 401),
+    );
     vi.stubGlobal('fetch', fetch);
     at('/signup');
     fireEvent.change(await screen.findByLabelText('Work email'), { target: { value: 'pat@astre.test' } });
@@ -42,7 +44,7 @@ describe('signup pages', () => {
   });
 
   it('a form error from the backend is shown in place', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => json({ error: { code: 'VALIDATION_ERROR', message: 'Use your work email address', details: { reason: 'business_email_required' } } }, 400)));
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/terms') ? json({ terms: null }) : json({ error: { code: 'VALIDATION_ERROR', message: 'Use your work email address', details: { reason: 'business_email_required' } } }, 400))));
     at('/signup');
     fireEvent.change(await screen.findByLabelText('Work email'), { target: { value: 'pat@gmail.com' } });
     fireEvent.change(screen.getByLabelText('Organization name'), { target: { value: 'Pat' } });
@@ -85,6 +87,26 @@ describe('signup pages', () => {
     window.history.replaceState(null, '', `/signup/verify#token=${TOKEN}`);
     at('/signup/verify');
     await waitFor(() => expect(screen.getAllByTestId('signup-invalid').length).toBeGreaterThan(0));
+  });
+
+  it('approved terms must be ticked and are sent; a dark signup says so up front', async () => {
+    const fetch = vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith('/terms') ? json({ terms: { version: '1.0.0', url: 'https://aramo.ai/legal/terms' } }) : String(input).endsWith('/start') ? json({ accepted: true }, 202) : json({}, 401),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const { unmount } = at('/signup');
+    fireEvent.change(await screen.findByLabelText('Work email'), { target: { value: 'pat@astre.test' } });
+    fireEvent.change(screen.getByLabelText('Organization name'), { target: { value: 'Astre' } });
+    await waitFor(() => expect(screen.getByTestId('signup-submit')).toBeDisabled());
+    fireEvent.click(await screen.findByTestId('signup-terms'));
+    fireEvent.click(screen.getByTestId('signup-submit'));
+    await screen.findByTestId('signup-sent');
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/start'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body)).accept_terms).toBe(true);
+    unmount();
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/terms') ? json({ error: { code: 'NOT_FOUND' } }, 404) : json({}, 401))));
+    at('/signup');
+    expect(await screen.findByTestId('signup-unavailable')).toBeInTheDocument();
   });
 
   it('tokenFromHash accepts only a plausible token', () => {

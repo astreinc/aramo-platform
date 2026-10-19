@@ -25,8 +25,12 @@ const DATA: PlatformTenantSign = {
     cancel_at_period_end: false,
     grace_until: '2026-10-25T00:00:00Z',
     billing_managed: true,
+    commitment_end: '2027-10-18T00:00:00Z',
+    cancel_requested_within_commitment: true,
+    eligibility_state: 'LAPSED',
   },
-  allowance: { subscribed: true, limit: 100, used: 42, remaining: 58, period_start: '2026-10-18T00:00:00Z', period_end: '2026-11-18T00:00:00Z' },
+  allowance: { subscribed: true, limit: null, used: 42, remaining: null, period_start: '2026-10-18T00:00:00Z', period_end: '2026-11-18T00:00:00Z' },
+  storage: { capacity_key: 'esign.storage_bytes', limit: 10 * 1024 ** 3, unlimited: false, used: 512 * 1024 ** 2 },
   billing_available: true,
   billing_events: [{ event_type: 'invoice.payment_failed', outcome: 'APPLIED', detail: 'ACTIVE -> PAST_DUE', event_created_at: '2026-10-18T00:00:00Z', received_at: '2026-10-18T00:00:01Z' }],
 };
@@ -38,7 +42,10 @@ describe('TenantSignPanel', () => {
     vi.spyOn(platformApi, 'getTenantSign').mockResolvedValue(DATA);
     render(<TenantSignPanel tenantId="t1" />);
     expect(await screen.findByTestId('tenant-sign-plan')).toHaveTextContent('Aramo Sign Business · PAST_DUE');
-    expect(screen.getByTestId('tenant-sign-usage')).toHaveTextContent('42 of 100 envelopes');
+    expect(screen.getByTestId('tenant-sign-usage')).toHaveTextContent('42 envelopes (unlimited)');
+    expect(screen.getByTestId('tenant-sign-storage')).toHaveTextContent('512 MB of 10 GB');
+    expect(screen.getByTestId('tenant-sign-commitment')).toHaveTextContent('cancellation requested inside the commitment');
+    expect(screen.getByTestId('tenant-sign-eligibility')).toHaveTextContent('Lapsed');
     expect(screen.getByText('Self-service (Stripe)')).toBeInTheDocument();
     expect(screen.getByText('invoice.payment_failed')).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();

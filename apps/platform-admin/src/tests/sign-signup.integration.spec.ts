@@ -20,6 +20,13 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityCoreModule, PrismaService as IdentityPrismaService } from '@aramo/identity';
 import { MAILER_PORT } from '@aramo/mailer';
+import {
+  LEGAL_DOCUMENTS,
+  LEGAL_DOCUMENT_REGISTRY,
+  LegalAcceptanceService,
+  SubscriptionPrismaService,
+  type LegalDocumentVersion,
+} from '@aramo/subscription';
 
 import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.service.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
@@ -47,6 +54,17 @@ const ENTITLEMENT_DDL = [
      tenant_id uuid NOT NULL, capability entitlement."Capability" NOT NULL,
      granted_at timestamptz(6) NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, capability))`,
 ];
+const SUBSCRIPTION_MIGRATIONS = [
+  'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
+  'libs/subscription/prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
+  'libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
+  'libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
+].map((p) => resolve(__dirname, '../../../..', p));
+const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0' };
+// Mutable per test: the registry array the signup service holds.
+const registryDocs: LegalDocumentVersion[] = [...LEGAL_DOCUMENTS];
+const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.splice(0, registryDocs.length, ...docs);
+
 const ORG_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
 const ESIGN_OWNER_ROLE_ID = '01900000-0000-7000-8000-0000000002a0';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
@@ -86,6 +104,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       ],
     });
     await setup.$disconnect();
+    const { Client } = await import('pg');
+    const sql = new Client({ connectionString: url });
+    await sql.connect();
+    for (const m of SUBSCRIPTION_MIGRATIONS) await sql.query(readFileSync(m, 'utf8'));
+    await sql.end();
 
     const keys = generateTestKeyPair();
     Object.assign(process.env, {
@@ -97,7 +120,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       ESIGN_SENDER_WEB_BASE_URL: 'https://esign.example.test',
       SIGN_PUBLIC_SIGNUP_ENABLED: '1',
     });
-    delete process.env['SIGN_SIGNUP_TERMS_REF'];
     db = new IdentityPrismaService(url);
     await db.$connect();
 
@@ -107,6 +129,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       providers: [
         SignSignupService,
         SignupBudget,
+        LegalAcceptanceService,
+        SubscriptionPrismaService,
+        { provide: LEGAL_DOCUMENT_REGISTRY, useValue: registryDocs },
         PlatformInvitationService,
         CognitoAdminService,
         { provide: TenantPolicyProvisioningService, useValue: { publishDefaultLifecyclePackage: vi.fn() } },
@@ -132,6 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   }, 60_000);
 
   beforeEach(() => {
+    useRegistry(LEGAL_DOCUMENTS);
     module.get(SignupBudget).reset();
     process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '1';
   });
@@ -287,5 +313,33 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     expect((await http().post('/v1/signup/sign/start').send(c)).status).toBe(202);
     expect(mail.some((m) => m.to === c.email)).toBe(false);
     expect((await http().post('/v1/signup/sign/complete').send({ token: 'y'.repeat(43) })).status).toBe(404);
+  });
+
+  it('terms: none approved â‡’ no terms offered and none recorded', async () => {
+    expect((await http().get('/v1/signup/sign/terms')).body).toEqual({ terms: null });
+    const c = await started();
+    await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const sql = new (await import('pg')).Client({ connectionString: container.getConnectionUri() });
+    await sql.connect();
+    expect((await sql.query(`SELECT count(*)::int AS n FROM subscription."LegalAcceptance" WHERE subject_email = $1`, [c.email])).rows[0].n).toBe(0);
+    await sql.end();
+  });
+
+  it('terms: an approved version must be accepted at start and is recorded for the new tenant', async () => {
+    useRegistry([...LEGAL_DOCUMENTS, APPROVED_TERMS]);
+    expect((await http().get('/v1/signup/sign/terms')).body).toEqual({ terms: { version: '1.0.0', url: APPROVED_TERMS.url } });
+    const c = company();
+    const refused = await http().post('/v1/signup/sign/start').send(c);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.details.reason).toBe('terms_not_accepted');
+    expect((await http().post('/v1/signup/sign/start').send({ ...c, accept_terms: true })).status).toBe(202);
+    const token = tokenFrom(c.email);
+    expect((await http().post('/v1/signup/sign/complete').send({ token })).body.status).toBe('PROVISIONED');
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    const sql = new (await import('pg')).Client({ connectionString: container.getConnectionUri() });
+    await sql.connect();
+    const rows = await sql.query(`SELECT tenant_id, document_key, version, sha256, context FROM subscription."LegalAcceptance" WHERE subject_email = $1`, [c.email]);
+    await sql.end();
+    expect(rows.rows).toEqual([{ tenant_id: tenant.id, document_key: 'sign.terms_of_service', version: '1.0.0', sha256: APPROVED_TERMS.sha256, context: 'SIGNUP' }]);
   });
 });

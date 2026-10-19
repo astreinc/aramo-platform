@@ -93,6 +93,7 @@ describe('EsignBillingController', () => {
       plan_key: 'aramo-sign-business-v1',
       success_url: 'https://esign.example.test/sign/settings/billing?checkout=success',
       cancel_url: 'https://esign.example.test/sign/settings/billing?checkout=canceled',
+      accept_terms: false,
     });
     (ctx.assertCanAuthor as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new AramoError('INSUFFICIENT_PERMISSIONS', 'personal', 403, { requestId: 'r' }));
     await expect(controller.checkout(auth(['tenant:admin:settings']), 'r', { plan_key: 'aramo-sign-business-v1' })).rejects.toMatchObject({ statusCode: 403 });
@@ -170,6 +171,7 @@ describe('EsignBillingReconcileWorker', () => {
           { outcome: 'APPLIED', tenant_id: 't-2' },
         ],
       })),
+      refreshEligibility: vi.fn(async () => ({ checked: 1, lapsed: 0, restored: 0 })),
     } as unknown as SubscriptionLifecycleService;
     expect(await new EsignBillingReconcileWorker(lifecycle, owners).tick()).toBe(2);
     expect(owners.activate).toHaveBeenCalledTimes(1);

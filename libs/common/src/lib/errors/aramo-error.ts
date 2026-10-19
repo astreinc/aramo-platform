@@ -123,6 +123,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT).
   ESIGN_BILLING_UNAVAILABLE: 503,
   ESIGN_BILLING_CONFLICT: 409,
+  // Commercial Plans Amendment A1 — the plan's storage allocation is full
+  // (details: used, limit, requested). Nothing stored is removed.
+  ESIGN_STORAGE_QUOTA_EXCEEDED: 409,
   SIGNER_NOT_FOUND: 404,
   SIGNING_SESSION_INVALID: 401,
   SIGNING_SESSION_EXPIRED: 401,

@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseFilters } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters } from '@nestjs/common';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import type { Request } from 'express';
 
@@ -18,6 +18,13 @@ export class SignSignupController {
 
   private gate(requestId: string): void {
     if (!signupEnabled()) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
+  }
+
+  // A1 — the terms a signup must accept (null while none is approved).
+  @Get('terms')
+  terms(@RequestId() requestId: string): { terms: { version: string; url: string } | null } {
+    this.gate(requestId);
+    return { terms: this.signup.currentTerms() };
   }
 
   @Post('start')

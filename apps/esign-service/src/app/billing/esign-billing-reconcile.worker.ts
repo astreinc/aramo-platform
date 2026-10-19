@@ -47,6 +47,9 @@ export class EsignBillingReconcileWorker implements OnApplicationBootstrap, OnAp
         }
       }
       if (r.checked > 0) this.log.log(`billing reconcile: checked ${r.checked}, applied ${r.applied}, failed ${r.failed}`);
+      // A1 — eligibility-bound plans (Standard Professional ⇐ ATS): record lapses.
+      const e = await this.lifecycle.refreshEligibility(at);
+      if (e.lapsed > 0 || e.restored > 0) this.log.warn(`plan eligibility: ${e.lapsed} lapsed, ${e.restored} restored`);
       return r.applied;
     } catch (err) {
       this.log.error(`billing reconcile sweep failed: ${(err as Error).message}`);

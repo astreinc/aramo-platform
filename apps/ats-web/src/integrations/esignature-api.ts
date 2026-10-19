@@ -16,9 +16,11 @@ export type SigningUnavailableReason =
   | 'PROVIDER_REFUSED';
 
 export interface SignatureAllowance {
-  readonly limit: number;
+  // Commercial Plans Amendment A1 — null on an unlimited plan.
+  readonly limit: number | null;
+  readonly unlimited?: boolean;
   readonly used: number;
-  readonly remaining: number;
+  readonly remaining: number | null;
   readonly period_start: string;
   readonly period_end: string;
   readonly threshold: 'OK' | 'WARNING' | 'EXHAUSTED';

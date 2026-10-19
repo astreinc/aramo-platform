@@ -9,6 +9,12 @@ import { platformApi, type PlatformTenantSign } from '../platform-api';
 // are deliberately no actions here (capability and subscription changes are
 // governed commercial actions).
 
+function bytes(n: number): string {
+  if (n >= 1024 ** 3) return `${Math.round((n / 1024 ** 3) * 10) / 10} GB`;
+  if (n >= 1024 ** 2) return `${Math.round((n / 1024 ** 2) * 10) / 10} MB`;
+  return `${Math.round(n / 1024)} KB`;
+}
+
 function fmt(iso: string | null | undefined): string {
   return iso ? new Date(iso).toLocaleString() : '—';
 }
@@ -69,8 +75,29 @@ export function TenantSignPanel({ tenantId }: { tenantId: string }) {
             ) : null}
           </>
         ) : null}
+        {sub !== null && sub.commitment_end != null ? (
+          <>
+            <dt>Commitment ends</dt>
+            <dd data-testid="tenant-sign-commitment">
+              {fmt(sub.commitment_end)}
+              {sub.cancel_requested_within_commitment ? ' · cancellation requested inside the commitment' : ''}
+            </dd>
+          </>
+        ) : null}
+        {sub?.eligibility_state != null ? (
+          <>
+            <dt>Plan eligibility</dt>
+            <dd data-testid="tenant-sign-eligibility">{sub.eligibility_state === 'LAPSED' ? 'Lapsed (qualifying ATS subscription not active)' : 'OK'}</dd>
+          </>
+        ) : null}
         <dt>Usage this period</dt>
-        <dd data-testid="tenant-sign-usage">{a.subscribed ? `${a.used} of ${a.limit} envelopes (renews ${fmt(a.period_end)})` : '—'}</dd>
+        <dd data-testid="tenant-sign-usage">
+          {a.subscribed ? `${a.used}${a.limit === null ? ' envelopes (unlimited)' : ` of ${a.limit} envelopes`} (renews ${fmt(a.period_end)})` : '—'}
+        </dd>
+        <dt>Storage</dt>
+        <dd data-testid="tenant-sign-storage">
+          {data.storage != null ? `${bytes(data.storage.used)}${data.storage.limit === null ? ' (not limited)' : ` of ${bytes(data.storage.limit)}`}` : '—'}
+        </dd>
         <dt>Online billing</dt>
         <dd>{data.billing_available ? 'Configured' : 'Not configured'}</dd>
       </dl>

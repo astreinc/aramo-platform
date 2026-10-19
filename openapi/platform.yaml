@@ -54,6 +54,36 @@ tags:
       NO PII; the review queue is counts-only (never a tenant id in a response).
 
 paths:
+  /v1/signup/sign/terms:
+    get:
+      operationId: getSignSignupTerms
+      tags: [Sign Self-Service Signup]
+      summary: The terms a signup must accept.
+      description: |
+        Commercial Plans Amendment A1 — the APPROVED Terms of Service version
+        and its published URL, or null while no version is approved (no
+        unapproved terms are ever presented for acceptance).
+      security: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [terms]
+                properties:
+                  terms:
+                    type: [object, 'null']
+                    required: [version, url]
+                    properties:
+                      version:
+                        type: string
+                      url:
+                        type: string
+                        format: uri
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
   /v1/signup/sign/start:
     post:
       operationId: startSignSignup
@@ -432,7 +462,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [tenant_id, tenant_kind, capabilities, sign_entitled, subscription, allowance, billing_available, billing_events]
+                required: [tenant_id, tenant_kind, capabilities, sign_entitled, subscription, allowance, storage, billing_available, billing_events]
                 properties:
                   tenant_id:
                     type: string
@@ -450,7 +480,10 @@ paths:
                     description: Same shape as esign.yaml BillingAccount.subscription.
                   allowance:
                     type: object
-                    description: Subscribed allowance status (limit, used, remaining, period) or { subscribed false, state }.
+                    description: Subscribed allowance status (limit — null when unlimited, unlimited, used, remaining, period) or { subscribed false, state }.
+                  storage:
+                    type: [object, 'null']
+                    description: Storage used against the plan (capacity_key, limit — null when not limited, unlimited, used); null without a subscription.
                   billing_available:
                     type: boolean
                   billing_events:

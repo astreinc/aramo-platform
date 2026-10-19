@@ -114,6 +114,11 @@ export class StripeBillingProvider implements BillingProviderPort {
     return (process.env['STRIPE_API_BASE'] ?? 'https://api.stripe.com').replace(/\/+$/, '');
   }
 
+  mode(): 'test' | 'live' {
+    const k = this.secretKey() ?? '';
+    return k.startsWith('sk_live_') || k.startsWith('rk_live_') ? 'live' : 'test';
+  }
+
   isConfigured(): boolean {
     return this.secretKey() !== undefined && (process.env['STRIPE_WEBHOOK_SECRET'] ?? '').trim() !== '';
   }

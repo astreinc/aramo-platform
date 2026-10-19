@@ -694,7 +694,9 @@ export function App(): JSX.Element {
             <div className="sg-disclosure" tabIndex={0} aria-label="Electronic records and signature disclosure">
               <h2>Electronic records and signature disclosure</h2>
               {(disclosure?.text ?? '').split(/\n{2,}/).map((para, i) => (
-                <p key={i}>{para}</p>
+                <p key={i} style={{ whiteSpace: 'pre-line' }}>
+                  {para}
+                </p>
               ))}
               <p className="sg-muted sg-small">Version {disclosure?.disclosure_version ?? ''}</p>
             </div>

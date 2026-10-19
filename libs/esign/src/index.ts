@@ -111,6 +111,8 @@ export {
   CURRENT_DISCLOSURE_VERSION,
   currentDisclosure,
   findDisclosure,
+  listDisclosures,
+  DISCLOSURE_V2_TEXT,
   type DisclosureVersion,
 } from './lib/domain/disclosure.js';
 export {
@@ -119,3 +121,4 @@ export {
   EXECUTED_ACCESS_TTL_DAYS_DEFAULT,
 } from './lib/envelope-notification.service.js';
 export { SENDER_DIRECTORY_PORT, type SenderDirectoryPort, type SenderContact } from './lib/ports/sender-directory.port.js';
+export { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './lib/ports/storage-accounting.port.js';

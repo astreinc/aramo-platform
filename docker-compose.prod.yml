@@ -417,6 +417,13 @@ services:
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - ESIGN_KMS_KEY_ID
       - ESIGN_KMS_SIGNING_ALGORITHM
+      # Commercial Plans Amendment A1 — all inactive until separately approved:
+      # the signer disclosure version (default v1; v2 = the legal-pending draft),
+      # the post-termination export window (unset until the retention policy is
+      # approved) and the Enterprise "Contact sales" link.
+      - ESIGN_DISCLOSURE_VERSION
+      - SIGN_POST_TERMINATION_EXPORT_DAYS
+      - SIGN_SALES_CONTACT_URL
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).
@@ -473,10 +480,10 @@ services:
       # Aramo Sign launch — public self-service signup (/v1/signup/sign/* via the
       # esign.aramo.ai block). Dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1 (separately
       # authorized). The verification email goes through the shared mailer (SES,
-      # same as api); links point at the Sign console origin. SIGN_SIGNUP_TERMS_REF
-      # (optional) makes terms acceptance mandatory and is stored with the request.
+      # same as api); links point at the Sign console origin.
+      # A1: signup terms come from the versioned legal registry in code (nothing
+      # approved yet ⇒ no terms are offered); there is no env override.
       - SIGN_PUBLIC_SIGNUP_ENABLED
-      - SIGN_SIGNUP_TERMS_REF
       - ESIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS

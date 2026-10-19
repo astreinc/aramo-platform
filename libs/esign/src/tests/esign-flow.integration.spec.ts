@@ -150,7 +150,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     const sourceProvider: DocumentSourceProviderPort = { getSourcePdf: async () => sourcePdf };
     const publisher = new LocalEventPublisher();
     const outbox = new OutboxService(prisma, publisher);
-    const execution = new ExecutionService(prisma, repo, new PdfLibDocumentRenderingAdapter(), sourceProvider, undefined, outbox);
+    // A1 — kept artifacts are measured against the tenant's storage (never refused).
+    const kept: { tenant_id: string; ref: string; bytes: number }[] = [];
+    const storageAccounting = { recordKept: async (k: { tenant_id: string; ref: string; bytes: number }) => void kept.push(k) };
+    const execution = new ExecutionService(prisma, repo, new PdfLibDocumentRenderingAdapter(), sourceProvider, undefined, outbox, storageAccounting);
     const producerService = new EsignService(prisma, repo, new SoftwareEvidenceManifestSigner(), execution);
 
     const { envelopeId } = await buildDraftEnvelope();
@@ -178,6 +181,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     expect(cert.rows).toHaveLength(1);
     expect(cert.rows[0].certificate_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(cert.rows[0].byte_size).toBeGreaterThan(0);
+    expect(kept.map((k) => k.ref.split(':').slice(0, 2).join(':')).sort()).toEqual(['esign:certificate', 'esign:executed']);
+    expect(kept.find((k) => k.ref.startsWith('esign:executed:'))!.bytes).toBe(exec.rows[0].byte_size);
+    expect(kept.every((k) => k.tenant_id === TENANT)).toBe(true);
 
     // DOC-4 B5 — a transactional-outbox event is enqueued (refs only, no bytes);
     // the drain publishes it once and stamps published_at.

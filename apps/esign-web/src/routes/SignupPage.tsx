@@ -13,9 +13,10 @@ import { Btn, Check, ErrorBox, Field, Loading, TextIn } from '../ui';
 
 const API = '/v1/signup/sign';
 
-// Optional build-time terms link (set together with the backend's
-// SIGN_SIGNUP_TERMS_REF; legal text pending). Without it no checkbox is shown.
-const TERMS_URL: string | undefined = (import.meta as { env?: Record<string, string | undefined> }).env?.['VITE_SIGN_TERMS_URL'];
+// Commercial Plans Amendment A1 — the terms come from the backend's versioned
+// registry (GET /v1/signup/sign/terms): null while no version is approved, so an
+// unapproved text is never offered for acceptance.
+type Terms = { version: string; url: string } | null;
 
 interface SignupError {
   status: number;
@@ -56,6 +57,18 @@ export function SignupPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const [termsDoc, setTermsDoc] = useState<Terms>(null);
+  const [unavailable, setUnavailable] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/terms`)
+      .then(async (r) => {
+        if (r.status === 404) return setUnavailable(true);
+        const j = (await r.json().catch(() => ({}))) as { terms?: Terms };
+        setTermsDoc(j.terms ?? null);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -65,12 +78,20 @@ export function SignupPage() {
       email: email.trim(),
       organization_name: org.trim(),
       ...(name.trim() !== '' ? { display_name: name.trim() } : {}),
-      ...(TERMS_URL !== undefined ? { accept_terms: terms } : {}),
+      ...(termsDoc !== null ? { accept_terms: terms } : {}),
     })
       .then(() => setSentTo(email.trim()))
       .catch((err: SignupError) => setError(err.status === 404 ? 'Signing up online isn’t available yet.' : err.message))
       .finally(() => setBusy(false));
   };
+
+  if (unavailable) {
+    return (
+      <Frame title="Signing up online isn’t available yet" testId="signup-unavailable">
+        <div className="sg-lede">Contact Aramo to set up Aramo Sign for your organization.</div>
+      </Frame>
+    );
+  }
 
   if (sentTo !== null) {
     return (
@@ -98,19 +119,20 @@ export function SignupPage() {
         <Field label="Your name" htmlFor="su-name">
           <TextIn id="su-name" maxLength={100} autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        {TERMS_URL !== undefined ? (
+        {termsDoc !== null ? (
           <label className="sg-settings-row">
             <Check checked={terms} onChange={(e) => setTerms(e.target.checked)} data-testid="signup-terms" />
             <span>
               I agree to the{' '}
-              <a href={TERMS_URL} target="_blank" rel="noopener noreferrer">
-                Aramo Sign terms
-              </a>
+              <a href={termsDoc.url} target="_blank" rel="noopener noreferrer">
+                Aramo Sign Terms of Service
+              </a>{' '}
+              (version {termsDoc.version})
             </span>
           </label>
         ) : null}
         {error !== null ? <ErrorBox>{error}</ErrorBox> : null}
-        <Btn variant="primary" type="submit" disabled={busy || (TERMS_URL !== undefined && !terms)} data-testid="signup-submit">
+        <Btn variant="primary" type="submit" disabled={busy || (termsDoc !== null && !terms)} data-testid="signup-submit">
           {busy ? 'Sending…' : 'Continue'}
         </Btn>
         <p className="sg-help">

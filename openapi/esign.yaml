@@ -1189,12 +1189,17 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [plans]
+                required: [plans, terms, sales_contact_url]
                 properties:
                   plans:
                     type: array
                     items:
                       $ref: '#/components/schemas/BillingPlan'
+                  terms:
+                    type: [object, 'null']
+                    description: The APPROVED Terms of Service a checkout must accept (version, url); null while none is approved.
+                  sales_contact_url:
+                    type: [string, 'null']
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -1241,6 +1246,9 @@ paths:
                 plan_key:
                   type: string
                   maxLength: 100
+                accept_terms:
+                  type: boolean
+                  description: Required true when an approved Terms of Service version exists.
       responses:
         '201':
           description: Created.
@@ -1437,7 +1445,8 @@ components:
   schemas:
     BillingPlan:
       type: object
-      required: [key, name, allowances, purchasable]
+      description: A catalog plan (Commercial Plans Amendment A1). Prices are display values in minor units; the charge is the provider price. reference_price is present only when substantiated.
+      required: [key, name, sales_model, status, price, reference_price, commitment_months, eligibility, eligible, allowances, capacities, features, purchasable]
       properties:
         key:
           type: string
@@ -1445,24 +1454,82 @@ components:
           type: string
         description:
           type: [string, 'null']
+        tenant_kind:
+          type: [string, 'null']
+        sales_model:
+          type: string
+          enum: [SELF_SERVICE, FREE, CONTACT_SALES, OPERATOR]
+        status:
+          type: string
+          enum: [ACTIVE, INACTIVE]
+        price:
+          type: [object, 'null']
+          properties:
+            amount_minor:
+              type: integer
+            currency:
+              type: string
+            interval:
+              type: [string, 'null']
+        reference_price:
+          type: [object, 'null']
+          properties:
+            amount_minor:
+              type: integer
+            currency:
+              type: string
+        commitment_months:
+          type: [integer, 'null']
+        eligibility:
+          type: [string, 'null']
+        eligible:
+          type: boolean
+        support_tier:
+          type: [string, 'null']
+        activation_note:
+          type: [string, 'null']
         allowances:
           type: array
           items:
             type: object
-            required: [allowance_key, included_quantity, period]
+            required: [allowance_key, included_quantity, unlimited, period]
             properties:
               allowance_key:
                 type: string
               included_quantity:
-                type: integer
+                type: [integer, 'null']
+              unlimited:
+                type: boolean
               period:
                 type: string
                 enum: [MONTHLY]
+        capacities:
+          type: array
+          items:
+            type: object
+            required: [capacity_key, limit, unlimited]
+            properties:
+              capacity_key:
+                type: string
+              limit:
+                type: [integer, 'null']
+              unlimited:
+                type: boolean
+        features:
+          type: array
+          items:
+            type: object
+            required: [feature_key, enabled]
+            properties:
+              feature_key:
+                type: string
+              enabled:
+                type: boolean
         purchasable:
           type: boolean
     BillingAccount:
       type: object
-      required: [subscription, allowance, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
+      required: [subscription, allowance, storage, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
       properties:
         subscription:
           type: [object, 'null']
@@ -1496,9 +1563,31 @@ components:
               format: date-time
             billing_managed:
               type: boolean
+            commitment_months:
+              type: [integer, 'null']
+            commitment_end:
+              type: [string, 'null']
+              format: date-time
+            cancel_requested_within_commitment:
+              type: boolean
+            eligibility_state:
+              type: [string, 'null']
+              enum: [OK, LAPSED, null]
+            list_price:
+              type: [object, 'null']
+            features:
+              type: array
+              items:
+                type: object
+            export_access_until:
+              type: [string, 'null']
+              format: date-time
         allowance:
           type: object
-          description: Subscribed allowance status (limit, used, remaining, period_start, period_end, threshold) or { subscribed false, state }.
+          description: Subscribed allowance status (limit — null when unlimited, unlimited, used, remaining — null when unlimited, period_start, period_end, threshold) or { subscribed false, state }.
+        storage:
+          type: [object, 'null']
+          description: Storage used against the plan (capacity_key, limit — null when not limited, unlimited, used); null without a subscription.
         billing_available:
           type: boolean
         tenant_kind:

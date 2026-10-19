@@ -123,8 +123,12 @@ export interface PlatformTenantSign {
     cancel_at_period_end: boolean;
     grace_until: string | null;
     billing_managed: boolean;
+    commitment_end?: string | null;
+    cancel_requested_within_commitment?: boolean;
+    eligibility_state?: string | null;
   } | null;
-  allowance: { subscribed: true; limit: number; used: number; remaining: number; period_start: string; period_end: string } | { subscribed: false; state?: string };
+  allowance: { subscribed: true; limit: number | null; used: number; remaining: number | null; period_start: string; period_end: string } | { subscribed: false; state?: string };
+  storage?: { capacity_key: string; limit: number | null; unlimited: boolean; used: number } | null;
   billing_available: boolean;
   billing_events: { event_type: string; outcome: string; detail: string | null; event_created_at: string; received_at: string }[];
 }

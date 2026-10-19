@@ -46,6 +46,7 @@ export class PlatformSignController {
       sign_entitled: capabilities.has('esign'),
       subscription: account.subscription,
       allowance: account.allowance,
+      storage: account.storage,
       billing_available: account.billing_available,
       billing_events: events,
     };
