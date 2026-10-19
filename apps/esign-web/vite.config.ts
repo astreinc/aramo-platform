@@ -31,6 +31,7 @@ export default defineConfig({
     proxy: {
       '/auth': { target: 'http://localhost:3001', changeOrigin: false, secure: false },
       '/v1/esign/sender': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/esign/billing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
     },
   },
   preview: { port: 4306, host: '127.0.0.1' },

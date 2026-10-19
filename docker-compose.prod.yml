@@ -396,6 +396,17 @@ services:
       - ESIGN_EXECUTED_ACCESS_TTL_DAYS
       - ESIGN_EXPIRY_WORKER_ENABLED
       - ESIGN_EXPIRY_INTERVAL_MS
+      # Aramo Sign launch — self-service billing (Stripe). Unset key ⇒ billing is
+      # unavailable (503) and nothing is charged; live keys need separate
+      # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price
+      # ids; the reconcile sweep is opt-in.
+      - STRIPE_SECRET_KEY
+      - STRIPE_WEBHOOK_SECRET
+      - STRIPE_PLAN_PRICES
+      - STRIPE_AUTOMATIC_TAX
+      - BILLING_PAST_DUE_GRACE_DAYS
+      - ESIGN_BILLING_RECONCILE_ENABLED
+      - ESIGN_BILLING_RECONCILE_INTERVAL_MS
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).

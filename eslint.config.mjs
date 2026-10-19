@@ -481,6 +481,14 @@ export default [
       // host-strip already tolerates the full 'candidate.aramo.ai' literal and
       // this file has no bare label (the lockstep is satisfied natively there).
       'libs/auth-storage/src/lib/host-auth-profile.seed.ts',
+      // Aramo Sign launch (commercial lane) — the Stripe REST adapter is the ONE
+      // home of the provider's wire vocabulary: its account object, the
+      // checkout parameters and the subscription event-type prefix are fixed
+      // third-party API names. Every Aramo-side name is tenant / account_ref.
+      // File-scoped; paired in lockstep with scripts/verify-vocabulary.sh.
+      // PENDING Lead ratification (the commercial-lane per-path ruling).
+      'libs/subscription/src/lib/billing/stripe-billing.provider.ts',
+      'libs/subscription/src/tests/stripe-billing.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

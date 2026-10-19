@@ -11325,6 +11325,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/esign-http.controller.ts"
     },
     {
@@ -18676,6 +18681,11 @@
       "to": "deploy/seed-prod.sh"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -19403,6 +19413,16 @@
       "from": "eslint.config.mjs",
       "status": "unscoped",
       "to": "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-billing.spec.ts"
     },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
@@ -24354,6 +24374,16 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-billing.spec.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",

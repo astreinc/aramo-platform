@@ -42,6 +42,9 @@ import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adap
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
 import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
+import { EsignBillingController } from './billing/esign-billing.controller.js';
+import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
+import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -104,8 +107,17 @@ import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
       ],
     }),
   ],
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController],
-  providers: [NativeAramoSignatureProvider, AramoSignAllowanceGate, SenderContextService, SenderEnvelopeService],
+  // Aramo Sign launch — self-service billing (v1/esign/billing), the governed
+  // subscribing-owner activation and the provider reconciliation sweep.
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController],
+  providers: [
+    NativeAramoSignatureProvider,
+    AramoSignAllowanceGate,
+    SenderContextService,
+    SenderEnvelopeService,
+    EsignOwnerActivationService,
+    EsignBillingReconcileWorker,
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

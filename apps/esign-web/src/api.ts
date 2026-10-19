@@ -165,6 +165,51 @@ export interface Evidence {
 
 const enc = encodeURIComponent;
 
+// Aramo Sign launch — self-service billing (/v1/esign/billing/*). The backend is
+// the only authority for the plan, status and usage; the console only renders
+// them and hands the browser to the provider-hosted checkout / portal pages.
+const BILLING = '/v1/esign/billing';
+
+export interface BillingPlan {
+  key: string;
+  name: string;
+  description: string | null;
+  allowances: { allowance_key: string; included_quantity: number; period: string }[];
+  purchasable: boolean;
+}
+
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
+
+export interface BillingAccount {
+  subscription: {
+    plan_key: string;
+    plan_name: string;
+    source: 'MANUAL' | 'DEVELOPMENT' | 'SELF_SERVICE';
+    status: SubscriptionStatus;
+    sending: boolean;
+    started_at: string;
+    ended_at: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    grace_until: string | null;
+    billing_managed: boolean;
+  } | null;
+  allowance:
+    | { subscribed: true; plan_key: string; allowance_key: string; limit: number; used: number; remaining: number; period_start: string; period_end: string; threshold: 'OK' | 'WARNING' | 'EXHAUSTED' }
+    | { subscribed: false; allowance_key: string; state?: 'NONE' | 'PAST_DUE' | 'INCOMPLETE' | 'CANCELED' };
+  billing_available: boolean;
+  tenant_kind: string;
+  self_service_eligible: boolean;
+  can_manage_billing: boolean;
+}
+
+export const billingApi = {
+  plans: () => apiClient.get<{ plans: BillingPlan[] }>(`${BILLING}/plans`),
+  account: () => apiClient.get<BillingAccount>(`${BILLING}/account`),
+  checkout: (plan_key: string) => apiClient.post<{ url: string }>(`${BILLING}/checkout`, { plan_key }),
+  portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
+};
+
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
@@ -234,12 +279,15 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   if (e instanceof ApiError) {
     // Plan / allowance refusals (Aramo Sign subscription gate) — never shown as a
     // permission problem.
-    if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Billing.';
+    if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
       const limit = e.details?.['limit'];
       const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
-      return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can upgrade the plan in Settings → Billing.`;
+      return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can manage the plan in Settings → Plan & billing.`;
     }
+    if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';

@@ -118,6 +118,11 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_ALLOWANCE_EXHAUSTED: 409,
   // Multi-Provider directive §D — the canonical availability refusal (details.reason).
   ESIGN_SEND_UNAVAILABLE: 409,
+  // Aramo Sign launch — self-service billing: provider not configured/reachable
+  // (503), and a billing action that conflicts with the tenant's state (409,
+  // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT).
+  ESIGN_BILLING_UNAVAILABLE: 503,
+  ESIGN_BILLING_CONFLICT: 409,
   SIGNER_NOT_FOUND: 404,
   SIGNING_SESSION_INVALID: 401,
   SIGNING_SESSION_EXPIRED: 401,

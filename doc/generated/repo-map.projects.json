@@ -1652,16 +1652,31 @@
     ],
     "@aramo/subscription": [
       "AllowanceService",
+      "AramoSignBusinessPlanKey",
       "AramoSignIncludedPlanKey",
+      "BILLING_PROVIDER_PORT",
+      "BillingProviderUnavailableError",
+      "BillingRefusedError",
+      "BillingWebhookSignatureError",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
+      "PAST_DUE_GRACE_DAYS_DEFAULT",
+      "STRIPE_API_VERSION",
+      "StripeBillingProvider",
+      "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
       "addMonthsClamped",
       "assertNotProduction",
       "billingPeriodAt",
+      "mapProviderStatus",
       "openDevelopmentSubscription",
-      "thresholdOf"
+      "parsePlanPrices",
+      "stripeEventSubscriptionRef",
+      "stripeSubscriptionState",
+      "subscriptionSends",
+      "thresholdOf",
+      "verifyStripeSignature"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -2676,6 +2691,12 @@
         "status": "excluded"
       },
       { "project": "entitlement", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
@@ -4874,6 +4895,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -5765,6 +5792,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/allowance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/subscription-lifecycle.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7418,6 +7451,12 @@
         "project": "aramo-esign-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/esign-web/src/pages/Billing.spec.tsx",
+        "project": "aramo-esign-web",
+        "status": "excluded"
+      },
       { "project": "aramo-esign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -7715,6 +7754,12 @@
         "status": "excluded"
       },
       { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
@@ -9193,6 +9238,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

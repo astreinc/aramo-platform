@@ -13,6 +13,8 @@ info:
 tags:
   - name: sender
     description: The authenticated Aramo Sign sender console API (esign.aramo.ai).
+  - name: billing
+    description: Aramo Sign self-service billing (plans, account, Stripe checkout and portal, provider webhook).
 paths:
   /v1/esign/envelopes:
     post:
@@ -1170,6 +1172,158 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/billing/plans:
+    get:
+      operationId: listBillingPlans
+      summary: Sellable Aramo Sign plans and their included allowances.
+      description: >
+        Prices are held by the billing provider and shown on its checkout page. purchasable is false when online billing is not configured. Requires the esign consumer and the tenant esign capability.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plans]
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BillingPlan'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/billing/account:
+    get:
+      operationId: getBillingAccount
+      summary: The organization's Aramo Sign plan, subscription status, period and usage.
+      description: >
+        Backend-authoritative. Requires esign:envelope:read or tenant:admin:settings. can_manage_billing is true for a BUSINESS tenant principal holding tenant:admin:settings.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingAccount'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/billing/checkout:
+    post:
+      operationId: startBillingCheckout
+      summary: Start a Stripe Checkout session for a sellable plan.
+      description: >
+        Requires tenant:admin:settings in a BUSINESS tenant. Return URLs are built by the server. The subscription opens only when the verified provider webhook (or reconciliation) confirms it; the subscribing user then receives esign_owner if they hold organization authority.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_key]
+              properties:
+                plan_key:
+                  type: string
+                  maxLength: 100
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingRedirect'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/esign/billing/portal:
+    post:
+      operationId: openBillingPortal
+      summary: Open the Stripe billing portal (payment method, invoices, cancellation).
+      description: Requires tenant:admin:settings.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingRedirect'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/esign/billing/webhook/stripe:
+    post:
+      operationId: receiveStripeBillingWebhook
+      summary: Stripe webhook receiver.
+      description: >
+        No session. Authenticity is the Stripe-Signature header (HMAC-SHA256 over the raw body, 300 second tolerance). Each event is processed at most once; the subscription state is re-fetched from Stripe before it is applied. A processing failure returns 5xx so Stripe redelivers.
+      tags: [billing]
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, outcome]
+                properties:
+                  received:
+                    type: boolean
+                  outcome:
+                    type: string
+                    enum: [APPLIED, IGNORED, DUPLICATE]
+        '401':
+          description: The signature is missing, stale or invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
 components:
   securitySchemes:
     senderSession:
@@ -1268,7 +1422,104 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
+    BillingConflict:
+      description: ESIGN_BILLING_CONFLICT — already subscribed, or no billing account yet (details.reason).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BillingUnavailable:
+      description: ESIGN_BILLING_UNAVAILABLE — online billing is not configured or the provider is unreachable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    BillingPlan:
+      type: object
+      required: [key, name, allowances, purchasable]
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        allowances:
+          type: array
+          items:
+            type: object
+            required: [allowance_key, included_quantity, period]
+            properties:
+              allowance_key:
+                type: string
+              included_quantity:
+                type: integer
+              period:
+                type: string
+                enum: [MONTHLY]
+        purchasable:
+          type: boolean
+    BillingAccount:
+      type: object
+      required: [subscription, allowance, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
+      properties:
+        subscription:
+          type: object
+          nullable: true
+          required: [plan_key, plan_name, source, status, sending, started_at, cancel_at_period_end, billing_managed]
+          properties:
+            plan_key:
+              type: string
+            plan_name:
+              type: string
+            source:
+              type: string
+              enum: [MANUAL, DEVELOPMENT, SELF_SERVICE]
+            status:
+              type: string
+              enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, INCOMPLETE]
+            sending:
+              type: boolean
+            started_at:
+              type: string
+              format: date-time
+            ended_at:
+              type: string
+              format: date-time
+              nullable: true
+            current_period_end:
+              type: string
+              format: date-time
+              nullable: true
+            cancel_at_period_end:
+              type: boolean
+            grace_until:
+              type: string
+              format: date-time
+              nullable: true
+            billing_managed:
+              type: boolean
+        allowance:
+          type: object
+          description: Subscribed allowance status (limit, used, remaining, period_start, period_end, threshold) or { subscribed false, state }.
+        billing_available:
+          type: boolean
+        tenant_kind:
+          type: string
+          enum: [BUSINESS, PERSONAL]
+        self_service_eligible:
+          type: boolean
+        can_manage_billing:
+          type: boolean
+    BillingRedirect:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
     SenderContext:
       type: object
       required: [user, tenant, workspace, permissions, can_send, personal_sending_enabled]

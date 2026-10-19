@@ -36,7 +36,22 @@ export interface AllowanceStatus {
   readonly threshold: AllowanceThreshold;
 }
 
-export type AllowanceReadResult = AllowanceStatus | { readonly subscribed: false; readonly allowance_key: string };
+// Aramo Sign launch — why a tenant cannot send: no open subscription, or the open
+// one is not in a sending state (payment past due beyond grace, incomplete, ended).
+export type UnsubscribedState = 'NONE' | 'PAST_DUE' | 'INCOMPLETE' | 'CANCELED';
+
+export type AllowanceReadResult =
+  | AllowanceStatus
+  | { readonly subscribed: false; readonly allowance_key: string; readonly state?: UnsubscribedState };
+
+// Aramo Sign launch — the effective-entitlement rule (Aramo authoritative):
+// TRIALING / ACTIVE send; PAST_DUE sends only until its grace ends; INCOMPLETE and
+// CANCELED never send. Signing of already-sent envelopes is never gated here.
+export function subscriptionSends(sub: { status: string; grace_until: Date | null }, at: Date): boolean {
+  if (sub.status === 'TRIALING' || sub.status === 'ACTIVE') return true;
+  if (sub.status === 'PAST_DUE') return sub.grace_until !== null && sub.grace_until.getTime() > at.getTime();
+  return false;
+}
 
 export type ReserveResult =
   | { readonly ok: true; readonly already: boolean; readonly status: AllowanceStatus }
@@ -59,18 +74,23 @@ interface ActivePlan {
   period: BillingPeriod;
 }
 
+type PlanLookup = { ok: true; plan: ActivePlan } | { ok: false; state: UnsubscribedState };
+
 @Injectable()
 export class AllowanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async activePlan(db: Tx | PrismaService, tenant_id: string, allowance_key: string, at: Date): Promise<ActivePlan | null> {
+  private async activePlan(db: Tx | PrismaService, tenant_id: string, allowance_key: string, at: Date): Promise<PlanLookup> {
     const sub = await db.tenantSubscription.findFirst({
       where: { tenant_id, ended_at: null },
       include: { plan: { include: { allowances: { where: { allowance_key } } } } },
     });
     const allowance = sub?.plan.allowances[0];
-    if (sub === null || sub === undefined || allowance === undefined) return null;
-    return { plan_key: sub.plan.key, limit: allowance.included_quantity, period: billingPeriodAt(sub.period_anchor, at) };
+    if (sub === null || sub === undefined || allowance === undefined) return { ok: false, state: 'NONE' };
+    if (!subscriptionSends(sub, at)) {
+      return { ok: false, state: sub.status === 'PAST_DUE' ? 'PAST_DUE' : sub.status === 'INCOMPLETE' ? 'INCOMPLETE' : 'CANCELED' };
+    }
+    return { ok: true, plan: { plan_key: sub.plan.key, limit: allowance.included_quantity, period: billingPeriodAt(sub.period_anchor, at) } };
   }
 
   private async used(db: Tx | PrismaService, tenant_id: string, allowance_key: string, period_start: Date): Promise<number> {
@@ -95,8 +115,9 @@ export class AllowanceService {
 
   /** Backend-owned read of the effective plan, period and consumption. */
   async getStatus(tenant_id: string, allowance_key: string, at: Date = new Date()): Promise<AllowanceReadResult> {
-    const plan = await this.activePlan(this.prisma, tenant_id, allowance_key, at);
-    if (plan === null) return { subscribed: false, allowance_key };
+    const found = await this.activePlan(this.prisma, tenant_id, allowance_key, at);
+    if (!found.ok) return { subscribed: false, allowance_key, state: found.state };
+    const plan = found.plan;
     return this.statusOf(plan, allowance_key, await this.used(this.prisma, tenant_id, allowance_key, plan.period.start));
   }
 
@@ -112,10 +133,11 @@ export class AllowanceService {
       // Serialize every reservation for this tenant + allowance: two concurrent sends
       // at 99/100 cannot both see a free slot.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.allowance_key}`}, 0))`;
-      const plan = await this.activePlan(tx, input.tenant_id, input.allowance_key, at);
-      if (plan === null) {
-        return { ok: false, reason: 'NOT_SUBSCRIBED', status: { subscribed: false, allowance_key: input.allowance_key } } as const;
+      const found = await this.activePlan(tx, input.tenant_id, input.allowance_key, at);
+      if (!found.ok) {
+        return { ok: false, reason: 'NOT_SUBSCRIBED', status: { subscribed: false, allowance_key: input.allowance_key, state: found.state } } as const;
       }
+      const plan = found.plan;
       const key = { tenant_id: input.tenant_id, allowance_key: input.allowance_key, send_key: input.send_key };
       const existing = await tx.allowanceUsage.findUnique({ where: { tenant_id_allowance_key_send_key: key } });
       if (existing !== null && existing.state !== 'RELEASED') {

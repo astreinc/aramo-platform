@@ -8,6 +8,8 @@ import type { PrismaService } from './prisma/prisma.service.js';
 // like production: commercial access is never granted silently.
 
 export const AramoSignIncludedPlanKey = 'aramo-sign-included-v1';
+// Aramo Sign launch — the self-service sellable plan (100/month, no rollover).
+export const AramoSignBusinessPlanKey = 'aramo-sign-business-v1';
 
 export function assertNotProduction(env: NodeJS.ProcessEnv): void {
   const node = (env['NODE_ENV'] ?? '').toLowerCase();

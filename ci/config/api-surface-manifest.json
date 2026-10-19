@@ -81,6 +81,7 @@
     "apps/api/src/esignature-providers/adobe-sign/adobe-sign-webhook.controller.ts": "XP",
     "apps/api/src/webhooks/indeed-apply.controller.ts": "XP",
     "apps/esign-service/src/app/esign-http.controller.ts": "SS",
+    "apps/esign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/esign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
@@ -170,6 +171,11 @@
       "method": "POST",
       "path": "/v1/esign/signing/executed",
       "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/billing/webhook/stripe",
+      "class": "XP"
     }
   ],
   "transitionalUndocumented": [

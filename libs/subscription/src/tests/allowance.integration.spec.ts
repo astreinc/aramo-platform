@@ -17,6 +17,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 const MIGRATIONS = [
   '../../../metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
   '../../prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
+  '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'esign.envelopes';

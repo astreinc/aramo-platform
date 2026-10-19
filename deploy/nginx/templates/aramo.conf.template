@@ -273,6 +273,13 @@ server {
     client_max_body_size 40m;
     proxy_pass http://esign-service:3003;
   }
+  # Aramo Sign launch — self-service billing (plans, account, checkout, portal)
+  # and the billing-provider webhook. The webhook carries no session: esign-service
+  # verifies the provider signature over the raw body (so no body rewriting here).
+  location /v1/esign/billing/ {
+    client_max_body_size 1m;
+    proxy_pass http://esign-service:3003;
+  }
   location /auth/ {
     proxy_pass http://auth-service:3001;
     # HF1-A — the auth callback sets several cookies; widen the header buffers.
