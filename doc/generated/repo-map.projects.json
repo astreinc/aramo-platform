@@ -404,7 +404,8 @@
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision",
-      "resolveTalentTrustMigrations"
+      "resolveTalentTrustMigrations",
+      "secretsManagerClientConfig"
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",

@@ -62,6 +62,10 @@ load_env() {
     export MAILER_PROVIDER=outbox
     export MAILER_OUTBOX_DIR="${MAILER_OUTBOX_DIR:-$ROOT/$RUN_DIR/mail}"
   fi
+  # Local secrets → LocalStack Secrets Manager (connector / e-signature provider
+  # tokens, Microsoft delegated tokens, tenant LLM keys), so a developer box never
+  # writes the real AWS account. Opt out with AWS_SECRETS_MANAGER_ENDPOINT= (empty).
+  export AWS_SECRETS_MANAGER_ENDPOINT="${AWS_SECRETS_MANAGER_ENDPOINT-http://localhost:4566}"
 }
 
 compose() { docker compose "$@"; }

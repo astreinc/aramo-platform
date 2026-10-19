@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-// DocuSign Connect (webhooks) — HMAC-SHA256 over the RAW request body, base64,
-// one header per configured key (X-DocuSign-Signature-1..N); any one match is
-// enough. Compared in constant time. The payload is then only a hint: completion
-// is confirmed by reading the envelope from the DocuSign API.
+// DocuSign Connect (webhooks). Per-envelope callbacks (eventNotification) arrive
+// unsigned; an Aramo-account Connect configuration signs with HMAC-SHA256 over the
+// RAW body, base64, one header per key (X-DocuSign-Signature-1..N; any one match is
+// enough, constant-time). Either way the payload is only a hint: completion is
+// confirmed by reading the envelope from the DocuSign API.
 
 export const DOCUSIGN_EVIDENCE_KIND = 'DOCUSIGN_CERTIFICATE_OF_COMPLETION';
 export const DOCUSIGN_WEBHOOK_ROUTE = '/v1/webhooks/esignature/docusign';
@@ -21,6 +22,15 @@ export function verifyDocuSignHmac(raw: Buffer, headers: Record<string, string |
       continue;
     }
     if (given.length === expected.length && timingSafeEqual(given, expected)) return true;
+  }
+  return false;
+}
+
+/** Whether the request carries any X-DocuSign-Signature-N header. */
+export function hasDocuSignSignature(headers: Record<string, string | string[] | undefined>): boolean {
+  for (let i = 1; i <= 10; i += 1) {
+    const v = headers[`x-docusign-signature-${i}`];
+    if (typeof v === 'string' && v.length > 0) return true;
   }
   return false;
 }

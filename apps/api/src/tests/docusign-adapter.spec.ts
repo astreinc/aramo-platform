@@ -17,6 +17,7 @@ const CONFIG: DocuSignConfig = {
   clientSecret: 'secret-456',
   oauthBaseUrl: 'https://account-d.docusign.com',
   redirectUri: 'https://astre.aramo.ai/v1/integrations/esignature/docusign/callback',
+  webhookUrl: 'https://astre.aramo.ai/v1/webhooks/esignature/docusign',
   connectHmacKey: 'hmac-key',
 };
 const T = '0190dddd-0000-7000-8000-000000000001';
@@ -132,6 +133,17 @@ describe('DocuSign envelopes', () => {
     expect(body.status).toBe('created');
     expect(body.documents[0]?.documentBase64.length).toBeGreaterThan(10);
     expect(body.recipients.signers[0]?.tabs.signHereTabs[0]?.pageNumber).toBe('3');
+    // Completion callbacks are requested on the envelope itself, so no tenant has to
+    // configure Connect in their own DocuSign account.
+    expect((body as unknown as { eventNotification: unknown }).eventNotification).toEqual({
+      url: 'https://astre.aramo.ai/v1/webhooks/esignature/docusign',
+      loggingEnabled: 'true',
+      requireAcknowledgment: 'true',
+      includeHMAC: 'false',
+      deliveryMode: 'SIM',
+      eventData: { version: 'restv2.1', format: 'json' },
+      events: ['envelope-completed'],
+    });
     const sent = await adapter.sendEnvelope(T, 'env-1');
     expect(JSON.parse(String(calls.find((c) => c.init?.method === 'PUT')?.init?.body))).toEqual({ status: 'sent' });
     expect(sent.status).toBe('SENT');

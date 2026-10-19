@@ -8,7 +8,7 @@ import {
   InvalidParameterException,
   InvalidRequestException,
 } from '@aws-sdk/client-secrets-manager';
-import { AramoError } from '@aramo/common';
+import { AramoError, secretsManagerClientConfig } from '@aramo/common';
 
 import type { LlmProvider } from '../providers/llm-provider.js';
 import { PROVIDER_LOCAL_ENV_VAR } from '../providers/llm-provider.js';
@@ -85,10 +85,10 @@ export class SecretCacheService {
     }
 
     const secretId = `aramo/${env}/tenant-llm/${tenantId}/${provider}-api-key`;
-    const region = process.env['AWS_REGION'] ?? 'us-east-1';
-
     if (this.smClient === null) {
-      this.smClient = new SecretsManagerClient({ region });
+      // Same configuration as the writer (libs/integration) so a key saved
+      // locally is read back from the same store (LocalStack when configured).
+      this.smClient = new SecretsManagerClient(secretsManagerClientConfig());
     }
 
     try {

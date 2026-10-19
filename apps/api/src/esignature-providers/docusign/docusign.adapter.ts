@@ -26,7 +26,8 @@ import type { DocuSignConfig } from './docusign.config.js';
 //
 // Documented behaviour this follows (verify in the sandbox — pending credentials):
 //   POST {oauth}/oauth/token (authorization_code | refresh_token), GET {oauth}/oauth/userinfo
-//   POST /restapi/v2.1/accounts/{id}/envelopes            create (status "created")
+//   POST /restapi/v2.1/accounts/{id}/envelopes            create (status "created",
+//                                                          envelope-level eventNotification)
 //   PUT  /envelopes/{envelopeId}                           { status: "sent" } | { status: "voided", voidedReason }
 //   PUT  /envelopes/{envelopeId}/recipients?resend_envelope=true   reminder
 //   GET  /envelopes/{envelopeId}/documents/combined | /documents/certificate
@@ -206,6 +207,18 @@ export class DocuSignAdapter implements ExternalSignatureAdapter {
       status: 'created',
       documents,
       recipients: { signers },
+      // Completion callback requested on THIS envelope, so tenants configure nothing
+      // in their DocuSign account. Unsigned (the tenant's account holds its own HMAC
+      // keys); ProviderCompletionService confirms every callback against the API.
+      eventNotification: {
+        url: this.config.webhookUrl,
+        loggingEnabled: 'true',
+        requireAcknowledgment: 'true',
+        includeHMAC: 'false',
+        deliveryMode: 'SIM',
+        eventData: { version: 'restv2.1', format: 'json' },
+        events: ['envelope-completed'],
+      },
     });
     const created = (await res.json()) as { envelopeId: string; status: string };
     return { envelope_id: created.envelopeId, status: STATUS[created.status] ?? 'DRAFT', signers: signers.map((s) => ({ signer_id: s.recipientId, email: s.email, status: 'CREATED' })) };

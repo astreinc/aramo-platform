@@ -165,7 +165,7 @@ export function validateEnvPassthrough(
 // local tenant-host links, the dark Sign tile switch); none may appear in the prod
 // compose. And every service that sends mail must run NODE_ENV=production — the
 // guard that makes the local outbox mailer refuse to start there.
-export const LOCAL_ONLY_VARS: readonly RegExp[] = [/\bMAILER_OUTBOX_[A-Z_]*\b/, /\bSES_ENDPOINT\b/, /\bLOCAL_MAIL\b/, /MAILER_PROVIDER\s*=\s*outbox/];
+export const LOCAL_ONLY_VARS: readonly RegExp[] = [/\bMAILER_OUTBOX_[A-Z_]*\b/, /\bSES_ENDPOINT\b/, /\bAWS_SECRETS_MANAGER_ENDPOINT\b/, /\bLOCAL_MAIL\b/, /MAILER_PROVIDER\s*=\s*outbox/];
 
 export function validateLocalOnly(composeText: string): string[] {
   const problems: string[] = [];
