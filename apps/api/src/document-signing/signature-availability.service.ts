@@ -28,9 +28,11 @@ export type SignatureUnavailableReason = (typeof SIGNATURE_UNAVAILABLE_REASONS)[
 export const SIGNATURE_SEND_SCOPES = ['document:create', 'document:execute'] as const;
 
 export interface SignatureAllowanceView {
-  readonly limit: number;
+  // Commercial Plans Amendment A1 — null on an unlimited plan (usage still counted).
+  readonly limit: number | null;
+  readonly unlimited: boolean;
   readonly used: number;
-  readonly remaining: number;
+  readonly remaining: number | null;
   readonly period_start: string;
   readonly period_end: string;
   readonly threshold: AllowanceThreshold;
@@ -86,12 +88,13 @@ export class SignatureAvailabilityService {
     if (!status.subscribed) return result('NOT_SUBSCRIBED');
     const view: SignatureAllowanceView = {
       limit: status.limit,
+      unlimited: status.limit === null,
       used: status.used,
       remaining: status.remaining,
       period_start: status.period_start.toISOString(),
       period_end: status.period_end.toISOString(),
       threshold: status.threshold,
     };
-    return result(status.remaining <= 0 ? 'LIMIT_REACHED' : null, view);
+    return result(status.remaining !== null && status.remaining <= 0 ? 'LIMIT_REACHED' : null, view);
   }
 }

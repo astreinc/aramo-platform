@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
@@ -29,6 +30,8 @@ const { like, uuid } = MatchersV3;
 //   2. POST /v1/esign/signing/disclosure            200 { accepted: true }
 //   3. POST /v1/esign/signing/fields/{id}/fill      200 { filled: true }
 //   4. POST /v1/esign/signing/complete              200 { envelope_status }
+//   5. POST /v1/esign/signing/disclosure-text       200 { disclosure_version, text, text_sha256 }  (Aramo Sign launch, A-7)
+//   6. POST /v1/esign/signing/executed              200 { subject, completed_at, documents[], certificate_base64 }  (signer's signed copy)
 
 const provider = new PactV4({
   consumer: 'sign-web',
@@ -42,6 +45,11 @@ const TOKEN_EXCHANGE = 'sign-web-pact-token-exchange';
 const TOKEN_DISCLOSURE = 'sign-web-pact-token-disclosure';
 const TOKEN_FILL = 'sign-web-pact-token-fill';
 const TOKEN_COMPLETE = 'sign-web-pact-token-complete';
+const TOKEN_DISCLOSURE_TEXT = 'sign-web-pact-token-disclosure-text';
+const TOKEN_EXECUTED = 'sign-web-pact-token-executed';
+// A-7 — the server-held v1 disclosure. Acceptance must echo its exact version + hash.
+const DISCLOSURE_V1_TEXT = 'By continuing you consent to sign this document electronically.';
+const DISCLOSURE_V1_SHA256 = createHash('sha256').update(DISCLOSURE_V1_TEXT, 'utf8').digest('hex');
 // exchange is the only op that echoes ids in its response.
 const EX_ENVELOPE_ID = '7a000000-0000-7000-8000-0000000000a1';
 const EX_SIGNER_ID = '7a000000-0000-7000-8000-0000000000a2';
@@ -83,7 +91,7 @@ describe('sign-web → POST /v1/esign/signing/disclosure', () => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({
           token: TOKEN_DISCLOSURE,
           disclosure_version: 'v1',
-          disclosure_text_hash: 'a'.repeat(64),
+          disclosure_text_hash: DISCLOSURE_V1_SHA256,
         });
       })
       .willRespondWith(200, (b) => {
@@ -93,7 +101,7 @@ describe('sign-web → POST /v1/esign/signing/disclosure', () => {
         const res = await fetch(`${mock.url}/v1/esign/signing/disclosure`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: TOKEN_DISCLOSURE, disclosure_version: 'v1', disclosure_text_hash: 'a'.repeat(64) }),
+          body: JSON.stringify({ token: TOKEN_DISCLOSURE, disclosure_version: 'v1', disclosure_text_hash: DISCLOSURE_V1_SHA256 }),
         });
         expect(res.status).toBe(200);
       });
@@ -154,3 +162,58 @@ describe('sign-web → POST /v1/esign/signing/complete', () => {
 
 beforeAll(() => undefined);
 afterAll(() => undefined);
+
+describe('sign-web → POST /v1/esign/signing/disclosure-text', () => {
+  it('returns the current server-held disclosure', async () => {
+    await provider
+      .addInteraction()
+      .given('a signer session is open on a signable envelope')
+      .uponReceiving('a disclosure text read from the Sign Web client')
+      .withRequest('POST', '/v1/esign/signing/disclosure-text', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_DISCLOSURE_TEXT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ disclosure_version: like('v1'), text: like(DISCLOSURE_V1_TEXT), text_sha256: like(DISCLOSURE_V1_SHA256) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/esign/signing/disclosure-text`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_DISCLOSURE_TEXT }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { text_sha256: string };
+        expect(body.text_sha256).toMatch(/^[0-9a-f]{64}$/);
+      });
+  });
+});
+
+describe('sign-web → POST /v1/esign/signing/executed', () => {
+  it("returns the signer's signed copy for a valid access link", async () => {
+    await provider
+      .addInteraction()
+      .given('a signer has a signed-copy access link for a completed envelope')
+      .uponReceiving('a signed-copy download from the Sign Web client')
+      .withRequest('POST', '/v1/esign/signing/executed', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_EXECUTED });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          subject: like('Offer Letter'),
+          completed_at: like('2026-10-18T12:00:00.000Z'),
+          documents: [{ title: like('offer.pdf'), content_type: like('application/pdf'), executed_base64: like('JVBERi0xLjQ=') }],
+          certificate_base64: like('Y2VydA=='),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/esign/signing/executed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_EXECUTED }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { documents: unknown[] };
+        expect(body.documents.length).toBe(1);
+      });
+  });
+});

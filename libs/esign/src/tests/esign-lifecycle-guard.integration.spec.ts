@@ -10,6 +10,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { PrismaService } from '../index.js';
 import { EsignRepository } from '../lib/esign.repository.js';
 import { EsignService, type SessionContext } from '../lib/esign.service.js';
+import { currentDisclosure } from '../lib/domain/disclosure.js';
 import { SoftwareEvidenceManifestSigner } from '../lib/ports/evidence-manifest-signer.port.js';
 import { type ExecutionProducerPort } from '../lib/ports/execution-producer.port.js';
 import {
@@ -53,6 +54,8 @@ class CountingProducer implements ExecutionProducerPort {
   }
 }
 
+
+const DISCLOSURE = currentDisclosure();
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-1 envelope lifecycle integrity — real Postgres 17', () => {
   let container: StartedPostgreSqlContainer;
   let db: Client;
@@ -96,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-1 envelope lif
   // Exchange + disclosure + fill: the signer is one call away from completing.
   async function readyToComplete(s: { fieldId: string; token: string }): Promise<SessionContext> {
     const ctx = await service.exchangeToken(s.token);
-    await service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' });
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
     await service.fillField(ctx, s.fieldId, { value: 'Signed', signature_method: 'TYPED' });
     return ctx;
   }
@@ -225,7 +228,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-1 envelope lif
 
       await expect(service.exchangeToken(e.signers[1]!.token)).rejects.toBeInstanceOf(EnvelopeAlreadyExecutedError);
       await expect(service.resolveSession(live.token)).rejects.toBeInstanceOf(EnvelopeAlreadyExecutedError);
-      await expect(service.acceptDisclosure(ctx, { disclosure_version: 'v1', disclosure_text_hash: 'dh1' })).rejects.toBeInstanceOf(
+      await expect(service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 })).rejects.toBeInstanceOf(
         EnvelopeAlreadyExecutedError,
       );
       await expect(service.fillField(ctx, live.fieldId, { value: 'late', signature_method: 'TYPED' })).rejects.toBeInstanceOf(

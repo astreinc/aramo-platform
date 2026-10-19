@@ -405,6 +405,34 @@ model Invitation {
   @@schema("identity")
 }
 
+// Aramo Sign launch — self-service BUSINESS signup. A verified-email request:
+// nothing (tenant, user, Cognito account) exists until the address owner opens
+// the emailed link and completes it; the row then records the provisioning
+// outcome so a retry resumes instead of duplicating. token_hash only.
+model SignupRequest {
+  id                String    @id @db.Uuid
+  email             String
+  organization_name String
+  display_name      String?
+  // CHECK: SIGN
+  product           String    @default("SIGN")
+  token_hash        String    @unique
+  expires_at        DateTime  @db.Timestamptz(6)
+  // CHECK: PENDING | PROVISIONING | PROVISIONED | FAILED | SUPERSEDED
+  status            String    @default("PENDING")
+  verified_at       DateTime? @db.Timestamptz(6)
+  tenant_id         String?   @db.Uuid
+  owner_user_id     String?   @db.Uuid
+  failure_code      String?
+  attempts          Int       @default(0)
+  terms_ref         String?
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([email, created_at])
+  @@schema("identity")
+}
+
 // IdentityAuditEvent — parallel to ConsentAuditEvent, separate audit stream.
 // tenant_id is nullable for global/system events; see directive §6
 // event_type → index-category mapping for which events target which index.

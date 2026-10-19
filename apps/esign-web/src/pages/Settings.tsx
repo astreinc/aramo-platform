@@ -4,14 +4,17 @@ import { logout } from '@aramo/fe-foundation';
 import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { BillingPanel } from './Billing';
+
 // Sign Settings (change log §B): Personal (Shared · read-only vs Sign-only),
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
 // to Organization administration (the single shared authority for the tenant
-// profile and users). Nothing here pretends to persist: Sign-only notification
+// profile and users), and (Aramo Sign launch) Plan & billing. Nothing here pretends to persist: Sign-only notification
 // and branding storage do not exist yet, so those controls ship as labelled seams.
 
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
+  { key: 'billing', label: 'Plan & billing' },
   { key: 'branding', label: 'Branding' },
   { key: 'security', label: 'Signing security' },
   { key: 'integrations', label: 'Integrations' },
@@ -50,6 +53,7 @@ export function SettingsPage() {
         </nav>
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
+          {section === 'billing' ? <BillingPanel /> : null}
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}

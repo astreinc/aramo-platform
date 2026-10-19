@@ -27,12 +27,15 @@ export {
   type SignerDocumentMeta,
   type SignerDocumentView,
   type SignerSourceDescriptor,
+  ENVELOPE_TTL_DAYS_DEFAULT,
+  envelopeExpiresAt,
 } from './lib/esign.service.js';
 export {
   SIGNING_NOTIFICATION_PORT,
   type SigningNotificationPort,
   type SigningNotification,
   type SigningNotificationKind,
+  type SigningNotificationAudience,
   type SigningNotificationResult,
 } from './lib/ports/signing-notification.port.js';
 export {
@@ -101,4 +104,21 @@ export {
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,
+  DisclosureVersionInvalidError,
 } from './lib/domain/errors.js';
+// Aramo Sign launch — server-held disclosure, lifecycle notifications, sender lookup.
+export {
+  CURRENT_DISCLOSURE_VERSION,
+  currentDisclosure,
+  findDisclosure,
+  listDisclosures,
+  DISCLOSURE_V2_TEXT,
+  type DisclosureVersion,
+} from './lib/domain/disclosure.js';
+export {
+  EnvelopeNotificationService,
+  ENVELOPE_NOTIFICATION_SERVICE,
+  EXECUTED_ACCESS_TTL_DAYS_DEFAULT,
+} from './lib/envelope-notification.service.js';
+export { SENDER_DIRECTORY_PORT, type SenderDirectoryPort, type SenderContact } from './lib/ports/sender-directory.port.js';
+export { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './lib/ports/storage-accounting.port.js';

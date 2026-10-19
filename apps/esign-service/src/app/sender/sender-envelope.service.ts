@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
@@ -14,6 +16,7 @@ import {
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
+import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 
 import { SenderContextService } from './sender-context.service.js';
@@ -76,6 +79,8 @@ export class SenderEnvelopeService {
     private readonly identity: IdentityRepository,
     @Inject(DOCUMENT_STORAGE_PORT) private readonly storage: DocumentStoragePort,
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sources: DocumentSourceProviderPort,
+    // A1 — the plan's storage allocation.
+    private readonly storageGate: AramoSignStorageGate,
   ) {}
 
   // Personal workspace reads are limited to the caller's own envelopes; a business
@@ -385,23 +390,35 @@ export class SenderEnvelopeService {
     }
     const pdf = await PDFDocument.load(accepted);
     const pages = pdf.getPages().map((p) => ({ width: p.getWidth(), height: p.getHeight() }));
-    const stored = await this.storage.putOwnedSource({
-      tenant_id: auth.tenant_id,
-      envelope_id,
-      filename,
-      content_type: 'application/pdf',
-      bytes: accepted,
-    });
-    const row = await this.repo.addDraftDocument({
-      tenant_id: auth.tenant_id,
-      envelope_id,
-      actor_ref: auth.sub,
-      title,
-      source_object_key: stored.source_object_key,
-      content_type: 'application/pdf',
-      byte_size: stored.byte_size,
-      source_sha256: stored.source_sha256,
-    });
+    // A1 — the plan's storage allocation: reserve the bytes before writing the
+    // object (the object id fixes the ledger reference), release on failure.
+    const object_id = randomUUID();
+    const plannedKey = `esign/source/${auth.tenant_id}/${envelope_id}/${object_id}`;
+    await this.storageGate.reserveUpload(auth.tenant_id, plannedKey, accepted.byteLength, requestId);
+    let row: Awaited<ReturnType<EsignSenderRepository['addDraftDocument']>>;
+    try {
+      const stored = await this.storage.putOwnedSource({
+        tenant_id: auth.tenant_id,
+        envelope_id,
+        filename,
+        content_type: 'application/pdf',
+        bytes: accepted,
+        object_id,
+      });
+      row = await this.repo.addDraftDocument({
+        tenant_id: auth.tenant_id,
+        envelope_id,
+        actor_ref: auth.sub,
+        title,
+        source_object_key: stored.source_object_key,
+        content_type: 'application/pdf',
+        byte_size: stored.byte_size,
+        source_sha256: stored.source_sha256,
+      });
+    } catch (e) {
+      await this.storageGate.release(auth.tenant_id, plannedKey).catch(() => undefined);
+      throw e;
+    }
     return { id: row.id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages };
   }
 
@@ -421,7 +438,9 @@ export class SenderEnvelopeService {
 
   async removeDocument(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
-    await this.repo.removeDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, actor_ref: auth.sub });
+    const removed = await this.repo.removeDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, actor_ref: auth.sub });
+    // A1 — removing a draft document releases its storage.
+    if (removed.source_object_key !== null) await this.storageGate.release(auth.tenant_id, removed.source_object_key).catch(() => undefined);
     return this.detail(auth, envelope_id, requestId);
   }
 

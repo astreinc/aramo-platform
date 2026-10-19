@@ -9,6 +9,7 @@ import {
   PolicyStore,
   PrismaService as PolicyStorePrismaService,
 } from '@aramo/policy-store';
+import { SubscriptionModule } from '@aramo/subscription';
 import {
   PrismaService as DocumentsPrismaService,
   TemplatesRepository,
@@ -16,6 +17,7 @@ import {
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { PlatformController } from './platform.controller.js';
+import { PlatformSignController } from './platform-sign.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
 import { TenantDocumentTemplateProvisioningService } from './tenant-document-template-provisioning.service.js';
@@ -45,6 +47,8 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
     AuthorizationModule,
     IdentityCoreModule,
     EntitlementModule,
+    // Aramo Sign launch — the operator's read-only Sign account view.
+    SubscriptionModule,
     // HF-AUTH-1 — the shared JwtAuthGuard (via AuthModule) resolves effective
     // scopes SERVER-SIDE through this port; without it every platform-admin route
     // would fail closed. Platform operators are consumer_type='platform', resolved
@@ -55,7 +59,7 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
       scopeCacheTtlSeconds: 300,
     }),
   ],
-  controllers: [PlatformController],
+  controllers: [PlatformController, PlatformSignController],
   providers: [
     CognitoAdminService,
     PlatformInvitationService,
@@ -76,5 +80,8 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
     TenantDocumentTemplateProvisioningService,
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
+  // Aramo Sign launch — the public signup module reuses the provisioning saga
+  // and the identity store this module wires.
+  exports: [PlatformInvitationService, IdentityCoreModule, SubscriptionModule],
 })
 export class PlatformModule {}

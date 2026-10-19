@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
-import { SignApiError, signApi, type SignField, type SignerDocumentView } from './sign-api.js';
+import { SignApiError, signApi, type SignField, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -126,7 +126,7 @@ export function trimmedSignaturePng(canvas: HTMLCanvasElement): string {
   return out.toDataURL('image/png');
 }
 
-function base64ToBlobUrl(b64: string, type: string): string {
+export function base64ToBlobUrl(b64: string, type: string): string {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -135,7 +135,7 @@ function base64ToBlobUrl(b64: string, type: string): string {
 
 // ── Header: brand + security note; in the workspace also the subject, progress,
 // Help and Decline. Never any navigation into an Aramo app. ──
-function Header({
+export function Header({
   title,
   progress,
   onDecline,
@@ -370,7 +370,7 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
   return (
     <Dialog title="Decline to sign?" onClose={onClose}>
       <p className="sg-muted">
-        The sender will be told you declined, with your reason. You won&apos;t be able to sign this document with this link
+        The sender will see that you declined and the reason you give. You won&apos;t be able to sign this document with this link
         afterwards.
       </p>
       <label className="sg-label">
@@ -397,7 +397,7 @@ function DeclineDialog({ onDecline, onClose }: { readonly onDecline: (reason: st
 }
 
 // ── End-state screens: plain language, no link into any Aramo app ──
-function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
+export function EndState({ tone, title, body }: { readonly tone: 'ok' | 'muted' | 'error'; readonly title: string; readonly body: string }) {
   return (
     <main className="sg-center" data-testid="sg-end-state">
       <div className={`sg-card sg-card--${tone}`}>
@@ -421,6 +421,7 @@ export function App(): JSX.Element {
   const [activeDoc, setActiveDoc] = useState<string | null>(null);
   const [filled, setFilled] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(false);
+  const [disclosure, setDisclosure] = useState<SignerDisclosure | null>(null);
   const [adopted, setAdopted] = useState<{ SIGNATURE?: Adopted; INITIALS?: Adopted }>({});
   const [adoptFor, setAdoptFor] = useState<SignField | null>(null);
   const [textFor, setTextFor] = useState<SignField | null>(null);
@@ -439,7 +440,11 @@ export function App(): JSX.Element {
     setScreen('loading');
     signApi
       .exchange(token)
-      .then(() => setScreen('landing'))
+      .then(() => signApi.disclosureText(token))
+      .then((d) => {
+        setDisclosure(d);
+        setScreen('landing');
+      })
       .catch(fail);
   }, [token, fail]);
 
@@ -487,7 +492,8 @@ export function App(): JSX.Element {
   const acceptAndContinue = async () => {
     setBusy(true);
     try {
-      await signApi.acceptDisclosure(token);
+      if (disclosure === null) throw new SignApiError('DISCLOSURE_UNAVAILABLE', 0);
+      await signApi.acceptDisclosure(token, disclosure);
       await loadWorkspace();
     } catch (e) {
       fail(e);
@@ -613,7 +619,7 @@ export function App(): JSX.Element {
     return (
       <>
         <Header />
-        <EndState tone="muted" title="You declined to sign" body="The sender has been told, with your reason." />
+        <EndState tone="muted" title="You declined to sign" body="Your decision and your reason have been recorded, and the sender can see them. You can close this page." />
       </>
     );
   if (screen === 'done')
@@ -623,7 +629,7 @@ export function App(): JSX.Element {
         <EndState
           tone="ok"
           title={title ? `You've signed ${title}` : "You've signed"}
-          body={allSigned ? 'Everyone has signed. The sender has been notified.' : "Your part is done. Others still need to sign; the sender will be notified when everyone has."}
+          body={allSigned ? "Everyone has signed. We'll email you a link to download your signed copy." : "Your part is done. Others still need to sign; when everyone has, we'll email you a link to your signed copy."}
         />
       </>
     );
@@ -687,8 +693,12 @@ export function App(): JSX.Element {
             <h1>Before you sign electronically</h1>
             <div className="sg-disclosure" tabIndex={0} aria-label="Electronic records and signature disclosure">
               <h2>Electronic records and signature disclosure</h2>
-              <p>By continuing you consent to sign this document electronically.</p>
-              <p className="sg-muted sg-small">Version {'v1'}</p>
+              {(disclosure?.text ?? '').split(/\n{2,}/).map((para, i) => (
+                <p key={i} style={{ whiteSpace: 'pre-line' }}>
+                  {para}
+                </p>
+              ))}
+              <p className="sg-muted sg-small">Version {disclosure?.disclosure_version ?? ''}</p>
             </div>
             <label className="sg-agree">
               <CheckIn checked={consent} onChange={(e) => setConsent(e.target.checked)} />

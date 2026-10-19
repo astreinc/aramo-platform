@@ -5,9 +5,11 @@ import { Dashboard } from './pages/Dashboard';
 import { EnvelopeActivity, EnvelopeDetail } from './pages/EnvelopeDetail';
 import { EnvelopeList } from './pages/EnvelopeList';
 import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizard';
+import { BillingPanel } from './pages/Billing';
 import { SettingsPage } from './pages/Settings';
 import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage, TemplatesPage } from './pages/WorkspacePages';
 import { LoginPage } from './routes/LoginPage';
+import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
 import { ConsoleShell } from './shell';
 import { Btn } from './ui';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
@@ -19,6 +21,7 @@ import type { SenderContext } from './api';
 //   /sign/*      BUSINESS organization workspace (the prototype console)
 //   /personal/*  PERSONAL workspace (route foundation; sending not enabled)
 //   /login       login landing (?error=<CODE>), /signed-out public landing
+//   /signup      public self-service BUSINESS signup (+ /signup/verify)
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
 // The external signer never comes here — that is sign.aramo.ai/s/<token>.
@@ -30,6 +33,9 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signed-out" element={<SignedOut offerAccountSwitch />} />
+        {/* Aramo Sign launch — public self-service signup (session-less). */}
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/signup/verify" element={<SignupVerifyPage />} />
         <Route
           path="*"
           element={
@@ -51,6 +57,25 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
       <FullState title="Aramo Sign isn’t part of your plan" testId="state-not-entitled">
         Your organization doesn’t have the Aramo Sign subscription. An organization admin can ask to add it.
       </FullState>
+    );
+  // Aramo Sign launch (Journey A) — an organization admin of an entitled tenant
+  // who holds no Sign role yet sets the organization up here: subscribing makes
+  // them the Sign owner once the backend has verified the payment.
+  if (ctx.status === 'no_access' && scopes.includes('tenant:admin:settings'))
+    return (
+      <div className="sg sg-center" data-testid="state-setup">
+        <div className="sg-state" style={{ maxWidth: 760, textAlign: 'left' }}>
+          <div className="sg-state__mark">S</div>
+          <h1 className="sg-h1">Set up Aramo Sign for your organization</h1>
+          <div className="sg-lede" style={{ marginBottom: 16 }}>
+            Choose a plan to start sending documents for signature. As the organization admin who subscribes, you become the Aramo Sign owner.
+          </div>
+          <BillingPanel onSending={ctx.retry} />
+          <div style={{ marginTop: 16 }}>
+            <Btn onClick={() => void logout()}>Sign out</Btn>
+          </div>
+        </div>
+      </div>
     );
   if (ctx.status === 'no_access')
     return (

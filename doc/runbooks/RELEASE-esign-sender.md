@@ -47,7 +47,7 @@ No database migration. No new scope or role (the `esign:envelope:*` scopes and `
 |---|---|---|
 | Local mailbox `MAILER_PROVIDER=outbox`, `MAILER_OUTBOX_DIR`, `MAILER_OUTBOX_DELIVER_TO` | `tools/local-stack.sh`, local `.env` | Not in `docker-compose.prod.yml` (prod services take an explicit env list); the mailer refuses `outbox` when `NODE_ENV=production`; CI wall `env:passthrough-check` fails if any of these appear in the prod compose or a mail-sending service lacks `NODE_ENV=production` |
 | `ESIGN_TENANT_HOST_URL_TEMPLATE=http://localhost:4205` | `tools/local-stack.sh` | Not passed in prod; code default is `https://{slug}.aramo.ai` |
-| `ARAMO_SIGN_ENTRY_ENABLED` / `ARAMO_SIGN_ENTRY_URL` | local `.env` only (if set) | Not passed to api in prod → App Home Sign tile stays dark |
+| `ARAMO_SIGN_ENTRY_ENABLED` / `ARAMO_SIGN_ENTRY_URL` | passed to api with dark defaults (`false`, `https://esign.aramo.ai/`) since the Sign launch | Tile stays dark until the box `.env` sets `ARAMO_SIGN_ENTRY_ENABLED=true` (activation authorization) |
 | Local `esign` entitlement grant for the Astre tenant | local Postgres only | Data, not code; prod grants are a separate plan decision |
 | Real SES sends from the laptop (allowlisted inbox) | local `.env` AWS credentials | Laptop-only; prod uses its own `/opt/aramo/.env` |
 | pdfjs-dist unpacked by hand into the shared `node_modules` | developer machine | The branch records it in `package.json` / lockfile, so CI and image builds install it normally |

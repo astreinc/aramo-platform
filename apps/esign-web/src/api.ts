@@ -165,6 +165,88 @@ export interface Evidence {
 
 const enc = encodeURIComponent;
 
+// Aramo Sign launch — self-service billing (/v1/esign/billing/*). The backend is
+// the only authority for the plan, status and usage; the console only renders
+// them and hands the browser to the provider-hosted checkout / portal pages.
+const BILLING = '/v1/esign/billing';
+
+export interface Money {
+  amount_minor: number;
+  currency: string;
+  interval?: string | null;
+}
+
+// Commercial Plans Amendment A1 — a catalog plan as the backend reports it.
+export interface BillingPlan {
+  key: string;
+  name: string;
+  description: string | null;
+  tenant_kind: string | null;
+  sales_model: 'SELF_SERVICE' | 'FREE' | 'CONTACT_SALES' | 'OPERATOR';
+  status: 'ACTIVE' | 'INACTIVE';
+  price: Money | null;
+  // Present only when the comparison price is substantiated.
+  reference_price: Money | null;
+  commitment_months: number | null;
+  eligibility: string | null;
+  eligible: boolean;
+  support_tier: string | null;
+  activation_note: string | null;
+  // `available` — the capability is built and operational. Anything not
+  // available is never advertised (A1 review: entitlement ≠ launch availability).
+  allowances: { allowance_key: string; included_quantity: number | null; unlimited: boolean; period: string; available?: boolean }[];
+  capacities: { capacity_key: string; limit: number | null; unlimited: boolean; available?: boolean }[];
+  features: { feature_key: string; enabled: boolean; available?: boolean }[];
+  purchasable: boolean;
+}
+
+export interface BillingCatalog {
+  plans: BillingPlan[];
+  terms: { version: string; url: string } | null;
+  sales_contact_url: string | null;
+}
+
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE';
+
+export interface BillingAccount {
+  subscription: {
+    plan_key: string;
+    plan_name: string;
+    source: 'MANUAL' | 'DEVELOPMENT' | 'SELF_SERVICE';
+    status: SubscriptionStatus;
+    sending: boolean;
+    started_at: string;
+    ended_at: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    grace_until: string | null;
+    billing_managed: boolean;
+    commitment_months?: number | null;
+    commitment_end?: string | null;
+    cancel_requested_within_commitment?: boolean;
+    eligibility_state?: 'OK' | 'LAPSED' | null;
+    list_price?: Money | null;
+    features?: { feature_key: string; enabled: boolean }[];
+    export_access_until?: string | null;
+  } | null;
+  allowance:
+    | { subscribed: true; plan_key: string; allowance_key: string; limit: number | null; unlimited?: boolean; used: number; remaining: number | null; period_start: string; period_end: string; threshold: 'OK' | 'WARNING' | 'EXHAUSTED' }
+    | { subscribed: false; allowance_key: string; state?: 'NONE' | 'PAST_DUE' | 'INCOMPLETE' | 'CANCELED' };
+  storage?: { capacity_key: string; limit: number | null; unlimited: boolean; used: number } | null;
+  billing_available: boolean;
+  tenant_kind: string;
+  self_service_eligible: boolean;
+  can_manage_billing: boolean;
+}
+
+export const billingApi = {
+  plans: () => apiClient.get<BillingCatalog>(`${BILLING}/plans`),
+  account: () => apiClient.get<BillingAccount>(`${BILLING}/account`),
+  checkout: (plan_key: string, accept_terms?: boolean) =>
+    apiClient.post<{ url: string }>(`${BILLING}/checkout`, accept_terms === undefined ? { plan_key } : { plan_key, accept_terms }),
+  portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
+};
+
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
   summary: () => apiClient.get<Summary>(`${BASE}/summary`),
@@ -232,6 +314,19 @@ export function fileToBase64(file: Blob): Promise<string> {
 
 export function errorMessage(e: unknown, fallback = 'Something went wrong. Try again.'): string {
   if (e instanceof ApiError) {
+    // Plan / allowance refusals (Aramo Sign subscription gate) — never shown as a
+    // permission problem.
+    if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
+    if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
+      const limit = e.details?.['limit'];
+      const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
+      return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes in this billing period${end ? `; it renews on ${end}` : ''}. An admin can manage the plan in Settings → Plan & billing.`;
+    }
+    if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
+    if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';

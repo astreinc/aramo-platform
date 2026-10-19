@@ -737,18 +737,25 @@
       "resolveReconcileTarget"
     ],
     "@aramo/esign": [
+      "CURRENT_DISCLOSURE_VERSION",
+      "DISCLOSURE_V2_TEXT",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
       "DisclosureNotAcceptedError",
+      "DisclosureVersionInvalidError",
+      "ENVELOPE_NOTIFICATION_SERVICE",
+      "ENVELOPE_TTL_DAYS_DEFAULT",
       "ESIGN_LIFECYCLE_EVENT_VERSION",
       "ESIGN_SCHEMA",
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeAmbiguousError",
       "EnvelopeIllegalTransitionError",
       "EnvelopeNotFoundError",
+      "EnvelopeNotificationService",
       "EsignIdempotencyConflictError",
       "EsignModule",
       "EsignRepository",
@@ -760,9 +767,11 @@
       "OutboxService",
       "PrismaService",
       "ReminderNotAllowedError",
+      "SENDER_DIRECTORY_PORT",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
+      "STORAGE_ACCOUNTING_PORT",
       "SignatureFieldIncompleteError",
       "SignerNotFoundError",
       "SigningSessionExpiredError",
@@ -771,8 +780,12 @@
       "WEBHOOK_DELIVERY_PORT",
       "backoffMs",
       "computeEventHash",
+      "currentDisclosure",
+      "envelopeExpiresAt",
+      "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
+      "listDisclosures",
       "signingSessionExpiresAt",
       "toLifecycleEvent"
     ],
@@ -951,6 +964,8 @@
       "SEED_ROLE_KEYS",
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
+      "SIGNUP_PROVISIONING_STALE_MS",
+      "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
       "StubTenantCognitoAdapter",
@@ -1643,15 +1658,42 @@
     "@aramo/subscription": [
       "AllowanceService",
       "AramoSignIncludedPlanKey",
+      "AramoSignStandardBusinessPlanKey",
+      "AramoSignStandardProfessionalPlanKey",
+      "BILLING_PROVIDER_PORT",
+      "BillingProviderUnavailableError",
+      "BillingRefusedError",
+      "BillingWebhookSignatureError",
+      "CapacityService",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
+      "FEATURE_AVAILABILITY",
+      "LEGAL_DOCUMENTS",
+      "LEGAL_DOCUMENT_REGISTRY",
+      "LegalAcceptanceService",
+      "PAST_DUE_GRACE_DAYS_DEFAULT",
+      "PLAN_ELIGIBILITY_PORT",
+      "STORAGE_CAPACITY_KEY",
+      "STRIPE_API_VERSION",
+      "StripeBillingProvider",
+      "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
       "addMonthsClamped",
+      "approvedLegalDocument",
       "assertNotProduction",
       "billingPeriodAt",
+      "isFeatureAvailable",
+      "legalRef",
+      "mapProviderStatus",
       "openDevelopmentSubscription",
-      "thresholdOf"
+      "parsePlanPrices",
+      "postTerminationExportDays",
+      "stripeEventSubscriptionRef",
+      "stripeSubscriptionState",
+      "subscriptionSends",
+      "thresholdOf",
+      "verifyStripeSignature"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -2668,7 +2710,19 @@
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -2736,7 +2790,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -3188,6 +3254,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -4810,6 +4882,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/esign/src/tests/esign-launch-lifecycle.integration.spec.ts",
+        "project": "esign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/esign/src/tests/esign-lifecycle-guard.integration.spec.ts",
         "project": "esign",
         "status": "excluded"
@@ -4858,6 +4936,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -4865,6 +4949,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -5340,6 +5430,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -5749,6 +5845,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/allowance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-catalog-a1-upgrade.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-catalog-a1.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/subscription-lifecycle.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -6556,6 +6670,12 @@
         "project": "esign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       { "project": "export", "status": "production" },
       {
@@ -6576,7 +6696,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6640,6 +6772,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -7396,6 +7534,12 @@
         "project": "aramo-esign-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/esign-web/src/pages/Billing.spec.tsx",
+        "project": "aramo-esign-web",
+        "status": "excluded"
+      },
       { "project": "aramo-esign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -7695,7 +7839,25 @@
       { "project": "company", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -7708,7 +7870,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -7990,6 +8164,12 @@
         "status": "excluded"
       },
       { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
       { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -8003,7 +8183,14 @@
         "project": "identity",
         "status": "excluded"
       },
-      { "project": "identity", "status": "production" }
+      { "project": "identity", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/matching": [
       {
@@ -9162,7 +9349,32 @@
         "project": "esign-service",
         "status": "excluded"
       },
-      { "project": "esign-service", "status": "production" }
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/billing.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      { "project": "esign-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" }
     ],
     "@aramo/talent-embedding": [
       {

@@ -112,6 +112,17 @@ const C_SESSION_ID = '7a000000-0000-7000-8000-0000000000d3';
 const C_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000d6';
 const C_SIGNER2_ID = '7a000000-0000-7000-8000-0000000000d5';
 const TOKEN_COMPLETE = 'sign-web-pact-token-complete';
+// Aramo Sign launch — disclosure-text (A-7) and the signer's signed-copy link.
+const T_ENVELOPE_ID = '7a000000-0000-7000-8000-0000000000e1';
+const T_SIGNER_ID = '7a000000-0000-7000-8000-0000000000e2';
+const T_SESSION_ID = '7a000000-0000-7000-8000-0000000000e3';
+const T_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000e6';
+const TOKEN_DISCLOSURE_TEXT = 'sign-web-pact-token-disclosure-text';
+const X_ENVELOPE_ID = '7a000000-0000-7000-8000-0000000000f1';
+const X_SIGNER_ID = '7a000000-0000-7000-8000-0000000000f2';
+const X_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000f6';
+const X_GRANT_ID = '7a000000-0000-7000-8000-0000000000f7';
+const TOKEN_EXECUTED = 'sign-web-pact-token-executed';
 
 // PX-1 — esign-web sender-console fixtures. MUST match
 // pact/consumers/esign-web-consumer/src/sender-console.consumer.test.ts. The
@@ -423,6 +434,37 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }
 
+    // Aramo Sign launch — a distinct COMPLETED envelope with an executed document,
+    // a certificate and a signer signed-copy access grant (only the token hash is
+    // stored). Fresh ids; nothing is re-seeded.
+    async function seedSignedCopyGrant(): Promise<void> {
+      await db.query(
+        `INSERT INTO "esign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, completed_at)
+         VALUES ($1,$2,'Offer Letter','COMPLETED','SINGLE_SIGNATURE',$3, now())`,
+        [X_ENVELOPE_ID, TENANT_ID, CREATED_BY],
+      );
+      await db.query(
+        `INSERT INTO "esign"."EnvelopeDocument" (id, tenant_id, envelope_id, document_ref, document_revision_ref, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,$4,$5,'offer.pdf',$6,1)`,
+        [X_ENV_DOC_ID, TENANT_ID, X_ENVELOPE_ID, DOC_REF, REV_REF, SHA256],
+      );
+      await db.query(
+        `INSERT INTO "esign"."ExecutedDocument" (id, tenant_id, envelope_id, envelope_document_id, source_sha256, executed_sha256, byte_size, executed_bytes)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,8, decode('255044462d312e34','hex'))`,
+        [TENANT_ID, X_ENVELOPE_ID, X_ENV_DOC_ID, SHA256, 'b'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "esign"."ExecutionCertificate" (id, tenant_id, envelope_id, certificate_sha256, byte_size, certificate_bytes)
+         VALUES (gen_random_uuid(),$1,$2,$3,4, decode('63657274','hex'))`,
+        [TENANT_ID, X_ENVELOPE_ID, 'c'.repeat(64)],
+      );
+      await db.query(
+        `INSERT INTO "esign"."ExecutedAccessGrant" (id, tenant_id, envelope_id, signer_id, token_hash, expires_at)
+         VALUES ($1,$2,$3,$4,$5, now() + interval '30 days')`,
+        [X_GRANT_ID, TENANT_ID, X_ENVELOPE_ID, X_SIGNER_ID, hashToken(TOKEN_EXECUTED)],
+      );
+    }
+
     // DOC-4C (R1 seam B) — seed a distinct COMPLETED envelope with an executed
     // document + execution certificate so the executed-artifact pull resolves. NO
     // delete (fresh id; SignatureEvent append-only).
@@ -562,6 +604,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // DOC-4C seam A — the public signer-session ops (sign-web → esign-service).
           'a signer session is issued for the envelope': async () => {
             await seedSignerFixture({ envelopeId: EX_ENVELOPE_ID, envDocId: EX_ENV_DOC_ID, signerId: EX_SIGNER_ID, sessionId: EX_SESSION_ID, token: TOKEN_EXCHANGE });
+          },
+          'a signer session is open on a signable envelope': async () => {
+            await seedSignerFixture({ envelopeId: T_ENVELOPE_ID, envDocId: T_ENV_DOC_ID, signerId: T_SIGNER_ID, sessionId: T_SESSION_ID, token: TOKEN_DISCLOSURE_TEXT });
+          },
+          'a signer has a signed-copy access link for a completed envelope': async () => {
+            await seedSignedCopyGrant();
           },
           'a signer session is ready to accept disclosure': async () => {
             await seedSignerFixture({ envelopeId: D_ENVELOPE_ID, envDocId: D_ENV_DOC_ID, signerId: D_SIGNER_ID, sessionId: D_SESSION_ID, token: TOKEN_DISCLOSURE });

@@ -10965,6 +10965,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261018120000_init_subscription_allowance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/tenant-policy-provisioning.integration.spec.ts",
       "status": "excluded",
       "to": "apps/api/src/policy/requisition-lifecycle.package.ts"
@@ -11325,6 +11349,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/esign-http.controller.ts"
     },
     {
@@ -11335,7 +11364,17 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-sign.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -18676,6 +18715,21 @@
       "to": "deploy/seed-prod.sh"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/feature-availability.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
       "from": "doc/runbooks/core-talent-ledger-reconciliation.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -19404,6 +19458,16 @@
       "status": "unscoped",
       "to": "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
     },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
+    },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     {
@@ -19946,6 +20010,11 @@
       "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20417,9 +20486,20 @@
       "to": "libs/esign/tsconfig.lib.json"
     },
     {
+      "from": "libs/esign/src/lib/domain/disclosure.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
+    },
+    {
       "from": "libs/esign/src/lib/signing-token.ts",
       "status": "production",
       "to": "libs/portal-identity/src/lib/portal-login-token.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/esign/src/tests/disclosure-legal-copy.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
     },
     {
       "from": "libs/esign/vitest.config.ts",
@@ -22009,6 +22089,26 @@
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/privacy-policy.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/retention-export-deletion-policy.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/legal/legal-documents.ts",
+      "status": "production",
+      "to": "doc/legal/aramo-sign/terms-of-service.md"
     },
     {
       "from": "libs/talent-embedding/prisma/schema.prisma",
@@ -24354,6 +24454,16 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/skills-taxonomy/src/tests/skill-canonicalization.integration.spec.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",

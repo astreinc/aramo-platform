@@ -42,14 +42,29 @@ export function renewalDate(iso: string): string {
 }
 
 function AllowanceBlock({ allowance }: { readonly allowance: SignatureAllowance }) {
-  const pct = allowance.limit > 0 ? Math.min(100, Math.round((allowance.used / allowance.limit) * 100)) : 100;
   const renews = renewalDate(allowance.period_end);
+  // Commercial Plans Amendment A1 — an unlimited plan has no ceiling: show the
+  // count only (no meter, no "left" or "used up" message).
+  if (allowance.limit === null) {
+    return (
+      <div className="set-esign__allowance" data-testid="esign-allowance">
+        <div className="set-esign__allowhead">
+          <span className="set-esign__allowlabel">Envelopes this period</span>
+          <span className="set-esign__allowcount">
+            {allowance.used} sent · unlimited · period renews {renews}
+          </span>
+        </div>
+      </div>
+    );
+  }
+  const limit = allowance.limit;
+  const pct = limit > 0 ? Math.min(100, Math.round((allowance.used / limit) * 100)) : 100;
   return (
     <div className="set-esign__allowance" data-testid="esign-allowance">
       <div className="set-esign__allowhead">
         <span className="set-esign__allowlabel">Envelopes this period</span>
         <span className="set-esign__allowcount">
-          {allowance.used} of {allowance.limit} used · renews {renews}
+          {allowance.used} of {limit} used · renews {renews}
         </span>
       </div>
       <div
@@ -57,7 +72,7 @@ function AllowanceBlock({ allowance }: { readonly allowance: SignatureAllowance 
         role="progressbar"
         aria-label="Envelopes used this period"
         aria-valuemin={0}
-        aria-valuemax={allowance.limit}
+        aria-valuemax={limit}
         aria-valuenow={allowance.used}
       >
         <span className="set-esign__meterfill" style={{ width: `${pct}%` }} />
@@ -69,7 +84,7 @@ function AllowanceBlock({ allowance }: { readonly allowance: SignatureAllowance 
       )}
       {allowance.threshold === 'EXHAUSTED' && (
         <p className="set-esign__msg set-esign__msg--stop" role="alert">
-          All {allowance.limit} envelopes are used. New Aramo Sign sends, including Right to Represent requests, are paused
+          All {limit} envelopes are used. New Aramo Sign sends, including Right to Represent requests, are paused
           until {renews}. To send more before then, contact your Aramo account team to change your plan. Documents a
           client requires stay required.
         </p>

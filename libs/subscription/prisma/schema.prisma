@@ -6,9 +6,12 @@
 //
 //   Plan + PlanAllowance  the plan catalog; allowances are configurable rows
 //                         (the Aramo Sign 100/month is DATA, never a constant).
-//   TenantSubscription    which plan a tenant is on and its billing-period anchor.
-//                         No payment status is modelled (no billing provider is
-//                         selected — nothing here may be fabricated).
+//   TenantSubscription    which plan a tenant is on, its billing-period anchor and
+//                         (Aramo Sign launch) its lifecycle status + the billing-
+//                         provider linkage. Stripe is authoritative for payment
+//                         events; Aramo for the effective entitlement.
+//   CheckoutIntent        who started a checkout (governed owner activation).
+//   BillingEvent          provider events, processed at most once.
 //   AllowanceUsage        one row per metered send, keyed by a stable send
 //                         identity, with a reserve → consume | release protocol.
 //
@@ -29,9 +32,39 @@ model Plan {
   // Stable catalog key (e.g. "aramo-sign-included-v1"); never a display name.
   key           String               @unique
   name          String
+  // Offered for self-service purchase (only an ACTIVE SELF_SERVICE plan).
+  sellable      Boolean              @default(false)
+  description   String?
   created_at    DateTime             @default(now()) @db.Timestamptz(6)
+  // Commercial Plans Amendment A1 — the catalog descriptor.
+  // CHECK: BUSINESS | PERSONAL (null = any kind, e.g. the operator plan).
+  tenant_kind                   String?
+  // CHECK: SELF_SERVICE | FREE | CONTACT_SALES | OPERATOR
+  sales_model                   String  @default("OPERATOR")
+  // CHECK: ACTIVE | INACTIVE (an INACTIVE plan is catalogued, never assigned).
+  status                        String  @default("ACTIVE")
+  // Display price in minor units; the charge itself is the provider price.
+  list_price_minor              Int?
+  currency                      String?
+  // Stored comparison price; shown only when substantiated.
+  reference_price_minor         Int?
+  reference_price_substantiated Boolean @default(false)
+  // CHECK: MONTH (the invoice interval).
+  billing_interval              String?
+  // Commitment term, separate from the invoice interval (12 = annual).
+  commitment_months             Int?
+  // CHECK: ATS_SUBSCRIPTION — the plan requires a qualifying ATS entitlement.
+  eligibility                   String?
+  // CHECK: BASIC | CONTRACTED
+  support_tier                  String?
+  // Why an INACTIVE / contracted plan is not usable yet.
+  activation_note               String?
+  display_order                 Int     @default(100)
   allowances    PlanAllowance[]
+  capacities    PlanCapacity[]
+  features      PlanFeature[]
   subscriptions TenantSubscription[]
+  checkouts     CheckoutIntent[]
 
   @@schema("subscription")
 }
@@ -40,8 +73,10 @@ model PlanAllowance {
   plan_id           String @db.Uuid
   // Metered feature, e.g. "esign.envelopes".
   allowance_key     String
-  // Included quantity per period. No rollover of the included allowance.
-  included_quantity Int
+  // Included quantity per period (null when unlimited). No rollover.
+  included_quantity Int?
+  // A1 — explicit unlimited (never a sentinel number); usage is still metered.
+  unlimited         Boolean @default(false)
   // CHECK: MONTHLY (the only period V1 supports).
   period            String @default("MONTHLY")
   plan              Plan   @relation(fields: [plan_id], references: [id])
@@ -57,12 +92,35 @@ model TenantSubscription {
   // Billing periods start at this instant and every calendar month after it
   // (day clamped to the month's length).
   period_anchor DateTime  @db.Timestamptz(6)
-  // CHECK: MANUAL | DEVELOPMENT. DEVELOPMENT rows come only from the governed
-  // local/test seed, which refuses to run in production.
+  // CHECK: MANUAL | DEVELOPMENT | SELF_SERVICE. DEVELOPMENT rows come only from
+  // the governed local/test seed, which refuses to run in production.
   source        String
   started_at    DateTime  @default(now()) @db.Timestamptz(6)
   ended_at      DateTime? @db.Timestamptz(6)
   created_by    String
+  // Aramo Sign launch — CHECK: TRIALING | ACTIVE | PAST_DUE | CANCELED | INCOMPLETE.
+  status                   String    @default("ACTIVE")
+  // CHECK: STRIPE (null for MANUAL / DEVELOPMENT).
+  billing_provider         String?
+  billing_account_ref     String?
+  billing_subscription_ref String?
+  current_period_end       DateTime? @db.Timestamptz(6)
+  cancel_at_period_end     Boolean   @default(false)
+  // PAST_DUE keeps sending until this instant (grace), then stops.
+  grace_until              DateTime? @db.Timestamptz(6)
+  // Provider event time of the last applied state (out-of-order protection).
+  provider_state_at        DateTime? @db.Timestamptz(6)
+  // The subscribing owner (user id) when self-service.
+  activated_by             String?
+  // A1 — the commitment term (e.g. 12 months), separate from the monthly
+  // invoice period; a cancellation requested inside it is flagged, never
+  // silently treated as month-to-month.
+  commitment_start                   DateTime? @db.Timestamptz(6)
+  commitment_end                     DateTime? @db.Timestamptz(6)
+  cancel_requested_within_commitment Boolean   @default(false)
+  // CHECK: OK | LAPSED — the plan's eligibility (e.g. ATS) at the last check.
+  eligibility_state                  String?
+  eligibility_checked_at             DateTime? @db.Timestamptz(6)
   plan          Plan      @relation(fields: [plan_id], references: [id])
 
   // At most one open subscription per tenant (partial unique index in SQL).
@@ -89,5 +147,101 @@ model AllowanceUsage {
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
+  @@schema("subscription")
+}
+
+model CheckoutIntent {
+  id                   String    @id @db.Uuid
+  tenant_id            String    @db.Uuid
+  user_id              String
+  plan_id              String    @db.Uuid
+  // CHECK: STRIPE
+  provider             String
+  provider_session_ref String?
+  // CHECK: CREATED | COMPLETED | EXPIRED
+  status               String    @default("CREATED")
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at         DateTime? @db.Timestamptz(6)
+  // A1 — the terms version (and text sha256) accepted at checkout, if any.
+  terms_version        String?
+  terms_sha256         String?
+  plan                 Plan      @relation(fields: [plan_id], references: [id])
+
+  @@index([tenant_id])
+  @@schema("subscription")
+}
+
+model BillingEvent {
+  id                String   @id @db.Uuid
+  provider          String
+  provider_event_id String
+  event_type        String
+  event_created_at  DateTime @db.Timestamptz(6)
+  tenant_id         String?  @db.Uuid
+  // CHECK: APPLIED | IGNORED | STALE
+  outcome           String
+  detail            String?
+  received_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([provider, provider_event_id])
+  @@index([tenant_id])
+  @@schema("subscription")
+}
+
+// A1 — non-periodic plan limits (storage bytes, template count).
+model PlanCapacity {
+  plan_id        String  @db.Uuid
+  capacity_key   String
+  limit_quantity BigInt?
+  unlimited      Boolean @default(false)
+  plan           Plan    @relation(fields: [plan_id], references: [id])
+
+  @@id([plan_id, capacity_key])
+  @@schema("subscription")
+}
+
+// A1 — plan features; a missing row means not included.
+model PlanFeature {
+  plan_id     String  @db.Uuid
+  feature_key String
+  enabled     Boolean
+  plan        Plan    @relation(fields: [plan_id], references: [id])
+
+  @@id([plan_id, feature_key])
+  @@schema("subscription")
+}
+
+// A1 — per-tenant capacity ledger (storage): one row per stored object.
+model CapacityUsage {
+  id           String    @id @db.Uuid
+  tenant_id    String    @db.Uuid
+  capacity_key String
+  ref          String
+  quantity     BigInt
+  // CHECK: ACTIVE | RELEASED
+  state        String    @default("ACTIVE")
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  released_at  DateTime? @db.Timestamptz(6)
+
+  @@unique([tenant_id, capacity_key, ref])
+  @@index([tenant_id, capacity_key, state])
+  @@schema("subscription")
+}
+
+// A1 — legal acceptance evidence (document key + version + text sha256).
+model LegalAcceptance {
+  id            String   @id @db.Uuid
+  tenant_id     String?  @db.Uuid
+  user_id       String?
+  subject_email String?
+  document_key  String
+  version       String
+  sha256        String
+  // CHECK: SIGNUP | CHECKOUT
+  context       String
+  context_ref   String?
+  accepted_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id])
   @@schema("subscription")
 }

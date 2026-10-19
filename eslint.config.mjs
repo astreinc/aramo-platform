@@ -481,6 +481,16 @@ export default [
       // host-strip already tolerates the full 'candidate.aramo.ai' literal and
       // this file has no bare label (the lockstep is satisfied natively there).
       'libs/auth-storage/src/lib/host-auth-profile.seed.ts',
+      // Aramo Sign launch (commercial lane) — Architect ruling 2026-10-19:
+      // vendor-integration exception, APPROVED WITH RESTRICTIONS. Exactly the
+      // Stripe wire-translation file + its boundary contract spec, which hold
+      // ONLY Stripe's vendor-defined identifiers (account-object field,
+      // checkout/portal params, subscription event-type prefix) and their
+      // translation to Aramo's `account_ref`. No Aramo-owned logic lives in
+      // them; the adapter (stripe-billing.provider.ts) stays fully enforced.
+      // Paired in lockstep with scripts/verify-vocabulary.sh.
+      'libs/subscription/src/lib/billing/stripe-wire.ts',
+      'libs/subscription/src/tests/stripe-wire.spec.ts',
     ],
     rules: {
       'no-restricted-syntax': 'off',

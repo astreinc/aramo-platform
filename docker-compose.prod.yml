@@ -171,6 +171,12 @@ services:
       # runtime behavior. Only flip to "true" per doc/runbooks/pgvector-prod-enablement.md (STEP 10),
       # AFTER the pgvector runtime + both vector migrations are verified.
       - EMBEDDING_PROCESSING_ENABLED=${EMBEDDING_PROCESSING_ENABLED:-false}
+      # Aramo Sign launch — the App Home Sign tile (GET /v1/me/products). DARK by
+      # default: only the literal "true" lights it; lighting it is an activation
+      # decision made in the box .env (separately authorized). The target URL
+      # defaults to https://esign.aramo.ai/ in code.
+      - ARAMO_SIGN_ENTRY_ENABLED=${ARAMO_SIGN_ENTRY_ENABLED:-false}
+      - ARAMO_SIGN_ENTRY_URL=${ARAMO_SIGN_ENTRY_URL:-https://esign.aramo.ai/}
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
@@ -387,6 +393,43 @@ services:
       # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
       # token is appended in-memory inside esign-service and never leaves it).
       - ESIGN_SIGN_WEB_BASE_URL
+      # Aramo Sign launch — the sender console origin used in sender emails
+      # (https://esign.aramo.ai), the envelope signing window, the signer
+      # signed-copy link lifetime, and the expiry sweep (all optional; defaults
+      # 30 days / 30 days / enabled every 5 minutes).
+      - ESIGN_SENDER_WEB_BASE_URL
+      - ESIGN_ENVELOPE_TTL_DAYS
+      - ESIGN_EXECUTED_ACCESS_TTL_DAYS
+      - ESIGN_EXPIRY_WORKER_ENABLED
+      - ESIGN_EXPIRY_INTERVAL_MS
+      # Aramo Sign launch — self-service billing (Stripe). Unset key ⇒ billing is
+      # unavailable (503) and nothing is charged; live keys need separate
+      # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price
+      # ids; the reconcile sweep is opt-in.
+      - STRIPE_SECRET_KEY
+      - STRIPE_WEBHOOK_SECRET
+      - STRIPE_PLAN_PRICES
+      - STRIPE_AUTOMATIC_TAX
+      - BILLING_PAST_DUE_GRACE_DAYS
+      - ESIGN_BILLING_RECONCILE_ENABLED
+      - ESIGN_BILLING_RECONCILE_INTERVAL_MS
+      # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
+      # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
+      - ESIGN_KMS_KEY_ID
+      - ESIGN_KMS_SIGNING_ALGORITHM
+      # Commercial Plans Amendment A1 — all inactive until separately approved:
+      # the signer disclosure version (default v1; v2 = the legal-pending draft),
+      # the post-termination export window (unset until the retention policy is
+      # approved) and the Enterprise "Contact sales" link.
+      - ESIGN_DISCLOSURE_VERSION
+      - SIGN_POST_TERMINATION_EXPORT_DAYS
+      - SIGN_SALES_CONTACT_URL
+      # A1 review — Standard Professional eligibility stays OFF until the PO
+      # confirms the qualifying rule (ATS_ENTITLEMENT = live ats + ACTIVE tenant);
+      # commitment plans use only an explicit Stripe portal configuration whose
+      # cancellation settings match the approved terms (unset ⇒ portal refused).
+      - SIGN_PROFESSIONAL_ELIGIBILITY
+      - STRIPE_PORTAL_CONFIGURATION
       # E-Sign OC v2 — canonical outbound lifecycle webhook to Aramo Core. Target
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).
@@ -440,6 +483,16 @@ services:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+      # Aramo Sign launch — public self-service signup (/v1/signup/sign/* via the
+      # esign.aramo.ai block). Dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1 (separately
+      # authorized). The verification email goes through the shared mailer (SES,
+      # same as api); links point at the Sign console origin.
+      # A1: signup terms come from the versioned legal registry in code (nothing
+      # approved yet ⇒ no terms are offered); there is no env override.
+      - SIGN_PUBLIC_SIGNUP_ENABLED
+      - ESIGN_SENDER_WEB_BASE_URL
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
     depends_on:
       postgres:
         condition: service_healthy

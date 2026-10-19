@@ -80,6 +80,8 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // may hold at most ONE membership, in that tenant.
   'libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql',
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
+  // Aramo Sign launch — self-service BUSINESS signup requests (additive table).
+  'libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

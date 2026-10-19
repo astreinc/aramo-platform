@@ -14,6 +14,9 @@ export interface PutOwnedSourceInput {
   filename: string;
   content_type: string;
   bytes: Uint8Array;
+  // A1 — optional caller-chosen object id (UUID), so the storage ledger can key
+  // the object before it is written; the adapter generates one otherwise.
+  object_id?: string;
 }
 
 export interface PutOwnedSourceResult {

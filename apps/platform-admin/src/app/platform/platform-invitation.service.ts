@@ -126,6 +126,10 @@ export class PlatformInvitationService {
     // no ATS projection runs. Identity registration, tenant creation, product
     // entitlement and Sign sender eligibility stay separate steps.
     kind?: string;
+    // Aramo Sign launch — the self-service signup runs this same saga as a
+    // system actor with its own audit source (default: the operator path).
+    audit_source?: string;
+    actor_type?: 'user' | 'system';
   }): Promise<ProvisionResult> {
     const kind = args.kind ?? DEFAULT_TENANT_KIND;
     if (!isTenantKind(kind)) {
@@ -304,6 +308,8 @@ export class PlatformInvitationService {
         // IC-4 PR-9 — the kind reaches the identity spine (allowed_domain NULL
         // for PERSONAL is decided THERE, the single-source placement).
         kind,
+        ...(args.audit_source === undefined ? {} : { audit_source: args.audit_source }),
+        ...(args.actor_type === undefined ? {} : { actor_type: args.actor_type }),
       });
       tenant_id = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
@@ -360,6 +366,7 @@ export class PlatformInvitationService {
         tenant_id,
         actor_user_id: args.actor_user_id,
         reason: 'entitlement_grant_failed',
+        ...(args.actor_type === undefined ? {} : { actor_type: args.actor_type }),
       });
       throw new AramoError(
         'INTERNAL_ERROR',
@@ -454,6 +461,7 @@ export class PlatformInvitationService {
         owner_user_id,
         actor_id: args.actor_user_id,
         reason: 'first_send',
+        ...(args.actor_type === undefined ? {} : { actor_type: args.actor_type }),
       });
     }
 

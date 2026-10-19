@@ -19,6 +19,7 @@ import {
 
 import { StatusBadge } from './status';
 import { LifecycleDialog, type LifecycleAction } from './LifecycleDialog';
+import { TenantSignPanel } from './TenantSignPanel';
 
 const LIFECYCLE_SCOPE = 'platform:tenant:lifecycle:manage';
 
@@ -204,6 +205,8 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
   const tabs: TabItem[] = [
     { id: 'overview', label: 'Overview', content: overview },
     { id: 'lifecycle', label: 'Lifecycle & Audit', content: lifecycle },
+    // Aramo Sign launch — read-only Sign account (support visibility).
+    { id: 'sign', label: 'Aramo Sign', content: <TenantSignPanel tenantId={id} /> },
   ];
 
   return (

@@ -8,6 +8,9 @@ import type { PrismaService } from './prisma/prisma.service.js';
 // like production: commercial access is never granted silently.
 
 export const AramoSignIncludedPlanKey = 'aramo-sign-included-v1';
+// Commercial Plans Amendment A1 — the self-service catalog plans.
+export const AramoSignStandardBusinessPlanKey = 'aramo-sign-standard-business-v1';
+export const AramoSignStandardProfessionalPlanKey = 'aramo-sign-standard-professional-v1';
 
 export function assertNotProduction(env: NodeJS.ProcessEnv): void {
   const node = (env['NODE_ENV'] ?? '').toLowerCase();

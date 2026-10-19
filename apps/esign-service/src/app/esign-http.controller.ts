@@ -1,9 +1,18 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Logger, Optional, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
 import type { Request } from 'express';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
-import { DOCUMENT_SOURCE_PROVIDER_PORT, type DocumentSourceProviderPort, EsignService } from '@aramo/esign';
+import {
+  currentDisclosure,
+  DOCUMENT_SOURCE_PROVIDER_PORT,
+  type DocumentSourceProviderPort,
+  ENVELOPE_NOTIFICATION_SERVICE,
+  type EnvelopeNotificationService,
+  EsignRepository,
+  EsignService,
+} from '@aramo/esign';
 import {
   DisclosureNotAcceptedError,
+  DisclosureVersionInvalidError,
   EnvelopeAlreadyExecutedError,
   EnvelopeAmbiguousError,
   EnvelopeIllegalTransitionError,
@@ -49,6 +58,8 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof SignatureFieldIncompleteError) return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId });
   if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
   if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
+  // Aramo Sign launch (A-7) — unknown disclosure version or mismatching text hash.
+  if (e instanceof DisclosureVersionInvalidError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId });
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
 
@@ -179,10 +190,59 @@ export class EsignProviderController {
 @Controller('v1/esign/signing')
 @UseFilters(AramoExceptionFilter)
 export class EsignSignerController {
+  private readonly logger = new Logger('EsignSignerController');
+
   constructor(
     private readonly service: EsignService,
+    private readonly repo: EsignRepository,
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sourceProvider: DocumentSourceProviderPort,
+    @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
   ) {}
+
+  // Aramo Sign launch (A-7) — the CURRENT server-held disclosure the signer must
+  // accept: version, exact text and its sha256. Token-authorized like every signer
+  // route; the signer app sends version + hash back on acceptance.
+  @Post('disclosure-text')
+  @HttpCode(HttpStatus.OK)
+  async disclosureText(@Body() body: { token: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    try {
+      await this.service.resolveSession(body.token);
+      const d = currentDisclosure();
+      return { disclosure_version: d.version, text: d.text, text_sha256: d.text_sha256 };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
+  // Aramo Sign launch — the signer's signed copy. Authorized by the time-limited
+  // access token from the completion email (not a signing session): returns the
+  // executed document(s) and the certificate of completion of a COMPLETED
+  // envelope. Tenant resolved server-side from the grant.
+  @Post('executed')
+  @HttpCode(HttpStatus.OK)
+  async executed(@Body() body: { token: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    try {
+      const grant = await this.service.resolveExecutedAccess(body.token);
+      const full = await this.repo.getEnvelopeFull(grant.tenant_id, grant.envelope_id);
+      const titles = new Map(full.documents.map((d) => [d.id, d.title]));
+      const docs = await this.repo.listExecutedDocuments(grant.tenant_id, grant.envelope_id);
+      const cert = await this.repo.getExecutionCertificate(grant.tenant_id, grant.envelope_id);
+      return {
+        subject: full.subject,
+        completed_at: full.completed_at ? full.completed_at.toISOString() : null,
+        documents: docs.map((d) => ({
+          title: titles.get(d.envelope_document_id) ?? 'Signed document',
+          content_type: 'application/pdf',
+          executed_base64: Buffer.from(d.executed_bytes).toString('base64'),
+        })),
+        certificate_base64: cert === null ? null : Buffer.from(cert.certificate_bytes).toString('base64'),
+      };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
 
   // PX-V1 F3 — the signer document VIEW: positioned fields + document metadata for
   // the Sign Web viewer. Token-authorized (tenant resolved server-side),
@@ -293,6 +353,13 @@ export class EsignSignerController {
     try {
       const ctx = await this.service.resolveSession(body.token);
       await this.service.decline(ctx.tenant_id, ctx.envelope_id, ctx.signer_id, body.reason, ctx.session_id);
+      // Aramo Sign launch — the console sender gets the reason; other open signers
+      // learn the envelope ended. Best-effort: the decline itself is already final.
+      try {
+        await this.notifications?.envelopeDeclined(ctx.tenant_id, ctx.envelope_id, ctx.signer_id, body.reason);
+      } catch (err) {
+        this.logger.warn(`decline notification failed — envelope ${ctx.envelope_id}: ${(err as Error).message}`);
+      }
       return { declined: true };
     } catch (e) {
       throw toHttp(e, requestId);

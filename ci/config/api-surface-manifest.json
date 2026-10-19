@@ -81,8 +81,11 @@
     "apps/api/src/esignature-providers/adobe-sign/adobe-sign-webhook.controller.ts": "XP",
     "apps/api/src/webhooks/indeed-apply.controller.ts": "XP",
     "apps/esign-service/src/app/esign-http.controller.ts": "SS",
+    "apps/esign-service/src/app/billing/esign-billing.controller.ts": "AP",
     "apps/esign-service/src/app/sender/esign-sender.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
+    "apps/platform-admin/src/app/platform/platform-sign.controller.ts": "AP",
+    "apps/platform-admin/src/app/signup/sign-signup.controller.ts": "PZ",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",
     "libs/auth-core/src/lib/auth.controller.ts": "SS",
@@ -150,6 +153,31 @@
       "method": "POST",
       "path": "/v1/esign/signing/decline",
       "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/document",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/source",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/disclosure-text",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/signing/executed",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
+      "path": "/v1/esign/billing/webhook/stripe",
+      "class": "XP"
     }
   ],
   "transitionalUndocumented": [

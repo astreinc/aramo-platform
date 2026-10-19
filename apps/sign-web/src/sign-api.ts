@@ -75,18 +75,35 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-// The frozen disclosure the signer acknowledges (version + text hash recorded
-// with the acceptance). The text shown is unchanged from DOC-4; the final
-// legal disclosure text is a Legal deliverable.
-export const DISCLOSURE_VERSION = 'v1';
-export const DISCLOSURE_TEXT_HASH = 'doc4-esign-disclosure-v1';
+// Aramo Sign launch (A-7) — the disclosure is SERVER-HELD and versioned: the app
+// shows the text E-Sign returns and sends that exact version + hash back on
+// acceptance, so the record names precisely what the signer agreed to.
+export interface SignerDisclosure {
+  disclosure_version: string;
+  text: string;
+  text_sha256: string;
+}
+
+// Aramo Sign launch — the signer's signed copy (from the completion email link).
+export interface ExecutedCopy {
+  subject: string;
+  completed_at: string | null;
+  documents: { title: string; content_type: string; executed_base64: string }[];
+  certificate_base64: string | null;
+}
 
 export const signApi = {
   exchange(token: string): Promise<SignerSession> {
     return post<SignerSession>('exchange', { token });
   },
-  acceptDisclosure(token: string): Promise<void> {
-    return post<void>('disclosure', { token, disclosure_version: DISCLOSURE_VERSION, disclosure_text_hash: DISCLOSURE_TEXT_HASH });
+  disclosureText(token: string): Promise<SignerDisclosure> {
+    return post<SignerDisclosure>('disclosure-text', { token });
+  },
+  acceptDisclosure(token: string, disclosure: SignerDisclosure): Promise<void> {
+    return post<void>('disclosure', { token, disclosure_version: disclosure.disclosure_version, disclosure_text_hash: disclosure.text_sha256 });
+  },
+  executed(token: string): Promise<ExecutedCopy> {
+    return post<ExecutedCopy>('executed', { token });
   },
   documentView(token: string): Promise<SignerDocumentView> {
     return post<SignerDocumentView>('document', { token });

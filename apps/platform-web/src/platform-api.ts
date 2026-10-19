@@ -105,6 +105,34 @@ export const TENANT_KINDS = ['BUSINESS', 'PERSONAL'] as const;
 export type TenantKind = (typeof TENANT_KINDS)[number];
 export const PERSONAL_TENANT_CAPABILITIES: readonly Capability[] = ['core', 'esign'];
 
+// Aramo Sign launch — the operator's read-only view of a tenant's Sign account.
+export interface PlatformTenantSign {
+  tenant_id: string;
+  tenant_kind: string;
+  capabilities: string[];
+  sign_entitled: boolean;
+  subscription: {
+    plan_key: string;
+    plan_name: string;
+    source: string;
+    status: string;
+    sending: boolean;
+    started_at: string;
+    ended_at: string | null;
+    current_period_end: string | null;
+    cancel_at_period_end: boolean;
+    grace_until: string | null;
+    billing_managed: boolean;
+    commitment_end?: string | null;
+    cancel_requested_within_commitment?: boolean;
+    eligibility_state?: string | null;
+  } | null;
+  allowance: { subscribed: true; limit: number | null; used: number; remaining: number | null; period_start: string; period_end: string } | { subscribed: false; state?: string };
+  storage?: { capacity_key: string; limit: number | null; unlimited: boolean; used: number } | null;
+  billing_available: boolean;
+  billing_events: { event_type: string; outcome: string; detail: string | null; event_created_at: string; received_at: string }[];
+}
+
 export const platformApi = {
   // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
   getDashboard(): Promise<PlatformDashboard> {
@@ -127,6 +155,10 @@ export const platformApi = {
 
   getTenantAudit(id: string): Promise<{ events: PlatformAuditEvent[] }> {
     return apiClient.get(`/platform/tenants/${id}/audit`);
+  },
+
+  getTenantSign(id: string): Promise<PlatformTenantSign> {
+    return apiClient.get(`/platform/tenants/${id}/sign`);
   },
 
   provisionTenant(body: {

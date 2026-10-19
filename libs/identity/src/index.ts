@@ -247,3 +247,10 @@ export {
   generateDomainVerificationToken,
 } from './lib/util/domain-verification.js';
 export type { DomainVerificationStatus } from './lib/util/domain-verification.js';
+
+// Aramo Sign launch — self-service BUSINESS signup request store.
+export {
+  SignupRequestRepository,
+  SIGNUP_PROVISIONING_STALE_MS,
+  type SignupRequestRow,
+} from './lib/signup-request.repository.js';

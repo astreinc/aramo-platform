@@ -270,7 +270,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await container?.stop();
     });
 
-    it('registration order — expand, backfill, IC-4 Tenant.kind, then the restrict pair; nothing follows; after every pre-IC migration', () => {
+    it('registration order — expand, backfill, IC-4 Tenant.kind, then the restrict pair, contiguous; only later-stamped migrations follow; after every pre-IC migration', () => {
       const i = IDENTITY_MIGRATIONS.indexOf(EXPAND);
       expect(i).toBeGreaterThan(0);
       // IC-4 PR-9 Tenant.kind (additive, defaulted) sits BETWEEN backfill and the
@@ -279,7 +279,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // recreated, while cardinality/immutable stay deferred to Release B.
       const KIND = IDENTITY_MIGRATIONS[i + 2];
       expect(KIND).toMatch(/20261015000002_ic4_tenant_kind\/migration\.sql$/);
-      expect(IDENTITY_MIGRATIONS.slice(i)).toEqual([EXPAND, BACKFILL, KIND, CARDINALITY, IMMUTABLE]);
+      expect(IDENTITY_MIGRATIONS.slice(i, i + 5)).toEqual([EXPAND, BACKFILL, KIND, CARDINALITY, IMMUTABLE]);
+      // Post-IC migrations (e.g. the Aramo Sign self-service signup table) may
+      // follow the restrict pair — IC is deployed — but never interleave with it.
       // Timestamp order agrees with registration order (the prod runner sorts by dir name).
       const stamps = IDENTITY_MIGRATIONS.slice(i).map((p) => p.split('/').at(-2) ?? '');
       expect([...stamps].sort()).toEqual(stamps);

@@ -43,6 +43,7 @@ function transport(over: Partial<Record<string, () => Response>> = {}) {
     const o = over[key];
     if (o) return o();
     if (path === 'exchange') return json({ session_id: 's1', envelope_id: 'env-1', signer_id: 'sig-1' });
+    if (path === 'disclosure-text') return json({ disclosure_version: 'v1', text: 'By continuing you consent to sign this document electronically.', text_sha256: 'h'.repeat(64) });
     if (path === 'disclosure') return json({ accepted: true });
     if (path === 'document') return json(VIEW);
     if (path === 'source') return json({ source_base64: btoa('%PDF-1.4'), content_type: 'application/pdf' });
@@ -122,6 +123,10 @@ describe('signer app', () => {
     expect(document.querySelectorAll('a')).toHaveLength(0);
     // The transport saw the disclosure acceptance and three fills with methods.
     expect(calls.some((c) => c.path === 'disclosure')).toBe(true);
+    // A-7 — acceptance echoes the server-held version and hash, never a client constant.
+    const accepted = calls.find((c) => c.path === 'disclosure')!.body;
+    expect(accepted['disclosure_version']).toBe('v1');
+    expect(accepted['disclosure_text_hash']).toBe('h'.repeat(64));
     const fills = calls.filter((c) => c.path.startsWith('fields/'));
     expect(fills.map((c) => c.path)).toEqual(['fields/f-init/fill', 'fields/f-sig/fill', 'fields/f-date/fill']);
     expect(fills[1]?.body['signature_method']).toBe('TYPED');

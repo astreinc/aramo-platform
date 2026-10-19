@@ -12426,11 +12426,14 @@ components:
     SignatureAllowance:
       type: object
       additionalProperties: false
-      required: [limit, used, remaining, period_start, period_end, threshold]
+      required: [limit, unlimited, used, remaining, period_start, period_end, threshold]
       properties:
-        limit: { type: integer }
+        # Commercial Plans Amendment A1 — limit / remaining are null on an
+        # unlimited plan (no envelope ceiling; usage still counted).
+        limit: { type: [integer, 'null'] }
+        unlimited: { type: boolean }
         used: { type: integer }
-        remaining: { type: integer }
+        remaining: { type: [integer, 'null'] }
         period_start: { type: string, format: date-time }
         period_end: { type: string, format: date-time }
         threshold:

@@ -20,7 +20,8 @@ export class EsignObjectStorageDocumentAdapter implements DocumentStoragePort {
 
   async putOwnedSource(input: PutOwnedSourceInput): Promise<PutOwnedSourceResult> {
     const body = Buffer.from(input.bytes);
-    const source_object_key = `esign/source/${input.tenant_id}/${input.envelope_id}/${randomUUID()}`;
+    const object_id = input.object_id !== undefined && /^[0-9a-f-]{36}$/i.test(input.object_id) ? input.object_id : randomUUID();
+    const source_object_key = `esign/source/${input.tenant_id}/${input.envelope_id}/${object_id}`;
     const requestId = `esign-owned-source-${randomUUID()}`;
     await this.storage.putObjectBytes({ storage_key: source_object_key, body, content_type: input.content_type, requestId });
     const source_sha256 = createHash('sha256').update(body).digest('hex');
