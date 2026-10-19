@@ -1444,8 +1444,7 @@ components:
         name:
           type: string
         description:
-          type: string
-          nullable: true
+          type: [string, 'null']
         allowances:
           type: array
           items:
@@ -1466,8 +1465,7 @@ components:
       required: [subscription, allowance, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
       properties:
         subscription:
-          type: object
-          nullable: true
+          type: [object, 'null']
           required: [plan_key, plan_name, source, status, sending, started_at, cancel_at_period_end, billing_managed]
           properties:
             plan_key:
@@ -1486,19 +1484,16 @@ components:
               type: string
               format: date-time
             ended_at:
-              type: string
+              type: [string, 'null']
               format: date-time
-              nullable: true
             current_period_end:
-              type: string
+              type: [string, 'null']
               format: date-time
-              nullable: true
             cancel_at_period_end:
               type: boolean
             grace_until:
-              type: string
+              type: [string, 'null']
               format: date-time
-              nullable: true
             billing_managed:
               type: boolean
         allowance:

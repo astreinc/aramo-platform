@@ -110,6 +110,9 @@ paths:
       operationId: previewSignSignup
       tags: [Sign Self-Service Signup]
       summary: Read what a verification link would create (no state change).
+      description: |
+        Returns the confirmed email and organization name for a valid link so
+        the verify page can show them before the owner confirms. Changes nothing.
       security: []
       requestBody:
         required: true
@@ -443,8 +446,7 @@ paths:
                   sign_entitled:
                     type: boolean
                   subscription:
-                    type: object
-                    nullable: true
+                    type: [object, 'null']
                     description: Same shape as esign.yaml BillingAccount.subscription.
                   allowance:
                     type: object
@@ -463,8 +465,7 @@ paths:
                           type: string
                           enum: [APPLIED, IGNORED, STALE]
                         detail:
-                          type: string
-                          nullable: true
+                          type: [string, 'null']
                         event_created_at:
                           type: string
                           format: date-time
