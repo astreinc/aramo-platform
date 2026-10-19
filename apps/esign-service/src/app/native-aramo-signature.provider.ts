@@ -4,6 +4,7 @@ import {
   type EnvelopeSummary,
   type EvidenceSummary,
   type SignatureProviderPort,
+  type SignatureActor,
 } from '@aramo/documents-contracts';
 import {
   ENVELOPE_NOTIFICATION_SERVICE,
@@ -154,7 +155,11 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return this.summarize(tenant_id, envelope_id);
   }
 
-  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor_ref?: string): Promise<EnvelopeSummary> {
+  // Inside esign-service the acting party is a resolved actor ref (string); the
+  // port's typed actor credential (Addendum S6) is an api-side concern and is
+  // never used here.
+  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+    const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason);
     // Aramo Sign launch — recipients who had not finished learn it was withdrawn.
@@ -183,7 +188,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // SIGNATURE_REMINDER link per newly-issued session and record each delivery
   // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
   // in-memory here to build the signer URL; never persisted/logged/returned).
-  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor_ref?: string): Promise<EnvelopeSummary> {
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+    const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);

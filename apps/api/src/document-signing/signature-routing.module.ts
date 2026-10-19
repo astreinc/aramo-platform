@@ -4,7 +4,9 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { SignatureRoutingStoreModule, type SignatureProviderKey } from '@aramo/signature-routing';
 import { SubscriptionModule } from '@aramo/subscription';
 
+import { EsignServiceApiProvider, esignAtsTransport } from '../esign/esign-service-api.provider.js';
 import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
+import { SignApiClient } from '../esign/sign-api.client.js';
 import type { ExternalSignatureAdapter } from '../esignature-providers/external-signature-adapter.js';
 import { ExternalSignatureProvidersModule } from '../esignature-providers/external-signature-providers.module.js';
 import { EXTERNAL_SIGNATURE_ADAPTERS } from '../esignature-providers/provider-completion.service.js';
@@ -25,15 +27,27 @@ import { SignatureRoutingService } from './signature-routing.service.js';
   imports: [EntitlementModule, SubscriptionModule, SignatureRoutingStoreModule, ExternalSignatureProvidersModule],
   providers: [
     EsignServiceHttpProvider,
+    // Addendum S6 — the authenticated Sign API transport. ESIGN_ATS_TRANSPORT=api
+    // selects it; the default stays the internal transport until a validated
+    // activation (the internal path is kept for rollback).
+    SignApiClient,
+    EsignServiceApiProvider,
     {
       provide: SIGNATURE_PROVIDER_REGISTRY,
-      useFactory: (aramoSign: EsignServiceHttpProvider, external: readonly ExternalSignatureAdapter[]): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> =>
-        new Map<SignatureProviderKey, SignatureProviderPort>([['aramo_sign', aramoSign], ...external.map((a) => [a.provider, a] as const)]),
-      inject: [EsignServiceHttpProvider, EXTERNAL_SIGNATURE_ADAPTERS],
+      useFactory: (
+        internal: EsignServiceHttpProvider,
+        api: EsignServiceApiProvider,
+        external: readonly ExternalSignatureAdapter[],
+      ): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> =>
+        new Map<SignatureProviderKey, SignatureProviderPort>([
+          ['aramo_sign', esignAtsTransport() === 'api' ? api : internal],
+          ...external.map((a) => [a.provider, a] as const),
+        ]),
+      inject: [EsignServiceHttpProvider, EsignServiceApiProvider, EXTERNAL_SIGNATURE_ADAPTERS],
     },
     SignatureAvailabilityService,
     SignatureRoutingService,
   ],
-  exports: [SignatureAvailabilityService, SignatureRoutingService, SignatureRoutingStoreModule, SIGNATURE_PROVIDER_REGISTRY, ExternalSignatureProvidersModule],
+  exports: [SignatureAvailabilityService, SignatureRoutingService, SignatureRoutingStoreModule, SIGNATURE_PROVIDER_REGISTRY, ExternalSignatureProvidersModule, SignApiClient],
 })
 export class SignatureRoutingModule {}

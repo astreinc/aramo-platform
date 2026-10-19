@@ -2481,7 +2481,7 @@ components:
       properties:
         grant_type:
           type: string
-          enum: [client_credentials, 'urn:ietf:params:oauth:grant-type:token-exchange']
+          enum: [client_credentials, 'urn:ietf:params:oauth:grant-type:token-exchange', 'urn:aramo:params:oauth:grant-type:sign-event']
         client_id:
           type: string
         client_secret:
@@ -2501,6 +2501,13 @@ components:
         external_actor:
           type: string
           description: client_credentials only — the platform's own actor reference, recorded for audit.
+        event_id:
+          type: string
+          format: uuid
+          description: >
+            sign-event only (Addendum S6) — the id of a completion event Sign delivered to the AUTHENTICATED
+            application's subscription. Yields a read grant (≤ 5 minutes) for that event's envelope's executed
+            documents and evidence only; tenant and envelope come from Sign's records, never from the caller.
     SignTokenResponse:
       type: object
       required: [access_token, token_type, expires_in, scope, tenant_id, installation_id, mode]
@@ -2523,6 +2530,10 @@ components:
         mode:
           type: string
           enum: [USER, APPLICATION]
+        envelope_id:
+          type: string
+          format: uuid
+          description: Set on an event-bound grant — the only envelope it can read.
     SignAvailability:
       type: object
       required: [available, reason, allowance]

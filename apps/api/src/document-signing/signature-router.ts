@@ -1,4 +1,4 @@
-import type { SignatureProviderPort } from '@aramo/documents-contracts';
+import type { SignatureActor, SignatureProviderPort } from '@aramo/documents-contracts';
 import type { SignatureProviderKey } from '@aramo/signature-routing';
 
 // Multi-Provider directive §D/§F — how governed signing picks a provider. A NEW
@@ -15,7 +15,8 @@ export interface RoutedSignatureProvider {
 
 export interface SignatureRouter {
   /** Asserts the tenant can send now; throws ESIGN_SEND_UNAVAILABLE with the reason. */
-  forNewSend(tenant_id: string, requestId: string): Promise<RoutedSignatureProvider>;
+  // Addendum S6 — the optional recruiter credential lets Aramo Sign answer availability.
+  forNewSend(tenant_id: string, requestId: string, actor?: SignatureActor): Promise<RoutedSignatureProvider>;
   /** The provider frozen on the request for this document revision (Aramo Sign for pre-routing requests). */
   forDocument(tenant_id: string, document_id: string, document_revision_id: string): Promise<RoutedSignatureProvider>;
   recordRoute(input: {

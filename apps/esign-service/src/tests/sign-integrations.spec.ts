@@ -12,7 +12,7 @@ import { IntegrationAdminService } from '../app/integrations/integration-admin.s
 import { SignApiController } from '../app/integrations/sign-api.controller.js';
 import { SignApiGuard } from '../app/integrations/sign-api.guard.js';
 import { SignApiService } from '../app/integrations/sign-api.service.js';
-import { GRANT_CLIENT_CREDENTIALS, GRANT_TOKEN_EXCHANGE, SignTokenService, TOKEN_TYPE_ACCESS_TOKEN } from '../app/integrations/sign-token.service.js';
+import { GRANT_CLIENT_CREDENTIALS, GRANT_SIGN_EVENT, GRANT_TOKEN_EXCHANGE, SignTokenService, TOKEN_TYPE_ACCESS_TOKEN } from '../app/integrations/sign-token.service.js';
 
 // Sign Unified Product S-4 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.4, mandatory refinement A):
@@ -182,7 +182,7 @@ function tokenService(opts: {
     resolveScopesForConsumer: vi.fn(async () => opts.signScopes ?? []),
   };
   const entitlements = { getCapabilities: vi.fn(async () => new Set(opts.caps ?? ['core', 'ats', 'esign'])) };
-  return { svc: new SignTokenService(repo as never, jwt as never, entitlements as never), repo, jwt };
+  return { svc: new SignTokenService(repo as never, jwt as never, entitlements as never, {} as never, {} as never), repo, jwt };
 }
 const exchange = (over: Record<string, unknown> = {}) => ({
   grant_type: GRANT_TOKEN_EXCHANGE,
@@ -340,7 +340,7 @@ describe('Sign API guard', () => {
 });
 
 // ── API service: installation isolation + ownership ──────────────────────────
-const integ = (over: Record<string, unknown> = {}) => ({ application_key: 'aramo-ats', application_kind: 'FIRST_PARTY', installation_id: INST, mode: 'USER' as const, external_actor: null, external_role: null, ...over });
+const integ = (over: Record<string, unknown> = {}) => ({ application_key: 'aramo-ats', application_kind: 'FIRST_PARTY', installation_id: INST, mode: 'USER' as const, external_actor: null, external_role: null, grant_kind: 'STANDARD' as const, bound_envelope_id: null, ...over });
 const apiAuth = (scopes: string[], sub = USER): AuthContextType => ({ sub, consumer_type: 'esign', actor_kind: 'user', tenant_id: TENANT, scopes, iat: 0, exp: 0 });
 function apiService(env: Record<string, unknown>) {
   const repo = {
@@ -473,6 +473,102 @@ describe('route metadata', () => {
     expect(names.length).toBe(12); // S-4 installation administration (7) + S-5 webhook subscriptions (5)
     for (const n of names) {
       expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, (IntegrationAdminController.prototype as unknown as Record<string, object>)[n] ?? {})).toEqual([S.INTEGRATION_MANAGE]);
+    }
+  });
+});
+
+// ── Addendum S6 ruling 1 — the event-bound executed-artifact read grant ──────
+
+describe('event-bound executed-artifact grant (Addendum S6)', () => {
+  const EVENT_ID = '66666666-6666-7666-8666-666666666666';
+  const ENVELOPE = '77777777-7777-7777-8777-777777777777';
+  function eventService(opts: {
+    cred?: Record<string, unknown> | null;
+    deliveries?: Record<string, unknown>[];
+    envelope?: Record<string, unknown> | 'missing';
+    installation?: Record<string, unknown> | null;
+    caps?: string[];
+  } = {}) {
+    const app = { id: 'app-1', ...ATS };
+    const cred = opts.cred === null ? null : { id: 'cred-1', client_id: 'sgc_ats', application_id: 'app-1', installation_id: null, status: 'ACTIVE', expires_at: null, secret_hash: digest(SECRET), application: app, ...opts.cred };
+    const repo = {
+      findCredentialByClientId: vi.fn(async () => cred),
+      findInstallation: vi.fn(async () => (opts.installation === undefined ? { id: INST, tenant_id: TENANT, status: 'ACTIVE' } : opts.installation)),
+      createToken: vi.fn(async () => ({})),
+      touchCredential: vi.fn(async () => undefined),
+    };
+    const webhooks = {
+      deliveriesOfEventForApplication: vi.fn(async () =>
+        opts.deliveries ?? [{ event_id: EVENT_ID, tenant_id: TENANT, envelope_id: ENVELOPE, event_type: 'esign.envelope.executed.v1', subscription: { installation_id: null, application_id: 'app-1' } }],
+      ),
+    };
+    const envelopes = {
+      getEnvelope: vi.fn(async () => {
+        if (opts.envelope === 'missing') {
+          const { EnvelopeNotFoundError } = await import('@aramo/esign');
+          throw new EnvelopeNotFoundError(ENVELOPE);
+        }
+        return { id: ENVELOPE, status: 'COMPLETED', source_application: 'aramo-ats', installation_id: INST, ...opts.envelope };
+      }),
+    };
+    const entitlements = { getCapabilities: vi.fn(async () => new Set(opts.caps ?? ['ats', 'esign'])) };
+    const svc = new SignTokenService(repo as never, { verifyAccessToken: vi.fn() } as never, entitlements as never, webhooks as never, envelopes as never);
+    return { svc, repo, webhooks };
+  }
+  const req = (over: Record<string, unknown> = {}) => ({ grant_type: GRANT_SIGN_EVENT, client_id: 'sgc_ats', client_secret: SECRET, event_id: EVENT_ID, ...over });
+
+  it('GREEN: issues a 5-minute, read-only grant bound to the event’s envelope, scoped from Sign’s records', async () => {
+    const { svc, repo, webhooks } = eventService();
+    const t = await svc.issue(req(), 'r');
+    expect(t).toMatchObject({ mode: 'APPLICATION', tenant_id: TENANT, installation_id: INST, envelope_id: ENVELOPE, scope: 'esign:envelope:read', expires_in: 300 });
+    expect(webhooks.deliveriesOfEventForApplication).toHaveBeenCalledWith(EVENT_ID, 'app-1');
+    expect((repo.createToken.mock.calls[0] as unknown as [Record<string, unknown>])[0]).toMatchObject({ grant_kind: 'EVENT_ARTIFACT', envelope_id: ENVELOPE, event_id: EVENT_ID, subject_id: INST, scopes: ['esign:envelope:read'] });
+  });
+
+  it('the event id alone is never enough: no or wrong client credential → 401 invalid_client', async () => {
+    await expect(eventService({ cred: null }).svc.issue(req(), 'r')).rejects.toMatchObject({ statusCode: 401 });
+    await expect(eventService().svc.issue(req({ client_secret: 'sgs_wrong' }), 'r')).rejects.toMatchObject({ statusCode: 401 });
+  });
+
+  it.each([
+    ['a forged / unknown event id', { deliveries: [] }],
+    ['an event delivered to another installation (installation-bound credential)', { cred: { installation_id: 'other-inst' } }],
+    ['a non-completion event', { deliveries: [{ event_id: EVENT_ID, tenant_id: TENANT, envelope_id: ENVELOPE, event_type: 'esign.envelope.sent.v1', subscription: { installation_id: null } }] }],
+    ['an envelope not completed', { envelope: { status: 'IN_PROGRESS' } }],
+    ['an envelope of another application', { envelope: { source_application: 'acme-hr' } }],
+    ['a revoked installation', { installation: { id: INST, tenant_id: TENANT, status: 'REVOKED' } }],
+    ['an envelope of another installation', { envelope: { installation_id: 'other-inst' } }],
+    ['a missing envelope', { envelope: 'missing' as const }],
+  ])('%s → 403 event_not_available (one answer)', async (_n, opts) => {
+    const { svc, repo } = eventService(opts as never);
+    await expect(svc.issue(req(), 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'event_not_available' } } });
+    expect(repo.createToken).not.toHaveBeenCalled();
+  });
+
+  it('a malformed event id is refused before any lookup', async () => {
+    const { svc, webhooks } = eventService();
+    await expect(svc.issue(req({ event_id: 'x' }), 'r')).rejects.toMatchObject({ statusCode: 400 });
+    expect(webhooks.deliveriesOfEventForApplication).not.toHaveBeenCalled();
+  });
+
+  it('repeat requests (webhook retries) each get a fresh grant — idempotent recovery', async () => {
+    const { svc, repo } = eventService();
+    await svc.issue(req(), 'r');
+    await svc.issue(req(), 'r');
+    expect(repo.createToken).toHaveBeenCalledTimes(2);
+  });
+
+  it('the grant reads ONLY its envelope’s executed documents and evidence', async () => {
+    const restricted = integ({ grant_kind: 'EVENT_ARTIFACT', bound_envelope_id: 'e1', mode: 'APPLICATION' });
+    const { svc, provider } = apiService({ id: 'e1' });
+    (provider as unknown as Record<string, unknown>)['getExecutedArtifacts'] = vi.fn(async () => ({ envelope_id: 'e1', documents: [] }));
+    (provider as unknown as Record<string, unknown>)['getEvidence'] = vi.fn(async () => ({ envelope_id: 'e1' }));
+    const a = apiAuth(['esign:envelope:read'], INST);
+    await expect(svc.executed(a, restricted, 'e1', 'r')).resolves.toMatchObject({ envelope_id: 'e1' });
+    await expect(svc.evidence(a, restricted, 'e1', 'r')).resolves.toMatchObject({ envelope_id: 'e1' });
+    await expect(svc.executed(a, restricted, 'e2', 'r')).rejects.toMatchObject({ statusCode: 404 });
+    for (const call of [() => svc.get(a, restricted, 'e1', 'r'), () => svc.forDocument(a, restricted, 'd', 'v', 'r'), () => svc.availability(a, restricted, 'r'), () => svc.create(a, restricted, {}, 'r'), () => svc.void(a, restricted, 'e1', 'x', 'r')]) {
+      await expect(call()).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'grant_restricted' } } });
     }
   });
 });

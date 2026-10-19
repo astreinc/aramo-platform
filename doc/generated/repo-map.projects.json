@@ -169,6 +169,7 @@
       "assertTierTripwire",
       "isPlatformRoutePath",
       "pkceCookieName",
+      "rawAccessToken",
       "refreshCookieName",
       "selectAccessCookie"
     ],
@@ -687,6 +688,7 @@
       "computeEsignS2sSignature",
       "normalizeEsignS2sQuery",
       "signEsignServiceRequest",
+      "signatureActor",
       "verifyEsignServiceRequest"
     ],
     "@aramo/documents-rendering": [
@@ -4264,6 +4266,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sign-s6-ats-transport.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/singlebox-talent-intake-publisher.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5015,6 +5023,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-event-grant.integration.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -6523,6 +6537,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sign-s6-ats-transport.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6588,6 +6608,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-cutover.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sign-s6-ats-transport.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6880,6 +6906,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },

@@ -200,6 +200,15 @@ services:
       # create/send/remind/void for RTR + Offer, executed-artifact pull for the
       # completion write-back). Box value: http://esign-service:3003 (compose service
       # name + its PORT). Unset ⇒ the api defaults to its OWN localhost:3003 (dark).
+      # Aramo Sign Unified Product — Addendum S6: the ATS as a client of the Sign API.
+      # ESIGN_ATS_TRANSPORT=internal (default) keeps the internal path; `api` uses the
+      # authenticated Sign API (separately authorized activation). The client
+      # credential is the operator-issued first-party aramo-ats credential; the
+      # subscription secret verifies completion webhooks from the ATS subscription.
+      - ESIGN_ATS_TRANSPORT=${ESIGN_ATS_TRANSPORT:-internal}
+      - ESIGN_ATS_CLIENT_ID
+      - ESIGN_ATS_CLIENT_SECRET
+      - ESIGN_EVENTS_SUBSCRIPTION_SECRET
       - ESIGN_SERVICE_URL
       # ES-2 — source-route authentication mode: enforce (default) | log (temporary,
       # only with a future ESIGN_S2S_AUTH_LOG_UNTIL ≤ 7 days ahead).

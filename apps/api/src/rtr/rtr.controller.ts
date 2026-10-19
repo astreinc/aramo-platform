@@ -1,8 +1,11 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
+
+import { signatureActorFrom } from '../document-signing/signature-actor.js';
 
 import {
   RtrOrchestratorService,
@@ -72,6 +75,7 @@ export class RtrController {
     @Body() body: { talent_id?: string },
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<{ document_id: string; envelope_id: string; status: string }> {
     this.assertRecruiter(authContext, requestId);
     if (typeof body?.talent_id !== 'string') {
@@ -83,6 +87,8 @@ export class RtrController {
       talent_id: body.talent_id,
       created_by: authContext.sub,
       requestId,
+      // Addendum S6 — the recruiter's own credential for Aramo Sign USER-mode delegation.
+      actor: signatureActorFrom(req),
     });
   }
 
@@ -98,12 +104,14 @@ export class RtrController {
     @Param('documentId') documentId: string,
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
+    @Req() req: Request,
   ): Promise<RtrRemindResult> {
     this.assertRecruiter(authContext, requestId);
     return this.orchestrator.remind({
       tenant_id: authContext.tenant_id,
       document_id: documentId,
       requestId,
+      actor: signatureActorFrom(req),
     });
   }
 

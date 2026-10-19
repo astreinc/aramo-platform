@@ -9,6 +9,7 @@ import {
 } from '@aramo/documents';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 
+import { SignApiClient } from '../esign/sign-api.client.js';
 import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
 import { EsignServiceRequestGuard } from '../integrations/esign/esign-service-request.guard.js';
 
@@ -45,6 +46,8 @@ const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
         new RevisionSourceService(prisma, storage),
       inject: [DOCUMENTS_ESIGN_PRISMA, DOCUMENTS_ESIGN_STORAGE],
     },
+    // Addendum S6 — the ATS client of the Sign API (event-bound artifact grants).
+    SignApiClient,
     EsignExecutedArtifactsClient,
     {
       provide: DocumentExecutedWriteBackService,

@@ -359,6 +359,20 @@ export class JwtAuthGuard implements CanActivate {
   }
 }
 
+// Addendum S6 — the raw access token of an authenticated request (the same
+// Bearer-first / consumer-cookie selection JwtAuthGuard verifies), for a
+// server-side delegation such as Aramo Sign USER-mode token exchange. Returns
+// null instead of throwing; never log the value.
+export function rawAccessToken(request: Request & { cookies?: Record<string, string> }): string | null {
+  const header = request.header('authorization');
+  if (header !== undefined && header.length > 0) {
+    const m = /^Bearer\s+(.+)$/i.exec(header);
+    return m !== null && m[1] !== undefined && m[1].length > 0 ? m[1] : null;
+  }
+  const selection = selectAccessCookie(request.cookies, request.header(CONSUMER_HEADER));
+  return selection.kind === 'found' ? selection.token : null;
+}
+
 // IC-2 PR-5 — the GENERIC both-direction tier tripwire (AUTHZ-2 DDR §13.1;
 // IC-0 §F.2 rule 2 / J-10). Replaces reliance on per-route hand-placed
 // assertions (which stay as defence in depth):

@@ -22634,6 +22634,16 @@
       "to": "apps/api/src/documents/esign-writeback.ts"
     },
     {
+      "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/esign-service/src/tests/sign-api.integration.spec.ts"
+    },
+    {
+      "from": "pact/consumers/esign-consumer/src/esign.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-esign.ts"
+    },
+    {
       "from": "pact/consumers/esign-source-consumer/src/webhook.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
