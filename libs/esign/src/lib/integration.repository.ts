@@ -249,6 +249,18 @@ export class SignIntegrationRepository {
     });
   }
 
+  // Operator revocation by client id: the credential and every live token it issued.
+  async revokeCredentialByClientId(client_id: string): Promise<boolean> {
+    const now = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const cred = await tx.signCredential.findUnique({ where: { client_id }, select: { id: true } });
+      if (cred === null) return false;
+      await tx.signCredential.update({ where: { id: cred.id }, data: { status: 'REVOKED', revoked_at: now } });
+      await tx.signAccessToken.updateMany({ where: { credential_id: cred.id, revoked_at: null }, data: { revoked_at: now } });
+      return true;
+    });
+  }
+
   // ── Access tokens ──────────────────────────────────────────────────────────
   createToken(input: {
     token_hash: string;
@@ -270,6 +282,141 @@ export class SignIntegrationRepository {
     return this.prisma.signAccessToken.findUnique({
       where: { token_hash },
       include: { credential: true, installation: { include: { application: true } } },
+    });
+  }
+}
+
+// ── Sign Unified Product S-5 — webhook subscriptions and per-subscription delivery ──
+
+export interface SignWebhookSubscriptionRow {
+  id: string;
+  application_id: string;
+  installation_id: string | null;
+  tenant_id: string | null;
+  target_url: string;
+  event_types: string[];
+  secret_ciphertext: string;
+  status: string;
+  internal: boolean;
+  created_by: string | null;
+  created_at: Date;
+  updated_at: Date;
+  secret_rotated_at: Date | null;
+}
+
+export interface SignWebhookDeliveryRow {
+  id: string;
+  subscription_id: string;
+  event_id: string;
+  tenant_id: string;
+  envelope_id: string;
+  event_type: string;
+  payload: unknown;
+  status: string;
+  attempt_count: number;
+  next_attempt_at: Date | null;
+  last_attempt_at: Date | null;
+  last_error_code: string | null;
+  delivered_at: Date | null;
+  created_at: Date;
+}
+
+@Injectable()
+export class SignWebhookRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  createSubscription(input: {
+    application_id: string;
+    installation_id: string | null;
+    tenant_id: string | null;
+    target_url: string;
+    event_types: string[];
+    secret_ciphertext: string;
+    internal: boolean;
+    created_by: string | null;
+  }): Promise<SignWebhookSubscriptionRow> {
+    return this.prisma.signWebhookSubscription.create({ data: { id: randomUUID(), ...input } });
+  }
+
+  listForInstallation(tenant_id: string, installation_id: string): Promise<SignWebhookSubscriptionRow[]> {
+    return this.prisma.signWebhookSubscription.findMany({ where: { tenant_id, installation_id }, orderBy: { created_at: 'asc' } });
+  }
+
+  getForInstallation(tenant_id: string, installation_id: string, id: string): Promise<SignWebhookSubscriptionRow | null> {
+    return this.prisma.signWebhookSubscription.findFirst({ where: { tenant_id, installation_id, id } });
+  }
+
+  async rotateSecret(id: string, secret_ciphertext: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.signWebhookSubscription.update({ where: { id }, data: { secret_ciphertext, secret_rotated_at: now, updated_at: now } });
+  }
+
+  async setStatus(id: string, status: 'ACTIVE' | 'DISABLED'): Promise<void> {
+    await this.prisma.signWebhookSubscription.update({ where: { id }, data: { status, updated_at: new Date() } });
+  }
+
+  // The ACTIVE subscriptions that receive an envelope's events: those of the
+  // envelope's installation, plus the application-level (first-party) ones of the
+  // envelope's source application — never another application's.
+  async subscriptionsForEnvelope(tenant_id: string, envelope_id: string): Promise<{ envelope: { source_application: string; installation_id: string | null } | null; subscriptions: SignWebhookSubscriptionRow[] }> {
+    const envelope = await this.prisma.signatureEnvelope.findFirst({ where: { tenant_id, id: envelope_id }, select: { source_application: true, installation_id: true } });
+    if (envelope === null) return { envelope: null, subscriptions: [] };
+    const app = await this.prisma.signApplication.findUnique({ where: { key: envelope.source_application }, select: { id: true, kind: true } });
+    const subscriptions = await this.prisma.signWebhookSubscription.findMany({
+      where: {
+        status: 'ACTIVE',
+        OR: [
+          ...(envelope.installation_id !== null ? [{ installation_id: envelope.installation_id, tenant_id }] : []),
+          ...(app !== null && app.kind === 'FIRST_PARTY' ? [{ application_id: app.id, installation_id: null }] : []),
+        ],
+      },
+    });
+    // An application-level subscription only covers tenants where the application is installed and ACTIVE.
+    if (app !== null && subscriptions.some((s) => s.installation_id === null)) {
+      const inst = await this.prisma.signInstallation.findUnique({ where: { tenant_id_application_id: { tenant_id, application_id: app.id } }, select: { status: true } });
+      const active = inst !== null && inst.status === 'ACTIVE';
+      return { envelope, subscriptions: subscriptions.filter((s) => s.installation_id !== null || active) };
+    }
+    return { envelope, subscriptions };
+  }
+
+  // Idempotent fan-out: one delivery row per (subscription, event).
+  async enqueue(rows: { subscription_id: string; event_id: string; tenant_id: string; envelope_id: string; event_type: string; payload: object }[]): Promise<void> {
+    if (rows.length === 0) return;
+    await this.prisma.signWebhookDelivery.createMany({ data: rows.map((r) => ({ id: randomUUID(), ...r })), skipDuplicates: true });
+  }
+
+  async claimDue(now: Date, limit: number, leaseMs: number): Promise<(SignWebhookDeliveryRow & { subscription: SignWebhookSubscriptionRow })[]> {
+    const due = await this.prisma.signWebhookDelivery.findMany({
+      where: { status: 'PENDING', OR: [{ next_attempt_at: null }, { next_attempt_at: { lte: now } }] },
+      orderBy: { created_at: 'asc' },
+      take: limit,
+      include: { subscription: true },
+    });
+    if (due.length === 0) return [];
+    await this.prisma.signWebhookDelivery.updateMany({
+      where: { id: { in: due.map((d) => d.id) }, status: 'PENDING' },
+      data: { next_attempt_at: new Date(now.getTime() + leaseMs) },
+    });
+    return due;
+  }
+
+  async markDelivered(id: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.signWebhookDelivery.update({ where: { id }, data: { status: 'DELIVERED', delivered_at: now, last_attempt_at: now, attempt_count: { increment: 1 }, last_error_code: null } });
+  }
+
+  async markFailed(id: string, error_code: string, next_attempt_at: Date | null): Promise<void> {
+    const now = new Date();
+    await this.prisma.signWebhookDelivery.update({
+      where: { id },
+      data: {
+        status: next_attempt_at === null ? 'DEAD' : 'PENDING',
+        attempt_count: { increment: 1 },
+        last_attempt_at: now,
+        last_error_code: error_code.slice(0, 64),
+        next_attempt_at,
+      },
     });
   }
 }

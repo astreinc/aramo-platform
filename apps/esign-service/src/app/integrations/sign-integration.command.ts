@@ -1,6 +1,7 @@
-import { PrismaService, SignIntegrationRepository } from '@aramo/esign';
+import { PrismaService, SignIntegrationRepository, SignWebhookRepository } from '@aramo/esign';
 
 import { digest, newClientId, newClientSecret } from './credentials.js';
+import { encryptWebhookSecret, newWebhookSecret } from './webhook-secrets.js';
 
 // Sign Unified Product S-4 — the OPERATOR CLI for the Sign application registry
 // (no HTTP surface). Tenants manage their own installations and third-party
@@ -12,6 +13,9 @@ import { digest, newClientId, newClientSecret } from './credentials.js';
 //                         FIRST_PARTY application (e.g. aramo-ats); the secret is
 //                         printed ONCE and stored only as a digest
 //   revoke-credential      revoke a credential by client id
+//   first-party-webhook    an application-level webhook subscription for a
+//                         FIRST_PARTY application (may target the private
+//                         network); its signing secret is printed ONCE
 //
 // Usage (after build):
 //   node dist/apps/esign-service/src/app/integrations/sign-integration.command.js first-party-credential aramo-ats
@@ -39,6 +43,30 @@ async function main(argv: string[]): Promise<number> {
       console.error('Store the secret in the application’s secret configuration now — it is not stored and cannot be shown again.');
       return 0;
     }
+    if (cmd === 'first-party-webhook') {
+      const [key, url, events] = args;
+      if (key === undefined || url === undefined) return usage();
+      const app = await repo.findApplicationByKey(key);
+      if (app === null || app.kind !== 'FIRST_PARTY' || app.status !== 'ACTIVE') {
+        console.error(`no ACTIVE FIRST_PARTY application "${key}"`);
+        return 1;
+      }
+      const secret = newWebhookSecret();
+      const w = await new SignWebhookRepository(prisma).createSubscription({
+        application_id: app.id,
+        installation_id: null,
+        tenant_id: null,
+        target_url: url,
+        event_types: (events ?? '').split(',').filter(Boolean),
+        secret_ciphertext: encryptWebhookSecret(secret),
+        internal: true,
+        created_by: null,
+      });
+      console.log(`webhook_id=${w.id}`);
+      console.log(`signing_secret=${secret}`);
+      console.error('Store the signing secret in the receiving application’s configuration now — it cannot be shown again.');
+      return 0;
+    }
     if (cmd === 'register-application') {
       const [key, name, perms, modes, roles] = args;
       if (key === undefined || name === undefined || perms === undefined || modes === undefined) return usage();
@@ -56,27 +84,21 @@ async function main(argv: string[]): Promise<number> {
     if (cmd === 'revoke-credential') {
       const client_id = args[0];
       if (client_id === undefined) return usage();
-      const now = new Date();
-      const cred = await prisma.signCredential.findUnique({ where: { client_id } });
-      if (cred === null) {
+      if (!(await repo.revokeCredentialByClientId(client_id))) {
         console.error('no such credential');
         return 1;
       }
-      await prisma.$transaction([
-        prisma.signCredential.update({ where: { id: cred.id }, data: { status: 'REVOKED', revoked_at: now } }),
-        prisma.signAccessToken.updateMany({ where: { credential_id: cred.id, revoked_at: null }, data: { revoked_at: now } }),
-      ]);
       console.log(`revoked ${client_id}`);
       return 0;
     }
     return usage();
   } finally {
-    await prisma.$disconnect();
+    await (prisma as unknown as { $disconnect(): Promise<void> }).$disconnect();
   }
 }
 
 function usage(): number {
-  console.error('usage: sign-integration.command.js first-party-credential <app-key> | register-application <key> <name> <perms> <modes> [roles] | revoke-credential <client_id>');
+  console.error('usage: sign-integration.command.js first-party-credential <app-key> | first-party-webhook <app-key> <url> [events] | register-application <key> <name> <perms> <modes> [roles] | revoke-credential <client_id>');
   return 1;
 }
 

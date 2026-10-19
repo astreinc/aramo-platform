@@ -1662,6 +1662,172 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/webhooks:
+    get:
+      operationId: listSignWebhooks
+      summary: The installation’s webhook subscriptions (never their secrets) and the event types.
+      description: >
+        Requires esign:integration:manage. Deliveries are HMAC-SHA256 signed with the subscription's own secret over
+        `timestamp.body` (headers x-aramo-esign-timestamp, x-aramo-esign-signature, x-aramo-esign-event-id,
+        x-aramo-esign-subscription-id); receivers reject stale timestamps and drop repeated event ids.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSignWebhook
+      summary: Subscribe a public HTTPS endpoint; the subscription’s own signing secret is returned once.
+      description: >
+        Requires esign:integration:manage. Deliveries are HMAC-SHA256 signed with the subscription's own secret over
+        `timestamp.body` (headers x-aramo-esign-timestamp, x-aramo-esign-signature, x-aramo-esign-event-id,
+        x-aramo-esign-subscription-id); receivers reject stale timestamps and drop repeated event ids.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [target_url]
+              properties:
+                target_url:
+                  type: string
+                event_types:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/webhooks/{webhookId}/rotate-secret:
+    post:
+      operationId: rotateSignWebhookSecret
+      summary: Rotate the subscription’s signing secret (returned once).
+      description: >
+        Requires esign:integration:manage. Deliveries are HMAC-SHA256 signed with the subscription's own secret over
+        `timestamp.body` (headers x-aramo-esign-timestamp, x-aramo-esign-signature, x-aramo-esign-event-id,
+        x-aramo-esign-subscription-id); receivers reject stale timestamps and drop repeated event ids.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/webhooks/{webhookId}/disable:
+    post:
+      operationId: disableSignWebhook
+      summary: Stop delivering to the subscription.
+      description: >
+        Requires esign:integration:manage. Deliveries are HMAC-SHA256 signed with the subscription's own secret over
+        `timestamp.body` (headers x-aramo-esign-timestamp, x-aramo-esign-signature, x-aramo-esign-event-id,
+        x-aramo-esign-subscription-id); receivers reject stale timestamps and drop repeated event ids.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/esign/sender/integrations/installations/{id}/webhooks/{webhookId}/enable:
+    post:
+      operationId: enableSignWebhook
+      summary: Resume delivering to the subscription.
+      description: >
+        Requires esign:integration:manage. Deliveries are HMAC-SHA256 signed with the subscription's own secret over
+        `timestamp.body` (headers x-aramo-esign-timestamp, x-aramo-esign-signature, x-aramo-esign-event-id,
+        x-aramo-esign-subscription-id); receivers reject stale timestamps and drop repeated event ids.
+      tags: [integrations]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/esign/sender/activity:
     get:
       operationId: listSenderActivity

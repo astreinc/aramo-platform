@@ -774,6 +774,7 @@
       "SIGNING_TOKEN_BYTES",
       "STORAGE_ACCOUNTING_PORT",
       "SignIntegrationRepository",
+      "SignWebhookRepository",
       "SignatureFieldIncompleteError",
       "SignerNotFoundError",
       "SigningSessionExpiredError",

@@ -69,4 +69,39 @@ export class IntegrationAdminController {
   roleMappings(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { mappings?: unknown }) {
     return this.run(requestId, () => this.admin.setRoleMappings(auth, id, body ?? {}, requestId));
   }
+
+  // Sign Unified Product S-5 — webhook subscriptions of an installation.
+  @Get('installations/:id/webhooks')
+  @EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE)
+  listWebhooks(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
+    return this.run(requestId, () => this.admin.listWebhooks(auth, id, requestId));
+  }
+
+  @Post('installations/:id/webhooks')
+  @HttpCode(HttpStatus.CREATED)
+  @EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE)
+  createWebhook(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { target_url?: unknown; event_types?: unknown }) {
+    return this.run(requestId, () => this.admin.createWebhook(auth, id, body ?? {}, requestId));
+  }
+
+  @Post('installations/:id/webhooks/:webhookId/rotate-secret')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE)
+  rotateWebhookSecret(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('webhookId') webhookId: string) {
+    return this.run(requestId, () => this.admin.rotateWebhookSecret(auth, id, webhookId, requestId));
+  }
+
+  @Post('installations/:id/webhooks/:webhookId/disable')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE)
+  disableWebhook(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('webhookId') webhookId: string) {
+    return this.run(requestId, () => this.admin.setWebhookStatus(auth, id, webhookId, 'DISABLED', requestId));
+  }
+
+  @Post('installations/:id/webhooks/:webhookId/enable')
+  @HttpCode(HttpStatus.OK)
+  @EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE)
+  enableWebhook(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Param('webhookId') webhookId: string) {
+    return this.run(requestId, () => this.admin.setWebhookStatus(auth, id, webhookId, 'ACTIVE', requestId));
+  }
 }

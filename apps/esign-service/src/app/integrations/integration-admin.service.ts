@@ -1,12 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { SignIntegrationRepository } from '@aramo/esign';
+import { SignIntegrationRepository, SignWebhookRepository, type SignWebhookSubscriptionRow } from '@aramo/esign';
 import { ESIGN_SCOPE } from '@aramo/identity';
 
 import { SenderContextService } from '../sender/sender-context.service.js';
 
 import { digest, newClientId, newClientSecret } from './credentials.js';
+import { encryptWebhookSecret, newWebhookSecret, webhookSecretsAvailable } from './webhook-secrets.js';
+import { checkTargetResolves } from './webhook-target.js';
+
+// The lifecycle events Aramo Sign publishes (S-5 subscriptions filter on these;
+// an empty list subscribes to all).
+export const SIGN_WEBHOOK_EVENT_TYPES = ['esign.envelope.executed.v1'] as const;
 
 // Sign Unified Product S-4 (directive §4.4.1) — installation administration in the
 // Sign workspace (esign:integration:manage — Sign Admin / Owner). An installation
@@ -45,6 +51,7 @@ export class IntegrationAdminService {
   constructor(
     private readonly repo: SignIntegrationRepository,
     private readonly ctx: SenderContextService,
+    private readonly webhooks: SignWebhookRepository,
   ) {}
 
   private async business(auth: AuthContextType, requestId: string): Promise<void> {
@@ -165,6 +172,85 @@ export class IntegrationAdminService {
     await this.repo.replaceRoleMappings(inst.id, mappings);
     this.log.log(`role mappings set tenant=${auth.tenant_id} installation=${id} count=${mappings.length} by=${auth.sub} request=${requestId}`);
     return this.one(auth, id, requestId);
+  }
+
+  // ── Sign Unified Product S-5 — webhook subscriptions of an installation ──────
+  private webhookView(w: SignWebhookSubscriptionRow) {
+    return {
+      id: w.id,
+      target_url: w.target_url,
+      event_types: w.event_types,
+      status: w.status,
+      created_at: w.created_at.toISOString(),
+      secret_rotated_at: w.secret_rotated_at?.toISOString() ?? null,
+    };
+  }
+
+  private async activeInstallation(auth: AuthContextType, id: string, requestId: string) {
+    await this.business(auth, requestId);
+    const inst = await this.repo.getInstallation(auth.tenant_id, id);
+    if (inst === null) throw notFound(requestId);
+    if (inst.status !== 'ACTIVE') throw new AramoError('ESIGN_INSTALLATION_REVOKED', 'The installation is revoked', 409, { requestId, details: { reason: 'installation_revoked' } });
+    return inst;
+  }
+
+  private requireKey(requestId: string): void {
+    if (!webhookSecretsAvailable()) {
+      throw new AramoError('ESIGN_WEBHOOKS_UNAVAILABLE', 'Webhooks are not available right now', 503, { requestId, details: { reason: 'secret_key_unconfigured' } });
+    }
+  }
+
+  async listWebhooks(auth: AuthContextType, id: string, requestId: string) {
+    await this.business(auth, requestId);
+    const inst = await this.repo.getInstallation(auth.tenant_id, id);
+    if (inst === null) throw notFound(requestId);
+    return { items: (await this.webhooks.listForInstallation(auth.tenant_id, id)).map((w) => this.webhookView(w)), event_types: [...SIGN_WEBHOOK_EVENT_TYPES] };
+  }
+
+  async createWebhook(auth: AuthContextType, id: string, body: { target_url?: unknown; event_types?: unknown }, requestId: string) {
+    const inst = await this.activeInstallation(auth, id, requestId);
+    this.requireKey(requestId);
+    if (typeof body?.target_url !== 'string' || body.target_url.length > 2048) throw bad(requestId, 'target_url is required');
+    const refusal = await checkTargetResolves(body.target_url);
+    if (refusal !== null) throw bad(requestId, 'The webhook address must be a public HTTPS URL', { reason: refusal });
+    const types = body.event_types === undefined ? [] : body.event_types;
+    if (!stringArray(types) || types.some((t) => !(SIGN_WEBHOOK_EVENT_TYPES as readonly string[]).includes(t))) {
+      throw bad(requestId, 'unknown event type', { allowed: SIGN_WEBHOOK_EVENT_TYPES });
+    }
+    const secret = newWebhookSecret();
+    const w = await this.webhooks.createSubscription({
+      application_id: inst.application_id,
+      installation_id: inst.id,
+      tenant_id: auth.tenant_id,
+      target_url: body.target_url,
+      event_types: [...new Set(types)],
+      secret_ciphertext: encryptWebhookSecret(secret),
+      internal: false,
+      created_by: auth.sub,
+    });
+    this.log.log(`webhook created tenant=${auth.tenant_id} installation=${id} webhook=${w.id} by=${auth.sub} request=${requestId}`);
+    // The signing secret is returned ONCE.
+    return { ...this.webhookView(w), signing_secret: secret };
+  }
+
+  async rotateWebhookSecret(auth: AuthContextType, id: string, webhook_id: string, requestId: string) {
+    await this.activeInstallation(auth, id, requestId);
+    this.requireKey(requestId);
+    const w = await this.webhooks.getForInstallation(auth.tenant_id, id, webhook_id);
+    if (w === null) throw new AramoError('NOT_FOUND', 'No such webhook on this installation', 404, { requestId });
+    const secret = newWebhookSecret();
+    await this.webhooks.rotateSecret(w.id, encryptWebhookSecret(secret));
+    this.log.log(`webhook secret rotated tenant=${auth.tenant_id} webhook=${w.id} by=${auth.sub} request=${requestId}`);
+    return { id: w.id, signing_secret: secret };
+  }
+
+  async setWebhookStatus(auth: AuthContextType, id: string, webhook_id: string, status: 'ACTIVE' | 'DISABLED', requestId: string) {
+    await this.business(auth, requestId);
+    const w = await this.webhooks.getForInstallation(auth.tenant_id, id, webhook_id);
+    if (w === null) throw new AramoError('NOT_FOUND', 'No such webhook on this installation', 404, { requestId });
+    await this.webhooks.setStatus(w.id, status);
+    this.log.log(`webhook ${status === 'ACTIVE' ? 'enabled' : 'disabled'} tenant=${auth.tenant_id} webhook=${w.id} by=${auth.sub} request=${requestId}`);
+    return this.webhookView({ ...w, status });
   }
 
   private async one(auth: AuthContextType, id: string, requestId: string) {

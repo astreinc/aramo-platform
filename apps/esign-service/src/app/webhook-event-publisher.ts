@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
-import type { EsignLifecycleEvent, WebhookDeliveryPort, WebhookDeliveryResult } from '@aramo/esign';
+import { Injectable, Optional } from '@nestjs/common';
+import { SignWebhookRepository, type EsignLifecycleEvent, type WebhookDeliveryPort, type WebhookDeliveryResult } from '@aramo/esign';
 
 // E-Sign OC v2 — canonical outbound lifecycle-event delivery (Independent-Digital-
 // Signature-Platform Directive sections 9, 12, 13B). Delivers the GENERIC event to
@@ -15,8 +15,42 @@ export function computeEsignWebhookSignature(timestamp: string, rawBody: string,
   return createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('base64');
 }
 
+// Sign Unified Product S-5 (directive §4.4.4) — routing. An envelope's events go
+// to the webhook SUBSCRIPTIONS of its installation (and, for a first-party
+// application, its application-level subscriptions): the event is fanned out into
+// one delivery row per subscription (SignWebhookDeliveryService delivers them,
+// each signed with that subscription's own secret). The legacy single target and
+// shared secret below remain ONLY for ATS envelopes while the ATS has no
+// subscription (S-6 migrates it); envelopes of any other application with no
+// subscription are not delivered anywhere.
+export const LEGACY_WEBHOOK_APPLICATION = 'aramo-ats';
+
 @Injectable()
 export class HttpWebhookEventPublisher implements WebhookDeliveryPort {
+  constructor(@Optional() private readonly webhooks?: SignWebhookRepository) {}
+
+  async deliver(event: EsignLifecycleEvent): Promise<WebhookDeliveryResult> {
+    if (this.webhooks !== undefined) {
+      const { envelope, subscriptions } = await this.webhooks.subscriptionsForEnvelope(event.tenant_id, event.envelope_id);
+      if (subscriptions.length > 0) {
+        const matching = subscriptions.filter((s) => s.event_types.length === 0 || s.event_types.includes(event.event_type));
+        await this.webhooks.enqueue(
+          matching.map((s) => ({
+            subscription_id: s.id,
+            event_id: event.event_id,
+            tenant_id: event.tenant_id,
+            envelope_id: event.envelope_id,
+            event_type: event.event_type,
+            payload: event as unknown as object,
+          })),
+        );
+        return { ok: true };
+      }
+      if (envelope !== null && envelope.source_application !== LEGACY_WEBHOOK_APPLICATION) return { ok: true };
+    }
+    return this.deliverLegacy(event);
+  }
+
   private targetUrl(): string {
     const explicit = process.env['ESIGN_WEBHOOK_TARGET_URL'];
     if (explicit !== undefined && explicit !== '') return explicit;
@@ -24,7 +58,7 @@ export class HttpWebhookEventPublisher implements WebhookDeliveryPort {
     return `${base}/v1/integrations/esign/events`;
   }
 
-  async deliver(event: EsignLifecycleEvent): Promise<WebhookDeliveryResult> {
+  private async deliverLegacy(event: EsignLifecycleEvent): Promise<WebhookDeliveryResult> {
     const secret = process.env['ESIGN_WEBHOOK_SIGNING_SECRET'];
     // Fail-closed: never deliver unsigned. The row stays unpublished and retries.
     if (secret === undefined || secret === '') return { ok: false, error_code: 'NO_SIGNING_SECRET' };

@@ -470,7 +470,7 @@ describe('route metadata', () => {
 
   it('every installation administration route requires esign:integration:manage', () => {
     const names = Object.getOwnPropertyNames(IntegrationAdminController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
-    expect(names.length).toBe(7);
+    expect(names.length).toBe(12); // S-4 installation administration (7) + S-5 webhook subscriptions (5)
     for (const n of names) {
       expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, (IntegrationAdminController.prototype as unknown as Record<string, object>)[n] ?? {})).toEqual([S.INTEGRATION_MANAGE]);
     }

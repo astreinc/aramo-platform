@@ -130,6 +130,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_LAST_OWNER: 409,
   // Sign Unified Product S-4 — the installation was revoked by a Sign admin.
   ESIGN_INSTALLATION_REVOKED: 409,
+  // Sign Unified Product S-5 — ESIGN_WEBHOOK_SECRET_KEY is not configured.
+  ESIGN_WEBHOOKS_UNAVAILABLE: 503,
   SIGNER_NOT_FOUND: 404,
   SIGNING_SESSION_INVALID: 401,
   SIGNING_SESSION_EXPIRED: 401,

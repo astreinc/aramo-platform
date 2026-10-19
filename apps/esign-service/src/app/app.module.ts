@@ -55,6 +55,7 @@ import { SignApiController, SignOAuthController } from './integrations/sign-api.
 import { SignApiGuard } from './integrations/sign-api.guard.js';
 import { SignApiService } from './integrations/sign-api.service.js';
 import { SignTokenService } from './integrations/sign-token.service.js';
+import { SignWebhookDeliveryService } from './integrations/webhook-delivery.service.js';
 
 // DOC-3/DOC-4 — apps/esign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -113,6 +114,8 @@ import { SignTokenService } from './integrations/sign-token.service.js';
         // worker that drains it (E-Sign owns reliable delivery + retry).
         { provide: WEBHOOK_DELIVERY_PORT, useClass: HttpWebhookEventPublisher },
         OutboxDeliveryService,
+        // Sign Unified Product S-5 — per-subscription webhook delivery (drained by the worker).
+        SignWebhookDeliveryService,
         EsignDeliveryWorker,
         // Aramo Sign launch — lifecycle notifications (with delivery records), the
         // console-sender directory, and the envelope expiry sweep.

@@ -137,4 +137,7 @@ export {
   type InstallationWithApp,
   type InstallationFull,
   type InstallationListed,
+  SignWebhookRepository,
+  type SignWebhookSubscriptionRow,
+  type SignWebhookDeliveryRow,
 } from './lib/integration.repository.js';

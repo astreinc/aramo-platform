@@ -414,6 +414,8 @@ export const ERROR_CODES = [
   'ESIGN_LAST_OWNER',
   // Sign Unified Product S-4 — an action on a revoked Sign installation (409).
   'ESIGN_INSTALLATION_REVOKED',
+  // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
+  'ESIGN_WEBHOOKS_UNAVAILABLE',
   'SIGNER_NOT_FOUND',
   'SIGNING_SESSION_INVALID',
   'SIGNING_SESSION_EXPIRED',

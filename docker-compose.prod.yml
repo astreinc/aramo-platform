@@ -419,6 +419,11 @@ services:
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - ESIGN_KMS_KEY_ID
+      # Sign Unified Product S-5 — the key (32 bytes, base64) that encrypts each
+      # webhook subscription's own signing secret at rest. Unset ⇒ no subscription
+      # can be created and none is delivered (fail closed); the legacy ATS target
+      # (ESIGN_WEBHOOK_SIGNING_SECRET) keeps working until the ATS is migrated (S-6).
+      - ESIGN_WEBHOOK_SECRET_KEY
       - ESIGN_KMS_SIGNING_ALGORITHM
       # Commercial Plans Amendment A1 — all inactive until separately approved:
       # the signer disclosure version (default v1; v2 = the legal-pending draft),
