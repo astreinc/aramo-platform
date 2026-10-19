@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
+import { EnvelopeNotFoundError } from '@aramo/esign';
 import { ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '@aramo/identity';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -504,10 +505,7 @@ describe('event-bound executed-artifact grant (Addendum S6)', () => {
     };
     const envelopes = {
       getEnvelope: vi.fn(async () => {
-        if (opts.envelope === 'missing') {
-          const { EnvelopeNotFoundError } = await import('@aramo/esign');
-          throw new EnvelopeNotFoundError(ENVELOPE);
-        }
+        if (opts.envelope === 'missing') throw new EnvelopeNotFoundError(ENVELOPE);
         return { id: ENVELOPE, status: 'COMPLETED', source_application: 'aramo-ats', installation_id: INST, ...opts.envelope };
       }),
     };
