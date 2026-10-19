@@ -185,13 +185,17 @@ function checkRepo(): Issue[] {
       if (!new RegExp(`add_header\\s+${h}\\b`).test(guest)) issues.push({ where: TEMPLATE, reason: `(k) guest-signing location must repeat ${h} (add_header is not inherited)` });
     }
   }
-  // (k2) the retired esign host is a compatibility redirect ONLY: no /v1, no
-  // /auth, no SPA; path and query preserved to the one Sign host.
-  if (/location\s+[=~^]*\s*\/v1/.test(esign.body) || esign.body.includes('location /auth/') || /root\s+\/srv\//.test(esign.body)) {
-    issues.push({ where: TEMPLATE, reason: '(k2) the esign block must serve nothing — redirect only (no /v1, /auth or SPA)' });
+  // (k2) Aramo-Sign-Unified-Product-D1-Host-Retirement-Addendum-v1_0-LOCKED — the
+  // retired esign host serves NOTHING and never redirects: no /v1, no /auth, no
+  // SPA, no `return 30x` / `rewrite … redirect|permanent`; it answers 410 only.
+  if (/location\s+[=~^]*\s*\/v1/.test(esign.body) || esign.body.includes('location /auth/') || /root\s+\/srv\//.test(esign.body) || /proxy_pass/.test(esign.body)) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign block must serve nothing (no /v1, /auth, SPA or proxy)' });
   }
-  if (!esign.body.includes('return 301 https://${NGINX_SIGN_SERVER_NAME}$request_uri;')) {
-    issues.push({ where: TEMPLATE, reason: '(k2) the esign block must `return 301 https://${NGINX_SIGN_SERVER_NAME}$request_uri;`' });
+  if (/return\s+30[1278]\b/.test(esign.body) || /rewrite\s[^;]*\b(redirect|permanent)\s*;/.test(esign.body) || esign.body.includes('${NGINX_SIGN_SERVER_NAME}')) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign host must not redirect (D-1 retirement addendum)' });
+  }
+  if (!/location\s+\/\s*\{\s*return\s+410;\s*\}/.test(esign.body)) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign block must answer `return 410;`' });
   }
 
   // (a) webhook parity — constant appears in the tenant block as an exact-match
