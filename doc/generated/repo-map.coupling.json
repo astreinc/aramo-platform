@@ -11766,6 +11766,11 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/esign-service/src/app/integrations/integration-admin.controller.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "apps/esign-service/src/app/sender/esign-sender.controller.ts"
     },
     {

@@ -2730,6 +2730,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -3250,6 +3256,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -4969,6 +4981,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
@@ -6815,6 +6833,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/webhook-event-publisher.spec.ts",
         "project": "esign-service",
         "status": "excluded"
@@ -7872,6 +7896,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "esign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
         "project": "esign-service",
         "status": "excluded"
       },
