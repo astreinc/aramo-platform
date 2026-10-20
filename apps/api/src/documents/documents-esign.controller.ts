@@ -2,19 +2,19 @@ import { Controller, Get, HttpCode, HttpStatus, Param, Query, UseGuards } from '
 import { AramoError, RequestId } from '@aramo/common';
 import { RevisionSourceService } from '@aramo/documents';
 
-import { EsignServiceRequestGuard } from '../integrations/esign/esign-service-request.guard.js';
+import { EsignServiceRequestGuard } from '../integrations/sign/esign-service-request.guard.js';
 
-// DOC-4 (R-4-7) — the apps/api source-document seam for esign-service.
-//   GET /v1/documents/revisions/:id/source — source PDF bytes esign-service pulls
+// DOC-4 (R-4-7) — the apps/api source-document seam for sign-service.
+//   GET /v1/documents/revisions/:id/source — source PDF bytes sign-service pulls
 //   for executed-document production and the signer document view.
 //
 // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0):
-// - The route is authenticated as an esign-service request (EsignServiceRequestGuard,
-//   scheme aramo-esign-s2s-v1). tenant_id stays the caller-supplied scope — it is
+// - The route is authenticated as an sign-service request (EsignServiceRequestGuard,
+//   scheme aramo-sign-s2s-v1). tenant_id stays the caller-supplied scope — it is
 //   bound by the signature, and the read remains tenant-scoped below.
 // - The transitional POST /v1/documents/esign-writeback route is RETIRED: it never
 //   had an HTTP caller. The canonical E-Sign -> Core callback is the signed webhook
-//   POST /v1/integrations/esign/events, which drives EsignWriteBackOrchestrator
+//   POST /v1/integrations/sign/events, which drives EsignWriteBackOrchestrator
 //   in-process (unchanged).
 
 @Controller('v1/documents')

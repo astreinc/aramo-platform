@@ -71,7 +71,7 @@ model Plan {
 
 model PlanAllowance {
   plan_id           String @db.Uuid
-  // Metered feature, e.g. "esign.envelopes".
+  // Metered feature, e.g. "sign.envelopes".
   allowance_key     String
   // Included quantity per period (null when unlimited). No rollover.
   included_quantity Int?

@@ -22,7 +22,7 @@ export function PreferencesView() {
   const view = products.status === 'ready' ? products.view : null;
   const options = [
     { key: 'home', label: 'App Home · default', sub: 'Your apps and organization in one place', current: true, available: true },
-    ...(['ats', 'esign'] as const).map((k) => {
+    ...(['ats', 'sign'] as const).map((k) => {
       const p = productByKey(view, k);
       return {
         key: k,

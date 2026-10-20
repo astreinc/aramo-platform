@@ -28,10 +28,11 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
   '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
+  '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
-const KEY = 'esign.envelopes';
-const STORAGE = 'esign.storage_bytes';
+const KEY = 'sign.envelopes';
+const STORAGE = 'sign.storage_bytes';
 const AT = new Date('2026-10-19T12:00:00.000Z');
 const BUSINESS = 'aramo-sign-standard-business-v1';
 const PRO = 'aramo-sign-standard-professional-v1';
@@ -142,10 +143,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(free.activation_note).toMatch(/Personal-product sending authorization/);
     expect(free.allowances).toEqual(expect.arrayContaining([
       { allowance_key: KEY, included_quantity: 5, unlimited: false, period: 'MONTHLY', available: true },
-      { allowance_key: 'esign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: false },
+      { allowance_key: 'sign.forms', included_quantity: 5, unlimited: false, period: 'MONTHLY', available: false },
     ]));
     expect(free.capacities).toEqual(expect.arrayContaining([
-      { capacity_key: 'esign.templates', limit: 1, unlimited: false, available: false },
+      { capacity_key: 'sign.templates', limit: 1, unlimited: false, available: false },
       { capacity_key: STORAGE, limit: 15 * 1024 * 1024, unlimited: false, available: true },
     ]));
     expect(free.features.every((f) => !f.enabled)).toBe(true);
@@ -157,19 +158,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       expect(p.reference_price).toBeNull();
       expect(p.allowances).toEqual(expect.arrayContaining([
         { allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY', available: true },
-        { allowance_key: 'esign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY', available: false },
+        { allowance_key: 'sign.forms', included_quantity: null, unlimited: true, period: 'MONTHLY', available: false },
       ]));
       expect(p.capacities).toEqual(expect.arrayContaining([
-        { capacity_key: 'esign.templates', limit: null, unlimited: true, available: false },
+        { capacity_key: 'sign.templates', limit: null, unlimited: true, available: false },
         { capacity_key: STORAGE, limit: storage, unlimited: false, available: true },
       ]));
       // The approved ENTITLEMENT is kept; launch AVAILABILITY is separate (AI
       // assist summary is entitled but not built, so it is not available).
       expect(Object.fromEntries(p.features.map((f) => [f.feature_key, [f.enabled, f.available]]))).toEqual({
-        'esign.ai_assist_summary': [true, false],
-        'esign.advanced_analytics': [false, false],
-        'esign.team_collaboration': [true, true],
-        'esign.custom_domain': [false, false],
+        'sign.ai_assist_summary': [true, false],
+        'sign.advanced_analytics': [false, false],
+        'sign.team_collaboration': [true, true],
+        'sign.custom_domain': [false, false],
       });
     }
     expect(byKey[PRO]!.eligibility).toBe('ATS_SUBSCRIPTION');

@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort } from './storage/document-storage.port.js';
 
-// DOC-4 (R-4-7) — serves the frozen source PDF bytes that esign-service pulls for
+// DOC-4 (R-4-7) — serves the frozen source PDF bytes that sign-service pulls for
 // executed-document production. Reads the revision's prepared artifact (prefers
 // RENDERED_UNSIGNED, else SOURCE_UPLOAD) via the DocumentStoragePort. Lives in
 // libs/documents so the documents Prisma client model types resolve.

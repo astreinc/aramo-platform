@@ -8433,7 +8433,7 @@ paths:
                       properties:
                         key:
                           type: string
-                          enum: [ats, esign, org]
+                          enum: [ats, sign, org]
                         subscribed: { type: boolean }
                         authorized: { type: boolean }
                         available: { type: boolean }
@@ -9414,9 +9414,9 @@ paths:
             `email_domain_mismatch`), an invertible role union
             (`details.reason` `invertible_role_union`), a platform-tier role
             (`details.reason` `platform_role_not_assignable`), or an E-Sign
-            product role (`esign_*`) in a tenant that does not hold the `esign`
+            product role (`esign_*`) in a tenant that does not hold the `sign`
             capability (`details.reason` `esign_role_not_entitled`,
-            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
+            `details.missing_capabilities` `["sign"]` — IC-3 PR-8).
           content:
             application/json:
               schema:

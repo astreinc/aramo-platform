@@ -11,7 +11,7 @@ import { TenantSignPanel } from './TenantSignPanel';
 const DATA: PlatformTenantSign = {
   tenant_id: 't1',
   tenant_kind: 'BUSINESS',
-  capabilities: ['core', 'esign'],
+  capabilities: ['core', 'sign'],
   sign_entitled: true,
   subscription: {
     plan_key: 'aramo-sign-business-v1',
@@ -30,7 +30,7 @@ const DATA: PlatformTenantSign = {
     eligibility_state: 'LAPSED',
   },
   allowance: { subscribed: true, limit: null, used: 42, remaining: null, period_start: '2026-10-18T00:00:00Z', period_end: '2026-11-18T00:00:00Z' },
-  storage: { capacity_key: 'esign.storage_bytes', limit: 10 * 1024 ** 3, unlimited: false, used: 512 * 1024 ** 2 },
+  storage: { capacity_key: 'sign.storage_bytes', limit: 10 * 1024 ** 3, unlimited: false, used: 512 * 1024 ** 2 },
   billing_available: true,
   billing_events: [{ event_type: 'invoice.payment_failed', outcome: 'APPLIED', detail: 'ACTIVE -> PAST_DUE', event_created_at: '2026-10-18T00:00:00Z', received_at: '2026-10-18T00:00:01Z' }],
 };

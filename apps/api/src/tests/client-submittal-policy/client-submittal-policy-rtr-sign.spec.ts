@@ -9,14 +9,14 @@ import { SignatureAvailabilityService } from '../../document-signing/signature-a
 // submittal it governs, so the publish is refused (422 RTR_REQUIRES_SIGN).
 //
 // Composed through the REAL SignatureAvailabilityService (Multi-Provider §D), which
-// superseded the capability-only check: no `esign` capability reads NOT_SUBSCRIBED.
+// superseded the capability-only check: no `sign` capability reads NOT_SUBSCRIBED.
 
 const AUTH = { sub: 'u1', tenant_id: 't1', consumer_type: 'recruiter', actor_kind: 'user', scopes: [], iat: 0, exp: 0 } as never;
 const ALLOWANCE = {
   getStatus: async () => ({
     subscribed: true,
     plan_key: 'aramo-sign-included-v1',
-    allowance_key: 'esign.envelopes',
+    allowance_key: 'sign.envelopes',
     limit: 100,
     used: 0,
     remaining: 100,
@@ -57,7 +57,7 @@ describe('Client Submittal Policy publish — RTR needs Aramo Sign', () => {
   });
 
   it('allows RTR REQUIRED with Sign, and RTR NOT_REQUIRED without it', async () => {
-    const withSign = make(['core', 'ats', 'esign']);
+    const withSign = make(['core', 'ats', 'sign']);
     await withSign.controller.publish(dto('REQUIRED'), AUTH, 'r1');
     expect(withSign.publish).toHaveBeenCalledTimes(1);
     const noSign = make(['core', 'ats']);

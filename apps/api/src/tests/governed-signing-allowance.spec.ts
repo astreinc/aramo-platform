@@ -5,7 +5,7 @@ import type { DocumentsRepository, RenderService } from '@aramo/documents';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import type { SignatureRouter } from '../document-signing/signature-router.js';
-import { EsignServiceHttpProvider } from '../esign/esign-service-http.provider.js';
+import { EsignServiceHttpProvider } from '../sign/esign-service-http.provider.js';
 
 // Multi-Provider directive §B/§D/§E — governed sends route through the provider
 // router: availability is asserted before anything is created, the provider is

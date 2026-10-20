@@ -655,14 +655,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     describe('IC-2 PR-6 — product capability + consumer scope isolation', () => {
       const entitlements = () => module.get(TenantEntitlementReader) as unknown as { getCapabilities: ReturnType<typeof vi.fn> };
       const roles = () => module.get(RoleService) as unknown as { getScopesByUserTenantAndSite: ReturnType<typeof vi.fn>; getScopesByUserAndTenant: ReturnType<typeof vi.fn> };
-      const MIXED = ['auth:session:read', 'esign:envelope:read', 'platform:tenant:read'];
+      const MIXED = ['auth:session:read', 'sign:envelope:read', 'platform:tenant:read'];
       afterEach(() => {
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(['auth:session:read']);
         roles().getScopesByUserAndTenant.mockResolvedValue(['auth:session:read']);
         unstubCognito();
       });
-      async function login(consumer: 'recruiter' | 'esign' | 'org'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
+      async function login(consumer: 'recruiter' | 'sign' | 'org'): Promise<{ status: number; location: string; access?: string; refresh?: string }> {
         stubCognitoVerifyOnly();
         const { pkceCookie, state } = await prepareLogin(consumer, OWN_HOST);
         const res = await request(app.getHttpServer())
@@ -675,7 +675,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
 
       it('1/7/11. ATS-only tenant (core+ats+portal): the esign consumer cannot mint → 302 /login?error=TENANT_CAPABILITY_NOT_ENTITLED; core alone grants no product', async () => {
-        const r = await login('esign');
+        const r = await login('sign');
         expect(r.status).toBe(302);
         expect(r.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
         expect(r.access).toBeUndefined();
@@ -685,16 +685,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('2/12. Sign-only tenant (core+esign): recruiter cannot mint; esign mints and carries ONLY esign:* — the recruiter path on an ATS tenant still works', async () => {
-        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'esign']));
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'sign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
         expect((await login('recruiter')).location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
-        const e = await login('esign');
+        const e = await login('sign');
         expect(e.location).toBe(`https://${OWN_HOST}/`);
-        const session = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        const session = await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
         expect(session.status).toBe(200);
-        expect(session.body.consumer_type).toBe('esign');
+        expect(session.body.consumer_type).toBe('sign');
         // IC-3 PR-7: the esign consumer also carries the product-neutral organization subset (auth:session:read ∈ ORG_ADMIN_SCOPE_KEYS); never platform:*.
-        expect(session.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+        expect(session.body.scopes).toEqual(['auth:session:read', 'sign:envelope:read']);
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         const r = await login('recruiter');
         // D-ORG-2 (T1): the recruiter consumer lands in the ATS app at /ats/.
@@ -705,10 +705,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // carries ONLY the organization subset, is refused where core is absent, and
       // never carries product or platform scopes.
       it('D-ORG org consumer: mints on a Sign-only tenant (no ats) AND on an ATS-only tenant; carries only the organization subset; refused without core', async () => {
-        const ORG_MIXED = ['auth:session:read', 'tenant:admin:user-manage', 'talent:read', 'esign:envelope:read', 'platform:tenant:read'];
+        const ORG_MIXED = ['auth:session:read', 'tenant:admin:user-manage', 'talent:read', 'sign:envelope:read', 'platform:tenant:read'];
         roles().getScopesByUserTenantAndSite.mockResolvedValue(ORG_MIXED);
         roles().getScopesByUserAndTenant.mockResolvedValue(ORG_MIXED);
-        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'esign']));
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'sign']));
         const signOnly = await login('org');
         expect(signOnly.status).toBe(302);
         expect(signOnly.location).toBe(`https://${OWN_HOST}/`);
@@ -718,7 +718,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(s1.body.scopes).toEqual(['auth:session:read', 'tenant:admin:user-manage']);
         // The org cookie is NOT a recruiter or esign session.
         expect((await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!)).status).toBe(401);
-        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!)).status).toBe(401);
+        expect((await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', signOnly.access!)).status).toBe(401);
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
         const atsOnly = await login('org');
         expect(atsOnly.location).toBe(`https://${OWN_HOST}/`);
@@ -748,7 +748,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // (The canonical scope set is cached per (tenant, principal, version, site, consumer) across this
         // shared module, so the recruiter snapshot minted earlier in the file is what /session reports.)
         expect(rs.body.scopes).toContain('auth:session:read');
-        expect(rs.body.scopes.every((sc: string) => !sc.startsWith('esign:') && !sc.startsWith('platform:'))).toBe(true);
+        expect(rs.body.scopes.every((sc: string) => !sc.startsWith('sign:') && !sc.startsWith('platform:'))).toBe(true);
         expect(os.status).toBe(200);
         expect(os.body.consumer_type).toBe('org');
         expect(os.body.scopes).toEqual(['auth:session:read', 'tenant:admin:user-manage']);
@@ -814,30 +814,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       it('3/4/6. multi-product tenant: the SAME identity gets disjoint consumer-specific scopes; platform:* and esign:* never ride a recruiter token even when the roles hold them', async () => {
-        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'sign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
         const r = await login('recruiter');
         const rs = await request(app.getHttpServer()).get('/auth/recruiter/session').set('Host', OWN_HOST).set('Cookie', r.access!);
         expect(rs.body.scopes).toEqual(['auth:session:read']);
-        const e = await login('esign');
-        const es = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
-        expect(es.body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+        const e = await login('sign');
+        const es = await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        expect(es.body.scopes).toEqual(['auth:session:read', 'sign:envelope:read']);
       });
 
       it('8/9. refresh cannot resurrect a revoked product capability, and a cached authorization does not keep superseded esign scopes', async () => {
-        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'esign']));
+        entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal', 'sign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
-        const e = await login('esign');
-        expect((await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['auth:session:read', 'esign:envelope:read']);
+        const e = await login('sign');
+        expect((await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', e.access!)).body.scopes).toEqual(['auth:session:read', 'sign:envelope:read']);
         // esign entitlement REMOVED — no authz_version bump, same cached canonical set.
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'ats', 'portal']));
-        const after = await request(app.getHttpServer()).get('/auth/esign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
+        const after = await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
         expect(after.status).toBe(200);
         expect(after.body.scopes).toEqual([]);
-        const refresh = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        const refresh = await request(app.getHttpServer()).post('/auth/sign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
         expect(refresh.status).toBe(401);
         expect(refresh.body.error.details.reason).toBe('consumer_not_entitled');
-        const again = await request(app.getHttpServer()).post('/auth/esign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
+        const again = await request(app.getHttpServer()).post('/auth/sign/refresh').set('Host', OWN_HOST).set('Cookie', e.refresh!);
         expect(again.body.error.details.reason).toBe('explicitly_revoked');
       });
 

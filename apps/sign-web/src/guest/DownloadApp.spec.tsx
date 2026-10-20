@@ -44,7 +44,7 @@ describe('DownloadApp', () => {
     expect(await screen.findByRole('heading', { name: 'Master Services Agreement' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Download msa.pdf' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Download certificate of completion' })).toBeTruthy();
-    expect(calls[0]!.url).toBe('/v1/esign/signing/executed');
+    expect(calls[0]!.url).toBe('/v1/sign/signing/executed');
     expect(calls[0]!.body).toEqual({ token: 'dl-token-1' });
   });
 

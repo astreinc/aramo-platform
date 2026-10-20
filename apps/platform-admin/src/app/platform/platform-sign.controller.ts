@@ -43,7 +43,7 @@ export class PlatformSignController {
       tenant_id,
       tenant_kind: tenant.kind,
       capabilities: [...capabilities].sort(),
-      sign_entitled: capabilities.has('esign'),
+      sign_entitled: capabilities.has('sign'),
       subscription: account.subscription,
       allowance: account.allowance,
       storage: account.storage,

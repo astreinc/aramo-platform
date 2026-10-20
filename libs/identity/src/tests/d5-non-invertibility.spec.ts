@@ -333,7 +333,7 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
     const absentRoles = [...SEED_ROLE_KEYS].filter((k) => !bundleRoles.has(k));
     // Sanity: the four ATS roles known to be intentionally absent per the
     // commit plan §2 matrix, plus the four PX-V1 PX-3 E-Sign product roles
-    // (esign_owner/admin/sender/viewer) — E-Sign roles hold ONLY esign:* scopes
+    // (sign_owner/admin/sender/viewer) — E-Sign roles hold ONLY esign:* scopes
     // and never any compensation field, so they correctly see no comp fields.
     // IC-3 PR-7 — org_admin (product-neutral organization administrator) holds
     // no compensation scope either → 9 absent roles.

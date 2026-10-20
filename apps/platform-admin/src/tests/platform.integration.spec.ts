@@ -90,8 +90,8 @@ function splitDdl(sql: string): string[] {
 // migration file to mirror).
 const ENTITLEMENT_DDL_STATEMENTS: ReadonlyArray<string> = [
   'CREATE SCHEMA IF NOT EXISTS entitlement',
-  // IC-3 PR-7 — `esign` is part of the live enum (20260923173000_add_esign_capability).
-  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing', 'esign')`,
+  // IC-3 PR-7 — `sign` is part of the live enum (20260923173000_add_esign_capability).
+  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing', 'sign')`,
   `CREATE TABLE IF NOT EXISTS entitlement."TenantEntitlement" (
      tenant_id   uuid NOT NULL,
      capability  entitlement."Capability" NOT NULL,
@@ -276,8 +276,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           // IC-4 PR-9 — the E-Sign owner role (assignable only in an esign-entitled tenant).
           {
             id: ESIGN_OWNER_ROLE_ID,
-            key: 'esign_owner',
-            description: 'E-Sign Owner',
+            key: 'sign_owner',
+            description: 'Sign Owner',
             is_active: true,
           },
           {
@@ -725,12 +725,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'SignOnly Corp', owner_email: 'owner@signonly.corp', capabilities: ['esign'] });
+        .send({ name: 'SignOnly Corp', owner_email: 'owner@signonly.corp', capabilities: ['sign'] });
       expect(res.status).toBe(201);
-      expect(res.body.capabilities).toEqual(['core', 'esign']);
+      expect(res.body.capabilities).toEqual(['core', 'sign']);
       const tenantId = res.body.tenant_id as string;
       const entitled = await module.get(EntitlementRepository).getCapabilities(tenantId);
-      expect([...entitled].sort()).toEqual(['core', 'esign']);
+      expect([...entitled].sort()).toEqual(['core', 'sign']);
       const owner = await identityPrisma.user.findUnique({ where: { email: 'owner@signonly.corp' } });
       expect(owner?.tenant_id).toBe(tenantId);
       const orgAdmin = await identityPrisma.role.findUnique({ where: { key: 'org_admin' } });
@@ -763,7 +763,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .send({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', owner_display_name: 'Jane Doe', kind: 'PERSONAL' });
       expect(res.status).toBe(201);
       expect(res.body.tenant_kind).toBe('PERSONAL');
-      expect(res.body.capabilities).toEqual(['core', 'esign']);
+      expect(res.body.capabilities).toEqual(['core', 'sign']);
       expect(cognitoMock.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({ pool: 'tenant', email: 'jane.doe@gmail.com' }));
       const tenantId = res.body.tenant_id as string;
       const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
@@ -772,7 +772,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(tenant?.status).toBe('PROVISIONED');
       expect(tenant?.is_active).toBe(true);
       const entitled = await module.get(EntitlementRepository).getCapabilities(tenantId);
-      expect([...entitled].sort()).toEqual(['core', 'esign']);
+      expect([...entitled].sort()).toEqual(['core', 'sign']);
       const owner = await identityPrisma.user.findUnique({ where: { email: 'jane.doe@gmail.com' } });
       expect(owner?.tenant_id).toBe(tenantId);
       const memberships = await identityPrisma.userTenantMembership.findMany({ where: { user_id: owner!.id } });
@@ -830,21 +830,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await identityPrisma.tenant.count({ where: { name: { in: ['Jane Doe Again', 'Gmail Business'] } } })).toBe(0);
     });
 
-    it('IC-4 PR-9 #6 — the personal owner (org_admin) grants esign_owner to itself through the governed role path; the same grant is refused for a tenant without esign (IC-3 PR-8)', async () => {
+    it('IC-4 PR-9 #6 — the personal owner (org_admin) grants sign_owner to itself through the governed role path; the same grant is refused for a tenant without esign (IC-3 PR-8)', async () => {
       const identitySvc = module.get(IdentityService);
       const owner = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'jane.doe@gmail.com' } });
       const membership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: owner.id } });
       await identitySvc.replaceMembershipRoles({
-        membership_id: membership.id, tenant_id: owner.tenant_id, role_keys: ['org_admin', 'esign_owner'],
+        membership_id: membership.id, tenant_id: owner.tenant_id, role_keys: ['org_admin', 'sign_owner'],
         role_ids: [ORG_ADMIN_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant',
       });
       const keys = await identitySvc.findRoleKeysForMembership(membership.id);
-      expect(keys.sort()).toEqual(['esign_owner', 'org_admin']);
+      expect(keys.sort()).toEqual(['org_admin', 'sign_owner']);
       // An ATS-only business tenant's owner cannot receive a Sign role.
       const acme = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'owner@acme.corp' } });
       const acmeMembership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: acme.id } });
       await expect(identitySvc.replaceMembershipRoles({
-        membership_id: acmeMembership.id, tenant_id: acme.tenant_id, role_keys: ['tenant_owner', 'esign_owner'],
+        membership_id: acmeMembership.id, tenant_id: acme.tenant_id, role_keys: ['tenant_owner', 'sign_owner'],
         role_ids: [TENANT_OWNER_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant-2',
       })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'esign_role_not_entitled' } } });
     });
@@ -856,9 +856,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Both Corp', owner_email: 'owner@both.corp', capabilities: ['core', 'ats', 'portal', 'esign'] });
+        .send({ name: 'Both Corp', owner_email: 'owner@both.corp', capabilities: ['core', 'ats', 'portal', 'sign'] });
       expect(res.status).toBe(201);
-      expect(res.body.capabilities).toEqual(['core', 'ats', 'portal', 'esign']);
+      expect(res.body.capabilities).toEqual(['core', 'ats', 'portal', 'sign']);
       const tenantId = res.body.tenant_id as string;
       const owners = await identityPrisma.user.findMany({ where: { email: 'owner@both.corp' } });
       expect(owners).toHaveLength(1);
@@ -873,7 +873,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const dup = await request(app.getHttpServer())
         .post('/platform/tenants')
         .set('Authorization', `Bearer ${token}`)
-        .send({ name: 'Dup Corp', owner_email: 'owner@signonly.corp', capabilities: ['esign'] });
+        .send({ name: 'Dup Corp', owner_email: 'owner@signonly.corp', capabilities: ['sign'] });
       expect(dup.status).toBe(409);
       expect(dup.body?.error?.code).toBe('EMAIL_UNAVAILABLE');
     });

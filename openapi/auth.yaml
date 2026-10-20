@@ -46,7 +46,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
         - name: select_account
           in: query
           required: false
@@ -112,7 +112,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
         - name: code
           in: query
           required: false
@@ -171,7 +171,7 @@ paths:
         # 403 TENANT_CAPABILITY_NOT_ENTITLED (reason consumer_not_entitled); the
         # portal consumer and unknown consumers are not minted on this path
         # (403 INSUFFICIENT_PERMISSIONS, reason consumer_not_supported). The
-        # `platform` and `esign` consumer values are now documented (= code).
+        # `platform` and `sign` consumer values are now documented (= code).
         '500':
           description: |
             Internal error. Triggers (carried in `error.details.reason`):
@@ -203,7 +203,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
       responses:
         '200':
           description: |
@@ -271,7 +271,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
       responses:
         '204':
           description: Logout completed; access + refresh cookies cleared.
@@ -320,7 +320,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
       responses:
         '302':
           description: Redirect to the Cognito hosted-UI /logout endpoint.
@@ -366,7 +366,7 @@ paths:
           required: true
           schema:
             type: string
-            enum: [recruiter, portal, ingestion, platform, esign, org]
+            enum: [recruiter, portal, ingestion, platform, sign, org]
       responses:
         '200':
           description: Session payload (6 fields; SE.3.g lock).
@@ -489,7 +489,7 @@ components:
           format: uuid
         consumer_type:
           type: string
-          enum: [recruiter, portal, ingestion, platform, esign, org]
+          enum: [recruiter, portal, ingestion, platform, sign, org]
         tenant_id:
           type: string
           format: uuid

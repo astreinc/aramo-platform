@@ -613,6 +613,23 @@ for entry in "${TIER2_TERMS_REGEX[@]}"; do
     done)"
     matches="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d')"
   fi
+  # Aramo-Sign-Naming-Unification-Directive-v1_0-LOCKED §3.8 (Lead Architect, N-9) —
+  # ONE field-scoped exemption: the AWS provider's own KMS key-spec attribute name,
+  # in exactly infrastructure-lightsail/doc4-sign.tf. Lines are dropped only when
+  # that attribute is their ONLY occurrence of the term; every other line of the
+  # file (and every Aramo-owned name) stays checked. NOT a file-level exclude.
+  if [[ "$term" == "customer" ]]; then
+    matches="$(printf '%s\n' "$matches" | while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      if [[ "$line" == ./infrastructure-lightsail/doc4-sign.tf:* ]]; then
+        stripped="$(printf '%s' "${line#./infrastructure-lightsail/doc4-sign.tf:}" | sed 's/customer_master_key_spec//g')"
+        if printf '%s' "$stripped" | grep -qi 'customer'; then printf '%s\n' "$line"; fi
+      else
+        printf '%s\n' "$line"
+      fi
+    done)"
+    matches="$(printf '%s\n' "$matches" | sed '/^[[:space:]]*$/d')"
+  fi
   if [[ -n "$matches" ]]; then
     echo "ERROR (Tier 2): forbidden vocabulary '${term}' found:" >&2
     printf '%s\n' "$matches" >&2

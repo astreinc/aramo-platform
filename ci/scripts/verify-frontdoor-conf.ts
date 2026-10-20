@@ -76,7 +76,6 @@ function serverBlocks(template: string): Array<{ tag: string; body: string }> {
     if (body.includes('${NGINX_TENANT_SERVER_NAME}')) tag = 'tenant';
     else if (body.includes('${NGINX_ADMIN_SERVER_NAME}')) tag = 'admin';
     else if (body.includes('${NGINX_PORTAL_SERVER_NAME}')) tag = 'portal';
-    else if (body.includes('${NGINX_ESIGN_SERVER_NAME}')) tag = 'esign';
     else if (body.includes('${NGINX_SIGN_SERVER_NAME}')) tag = 'sign';
     else if (/listen\s+80\b/.test(body)) tag = 'port80';
     out.push({ tag, body });
@@ -120,32 +119,30 @@ function checkRepo(): Issue[] {
   const tenant = blocks.find((b) => b.tag === 'tenant');
   const admin = blocks.find((b) => b.tag === 'admin');
   const portal = blocks.find((b) => b.tag === 'portal');
-  const esign = blocks.find((b) => b.tag === 'esign');
   const sign = blocks.find((b) => b.tag === 'sign');
-  // Every proxied 443 block carries the four forwarding headers; the blocks that
-  // serve an application carry the /auth/ buffer tuning (the retired esign host is
-  // a redirect only — Sign Unified Product S-2).
-  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal', 'sign', 'esign'].includes(b.tag));
+  // Every proxied 443 block carries the four forwarding headers and the /auth/
+  // buffer tuning.
+  const ssl = blocks.filter((b) => ['tenant', 'admin', 'portal', 'sign'].includes(b.tag));
   const sslAuth = blocks.filter((b) => ['tenant', 'admin', 'portal', 'sign'].includes(b.tag));
 
-  if (!tenant || !admin || !portal || !esign || !sign) {
-    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal/sign/esign server blocks' });
+  if (!tenant || !admin || !portal || !sign) {
+    issues.push({ where: TEMPLATE, reason: 'missing one of tenant/admin/portal/sign server blocks' });
     return issues;
   }
 
   // (k) Sign Unified Product S-2 (Aramo-Sign-Unified-Product-Permission-Contract-
   // Platform-API-Directive-v1_0-LOCKED §4.1) — ONE Aramo Sign host. The sign block's
   // /v1 locations are EXACTLY: guest signing, the authenticated sender zone,
-  // self-service billing and the recipient inbox (S-7) (esign-service), and public
+  // self-service billing and the recipient inbox (S-7) (sign-service), and public
   // signup (platform-admin).
   // Never apps/api, never the internal envelopes surface. Guest signing and signup
   // are rate-limited; the SPA is /srv/sign; security headers are set host-wide and
   // the guest pages carry their own stricter, uncached policy.
   const SIGN_V1 = new Map<string, string>([
-    ['/v1/esign/signing/', 'esign-service:3003'],
-    ['/v1/esign/sender/', 'esign-service:3003'],
-    ['/v1/esign/billing/', 'esign-service:3003'],
-    ['/v1/esign/inbox', 'esign-service:3003'],
+    ['/v1/sign/signing/', 'sign-service:3003'],
+    ['/v1/sign/sender/', 'sign-service:3003'],
+    ['/v1/sign/billing/', 'sign-service:3003'],
+    ['/v1/sign/inbox', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
   ]);
   const signV1 = [...sign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
@@ -158,8 +155,8 @@ function checkRepo(): Issue[] {
       if (!loc.includes(`proxy_pass http://${upstream};`)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must proxy_pass to ${upstream}` });
       if (!/client_max_body_size\s+\d+[mk];/.test(loc)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must set client_max_body_size` });
     }
-    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/esign/signing/') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
+    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/sign/signing/') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
     }
     if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
       issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });
@@ -188,16 +185,11 @@ function checkRepo(): Issue[] {
     }
   }
   // (k2) Aramo-Sign-Unified-Product-D1-Host-Retirement-Addendum-v1_0-LOCKED — the
-  // retired esign host serves NOTHING and never redirects: no /v1, no /auth, no
-  // SPA, no `return 30x` / `rewrite … redirect|permanent`; it answers 410 only.
-  if (/location\s+[=~^]*\s*\/v1/.test(esign.body) || esign.body.includes('location /auth/') || /root\s+\/srv\//.test(esign.body) || /proxy_pass/.test(esign.body)) {
-    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign block must serve nothing (no /v1, /auth, SPA or proxy)' });
-  }
-  if (/return\s+30[1278]\b/.test(esign.body) || /rewrite\s[^;]*\b(redirect|permanent)\s*;/.test(esign.body) || esign.body.includes('${NGINX_SIGN_SERVER_NAME}')) {
-    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign host must not redirect (D-1 retirement addendum)' });
-  }
-  if (!/location\s+\/\s*\{\s*return\s+410;\s*\}/.test(esign.body)) {
-    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign block must answer `return 410;`' });
+  // retired esign host is gone: its DNS name owns a TXT record only (no address;
+  // infrastructure-lightsail/main.tf aws_route53_record.esign_retired), so the
+  // front door has no esign server block and never names the retired host.
+  if (template.includes('NGINX_ESIGN_SERVER_NAME') || /server_name[^;]*\besign\./.test(template)) {
+    issues.push({ where: TEMPLATE, reason: '(k2) the retired esign host must not appear in the front door (no server block, no redirect)' });
   }
 
   // (a) webhook parity — constant appears in the tenant block as an exact-match
@@ -343,7 +335,6 @@ function checkRepo(): Issue[] {
     ['NGINX_TENANT_SERVER_NAME', 'localhost'],
     ['NGINX_ADMIN_SERVER_NAME', 'admin.localhost'],
     ['NGINX_PORTAL_SERVER_NAME', 'portal.localhost'],
-    ['NGINX_ESIGN_SERVER_NAME', 'esign.localhost'],
     ['NGINX_SIGN_SERVER_NAME', 'sign.localhost'],
     ['NGINX_CERT_DIR', '/etc/letsencrypt/live/aramo.ai'],
   ];

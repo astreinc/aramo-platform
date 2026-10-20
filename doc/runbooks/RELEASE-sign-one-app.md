@@ -16,7 +16,7 @@ Until then production keeps the pre-S-2 layout (console on `esign.aramo.ai`, sig
 | One SPA `apps/sign-web` (`scope:sign`), two bundles by zone | `apps/sign-web/src/{zones.ts,main.tsx,guest/,workspace/}` |
 | `apps/esign-web` | removed (moved into `apps/sign-web/src/workspace/`) |
 | One nginx block `${NGINX_SIGN_SERVER_NAME}` | `deploy/nginx/templates/aramo.conf.template` |
-| `${NGINX_ESIGN_SERVER_NAME}` | retired: `return 410;` only (never a redirect). It exists only so wildcard DNS never routes the retired name to the tenant app, and is removed with the DNS record. |
+| `esign.aramo.ai` | Retired. Phase 1 (2026-10-19): a `return 410;` block. Phase 2 (2026-10-20): the name owns a Route53 TXT record (`infrastructure-lightsail/main.tf`, `aws_route53_record.esign_retired`), so the `*.aramo.ai` wildcard no longer covers it and it resolves to no address; the 410 block and `NGINX_ESIGN_SERVER_NAME` were removed. Keep the TXT record while the wildcard exists. |
 | One base URL `ARAMO_SIGN_BASE_URL` | `libs/esign/src/lib/sign-base-url.ts`. The fallbacks are `ESIGN_SIGN_WEB_BASE_URL`, then `ESIGN_SENDER_WEB_BASE_URL`. |
 | Code defaults | `DEFAULT_SIGN_ENTRY_URL` and `DEFAULT_PRODUCT_HOST` → `sign.aramo.ai` |
 
@@ -47,17 +47,16 @@ No database migration.
    - `AUTH_PRODUCT_HOSTS=sign.aramo.ai` (was `esign.aramo.ai`);
    - `ARAMO_SIGN_BASE_URL=https://sign.aramo.ai`;
    - `NGINX_SIGN_SERVER_NAME=sign.aramo.ai` (already set);
-   - keep `NGINX_ESIGN_SERVER_NAME=esign.aramo.ai` until the DNS record is removed, so the retired name answers 410
-     rather than reaching the tenant app.
+   - after phase 2, remove `NGINX_ESIGN_SERVER_NAME` from the box `.env` (nothing reads it).
 
    The seeded `auth.HostAuthProfile` PRODUCT row is a dark scaffold. The `AUTH_PRODUCT_HOSTS` env is what login uses.
 3. **Billing provider** (when Stripe is configured): the webhook endpoint is `https://sign.aramo.ai/v1/esign/billing/webhook/stripe`.
-   The retired host answers 410, so the provider must be configured on `sign.aramo.ai` only.
+   The retired host does not resolve, so the provider must be configured on `sign.aramo.ai` only.
 4. Build the images, then recreate auth-service, esign-service, platform-admin and api, then nginx. Verify `ARAMO_RELEASE_REVISION`.
 5. **Smoke checks:**
    - `curl -sI https://sign.aramo.ai/sign/` returns 200 with `Content-Security-Policy`.
    - `curl -sI https://sign.aramo.ai/s/x` returns 200 with `Cache-Control: no-store` and a CSP without third-party origins.
-   - `curl -sI 'https://esign.aramo.ai/sign/envelopes?tab=waiting'` returns **410** with no `Location` header (never a 30x).
+   - `dig +short esign.aramo.ai A` returns nothing (phase 2); before phase 2, `curl -sI https://esign.aramo.ai/` returned **410** with no `Location` header.
    - `curl -s https://sign.aramo.ai/v1/esign/sender/context` returns 401 `AUTH_REQUIRED`.
    - A signer link issued **before** the release still signs (`/s/<token>` on `sign.aramo.ai` is unchanged).
    - Workspace sign-in on `sign.aramo.ai` reaches Microsoft through Cognito.
@@ -76,7 +75,7 @@ No database migration.
 | Cognito callback and sign-out | `esign.aramo.ai/auth/esign/callback` and `/signed-out` are registered | Register the `sign.aramo.ai` pair first. Remove the `esign.aramo.ai` pair after cutover. |
 | App Home Sign tile | Dark (`ARAMO_SIGN_ENTRY_ENABLED=false`); the default URL is now `https://sign.aramo.ai/` | — |
 | Stripe return URLs and webhook | Not configured | When configured, use `sign.aramo.ai` only. |
-| Bookmarks | The console has been reachable on `esign.aramo.ai` since 2026-10-19 (release `5fda0db2`). The nginx access log does not record the host, so usage cannot be measured. | Users reopen `sign.aramo.ai`. The retired name answers 410. |
+| Bookmarks | The console has been reachable on `esign.aramo.ai` since 2026-10-19 (release `5fda0db2`). The nginx access log does not record the host, so usage cannot be measured. | Users reopen `sign.aramo.ai`. The retired name no longer resolves. |
 
 **Cutover order (separately authorized):**
 1. Register the Cognito URLs for `sign.aramo.ai`.
@@ -84,7 +83,7 @@ No database migration.
 3. Deploy, then run the smoke checks.
 4. Verify that `esign.aramo.ai` answers 410 and never 30x.
 5. Remove the `esign.aramo.ai` Cognito URLs.
-6. Later, remove the DNS record and the 410 block.
+6. Phase 2 (done 2026-10-20): add the `esign` TXT record (it stops the wildcard covering the name), confirm the name has no address, then remove the 410 block. The TXT record stays as long as the `*.aramo.ai` wildcard exists.
 
 ## Rollback
 
@@ -102,4 +101,4 @@ An image rollback restores the two-app layout. No data changes. If only the host
   - the rate limits;
   - the host-wide and guest headers;
   - the guest shell served in place;
-  - the retired esign host answers 410 only and never redirects (a redirect fails the gate).
+  - the retired esign host never appears in the front door: no server block and no redirect (either fails the gate).

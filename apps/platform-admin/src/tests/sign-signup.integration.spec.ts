@@ -49,7 +49,7 @@ const IDENTITY_MIGRATIONS = resolveIdentityMigrations(resolve(__dirname, '../../
 const splitDdl = (sql: string) => sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
 const ENTITLEMENT_DDL = [
   'CREATE SCHEMA IF NOT EXISTS entitlement',
-  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing', 'esign')`,
+  `CREATE TYPE entitlement."Capability" AS ENUM ('core', 'ats', 'portal', 'sourcing', 'sign')`,
   `CREATE TABLE IF NOT EXISTS entitlement."TenantEntitlement" (
      tenant_id uuid NOT NULL, capability entitlement."Capability" NOT NULL,
      granted_at timestamptz(6) NOT NULL DEFAULT now(), PRIMARY KEY (tenant_id, capability))`,
@@ -59,6 +59,7 @@ const SUBSCRIPTION_MIGRATIONS = [
   'libs/subscription/prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
   'libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   'libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
+  'libs/subscription/prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
 ].map((p) => resolve(__dirname, '../../../..', p));
 const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0' };
 // Mutable per test: the registry array the signup service holds.
@@ -99,7 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     await setup.role.createMany({
       data: [
         { id: ORG_ADMIN_ROLE_ID, key: 'org_admin', description: 'Organization Admin', is_active: true },
-        { id: ESIGN_OWNER_ROLE_ID, key: 'esign_owner', description: 'E-Sign Owner', is_active: true },
+        { id: ESIGN_OWNER_ROLE_ID, key: 'sign_owner', description: 'Sign Owner', is_active: true },
         { id: TENANT_OWNER_ROLE_ID, key: 'tenant_owner', description: 'Tenant Owner', is_active: true },
       ],
     });
@@ -117,7 +118,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       AUTH_PUBLIC_KEY: keys.publicPem,
       AUTH_COGNITO_TENANT_USER_POOL_ID: 'test-tenant-pool',
       AUTH_COGNITO_PLATFORM_USER_POOL_ID: 'test-platform-pool',
-      ESIGN_SENDER_WEB_BASE_URL: 'https://esign.example.test',
+      SIGN_SENDER_WEB_BASE_URL: 'https://esign.example.test',
       SIGN_PUBLIC_SIGNUP_ENABLED: '1',
     });
     db = new IdentityPrismaService(url);
@@ -215,7 +216,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
     expect(tenant.kind).toBe('BUSINESS');
     const caps = await db.$queryRawUnsafe<{ capability: string }[]>(`SELECT capability::text FROM entitlement."TenantEntitlement" WHERE tenant_id = '${tenant.id}' ORDER BY 1`);
-    expect(caps.map((r) => r.capability)).toEqual(['core', 'esign']);
+    expect(caps.map((r) => r.capability)).toEqual(['core', 'sign']);
     const user = await db.user.findFirstOrThrow({ where: { email: c.email } });
     const roles = await db.userTenantMembershipRole.findMany({ where: { membership: { user_id: user.id, tenant_id: tenant.id } }, include: { role: true } });
     expect(roles.map((r) => r.role.key)).toEqual(['org_admin']);

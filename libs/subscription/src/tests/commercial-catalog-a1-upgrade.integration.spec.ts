@@ -25,6 +25,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
 ].map((p) => resolve(__dirname, p));
 const A1 = resolve(__dirname, '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql');
+// Sign naming unification — the A1 keys esign.* are renamed sign.* by this later migration.
+const SIGN_NAMING = resolve(__dirname, '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql');
 const CURRENT_M2 = resolve(__dirname, '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql');
 const TENANT = '0190dddd-0000-7000-8000-000000000001';
 const SUB = '0190dddd-0000-7000-8000-0000000000aa';
@@ -61,6 +63,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       [SUB, TENANT],
     );
     await pg.query(readFileSync(A1, 'utf8'));
+    await pg.query(readFileSync(SIGN_NAMING, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
   }, 180_000);
@@ -91,6 +94,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('the existing subscription and its 100/month allowance are preserved', async () => {
     const sub = await pg.query(`SELECT plan_id, ended_at, status FROM subscription."TenantSubscription" WHERE id = $1`, [SUB]);
     expect(sub.rows).toEqual([{ plan_id: '019a0000-5150-7000-8000-000000000002', ended_at: null, status: 'ACTIVE' }]);
-    expect(await new AllowanceService(prisma).getStatus(TENANT, 'esign.envelopes', new Date('2026-10-19T00:00:00Z'))).toMatchObject({ subscribed: true, plan_key: 'aramo-sign-business-v1', limit: 100, unlimited: false });
+    expect(await new AllowanceService(prisma).getStatus(TENANT, 'sign.envelopes', new Date('2026-10-19T00:00:00Z'))).toMatchObject({ subscribed: true, plan_key: 'aramo-sign-business-v1', limit: 100, unlimited: false });
   });
 });

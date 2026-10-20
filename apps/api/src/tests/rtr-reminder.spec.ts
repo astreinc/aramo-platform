@@ -10,7 +10,7 @@ import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 // COMM-RECRUITER-W1 (W1-C) — RTR duplicate-send guard + same-envelope reminder
 // ORCHESTRATION (fast, provider-faked). The same-envelope session revoke/reissue
 // + token security are proven on real Postgres in
-// libs/esign/src/tests/esign-reminder.integration.spec.ts.
+// libs/sign/src/tests/esign-reminder.integration.spec.ts.
 
 const TENANT = 't1';
 const DOC = 'doc-1';

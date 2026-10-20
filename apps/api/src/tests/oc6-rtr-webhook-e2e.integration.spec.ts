@@ -18,7 +18,7 @@ import {
   type DocumentStoragePort,
 } from '@aramo/documents';
 
-import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
+import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
 import { EsignWriteBackOrchestrator, EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
 
 import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
@@ -26,7 +26,7 @@ import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readines
 // OC-6 — the RTR readiness END-TO-END proof through the REAL signed-webhook path.
 //
 // Envelope COMPLETED (generic event) → HMAC+timestamp-signed webhook → the REAL
-// EsignEventsController receiver (POST /v1/integrations/esign/events, HMAC verified
+// EsignEventsController receiver (POST /v1/integrations/sign/events, HMAC verified
 // with the STRICT production window) → EsignWriteBackOrchestrator (in-process) →
 // DocumentExecutedWriteBackService.storeExecuted (real SHA-256 validation + the real
 // documents schema) → canonical Document = EXECUTED → the REAL DocumentReadinessGate
@@ -34,7 +34,7 @@ import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readines
 // signed webhook, exactly as the E-Sign delivery worker would.
 //
 // Only the two ALREADY-CONTRACT-COVERED boundaries are stubbed: the executed-artifact
-// PULL (esign-consumer Pact) and the object-storage port. SHA-256 values are kept
+// PULL (sign-consumer Pact) and the object-storage port. SHA-256 values are kept
 // internally consistent so storeExecuted exercises its real hash-integrity path.
 // The webhook event is GENERIC E-Sign vocabulary — no RTR/Offer semantics in it.
 
@@ -49,8 +49,8 @@ const MIGRATIONS = [
 // The DOC-5-seeded RIGHT_TO_REPRESENT SYSTEM DocumentType (fixed id + key).
 const RTR_TYPE_ID = 'd0c50005-0000-7000-8000-000000000001';
 const WEBHOOK_SECRET = 'oc6-e2e-esign-webhook-secret';
-const TS_HEADER = 'x-aramo-esign-timestamp';
-const SIG_HEADER = 'x-aramo-esign-signature';
+const TS_HEADER = 'x-aramo-sign-timestamp';
+const SIG_HEADER = 'x-aramo-sign-signature';
 
 const sha256Hex = (b: Buffer): string => createHash('sha256').update(b).digest('hex');
 
@@ -80,7 +80,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const executedSha = sha256Hex(executedBytes);
     const certSha = sha256Hex(certBytes);
 
-    const savedSecret = process.env['ESIGN_WEBHOOK_SIGNING_SECRET'];
+    const savedSecret = process.env['SIGN_WEBHOOK_SIGNING_SECRET'];
 
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -162,13 +162,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       app = moduleRef.createNestApplication();
       // Mirror apps/api/src/main.ts: the receiver reads the RAW signed bytes, so a
       // route-scoped raw parser is mounted BEFORE Nest's json parser.
-      app.use('/v1/integrations/esign/events', express.raw({ type: () => true }));
+      app.use('/v1/integrations/sign/events', express.raw({ type: () => true }));
       await app.init();
       const server = await app.listen(0);
       const addr = server.address() as AddressInfo;
       baseUrl = `http://127.0.0.1:${addr.port}`;
 
-      process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = WEBHOOK_SECRET;
+      process.env['SIGN_WEBHOOK_SIGNING_SECRET'] = WEBHOOK_SECRET;
 
       // RTR required for both requisitions via the effective policy (stub); satisfaction
       // is still the REAL same-document executed-RTR predicate over the documents schema.
@@ -179,8 +179,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 180_000);
 
     afterAll(async () => {
-      if (savedSecret === undefined) delete process.env['ESIGN_WEBHOOK_SIGNING_SECRET'];
-      else process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = savedSecret;
+      if (savedSecret === undefined) delete process.env['SIGN_WEBHOOK_SIGNING_SECRET'];
+      else process.env['SIGN_WEBHOOK_SIGNING_SECRET'] = savedSecret;
       await app?.close();
       await docsPrisma?.$disconnect();
       await sql?.end();
@@ -197,7 +197,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // receiver with the strict production HMAC+timestamp window.
       const event = {
         event_id: randomUUID(),
-        event_type: 'esign.envelope.executed.v1',
+        event_type: 'sign.envelope.executed.v1',
         event_version: 1,
         occurred_at: new Date().toISOString(),
         tenant_id: TENANT,
@@ -209,7 +209,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ts = String(Math.floor(Date.now() / 1000));
       const sig = createHmac('sha256', WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest('base64');
 
-      const res = await fetch(`${baseUrl}/v1/integrations/esign/events`, {
+      const res = await fetch(`${baseUrl}/v1/integrations/sign/events`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', [TS_HEADER]: ts, [SIG_HEADER]: sig },
         body: rawBody,
@@ -237,8 +237,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     it('rejects an unsigned webhook (auth is enforced, not bypassed by the E2E)', async () => {
-      const rawBody = JSON.stringify({ event_id: randomUUID(), event_type: 'esign.envelope.executed.v1', tenant_id: TENANT, envelope_id: ENVELOPE_ID });
-      const res = await fetch(`${baseUrl}/v1/integrations/esign/events`, {
+      const rawBody = JSON.stringify({ event_id: randomUUID(), event_type: 'sign.envelope.executed.v1', tenant_id: TENANT, envelope_id: ENVELOPE_ID });
+      const res = await fetch(`${baseUrl}/v1/integrations/sign/events`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: rawBody,

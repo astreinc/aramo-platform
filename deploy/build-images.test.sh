@@ -6,7 +6,7 @@
 #
 # Proves: exit 2 (bad SHA), exit 3 (HEAD mismatch), exit 4 (dirty tree),
 # exit 0 + all 5 image builds reached (authorized SHA + clean tree) —
-# api, auth-service, platform-admin, esign-service, nginx.
+# api, auth-service, platform-admin, sign-service, nginx.
 #
 # Run:  bash deploy/build-images.test.sh   (exit 0 = all cases correct)
 

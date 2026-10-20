@@ -4,7 +4,7 @@ import { createContext, useContext, type ReactNode } from 'react';
 // requires BOTH
 //   - the user's permissions: document:create (create the RTR document) AND
 //     document:execute (send it / remind), and
-//   - the tenant's Aramo Sign subscription (the `esign` capability).
+//   - the tenant's Aramo Sign subscription (the `sign` capability).
 // The backend enforces both (RtrController: EntitlementGuard + RequireScopes);
 // this module only decides whether the ATS shows the actions, so a user never
 // sees a button the backend will refuse.

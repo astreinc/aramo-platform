@@ -5,7 +5,7 @@
 //   guest      /s/:token (sign) and /d/:token (signed copy) — capability token
 //              only. No session fetch, no workspace code, no sign-in redirect;
 //              never reaches a workspace API.
-//   workspace  everything else — Aramo single sign-on (auth consumer `esign`),
+//   workspace  everything else — Aramo single sign-on (auth consumer `sign`),
 //              including the public entry pages (/login, /signed-out, /signup).
 //
 // A legacy signing link carrying ?token= at the root is still a guest link.

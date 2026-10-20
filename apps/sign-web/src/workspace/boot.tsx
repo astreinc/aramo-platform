@@ -18,13 +18,13 @@ function loadWorkspaceFonts(): void {
   document.head.appendChild(link);
 }
 
-// PX-V1 §8 — the Sign sender console authenticates as the auth-service `esign`
-// consumer: every fe-foundation auth path resolves to /auth/esign/* (login,
-// session, refresh, logout) and API calls carry X-Aramo-Consumer: esign. MUST run
+// PX-V1 §8 — the Sign sender console authenticates as the auth-service `sign`
+// consumer: every fe-foundation auth path resolves to /auth/sign/* (login,
+// session, refresh, logout) and API calls carry X-Aramo-Consumer: sign. MUST run
 // before the first session fetch. The workspace owns every path of the Sign host
 // except the guest-signing zone (zones.ts).
 export function bootWorkspace(container: HTMLElement): void {
-  configureAuthConsumer('esign');
+  configureAuthConsumer('sign');
   configureAppBasePath('');
   loadWorkspaceFonts();
   createRoot(container).render(

@@ -20,7 +20,7 @@ import {
 //
 // The role ROWS are global reference data; the ONE tenant-dependent input is
 // the Sign partition (IC-3 PR-8): E-Sign product roles (any esign:* scope) are
-// projected ONLY for a tenant that holds the `esign` capability (read LIVE —
+// projected ONLY for a tenant that holds the `sign` capability (read LIVE —
 // never cached), so an ATS-only tenant's picker never offers a role its
 // administrators cannot assign (the assignability gate refuses it anyway —
 // IdentityService.assertRoleKeysAssignable — this keeps the two surfaces
@@ -43,7 +43,7 @@ export class RoleCatalogService {
     });
     const includeEsign =
       args?.tenant_id !== undefined &&
-      (await this.entitlements.getCapabilities(args.tenant_id)).has('esign');
+      (await this.entitlements.getCapabilities(args.tenant_id)).has('sign');
 
     const views: RoleCatalogView[] = [];
     for (const role of roles) {
@@ -53,7 +53,7 @@ export class RoleCatalogService {
       if (scopeKeys.some((k) => k.startsWith('platform:'))) continue;
       // PX-V1 PX-3 / IC-3 PR-8 — the E-Sign product partition: any esign:* scope
       // marks an esign_* product role, projected only for an esign-entitled tenant.
-      if (!includeEsign && scopeKeys.some((k) => k.startsWith('esign:'))) continue;
+      if (!includeEsign && scopeKeys.some((k) => k.startsWith('sign:'))) continue;
 
       const scopes = [...new Set(scopeKeys)].sort();
       const meta = ROLE_CATALOG_META[role.key];

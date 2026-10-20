@@ -21,7 +21,7 @@ import {
 //
 // Tenant capability (PO ruling 2026-10-18): every RTR route needs the tenant's
 // `ats` capability; EXECUTING an RTR (request the document, send it for
-// signature, remind) additionally needs the Aramo Sign subscription (`esign`).
+// signature, remind) additionally needs the Aramo Sign subscription (`sign`).
 // Handler-level @RequireCapability OVERRIDES the class list (getAllAndOverride),
 // so the execution routes restate `ats`. Reads stay `ats`-only, so a tenant
 // that drops Sign still sees its RTR history. EntitlementGuard runs before
@@ -39,7 +39,7 @@ export class RtrController {
   }
 
   @Post()
-  @RequireCapability('ats', 'esign')
+  @RequireCapability('ats', 'sign')
   @RequireScopes('document:create')
   @HttpCode(HttpStatus.CREATED)
   async request(
@@ -67,7 +67,7 @@ export class RtrController {
   }
 
   @Post(':documentId/send')
-  @RequireCapability('ats', 'esign')
+  @RequireCapability('ats', 'sign')
   @RequireScopes('document:execute')
   @HttpCode(HttpStatus.OK)
   async send(
@@ -97,7 +97,7 @@ export class RtrController {
   // (same authority as send). Allowed only while AWAITING_SIGNATURE. Never
   // re-renders, re-resolves a template, or creates a new envelope.
   @Post(':documentId/remind')
-  @RequireCapability('ats', 'esign')
+  @RequireCapability('ats', 'sign')
   @RequireScopes('document:execute')
   @HttpCode(HttpStatus.OK)
   async remind(

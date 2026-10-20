@@ -79,7 +79,6 @@ services:
       - NGINX_PORTAL_SERVER_NAME=${NGINX_PORTAL_SERVER_NAME:-portal.localhost}
       # DOC-4 (R-4-10) — external-signer SPA host (DEPLOY=NO until provisioned).
       - NGINX_SIGN_SERVER_NAME=${NGINX_SIGN_SERVER_NAME:-sign.localhost}
-      - NGINX_ESIGN_SERVER_NAME=${NGINX_ESIGN_SERVER_NAME:-esign.localhost}
       - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
     ports:
       - '80:80'
@@ -98,11 +97,11 @@ services:
       - auth-service
       - platform-admin
       # E-Sign OC v2 (OC-4) — nginx bakes the sign.aramo.ai block with
-      # `proxy_pass http://esign-service:3003` and resolves that upstream at
-      # config-load, so esign-service must be started before nginx or the front
+      # `proxy_pass http://sign-service:3003` and resolves that upstream at
+      # config-load, so sign-service must be started before nginx or the front
       # door crash-loops ([emerg] host not found in upstream). Matches the bare
       # depends_on convention used for the other backends.
-      - esign-service
+      - sign-service
     # Reload loop (Ruling 4): pick up a renewed cert every 6h without a restart.
     # NO docker socket mounted anywhere (rejected: root-equivalent surface).
     # E18: the inner exec chains through the image's ENTRYPOINT
@@ -192,28 +191,28 @@ services:
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
       # E-Sign OC v2 — shared HMAC secret Core uses to VERIFY the E-Sign lifecycle
-      # webhook (POST /v1/integrations/esign/events). Same value as esign-service's
-      # ESIGN_WEBHOOK_SIGNING_SECRET; unset ⇒ the receiver returns 503 (dark).
-      # ES-2: the same secret verifies esign-service → Core source requests.
-      - ESIGN_WEBHOOK_SIGNING_SECRET
-      # E-Sign production wiring — the esign-service origin Core calls (envelope
+      # webhook (POST /v1/integrations/sign/events). Same value as sign-service's
+      # SIGN_WEBHOOK_SIGNING_SECRET; unset ⇒ the receiver returns 503 (dark).
+      # ES-2: the same secret verifies sign-service → Core source requests.
+      - SIGN_WEBHOOK_SIGNING_SECRET
+      # E-Sign production wiring — the sign-service origin Core calls (envelope
       # create/send/remind/void for RTR + Offer, executed-artifact pull for the
-      # completion write-back). Box value: http://esign-service:3003 (compose service
+      # completion write-back). Box value: http://sign-service:3003 (compose service
       # name + its PORT). Unset ⇒ the api defaults to its OWN localhost:3003 (dark).
       # Aramo Sign Unified Product — Addendum S6: the ATS as a client of the Sign API.
-      # ESIGN_ATS_TRANSPORT=internal (default) keeps the internal path; `api` uses the
+      # SIGN_ATS_TRANSPORT=internal (default) keeps the internal path; `api` uses the
       # authenticated Sign API (separately authorized activation). The client
       # credential is the operator-issued first-party aramo-ats credential; the
       # subscription secret verifies completion webhooks from the ATS subscription.
-      - ESIGN_ATS_TRANSPORT=${ESIGN_ATS_TRANSPORT:-internal}
-      - ESIGN_ATS_CLIENT_ID
-      - ESIGN_ATS_CLIENT_SECRET
-      - ESIGN_EVENTS_SUBSCRIPTION_SECRET
-      - ESIGN_SERVICE_URL
+      - SIGN_ATS_TRANSPORT=${SIGN_ATS_TRANSPORT:-internal}
+      - SIGN_ATS_CLIENT_ID
+      - SIGN_ATS_CLIENT_SECRET
+      - SIGN_EVENTS_SUBSCRIPTION_SECRET
+      - SIGN_SERVICE_URL
       # ES-2 — source-route authentication mode: enforce (default) | log (temporary,
-      # only with a future ESIGN_S2S_AUTH_LOG_UNTIL ≤ 7 days ahead).
-      - ESIGN_S2S_AUTH_MODE
-      - ESIGN_S2S_AUTH_LOG_UNTIL
+      # only with a future SIGN_S2S_AUTH_LOG_UNTIL ≤ 7 days ahead).
+      - SIGN_S2S_AUTH_MODE
+      - SIGN_S2S_AUTH_LOG_UNTIL
       # DNS resolver for domain verification (Domain-Enforcement P2b): node|stub.
       # REQUIRED — loadDnsConfig fails LOUD if unset (api crash-loops). api-only;
       # auth-service does not load the DNS module.
@@ -335,7 +334,7 @@ services:
       # D-ORG-2 — explicit per-consumer landing overrides (built-in defaults apply when unset).
       - AUTH_POST_LOGIN_PATH_RECRUITER
       - AUTH_POST_LOGIN_PATH_ORG
-      - AUTH_POST_LOGIN_PATH_ESIGN
+      - AUTH_POST_LOGIN_PATH_SIGN
       - AUTH_COGNITO_SIGNOUT_REDIRECT
       - AUTH_TRUSTED_IDP_NAMES
       - AUTH_ALLOW_INSECURE_COOKIES
@@ -374,16 +373,16 @@ services:
       postgres:
         condition: service_healthy
 
-  esign-service:
+  sign-service:
     # DOC-3 — Native E-Sign Service Core backend. Container-internal only (never
     # port-published; externally unreachable while NGINX_SIGN_SERVER_NAME is unset).
     # ⚠ REQUIRED whenever nginx runs: the nginx image bakes the sign.aramo.ai block
-    # with `proxy_pass http://esign-service:3003`, which nginx resolves at
-    # config-load — recreating nginx without esign-service running crash-loops the
+    # with `proxy_pass http://sign-service:3003`, which nginx resolves at
+    # config-load — recreating nginx without sign-service running crash-loops the
     # front door (`[emerg] host not found in upstream`). Built by deploy/build-images.sh
-    # (5 images); bring esign-service up BEFORE cutting nginx to a new image.
-    image: ${ARAMO_ESIGN_IMAGE:-aramo/esign-service:local}
-    container_name: aramo-prod-esign
+    # (5 images); bring sign-service up BEFORE cutting nginx to a new image.
+    image: ${ARAMO_SIGN_IMAGE:-aramo/sign-service:local}
+    container_name: aramo-prod-sign
     restart: unless-stopped
     environment:
       # PORT 3003 matches main.ts's default (api=3000, auth=3001, platform-admin=3002).
@@ -400,20 +399,20 @@ services:
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
       # OC-1 — the Sign Web origin used to build signer URLs (the raw capability
-      # token is appended in-memory inside esign-service and never leaves it).
+      # token is appended in-memory inside sign-service and never leaves it).
       # Sign Unified Product S-2 — ONE base URL for every Sign link (signer, signed
       # copy, console, billing return); the two older names remain fallbacks.
       - ARAMO_SIGN_BASE_URL
-      - ESIGN_SIGN_WEB_BASE_URL
+      - SIGN_WEB_BASE_URL
       # Aramo Sign launch — the sender console origin used in sender emails
       # (pre-S-2 name; ARAMO_SIGN_BASE_URL wins), the envelope signing window, the signer
       # signed-copy link lifetime, and the expiry sweep (all optional; defaults
       # 30 days / 30 days / enabled every 5 minutes).
-      - ESIGN_SENDER_WEB_BASE_URL
-      - ESIGN_ENVELOPE_TTL_DAYS
-      - ESIGN_EXECUTED_ACCESS_TTL_DAYS
-      - ESIGN_EXPIRY_WORKER_ENABLED
-      - ESIGN_EXPIRY_INTERVAL_MS
+      - SIGN_SENDER_WEB_BASE_URL
+      - SIGN_ENVELOPE_TTL_DAYS
+      - SIGN_EXECUTED_ACCESS_TTL_DAYS
+      - SIGN_EXPIRY_WORKER_ENABLED
+      - SIGN_EXPIRY_INTERVAL_MS
       # Aramo Sign launch — self-service billing (Stripe). Unset key ⇒ billing is
       # unavailable (503) and nothing is charged; live keys need separate
       # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price
@@ -423,22 +422,22 @@ services:
       - STRIPE_PLAN_PRICES
       - STRIPE_AUTOMATIC_TAX
       - BILLING_PAST_DUE_GRACE_DAYS
-      - ESIGN_BILLING_RECONCILE_ENABLED
-      - ESIGN_BILLING_RECONCILE_INTERVAL_MS
+      - SIGN_BILLING_RECONCILE_ENABLED
+      - SIGN_BILLING_RECONCILE_INTERVAL_MS
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
-      - ESIGN_KMS_KEY_ID
+      - SIGN_KMS_KEY_ID
       # Sign Unified Product S-5 — the key (32 bytes, base64) that encrypts each
       # webhook subscription's own signing secret at rest. Unset ⇒ no subscription
       # can be created and none is delivered (fail closed); the legacy ATS target
-      # (ESIGN_WEBHOOK_SIGNING_SECRET) keeps working until the ATS is migrated (S-6).
-      - ESIGN_WEBHOOK_SECRET_KEY
-      - ESIGN_KMS_SIGNING_ALGORITHM
+      # (SIGN_WEBHOOK_SIGNING_SECRET) keeps working until the ATS is migrated (S-6).
+      - SIGN_WEBHOOK_SECRET_KEY
+      - SIGN_KMS_SIGNING_ALGORITHM
       # Commercial Plans Amendment A1 — all inactive until separately approved:
       # the signer disclosure version (default v1; v2 = the legal-pending draft),
       # the post-termination export window (unset until the retention policy is
       # approved) and the Enterprise "Contact sales" link.
-      - ESIGN_DISCLOSURE_VERSION
+      - SIGN_DISCLOSURE_VERSION
       - SIGN_POST_TERMINATION_EXPORT_DAYS
       - SIGN_SALES_CONTACT_URL
       # A1 review — Standard Professional eligibility stays OFF until the PO
@@ -451,12 +450,12 @@ services:
       # defaults to the api origin; the shared secret signs the HMAC (empty ⇒ the
       # delivery worker fails closed and the outbox retries).
       - DOCUMENTS_API_URL
-      - ESIGN_WEBHOOK_TARGET_URL
-      - ESIGN_WEBHOOK_SIGNING_SECRET
-      # PX-1 — the authenticated sender zone (/v1/esign/sender/*, sign.aramo.ai).
+      - SIGN_WEBHOOK_TARGET_URL
+      - SIGN_WEBHOOK_SIGNING_SECRET
+      # PX-1 — the authenticated sender zone (/v1/sign/sender/*, sign.aramo.ai).
       # JwtAuthGuard verifies the shared auth-service JWT; OWNED source PDFs live in
       # the platform document bucket. The console's links back to the tenant host use
-      # the code default https://{slug}.aramo.ai (ESIGN_TENANT_HOST_URL_TEMPLATE).
+      # the code default https://{slug}.aramo.ai (SIGN_TENANT_HOST_URL_TEMPLATE).
       - AUTH_AUDIENCE
       - AUTH_PUBLIC_KEY
       - S3_RESUME_BUCKET
@@ -508,7 +507,7 @@ services:
       # approved yet ⇒ no terms are offered); there is no env override.
       - SIGN_PUBLIC_SIGNUP_ENABLED
       - ARAMO_SIGN_BASE_URL
-      - ESIGN_SENDER_WEB_BASE_URL
+      - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
     depends_on:

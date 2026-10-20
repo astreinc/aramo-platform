@@ -168,7 +168,7 @@ export class PlatformInvitationService {
             if (disallowed.length > 0) {
               throw new AramoError(
                 'VALIDATION_ERROR',
-                'A personal tenant may hold only the core and esign capabilities',
+                'A personal tenant may hold only the core and sign capabilities',
                 400,
                 {
                   requestId: args.request_id,

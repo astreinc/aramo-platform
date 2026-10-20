@@ -65,12 +65,12 @@ export const SEED_ROLE_KEYS = [
   'super_admin',
   // PX-V1 PX-3 — E-Sign SENDER product roles (esign.aramo.ai). Namespace-separate
   // from the ATS tenant roles (like super_admin): they hold ONLY esign:* scopes and
-  // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `esign:`
+  // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `sign:`
   // prefix). Shared Aramo identity substrate; independent E-Sign product.
-  'esign_owner',
-  'esign_admin',
-  'esign_sender',
-  'esign_viewer',
+  'sign_owner',
+  'sign_admin',
+  'sign_sender',
+  'sign_viewer',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 
@@ -82,7 +82,7 @@ export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 // decorators, never widened: no `identity:resolve` (talent-identity
 // dispositions), no `org:manage`/`team:manage` (ATS-gated D4a), no product
 // scope. This set is BOTH the org_admin role bundle (seed) and the
-// organization subset an `esign` consumer may carry (IC-0 §F.2 rule 4 / N-2).
+// organization subset an `sign` consumer may carry (IC-0 §F.2 rule 4 / N-2).
 export const ORG_ADMIN_SCOPE_KEYS = [
   'tenant:admin:profile',
   'tenant:admin:domain',
@@ -108,23 +108,23 @@ export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEY
 
 // IC-3 PR-8 (IC-0 §F.2 rule 2 / L10; PX-V1 §10–§11) — the E-SIGN PRODUCT
 // partition of the catalog: the four Sign roles (PX-V1 PX-3). They hold ONLY
-// esign:* scopes and are assignable ONLY in a tenant that holds the `esign`
+// esign:* scopes and are assignable ONLY in a tenant that holds the `sign`
 // capability; every tenant-side assignment path (tenant invite, PATCH roles,
 // platform-tier invite INTO a tenant) refuses them for an unentitled tenant
 // with VALIDATION_ERROR `esign_role_not_entitled` (400 — the L10 shape, the
 // same status the platform-role refusal uses). Derived from SEED_ROLE_KEYS by
-// the `esign_` prefix so a new Sign role joins the partition without a hand
+// the `sign_` prefix so a new Sign role joins the partition without a hand
 // list; the seed spec pins the membership.
 export const ESIGN_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter((k) =>
-  k.startsWith('esign_'),
+  k.startsWith('sign_'),
 );
 
 // IC-3 PR-8 — the SINGLE scope that authorizes the Sign SEND action
-// (PX-V1 §11 rule 5: send authority derives from the `esign` capability + an
-// org role, never bare authentication). Granted by the seed to esign_owner,
-// esign_admin and esign_sender only (ESIGN_SENDER_SEED_BUNDLES); esign_viewer,
+// (PX-V1 §11 rule 5: send authority derives from the `sign` capability + an
+// org role, never bare authentication). Granted by the seed to sign_owner,
+// sign_admin and sign_sender only (ESIGN_SENDER_SEED_BUNDLES); sign_viewer,
 // org_admin, every ATS role and super_admin never hold it.
-export const ESIGN_SENDER_SCOPE_KEY = 'esign:envelope:send' as const;
+export const ESIGN_SENDER_SCOPE_KEY = 'sign:envelope:send' as const;
 
 // D-ORG (§3.F) — the ATS PRODUCT partition of the catalog: every tenant role that
 // carries ATS product scopes (the 13 AUTHZ-1/1b staffing roles INCLUDING
@@ -138,7 +138,7 @@ export const ATS_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filt
     k !== 'org_admin' &&
     k !== 'candidate' &&
     !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k) &&
-    !k.startsWith('esign_'),
+    !k.startsWith('sign_'),
 );
 
 // RoleDto — public shape of the Role entity.

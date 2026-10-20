@@ -160,7 +160,7 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   // Sign Unified Product S-4 — the same principal's effective scopes for ANOTHER
-  // consumer (e.g. its `esign` Sign permissions while it holds a recruiter token),
+  // consumer (e.g. its `sign` Sign permissions while it holds a recruiter token),
   // resolved server-side at the token's own authorization revision. Fail closed.
   async resolveScopesForConsumer(ctx: AuthContext, consumer: ConsumerType, authzVersion: number, requestId: string): Promise<string[]> {
     if (this.resolver === undefined) {

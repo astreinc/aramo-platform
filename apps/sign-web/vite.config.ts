@@ -12,9 +12,9 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 // guest signing (/s/:token, /d/:token) in one SPA, split into separate bundles by
 // zone (src/zones.ts). scope:sign wall: no ATS / Documents / Portal / platform imports.
 //   - dev port 4206 (the registered local Cognito callback is
-//     http://localhost:4206/auth/esign/callback); preview 4306
+//     http://localhost:4206/auth/sign/callback); preview 4306
 //   - dev proxies mirror the nginx sign block: /auth → auth-service,
-//     /v1/esign/{sender,billing,signing,inbox} → esign-service, /v1/signup/sign → platform-admin
+//     /v1/sign/{sender,billing,signing,inbox} → sign-service, /v1/signup/sign → platform-admin
 export default defineConfig({
   root,
   // Per-app dependency cache. Without it every SPA dev server resolves the SAME
@@ -33,10 +33,10 @@ export default defineConfig({
     host: 'localhost',
     proxy: {
       '/auth': { target: 'http://localhost:3001', changeOrigin: false, secure: false },
-      '/v1/esign/sender': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
-      '/v1/esign/billing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
-      '/v1/esign/signing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
-      '/v1/esign/inbox': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/sender': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/billing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/signing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/inbox': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/signup/sign': { target: 'http://localhost:3002', changeOrigin: false, secure: false },
     },
   },

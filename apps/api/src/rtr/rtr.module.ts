@@ -49,7 +49,7 @@ const RTR_TEMPLATES_REPO = 'RTR_TEMPLATES_REPO';
 const RTR_SIGNING = 'RTR_SIGNING';
 
 @Module({
-  // EntitlementModule — EntitlementGuard for the RTR controller's `esign` capability
+  // EntitlementModule — EntitlementGuard for the RTR controller's `sign` capability
   // gate; SignatureRoutingModule — provider routing + availability for the send path.
   imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, EntitlementModule, SignatureRoutingModule],
   controllers: [RtrController],

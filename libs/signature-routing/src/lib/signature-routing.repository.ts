@@ -87,7 +87,7 @@ export class SignatureRoutingRepository {
 
   /** Operational usage of an external provider (its own plan governs the quota). */
   async recordExternalSend(tenant_id: string, provider: SignatureProviderKey): Promise<void> {
-    await recordUsage(this.prisma, { tenant_id, event_type: `esign.external.envelope.sent.${provider}` });
+    await recordUsage(this.prisma, { tenant_id, event_type: `sign.external.envelope.sent.${provider}` });
   }
 
   /** Start an OAuth connect: returns the opaque state value for the authorize URL. */

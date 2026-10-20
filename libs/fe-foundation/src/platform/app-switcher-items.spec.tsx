@@ -5,9 +5,9 @@ import { productEntryHref, type ProductAvailabilityView } from './products';
 
 // App switcher rows (App Home handoff §3) — strictly from the backend
 // availability read; the external signer app is never a row.
-const view = (over: Partial<Record<'ats' | 'esign' | 'org', { subscribed: boolean; authorized: boolean; available: boolean; entry_path: string | null }>>): ProductAvailabilityView => ({
+const view = (over: Partial<Record<'ats' | 'sign' | 'org', { subscribed: boolean; authorized: boolean; available: boolean; entry_path: string | null }>>): ProductAvailabilityView => ({
   tenant_id: 't',
-  products: (['ats', 'esign', 'org'] as const).map((key) => ({
+  products: (['ats', 'sign', 'org'] as const).map((key) => ({
     key,
     subscribed: false,
     authorized: false,
@@ -36,7 +36,7 @@ describe('buildAppSwitcherItems', () => {
       current: 'ats',
       products: view({
         ats: { subscribed: true, authorized: true, available: true, entry_path: '/ats/' },
-        esign: { subscribed: true, authorized: true, available: false, entry_path: null },
+        sign: { subscribed: true, authorized: true, available: false, entry_path: null },
         org: { subscribed: true, authorized: true, available: true, entry_path: '/org/' },
       }),
     });
@@ -56,11 +56,11 @@ describe('buildAppSwitcherItems', () => {
 describe('productEntryHref — Sign on its own host', () => {
   const base = { subscribed: true, authorized: true, available: true, reason: null } as const;
   it('opens an absolute https product-host entry directly, and tenant-host paths as-is', () => {
-    expect(productEntryHref({ key: 'esign', ...base, entry_path: 'https://esign.aramo.ai/' })).toBe('https://esign.aramo.ai/');
+    expect(productEntryHref({ key: 'sign', ...base, entry_path: 'https://esign.aramo.ai/' })).toBe('https://esign.aramo.ai/');
     expect(productEntryHref({ key: 'ats', ...base, entry_path: '/ats/' })).toBe('/ats/');
   });
   it('never links a non-http(s) or protocol-relative entry', () => {
-    expect(productEntryHref({ key: 'esign', ...base, entry_path: 'javascript:alert(1)' })).toBeNull();
-    expect(productEntryHref({ key: 'esign', ...base, entry_path: '//evil.example/' })).toBeNull();
+    expect(productEntryHref({ key: 'sign', ...base, entry_path: 'javascript:alert(1)' })).toBeNull();
+    expect(productEntryHref({ key: 'sign', ...base, entry_path: '//evil.example/' })).toBeNull();
   });
 });

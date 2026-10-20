@@ -14,7 +14,7 @@ import { tokenFromSigningLink, type EnvelopeDetail, type SenderContext } from '.
 
 vi.mock('./pdf', () => ({ loadPdf: vi.fn() }));
 
-const SESSION = { sub: 'u1', consumer_type: 'esign', tenant_id: 't1', scopes: ['esign:envelope:read', 'esign:envelope:create', 'esign:envelope:send'], iat: 0, exp: 9_999_999_999 };
+const SESSION = { sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send'], iat: 0, exp: 9_999_999_999 };
 
 function ctx(over: Partial<SenderContext> = {}): SenderContext {
   return {
@@ -48,10 +48,10 @@ function json(body: unknown, status = 200): Response {
 function stubFetch(context: SenderContext | { error: { code: string }; status: number }) {
   return vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.includes('/auth/esign/session')) return json(SESSION);
-    if (url.endsWith('/v1/esign/sender/context')) return 'status' in context ? json({ error: context.error }, context.status) : json(context);
-    if (url.endsWith('/v1/esign/sender/summary')) return json(SUMMARY);
-    if (url.includes('/v1/esign/sender/envelopes')) return json({ items: [{ id: 'e1', subject: 'Vendor NDA — BluePeak', status: 'COMPLETED', created_at: '2026-10-01T00:00:00Z', sent_at: '2026-10-01T00:00:00Z', completed_at: '2026-10-02T00:00:00Z', last_activity_at: '2026-10-02T00:00:00Z', document_count: 1, recipients: [{ id: 's1', name: 'Sam Rivera', email: 'sam@x.test', status: 'SIGNED' }] }], counts: { COMPLETED: 1 } });
+    if (url.includes('/auth/sign/session')) return json(SESSION);
+    if (url.endsWith('/v1/sign/sender/context')) return 'status' in context ? json({ error: context.error }, context.status) : json(context);
+    if (url.endsWith('/v1/sign/sender/summary')) return json(SUMMARY);
+    if (url.includes('/v1/sign/sender/envelopes')) return json({ items: [{ id: 'e1', subject: 'Vendor NDA — BluePeak', status: 'COMPLETED', created_at: '2026-10-01T00:00:00Z', sent_at: '2026-10-01T00:00:00Z', completed_at: '2026-10-02T00:00:00Z', last_activity_at: '2026-10-02T00:00:00Z', document_count: 1, recipients: [{ id: 's1', name: 'Sam Rivera', email: 'sam@x.test', status: 'SIGNED' }] }], counts: { COMPLETED: 1 } });
     return json({ items: [] });
   });
 }
@@ -65,7 +65,7 @@ function renderAt(path: string) {
 }
 
 describe('Sign workspace App', () => {
-  beforeEach(() => configureAuthConsumer('esign'));
+  beforeEach(() => configureAuthConsumer('sign'));
   afterEach(() => vi.unstubAllGlobals());
 
   it('/ resolves the BUSINESS workspace from the backend and shows the dashboard', async () => {
@@ -103,7 +103,7 @@ describe('Sign workspace App', () => {
     expect(screen.queryByRole('link', { name: '+ New envelope' })).not.toBeInTheDocument();
   });
 
-  // Sign Unified Product S-1 — Members appears only for holders of esign:member:manage.
+  // Sign Unified Product S-1 — Members appears only for holders of sign:member:manage.
   it('Settings shows Members only when the backend grants member administration', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true } })));
     const first = renderAt('/sign/settings/personal');
@@ -122,7 +122,7 @@ describe('Sign workspace App', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
-        if (url.includes('/v1/esign/sender/envelopes')) {
+        if (url.includes('/v1/sign/sender/envelopes')) {
           return json({ items: [{ id: 'e9', subject: 'Right to Represent — Jordan', status: 'SENT', created_at: '2026-10-01T00:00:00Z', sent_at: '2026-10-01T00:00:00Z', completed_at: null, last_activity_at: '2026-10-01T00:00:00Z', document_count: 1, source_application: 'aramo-ats', recipients: [] }], counts: { SENT: 1 } });
         }
         return base(input, init);
@@ -180,8 +180,8 @@ describe('recipient inbox', () => {
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
-        if (url.includes('/auth/esign/session')) return json({ ...SESSION, scopes: [] });
-        if (url.endsWith('/v1/esign/inbox')) return json({ waiting: [ITEM], completed: [], other: [] });
+        if (url.includes('/auth/sign/session')) return json({ ...SESSION, scopes: [] });
+        if (url.endsWith('/v1/sign/inbox')) return json({ waiting: [ITEM], completed: [], other: [] });
         return json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } }, 403);
       }),
     );

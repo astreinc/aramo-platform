@@ -19,10 +19,11 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261018120000_init_subscription_allowance/migration.sql',
   '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
+  '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
-const KEY = 'esign.envelopes';
-const EVENT = 'esign.envelope.sent';
+const KEY = 'sign.envelopes';
+const EVENT = 'sign.envelope.sent';
 const ANCHOR = new Date('2026-10-01T00:00:00.000Z');
 const IN_PERIOD = new Date('2026-10-18T12:00:00.000Z');
 const TEST_ENV = { ARAMO_ENV: 'test' };

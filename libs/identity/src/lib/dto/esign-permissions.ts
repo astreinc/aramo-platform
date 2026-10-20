@@ -1,36 +1,36 @@
 // Aramo Sign permission contract (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.3, S-1). Aramo Sign owns its permissions;
-// every Sign action is decided by esign-service against this contract.
+// every Sign action is decided by sign-service against this contract.
 //
-// The `esign:` namespace is granted ONLY to the four esign_* roles — never to an
+// The `sign:` namespace is granted ONLY to the four esign_* roles — never to an
 // ATS, organization or platform role (PR-6 filters esign:* off non-esign
 // consumers). Adding a key here requires a directive amendment, a SEED_SCOPE_KEYS
 // entry, a seed grant and an orphan-scope classification.
 
 export const ESIGN_SCOPE = {
   // Own envelopes (list, track, evidence). The gate of every workspace read.
-  ENVELOPE_READ: 'esign:envelope:read',
+  ENVELOPE_READ: 'sign:envelope:read',
   // Every envelope in the organization (BUSINESS tenants).
-  ENVELOPE_READ_ALL: 'esign:envelope:read:all',
+  ENVELOPE_READ_ALL: 'sign:envelope:read:all',
   // Draft authoring (documents, recipients, fields) on own drafts.
-  ENVELOPE_CREATE: 'esign:envelope:create',
+  ENVELOPE_CREATE: 'sign:envelope:create',
   // Send, remind and void own envelopes.
-  ENVELOPE_SEND: 'esign:envelope:send',
+  ENVELOPE_SEND: 'sign:envelope:send',
   // Lifecycle and draft changes on ANY envelope in the organization.
-  ENVELOPE_MANAGE_ALL: 'esign:envelope:manage:all',
-  CONTACT_READ: 'esign:contact:read',
-  TEMPLATE_USE: 'esign:template:use',
-  TEMPLATE_MANAGE: 'esign:template:manage',
-  REPORT_READ: 'esign:report:read',
+  ENVELOPE_MANAGE_ALL: 'sign:envelope:manage:all',
+  CONTACT_READ: 'sign:contact:read',
+  TEMPLATE_USE: 'sign:template:use',
+  TEMPLATE_MANAGE: 'sign:template:manage',
+  REPORT_READ: 'sign:report:read',
   // Assign and remove Sign roles for organization members.
-  MEMBER_MANAGE: 'esign:member:manage',
-  SETTINGS_MANAGE: 'esign:settings:manage',
-  BILLING_MANAGE: 'esign:billing:manage',
-  INTEGRATION_MANAGE: 'esign:integration:manage',
+  MEMBER_MANAGE: 'sign:member:manage',
+  SETTINGS_MANAGE: 'sign:settings:manage',
+  BILLING_MANAGE: 'sign:billing:manage',
+  INTEGRATION_MANAGE: 'sign:integration:manage',
 } as const;
 export type EsignScope = (typeof ESIGN_SCOPE)[keyof typeof ESIGN_SCOPE];
 
-export const ESIGN_ROLE_KEYS = ['esign_owner', 'esign_admin', 'esign_sender', 'esign_viewer'] as const;
+export const ESIGN_ROLE_KEYS = ['sign_owner', 'sign_admin', 'sign_sender', 'sign_viewer'] as const;
 export type EsignRoleKey = (typeof ESIGN_ROLE_KEYS)[number];
 
 const S = ESIGN_SCOPE;
@@ -46,18 +46,18 @@ const ADMIN: readonly EsignScope[] = [
 //   Sender = own envelopes (read, author, send, remind, void), contacts, template use.
 //   Viewer = every organization envelope, read-only, and reports.
 export const ESIGN_ROLE_PERMISSIONS: Readonly<Record<EsignRoleKey, readonly EsignScope[]>> = {
-  esign_owner: [...ADMIN, S.BILLING_MANAGE],
-  esign_admin: ADMIN,
-  esign_sender: [S.ENVELOPE_READ, S.ENVELOPE_CREATE, S.ENVELOPE_SEND, S.CONTACT_READ, S.TEMPLATE_USE],
-  esign_viewer: [S.ENVELOPE_READ, S.ENVELOPE_READ_ALL, S.REPORT_READ],
+  sign_owner: [...ADMIN, S.BILLING_MANAGE],
+  sign_admin: ADMIN,
+  sign_sender: [S.ENVELOPE_READ, S.ENVELOPE_CREATE, S.ENVELOPE_SEND, S.CONTACT_READ, S.TEMPLATE_USE],
+  sign_viewer: [S.ENVELOPE_READ, S.ENVELOPE_READ_ALL, S.REPORT_READ],
 };
 
 // Display names used by the Sign workspace's member administration.
 export const ESIGN_ROLE_DISPLAY: Readonly<Record<EsignRoleKey, string>> = {
-  esign_owner: 'Sign Owner',
-  esign_admin: 'Sign Admin',
-  esign_sender: 'Sign Sender',
-  esign_viewer: 'Sign Viewer',
+  sign_owner: 'Sign Owner',
+  sign_admin: 'Sign Admin',
+  sign_sender: 'Sign Sender',
+  sign_viewer: 'Sign Viewer',
 };
 
 export function isEsignRoleKey(k: string): k is EsignRoleKey {

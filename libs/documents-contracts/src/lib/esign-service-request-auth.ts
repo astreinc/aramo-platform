@@ -1,16 +1,16 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0)
-// — authentication of esign-service → Core (apps/api) service requests.
+// — authentication of sign-service → Core (apps/api) service requests.
 //
-// ONE definition shared by the signer (apps/esign-service) and the verifier
+// ONE definition shared by the signer (apps/sign-service) and the verifier
 // (apps/api), so the canonical form cannot drift between the two sides.
 //
-// Scheme `aramo-esign-s2s-v1`: HMAC-SHA256 (base64) over the canonical string
+// Scheme `aramo-sign-s2s-v1`: HMAC-SHA256 (base64) over the canonical string
 //
-//     aramo-esign-s2s-v1 \n METHOD \n exact-path \n normalized-query \n timestamp
+//     aramo-sign-s2s-v1 \n METHOD \n exact-path \n normalized-query \n timestamp
 //
-// keyed by the shared E-Sign secret (ESIGN_WEBHOOK_SIGNING_SECRET, ruling B-1).
+// keyed by the shared E-Sign secret (SIGN_WEBHOOK_SIGNING_SECRET, ruling B-1).
 //
 // Domain separation from the lifecycle webhook (which signs `${timestamp}.${body}`):
 // a webhook message always starts with decimal digits and '.', an s2s message
@@ -19,7 +19,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 //
 // What the signature binds: method, exact request path (all path parameters,
 // e.g. the revision id), every query parameter (e.g. tenant_id) and the
-// timestamp. It authenticates the CALLER as esign-service only — it is never a
+// timestamp. It authenticates the CALLER as sign-service only — it is never a
 // signer authorization and never replaces the route's own tenant/document checks.
 //
 // Recorded residual (Lead ruling, refinement 1): there is no nonce store, so a
@@ -28,9 +28,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 // read-only source endpoint; a captured request cannot be re-targeted to another
 // revision, tenant or route.
 
-export const ESIGN_S2S_SCHEME = 'aramo-esign-s2s-v1';
-export const ESIGN_S2S_TIMESTAMP_HEADER = 'x-aramo-esign-s2s-timestamp';
-export const ESIGN_S2S_SIGNATURE_HEADER = 'x-aramo-esign-s2s-signature';
+export const ESIGN_S2S_SCHEME = 'aramo-sign-s2s-v1';
+export const ESIGN_S2S_TIMESTAMP_HEADER = 'x-aramo-sign-s2s-timestamp';
+export const ESIGN_S2S_SIGNATURE_HEADER = 'x-aramo-sign-s2s-signature';
 export const ESIGN_S2S_TIMESTAMP_TOLERANCE_SEC = 300;
 
 export type EsignS2sVerifyReason = 'NO_SECRET' | 'MISSING' | 'MALFORMED' | 'STALE' | 'BAD_SIGNATURE';

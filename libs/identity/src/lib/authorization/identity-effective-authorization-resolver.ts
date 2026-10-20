@@ -122,10 +122,10 @@ export class IdentityEffectiveAuthorizationResolver implements EffectiveAuthoriz
     canonical: string[],
   ): Promise<string[]> {
     let tenantHasEsign = false;
-    if (input.consumer_type === 'esign') {
+    if (input.consumer_type === 'sign') {
       // Fail closed: an unreadable entitlement store yields NO esign scopes.
       try {
-        tenantHasEsign = (await this.entitlements.getCapabilities(input.tenant_id)).has('esign');
+        tenantHasEsign = (await this.entitlements.getCapabilities(input.tenant_id)).has('sign');
       } catch {
         tenantHasEsign = false;
       }

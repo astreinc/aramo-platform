@@ -29,7 +29,7 @@ const byKey = (v: { products: readonly { key: string }[] }) => Object.fromEntrie
 
 const RECRUITER = ['auth:session:read', 'talent:read', 'requisition:read'];
 const ORG_ADMIN = ['auth:session:read', 'tenant:admin:user-manage', 'tenant:admin:profile', 'audit:read'];
-const SIGN_SENDER = ['auth:session:read', 'esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read'];
+const SIGN_SENDER = ['auth:session:read', 'sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read'];
 
 describe('ProductAvailabilityService (D-ORG)', () => {
   afterEach(() => {
@@ -39,33 +39,33 @@ describe('ProductAvailabilityService (D-ORG)', () => {
   it('ATS-only tenant, recruiter: ATS available at /ats/; Sign not_subscribed; Organization subscribed (core) but not_authorized (no admin scope)', async () => {
     const p = byKey(await svc(['core', 'ats', 'portal'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
     expect(p['ats']).toEqual({ key: 'ats', subscribed: true, authorized: true, available: true, entry_path: '/ats/', reason: null });
-    expect(p['esign']).toMatchObject({ subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' });
+    expect(p['sign']).toMatchObject({ subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' });
     expect(p['org']).toMatchObject({ subscribed: true, authorized: false, available: false, entry_path: null, reason: 'not_authorized' });
   });
 
-  it('Sign-only tenant, org_admin + esign_sender: Organization available at /org/; ATS not_subscribed even though nothing else blocks it; Sign subscribed+authorized but not_activated while the entry is dark', async () => {
-    const p = byKey(await svc(['core', 'esign'], [...ORG_ADMIN, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
+  it('Sign-only tenant, org_admin + sign_sender: Organization available at /org/; ATS not_subscribed even though nothing else blocks it; Sign subscribed+authorized but not_activated while the entry is dark', async () => {
+    const p = byKey(await svc(['core', 'sign'], [...ORG_ADMIN, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
     expect(p['org']).toEqual({ key: 'org', subscribed: true, authorized: true, available: true, entry_path: '/org/', reason: null });
     expect(p['ats']).toMatchObject({ subscribed: false, reason: 'not_subscribed', entry_path: null });
-    expect(p['esign']).toMatchObject({ subscribed: true, authorized: true, available: false, entry_path: null, reason: 'not_activated' });
+    expect(p['sign']).toMatchObject({ subscribed: true, authorized: true, available: false, entry_path: null, reason: 'not_activated' });
   });
 
   it('Sign entry activation flag turns an authorized, subscribed Sign into available with its entry path — and nothing else changes', async () => {
     process.env['ARAMO_SIGN_ENTRY_ENABLED'] = 'true';
-    const p = byKey(await svc(['core', 'ats', 'portal', 'esign'], [...RECRUITER, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['esign']).toEqual({ key: 'esign', subscribed: true, authorized: true, available: true, entry_path: 'https://sign.aramo.ai/', reason: null });
+    const p = byKey(await svc(['core', 'ats', 'portal', 'sign'], [...RECRUITER, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(p['sign']).toEqual({ key: 'sign', subscribed: true, authorized: true, available: true, entry_path: 'https://sign.aramo.ai/', reason: null });
     expect(p['ats'].available).toBe(true);
     expect(p['org']).toMatchObject({ available: false, reason: 'not_authorized' });
   });
 
   it('subscription without roles grants nothing: ATS+Sign tenant, a recruiter-only member sees Sign subscribed=true, authorized=false (no bulk grant)', async () => {
-    const p = byKey(await svc(['core', 'ats', 'portal', 'esign'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['esign']).toMatchObject({ subscribed: true, authorized: false, available: false, reason: 'not_authorized' });
+    const p = byKey(await svc(['core', 'ats', 'portal', 'sign'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(p['sign']).toMatchObject({ subscribed: true, authorized: false, available: false, reason: 'not_authorized' });
   });
 
   it('a Sign role held in an ATS-only tenant is reported authorized=true but not_subscribed (operator-meaningful, never navigable)', async () => {
     const p = byKey(await svc(['core', 'ats', 'portal'], SIGN_SENDER).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['esign']).toMatchObject({ subscribed: false, authorized: true, available: false, reason: 'not_subscribed' });
+    expect(p['sign']).toMatchObject({ subscribed: false, authorized: true, available: false, reason: 'not_subscribed' });
   });
 
   it('the org subset ridden by an ATS role (e.g. tenant_owner) makes Organization authorized; an ordinary baseline marker does not', async () => {
@@ -80,7 +80,7 @@ describe('ProductAvailabilityService (D-ORG)', () => {
     const v = await svc(['core', 'ats'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T });
     expect(Object.keys(v).sort()).toEqual(['products', 'tenant_id']);
     for (const p of v.products) expect(Object.keys(p).sort()).toEqual(['authorized', 'available', 'entry_path', 'key', 'reason', 'subscribed']);
-    expect(v.products.map((p) => p.key)).toEqual(['ats', 'esign', 'org']);
+    expect(v.products.map((p) => p.key)).toEqual(['ats', 'sign', 'org']);
   });
 
   // D-ORG Gate-6 V1 — authorization parity with the session path (PR-4 §2.4

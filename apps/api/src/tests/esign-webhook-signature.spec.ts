@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computeEsignWebhookSignature,
   verifyEsignWebhookSignature,
-} from '../integrations/esign/esign-webhook-signature.js';
+} from '../integrations/sign/esign-webhook-signature.js';
 
 const SECRET = 'top-secret';
 const NOW = 1_790_550_000;

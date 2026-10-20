@@ -59,13 +59,13 @@ export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
     },
   },
   candidate: { tier: 'Portal', tierRank: 4 },
-  // IC-3 PR-8 — the E-Sign PRODUCT tier (PX-V1 PX-3 roles). Projected ONLY for
-  // a tenant that holds the `esign` capability (RoleCatalogService); ranked
+  // IC-3 PR-8 — the Sign PRODUCT tier (PX-V1 PX-3 roles). Projected ONLY for
+  // a tenant that holds the `sign` capability (RoleCatalogService); ranked
   // after every ATS tier so an ATS + Sign tenant's picker keeps its order.
-  esign_owner: { tier: 'E-Sign', tierRank: 5 },
-  esign_admin: { tier: 'E-Sign', tierRank: 5 },
-  esign_sender: { tier: 'E-Sign', tierRank: 5 },
-  esign_viewer: { tier: 'E-Sign', tierRank: 5 },
+  sign_owner: { tier: 'Sign', tierRank: 5 },
+  sign_admin: { tier: 'Sign', tierRank: 5 },
+  sign_sender: { tier: 'Sign', tierRank: 5 },
+  sign_viewer: { tier: 'Sign', tierRank: 5 },
 };
 
 // The display name = the role description's leading phrase (the seed writes

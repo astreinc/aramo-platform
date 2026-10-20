@@ -8,10 +8,10 @@ import { DocumentIdempotencyService } from './idempotency.service.js';
 import { DocumentNotFoundError, ExecutedArtifactHashMismatchError } from './domain/errors.js';
 
 // DOC-4 (R-4-7) — the Documents write-back. apps/api's idempotent consumer, on an
-// executed-envelope event, PULLS executed bytes + certificate from esign-service
+// executed-envelope event, PULLS executed bytes + certificate from sign-service
 // and calls this to store the permanent EXECUTED + EXECUTION_CERTIFICATE
 // artifacts, verify integrity hashes, and transition Document -> EXECUTED. This
-// is the SOLE writer of those artifact roles (esign-service never writes the
+// is the SOLE writer of those artifact roles (sign-service never writes the
 // documents schema — DOC-3 boundary-b). Idempotent: replaying the same executed
 // event never creates duplicate legal/evidence records (§286, invariant 16).
 

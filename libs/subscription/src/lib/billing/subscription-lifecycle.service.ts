@@ -55,7 +55,7 @@ export type BillingRefusal =
   | 'ALREADY_SUBSCRIBED'
   | 'NO_BILLING_ACCOUNT';
 
-export const STORAGE_CAPACITY_KEY = 'esign.storage_bytes';
+export const STORAGE_CAPACITY_KEY = 'sign.storage_bytes';
 const OPERATOR_DISPLAY_ORDER_FLOOR = 900;
 
 export class BillingRefusedError extends Error {

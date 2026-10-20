@@ -214,12 +214,12 @@ export default [
             // a Symbol needs the token imported by construction. @aramo/mailer
             // NOT added (MAILER_PORT is a plain string token).
             '@aramo/identity',
-            // DOC-3 (2026-09-23): verify-esign.ts test-bootstraps
-            // apps/esign-service's AppModule to verify the aramo-core →
-            // esign-service provider pact. Production apps/api reaches E-Sign
+            // DOC-3 (2026-09-23): verify-sign.ts test-bootstraps
+            // apps/sign-service's AppModule to verify the aramo-core →
+            // sign-service provider pact. Production apps/api reaches E-Sign
             // ONLY over HTTP (SignatureProviderPort); this app-boundary crossing
             // is the test-environment exception, narrowly scoped to this project.
-            '@aramo/esign-service',
+            '@aramo/sign-service',
           ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },

@@ -747,12 +747,12 @@ paths:
   /v1/documents/revisions/{id}/source:
     get:
       operationId: getRevisionSource
-      summary: Source PDF bytes (base64) for a frozen revision — pulled by esign-service for executed-document production and the signer document view (DOC-4).
+      summary: Source PDF bytes (base64) for a frozen revision — pulled by sign-service for executed-document production and the signer document view (DOC-4).
       description: >
-        Service-to-service read callable ONLY by esign-service (ES-2). Every request carries
+        Service-to-service read callable ONLY by sign-service (ES-2). Every request carries
         `X-Aramo-Esign-S2S-Timestamp` (unix seconds) and `X-Aramo-Esign-S2S-Signature`:
         base64 HMAC-SHA256, keyed by the shared E-Sign secret, over the newline-joined
-        canonical string `aramo-esign-s2s-v1`, the upper-case method, the exact request path,
+        canonical string `aramo-sign-s2s-v1`, the upper-case method, the exact request path,
         the normalized query (pairs sorted by key, each component percent-encoded, joined by
         `&`; a repeated key is rejected) and the timestamp. The tag domain-separates it from
         the lifecycle-webhook signature. Core verifies it in constant time within ±300s. It
@@ -780,7 +780,7 @@ paths:
         - name: X-Aramo-Esign-S2S-Signature
           in: header
           required: true
-          description: base64(HMAC-SHA256(secret, canonical aramo-esign-s2s-v1 string)).
+          description: base64(HMAC-SHA256(secret, canonical aramo-sign-s2s-v1 string)).
           schema:
             type: string
       responses:
@@ -797,7 +797,7 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
-          description: Missing, malformed, stale or invalid esign-service request signature (AUTH_REQUIRED).
+          description: Missing, malformed, stale or invalid sign-service request signature (AUTH_REQUIRED).
           content:
             application/json:
               schema:
@@ -805,12 +805,12 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
         '503':
-          description: esign-service request authentication is not configured (ESIGN_SERVICE_AUTH_UNAVAILABLE); fails closed.
+          description: sign-service request authentication is not configured (ESIGN_SERVICE_AUTH_UNAVAILABLE); fails closed.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-  /v1/integrations/esign/events:
+  /v1/integrations/sign/events:
     post:
       operationId: receiveEsignLifecycleEvent
       summary: Canonical E-Sign → Core lifecycle-event webhook receiver (Independent-Digital-Signature-Platform Directive §9).
@@ -845,7 +845,7 @@ paths:
               required: [event_id, event_type, event_version, occurred_at, tenant_id, envelope_id, correlation_id]
               properties:
                 event_id: { type: string, description: Stable across every delivery retry (the durable outbox row id). }
-                event_type: { type: string, description: 'Generic signing fact, e.g. esign.envelope.executed.v1.' }
+                event_type: { type: string, description: 'Generic signing fact, e.g. sign.envelope.executed.v1.' }
                 event_version: { type: integer }
                 occurred_at: { type: string, format: date-time }
                 tenant_id: { type: string, format: uuid }

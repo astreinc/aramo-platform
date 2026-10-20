@@ -14,8 +14,8 @@
 //  (B) Scope-namespace filter (rule 4) — applied per request by the effective
 //      authorization resolver AFTER the cached canonical set is read, so a cache
 //      can never widen a token: recruiter/ingestion (ATS family) never carry
-//      `esign:*` or `platform:*`; `esign` carries ONLY `esign:*` and ONLY while
-//      the tenant holds the `esign` capability (read live, never cached) PLUS
+//      `esign:*` or `platform:*`; `sign` carries ONLY `esign:*` and ONLY while
+//      the tenant holds the `sign` capability (read live, never cached) PLUS
 //      the product-neutral organization subset (ORG_ADMIN_SCOPE_KEYS — IC-3
 //      PR-7 / N-2) so a Sign-only organization can be administered;
 //      `platform` carries ONLY `platform:*`; `portal` is the fixed set handled
@@ -28,10 +28,10 @@
 
 import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
 
-export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
+export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'sign' | 'org';
 
 export type ConsumerCapabilityRequirement =
-  | { kind: 'capability'; capability: 'ats' | 'esign' | 'core' }
+  | { kind: 'capability'; capability: 'ats' | 'sign' | 'core' }
   | { kind: 'exempt' }
   | { kind: 'unsupported' };
 
@@ -41,8 +41,8 @@ export function requiredCapabilityForConsumer(consumer: string | undefined): Con
     case 'recruiter':
     case 'ingestion':
       return { kind: 'capability', capability: 'ats' };
-    case 'esign':
-      return { kind: 'capability', capability: 'esign' };
+    case 'sign':
+      return { kind: 'capability', capability: 'sign' };
     // D-ORG (R2) — the organization credential needs the tenant to BE an Aramo
     // organization (`core`), never a product subscription: a Sign-only, ATS-only,
     // ATS+Sign or PERSONAL tenant all mint it.
@@ -56,7 +56,7 @@ export function requiredCapabilityForConsumer(consumer: string | undefined): Con
   }
 }
 
-export const ESIGN_SCOPE_PREFIX = 'esign:';
+export const ESIGN_SCOPE_PREFIX = 'sign:';
 export const PLATFORM_SCOPE_PREFIX = 'platform:';
 
 // Rule 4 — the scope namespaces a consumer may carry. `tenantHasEsign` is the
@@ -72,7 +72,7 @@ export function filterScopesForConsumer(args: {
       return args.scopes.filter(
         (s) => !s.startsWith(ESIGN_SCOPE_PREFIX) && !s.startsWith(PLATFORM_SCOPE_PREFIX),
       );
-    case 'esign':
+    case 'sign':
       return args.tenantHasEsign
         ? args.scopes.filter(
             (s) =>

@@ -482,7 +482,7 @@ export class IdentityService {
   // Fires BEFORE the D5 bundle check and before any write (safe-by-default).
   //
   // IC-3 PR-8 (IC-0 L10; PX-V1 §10) — second partition: the E-Sign PRODUCT
-  // roles (esign_*) are assignable ONLY in a tenant that holds the `esign`
+  // roles (esign_*) are assignable ONLY in a tenant that holds the `sign`
   // capability, read LIVE from the entitlement store (a Sign-only tenant
   // qualifies without any ATS dependency; an ATS-only tenant is refused with
   // VALIDATION_ERROR `esign_role_not_entitled`). The platform pool
@@ -547,17 +547,17 @@ export class IdentityService {
       );
     }
     if (esignKeys.length > 0) {
-      if (!capabilities.has('esign')) {
+      if (!capabilities.has('sign')) {
         throw new AramoError(
           'VALIDATION_ERROR',
-          'E-Sign roles require the esign capability on the tenant',
+          'Sign roles require the sign capability on the tenant',
           400,
           {
             requestId: args.request_id,
             details: {
               reason: 'esign_role_not_entitled',
               role_keys: esignKeys,
-              missing_capabilities: ['esign'],
+              missing_capabilities: ['sign'],
             },
           },
         );

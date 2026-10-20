@@ -18,21 +18,21 @@ vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
 const GiB = 1024 ** 3;
 // `available` mirrors the backend availability registry: only envelopes,
 // storage and team collaboration are built; forms, templates and AI assist are not.
-const unl = (k: string) => ({ allowance_key: k, included_quantity: null, unlimited: true, period: 'MONTHLY', available: k === 'esign.envelopes' });
+const unl = (k: string) => ({ allowance_key: k, included_quantity: null, unlimited: true, period: 'MONTHLY', available: k === 'sign.envelopes' });
 const feats = [
-  { feature_key: 'esign.ai_assist_summary', enabled: true, available: false },
-  { feature_key: 'esign.advanced_analytics', enabled: false, available: false },
-  { feature_key: 'esign.team_collaboration', enabled: true, available: true },
-  { feature_key: 'esign.custom_domain', enabled: false, available: false },
+  { feature_key: 'sign.ai_assist_summary', enabled: true, available: false },
+  { feature_key: 'sign.advanced_analytics', enabled: false, available: false },
+  { feature_key: 'sign.team_collaboration', enabled: true, available: true },
+  { feature_key: 'sign.custom_domain', enabled: false, available: false },
 ];
 const caps = (storage: number) => [
-  { capacity_key: 'esign.templates', limit: null, unlimited: true, available: false },
-  { capacity_key: 'esign.storage_bytes', limit: storage, unlimited: false, available: true },
+  { capacity_key: 'sign.templates', limit: null, unlimited: true, available: false },
+  { capacity_key: 'sign.storage_bytes', limit: storage, unlimited: false, available: true },
 ];
 const BUSINESS: BillingPlan = {
   key: 'aramo-sign-standard-business-v1', name: 'Standard Business', description: null, tenant_kind: 'BUSINESS', sales_model: 'SELF_SERVICE', status: 'ACTIVE',
   price: { amount_minor: 2000, currency: 'USD', interval: 'MONTH' }, reference_price: null, commitment_months: 12, eligibility: null, eligible: true, support_tier: 'BASIC', activation_note: null,
-  allowances: [unl('esign.envelopes'), unl('esign.forms')], capacities: caps(10 * GiB),
+  allowances: [unl('sign.envelopes'), unl('sign.forms')], capacities: caps(10 * GiB),
   features: feats, purchasable: true,
 };
 const PRO: BillingPlan = { ...BUSINESS, key: 'aramo-sign-standard-professional-v1', name: 'Standard Professional', price: { amount_minor: 1500, currency: 'USD', interval: 'MONTH' }, eligibility: 'ATS_SUBSCRIPTION', eligible: false, purchasable: false, capacities: caps(25 * GiB) };
@@ -44,7 +44,7 @@ const PLAN = BUSINESS;
 function account(over: Partial<BillingAccount> = {}): BillingAccount {
   return {
     subscription: null,
-    allowance: { subscribed: false, allowance_key: 'esign.envelopes', state: 'NONE' },
+    allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' },
     billing_available: true,
     tenant_kind: 'BUSINESS',
     self_service_eligible: true,
@@ -57,8 +57,8 @@ const ACTIVE = account({
     plan_key: PLAN.key, plan_name: PLAN.name, source: 'SELF_SERVICE', status: 'ACTIVE', sending: true, started_at: '2026-10-18T00:00:00Z', ended_at: null, current_period_end: '2026-11-18T00:00:00Z', cancel_at_period_end: false, grace_until: null, billing_managed: true,
     commitment_months: 12, commitment_end: '2027-10-18T00:00:00Z', cancel_requested_within_commitment: false, eligibility_state: null, list_price: { amount_minor: 2000, currency: 'USD', interval: 'MONTH' }, features: feats, export_access_until: null,
   },
-  allowance: { subscribed: true, plan_key: PLAN.key, allowance_key: 'esign.envelopes', limit: null, unlimited: true, used: 185, remaining: null, period_start: '2026-10-18T00:00:00Z', period_end: '2026-11-18T00:00:00Z', threshold: 'OK' },
-  storage: { capacity_key: 'esign.storage_bytes', limit: 10 * GiB, unlimited: false, used: 2 * GiB },
+  allowance: { subscribed: true, plan_key: PLAN.key, allowance_key: 'sign.envelopes', limit: null, unlimited: true, used: 185, remaining: null, period_start: '2026-10-18T00:00:00Z', period_end: '2026-11-18T00:00:00Z', threshold: 'OK' },
+  storage: { capacity_key: 'sign.storage_bytes', limit: 10 * GiB, unlimited: false, used: 2 * GiB },
 });
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -71,8 +71,8 @@ function stub(accounts: BillingAccount[], extra: (url: string, init?: RequestIni
     const url = String(input);
     const x = extra(url, init);
     if (x !== undefined) return x;
-    if (url.endsWith('/v1/esign/billing/account')) return json(accounts[Math.min(i++, accounts.length - 1)]);
-    if (url.endsWith('/v1/esign/billing/plans')) return json(catalogFor());
+    if (url.endsWith('/v1/sign/billing/account')) return json(accounts[Math.min(i++, accounts.length - 1)]);
+    if (url.endsWith('/v1/sign/billing/plans')) return json(catalogFor());
     return json({ error: { code: 'NOT_FOUND' } }, 404);
   });
 }
@@ -80,7 +80,7 @@ function stub(accounts: BillingAccount[], extra: (url: string, init?: RequestIni
 describe('BillingPanel', () => {
   const assign = vi.fn();
   beforeEach(() => {
-    configureAuthConsumer('esign');
+    configureAuthConsumer('sign');
     vi.stubGlobal('location', { ...window.location, search: '', assign });
   });
   afterEach(() => {
@@ -89,7 +89,7 @@ describe('BillingPanel', () => {
   });
 
   it('no plan: the business catalog with prices, commitment and features; Subscribe goes to the server-issued checkout', async () => {
-    const fetch = stub([account()], (url) => (url.endsWith('/v1/esign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_1' }, 201) : undefined));
+    const fetch = stub([account()], (url) => (url.endsWith('/v1/sign/billing/checkout') ? json({ url: 'https://checkout.stripe.test/cs_1' }, 201) : undefined));
     vi.stubGlobal('fetch', fetch);
     render(<BillingPanel />);
     expect(await screen.findByTestId('billing-none')).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe('BillingPanel', () => {
   });
 
   it('active: usage, renewal, Manage billing; no second subscribe', async () => {
-    vi.stubGlobal('fetch', stub([ACTIVE], (url) => (url.endsWith('/v1/esign/billing/portal') ? json({ url: 'https://billing.stripe.test/p' }, 201) : undefined)));
+    vi.stubGlobal('fetch', stub([ACTIVE], (url) => (url.endsWith('/v1/sign/billing/portal') ? json({ url: 'https://billing.stripe.test/p' }, 201) : undefined)));
     render(<BillingPanel />);
     expect(await screen.findByText('185 envelopes sent this period · unlimited')).toBeInTheDocument();
     expect(screen.queryByTestId('billing-usage-meter')).toBeNull();
@@ -172,7 +172,7 @@ describe('BillingPanel', () => {
 
   it('past due within grace and past due after grace are explained; signing of sent envelopes continues', async () => {
     const pd = (sending: boolean) =>
-      account({ ...ACTIVE, subscription: { ...ACTIVE.subscription!, status: 'PAST_DUE', sending, grace_until: '2026-10-25T00:00:00Z' }, ...(sending ? {} : { allowance: { subscribed: false, allowance_key: 'esign.envelopes', state: 'PAST_DUE' } }) });
+      account({ ...ACTIVE, subscription: { ...ACTIVE.subscription!, status: 'PAST_DUE', sending, grace_until: '2026-10-25T00:00:00Z' }, ...(sending ? {} : { allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'PAST_DUE' } }) });
     vi.stubGlobal('fetch', stub([pd(true)]));
     const { unmount } = render(<BillingPanel />);
     expect(await screen.findByText(/Sending continues until/)).toBeInTheDocument();
@@ -209,17 +209,17 @@ describe('BillingPanel', () => {
 });
 
 describe('Journey A — org admin without a Sign role', () => {
-  beforeEach(() => configureAuthConsumer('esign'));
+  beforeEach(() => configureAuthConsumer('sign'));
   afterEach(() => vi.unstubAllGlobals());
 
-  const session = (scopes: string[]) => ({ sub: 'u1', consumer_type: 'esign', tenant_id: 't1', scopes, iat: 0, exp: 9_999_999_999 });
+  const session = (scopes: string[]) => ({ sub: 'u1', consumer_type: 'sign', tenant_id: 't1', scopes, iat: 0, exp: 9_999_999_999 });
   const app = (scopes: string[]) =>
     vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes('/auth/esign/session')) return json(session(scopes));
-      if (url.endsWith('/v1/esign/sender/context')) return json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } }, 403);
-      if (url.endsWith('/v1/esign/billing/account')) return json(account());
-      if (url.endsWith('/v1/esign/billing/plans')) return json(CATALOG);
+      if (url.includes('/auth/sign/session')) return json(session(scopes));
+      if (url.endsWith('/v1/sign/sender/context')) return json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } }, 403);
+      if (url.endsWith('/v1/sign/billing/account')) return json(account());
+      if (url.endsWith('/v1/sign/billing/plans')) return json(CATALOG);
       return json({ items: [] });
     });
 

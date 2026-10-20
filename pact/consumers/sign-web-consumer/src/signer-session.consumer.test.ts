@@ -11,8 +11,8 @@ const { like, uuid } = MatchersV3;
 // Consumer:  sign-web        (apps/sign-web/src/sign-api.ts — the browser client
 //                             the Talent uses to sign; tenant is resolved
 //                             server-side FROM the capability token, never sent).
-// Provider:  esign-service   (apps/esign-service, EsignSignerController at
-//                             `v1/esign/signing`).
+// Provider:  sign-service   (apps/sign-service, EsignSignerController at
+//                             `v1/sign/signing`).
 //
 // Mirrors the EXACT operations sign-api.ts consumes (method / path / body). Per
 // the established harness convention (esign.consumer.test.ts) the interactions
@@ -26,21 +26,21 @@ const { like, uuid } = MatchersV3;
 // append-only (no delete), so shared-envelope re-seeding is impossible.
 //
 // Coverage (sign-api.ts:31-44):
-//   1. POST /v1/esign/signing/exchange              200 { session_id, envelope_id, signer_id }
-//   2. POST /v1/esign/signing/disclosure            200 { accepted: true }
-//   3. POST /v1/esign/signing/fields/{id}/fill      200 { filled: true }
-//   4. POST /v1/esign/signing/complete              200 { envelope_status }
-//   5. POST /v1/esign/signing/disclosure-text       200 { disclosure_version, text, text_sha256 }  (Aramo Sign launch, A-7)
-//   6. POST /v1/esign/signing/executed              200 { subject, completed_at, documents[], certificate_base64 }  (signer's signed copy)
+//   1. POST /v1/sign/signing/exchange              200 { session_id, envelope_id, signer_id }
+//   2. POST /v1/sign/signing/disclosure            200 { accepted: true }
+//   3. POST /v1/sign/signing/fields/{id}/fill      200 { filled: true }
+//   4. POST /v1/sign/signing/complete              200 { envelope_status }
+//   5. POST /v1/sign/signing/disclosure-text       200 { disclosure_version, text, text_sha256 }  (Aramo Sign launch, A-7)
+//   6. POST /v1/sign/signing/executed              200 { subject, completed_at, documents[], certificate_base64 }  (signer's signed copy)
 
 const provider = new PactV4({
   consumer: 'sign-web',
-  provider: 'esign-service',
+  provider: 'sign-service',
   dir: resolve(__dirname, '../../../pacts'),
   logLevel: 'warn',
 });
 
-// Fixed values — MUST match the per-op seeds in pact/provider/src/verify-esign.ts.
+// Fixed values — MUST match the per-op seeds in pact/provider/src/verify-sign.ts.
 const TOKEN_EXCHANGE = 'sign-web-pact-token-exchange';
 const TOKEN_DISCLOSURE = 'sign-web-pact-token-disclosure';
 const TOKEN_FILL = 'sign-web-pact-token-fill';
@@ -56,20 +56,20 @@ const EX_SIGNER_ID = '7a000000-0000-7000-8000-0000000000a2';
 const EX_SESSION_ID = '7a000000-0000-7000-8000-0000000000a3';
 const FILL_FIELD_ID = '7a000000-0000-7000-8000-0000000000c4';
 
-describe('sign-web → POST /v1/esign/signing/exchange', () => {
+describe('sign-web → POST /v1/sign/signing/exchange', () => {
   it('exchanges a capability token for a signer session', async () => {
     await provider
       .addInteraction()
       .given('a signer session is issued for the envelope')
       .uponReceiving('a token exchange from the Sign Web client')
-      .withRequest('POST', '/v1/esign/signing/exchange', (b) => {
+      .withRequest('POST', '/v1/sign/signing/exchange', (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_EXCHANGE });
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ session_id: uuid(EX_SESSION_ID), envelope_id: uuid(EX_ENVELOPE_ID), signer_id: uuid(EX_SIGNER_ID) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/exchange`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/exchange`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_EXCHANGE }),
@@ -81,13 +81,13 @@ describe('sign-web → POST /v1/esign/signing/exchange', () => {
   });
 });
 
-describe('sign-web → POST /v1/esign/signing/disclosure', () => {
+describe('sign-web → POST /v1/sign/signing/disclosure', () => {
   it('records the signer disclosure acceptance', async () => {
     await provider
       .addInteraction()
       .given('a signer session is ready to accept disclosure')
       .uponReceiving('a disclosure acceptance from the Sign Web client')
-      .withRequest('POST', '/v1/esign/signing/disclosure', (b) => {
+      .withRequest('POST', '/v1/sign/signing/disclosure', (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({
           token: TOKEN_DISCLOSURE,
           disclosure_version: 'v1',
@@ -98,7 +98,7 @@ describe('sign-web → POST /v1/esign/signing/disclosure', () => {
         b.jsonBody({ accepted: like(true) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/disclosure`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/disclosure`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_DISCLOSURE, disclosure_version: 'v1', disclosure_text_hash: DISCLOSURE_V1_SHA256 }),
@@ -108,13 +108,13 @@ describe('sign-web → POST /v1/esign/signing/disclosure', () => {
   });
 });
 
-describe('sign-web → POST /v1/esign/signing/fields/{id}/fill', () => {
+describe('sign-web → POST /v1/sign/signing/fields/{id}/fill', () => {
   it('fills a signature field', async () => {
     await provider
       .addInteraction()
       .given('a signer session has accepted disclosure with a fillable field')
       .uponReceiving('a field fill from the Sign Web client')
-      .withRequest('POST', `/v1/esign/signing/fields/${FILL_FIELD_ID}/fill`, (b) => {
+      .withRequest('POST', `/v1/sign/signing/fields/${FILL_FIELD_ID}/fill`, (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({
           token: TOKEN_FILL,
           value: 'Jane Doe',
@@ -125,7 +125,7 @@ describe('sign-web → POST /v1/esign/signing/fields/{id}/fill', () => {
         b.jsonBody({ filled: like(true) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/fields/${FILL_FIELD_ID}/fill`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/fields/${FILL_FIELD_ID}/fill`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_FILL, value: 'Jane Doe', signature_method: 'TYPED' }),
@@ -135,20 +135,20 @@ describe('sign-web → POST /v1/esign/signing/fields/{id}/fill', () => {
   });
 });
 
-describe('sign-web → POST /v1/esign/signing/complete', () => {
+describe('sign-web → POST /v1/sign/signing/complete', () => {
   it('completes the signer and returns the derived envelope status', async () => {
     await provider
       .addInteraction()
       .given('a signer session is ready to complete with another pending signer')
       .uponReceiving('a completion from the Sign Web client')
-      .withRequest('POST', '/v1/esign/signing/complete', (b) => {
+      .withRequest('POST', '/v1/sign/signing/complete', (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_COMPLETE });
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ envelope_status: like('IN_PROGRESS') });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/complete`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/complete`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_COMPLETE }),
@@ -163,20 +163,20 @@ describe('sign-web → POST /v1/esign/signing/complete', () => {
 beforeAll(() => undefined);
 afterAll(() => undefined);
 
-describe('sign-web → POST /v1/esign/signing/disclosure-text', () => {
+describe('sign-web → POST /v1/sign/signing/disclosure-text', () => {
   it('returns the current server-held disclosure', async () => {
     await provider
       .addInteraction()
       .given('a signer session is open on a signable envelope')
       .uponReceiving('a disclosure text read from the Sign Web client')
-      .withRequest('POST', '/v1/esign/signing/disclosure-text', (b) => {
+      .withRequest('POST', '/v1/sign/signing/disclosure-text', (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_DISCLOSURE_TEXT });
       })
       .willRespondWith(200, (b) => {
         b.jsonBody({ disclosure_version: like('v1'), text: like(DISCLOSURE_V1_TEXT), text_sha256: like(DISCLOSURE_V1_SHA256) });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/disclosure-text`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/disclosure-text`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_DISCLOSURE_TEXT }),
@@ -188,13 +188,13 @@ describe('sign-web → POST /v1/esign/signing/disclosure-text', () => {
   });
 });
 
-describe('sign-web → POST /v1/esign/signing/executed', () => {
+describe('sign-web → POST /v1/sign/signing/executed', () => {
   it("returns the signer's signed copy for a valid access link", async () => {
     await provider
       .addInteraction()
       .given('a signer has a signed-copy access link for a completed envelope')
       .uponReceiving('a signed-copy download from the Sign Web client')
-      .withRequest('POST', '/v1/esign/signing/executed', (b) => {
+      .withRequest('POST', '/v1/sign/signing/executed', (b) => {
         b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_EXECUTED });
       })
       .willRespondWith(200, (b) => {
@@ -206,7 +206,7 @@ describe('sign-web → POST /v1/esign/signing/executed', () => {
         });
       })
       .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/esign/signing/executed`, {
+        const res = await fetch(`${mock.url}/v1/sign/signing/executed`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: TOKEN_EXECUTED }),

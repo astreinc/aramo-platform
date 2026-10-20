@@ -1,7 +1,7 @@
 import { ApiError, apiClient, getAuthConsumer } from '@aramo/fe-foundation';
 
-// PX-1 — typed client for the authenticated sender surface (/v1/esign/sender/*).
-// Every call carries the `esign` session cookie (credentials: include) and the
+// PX-1 — typed client for the authenticated sender surface (/v1/sign/sender/*).
+// Every call carries the `sign` session cookie (credentials: include) and the
 // X-Aramo-Consumer header via the shared fe-foundation ApiClient, which also
 // performs the single-flight silent refresh. The backend is the only authority
 // for tenant, workspace and permissions; this module never decides access.
@@ -10,7 +10,7 @@ import { ApiError, apiClient, getAuthConsumer } from '@aramo/fe-foundation';
 // bottom-left, (x, y) the box's lower-left corner — see pdf-geometry.ts for the
 // conversion to the editor's top-left canvas frame.
 
-const BASE = '/v1/esign/sender';
+const BASE = '/v1/sign/sender';
 
 export type EnvelopeStatus = 'DRAFT' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'VOIDED' | 'EXPIRED';
 export type RecipientStatus = 'PENDING' | 'VIEWED' | 'SIGNED' | 'DECLINED';
@@ -187,10 +187,10 @@ export interface Evidence {
 
 const enc = encodeURIComponent;
 
-// Aramo Sign launch — self-service billing (/v1/esign/billing/*). The backend is
+// Aramo Sign launch — self-service billing (/v1/sign/billing/*). The backend is
 // the only authority for the plan, status and usage; the console only renders
 // them and hands the browser to the provider-hosted checkout / portal pages.
-const BILLING = '/v1/esign/billing';
+const BILLING = '/v1/sign/billing';
 
 export interface Money {
   amount_minor: number;
@@ -269,7 +269,7 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
-export type SignRoleKey = 'esign_owner' | 'esign_admin' | 'esign_sender' | 'esign_viewer';
+export type SignRoleKey = 'sign_owner' | 'sign_admin' | 'sign_sender' | 'sign_viewer';
 
 export interface SignMember {
   user_id: string;
@@ -371,7 +371,7 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
   return fallback;
 }
 
-// Sign Unified Product S-7 — the recipient inbox (/v1/esign/inbox). A recipient
+// Sign Unified Product S-7 — the recipient inbox (/v1/sign/inbox). A recipient
 // right: available to any signed-in Aramo Sign user, limited to their own
 // recipient bindings.
 export interface InboxItem {
@@ -389,11 +389,11 @@ export interface InboxItem {
 }
 
 export const inboxApi = {
-  list: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/esign/inbox'),
-  claim: (token: string) => apiClient.post<{ id: string }>('/v1/esign/inbox/claim', { token }),
-  sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/esign/inbox/${encodeURIComponent(id)}/sign`),
-  signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/esign/inbox/${encodeURIComponent(id)}/signed-copy`),
-  remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/esign/inbox/${encodeURIComponent(id)}`),
+  list: () => apiClient.get<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] }>('/v1/sign/inbox'),
+  claim: (token: string) => apiClient.post<{ id: string }>('/v1/sign/inbox/claim', { token }),
+  sign: (id: string) => apiClient.post<{ signing_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/sign`),
+  signedCopy: (id: string) => apiClient.post<{ download_url: string }>(`/v1/sign/inbox/${encodeURIComponent(id)}/signed-copy`),
+  remove: (id: string) => apiClient.delete<{ removed: boolean }>(`/v1/sign/inbox/${encodeURIComponent(id)}`),
 };
 
 // The capability token from a pasted signing link (…/s/<token>) or a bare token.

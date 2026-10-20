@@ -28,7 +28,7 @@ export function SettingsPage() {
   const { section = 'personal' } = useParams();
   const { base, ctx } = useWorkspace();
   const personalWs = ctx.workspace === 'personal';
-  // Sign Unified Product S-1 — Members only for holders of esign:member:manage.
+  // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const allowed = personalWs
     ? ['personal']
     : SECTIONS.map((s) => s.key).filter((k) => k !== 'members' || ctx.permissions.members === true);
@@ -311,7 +311,7 @@ function AuditSection() {
 }
 
 // Sign Unified Product S-1 — Sign member administration. Lists the organization's
-// members with their Sign role; a holder of esign:member:manage assigns or removes
+// members with their Sign role; a holder of sign:member:manage assigns or removes
 // it. Only a Sign Owner can grant or remove Owner, and the last Owner stays — the
 // backend enforces both and its message is shown as is.
 function MembersSection() {

@@ -3,7 +3,7 @@ import { ApiError } from '@aramo/fe-foundation';
 
 import { senderApi, type SenderContext } from './api';
 
-// The authenticated sender context (GET /v1/esign/sender/context): tenant, kind,
+// The authenticated sender context (GET /v1/sign/sender/context): tenant, kind,
 // workspace and permissions — ALL decided by the backend. The SPA's route prefix
 // (/sign/ vs /personal/) is derived from it and never authorizes anything.
 

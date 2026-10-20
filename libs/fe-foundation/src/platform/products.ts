@@ -12,7 +12,7 @@ import { apiClient } from '../api/client';
 // mirror, no auto role grant).
 export const MY_PRODUCTS_PATH = '/v1/me/products';
 
-export type ProductKey = 'ats' | 'esign' | 'org';
+export type ProductKey = 'ats' | 'sign' | 'org';
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
 
 export interface ProductAvailability {

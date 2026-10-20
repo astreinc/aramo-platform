@@ -15,7 +15,7 @@ function view(ats: P, esign: P, org: P = { subscribed: true, authorized: false, 
     tenant_id: 't',
     products: [
       { key: 'ats', ...ats, reason: reason(ats) },
-      { key: 'esign', ...esign, reason: reason(esign) },
+      { key: 'sign', ...esign, reason: reason(esign) },
       { key: 'org', ...org, reason: reason(org) },
     ],
   } as ProductAvailabilityView;
@@ -56,23 +56,23 @@ describe('AppHomeView', () => {
     const open = await screen.findByTestId('home-open-ats');
     expect(open).toHaveAttribute('href', '/ats/');
     expect(open).toHaveTextContent('Open ATS');
-    expect(screen.getByTestId('home-other-esign')).toHaveTextContent('Not subscribed');
-    expect(screen.queryByTestId('home-open-esign')).toBeNull();
+    expect(screen.getByTestId('home-other-sign')).toHaveTextContent('Not subscribed');
+    expect(screen.queryByTestId('home-open-sign')).toBeNull();
     expect(screen.getByText(/managed by your organization admins/)).toBeInTheDocument();
   });
 
   it('C · ATS + Sign tenant, ATS-only user: Sign card shows No access with the reason and no Open', async () => {
     renderHome(view(READY_ATS, NOACCESS));
-    const sign = await screen.findByTestId('home-tile-esign');
+    const sign = await screen.findByTestId('home-tile-sign');
     expect(sign).toHaveTextContent('No access');
     expect(sign).toHaveTextContent('Astre Consulting has Sign, but you have no Sign role');
-    expect(screen.queryByTestId('home-open-esign')).toBeNull();
+    expect(screen.queryByTestId('home-open-sign')).toBeNull();
   });
 
   it('Sign subscribed + authorized but dark: Not available yet, never enterable', async () => {
     renderHome(view(READY_ATS, DARK_SIGN));
-    expect(await screen.findByTestId('home-tile-esign')).toHaveTextContent('Not available yet');
-    expect(screen.queryByTestId('home-open-esign')).toBeNull();
+    expect(await screen.findByTestId('home-tile-sign')).toHaveTextContent('Not available yet');
+    expect(screen.queryByTestId('home-open-sign')).toBeNull();
   });
 
   it('E · organization admin without product roles: the note, no Open, and the Organization administration tiles', async () => {

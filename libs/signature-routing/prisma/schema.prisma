@@ -4,7 +4,7 @@
 // the provider integration layer: which e-signature provider a tenant uses, the
 // audit trail of every change, and the provider frozen on each signature request.
 // Separate from the plan/allowance authority (libs/subscription) and from the
-// signing engine (libs/esign). Cross-schema references are UUID-only (§7.3).
+// signing engine (libs/sign). Cross-schema references are UUID-only (§7.3).
 
 generator client {
   provider = "prisma-client-js"

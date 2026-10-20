@@ -71,7 +71,7 @@ import {
 import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
-import { EsignServiceHttpProvider } from './esign/esign-service-http.provider.js';
+import { EsignServiceHttpProvider } from './sign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
 import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-intake-publisher.module.js';
@@ -764,7 +764,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       inject: [ObjectStorageService],
     },
     // DOC-3 B5c — the provider-neutral SignatureProviderPort bound to the HTTP
-    // adapter for the separate apps/esign-service. apps/api reaches E-Sign ONLY
+    // adapter for the separate apps/sign-service. apps/api reaches E-Sign ONLY
     // over HTTP (never the esign schema/Prisma). Consumed by RTR/Offer in DOC-5/6.
     { provide: SIGNATURE_PROVIDER_PORT, useClass: EsignServiceHttpProvider },
     // SKILL-TAX-1E — canonical SHADOW-matching (dark/observe-only). Config +

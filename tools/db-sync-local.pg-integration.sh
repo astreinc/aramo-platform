@@ -55,7 +55,7 @@ absent() { [ "$("$PSQL" "$1" -tAc "SELECT to_regclass('$2') IS NULL;")" = "t" ];
 # A synthetic manifest under a throwaway ROOT: the runner derives ROOT from its own
 # path, so a COPY of it under $root/tools discovers $root/libs/*/prisma/migrations.
 stage() { # $1 = root dir, $2 = "c-fails" makes migration c a failing file
-  mkdir -p "$1/tools"; cp "$ROOT/tools/db-sync-local.sh" "$1/tools/"
+  mkdir -p "$1/tools"; cp "$ROOT/tools/db-sync-local.sh" "$1/tools/"; cp -R "$ROOT/tools/sign-naming" "$1/tools/"
   local m
   for m in 20260101000000_a 20260102000000_b 20260103000000_c 20260104000000_d 20260105000000_e; do
     mkdir -p "$1/libs/t/prisma/migrations/$m"

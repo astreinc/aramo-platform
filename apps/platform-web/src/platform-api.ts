@@ -92,9 +92,9 @@ export interface LifecycleActionResult {
 }
 
 // IC-3 PR-8 — mirrors libs/entitlement CAPABILITY_VALUES (the backend-authoritative
-// closed set; the DTO + EntitlementRepository decide, this list only OFFERS). `esign`
+// closed set; the DTO + EntitlementRepository decide, this list only OFFERS). `sign`
 // lets an operator provision a Sign-only ([core, esign]) or ATS + Sign tenant.
-const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'esign'] as const;
+const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'sign'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
 
@@ -103,7 +103,7 @@ export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
 // form only pre-selects it.
 export const TENANT_KINDS = ['BUSINESS', 'PERSONAL'] as const;
 export type TenantKind = (typeof TENANT_KINDS)[number];
-export const PERSONAL_TENANT_CAPABILITIES: readonly Capability[] = ['core', 'esign'];
+export const PERSONAL_TENANT_CAPABILITIES: readonly Capability[] = ['core', 'sign'];
 
 // Aramo Sign launch — the operator's read-only view of a tenant's Sign account.
 export interface PlatformTenantSign {

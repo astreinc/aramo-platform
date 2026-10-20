@@ -23,7 +23,7 @@ import { ESIGN_SCOPE_PREFIX, filterScopesForConsumer } from './consumer-scope-po
 // subscribed=true / authorized=false (no bulk grant), and the projection never
 // exposes roles, scopes, other members or commercial data — only the three
 // booleans, a reason and the entry path.
-export const PRODUCT_KEYS = ['ats', 'esign', 'org'] as const;
+export const PRODUCT_KEYS = ['ats', 'sign', 'org'] as const;
 export type ProductKey = (typeof PRODUCT_KEYS)[number];
 
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
@@ -90,7 +90,7 @@ export class ProductAvailabilityService {
       this.entitlements.getCapabilities(args.tenant_id),
       this.heldScopesAsSessionWouldResolve(args),
     ]);
-    const tenantHasEsign = capabilities.has('esign');
+    const tenantHasEsign = capabilities.has('sign');
     const orgSubset = ORG_ADMIN_SCOPE_KEYS as readonly string[];
 
     // ATS — the recruiter consumer's view minus the product-neutral organization
@@ -111,7 +111,7 @@ export class ProductAvailabilityService {
     const signActivated = signEntryActivated();
     const products: ProductAvailability[] = [
       product('ats', capabilities.has('ats'), atsScopes.length > 0, true, ATS_ENTRY_PATH),
-      product('esign', tenantHasEsign, signScopes.length > 0, signActivated, signActivated ? signEntryUrl() : null),
+      product('sign', tenantHasEsign, signScopes.length > 0, signActivated, signActivated ? signEntryUrl() : null),
       product('org', capabilities.has('core'), orgScopes.length > 0, true, ORG_ENTRY_PATH),
     ];
     return { tenant_id: args.tenant_id, products };

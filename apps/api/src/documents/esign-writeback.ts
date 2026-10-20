@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { DocumentExecutedWriteBackService } from '@aramo/documents';
 
-import { esignAtsTransport } from '../esign/esign-service-api.provider.js';
-import { SignApiClient } from '../esign/sign-api.client.js';
+import { esignAtsTransport } from '../sign/esign-service-api.provider.js';
+import { SignApiClient } from '../sign/sign-api.client.js';
 
 // DOC-4 (R-4-7) — the apps/api side of the executed-artifact write-back seam.
 //   EsignExecutedArtifactsClient — pulls executed bytes + certificate FROM
-//                               esign-service (bytes never traverse the bus).
+//                               sign-service (bytes never traverse the bus).
 //   EsignWriteBackOrchestrator — on an executed event, pulls then calls the
 //                               DocumentExecutedWriteBackService (the sole writer
 //                               of EXECUTED / EXECUTION_CERTIFICATE artifacts).
@@ -32,7 +32,7 @@ export class EsignExecutedArtifactsClient {
   constructor(private readonly sign: SignApiClient) {}
 
   private baseUrl(): string {
-    return process.env['ESIGN_SERVICE_URL'] ?? 'http://localhost:3003';
+    return process.env['SIGN_SERVICE_URL'] ?? 'http://localhost:3003';
   }
 
   // Addendum S6 ruling 1 — over the Sign API transport there is no recruiter: the
@@ -43,9 +43,9 @@ export class EsignExecutedArtifactsClient {
     if (esignAtsTransport() === 'api') {
       if (event_id === undefined) throw new Error(`esign executed pull for envelope ${envelope_id} needs its completion event`);
       const grant = await this.sign.eventGrant(event_id, tenant_id, envelope_id);
-      return this.sign.call<ExecutedArtifactsBundle>('GET', `/v1/esign/api/envelopes/${encodeURIComponent(envelope_id)}/executed`, grant);
+      return this.sign.call<ExecutedArtifactsBundle>('GET', `/v1/sign/api/envelopes/${encodeURIComponent(envelope_id)}/executed`, grant);
     }
-    const url = `${this.baseUrl()}/v1/esign/envelopes/${envelope_id}/executed?tenant_id=${encodeURIComponent(tenant_id)}`;
+    const url = `${this.baseUrl()}/v1/sign/envelopes/${envelope_id}/executed?tenant_id=${encodeURIComponent(tenant_id)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`esign executed pull failed for envelope ${envelope_id}: HTTP ${res.status}`);
     return (await res.json()) as ExecutedArtifactsBundle;

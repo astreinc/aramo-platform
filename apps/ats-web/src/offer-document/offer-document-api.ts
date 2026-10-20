@@ -7,7 +7,7 @@ import { apiClient } from '@aramo/fe-foundation';
 //
 // PL-5: there is NO Copy-link / Resend client here. The E-Sign seam
 // (SIGNATURE_PROVIDER_PORT) exposes no safe server-issued signing-URL retrieval or
-// resend operation, and raw signing tokens never leave esign-service; reconstructing a
+// resend operation, and raw signing tokens never leave sign-service; reconstructing a
 // signing URL client-side is forbidden. Those actions are omitted in v1 rather than
 // weakening the public-signing security model.
 

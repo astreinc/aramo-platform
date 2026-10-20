@@ -265,7 +265,7 @@ function buildInServiceFixture(
   const audit = auditSpies as unknown as IdentityAuditService;
 
   // IC-3 PR-8 — the live tenant-capability read behind the Sign-partition
-  // assignability gate. Default: an ATS tenant WITHOUT `esign`; the Sign tests
+  // assignability gate. Default: an ATS tenant WITHOUT `sign`; the Sign tests
   // flip it per case.
   const entitlementSpies = {
     getCapabilities: vi.fn(async () => new Set<string>(capabilities)),
@@ -771,13 +771,13 @@ describe('IdentityService — platform-tier roles not assignable tenant-side (IC
 });
 
 // IC-3 PR-8 (IC-0 L10; PX-V1 §10) — the E-Sign PRODUCT partition: esign_* roles
-// are assignable ONLY in a tenant that holds the `esign` capability (read
+// are assignable ONLY in a tenant that holds the `sign` capability (read
 // LIVE). Every tenant-side path refuses with VALIDATION_ERROR
 // `esign_role_not_entitled` BEFORE the D5 gate and any write; a Sign-only
 // tenant ([core, esign], no ats) qualifies with no ATS dependency.
 describe('IdentityService — E-Sign product roles assignable only in an esign-entitled tenant (IC-3 PR-8)', () => {
   const SIGN_ROLES = {
-    esign_sender: ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read'],
+    sign_sender: ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read'],
     org_admin: ['tenant:admin:user-manage'],
   } as const;
   const base = {
@@ -786,15 +786,15 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
     provider: 'cognito',
     provider_subject: 'cog-sender-1',
     tenant_id: '01900000-0000-7000-8000-000000000001',
-    role_keys: ['esign_sender'],
-    role_ids: ['role-esign_sender'],
+    role_keys: ['sign_sender'],
+    role_ids: ['role-sign_sender'],
     actor_user_id: 'admin-1',
     request_id: REQUEST_ID,
   } as const;
   const REFUSAL = {
     code: 'VALIDATION_ERROR',
     statusCode: 400,
-    context: { details: { reason: 'esign_role_not_entitled', role_keys: ['esign_sender'], missing_capabilities: ['esign'] } },
+    context: { details: { reason: 'esign_role_not_entitled', role_keys: ['sign_sender'], missing_capabilities: ['sign'] } },
   };
 
   it('createUserFromInvitation: ATS-only tenant (no esign) → refused; ZERO writes, ZERO audit; the capability read is the tenant\'s', async () => {
@@ -807,32 +807,32 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
   it('createInvitedUserNoSub (tenant invite): ATS-only tenant → refused before any write; Sign-only tenant ([core, esign], NO ats) → proceeds', async () => {
     const refused = buildInServiceFixture(SIGN_ROLES, ['core', 'ats']);
     await expect(
-      refused.identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['esign_sender'], role_ids: ['role-esign_sender'], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
+      refused.identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['sign_sender'], role_ids: ['role-sign_sender'], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
     ).rejects.toMatchObject(REFUSAL);
     expect(refused.repoSpies.createUserWithMembership).not.toHaveBeenCalled();
 
-    const signOnly = buildInServiceFixture(SIGN_ROLES, ['core', 'esign']);
+    const signOnly = buildInServiceFixture(SIGN_ROLES, ['core', 'sign']);
     signOnly.repoSpies.createUserWithMembership.mockResolvedValue({
       user: { id: 'u-1', email: base.email, display_name: null, is_active: true, deactivated_at: null, created_at: 'x', updated_at: 'x' },
       membership_id: 'm-1',
     });
     signOnly.repoSpies.createInvitation.mockResolvedValue({ invitation_id: 'inv-1', expires_at: '2099-01-01T00:00:00.000Z' });
     await expect(
-      signOnly.identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['esign_sender'], role_ids: ['role-esign_sender'], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
+      signOnly.identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['sign_sender'], role_ids: ['role-sign_sender'], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
     ).resolves.toBeDefined();
     expect(signOnly.repoSpies.createUserWithMembership).toHaveBeenCalledOnce();
   });
-  it('replaceMembershipRoles: adding esign_sender in an ATS-only tenant → refused (reconcile never reached); esign-entitled tenant → reconcile proceeds', async () => {
+  it('replaceMembershipRoles: adding sign_sender in an ATS-only tenant → refused (reconcile never reached); esign-entitled tenant → reconcile proceeds', async () => {
     const refused = buildInServiceFixture(SIGN_ROLES, ['core', 'ats']);
     await expect(
-      refused.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['esign_sender'], role_ids: ['role-esign_sender'], request_id: REQUEST_ID }),
+      refused.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['sign_sender'], role_ids: ['role-sign_sender'], request_id: REQUEST_ID }),
     ).rejects.toMatchObject(REFUSAL);
     expect(refused.repoSpies.replaceMembershipRoles).not.toHaveBeenCalled();
 
-    const entitled = buildInServiceFixture(SIGN_ROLES, ['core', 'ats', 'esign']);
-    entitled.repoSpies.replaceMembershipRoles.mockResolvedValue({ added_role_ids: ['role-esign_sender'], removed_role_ids: [] });
-    await entitled.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['org_admin', 'esign_sender'], role_ids: ['role-org_admin', 'role-esign_sender'], request_id: REQUEST_ID });
-    expect(entitled.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-org_admin', 'role-esign_sender'] });
+    const entitled = buildInServiceFixture(SIGN_ROLES, ['core', 'ats', 'sign']);
+    entitled.repoSpies.replaceMembershipRoles.mockResolvedValue({ added_role_ids: ['role-sign_sender'], removed_role_ids: [] });
+    await entitled.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['org_admin', 'sign_sender'], role_ids: ['role-org_admin', 'role-sign_sender'], request_id: REQUEST_ID });
+    expect(entitled.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-org_admin', 'role-sign_sender'] });
   });
   it('a role set WITHOUT a Sign role never reads the entitlement (the gate is narrow)', async () => {
     const { identitySvc, repoSpies, entitlementSpies } = buildInServiceFixture(SIGN_ROLES, ['core']);
@@ -843,7 +843,7 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
   it('the platform refusal still fires first and the platform pool stays exempt (allow_platform_roles never consults the entitlement)', async () => {
     const { identitySvc, repoSpies, entitlementSpies } = buildInServiceFixture(SIGN_ROLES, ['core']);
     await expect(
-      identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['super_admin', 'esign_sender'], role_ids: ['s', 'e'], request_id: REQUEST_ID }),
+      identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['super_admin', 'sign_sender'], role_ids: ['s', 'e'], request_id: REQUEST_ID }),
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable' } } });
     repoSpies.replaceMembershipRoles.mockResolvedValue({ added_role_ids: [], removed_role_ids: [] });
     await identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['super_admin'], role_ids: ['s'], request_id: REQUEST_ID, allow_platform_roles: true });
@@ -851,27 +851,27 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
   });
   it('the E-Sign partition is exactly the four PX-3 roles and the send scope key is the single sender authority', async () => {
     const { ESIGN_PRODUCT_ROLE_KEYS, ESIGN_SENDER_SCOPE_KEY, TENANT_ASSIGNABLE_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
-    expect([...ESIGN_PRODUCT_ROLE_KEYS].sort()).toEqual(['esign_admin', 'esign_owner', 'esign_sender', 'esign_viewer']);
-    expect(ESIGN_SENDER_SCOPE_KEY).toBe('esign:envelope:send');
+    expect([...ESIGN_PRODUCT_ROLE_KEYS].sort()).toEqual(['sign_admin', 'sign_owner', 'sign_sender', 'sign_viewer']);
+    expect(ESIGN_SENDER_SCOPE_KEY).toBe('sign:envelope:send');
     // Still in the tenant-assignable DTO allow-list (the ENTITLEMENT decides, not the DTO).
     for (const k of ESIGN_PRODUCT_ROLE_KEYS) expect(TENANT_ASSIGNABLE_ROLE_KEYS).toContain(k);
   });
 });
 
-// IC-3 PR-8 §6 / §8 #12 — a SIGN invitation (esign_sender into an esign-entitled
+// IC-3 PR-8 §6 / §8 #12 — a SIGN invitation (sign_sender into an esign-entitled
 // tenant) is governed by the SAME one-User-one-tenant guard: an email owned by
 // another tenant → 409 EMAIL_UNAVAILABLE with details {} and ZERO writes. The
 // Sign partition adds a refusal, never a bypass — the entitlement passes, the
 // ownership guard still fires.
 describe('IdentityService — Sign invitation cannot create a cross-tenant membership (IC-3 PR-8 #12)', () => {
-  const SIGN_ROLES = { esign_sender: ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read'] } as const;
-  it('createInvitedUserNoSub with esign_sender in a Sign-entitled tenant, email owned elsewhere → 409 EMAIL_UNAVAILABLE, details {}, no write', async () => {
-    const { identitySvc, repoSpies, auditSpies, entitlementSpies } = buildInServiceFixture(SIGN_ROLES, ['core', 'esign']);
+  const SIGN_ROLES = { sign_sender: ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read'] } as const;
+  it('createInvitedUserNoSub with sign_sender in a Sign-entitled tenant, email owned elsewhere → 409 EMAIL_UNAVAILABLE, details {}, no write', async () => {
+    const { identitySvc, repoSpies, auditSpies, entitlementSpies } = buildInServiceFixture(SIGN_ROLES, ['core', 'sign']);
     repoSpies.findUserByEmail.mockResolvedValue(OWNED_USER);
     repoSpies.findMembership.mockResolvedValue(null);
     repoSpies.findMembershipTenantIdsForUser.mockResolvedValue([OTHER_TENANT]);
     const err = await identitySvc
-      .createInvitedUserNoSub({ ...tenantCreateArgs('owned@elsewhere.io'), role_keys: ['esign_sender'], role_ids: ['role-esign_sender'] })
+      .createInvitedUserNoSub({ ...tenantCreateArgs('owned@elsewhere.io'), role_keys: ['sign_sender'], role_ids: ['role-sign_sender'] })
       .then(() => null, (e: unknown) => e as { code: string; statusCode: number; context?: { details?: unknown } });
     expect(err).toMatchObject({ code: 'EMAIL_UNAVAILABLE', statusCode: 409 });
     expect(err?.context?.details).toEqual({});
@@ -893,7 +893,7 @@ describe('IdentityService — ATS roles assignable only in an ats-entitled tenan
   const TENANT = '01900000-0000-7000-8000-000000000001';
   const REFUSAL = { code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'ats_role_not_entitled', missing_capabilities: ['ats'] } } };
   it('replaceMembershipRoles: recruiter in a Sign-only tenant → refused (reconcile never reached); in an ATS tenant → proceeds', async () => {
-    const refused = buildInServiceFixture(ROLES, ['core', 'esign']);
+    const refused = buildInServiceFixture(ROLES, ['core', 'sign']);
     await expect(refused.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: TENANT, role_keys: ['org_admin', 'recruiter'], role_ids: ['o', 'r'], request_id: REQUEST_ID })).rejects.toMatchObject(REFUSAL);
     expect(refused.repoSpies.replaceMembershipRoles).not.toHaveBeenCalled();
     const ok = buildInServiceFixture(ROLES, ['core', 'ats', 'portal']);
@@ -902,7 +902,7 @@ describe('IdentityService — ATS roles assignable only in an ats-entitled tenan
     expect(ok.repoSpies.replaceMembershipRoles).toHaveBeenCalledOnce();
   });
   it('tenant_owner (an ATS superset bundle) is ATS-partitioned: refused in a Sign-only tenant; org_admin is NOT ATS-partitioned (assignable with core alone)', async () => {
-    const signOnly = buildInServiceFixture(ROLES, ['core', 'esign']);
+    const signOnly = buildInServiceFixture(ROLES, ['core', 'sign']);
     await expect(signOnly.identitySvc.createInvitedUserNoSub({ email: 'o@sign.io', display_name: null, tenant_id: TENANT, role_keys: ['tenant_owner'], role_ids: ['t'], actor_user_id: 'a', request_id: REQUEST_ID })).rejects.toMatchObject(REFUSAL);
     const coreOnly = buildInServiceFixture(ROLES, ['core']);
     coreOnly.repoSpies.createUserWithMembership.mockResolvedValue({ user: { id: 'u', email: 'o@sign.io', display_name: null, is_active: true, deactivated_at: null, created_at: 'x', updated_at: 'x' }, membership_id: 'm' });

@@ -18,6 +18,11 @@ const S2_MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20261016180300_s2_pipeline_history_erasure_redaction/migration.sql',
   'libs/client-selection/prisma/migrations/20261016180400_s2_client_selection_event_erasure_redaction/migration.sql',
   'libs/client-talent-restriction/prisma/migrations/20261016180500_s2_client_talent_restriction_erasure_redaction/migration.sql',
+  // Sign naming unification (Aramo-Sign-Naming-Unification-Directive-v1_0-LOCKED §3.2): the
+  // documents erasure guard is re-created with the renamed Sign schema, and the reverse
+  // migration restores the prior body — both redefine the same trigger function.
+  'libs/documents/prisma/migrations/20261020130500_sign_naming_erasure_guard/migration.sql',
+  'tools/sign-naming/reverse.sql',
 ];
 const S2_PROOF = 'apps/api/src/tests/s2-erasure-integrity.integration.spec.ts';
 const SERVICE = 'apps/api/src/talent-identity/talent-erasure.service.ts';
