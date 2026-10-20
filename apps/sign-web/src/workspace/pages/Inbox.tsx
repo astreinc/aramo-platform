@@ -16,7 +16,9 @@ function when(iso: string | null): string {
   return iso === null ? '—' : new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-export function InboxPage() {
+// `embedded`: rendered inside the workspace shell (the sidebar provides navigation and
+// sign-out). Standalone (/inbox) is for a signed-in recipient without a Sign workspace.
+export function InboxPage({ embedded = false }: { embedded?: boolean } = {}) {
   const { show: toast } = useToast();
   const [data, setData] = useState<{ waiting: InboxItem[]; completed: InboxItem[]; other: InboxItem[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +120,11 @@ export function InboxPage() {
         <h1 className="sg-h1" style={{ margin: 0 }}>
           Waiting for me
         </h1>
-        <span style={{ marginLeft: 'auto' }}>
-          <Link to="/">Aramo Sign</Link> · <a onClick={() => void logout()} href="#sign-out">Sign out</a>
-        </span>
+        {embedded ? null : (
+          <span style={{ marginLeft: 'auto' }}>
+            <Link to="/">Aramo Sign</Link> · <a onClick={() => void logout()} href="#sign-out">Sign out</a>
+          </span>
+        )}
       </div>
       <section className="sg-card" style={{ marginBottom: 16 }}>
         <div className="sg-card__body">

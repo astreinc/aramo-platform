@@ -139,6 +139,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
         <Route path="activity" element={<ActivityPage />} />
         <Route path="settings" element={<Navigate to="personal" replace />} />
         <Route path="settings/:section" element={<SettingsPage />} />
+        {/* S-7 — documents sent TO this user, inside the workspace shell. */}
+        <Route path="inbox" element={<InboxPage embedded />} />
         {expected === 'sign' ? (
           <>
             <Route path="templates/*" element={<TemplatesPage />} />
