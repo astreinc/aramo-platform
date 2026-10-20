@@ -5763,6 +5763,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/multi-signer.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/outbox-delivery.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
