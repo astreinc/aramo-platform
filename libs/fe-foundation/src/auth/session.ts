@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 
 import { ApiError, apiClient } from '../api/client';
 
-import { appPath, authPath } from './consumer';
+import { appPath, authPath, getAuthConsumer } from './consumer';
 
 export interface Session {
   sub: string;
@@ -65,12 +65,24 @@ export function currentReturnTo(): string | null {
 // parameters: nothing caller-supplied, so it cannot become an open redirect.
 export const MICROSOFT_SIGN_OUT_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/logout';
 
+export type FederatedIdp = 'google' | 'microsoft';
+
 export interface LoginOptions {
   selectAccount?: boolean;
   // D-ORG-2 — explicit deep link to return to after sign-in; null disables,
   // undefined (default) uses the current in-app location.
   returnTo?: string | null;
+  // AUTH-SIGNIN-1 §3.2.2 — the provider button chosen on the sign-in page. The
+  // auth-service maps it through a closed allowlist; a tenant's pin wins.
+  idp?: FederatedIdp;
+  // AUTH-SIGNIN-1 §3.2.1 — an allowlisted consumer from the sign-in page's
+  // `?consumer=`; default is the configured consumer.
+  consumer?: string;
 }
+
+// AUTH-SIGNIN-1 — the consumers whose apps serve the shared Aramo sign-in page at
+// their own `/login`. The passwordless portal keeps its own login (unchanged).
+const SIGN_IN_PAGE_CONSUMERS: ReadonlySet<string> = new Set(['recruiter', 'org', 'sign', 'platform']);
 
 // The default-consumer ('recruiter') paths, retained as named exports for
 // backward compatibility. The functions below derive paths from the CONFIGURED
@@ -91,17 +103,36 @@ export async function fetchSession(): Promise<Session | null> {
   }
 }
 
+/** The auth-service login (the IdP round-trip) — what a sign-in button navigates to. */
 export function loginUrl(options: LoginOptions = {}): string {
   const params = new URLSearchParams();
+  if (options.idp !== undefined) params.set('idp', options.idp);
   if (options.selectAccount === true) params.set('select_account', '1');
   const returnTo = options.returnTo === undefined ? currentReturnTo() : options.returnTo;
   if (returnTo !== null && returnTo !== undefined) params.set('return_to', returnTo);
   const qs = params.toString();
-  return qs.length > 0 ? `${authPath('login')}?${qs}` : authPath('login');
+  const path = authPath('login', options.consumer);
+  return qs.length > 0 ? `${path}?${qs}` : path;
 }
 
+/** AUTH-SIGNIN-1 §3.2.2 — this app's own sign-in page (`/login`, base-path aware). */
+export function signInPageUrl(returnTo: string | null | undefined = currentReturnTo()): string {
+  const page = appPath('/login');
+  return returnTo === null || returnTo === undefined
+    ? page
+    : `${page}?${new URLSearchParams({ return_to: returnTo }).toString()}`;
+}
+
+// AUTH-SIGNIN-1 §3.2.2 — an unauthenticated user goes to the app's own Aramo
+// sign-in page (which then offers the provider buttons), not straight to the
+// IdP. An explicit account-switch (`selectAccount`) or a chosen provider (`idp`)
+// still goes straight to the auth-service login, as does the portal consumer.
 export function redirectToLogin(options: LoginOptions = {}): void {
-  window.location.assign(loginUrl(options));
+  const direct =
+    options.selectAccount === true ||
+    options.idp !== undefined ||
+    !SIGN_IN_PAGE_CONSUMERS.has(options.consumer ?? getAuthConsumer());
+  window.location.assign(direct ? loginUrl(options) : signInPageUrl(options.returnTo));
 }
 
 export function redirectToAccessDenied(): void {

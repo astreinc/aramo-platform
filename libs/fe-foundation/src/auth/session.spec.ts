@@ -131,6 +131,35 @@ describe('host-binding SSO recovery', () => {
     });
   });
 
+  // AUTH-SIGNIN-1 §3.2.2
+  it('loginUrl: idp and an explicit consumer build the auth-service login', () => {
+    expect(loginUrl({ idp: 'google', returnTo: '/ats/x' })).toBe(`${LOGIN_PATH}?idp=google&return_to=%2Fats%2Fx`);
+    expect(loginUrl({ idp: 'microsoft', consumer: 'org', returnTo: null })).toBe('/auth/org/login?idp=microsoft');
+  });
+
+  it('redirectToLogin() (unauthenticated) goes to the app sign-in page, not the IdP', () => {
+    withAssign((assign) => {
+      redirectToLogin({ returnTo: '/ats/requisitions' });
+      expect(assign).toHaveBeenCalledWith('/login?return_to=%2Fats%2Frequisitions');
+      redirectToLogin({ returnTo: null });
+      expect(assign).toHaveBeenLastCalledWith('/login');
+    });
+  });
+
+  it('redirectToLogin({ idp }) goes straight to the auth-service login', () => {
+    withAssign((assign) => {
+      redirectToLogin({ idp: 'microsoft', returnTo: null });
+      expect(assign).toHaveBeenCalledWith(`${LOGIN_PATH}?idp=microsoft`);
+    });
+  });
+
+  it('the passwordless portal consumer keeps the direct login', () => {
+    withAssign((assign) => {
+      redirectToLogin({ consumer: 'portal', returnTo: null });
+      expect(assign).toHaveBeenCalledWith('/auth/portal/login');
+    });
+  });
+
   it('redirectToAccessDenied navigates to the same-origin recovery page', () => {
     withAssign((assign) => {
       redirectToAccessDenied();

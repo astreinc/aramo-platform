@@ -14,9 +14,9 @@ import { Card } from './Card';
 // user is here only because logout cleared the Aramo session and Cognito's SSO
 // cookie).
 //
-// Re-entry is EXPLICIT (R3/R4): the "Sign in again" action reuses the existing
-// canonical login entry (redirectToLogin → /auth/<consumer>/login) unchanged.
-// The user's surviving Microsoft enterprise session may then satisfy SSO
+// Re-entry is EXPLICIT (R3/R4): the "Sign in again" action reuses the canonical
+// login entry (redirectToLogin → this app's Aramo sign-in page, AUTH-SIGNIN-1
+// §3.2.3). A surviving Google or Microsoft session may then satisfy SSO
 // silently — that is expected enterprise behavior, not a defect.
 interface SignedOutProps {
   // Host-binding SSO recovery — Microsoft-SSO surfaces (ats-web, platform-web)
@@ -49,7 +49,8 @@ export function SignedOut({ offerAccountSwitch = false }: SignedOutProps = {}) {
       >
         <p>
           You can close this tab, or sign in again when you're ready. Your
-          Microsoft account may still be signed in elsewhere.
+          work account may still be signed in with your provider in this
+          browser.
         </p>
       </Card>
     </section>

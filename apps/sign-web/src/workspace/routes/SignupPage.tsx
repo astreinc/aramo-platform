@@ -6,8 +6,9 @@ import { Btn, Check, ErrorBox, Field, Loading, TextIn } from '../ui';
 // esign.aramo.ai. Session-less: these pages talk only to /v1/signup/sign/*.
 //   /signup         work email + organization + name → "check your email"
 //   /signup/verify  the emailed link (#token=… in the URL fragment, never sent to
-//                   a server log) → confirm → organization created; the sign-in
-//                   details arrive by email from Aramo's identity service.
+//                   a server log) → confirm → organization created; the owner
+//                   signs in with Google or Microsoft (no password is issued —
+//                   Sign-Signup-Federated-Owner R3).
 // Nothing here grants access: the new owner signs in, then subscribes (the
 // subscription — never the signup — gives sending).
 
@@ -135,12 +136,25 @@ export function SignupPage() {
         <Btn variant="primary" type="submit" disabled={busy || (termsDoc !== null && !terms)} data-testid="signup-submit">
           {busy ? 'Sending…' : 'Continue'}
         </Btn>
+        <p className="sg-help" data-testid="signup-eligibility">
+          Sign in with a Google or Microsoft work account. If your organization uses another sign-in provider, contact sales.
+        </p>
         <p className="sg-help">
           Already have an account? <a href="/login">Sign in</a>
         </p>
       </form>
     </Frame>
   );
+}
+
+// POST /v1/signup/sign/complete (openapi/platform.yaml) — `sign_in` carries the
+// sign host's login with the AUTH-SIGNIN-1 `idp` hint for each provider.
+interface CompleteResponse {
+  status: string;
+  email: string;
+  organization_name: string;
+  sign_in_url: string;
+  sign_in?: { microsoft: string; google: string };
 }
 
 export function tokenFromHash(hash: string = window.location.hash): string | null {
@@ -156,7 +170,7 @@ export function SignupVerifyPage() {
   const [nameTaken, setNameTaken] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ email: string; organization_name: string; sign_in_url: string } | null>(null);
+  const [done, setDone] = useState<CompleteResponse | null>(null);
 
   useEffect(() => {
     // Drop the token from the address bar (history, screenshots) once read.
@@ -177,7 +191,7 @@ export function SignupVerifyPage() {
     if (token === null) return;
     setBusy(true);
     setError(null);
-    post<{ status: string; email: string; organization_name: string; sign_in_url: string }>('complete', { token, ...(nameTaken ? { organization_name: org.trim() } : {}) })
+    post<CompleteResponse>('complete', { token, ...(nameTaken ? { organization_name: org.trim() } : {}) })
       .then((r) => {
         if (r.status === 'PROVISIONED') setDone(r);
         else setError('Your organization is still being created. Try again in a moment.');
@@ -206,13 +220,24 @@ export function SignupVerifyPage() {
     return (
       <Frame title="Your organization is ready" testId="signup-done">
         <div className="sg-lede">
-          <strong>{done.organization_name}</strong> is set up. We’ve emailed the sign-in details for <strong>{done.email}</strong>: sign in with the
-          temporary password from that email and choose your own.
+          <strong>{done.organization_name}</strong> is set up. Use the work account for <strong>{done.email}</strong>. The provider you sign in
+          with first becomes your organization’s sign-in provider.
         </div>
         <p className="sg-help">After you sign in, choose a plan to start sending documents. You’ll be the organization’s Aramo Sign owner.</p>
-        <a className="sg-btn sg-btn--primary" href={done.sign_in_url} data-testid="signup-signin">
-          Sign in
-        </a>
+        {done.sign_in !== undefined ? (
+          <div className="sg-grid" style={{ gap: 8 }}>
+            <a className="sg-btn sg-btn--primary" href={done.sign_in.microsoft} data-testid="signup-signin-microsoft">
+              Continue with Microsoft
+            </a>
+            <a className="sg-btn" href={done.sign_in.google} data-testid="signup-signin-google">
+              Continue with Google
+            </a>
+          </div>
+        ) : (
+          <a className="sg-btn sg-btn--primary" href={done.sign_in_url} data-testid="signup-signin">
+            Sign in
+          </a>
+        )}
       </Frame>
     );
   }
