@@ -83,6 +83,9 @@ export class OfferDocumentOrchestratorService {
             ? [{ type: 'TEXT' as const, text: offer.offer_terms_summary }]
             : []),
         ],
+        // The fixed signature block (as on the RTR): where the talent signs, and the
+        // field geometry the send places the signature + date fields on.
+        signature_block: { printed_name: name },
       },
     });
     return { document_id, offer_id: offer.id };

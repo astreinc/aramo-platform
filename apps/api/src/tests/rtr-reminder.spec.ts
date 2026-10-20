@@ -49,7 +49,7 @@ function makeOrchestrator(opts: {
       status: opts.docStatus ?? 'PREPARED',
     })),
     getCurrentRevision: vi.fn(async () =>
-      opts.revision === undefined ? { id: REV, content_sha256: 'AAA', template_version_id: 'tv1' } : opts.revision,
+      opts.revision === undefined ? { id: REV, content_sha256: 'AAA', template_version_id: 'tv1', render_manifest: { signature_fields: [{ field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 }, { field_type: 'SIGNER_NAME', page_number: 0, x: 240, y: 100, width: 150, height: 30 }, { field_type: 'SIGN_DATE', page_number: 0, x: 408, y: 100, width: 120, height: 30 }] } } : opts.revision,
     ),
     prepareDocument: vi.fn(async () => undefined),
     createDocument: vi.fn(),

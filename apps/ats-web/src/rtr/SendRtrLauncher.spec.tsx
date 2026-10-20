@@ -7,6 +7,14 @@ vi.mock('./rtr-api', () => ({
   requestRtr: vi.fn(),
   sendRtr: vi.fn(),
 }));
+// The review step shows the frozen document; its content read is not under test here.
+vi.mock('../talent-360/t360-previews', () => ({
+  DocumentPreviewDialog: (p: { documentId: string; footer?: unknown }) => (
+    <div data-testid="rtr-review" data-doc={p.documentId}>
+      {p.footer as never}
+    </div>
+  ),
+}));
 
 import { SendRtrLauncher } from './SendRtrLauncher';
 import { composeRtr, requestRtr, sendRtr, type RtrComposeResponse } from './rtr-api';
@@ -91,7 +99,7 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     expect(doc.textContent).not.toContain('alert(1)');
   });
 
-  it('"Send for signature" runs the governed request→send lifecycle then closes + notifies', async () => {
+  it('"Review document" freezes the RTR and shows it; only then "Send for signature" sends that same document', async () => {
     const onClose = vi.fn();
     const onSent = vi.fn();
     vi.mocked(composeRtr).mockResolvedValue(COMPOSE);
@@ -99,8 +107,13 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     vi.mocked(sendRtr).mockResolvedValue({ document_id: 'doc-9', envelope_id: 'env-1', status: 'SENT' });
     renderLauncher({ onClose, onSent });
     await screen.findByText('Standard Right to Represent · v2');
+    expect(screen.getByTestId('send-rtr-send')).toHaveTextContent('Review document');
     fireEvent.click(screen.getByTestId('send-rtr-send'));
     await waitFor(() => expect(requestRtr).toHaveBeenCalledWith({ talent_id: 't-1', requisition_id: 'r-1', company_id: 'c-1' }));
+    // RTR-TEMPLATE-1 §16 — the recruiter sees the exact frozen document before anything is sent.
+    expect(await screen.findByTestId('rtr-review')).toHaveAttribute('data-doc', 'doc-9');
+    expect(sendRtr).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('rtr-review-send'));
     await waitFor(() => expect(sendRtr).toHaveBeenCalledWith('doc-9', 't-1'));
     await waitFor(() => expect(onSent).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
@@ -125,9 +138,25 @@ describe('SendRtrLauncher (SEAM 4 — compose-driven pre-request panel)', () => 
     renderLauncher();
     await screen.findByText('Standard Right to Represent · v2');
     fireEvent.click(screen.getByTestId('send-rtr-send'));
+    await screen.findByTestId('rtr-review');
+    fireEvent.click(screen.getByTestId('rtr-review-send'));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Your organization’s legal name isn’t set');
+    expect(alert.textContent).not.toContain('requisition reference');
+  });
+
+  it('fails CLOSED when the request itself is refused — honest message, nothing frozen or shown', async () => {
+    vi.mocked(composeRtr).mockResolvedValue(COMPOSE);
+    vi.mocked(requestRtr).mockRejectedValue(
+      Object.assign(new Error('binding missing'), { code: 'RTR_TEMPLATE_BINDING_MISSING', details: { binding_key: 'recruiting_company.name' } }),
+    );
+    renderLauncher();
+    await screen.findByText('Standard Right to Represent · v2');
+    fireEvent.click(screen.getByTestId('send-rtr-send'));
     const missing = await screen.findByTestId('send-rtr-missing');
     expect(missing.textContent).toContain('Your organization’s legal name isn’t set');
-    expect(missing.textContent).not.toContain('requisition reference');
+    expect(screen.queryByTestId('rtr-review')).toBeNull();
+    expect(sendRtr).not.toHaveBeenCalled();
     expect(screen.getByTestId('send-rtr-send')).toBeDisabled();
   });
 });

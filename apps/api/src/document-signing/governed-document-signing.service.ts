@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { DocumentsRepository, RenderService } from '@aramo/documents';
 import { type RenderModel } from '@aramo/documents-rendering';
-import type { SignatureActor } from '@aramo/documents-contracts';
+import type { ProviderFieldInput, SignatureActor } from '@aramo/documents-contracts';
 
 import type { SignatureRouter } from './signature-router.js';
 
@@ -137,6 +137,20 @@ export class GovernedDocumentSigningService {
       }
       return { document_id: input.document_id, envelope_id: existing.envelope_id, status: existing.status };
     }
+    // The talent's signature fields come from the signature block the renderer drew on
+    // the frozen revision (DOC-TEMPLATE-ADMIN-RTR-1 A1 / B2 — geometry frozen in the
+    // render_manifest). A signature-mode document without that block is refused BEFORE
+    // anything is prepared or created: an envelope with no signature field would let a
+    // click complete the signing with nothing signed.
+    const fields = signatureFieldsFromManifest(revision.render_manifest);
+    if (input.execution_mode !== 'ACKNOWLEDGEMENT' && !fields.some((f) => f.field_type === 'SIGNATURE')) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'this document has no signature area for the signer; request a new document and send that one',
+        422,
+        { requestId: input.requestId, details: { document_id: input.document_id, reason: 'no_signature_field' } },
+      );
+    }
     // Asserted BEFORE anything is prepared or created: a refused send leaves no trace.
     const target = await this.router.forNewSend(input.tenant_id, input.requestId, input.actor);
     const targetActor = actorFor(target.provider, input.actor);
@@ -161,6 +175,7 @@ export class GovernedDocumentSigningService {
         },
       ],
       signers: [{ email: input.recipient.email, name: input.recipient.name, signing_order: 1 }],
+      fields,
     }, targetActor);
     await this.router.recordRoute({
       tenant_id: input.tenant_id,
@@ -229,4 +244,23 @@ export class GovernedDocumentSigningService {
       certificate_available: certificate.length > 0,
     };
   }
+}
+
+// The signer's fields over the frozen signature block: SIGNATURE and SIGN_DATE,
+// required, on document 1 for the single signer. SIGNER_NAME is not a field — the
+// renderer already printed the talent's name in that column. Coordinates are the
+// renderer's own (0-based page, bottom-left origin, PDF points), the same space the
+// Sign service stamps in.
+function signatureFieldsFromManifest(manifest: unknown): ProviderFieldInput[] {
+  const raw = (manifest as { signature_fields?: unknown } | null)?.signature_fields;
+  if (!Array.isArray(raw)) return [];
+  const out: ProviderFieldInput[] = [];
+  for (const f of raw as Array<Record<string, unknown>>) {
+    const type = f['field_type'];
+    if (type !== 'SIGNATURE' && type !== 'SIGN_DATE') continue;
+    const [page, x, y, width, height] = [f['page_number'], f['x'], f['y'], f['width'], f['height']];
+    if (typeof page !== 'number' || typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') continue;
+    out.push({ document_ordinal: 1, signer_signing_order: 1, field_type: type, page_number: page, x, y, width, height, required: true });
+  }
+  return out;
 }
