@@ -168,6 +168,15 @@ function requestHost(req: RequestWithCookies): string | undefined {
   return typeof req.get === 'function' ? req.get('host') : undefined;
 }
 
+// AUTH-SIGNIN-1 §3.1.1 — closed allowlist: the page's button value → the exact
+// Cognito provider name. Any other value yields no hint.
+export function mapIdpHint(raw: string | undefined): string | null {
+  const v = (raw ?? '').trim().toLowerCase();
+  if (v === 'google') return 'Google';
+  if (v === 'microsoft') return 'microsoft';
+  return null;
+}
+
 @Controller('auth/:consumer')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -203,6 +212,12 @@ export class AuthController {
     // no caller-supplied value ever reaches the authorize URL.
     @Query('select_account') selectAccount?: string,
     @Query('return_to') returnTo?: string,
+    // AUTH-SIGNIN-1 §3.1.1 — the provider button the user chose on the Aramo
+    // sign-in page. CLOSED allowlist (google → Google, microsoft → microsoft);
+    // the caller's string is never forwarded. A tenant's pinned provider WINS.
+    // Absent/unknown → no hint (Cognito chooser; fail-open UI). The backend
+    // still enforces provider policy at the callback (AUTH-SIGNIN-1 R1/R4).
+    @Query('idp') idp?: string,
   ): Promise<void> {
     const requestId = req.requestId ?? 'unknown';
     const c = parseConsumer(consumer, requestId);
@@ -264,11 +279,31 @@ export class AuthController {
     // callback/token-exchange/reconcile spine.
     if (identityProvider !== null) {
       url.searchParams.set('identity_provider', identityProvider);
+    } else {
+      const chosen = mapIdpHint(idp);
+      if (chosen !== null) url.searchParams.set('identity_provider', chosen);
     }
     if (selectAccount === '1') {
       url.searchParams.set('prompt', 'select_account');
     }
     res.redirect(302, url.toString());
+  }
+
+  // AUTH-SIGNIN-1 §3.1.2 — GET /auth/{consumer}/login-options. Unauthenticated,
+  // host-derived, no PII: the providers the Aramo sign-in page shows on THIS
+  // host. A pinned tenant host → only its provider (Astre → ["microsoft"]);
+  // otherwise both. UI only — authorization is enforced at the callback.
+  @Get('login-options')
+  async loginOptions(
+    @Param('consumer') consumer: string,
+    @Req() req: RequestWithCookies,
+  ): Promise<{ providers: string[] }> {
+    const requestId = req.requestId ?? 'unknown';
+    parseConsumer(consumer, requestId);
+    const { identityProvider } = await this.hostBase.resolve(req.get('host'));
+    const pinned = identityProvider === null ? null : identityProvider.trim().toLowerCase();
+    if (pinned === 'microsoft' || pinned === 'google') return { providers: [pinned] };
+    return { providers: ['microsoft', 'google'] };
   }
 
   // §8.2 — GET /auth/{consumer}/callback
@@ -356,6 +391,7 @@ export class AuthController {
       return this.redirectCallbackErrorOrJson(
         res,
         derivedBase,
+        c,
         new AramoError(
           'VALIDATION_ERROR',
           'Callback validation failed',
@@ -390,6 +426,7 @@ export class AuthController {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
+          c,
           new AramoError('INVALID_TOKEN', 'IdP token rejected', 401, {
             requestId,
             details,
@@ -400,6 +437,7 @@ export class AuthController {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
+          c,
           new AramoError(
             'TENANT_ACCESS_DENIED',
             result.reason === 'no_active_tenant'
@@ -417,6 +455,7 @@ export class AuthController {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
+          c,
           new AramoError('TENANT_SUSPENDED', 'Tenant is suspended', 403, {
             requestId,
             details,
@@ -427,6 +466,7 @@ export class AuthController {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
+          c,
           new AramoError('TENANT_CLOSED', 'Tenant is closed', 403, {
             requestId,
             details,
@@ -440,6 +480,7 @@ export class AuthController {
         return this.redirectCallbackErrorOrJson(
           res,
           derivedBase,
+          c,
           new AramoError(
             'TENANT_CAPABILITY_NOT_ENTITLED',
             'Tenant not entitled to this product',
@@ -451,6 +492,7 @@ export class AuthController {
       return this.redirectCallbackErrorOrJson(
         res,
         derivedBase,
+        c,
         new AramoError(
           'INSUFFICIENT_PERMISSIONS',
           'Identity not provisioned',
@@ -463,6 +505,7 @@ export class AuthController {
     return this.redirectCallbackErrorOrJson(
       res,
       derivedBase,
+      c,
       new AramoError('INTERNAL_ERROR', 'Callback failed', 500, {
         requestId,
         details: { reason: result.reason },
@@ -487,6 +530,7 @@ export class AuthController {
   private redirectCallbackErrorOrJson(
     res: Response,
     derivedBase: string | null,
+    consumer: string,
     err: AramoError,
   ): void {
     const base = resolvePublicBaseUrl(derivedBase);
@@ -495,6 +539,16 @@ export class AuthController {
     }
     const url = new URL('/login', base);
     url.searchParams.set('error', err.code);
+    // AUTH-SIGNIN-1 §3.1.3 — name the consumer so the sign-in page's "Try
+    // again" restarts the right one (a host serves several consumers' /login).
+    url.searchParams.set('consumer', consumer);
+    // AUTH-SIGNIN-1 — the provider-policy denials carry their reason so the page
+    // can say which provider the organization uses (the caller has already
+    // completed IdP sign-in; no account-existence oracle).
+    const deniedReason = (err.context.details as { reason?: unknown } | undefined)?.reason;
+    if (err.code === 'TENANT_ACCESS_DENIED' && (deniedReason === 'idp_not_permitted_for_tenant' || deniedReason === 'idp_identity_conflict')) {
+      url.searchParams.set('reason', deniedReason);
+    }
     if (err.code === 'VALIDATION_ERROR') {
       const reason = (err.context.details as { reason?: unknown } | undefined)
         ?.reason;
