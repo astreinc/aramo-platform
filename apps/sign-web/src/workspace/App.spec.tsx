@@ -191,6 +191,22 @@ describe('recipient inbox', () => {
     expect(screen.getByRole('button', { name: 'Sign' })).toBeInTheDocument();
   });
 
+  it('inside the workspace the inbox keeps the console navigation', async () => {
+    const base = stubFetch(ctx());
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).endsWith('/v1/sign/inbox')) return json({ waiting: [ITEM], completed: [], other: [] });
+        return base(input);
+      }),
+    );
+    renderAt('/sign/inbox');
+    expect(await screen.findByText('Offer letter')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Waiting for me/ })).toHaveAttribute('href', '/sign/inbox');
+    expect(screen.getByRole('link', { name: /Envelopes/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Sign out' })).toBeNull();
+  });
+
   it('the no-Sign-role state links to the documents sent to the user', async () => {
     vi.stubGlobal('fetch', stubFetch({ error: { code: 'INSUFFICIENT_PERMISSIONS' }, status: 403 }));
     renderAt('/sign');
