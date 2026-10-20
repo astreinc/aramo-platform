@@ -58,7 +58,7 @@ const PACT_FILE = resolve(ROOT, 'pact/pacts/aramo-core-sign-service.json');
 // DOC-4C (R1 seam A) — the sign-web → sign-service signer-session pact.
 const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json');
 // PX-1 (PX-V1 §12) — the esign-web → sign-service sender-console pact.
-const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/esign-web-sign-service.json');
+const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
 
 // Fixed ids — MUST match pact/consumers/sign-consumer/src/esign.consumer.test.ts.
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
