@@ -3102,10 +3102,10 @@ export async function runIdentitySeed(
   // EXACTLY the ORG_ADMIN_SCOPE_KEYS bundle (no ATS/Sign/platform scope). The
   // owner role of a tenant provisioned without the ats capability.
   await upsertRole(prisma, SEED_IDS.roles.org_admin, 'org_admin', 'Organization Admin — product-neutral organization administrator (profile, domain, sites, users and roles, settings, audit trail); no ATS, Sign or platform authority');
-  await upsertRole(prisma, SEED_IDS.roles.esign_owner, 'esign_owner', 'E-Sign Owner — top authority of an E-Sign organization; full envelope authority (create/send/read).');
-  await upsertRole(prisma, SEED_IDS.roles.esign_admin, 'esign_admin', 'E-Sign Admin — administrative operator of an E-Sign organization; full envelope authority (create/send/read).');
-  await upsertRole(prisma, SEED_IDS.roles.esign_sender, 'esign_sender', 'E-Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
-  await upsertRole(prisma, SEED_IDS.roles.esign_viewer, 'esign_viewer', 'E-Sign Viewer — read-only access to envelopes + signing history (read).');
+  await upsertRole(prisma, SEED_IDS.roles.esign_owner, 'esign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.esign_admin, 'esign_admin', 'Sign Admin — administrative operator of a Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.esign_sender, 'esign_sender', 'Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
+  await upsertRole(prisma, SEED_IDS.roles.esign_viewer, 'esign_viewer', 'Sign Viewer — read-only access to envelopes + signing history (read).');
 
   // 6. Scopes (6 pre-A1a + 7 PR-A1a = 13 entries).
   await upsertScope(prisma, SEED_IDS.scopes['consent:read'], 'consent:read', 'Read consent state');

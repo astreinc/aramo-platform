@@ -33,7 +33,7 @@ describe('roles-catalog metadata', () => {
       if (key === 'super_admin') continue; // platform tier — excluded
       expect(ROLE_CATALOG_META[key], `meta for ${key}`).toBeDefined();
     }
-    for (const key of ESIGN_PRODUCT_ROLE_KEYS) expect(ROLE_CATALOG_META[key]?.tier).toBe('E-Sign');
+    for (const key of ESIGN_PRODUCT_ROLE_KEYS) expect(ROLE_CATALOG_META[key]?.tier).toBe('Sign');
   });
 
   it('derives the display name from the description lead phrase', () => {
@@ -86,7 +86,7 @@ describe('RoleCatalogService', () => {
   it('EXCLUDES the E-Sign product roles for an ATS-only tenant and when no tenant is given (pre-PR-8 projection)', async () => {
     const rows = [
       roleRow('tenant_admin', 'Tenant Admin — admin', ['tenant:admin:user-manage']),
-      roleRow('esign_sender', 'E-Sign Sender — sends', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']),
+      roleRow('esign_sender', 'Sign Sender — sends', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']),
     ];
     expect((await makeService(rows, ['core', 'ats']).getCatalog({ tenant_id: TENANT })).map((r) => r.key)).toEqual(['tenant_admin']);
     expect((await makeService(rows, ['core', 'esign']).getCatalog()).map((r) => r.key)).toEqual(['tenant_admin']);
@@ -94,15 +94,15 @@ describe('RoleCatalogService', () => {
 
   it('INCLUDES the E-Sign product roles (tier "E-Sign", after every ATS tier) for an esign-entitled tenant — Sign-only and ATS + Sign alike', async () => {
     const rows = [
-      roleRow('esign_viewer', 'E-Sign Viewer — reads', ['esign:envelope:read']),
-      roleRow('esign_sender', 'E-Sign Sender — sends', ['esign:envelope:send']),
+      roleRow('esign_viewer', 'Sign Viewer — reads', ['esign:envelope:read']),
+      roleRow('esign_sender', 'Sign Sender — sends', ['esign:envelope:send']),
       roleRow('org_admin', 'Organization Admin — org', ['tenant:admin:user-manage']),
       roleRow('recruiter', 'Recruiter — op', ['talent:read']),
       roleRow('super_admin', 'Super Admin — platform', ['platform:tenant:provision']),
     ];
     const signOnly = await makeService(rows, ['core', 'esign']).getCatalog({ tenant_id: TENANT });
     expect(signOnly.map((r) => r.key)).toEqual(['org_admin', 'recruiter', 'esign_sender', 'esign_viewer']);
-    expect(signOnly.find((r) => r.key === 'esign_sender')).toMatchObject({ tier: 'E-Sign', display: 'E-Sign Sender', scopes: ['esign:envelope:send'] });
+    expect(signOnly.find((r) => r.key === 'esign_sender')).toMatchObject({ tier: 'Sign', display: 'Sign Sender', scopes: ['esign:envelope:send'] });
     const both = await makeService(rows, ['core', 'ats', 'esign']).getCatalog({ tenant_id: TENANT });
     expect(both.map((r) => r.key)).toEqual(['org_admin', 'recruiter', 'esign_sender', 'esign_viewer']);
     // The platform tier stays excluded regardless of entitlement.

@@ -11,7 +11,7 @@ afterEach(() => vi.restoreAllMocks());
 const CATALOG = {
   roles: [
     { key: 'recruiter', display: 'Recruiter', description: 'Works talent.', tier: 'Operations', scopes: ['talent:read'] },
-    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'E-Sign', scopes: ['esign:envelope:send'] },
+    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['esign:envelope:send'] },
     { key: 'org_admin', display: 'Organization Admin', description: '', tier: 'Administration', scopes: ['tenant:admin:profile'] },
   ],
 };

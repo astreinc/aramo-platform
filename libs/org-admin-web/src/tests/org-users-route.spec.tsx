@@ -50,7 +50,7 @@ const CATALOG = {
   roles: [
     { key: 'tenant_owner', display: 'Tenant Owner', description: '', tier: 'Administration', scopes: ['tenant:admin:user-manage', 'talent:read'] },
     { key: 'recruiter', display: 'Recruiter', description: '', tier: 'Operations', scopes: ['talent:read'] },
-    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'E-Sign', scopes: ['esign:envelope:send'] },
+    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['esign:envelope:send'] },
   ],
 };
 

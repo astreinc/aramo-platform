@@ -35,7 +35,7 @@ const CATALOG = [
   { key: 'org_admin', display: 'Organization Admin', description: 'Administers the organization.', tier: 'Administration', scopes: ORG_ADMIN_SCOPES },
   { key: 'tenant_admin', display: 'Tenant Admin', description: 'Administrative operator of the tenant.', tier: 'Administration', scopes: ['tenant:admin:settings', 'talent:read'] },
   { key: 'recruiter', display: 'Recruiter', description: 'Works requisitions and talent.', tier: 'Operations', scopes: ['talent:read', 'requisition:read'] },
-  { key: 'esign_sender', display: 'Sign Sender', description: 'Sends documents for signature.', tier: 'E-Sign', scopes: ['esign:envelope:send'] },
+  { key: 'esign_sender', display: 'Sign Sender', description: 'Sends documents for signature.', tier: 'Sign', scopes: ['esign:envelope:send'] },
 ];
 
 async function stubBackends(page: Page, jar: Jar, seen: { consumerHeaders: Set<string>; loginUrls: string[] }) {

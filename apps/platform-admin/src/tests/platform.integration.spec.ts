@@ -277,7 +277,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             id: ESIGN_OWNER_ROLE_ID,
             key: 'esign_owner',
-            description: 'E-Sign Owner',
+            description: 'Sign Owner',
             is_active: true,
           },
           {

@@ -99,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     await setup.role.createMany({
       data: [
         { id: ORG_ADMIN_ROLE_ID, key: 'org_admin', description: 'Organization Admin', is_active: true },
-        { id: ESIGN_OWNER_ROLE_ID, key: 'esign_owner', description: 'E-Sign Owner', is_active: true },
+        { id: ESIGN_OWNER_ROLE_ID, key: 'esign_owner', description: 'Sign Owner', is_active: true },
         { id: TENANT_OWNER_ROLE_ID, key: 'tenant_owner', description: 'Tenant Owner', is_active: true },
       ],
     });

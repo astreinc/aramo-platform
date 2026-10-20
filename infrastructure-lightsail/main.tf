@@ -140,6 +140,21 @@ resource "aws_route53_record" "wildcard" {
   records = [aws_lightsail_static_ip.this.ip_address]
 }
 
+# Aramo Sign Unified Product — D-1 Host Retirement Addendum (LOCKED, fc65d003):
+# esign.aramo.ai is retired with no redirect. It never had a record of its own;
+# it resolved only through the wildcard above. A name that owns ANY record is no
+# longer covered by the wildcard, so this TXT record makes esign.aramo.ai return
+# no address (NODATA for A/AAAA) and it stops reaching the box. Keep it for as
+# long as the wildcard exists: deleting it re-routes the name to the box.
+resource "aws_route53_record" "esign_retired" {
+  count   = var.manage_dns ? 1 : 0
+  zone_id = data.aws_route53_zone.this.zone_id
+  name    = "esign.${var.dns_zone_name}"
+  type    = "TXT"
+  ttl     = var.dns_record_ttl
+  records = ["retired: Aramo Sign is at sign.aramo.ai"]
+}
+
 # --- Optional scoped S3-backup IAM (Directive §D) ---------------------------
 # User + narrow policy only. NO aws_iam_access_key here: an access key's secret
 # would be persisted in Terraform state. Generate the key out-of-band after
