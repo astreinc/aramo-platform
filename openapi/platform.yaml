@@ -203,7 +203,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, email, organization_name, sign_in_url]
+                required: [status, email, organization_name, sign_in_url, sign_in]
                 properties:
                   status:
                     type: string
@@ -215,6 +215,21 @@ paths:
                   sign_in_url:
                     type: string
                     format: uri
+                  sign_in:
+                    type: object
+                    description: |
+                      Federated sign-in entry points for the owner (no password is
+                      issued). Each is the sign host's login with the AUTH-SIGNIN-1
+                      `idp` hint; the first permitted provider becomes the
+                      organization's sign-in provider.
+                    required: [microsoft, google]
+                    properties:
+                      microsoft:
+                        type: string
+                        format: uri
+                      google:
+                        type: string
+                        format: uri
         '400':
           description: '`VALIDATION_ERROR` — an empty organization_name.'
           content:
