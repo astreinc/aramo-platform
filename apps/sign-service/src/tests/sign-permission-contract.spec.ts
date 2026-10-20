@@ -25,6 +25,7 @@ function ctx(kind = 'BUSINESS') {
   const tenants = {
     findById: vi.fn(async () => ({ id: TENANT, name: 'Astre', kind, is_active: true, status: 'ACTIVE' })),
     findSlugById: vi.fn(async () => 'astre'),
+    findOrganizationNameById: vi.fn(async () => 'Astre Consulting Services Inc'),
   };
   return new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null) } as never);
 }
