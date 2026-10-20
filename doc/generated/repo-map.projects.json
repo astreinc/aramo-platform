@@ -765,11 +765,13 @@
       "stringifyCsv"
     ],
     "@aramo/fe-foundation": [
+      "AUTH_PRODUCTS",
       "ApiClient",
       "ApiError",
       "AppSwitcher",
       "AramoAppShell",
       "AramoRail",
+      "AuthShell",
       "Button",
       "Card",
       "Checkbox",

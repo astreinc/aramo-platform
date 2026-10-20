@@ -3002,6 +3002,7 @@
     "libs/fe-foundation/src/aramo-shell/AramoRail.tsx",
     "libs/fe-foundation/src/aramo-shell/app-rail.css",
     "libs/fe-foundation/src/aramo-shell/nav-collapse.tsx",
+    "libs/fe-foundation/src/auth/AuthShell.tsx",
     "libs/fe-foundation/src/auth/RouteGuard.spec.tsx",
     "libs/fe-foundation/src/auth/RouteGuard.tsx",
     "libs/fe-foundation/src/auth/SignInPage.spec.tsx",
