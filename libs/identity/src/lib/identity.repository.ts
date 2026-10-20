@@ -544,6 +544,10 @@ export class IdentityRepository {
     display_name: string | null;
     tenant_id: string;
     role_ids: readonly string[];
+    // Sign federated owner signup — the self-service owner's membership is
+    // usable at their first federated sign-in (email already verified by the
+    // signup link), so it is created ACTIVE. Default: the invite path's INVITED.
+    invite_status?: 'INVITED' | 'ACTIVE';
   }): Promise<{
     user: UserDto;
     membership_id: string;
@@ -568,7 +572,7 @@ export class IdentityRepository {
           id: membership_id,
           user_id: args.user_id,
           tenant_id: args.tenant_id,
-          invite_status: 'INVITED',
+          invite_status: args.invite_status ?? 'INVITED',
         },
       });
       if (args.role_ids.length > 0) {

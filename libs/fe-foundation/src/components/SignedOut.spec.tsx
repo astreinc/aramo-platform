@@ -16,7 +16,7 @@ describe('SignedOut — public signed-out landing (T2-E1-HF3)', () => {
 
   it('renders the signed-out state without starting authentication', () => {
     render(<SignedOut />);
-    expect(screen.getByText("You're signed out")).toBeInTheDocument();
+    expect(screen.getByText("You've signed out securely.")).toBeInTheDocument();
     // R3: zero automatic re-authentication on render/mount.
     expect(redirectToLogin).not.toHaveBeenCalled();
   });

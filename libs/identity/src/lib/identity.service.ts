@@ -685,6 +685,52 @@ export class IdentityService {
   // link) and returns the new response shape (invitation_id + the raw token
   // for the caller's email step; the membership starts in invite_status
   // INVITED).
+  // Sign federated owner signup (Aramo-Sign-Signup-Federated-Owner, AUTH-SIGNIN-1)
+  // — the self-service organization owner, created WITHOUT a Cognito user and
+  // WITHOUT an ExternalIdentity: the owner signs in later with Google or
+  // Microsoft and the provider-checked verified-email reconcile links them. The
+  // email was proven by the signup link, so there is no invitation token and the
+  // membership is ACTIVE (no second accept step). Same role and IC-1 guards as
+  // the invite path; same single User-creating site (createUserWithMembership).
+  async createFederatedOwnerNoSub(args: {
+    email: string;
+    display_name: string | null;
+    tenant_id: string;
+    role_keys: readonly string[];
+    role_ids: readonly string[];
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<{ user: UserDto; membership_id: string }> {
+    await this.assertRoleKeysAssignable(args);
+    await this.roleBundle.assertUnionNonInvertible({ role_keys: args.role_keys, request_id: args.request_id });
+    const email = normalizeEmail(args.email);
+    const guardArgs = { email, tenant_id: args.tenant_id, actor_user_id: args.actor_user_id, request_id: args.request_id, tier: 'tenant' as const };
+    await this.assertInviteEmailAvailable(guardArgs);
+    const user_id = uuidv7();
+    let result;
+    try {
+      result = await this.identityRepo.createUserWithMembership({
+        user_id,
+        email,
+        display_name: args.display_name,
+        tenant_id: args.tenant_id,
+        role_ids: args.role_ids,
+        invite_status: 'ACTIVE',
+      });
+    } catch (err) {
+      await this.mapUserEmailCollision(err, guardArgs);
+      throw err;
+    }
+    await this.audit.writeGlobalEvent({
+      event_type: 'identity.user.created',
+      actor_type: 'system',
+      actor_id: args.actor_user_id,
+      subject_id: result.user.id,
+      payload: { email: args.email, source: 'sign.self_service_signup' },
+    });
+    return { user: result.user, membership_id: result.membership_id };
+  }
+
   async createInvitedUserNoSub(args: {
     email: string;
     display_name: string | null;

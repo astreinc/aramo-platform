@@ -53,9 +53,14 @@ export type AuthPathKind =
   | 'session'
   | 'logout'
   | 'refresh'
-  | 'callback';
+  | 'callback'
+  | 'login-options';
 
-/** Build an auth-service path for the configured consumer, e.g. /auth/platform/login. */
-export function authPath(kind: AuthPathKind): string {
-  return `/auth/${authConsumer}/${kind}`;
+/**
+ * Build an auth-service path for the configured consumer, e.g. /auth/platform/login.
+ * `consumer` overrides it only for the sign-in page's allowlisted `?consumer=`
+ * (AUTH-SIGNIN-1 §3.2.1).
+ */
+export function authPath(kind: AuthPathKind, consumer: string = authConsumer): string {
+  return `/auth/${consumer}/${kind}`;
 }

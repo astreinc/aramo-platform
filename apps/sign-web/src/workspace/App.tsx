@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import { RouteGuard, SignedOut, ToastProvider, logout, useSession } from '@aramo/fe-foundation';
+import { AUTH_PRODUCTS, RouteGuard, SignedOut, ToastProvider, logout, useSession } from '@aramo/fe-foundation';
 
 import { Dashboard } from './pages/Dashboard';
 import { EnvelopeActivity, EnvelopeDetail } from './pages/EnvelopeDetail';
@@ -35,7 +35,7 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
     <ToastProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/signed-out" element={<SignedOut offerAccountSwitch />} />
+        <Route path="/signed-out" element={<SignedOut offerAccountSwitch product={AUTH_PRODUCTS.sign} />} />
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />

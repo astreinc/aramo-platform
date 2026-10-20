@@ -25,6 +25,10 @@ export interface ResolveSessionInput {
   // selection and before the status gate. undefined = unbound (legacy cookie).
   host_class?: HostBindingClass | null;
   context_id?: string | null;
+  // AUTH-SIGNIN-1 R1 — the federated provider that authenticated the token
+  // ('google' | 'microsoft' | 'ambiguous' | null). The adapter applies the
+  // provider policy (no cross-provider merge; the enforced-pin cohort).
+  idp?: string | null;
 }
 
 // `principal_id` / `context_id` are opaque to auth (they happen to be a user id and

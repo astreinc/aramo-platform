@@ -17,6 +17,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { AuthorizationVersionService } from './authorization-version.service.js';
 import { RoleRepository } from './role.repository.js';
 import { SignupRequestRepository } from './signup-request.repository.js';
+import { IdentityProviderPolicyService } from './identity-provider-policy.service.js';
 import { RoleService } from './role.service.js';
 import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
@@ -83,6 +84,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     TenantRepository,
     // Aramo Sign launch — self-service signup requests (platform-admin public signup).
     SignupRequestRepository,
+    IdentityProviderPolicyService,
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
@@ -120,6 +122,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
   ],
   exports: [
     SignupRequestRepository,
+    IdentityProviderPolicyService,
     IdentityService,
     TenantService,
     RoleService,

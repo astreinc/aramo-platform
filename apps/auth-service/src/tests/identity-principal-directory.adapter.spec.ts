@@ -1,3 +1,4 @@
+import type { IdentityProviderPolicyService } from '@aramo/identity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import type {
@@ -29,6 +30,7 @@ interface Deps {
   audit: IdentityAuditService;
   authzVersions: AuthorizationVersionService;
   entitlements: TenantEntitlementReader;
+  idpPolicy?: IdentityProviderPolicyService;
 }
 
 function makeDeps(over: {
@@ -132,7 +134,7 @@ function makeDeps(over: {
 }
 
 function adapter(d: Deps): IdentityPrincipalDirectoryAdapter {
-  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit, d.authzVersions, d.entitlements);
+  return new IdentityPrincipalDirectoryAdapter(d.identity, d.tenant, d.role, d.audit, d.authzVersions, d.entitlements, d.idpPolicy ?? ({ evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined } as unknown as IdentityProviderPolicyService));
 }
 
 const SESSION_INPUT = {

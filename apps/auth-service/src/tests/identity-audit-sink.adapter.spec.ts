@@ -1,3 +1,4 @@
+import type { IdentityProviderPolicyService } from '@aramo/identity';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   IdentityAuditService,
@@ -104,7 +105,7 @@ function happyPrincipals(): IdentityPrincipalDirectoryAdapter {
     getScopesByUserAndTenant: vi.fn().mockResolvedValue(['auth:session:read']),
     getScopesByUserTenantAndSite: vi.fn(),
   } as unknown as RoleService;
-  return new IdentityPrincipalDirectoryAdapter(identity, tenant, role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService, { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader);
+  return new IdentityPrincipalDirectoryAdapter(identity, tenant, role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService, { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader, { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined } as unknown as IdentityProviderPolicyService);
 }
 
 it('§3.3 LOGIN succeeds despite a throwing audit', async () => {
@@ -137,7 +138,7 @@ it('§3.3 REFRESH succeeds despite a throwing audit', async () => {
   const principals = new IdentityPrincipalDirectoryAdapter(
     { findUserById: async () => ({ id: USER_ID, is_active: true }) } as unknown as IdentityService,
     { getTenantsByUser: async () => [{ id: TENANT_ID, name: 'T', status: 'ACTIVE' }] } as unknown as TenantService,
-    role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService, { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader);
+    role, throwingAudit(), { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService, { getCapabilities: async () => new Set(['core', 'ats', 'portal']) } as unknown as TenantEntitlementReader, { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined } as unknown as IdentityProviderPolicyService);
   const svc = new RefreshOrchestratorService(
     {
       findByHash: vi.fn().mockResolvedValue(dto),

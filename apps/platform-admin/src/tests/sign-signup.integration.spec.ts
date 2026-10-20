@@ -206,12 +206,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     expect((await http().post('/v1/signup/sign/start').send({ email: 'x@acme.test' })).status).toBe(400);
   });
 
-  it('complete provisions a BUSINESS tenant with exactly [core, esign] and an org_admin owner (no Sign sender role)', async () => {
+  it('complete provisions a BUSINESS tenant with exactly [core, sign] and an org_admin owner â€” no Cognito user, no temporary password (federated owner)', async () => {
     const c = await started();
     expect((await http().post('/v1/signup/sign/preview').send({ token: c.token })).body).toEqual({ email: c.email, organization_name: c.organization_name, status: 'READY' });
+    const cognitoCallsBefore = cognitoMock.adminCreateUser.mock.calls.length;
     const res = await http().post('/v1/signup/sign/complete').send({ token: c.token });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: 'PROVISIONED', email: c.email, organization_name: c.organization_name, sign_in_url: 'https://esign.example.test/login' });
+    expect(res.body).toEqual({
+      status: 'PROVISIONED',
+      email: c.email,
+      organization_name: c.organization_name,
+      sign_in_url: 'https://esign.example.test/login',
+      sign_in: {
+        microsoft: 'https://esign.example.test/auth/sign/login?idp=microsoft&return_to=%2F',
+        google: 'https://esign.example.test/auth/sign/login?idp=google&return_to=%2F',
+      },
+    });
+    // Aramo-Sign-Signup-Federated-Owner: no Cognito user, no ExternalIdentity,
+    // owner membership ACTIVE (no accept step), tenant enrolled in the enforced
+    // provider-pin cohort with no pin yet, and Aramo's own "ready" email.
+    expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(cognitoCallsBefore);
+    expect(cognito.has(c.email)).toBe(false);
 
     const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
     expect(tenant.kind).toBe('BUSINESS');
@@ -220,6 +235,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const user = await db.user.findFirstOrThrow({ where: { email: c.email } });
     const roles = await db.userTenantMembershipRole.findMany({ where: { membership: { user_id: user.id, tenant_id: tenant.id } }, include: { role: true } });
     expect(roles.map((r) => r.role.key)).toEqual(['org_admin']);
+    expect(await db.externalIdentity.count({ where: { user_id: user.id } })).toBe(0);
+    expect((await db.userTenantMembership.findFirstOrThrow({ where: { user_id: user.id } })).invite_status).toBe('ACTIVE');
+    expect(await db.tenantIdentityProviderPolicy.findUnique({ where: { tenant_id: tenant.id } })).not.toBeNull();
+    expect(tenant.identity_provider).toBeNull();
+    const ready = mail.filter((m) => m.to === c.email).at(-1)!;
+    expect(ready.subject).toBe('Your Aramo Sign organization is ready');
+    expect(ready.html).toContain('idp=microsoft');
+    expect(ready.html + (ready.text ?? '')).not.toMatch(/password/i);
     const birth = await db.identityAuditEvent.findFirstOrThrow({ where: { tenant_id: tenant.id, event_type: 'identity.tenant.created' } });
     expect(birth.actor_type).toBe('system');
     expect((birth.event_payload as { source: string }).source).toBe(SIGN_SIGNUP_AUDIT_SOURCE);

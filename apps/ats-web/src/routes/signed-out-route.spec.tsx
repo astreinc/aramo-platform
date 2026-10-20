@@ -20,7 +20,7 @@ describe('ats-web /signed-out route (T2-E1-HF3)', () => {
       </MemoryRouter>,
     );
     // Public signed-out landing rendered…
-    expect(screen.getByText("You're signed out")).toBeInTheDocument();
+    expect(screen.getByText("You've signed out securely.")).toBeInTheDocument();
     expect(
       screen.getByRole('button', { name: /sign in again/i }),
     ).toBeInTheDocument();

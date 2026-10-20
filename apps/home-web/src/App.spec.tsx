@@ -16,7 +16,7 @@ describe('App (home-web) — public routes', () => {
         <App />
       </MemoryRouter>,
     );
-    expect(screen.getByText(/you're signed out/i)).toBeInTheDocument();
+    expect(screen.getByText(/you've signed out securely/i)).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalledWith('/auth/org/session', expect.anything());
   });
 

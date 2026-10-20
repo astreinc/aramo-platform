@@ -1,4 +1,4 @@
-import { RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
+import { AUTH_PRODUCTS, RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
 import { OrgAdminRoutes, hasOrgAdminScope } from '@aramo/org-admin-web';
 import { Route, Routes } from 'react-router-dom';
 
@@ -26,7 +26,7 @@ export function App() {
         <Route path="/login" element={<LoginPage />} />
         {/* The PUBLIC signed-out landing — outside RouteGuard so it renders
             session-less and performs NO automatic authentication. */}
-        <Route path="/signed-out" element={<SignedOut offerAccountSwitch />} />
+        <Route path="/signed-out" element={<SignedOut offerAccountSwitch product={AUTH_PRODUCTS.home} />} />
         <Route
           path="/"
           element={

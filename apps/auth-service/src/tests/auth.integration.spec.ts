@@ -366,7 +366,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('recruiter', OTHER_HOST);
         const res = await callbackOn(OTHER_HOST, pkceCookie, state);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED&consumer=recruiter`);
         const cookies = (res.headers['set-cookie'] as unknown as string[]) ?? [];
         expect(cookies.some((c) => c.startsWith('aramo_access_token_recruiter=') && !c.includes('Max-Age=0'))).toBe(false);
         expect(cookies.some((c) => c.startsWith('aramo_refresh_token_recruiter='))).toBe(false);
@@ -399,7 +399,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // 1. Microsoft SSO answered with an account that does not own OTHER_HOST.
         const wrong = await prepareLogin('recruiter', OTHER_HOST);
         const denied = await callbackOn(OTHER_HOST, wrong.pkceCookie, wrong.state);
-        expect(denied.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(denied.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED&consumer=recruiter`);
         // 2. The recovery login asks Microsoft for its account picker.
         const pick = await request(app.getHttpServer())
           .get('/auth/recruiter/login?select_account=1')
@@ -430,7 +430,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .split(';')[0]!;
         const state = new URL(pick.headers['location']!).searchParams.get('state')!;
         const res = await callbackOn(OTHER_HOST, pkceCookie, state);
-        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED&consumer=recruiter`);
         expect(globalThis.fetch).not.toHaveBeenCalled();
       });
 
@@ -468,7 +468,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
         const res = await callbackOn(OTHER_HOST, pkceCookie, state);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED`);
+        expect(res.headers['location']).toBe(`https://${OTHER_HOST}/login?error=TENANT_ACCESS_DENIED&consumer=recruiter`);
         expect(globalThis.fetch).not.toHaveBeenCalled();
       });
 
@@ -499,7 +499,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           .get(`/auth/recruiter/callback?code=c&state=${c.state}`)
           .set('Cookie', c.pkceCookie);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toMatch(/\/login\?error=TENANT_ACCESS_DENIED$/);
+        expect(res.headers['location']).toMatch(/\/login\?error=TENANT_ACCESS_DENIED&consumer=recruiter$/);
         // enforce + the explicit dev exception: allowed.
         process.env['AUTH_ALLOW_UNBOUND_HOST'] = 'true';
         c = legacy();
@@ -606,7 +606,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('recruiter', OWN_HOST);
         const cb = await request(app.getHttpServer()).get(`/auth/recruiter/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
         expect(cb.status).toBe(302);
-        expect(cb.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
+        expect(cb.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS&consumer=recruiter`);
       });
 
       it('7. logout on ANOTHER tenant\'s host (enforce): 204, cookies cleared, token revoked, audit records the mismatch — never strands', async () => {
@@ -677,17 +677,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       it('1/7/11. ATS-only tenant (core+ats+portal): the esign consumer cannot mint → 302 /login?error=TENANT_CAPABILITY_NOT_ENTITLED; core alone grants no product', async () => {
         const r = await login('sign');
         expect(r.status).toBe(302);
-        expect(r.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(r.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED&consumer=sign`);
         expect(r.access).toBeUndefined();
         entitlements().getCapabilities.mockResolvedValue(new Set(['core']));
         const r2 = await login('recruiter');
-        expect(r2.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(r2.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED&consumer=recruiter`);
       });
 
       it('2/12. Sign-only tenant (core+esign): recruiter cannot mint; esign mints and carries ONLY esign:* — the recruiter path on an ATS tenant still works', async () => {
         entitlements().getCapabilities.mockResolvedValue(new Set(['core', 'sign']));
         roles().getScopesByUserTenantAndSite.mockResolvedValue(MIXED);
-        expect((await login('recruiter')).location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect((await login('recruiter')).location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED&consumer=recruiter`);
         const e = await login('sign');
         expect(e.location).toBe(`https://${OWN_HOST}/`);
         const session = await request(app.getHttpServer()).get('/auth/sign/session').set('Host', OWN_HOST).set('Cookie', e.access!);
@@ -724,7 +724,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(atsOnly.location).toBe(`https://${OWN_HOST}/`);
         entitlements().getCapabilities.mockResolvedValue(new Set(['ats']));
         const noCore = await login('org');
-        expect(noCore.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED`);
+        expect(noCore.location).toBe(`https://${OWN_HOST}/login?error=TENANT_CAPABILITY_NOT_ENTITLED&consumer=org`);
         expect(noCore.access).toBeUndefined();
       });
 
@@ -855,7 +855,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const { pkceCookie, state } = await prepareLogin('portal', OWN_HOST);
         const res = await request(app.getHttpServer()).get(`/auth/portal/callback?code=c&state=${state}`).set('Host', OWN_HOST).set('Cookie', pkceCookie);
         expect(res.status).toBe(302);
-        expect(res.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS`);
+        expect(res.headers['location']).toBe(`https://${OWN_HOST}/login?error=INSUFFICIENT_PERMISSIONS&consumer=portal`);
       });
     });
 

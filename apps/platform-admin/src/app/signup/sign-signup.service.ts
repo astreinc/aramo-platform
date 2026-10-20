@@ -2,11 +2,14 @@ import { createHash, randomBytes } from 'node:crypto';
 
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
+import { EntitlementRepository } from '@aramo/entitlement';
 import {
+  IdentityProviderPolicyService,
   IdentityRepository,
   IdentityService,
   SignupRequestRepository,
   TenantRepository,
+  TenantService,
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   normalizeEmail,
@@ -21,7 +24,6 @@ import {
   type LegalDocumentVersion,
 } from '@aramo/subscription';
 
-import { PlatformInvitationService } from '../platform/platform-invitation.service.js';
 
 // Aramo Sign launch — self-service BUSINESS signup (Journey B; Final
 // Implementation Authorization: provisioning integrity). Dark unless
@@ -31,11 +33,14 @@ import { PlatformInvitationService } from '../platform/platform-invitation.servi
 //              Always the same 202 (never reveals whether an address is known).
 //              Nothing else is created: no tenant, user or Cognito account
 //              exists for an unverified address (no squatting).
-//   complete → the link proves the address. CAS-claim the request, then run the
-//              SAME provisioning saga the platform console uses: BUSINESS kind,
-//              capabilities [core, esign], owner org_admin, Cognito sends the
-//              owner's sign-in. The owner has NO send authority until a paid
-//              subscription opens (governed owner activation, M2).
+//   complete → the link proves the address. CAS-claim the request, then create
+//              the BUSINESS tenant ([core, sign]), enroll it in the enforced
+//              provider-pin cohort, and create the org_admin owner WITHOUT a
+//              Cognito user or ExternalIdentity (membership ACTIVE). No temporary
+//              password: the owner continues with Google or Microsoft; the first
+//              federation pins the tenant's provider and links the owner
+//              (AUTH-SIGNIN-1 R1/R2, Aramo-Sign-Signup-Federated-Owner). The
+//              owner has NO send authority until a paid subscription opens.
 //   recover  → a retry with the same link resumes: done ⇒ the same answer; a
 //              crash after the saga ⇒ the owner's own new tenant is adopted.
 // PERSONAL commercial sending stays deferred: personal / disposable addresses
@@ -110,6 +115,17 @@ export interface CompleteResult {
   email: string;
   organization_name: string;
   sign_in_url: string;
+  // Federated sign-in entry points (AUTH-SIGNIN-1 `idp` hint) for the done page.
+  sign_in: { microsoft: string; google: string };
+}
+
+/** The sign host's federated sign-in links (the auth-service login on that host). */
+export function federatedSignInLinks(): { microsoft: string; google: string } {
+  const base = consoleBase();
+  return {
+    microsoft: `${base}/auth/sign/login?idp=microsoft&return_to=%2F`,
+    google: `${base}/auth/sign/login?idp=google&return_to=%2F`,
+  };
 }
 
 @Injectable()
@@ -121,7 +137,9 @@ export class SignSignupService {
     private readonly identityRepo: IdentityRepository,
     private readonly tenants: TenantRepository,
     private readonly identity: IdentityService,
-    private readonly provisioning: PlatformInvitationService,
+    private readonly tenantSvc: TenantService,
+    private readonly entitlements: EntitlementRepository,
+    private readonly idpPolicy: IdentityProviderPolicyService,
     @Inject(MAILER_PORT) private readonly mailer: MailerPort,
     private readonly budget: SignupBudget,
     // A1 — signup terms evidence (versioned registry; nothing approved yet).
@@ -202,8 +220,9 @@ export class SignSignupService {
     if (!this.budget.allow(`ip:${input.ip}`, now.getTime())) throw invalidLink(input.request_id);
     const row = await this.lookup(input.token, input.request_id, now);
     const signInUrl = `${consoleBase()}/login`;
+    const sign_in = federatedSignInLinks();
     if (row.status === 'PROVISIONED') {
-      return { status: 'PROVISIONED', email: row.email, organization_name: row.organization_name, sign_in_url: signInUrl };
+      return { status: 'PROVISIONED', email: row.email, organization_name: row.organization_name, sign_in_url: signInUrl, sign_in };
     }
     const rename = input.organization_name === undefined ? null : cleanText(input.organization_name, 100);
     if (input.organization_name !== undefined && (rename === null || rename.length < 2)) {
@@ -211,26 +230,21 @@ export class SignSignupService {
     }
     const organization_name = rename ?? row.organization_name;
     if (!(await this.requests.claim(row.id, now))) {
-      return { status: 'PROVISIONING', email: row.email, organization_name, sign_in_url: signInUrl };
+      return { status: 'PROVISIONING', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
     }
 
     try {
-      const res = await this.provisioning.provisionTenantAndInviteOwner({
+      const res = await this.provisionFederatedOwner({
         name: organization_name,
         owner_email: row.email,
         owner_display_name: row.display_name,
-        capabilities: [...SIGN_CAPABILITIES],
-        actor_user_id: SIGN_SIGNUP_SYSTEM_ACTOR_ID,
         request_id: input.request_id,
-        invite_owner: true,
-        kind: 'BUSINESS',
-        audit_source: SIGN_SIGNUP_AUDIT_SOURCE,
-        actor_type: 'system',
       });
       await this.requests.markProvisioned(row.id, res.tenant_id, res.owner_user_id, new Date());
       await this.recordSignupTerms(row, res.tenant_id, res.owner_user_id);
       this.log.log(`self-service signup provisioned tenant ${res.tenant_id}`);
-      return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl };
+      await this.sendReady(row.email, organization_name, sign_in);
+      return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
     } catch (err) {
       const code = err instanceof AramoError ? err.code : 'INTERNAL_ERROR';
       if (code === 'EMAIL_UNAVAILABLE' || code === 'TENANT_ALREADY_EXISTS') {
@@ -242,7 +256,7 @@ export class SignSignupService {
         if (adopted !== null) {
           await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
           await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
-          return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl };
+          return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
         }
       }
       await this.requests.markFailed(row.id, code, new Date());
@@ -262,6 +276,69 @@ export class SignSignupService {
         details: { retryable: true },
       });
     }
+  }
+
+  /**
+   * Cognito-free provisioning of a Sign Business tenant and its owner. Order:
+   * tenant → enforced-pin enrollment (so the tenant never exists without its
+   * pin rule) → capabilities → owner (org_admin, ACTIVE, no ExternalIdentity).
+   * A failure after the tenant exists soft-disables it (inert), as the
+   * platform saga does; the request is marked FAILED and can be retried.
+   */
+  private async provisionFederatedOwner(args: { name: string; owner_email: string; owner_display_name: string | null; request_id: string }): Promise<{ tenant_id: string; owner_user_id: string }> {
+    // Pre-checks before any write (same refusals as the platform saga).
+    if ((await this.tenantSvc.findByNameCaseInsensitive(args.name)) !== null) {
+      throw new AramoError('TENANT_ALREADY_EXISTS', 'A tenant with this name already exists', 409, { requestId: args.request_id });
+    }
+    if ((await this.identity.findUserByEmail(normalizeEmail(args.owner_email))) !== null) {
+      throw new AramoError('EMAIL_UNAVAILABLE', 'This email address is not available', 409, { requestId: args.request_id, details: {} });
+    }
+    const role_ids = await this.identity.resolveRoleIdsByKeys(['org_admin']);
+    const tenant = await this.tenantSvc.provisionTenant({
+      name: args.name,
+      owner_email: args.owner_email,
+      actor_user_id: SIGN_SIGNUP_SYSTEM_ACTOR_ID,
+      invitation_sent: false,
+      kind: 'BUSINESS',
+      audit_source: SIGN_SIGNUP_AUDIT_SOURCE,
+      actor_type: 'system',
+    });
+    const disable = async (reason: string) => {
+      await this.tenantSvc
+        .deactivateTenant({ tenant_id: tenant.id, actor_user_id: SIGN_SIGNUP_SYSTEM_ACTOR_ID, reason, actor_type: 'system' })
+        .catch((e: unknown) => this.log.error(`soft-disable of ${tenant.id} failed: ${(e as Error).message}`));
+    };
+    try {
+      await this.idpPolicy.enrollEnforcedTenant(tenant.id);
+      await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: [...SIGN_CAPABILITIES] });
+      const owner = await this.identity.createFederatedOwnerNoSub({
+        email: args.owner_email,
+        display_name: args.owner_display_name,
+        tenant_id: tenant.id,
+        role_keys: ['org_admin'],
+        role_ids,
+        actor_user_id: SIGN_SIGNUP_SYSTEM_ACTOR_ID,
+        request_id: args.request_id,
+      });
+      return { tenant_id: tenant.id, owner_user_id: owner.user.id };
+    } catch (err) {
+      await disable('sign_signup_provisioning_failed');
+      throw err;
+    }
+  }
+
+  private async sendReady(to: string, organization_name: string, links: { microsoft: string; google: string }): Promise<void> {
+    await this.send(
+      to,
+      'Your Aramo Sign organization is ready',
+      [
+        `${organization_name} is set up on Aramo Sign.`,
+        'Sign in with the Microsoft or Google work account for this email address. The provider you sign in with first becomes your organization\u2019s sign-in provider.',
+        `Continue with Google: ${links.google}`,
+        'After you sign in, choose a plan to start sending documents.',
+      ],
+      { label: 'Continue with Microsoft', href: links.microsoft },
+    );
   }
 
   // A1 — the accepted terms version (stored on the request at start) becomes an

@@ -605,7 +605,20 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
         const res = await run(result, validatedHostBase());
         expect(res.redirect).toHaveBeenCalledWith(
           302,
-          `${BASE}/login?error=${code}`,
+          `${BASE}/login?error=${code}&consumer=recruiter`,
+        );
+      },
+    );
+
+    // AUTH-SIGNIN-1 — provider-policy denials carry their reason so the sign-in
+    // page names the organization's provider.
+    it.each(['idp_not_permitted_for_tenant', 'idp_identity_conflict'])(
+      '%s → TENANT_ACCESS_DENIED with the reason on the query',
+      async (reason) => {
+        const res = await run({ kind: 'auth_error', reason }, validatedHostBase());
+        expect(res.redirect).toHaveBeenCalledWith(
+          302,
+          `${BASE}/login?error=TENANT_ACCESS_DENIED&consumer=recruiter&reason=${reason}`,
         );
       },
     );
@@ -617,7 +630,7 @@ describe('AuthController.callback (orchestrator-result mapping)', () => {
       );
       expect(res.redirect).toHaveBeenCalledWith(
         302,
-        `${BASE}/login?error=VALIDATION_ERROR&reason=state_mismatch`,
+        `${BASE}/login?error=VALIDATION_ERROR&consumer=recruiter&reason=state_mismatch`,
       );
     });
 
@@ -800,6 +813,47 @@ describe('AuthController.login (Subdomain-Identity B — Home Realm Discovery)',
   });
 
   // Host-binding SSO recovery — `?select_account=1` → prompt=select_account.
+  describe('AUTH-SIGNIN-1 — ?idp= provider hint (closed allowlist; pin wins)', () => {
+    const call = async (pin: string | null, idp: string | undefined): Promise<URL> => {
+      const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding(pin) });
+      const res = makeRes();
+      await ctl.login('recruiter', reqWithHost('acme.aramo.ai'), res as never, undefined, undefined, idp);
+      return locationOf(res);
+    };
+    it('idp=google on an unpinned host → identity_provider=Google', async () => {
+      expect((await call(null, 'google')).searchParams.get('identity_provider')).toBe('Google');
+    });
+    it('idp=microsoft on an unpinned host → identity_provider=microsoft', async () => {
+      expect((await call(null, 'Microsoft')).searchParams.get('identity_provider')).toBe('microsoft');
+    });
+    it('an unknown idp value is never forwarded (chooser)', async () => {
+      const url = await call(null, 'Okta');
+      expect(url.searchParams.has('identity_provider')).toBe(false);
+      expect(url.toString()).not.toContain('Okta');
+    });
+    it('the tenant pin WINS over a conflicting idp hint', async () => {
+      expect((await call('microsoft', 'google')).searchParams.get('identity_provider')).toBe('microsoft');
+    });
+  });
+
+  describe('AUTH-SIGNIN-1 — GET login-options', () => {
+    it.each([
+      [null, ['microsoft', 'google']],
+      ['microsoft', ['microsoft']],
+      ['Google', ['google']],
+      ['some-other-idp', ['microsoft', 'google']],
+    ] as const)('pin %s → providers %j', async (pin, providers) => {
+      const hostBase = hostBaseYielding(pin);
+      const ctl = makeController({ hostBase });
+      await expect(ctl.loginOptions('recruiter', reqWithHost('acme.aramo.ai'))).resolves.toEqual({ providers });
+      expect((hostBase.resolve as unknown as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('acme.aramo.ai');
+    });
+    it('rejects an invalid consumer (VALIDATION_ERROR)', async () => {
+      const ctl = makeController({ hostBase: hostBaseYielding(null) });
+      await expect(ctl.loginOptions('nope', reqWithHost('acme.aramo.ai'))).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    });
+  });
+
   describe('wrong-account recovery (?select_account=1)', () => {
     it('default login sends NO prompt (silent SSO for the normal case is unchanged)', async () => {
       const ctl = makeController({ pkce: fakePkce(), hostBase: hostBaseYielding('microsoft') });

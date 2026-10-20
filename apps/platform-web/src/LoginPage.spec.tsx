@@ -1,36 +1,57 @@
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { configureAuthConsumer } from '@aramo/fe-foundation';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { LoginPage } from './LoginPage';
 
-// platform-web login landing — clean entry auto-redirects; errors render a page.
-function renderAt(path: string, onMount = vi.fn()) {
+// AUTH-SIGNIN-1 §3.3 — this app's /login is the shared Aramo sign-in screen
+// (behaviour is covered in fe-foundation SignInPage.spec.tsx); these pin the
+// app wiring and its per-app copy.
+function renderAt(path: string) {
   render(
     <MemoryRouter initialEntries={[path]}>
-      <LoginPage onMount={onMount} />
+      <LoginPage />
     </MemoryRouter>,
   );
-  return onMount;
 }
 
 describe('platform-web LoginPage', () => {
-  it('auto-redirects on the clean entry (no ?error=)', () => {
-    expect(renderAt('/login')).toHaveBeenCalledTimes(1);
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    configureAuthConsumer('platform');
+    fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ providers: ['microsoft', 'google'] }), { status: 200 }));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    configureAuthConsumer('recruiter');
   });
 
-  it('generic error → "Sign-in failed" with retry, no auto-redirect', () => {
-    const onMount = renderAt('/login?error=AUTH_FAILED');
-    expect(onMount).not.toHaveBeenCalled();
-    expect(screen.getByText('Sign-in failed')).toBeInTheDocument();
+  it('renders the Aramo sign-in screen with both provider buttons and no automatic navigation', async () => {
+    renderAt('/login');
+    expect(screen.getByText('Sign in with your Aramo staff account.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledWith('/auth/platform/login-options', expect.anything());
   });
 
-  // Host-binding SSO recovery — e.g. an ATS Microsoft account reached the console.
-  it('TENANT_ACCESS_DENIED → wrong-account recovery (no auto-redirect, no plain retry)', () => {
-    const onMount = renderAt('/login?error=TENANT_ACCESS_DENIED');
-    expect(onMount).not.toHaveBeenCalled();
+  it('renders the callback error with the buttons (TENANT_SUSPENDED)', async () => {
+    renderAt('/login?error=TENANT_SUSPENDED');
+    expect(screen.getByText('Workspace suspended')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
+  });
+
+  it('TENANT_CLOSED is terminal (no buttons)', () => {
+    renderAt('/login?error=TENANT_CLOSED');
+    expect(screen.getByText('Workspace closed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /continue with/i })).toBeNull();
+  });
+
+  it('TENANT_ACCESS_DENIED keeps the wrong-account recovery', () => {
+    renderAt('/login?error=TENANT_ACCESS_DENIED');
     expect(screen.getByText('Signed in with a different account')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /sign in with a different account/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /try signing in again/i })).toBeNull();
+    expect(screen.getByRole('link', { name: /sign out of microsoft/i })).toBeInTheDocument();
   });
 });

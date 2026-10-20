@@ -264,3 +264,12 @@ export {
   SIGNUP_PROVISIONING_STALE_MS,
   type SignupRequestRow,
 } from './lib/signup-request.repository.js';
+
+// AUTH-SIGNIN-1 R1/R2 — provider pin cohort + no cross-provider merge.
+export {
+  IdentityProviderPolicyService,
+  FEDERATED_IDPS,
+  normalizeIdp,
+  type FederatedIdp,
+  type IdpDecision,
+} from './lib/identity-provider-policy.service.js';

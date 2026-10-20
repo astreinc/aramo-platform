@@ -130,6 +130,10 @@ export const TENANT_ACCESS_DENIED_REASONS: ReadonlySet<string> = new Set([
   'host_tenant_mismatch',
   'host_class_consumer_mismatch',
   'host_unbound',
+  // AUTH-SIGNIN-1 R1/R2 — wrong provider for an enforced-pin tenant, or a
+  // second provider for the same person; the wrong-account recovery applies.
+  'idp_not_permitted_for_tenant',
+  'idp_identity_conflict',
 ]);
 
 // IC-2 PR-5 — refresh eligibility denial reasons (adapter.resolveScopes). Each

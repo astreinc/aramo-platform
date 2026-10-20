@@ -113,7 +113,7 @@ describe('flag parsing (fail-closed)', () => {
   });
   it('the 403 reason set is closed and complete', () => {
     expect([...TENANT_ACCESS_DENIED_REASONS].sort()).toEqual(
-      ['host_class_consumer_mismatch', 'host_tenant_mismatch', 'host_unbound', 'no_active_tenant', 'tenant_resolution_ambiguous'],
+      ['host_class_consumer_mismatch', 'host_tenant_mismatch', 'host_unbound', 'idp_identity_conflict', 'idp_not_permitted_for_tenant', 'no_active_tenant', 'tenant_resolution_ambiguous'],
     );
   });
 });

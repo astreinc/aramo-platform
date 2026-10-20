@@ -64,7 +64,7 @@ describe('signup pages', () => {
         expect(body.token).toBe(TOKEN);
         if (completes === 1) return json({ error: { code: 'TENANT_ALREADY_EXISTS', message: 'Choose another name.', details: { reason: 'organization_name_taken' } } }, 409);
         expect(body.organization_name).toBe('Astre Consulting');
-        return json({ status: 'PROVISIONED', email: 'pat@astre.test', organization_name: 'Astre Consulting', sign_in_url: 'https://esign.example.test/login' });
+        return json({ status: 'PROVISIONED', email: 'pat@astre.test', organization_name: 'Astre Consulting', sign_in_url: 'https://esign.example.test/login', sign_in: { microsoft: 'https://sign.example.test/auth/sign/login?idp=microsoft&return_to=%2F', google: 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F' } });
       }
       return json({}, 401);
     });
@@ -77,7 +77,10 @@ describe('signup pages', () => {
     fireEvent.change(screen.getByLabelText('Organization name'), { target: { value: 'Astre Consulting' } });
     fireEvent.click(screen.getByTestId('signup-create'));
     expect(await screen.findByTestId('signup-done')).toHaveTextContent('Astre Consulting');
-    expect(screen.getByTestId('signup-signin')).toHaveAttribute('href', 'https://esign.example.test/login');
+    expect(screen.getByTestId('signup-signin-microsoft')).toHaveAttribute('href', 'https://sign.example.test/auth/sign/login?idp=microsoft&return_to=%2F');
+    expect(screen.getByTestId('signup-signin-google')).toHaveAttribute('href', 'https://sign.example.test/auth/sign/login?idp=google&return_to=%2F');
+    // Sign-Signup-Federated-Owner R3 — no password is issued or mentioned.
+    expect(screen.getByTestId('signup-done').textContent ?? '').not.toMatch(/password/i);
   });
 
   it('verify without a usable link, or with a rejected one, offers to start again', async () => {

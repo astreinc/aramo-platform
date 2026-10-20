@@ -233,6 +233,7 @@ export class SessionOrchestratorService {
       provider_subject: cognito.sub,
       verified_email: cognito.email,
       consumer: input.consumer,
+      idp: cognito.idp,
       ...(legacyPkce
         ? {}
         : { host_class: sealedHostClass, context_id: sealedContextId }),

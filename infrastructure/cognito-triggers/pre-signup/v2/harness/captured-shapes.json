@@ -1,0 +1,137 @@
+{
+ "captured_at": "2026-10-20",
+ "source": "list-users (read-only)",
+ "shapes": [
+  {
+   "id": "user0",
+   "kind": "microsoft",
+   "status": "EXTERNAL_PROVIDER",
+   "linked_providers": [
+    "microsoft"
+   ],
+   "userName": "microsoft_redacted0",
+   "userAttributes": {
+    "email": "user0@domain0.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user1",
+   "kind": "microsoft",
+   "status": "EXTERNAL_PROVIDER",
+   "linked_providers": [
+    "microsoft"
+   ],
+   "userName": "microsoft_redacted1",
+   "userAttributes": {
+    "email": "user1@domain1.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user2",
+   "kind": "microsoft",
+   "status": "EXTERNAL_PROVIDER",
+   "linked_providers": [
+    "microsoft",
+    "Google"
+   ],
+   "userName": "microsoft_redacted2",
+   "userAttributes": {
+    "email": "user2@domain2.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user3",
+   "kind": "microsoft",
+   "status": "EXTERNAL_PROVIDER",
+   "linked_providers": [
+    "microsoft"
+   ],
+   "userName": "microsoft_redacted3",
+   "userAttributes": {
+    "email": "user3@domain3.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user4",
+   "kind": "native",
+   "status": "CONFIRMED",
+   "linked_providers": [],
+   "userName": "native4",
+   "userAttributes": {
+    "email": "user4@domain4.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user5",
+   "kind": "native",
+   "status": "CONFIRMED",
+   "linked_providers": [],
+   "userName": "native5",
+   "userAttributes": {
+    "email": "user5@domain5.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user6",
+   "kind": "microsoft",
+   "status": "EXTERNAL_PROVIDER",
+   "linked_providers": [
+    "microsoft"
+   ],
+   "userName": "microsoft_redacted6",
+   "userAttributes": {
+    "email": "user6@domain6.example.test",
+    "email_verified": "true",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  },
+  {
+   "id": "user7",
+   "kind": "native",
+   "status": "CONFIRMED",
+   "linked_providers": [],
+   "userName": "native7",
+   "userAttributes": {
+    "email": "user7@domain7.example.test",
+    "email_verified": "false",
+    "family_name": "redacted-family_name",
+    "given_name": "redacted-given_name",
+    "name": "redacted-name",
+    "profile": "redacted-profile"
+   }
+  }
+ ]
+}
