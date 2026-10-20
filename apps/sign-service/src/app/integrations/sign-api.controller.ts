@@ -110,8 +110,8 @@ export class SignApiController {
   @Post('envelopes/:id/remind')
   @HttpCode(HttpStatus.OK)
   @SignApiBoundary(ESIGN_SCOPE.ENVELOPE_SEND)
-  remind(@AuthContext() auth: AuthContextType, @Req() req: SignApiRequest, @RequestId() requestId: string, @Param('id') id: string) {
-    return this.run(requestId, () => this.api.remind(auth, integration(req, requestId), id, requestId));
+  remind(@AuthContext() auth: AuthContextType, @Req() req: SignApiRequest, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { signer_id?: unknown } = {}) {
+    return this.run(requestId, () => this.api.remind(auth, integration(req, requestId), id, requestId, body?.signer_id));
   }
 
   @Post('envelopes/:id/void')

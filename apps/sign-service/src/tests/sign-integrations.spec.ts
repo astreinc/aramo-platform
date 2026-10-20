@@ -380,7 +380,7 @@ describe('Sign API — an integration acts only on its own application’s envel
   it('a delegated ATS user may follow up another recruiter’s ATS envelope (the ATS workflow), and the actor is recorded', async () => {
     const { svc, provider } = apiService({ created_by: OTHER_USER });
     await svc.remind(apiAuth(DELEGATED), integ(), 'e1', 'r');
-    expect(provider.remindEnvelopeSigner).toHaveBeenCalledWith(TENANT, 'e1', USER);
+    expect(provider.remindEnvelopeSigner).toHaveBeenCalledWith(TENANT, 'e1', USER, undefined);
   });
 
   it('a third-party application cannot reference Aramo Core documents; sending inline needs the send permission', async () => {

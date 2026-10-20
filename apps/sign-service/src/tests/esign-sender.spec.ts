@@ -107,6 +107,7 @@ function envelopeService(kind = 'BUSINESS') {
   const ctx = contextService(kind);
   const repo = {
     replaceDraftRecipients: vi.fn(async () => []),
+    updateDraft: vi.fn(async () => undefined),
     replaceDraftFields: vi.fn(async () => 0),
     createDraft: vi.fn(async () => ({ id: 'e1', status: 'DRAFT', subject: 'Untitled envelope' })),
     getEnvelopeDetail: vi.fn(async () => ({ source_application: 'aramo-sign',
@@ -131,16 +132,29 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     expect(repo.createDraft).not.toHaveBeenCalled();
   });
 
-  it('recipients: name and valid email required; V1 allows exactly one signer (PX-V1 §15)', async () => {
+  it('recipients: name and valid email required; 1 to 10 signers (Multi-Signer M-2); a repeated email is refused before any write', async () => {
     const { svc, repo } = envelopeService();
     await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: '', email: 'a@x.test' }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'nope' }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    const many = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `S${i + 1}`, email: `s${i + 1}@x.test` }));
+    await expect(svc.replaceRecipients(AUTH, 'e1', { recipients: many(11) }, 'r')).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'too_many_signers', max: 10 } },
+    });
     await expect(
-      svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }, { name: 'B', email: 'b@x.test' }] }, 'r'),
-    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'v1_single_signer' } } });
+      svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }, { name: 'B', email: 'A@X.test' }] }, 'r'),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { index: 1, field: 'email' } } });
     expect(repo.replaceDraftRecipients).not.toHaveBeenCalled();
-    await svc.replaceRecipients(AUTH, 'e1', { recipients: [{ name: 'A', email: 'a@x.test' }] }, 'r');
-    expect(repo.replaceDraftRecipients).toHaveBeenCalledTimes(1);
+    for (const n of [1, 2, 10]) await svc.replaceRecipients(AUTH, 'e1', { recipients: many(n) }, 'r');
+    expect(repo.replaceDraftRecipients).toHaveBeenCalledTimes(3);
+  });
+
+  it('routing: PARALLEL or SEQUENTIAL only; set with or without a subject', async () => {
+    const { svc, repo } = envelopeService();
+    await expect(svc.update(AUTH, 'e1', { routing_mode: 'RANDOM' }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { field: 'routing_mode' } } });
+    await expect(svc.update(AUTH, 'e1', {}, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await svc.update(AUTH, 'e1', { routing_mode: 'SEQUENTIAL' }, 'r');
+    expect(repo.updateDraft).toHaveBeenLastCalledWith({ tenant_id: AUTH.tenant_id, envelope_id: 'e1', routing_mode: 'SEQUENTIAL' });
   });
 
   it('fields: unknown type, negative page, non-positive size and out-of-page boxes are refused', async () => {

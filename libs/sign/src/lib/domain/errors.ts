@@ -113,3 +113,12 @@ export class DisclosureVersionInvalidError extends Error {
     this.name = 'DisclosureVersionInvalidError';
   }
 }
+
+// Multi-Signer Amendment §4 — in a SEQUENTIAL envelope only the lowest-ordered unsigned
+// signer may act. Enforced by the signing engine (not just by withholding invitations).
+export class SignerNotYetEligibleError extends Error {
+  constructor(public readonly signerId: string) {
+    super(`Signer ${signerId} is not yet eligible to sign: an earlier signer has not signed`);
+    this.name = 'SignerNotYetEligibleError';
+  }
+}

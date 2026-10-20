@@ -32,13 +32,14 @@ import { SenderContextService } from './sender-context.service.js';
 // with the origin at the page's BOTTOM-LEFT corner and (x, y) the field box's
 // lower-left corner. The sender UI converts from its top-left canvas frame.
 
-// PX-V1 §1 / §15 — V1 scope: ONE signer per envelope, and field types limited to
-// signature, date, initials and text. Multi-signer / signing order and the other
-// engine field types (SIGNER_NAME, CHECKBOX, ACKNOWLEDGEMENT) are explicitly OUT
-// of V1; enabling them needs a directive amendment, not a UI switch.
+// PX-V1 §1 — field types limited to signature, date, initials and text; the other
+// engine field types (SIGNER_NAME, CHECKBOX, ACKNOWLEDGEMENT) stay out of scope.
+// Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED — up to MAX_SIGNERS signers per
+// envelope, signing in parallel or in order (ROUTING_MODES).
 export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT'] as const;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
-export const MAX_SIGNERS_V1 = 1;
+export const MAX_SIGNERS = 10;
+export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
 const MAX_FIELDS = 500;
 const MAX_TITLE = 200;
@@ -224,6 +225,8 @@ export class SenderEnvelopeService {
       throw new AramoError('ENVELOPE_NOT_FOUND', `envelope ${envelope_id} not found`, 404, { requestId });
     }
     const sender = await this.identity.findUserById(env.created_by);
+    const open = env.status === 'SENT' || env.status === 'IN_PROGRESS';
+    const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (env.signers.find((s) => s.status !== 'SIGNED')?.id ?? null) : null;
     return {
       id: env.id,
       subject: env.subject,
@@ -240,6 +243,9 @@ export class SenderEnvelopeService {
       // another application are read-only here.
       source_application: env.source_application,
       editable: env.status === 'DRAFT' && env.source_application === SIGN_APPLICATION,
+      // Multi-Signer §4/§5 — the routing mode and, while signing is open, who may sign now.
+      routing_mode: env.routing_mode,
+      next_signer_id: nextSignerId,
       documents: env.documents.map((d) => ({
         id: d.id,
         title: d.title,
@@ -259,6 +265,8 @@ export class SenderEnvelopeService {
         signed_at: iso(s.signed_at),
         declined_at: iso(s.declined_at),
         decline_reason: s.decline_reason,
+        // A reminder is possible for an unsigned signer who may sign now.
+        can_remind: open && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId),
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -400,12 +408,26 @@ export class SenderEnvelopeService {
     return { id: env.id, status: env.status, subject: env.subject };
   }
 
-  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string) {
+  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
-    if (typeof body?.subject !== 'string' || body.subject.trim().length === 0) throw bad(requestId, 'subject is required');
-    if (body.subject.length > MAX_TITLE) throw bad(requestId, `subject must be at most ${MAX_TITLE} characters`);
-    await this.repo.updateDraft({ tenant_id: auth.tenant_id, envelope_id, subject: body.subject.trim() });
+    const hasSubject = body?.subject !== undefined;
+    const hasRouting = body?.routing_mode !== undefined;
+    if (!hasSubject && !hasRouting) throw bad(requestId, 'subject or routing_mode is required');
+    if (hasSubject) {
+      if (typeof body.subject !== 'string' || body.subject.trim().length === 0) throw bad(requestId, 'subject is required');
+      if (body.subject.length > MAX_TITLE) throw bad(requestId, `subject must be at most ${MAX_TITLE} characters`);
+    }
+    // Multi-Signer §4 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL).
+    if (hasRouting && !(ROUTING_MODES as readonly unknown[]).includes(body.routing_mode)) {
+      throw bad(requestId, 'routing_mode must be PARALLEL or SEQUENTIAL', { field: 'routing_mode' });
+    }
+    await this.repo.updateDraft({
+      tenant_id: auth.tenant_id,
+      envelope_id,
+      ...(hasSubject ? { subject: (body.subject as string).trim() } : {}),
+      ...(hasRouting ? { routing_mode: body.routing_mode as string } : {}),
+    });
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -487,8 +509,8 @@ export class SenderEnvelopeService {
     await this.context.assertCanAuthor(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
-    if (body.recipients.length > MAX_SIGNERS_V1) {
-      throw bad(requestId, 'This version supports one signer per envelope', { reason: 'v1_single_signer', max: MAX_SIGNERS_V1 });
+    if (body.recipients.length > MAX_SIGNERS) {
+      throw bad(requestId, `An envelope can have at most ${MAX_SIGNERS} signers`, { reason: 'too_many_signers', max: MAX_SIGNERS });
     }
     const seen = new Set<string>();
     const recipients = body.recipients.map((r: unknown, i: number) => {
@@ -597,11 +619,14 @@ export class SenderEnvelopeService {
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async remind(auth: AuthContextType, envelope_id: string, requestId: string) {
+  async remind(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string) {
     await this.context.assertCanAuthor(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     await this.detail(auth, envelope_id, requestId);
-    await this.provider.remindEnvelopeSigner(auth.tenant_id, envelope_id, auth.sub);
+    // Multi-Signer M-3a — remind one signer, or (omitted) everyone who may sign now.
+    const signer_id = body?.signer_id;
+    if (signer_id !== undefined && typeof signer_id !== 'string') throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
+    await this.provider.remindEnvelopeSigner(auth.tenant_id, envelope_id, auth.sub, signer_id);
     return this.detail(auth, envelope_id, requestId);
   }
 

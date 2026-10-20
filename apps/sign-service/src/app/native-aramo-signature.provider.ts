@@ -188,10 +188,11 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // SIGNATURE_REMINDER link per newly-issued session and record each delivery
   // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
   // in-memory here to build the signer URL; never persisted/logged/returned).
-  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+  // signer_id (Multi-Signer M-3a) — remind one signer; omitted, everyone who may sign now.
+  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: string | SignatureActor, signer_id?: string): Promise<EnvelopeSummary> {
     const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by);
+    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by, signer_id);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
   }

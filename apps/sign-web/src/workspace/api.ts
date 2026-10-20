@@ -95,6 +95,8 @@ export interface Recipient {
   signed_at: string | null;
   declined_at: string | null;
   decline_reason: string | null;
+  // Multi-Signer — an unsigned signer who may sign now (any order, or their turn).
+  can_remind?: boolean;
 }
 
 export interface EnvelopeField {
@@ -111,6 +113,10 @@ export interface EnvelopeField {
   filled?: boolean;
 }
 
+export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
+// Aramo-Sign-Multi-Signer-Amendment — at most this many signers per envelope.
+export const MAX_SIGNERS = 10;
+
 export interface EnvelopeDetail {
   id: string;
   // Sign Unified Product S-3 — envelopes from another application are read-only here.
@@ -126,6 +132,9 @@ export interface EnvelopeDetail {
   signing_window_days: number;
   sender: { id: string; name: string | null };
   editable: boolean;
+  // Multi-Signer §4 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL), and who may sign now.
+  routing_mode?: RoutingMode;
+  next_signer_id?: string | null;
   documents: EnvelopeDocument[];
   recipients: Recipient[];
   fields: EnvelopeField[];
@@ -294,6 +303,7 @@ export const senderApi = {
   create: (subject?: string) => apiClient.post<{ id: string; status: EnvelopeStatus; subject: string }>(`${BASE}/envelopes`, subject !== undefined ? { subject } : {}),
   detail: (id: string) => apiClient.get<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`),
   rename: (id: string, subject: string) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { subject }),
+  setRouting: (id: string, routing_mode: RoutingMode) => apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}`, { routing_mode }),
   events: (id: string) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/envelopes/${enc(id)}/events`),
   upload: (id: string, file: { filename: string; title: string; content_base64: string }) =>
     apiClient.post<UploadedDocument>(`${BASE}/envelopes/${enc(id)}/documents`, file),
@@ -310,7 +320,9 @@ export const senderApi = {
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),
-  remind: (id: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/remind`, {}),
+  // signer_id — remind one signer; omitted, everyone who may sign now.
+  remind: (id: string, signer_id?: string) =>
+    apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/remind`, signer_id !== undefined ? { signer_id } : {}),
   void: (id: string, reason: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/void`, { reason }),
   executed: (id: string) => apiClient.get<ExecutedBundle>(`${BASE}/envelopes/${enc(id)}/executed`),
   evidence: (id: string) => apiClient.get<Evidence>(`${BASE}/envelopes/${enc(id)}/evidence`),

@@ -18,6 +18,8 @@ import {
   EnvelopeIllegalTransitionError,
   EnvelopeNotFoundError,
   ReminderNotAllowedError,
+  SignerNotYetEligibleError,
+  SigningInvitationService,
   SignatureFieldIncompleteError,
   SignerNotFoundError,
   SigningSessionExpiredError,
@@ -58,6 +60,8 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof SignatureFieldIncompleteError) return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId });
   if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
   if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
+  // Multi-Signer §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
+  if (e instanceof SignerNotYetEligibleError) return new AramoError('SIGNER_NOT_YET_ELIGIBLE', e.message, 409, { requestId });
   // Aramo Sign launch (A-7) — unknown disclosure version or mismatching text hash.
   if (e instanceof DisclosureVersionInvalidError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId });
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
@@ -197,6 +201,7 @@ export class EsignSignerController {
     private readonly repo: EsignRepository,
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sourceProvider: DocumentSourceProviderPort,
     @Optional() @Inject(ENVELOPE_NOTIFICATION_SERVICE) private readonly notifications?: EnvelopeNotificationService,
+    @Optional() private readonly invitations?: SigningInvitationService,
   ) {}
 
   // Aramo Sign launch (A-7) — the CURRENT server-held disclosure the signer must
@@ -339,7 +344,21 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     try {
       const ctx = await this.service.resolveSession(body.token);
-      return await this.service.completeSigner(ctx);
+      const result = await this.service.completeSigner(ctx);
+      if (result.envelope_status !== 'COMPLETED') {
+        // Multi-Signer §4 / M-3b — after commit: deliver the next sequential signer's
+        // invitation (durable; the worker retries a failure) and tell the sender. Never
+        // fails the signer's completion, which has already committed.
+        if (result.next_signer_id !== undefined) {
+          await this.invitations?.dispatch({ tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }).catch((err: unknown) => {
+            this.logger.warn(`next-signer invitation deferred to the worker — envelope ${ctx.envelope_id}: ${(err as Error).message}`);
+          });
+        }
+        await this.notifications?.signerSigned(ctx.tenant_id, ctx.envelope_id, ctx.signer_id).catch((err: unknown) => {
+          this.logger.warn(`signer-signed notice failed — envelope ${ctx.envelope_id}: ${(err as Error).message}`);
+        });
+      }
+      return { envelope_status: result.envelope_status };
     } catch (e) {
       throw toHttp(e, requestId);
     }

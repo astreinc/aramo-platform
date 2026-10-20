@@ -38,6 +38,8 @@ export interface CreateBody {
   signers?: unknown;
   fields?: unknown;
   send?: unknown;
+  // Multi-Signer §4 — PARALLEL (default) | SEQUENTIAL.
+  routing_mode?: unknown;
 }
 
 function bad(requestId: string, message: string, details?: Record<string, unknown>): AramoError {
@@ -157,9 +159,10 @@ export class SignApiService {
     return this.provider.sendEnvelope(auth.tenant_id, id, auth.sub);
   }
 
-  async remind(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string) {
+  async remind(auth: AuthContextType, integ: SignIntegrationContext, id: string, requestId: string, signer_id?: unknown) {
     await this.changeable(auth, integ, id, requestId);
-    return this.provider.remindEnvelopeSigner(auth.tenant_id, id, auth.sub);
+    if (signer_id !== undefined && typeof signer_id !== 'string') throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
+    return this.provider.remindEnvelopeSigner(auth.tenant_id, id, auth.sub, signer_id);
   }
 
   async void(auth: AuthContextType, integ: SignIntegrationContext, id: string, reason: unknown, requestId: string) {
@@ -189,6 +192,20 @@ export class SignApiService {
       if (typeof order !== 'number' || !Number.isInteger(order) || order < 1) throw bad(requestId, `signer ${i + 1}: signing_order must be a positive integer`, { index: i });
       return { name, email, signing_order: order };
     });
+    // Multi-Signer §6 — refused before any write: a repeated email, and signing
+    // positions that are not exactly 1..N (unique and contiguous).
+    const emails = new Set<string>();
+    for (const [i, s] of signers.entries()) {
+      const k = s.email.toLowerCase();
+      if (emails.has(k)) throw bad(requestId, `signer ${i + 1} repeats an email already on this envelope`, { index: i, reason: 'duplicate_signer_email' });
+      emails.add(k);
+    }
+    const orders = signers.map((s) => s.signing_order).sort((a, b) => a - b);
+    if (orders.some((o, i) => o !== i + 1)) throw bad(requestId, 'signing_order values must be 1 to N with no gaps or repeats', { reason: 'invalid_signing_order' });
+    if (body.routing_mode !== undefined && body.routing_mode !== 'PARALLEL' && body.routing_mode !== 'SEQUENTIAL') {
+      throw bad(requestId, 'routing_mode must be PARALLEL or SEQUENTIAL', { field: 'routing_mode' });
+    }
+    const routing_mode = (body.routing_mode ?? 'PARALLEL') as 'PARALLEL' | 'SEQUENTIAL';
 
     // Validate every document BEFORE any write (uploads are accepted into memory).
     type Doc =
@@ -255,6 +272,7 @@ export class SignApiService {
       source_application: integ.application_key,
       installation_id: integ.installation_id,
       origin_actor_kind: integ.mode === 'USER' ? 'USER' : 'APPLICATION',
+      routing_mode,
     });
 
     const createdDocs: CreatedDocumentRef[] = [];

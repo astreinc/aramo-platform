@@ -47,6 +47,8 @@ export interface CreateEnvelopeInput {
   source_application?: string;
   installation_id?: string | null;
   origin_actor_kind?: 'USER' | 'APPLICATION';
+  // Multi-Signer §4 — PARALLEL (default) | SEQUENTIAL.
+  routing_mode?: 'PARALLEL' | 'SEQUENTIAL';
 }
 
 // PX-V1 F1 — CORE_REF (legacy ATS: document_ref/document_revision_ref) OR OWNED
@@ -157,6 +159,7 @@ export class EsignRepository {
           ...(input.source_application !== undefined ? { source_application: input.source_application } : {}),
           ...(input.installation_id !== undefined && input.installation_id !== null ? { installation_id: input.installation_id } : {}),
           ...(input.origin_actor_kind !== undefined ? { origin_actor_kind: input.origin_actor_kind } : {}),
+          ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
         },
       });
       await this.appendEvent(tx, {

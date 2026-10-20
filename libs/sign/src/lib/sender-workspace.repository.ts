@@ -236,7 +236,7 @@ export class EsignSenderRepository {
     if (row.status !== 'DRAFT') throw new EnvelopeIllegalTransitionError(row.status, 'edit(DRAFT-only)');
   }
 
-  async updateDraft(input: { tenant_id: string; envelope_id: string; subject?: string; execution_mode?: string }): Promise<void> {
+  async updateDraft(input: { tenant_id: string; envelope_id: string; subject?: string; execution_mode?: string; routing_mode?: string }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id);
       await tx.signatureEnvelope.update({
@@ -244,6 +244,7 @@ export class EsignSenderRepository {
         data: {
           ...(input.subject !== undefined ? { subject: input.subject } : {}),
           ...(input.execution_mode !== undefined ? { execution_mode: input.execution_mode } : {}),
+          ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
         },
       });
     });
@@ -354,7 +355,9 @@ export class EsignSenderRepository {
 
   // Replaces the recipient list: keeps (and updates) listed existing ids, creates
   // new ones, deletes the rest together with their fields. Signing order follows
-  // list position (all recipients sign in parallel in V1).
+  // list position (1..N). Multi-Signer §6 — reorder-safe: the kept signers are first
+  // parked on temporary positions beyond any final one, so rewriting the order never
+  // collides with the (envelope, signing_order) unique index mid-way.
   async replaceDraftRecipients(input: { tenant_id: string; envelope_id: string; recipients: readonly SenderRecipientInput[] }) {
     return this.prisma.$transaction(async (tx) => {
       await this.assertDraft(tx, input.tenant_id, input.envelope_id);
@@ -368,6 +371,10 @@ export class EsignSenderRepository {
       if (removed.length > 0) {
         await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, signer_id: { in: removed } } });
         await tx.signer.deleteMany({ where: { tenant_id: input.tenant_id, id: { in: removed } } });
+      }
+      const PARK = 1000;
+      for (const [i, r] of input.recipients.entries()) {
+        if (r.id !== undefined) await tx.signer.update({ where: { id: r.id }, data: { signing_order: PARK + i + 1 } });
       }
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {

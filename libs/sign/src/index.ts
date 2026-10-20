@@ -104,6 +104,7 @@ export {
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,
+  SignerNotYetEligibleError,
   DisclosureVersionInvalidError,
 } from './lib/domain/errors.js';
 // Aramo Sign launch — server-held disclosure, lifecycle notifications, sender lookup.
@@ -144,3 +145,4 @@ export {
 // Sign Unified Product S-7 — the recipient inbox (refinement B).
 export { RecipientInboxRepository, RECIPIENT_SESSION_TTL_MS, RECIPIENT_COPY_TTL_MS, type RecipientInboxRow } from './lib/recipient-inbox.repository.js';
 export { canonicalSignEventType } from './lib/event-type.js';
+export { SigningInvitationService, SIGNING_INVITATION_MAX_ATTEMPTS } from './lib/signing-invitation.service.js';
