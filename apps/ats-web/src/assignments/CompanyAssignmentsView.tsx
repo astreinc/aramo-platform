@@ -2,6 +2,7 @@ import {
   ApiError,
   Button,
   Input,
+  ssoEntryHref,
   useToast,
 } from '@aramo/fe-foundation';
 import { useEffect, useMemo, useState } from 'react';
@@ -407,7 +408,7 @@ export function CompanyAssignmentsView({
                 </span>
                 <div className="rc-team__addnote">
                   The member keeps their user role — roles are managed in{' '}
-                  <a href="/org/users" className="rc-link-strong">
+                  <a href={ssoEntryHref('/org/users', 'org')} className="rc-link-strong">
                     Organization administration → Users
                   </a>
                   .

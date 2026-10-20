@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildAppSwitcherItems } from './app-switcher-items';
-import { productEntryHref, type ProductAvailabilityView } from './products';
+import { productEntryHref, ssoEntryHref, type ProductAvailabilityView } from './products';
 
 // App switcher rows (App Home handoff §3) — strictly from the backend
 // availability read; the external signer app is never a row.
@@ -26,7 +26,7 @@ describe('buildAppSwitcherItems', () => {
     });
     expect(items.map((i) => i.key)).toEqual(['home', 'ats', 'sign']);
     expect(items[0]).toMatchObject({ state: 'current', sub: 'You are here', to: '/' });
-    expect(items[1]).toMatchObject({ state: 'open', href: '/ats/' });
+    expect(items[1]).toMatchObject({ state: 'open', href: ssoEntryHref('/ats/', 'recruiter') });
     expect(items[2]).toMatchObject({ state: 'unavailable', sub: 'Not part of your plan' });
     expect(items[2]?.href).toBeUndefined();
   });
@@ -40,10 +40,10 @@ describe('buildAppSwitcherItems', () => {
         org: { subscribed: true, authorized: true, available: true, entry_path: '/org/' },
       }),
     });
-    expect(items.find((i) => i.key === 'home')).toMatchObject({ state: 'open', href: '/' });
+    expect(items.find((i) => i.key === 'home')).toMatchObject({ state: 'open', href: ssoEntryHref('/', 'org') });
     expect(items.find((i) => i.key === 'ats')).toMatchObject({ state: 'current' });
     expect(items.find((i) => i.key === 'sign')).toMatchObject({ state: 'unavailable', sub: 'Not available yet' });
-    expect(items.find((i) => i.key === 'org')).toMatchObject({ state: 'open', href: '/org/' });
+    expect(items.find((i) => i.key === 'org')).toMatchObject({ state: 'open', href: ssoEntryHref('/org/', 'org') });
   });
 
   it('no availability read yet (loading/error): products are not links; never a signer-app row', () => {
@@ -54,10 +54,12 @@ describe('buildAppSwitcherItems', () => {
 });
 
 describe('productEntryHref — Sign on its own host', () => {
+  // AUTH-SIGNIN-1 R6 — product entries open through the product's sign-in route so
+  // the existing SSO session carries over (no second sign-in screen).
   const base = { subscribed: true, authorized: true, available: true, reason: null } as const;
   it('opens an absolute https product-host entry directly, and tenant-host paths as-is', () => {
-    expect(productEntryHref({ key: 'sign', ...base, entry_path: 'https://esign.aramo.ai/' })).toBe('https://esign.aramo.ai/');
-    expect(productEntryHref({ key: 'ats', ...base, entry_path: '/ats/' })).toBe('/ats/');
+    expect(productEntryHref({ key: 'sign', ...base, entry_path: 'https://esign.aramo.ai/' })).toBe('https://esign.aramo.ai/auth/sign/login?return_to=%2F');
+    expect(productEntryHref({ key: 'ats', ...base, entry_path: '/ats/' })).toBe('/auth/recruiter/login?return_to=%2Fats%2F');
   });
   it('never links a non-http(s) or protocol-relative entry', () => {
     expect(productEntryHref({ key: 'sign', ...base, entry_path: 'javascript:alert(1)' })).toBeNull();

@@ -94,7 +94,7 @@ export class SenderContextService {
     const tenantBase = tenantHostBase(slug);
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null },
-      tenant: { id: tenant.id, name: tenant.name, kind: tenant.kind },
+      tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
       workspace: business ? 'sign' : 'personal',
       permissions,
       can_send: business && permissions.create && permissions.send,

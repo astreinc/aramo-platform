@@ -1,3 +1,4 @@
+import { ssoEntryHref } from '../platform/products';
 // Cross-app "return to the exact originating Settings page" (accepted Settings &
 // navigation baseline §C). The prototype expressed it as a hash marker
 // (`#<org-page>~<app>~<encoded page>`); production uses a query on the
@@ -89,4 +90,13 @@ export function clearReturnContext(): void {
   } catch {
     /* noop */
   }
+}
+
+/**
+ * orgHref for a link from ANOTHER app (ATS): through the org consumer's sign-in
+ * route, so the existing SSO session carries over instead of the Organization app
+ * asking a signed-in user to sign in again (AUTH-SIGNIN-1 R6). See ssoEntryHref.
+ */
+export function orgEntryHref(section: string, from?: { readonly app: ReturnApp; readonly path: string }): string {
+  return ssoEntryHref(orgHref(section, from), 'org');
 }

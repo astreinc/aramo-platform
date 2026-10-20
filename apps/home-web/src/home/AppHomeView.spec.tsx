@@ -54,7 +54,7 @@ describe('AppHomeView', () => {
   it('A · ATS-only tenant: ATS card Ready with Open → its entry path; Sign under Other Aramo products, Not subscribed, no link', async () => {
     renderHome(view(READY_ATS, OFF));
     const open = await screen.findByTestId('home-open-ats');
-    expect(open).toHaveAttribute('href', '/ats/');
+    expect(open).toHaveAttribute('href', '/auth/recruiter/login?return_to=%2Fats%2F');
     expect(open).toHaveTextContent('Open ATS');
     expect(screen.getByTestId('home-other-sign')).toHaveTextContent('Not subscribed');
     expect(screen.queryByTestId('home-open-sign')).toBeNull();

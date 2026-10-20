@@ -165,6 +165,15 @@ export class TenantRepository {
     return row === null ? null : toTenantDto(row);
   }
 
+  // The organization's name as people see it — the same rule the ATS shell, the RTR
+  // binding and the tenant logo use: display name, else legal name, else the tenant
+  // name (the short internal handle). Null for an unknown tenant.
+  async findOrganizationNameById(id: string): Promise<string | null> {
+    const row = await this.prisma.tenant.findUnique({ where: { id }, select: { name: true, display_name: true, legal_name: true } });
+    if (row === null) return null;
+    return (row.display_name ?? '').trim() || (row.legal_name ?? '').trim() || row.name;
+  }
+
   // Platform-Console Increment-2 PR-1 — the lifecycle status read used by the
   // transition service to load the current state before validating a transition.
   // Returns null for an unknown tenant (caller maps to NOT_FOUND).

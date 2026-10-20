@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Input, logout } from '@aramo/fe-foundation';
+import { Input, logout, ssoEntryHref } from '@aramo/fe-foundation';
 
 import { senderApi, type LedgerEvent } from './api';
 import { Avatar, Bare, Btn, Icon, eventDot, eventLabel, rel } from './ui';
@@ -211,7 +211,7 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
             <div className="sg-pop" role="menu" aria-label="Aramo apps">
               <div className="sg-pop__head">Aramo apps</div>
               {ctx.app_home_url !== null ? (
-                <a className="sg-pop__row" role="menuitem" href={ctx.app_home_url}>
+                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(ctx.app_home_url, 'org')}>
                   <span>
                     <strong>App Home</strong>
                     <div className="sg-muted">Your apps and organization</div>
@@ -219,7 +219,7 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
                 </a>
               ) : null}
               {ctx.app_home_url !== null && ctx.workspace === 'sign' ? (
-                <a className="sg-pop__row" role="menuitem" href={`${ctx.app_home_url}ats/`}>
+                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(`${ctx.app_home_url}ats/`, 'recruiter')}>
                   <span>
                     <strong>Aramo ATS</strong>
                     <div className="sg-muted">Opens after the access check</div>
@@ -233,7 +233,7 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
                 </span>
               </div>
               {isOrgAdmin && ctx.organization_url !== null ? (
-                <a className="sg-pop__row" role="menuitem" href={ctx.organization_url.replace(/\/profile$/, '/users')}>
+                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(ctx.organization_url.replace(/\/profile$/, '/users'), 'org')}>
                   <span>
                     <strong>Organization</strong>
                     <div className="sg-muted">Users, access and organization settings</div>
@@ -303,7 +303,7 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
                 Sign settings
               </Link>
               {ctx.app_home_url !== null ? (
-                <a className="sg-pop__row" role="menuitem" href={`${ctx.app_home_url}preferences`}>
+                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(`${ctx.app_home_url}preferences`, 'org')}>
                   My Aramo account
                 </a>
               ) : null}

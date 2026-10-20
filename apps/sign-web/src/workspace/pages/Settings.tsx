@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
-import { logout } from '@aramo/fe-foundation';
+import { logout, ssoEntryHref } from '@aramo/fe-foundation';
 
 import { errorMessage, senderApi, type SignMember, type SignRoleKey } from '../api';
 import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
@@ -85,7 +85,7 @@ function PersonalSection() {
         <div className="sg-card__head">
           Your Aramo account <span className="sg-tag sg-tag--grey">Shared · read-only here</span>
           {ctx.app_home_url !== null ? (
-            <a className="sg-card__end sg-btn sg-btn--sm" href={`${ctx.app_home_url}preferences`}>
+            <a className="sg-card__end sg-btn sg-btn--sm" href={ssoEntryHref(`${ctx.app_home_url}preferences`, 'org')}>
               Manage in Aramo account <span className="sg-tag sg-tag--dark">App Home</span>
             </a>
           ) : null}
@@ -176,7 +176,7 @@ function BrandingSection() {
           </div>
           <p className="sg-help">The organization name and logo come from Organization administration, shared by every Aramo app.</p>
           {ctx.organization_url !== null ? (
-            <a className="sg-btn sg-btn--sm" href={ctx.organization_url} target="_blank" rel="noopener noreferrer">
+            <a className="sg-btn sg-btn--sm" href={ssoEntryHref(ctx.organization_url, 'org')} target="_blank" rel="noopener noreferrer">
               Open organization profile <Icon name="ext" size={12} />
             </a>
           ) : null}
@@ -257,7 +257,7 @@ function IntegrationsSection() {
       name: 'Aramo ATS',
       tag: ['Existing · domain', 'ok'],
       text: 'ATS recruiting flows (Right to Represent, offer letters) use Aramo Sign. Their envelopes appear in your envelope list, marked “From Aramo ATS”, and are managed in the ATS.',
-      ...(ctx.app_home_url !== null ? { action: { label: 'Open Aramo ATS', href: `${ctx.app_home_url}ats/` } } : {}),
+      ...(ctx.app_home_url !== null ? { action: { label: 'Open Aramo ATS', href: ssoEntryHref(`${ctx.app_home_url}ats/`, 'recruiter') } } : {}),
     },
     { name: 'Microsoft 365', tag: ['Conceptual', 'grey'], text: 'Send envelopes from Outlook; completed documents to SharePoint.' },
     { name: 'Google Workspace', tag: ['Conceptual', 'grey'], text: 'Start envelopes from Drive; completed documents back to Drive.' },

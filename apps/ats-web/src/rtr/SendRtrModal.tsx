@@ -37,6 +37,7 @@ export function SendRtrModal({
   composePreview = null,
   disabledText = null,
   sendDisabled = false,
+  sendLabel,
 }: {
   readonly talentName: string;
   readonly clientName: string | null;
@@ -56,6 +57,8 @@ export function SendRtrModal({
   readonly disabledText?: string | null;
   // Disable Send without a banner (e.g. while the compose read is still loading).
   readonly sendDisabled?: boolean;
+  // The primary action label (default "Send for signature").
+  readonly sendLabel?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [missing, setMissing] = useState<string | null>(null);
@@ -172,7 +175,7 @@ export function SendRtrModal({
             style={{ display: 'inline-flex', alignItems: 'center', gap: 7, border: `1px solid ${disabled ? '#E5E9ED' : '#022AC0'}`, background: disabled ? '#F4F6FA' : '#022AC0', color: disabled ? '#A9B3BC' : '#fff', borderRadius: 8, padding: '9px 17px', font: "600 13px 'Hanken Grotesk',sans-serif", cursor: disabled ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4z" /><path d="M22 2 11 13" /></svg>
-            {busy ? 'Sending…' : 'Send for signature'}
+            {busy ? (sendLabel !== undefined ? 'Preparing…' : 'Sending…') : (sendLabel ?? 'Send for signature')}
           </Button>
         </div>
       </div>

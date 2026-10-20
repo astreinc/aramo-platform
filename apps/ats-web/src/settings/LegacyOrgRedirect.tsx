@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { orgHref } from '@aramo/fe-foundation';
+import { orgEntryHref } from '@aramo/fe-foundation';
 
 // Accepted Settings & navigation change log A2 — ATS pages that moved to
 // Organization administration redirect ONCE, automatically, to the
@@ -16,7 +16,7 @@ interface Props {
 }
 
 export function LegacyOrgRedirect({ section, onRedirect }: Props) {
-  const href = orgHref(section, { app: 'ats', path: ATS_SETTINGS_HOME });
+  const href = orgEntryHref(section, { app: 'ats', path: ATS_SETTINGS_HOME });
   useEffect(() => {
     (onRedirect ?? ((h: string) => window.location.replace(h)))(href);
   }, [href, onRedirect]);

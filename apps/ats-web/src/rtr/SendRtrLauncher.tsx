@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 
+import { DocumentPreviewDialog } from '../talent-360/t360-previews';
+import { Button } from '../ui';
+
 import { SendRtrModal } from './SendRtrModal';
 import { rtrTemplateErrorMessage } from './rtr-binding-messages';
 import {
@@ -75,20 +78,73 @@ export function SendRtrLauncher({
     };
   }, [talentId, requisitionId]);
 
-  // Send = the EXISTING governed lifecycle: request the RTR document, then send it
-  // for signature. A missing authoritative binding fails CLOSED (surfaced inline).
+  // RTR-TEMPLATE-1 §16 — the recruiter reviews the EXACT frozen unsigned document
+  // (with the signature block where the talent signs) before it is sent. Step 1
+  // requests (freezes) the RTR document; step 2 shows it; Send then sends that same
+  // document. A missing authoritative binding fails CLOSED (surfaced inline).
+  const [reviewDocId, setReviewDocId] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+
   const onSend = async (): Promise<{ ok: boolean; missingText?: string }> => {
     try {
-      const { document_id } = await requestRtr({ talent_id: talentId, requisition_id: requisitionId, company_id: companyId });
-      await sendRtr(document_id, talentId);
-      onSent?.();
-      onClose();
+      const document_id =
+        reviewDocId ?? (await requestRtr({ talent_id: talentId, requisition_id: requisitionId, company_id: companyId })).document_id;
+      setReviewDocId(document_id);
+      setSendError(null);
+      setReviewing(true);
       return { ok: true };
     } catch (e) {
-      // Fail-closed: surface every send failure honestly and keep Send disabled.
+      // Fail-closed: surface every failure honestly and keep the action disabled.
       return { ok: false, missingText: describeError(e) };
     }
   };
+
+  const confirmSend = async (): Promise<void> => {
+    if (reviewDocId === null) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      await sendRtr(reviewDocId, talentId);
+      onSent?.();
+      onClose();
+    } catch (e) {
+      setSendError(describeError(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (reviewing && reviewDocId !== null) {
+    return (
+      <DocumentPreviewDialog
+        talentId={talentId}
+        documentId={reviewDocId}
+        title="Right to Represent"
+        onClose={() => setReviewing(false)}
+        footer={
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center', width: '100%' }}>
+            <span style={{ flex: 1 }}>
+              {sendError !== null ? (
+                <span role="alert" style={{ color: 'var(--rc-danger, #b91c1c)' }}>
+                  {sendError}
+                </span>
+              ) : (
+                <>This is the exact document {talentName} will sign. The signature and date go in the signature block.</>
+              )}
+            </span>
+            <Button type="button" variant="secondary" onClick={() => setReviewing(false)} disabled={sending}>
+              Back
+            </Button>
+            <Button type="button" variant="primary" onClick={() => void confirmSend()} disabled={sending} data-testid="rtr-review-send">
+              {sending ? 'Sending…' : 'Send for signature'}
+            </Button>
+          </span>
+        }
+      />
+    );
+  }
 
   const templateLine =
     compose !== null ? `${compose.template.name} · v${compose.template.version_number}` : null;
@@ -108,6 +164,7 @@ export function SendRtrLauncher({
       composePreview={compose?.preview ?? null}
       disabledText={failClosed}
       sendDisabled={loading}
+      sendLabel="Review document"
       onPreview={() => {
         /* compose preview is rendered inline by the modal; no presigned URL exists pre-request */
       }}

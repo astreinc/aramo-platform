@@ -88,13 +88,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 offer-docum
     // Persist a REAL immutable DocumentRevision (matching the production RenderService freeze
     // contract) so the shared send path resolves the frozen revision via getCurrentRevision —
     // proving the shared signing abstraction matches the actual production contract, not a stub.
-    generateRevision: vi.fn(async (args: { tenant_id: string; document_id: string; actor_id: string }) => {
+    generateRevision: vi.fn(async (args: { tenant_id: string; document_id: string; actor_id: string; model: { signature_block?: unknown } }) => {
       const revisionId = uuid();
       const sha = 'a'.repeat(64);
+      // The production freeze stores the renderer's signature-block geometry when the model
+      // carries a signature_block (the Offer letter now does) — mirrored here.
+      const manifest =
+        args.model.signature_block === undefined
+          ? {}
+          : { signature_fields: [{ field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 }, { field_type: 'SIGN_DATE', page_number: 0, x: 408, y: 100, width: 120, height: 30 }] };
       await admin.query(
-        `INSERT INTO "documents"."DocumentRevision" (id, tenant_id, document_id, revision_number, status, content_sha256, created_by, frozen_at)
-         VALUES ($1,$2,$3,1,'FROZEN',$4,$5,now())`,
-        [revisionId, args.tenant_id, args.document_id, sha, args.actor_id],
+        `INSERT INTO "documents"."DocumentRevision" (id, tenant_id, document_id, revision_number, status, content_sha256, created_by, frozen_at, render_manifest)
+         VALUES ($1,$2,$3,1,'FROZEN',$4,$5,now(),$6::jsonb)`,
+        [revisionId, args.tenant_id, args.document_id, sha, args.actor_id, JSON.stringify(manifest)],
       );
       return { revision_id: revisionId, sha256: sha };
     }),
@@ -171,6 +177,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-6 offer-docum
     expect(sent.envelope_id).toBe('env-doc6-1');
     expect(sent.status).toBe('SENT');
     expect(createEnvelope).toHaveBeenCalledTimes(1);
+    // The Offer letter carries the fixed signature block, so the talent signs on it:
+    // the envelope gets required SIGNATURE + SIGN_DATE fields from the frozen geometry.
+    expect(render.generateRevision).toHaveBeenCalledWith(expect.objectContaining({ model: expect.objectContaining({ signature_block: { printed_name: 'Jane Doe' } }) }));
+    const created = (createEnvelope.mock.calls[0] as unknown as [{ fields: Array<{ field_type: string; required: boolean }> }])[0];
+    expect(created.fields.map((f) => [f.field_type, f.required])).toEqual([['SIGNATURE', true], ['SIGN_DATE', true]]);
     expect(sendEnvelope).toHaveBeenCalledTimes(1);
     // The signer was resolved server-side from the Offer's talent (never client-supplied).
     expect(talent.findById).toHaveBeenCalledWith({ tenant_id: TENANT, id: offer.talent_record_id });

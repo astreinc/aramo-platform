@@ -13,7 +13,9 @@ import { EsignServiceHttpProvider } from '../sign/esign-service-http.provider.js
 
 const env = (over: Partial<EnvelopeSummary> = {}): EnvelopeSummary => ({ envelope_id: 'E1', status: 'SENT', signers: [], ...over });
 
-function make(existing: EnvelopeSummary | null, refuse = false) {
+const MANIFEST = { render_manifest: { signature_fields: [{ field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 }, { field_type: 'SIGNER_NAME', page_number: 0, x: 240, y: 100, width: 150, height: 30 }, { field_type: 'SIGN_DATE', page_number: 0, x: 408, y: 100, width: 120, height: 30 }] } };
+
+function make(existing: EnvelopeSummary | null, refuse = false, manifest: unknown = MANIFEST.render_manifest) {
   const port = {
     findEnvelopeForDocument: vi.fn(async () => existing),
     createEnvelope: vi.fn(async () => env({ envelope_id: 'E-new', status: 'DRAFT' })),
@@ -29,7 +31,7 @@ function make(existing: EnvelopeSummary | null, refuse = false) {
     recordAccepted: vi.fn(async () => undefined),
   };
   const documents = {
-    getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA' })),
+    getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA', render_manifest: manifest })),
     prepareDocument: vi.fn(async () => undefined),
   } as unknown as DocumentsRepository;
   const svc = new GovernedDocumentSigningService(documents, {} as RenderService, router);
@@ -62,6 +64,28 @@ describe('GovernedDocumentSigningService.send — routing and allowance recovery
     const { svc, port, input } = make(env({ envelope_id: 'E1', status: 'SENT' }));
     await expect(svc.send(input)).resolves.toMatchObject({ envelope_id: 'E1', status: 'SENT' });
     expect(port.sendEnvelope).not.toHaveBeenCalled();
+  });
+});
+
+describe('GovernedDocumentSigningService.send — the signer signs on the frozen signature block', () => {
+  it('places required SIGNATURE + SIGN_DATE fields from the frozen render manifest (the printed name is not a field)', async () => {
+    const { svc, port, input } = make(null);
+    await svc.send(input);
+    const req = (port.createEnvelope as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]![0] as { fields: unknown[] };
+    expect(req.fields).toEqual([
+      { document_ordinal: 1, signer_signing_order: 1, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30, required: true },
+      { document_ordinal: 1, signer_signing_order: 1, field_type: 'SIGN_DATE', page_number: 0, x: 408, y: 100, width: 120, height: 30, required: true },
+    ]);
+  });
+
+  it('a signature-mode document without a signature block is refused before anything is prepared or created', async () => {
+    for (const manifest of [null, {}, { signature_fields: [] }, { signature_fields: [{ field_type: 'SIGN_DATE', page_number: 0, x: 1, y: 1, width: 1, height: 1 }] }]) {
+      const { svc, port, documents, router, input } = make(null, false, manifest);
+      await expect(svc.send(input)).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 422, context: { details: { reason: 'no_signature_field' } } });
+      expect(documents.prepareDocument).not.toHaveBeenCalled();
+      expect(router.forNewSend).not.toHaveBeenCalled();
+      expect(port.createEnvelope).not.toHaveBeenCalled();
+    }
   });
 });
 

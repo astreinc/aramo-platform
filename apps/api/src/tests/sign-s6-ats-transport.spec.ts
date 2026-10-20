@@ -70,7 +70,7 @@ describe('the actor reaches ONLY the Aramo Sign provider', () => {
       recordRoute: vi.fn(async () => undefined),
       recordAccepted: vi.fn(async () => undefined),
     };
-    const documents = { getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA' })), prepareDocument: vi.fn(async () => undefined) } as unknown as DocumentsRepository;
+    const documents = { getCurrentRevision: vi.fn(async () => ({ id: 'rev-1', content_sha256: 'AAA', render_manifest: { signature_fields: [{ field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 150, height: 30 }, { field_type: 'SIGNER_NAME', page_number: 0, x: 240, y: 100, width: 150, height: 30 }, { field_type: 'SIGN_DATE', page_number: 0, x: 408, y: 100, width: 120, height: 30 }] } })), prepareDocument: vi.fn(async () => undefined) } as unknown as DocumentsRepository;
     const svc = new GovernedDocumentSigningService(documents, {} as RenderService, router);
     return { svc, port, router };
   }

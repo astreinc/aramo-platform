@@ -65,6 +65,7 @@ function contextService(kind: string, slug: string | null = 'astre') {
   const tenants = {
     findById: vi.fn(async () => ({ id: AUTH.tenant_id, name: 'Astre', kind, is_active: true, status: 'ACTIVE' })),
     findSlugById: vi.fn(async () => slug),
+    findOrganizationNameById: vi.fn(async () => 'Astre Consulting Services Inc'),
   };
   const identity = { findUserById: vi.fn(async () => ({ id: AUTH.sub, email: 'p@astre.test', display_name: 'Priya Nair' })) };
   return new SenderContextService(tenants as never, identity as never);
@@ -74,6 +75,8 @@ describe('SenderContextService — workspace and Personal rule from the backend 
   it('BUSINESS → sign workspace; can_send needs create + send', async () => {
     const view = await contextService('BUSINESS').context(AUTH, 'r');
     expect(view).toMatchObject({ workspace: 'sign', can_send: true, personal_sending_enabled: false, tenant: { kind: 'BUSINESS' } });
+    // The organization's display (or legal) name, as the ATS shows it — never the short tenant handle.
+    expect(view.tenant.name).toBe('Astre Consulting Services Inc');
     expect(view.organization_url).toBe('https://astre.aramo.ai/org/profile');
     const viewer = await contextService('BUSINESS').context({ ...AUTH, scopes: ['sign:envelope:read'] }, 'r');
     expect(viewer).toMatchObject({ can_send: false, permissions: { read: true, create: false, send: false, read_all: false, members: false } });

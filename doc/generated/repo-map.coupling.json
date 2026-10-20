@@ -11789,6 +11789,11 @@
     {
       "from": "ci/scripts/verify-frontdoor-conf.ts",
       "status": "unscoped",
+      "to": "deploy/nginx/nginx.conf"
+    },
+    {
+      "from": "ci/scripts/verify-frontdoor-conf.ts",
+      "status": "unscoped",
       "to": "deploy/nginx/templates/aramo.conf.template"
     },
     {

@@ -1,3 +1,4 @@
+import { ssoEntryHref } from '@aramo/fe-foundation';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -13,7 +14,7 @@ describe('LegacyOrgRedirect', () => {
   ] as const)('%s → %s with the ATS Settings return context', (section, base) => {
     const onRedirect = vi.fn();
     render(<LegacyOrgRedirect section={section} onRedirect={onRedirect} />);
-    const expected = `${base}?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`;
+    const expected = ssoEntryHref(`${base}?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`, 'org');
     expect(onRedirect).toHaveBeenCalledWith(expected);
     expect(screen.getByRole('link', { name: 'Continue' })).toHaveAttribute('href', expected);
   });

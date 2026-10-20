@@ -120,6 +120,8 @@ export {
   fetchMyProducts,
   productByKey,
   productEntryHref,
+  ssoEntryHref,
+  PRODUCT_CONSUMER,
   useMyProducts,
   type ProductAvailability,
   type ProductAvailabilityView,
@@ -131,6 +133,7 @@ export { buildAppSwitcherItems, type AramoAppKey } from './platform/app-switcher
 export {
   clearReturnContext,
   orgHref,
+  orgEntryHref,
   parseReturnContext,
   readRememberedReturnContext,
   rememberReturnContext,

@@ -2,7 +2,7 @@
 // the full sent email behind an activity row and a read-only document preview.
 // Both load through the authenticated API when opened — never inlined in the
 // Talent 360 read, never a raw storage link.
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Dialog, DialogClose, InlineAlert } from '@aramo/fe-foundation';
 
 import { Button, LoadingState, safeErrorMessage } from '../ui';
@@ -107,11 +107,14 @@ export function DocumentPreviewDialog({
   documentId,
   title,
   onClose,
+  footer,
 }: {
   talentId: string;
   documentId: string;
   title: string;
   onClose: () => void;
+  // Optional actions under the document (e.g. the RTR review step's Send / Back).
+  footer?: ReactNode;
 }) {
   const [file, setFile] = useState<TalentDocumentContentView | null>(null);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -185,6 +188,7 @@ export function DocumentPreviewDialog({
             </a>
           </div>
         )}
+        {footer !== undefined ? <div className="t360-docpv__bar">{footer}</div> : null}
       </div>
     </Dialog>
   );

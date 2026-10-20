@@ -114,6 +114,12 @@ function checkRepo(): Issue[] {
   const constantsSrc = readFileSync(R(CONSTANTS), 'utf8');
   const template = readFileSync(R(TEMPLATE), 'utf8');
   const compose = readFileSync(R(COMPOSE), 'utf8');
+  // (m) ES-module assets (.mjs, e.g. the pdf.js worker) must be served as JavaScript:
+  // the host sends `nosniff`, so an octet-stream .mjs is refused by the browser.
+  const nginxConf = readFileSync(R('deploy/nginx/nginx.conf'), 'utf8');
+  if (!/types\s*\{[^}]*application\/javascript\s+[^;]*\bmjs\b[^;]*;/.test(nginxConf)) {
+    issues.push({ where: 'deploy/nginx/nginx.conf', reason: '(m) .mjs must map to application/javascript (types { application/javascript mjs; })' });
+  }
 
   const blocks = serverBlocks(template);
   const tenant = blocks.find((b) => b.tag === 'tenant');

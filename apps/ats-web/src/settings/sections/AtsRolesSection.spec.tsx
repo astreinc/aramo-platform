@@ -1,3 +1,4 @@
+import { ssoEntryHref } from '@aramo/fe-foundation';
 import { render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -31,7 +32,7 @@ describe('AtsRolesSection', () => {
     expect(screen.queryByRole('button', { name: /assign|edit role|save/i })).toBeNull();
     expect(screen.getByTestId('ats-roles-manage-access')).toHaveAttribute(
       'href',
-      `/org/roles?from=ats&return=${encodeURIComponent('/ats/admin/settings/roles')}`,
+      ssoEntryHref(`/org/roles?from=ats&return=${encodeURIComponent('/ats/admin/settings/roles')}`, 'org'),
     );
   });
 
