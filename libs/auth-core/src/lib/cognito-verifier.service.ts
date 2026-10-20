@@ -62,6 +62,11 @@ export interface VerifiedCognitoIdToken {
   email: string;
   email_verified: boolean;
   token_use: 'id';
+  // AUTH-SIGNIN-1 R1 — the federated provider that authenticated this token:
+  // 'google' | 'microsoft', 'ambiguous' when Cognito carries more than one
+  // linked identity (the provider used cannot be told apart), null for a
+  // native (non-federated) user.
+  idp: string | null;
 }
 
 @Injectable()
@@ -105,7 +110,22 @@ export class CognitoVerifierService {
       email: p.email,
       email_verified: true,
       token_use: 'id',
+      idp: this.authenticatingIdp(p),
     };
+  }
+
+  // AUTH-SIGNIN-1 R1 — which federated provider authenticated this token. A
+  // Cognito user carrying more than one linked identity (a merge made upstream)
+  // yields 'ambiguous': the token does not say which provider was used.
+  private authenticatingIdp(p: CognitoIdTokenClaims): string | null {
+    if (Array.isArray(p.identities) && p.identities.length > 0) {
+      const names = new Set(p.identities.map((i) => (i?.providerName ?? '').trim().toLowerCase()).filter((n) => n.length > 0));
+      if (names.size > 1) return 'ambiguous';
+      if (names.size === 1) return [...names][0]!;
+    }
+    const username = typeof p['cognito:username'] === 'string' ? p['cognito:username'] : '';
+    const underscore = username.indexOf('_');
+    return underscore > 0 ? username.slice(0, underscore).toLowerCase() : null;
   }
 
   // email_verified gate with trusted-federation normalization (P1).

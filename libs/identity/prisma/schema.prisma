@@ -433,6 +433,29 @@ model SignupRequest {
   @@schema("identity")
 }
 
+// AUTH-SIGNIN-1 R1 / Sign federated owner signup — a row marks a tenant whose
+// provider pin (Tenant.identity_provider) is ENFORCED at sign-in. Only new Sign
+// Business signup tenants have one; the first authorized owner federation sets
+// the pin once. Existing tenants: no row (fail-open hint, Subdomain-Identity-B).
+model TenantIdentityProviderPolicy {
+  tenant_id         String    @id @db.Uuid
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  pinned_at         DateTime? @db.Timestamptz(6)
+  pinned_by_user_id String?   @db.Uuid
+
+  @@schema("identity")
+}
+
+// AUTH-SIGNIN-1 R2 — the federated provider behind each NEW ExternalIdentity
+// link (CHECK: google | microsoft). No row = a pre-existing (legacy) link.
+model ExternalIdentityIdp {
+  external_identity_id String   @id @db.Uuid
+  idp                  String
+  created_at           DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("identity")
+}
+
 // IdentityAuditEvent — parallel to ConsentAuditEvent, separate audit stream.
 // tenant_id is nullable for global/system events; see directive §6
 // event_type → index-category mapping for which events target which index.

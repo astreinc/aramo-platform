@@ -9,6 +9,8 @@ import {
   requiredCapabilityForConsumer,
   SYSTEM_SERVICE_ACCOUNT_ID,
   TENANT_ACTIVATING_OWNER_ROLE_KEYS,
+  IdentityProviderPolicyService,
+  normalizeIdp,
 } from '@aramo/identity';
 import {
   allowUnboundHost,
@@ -67,6 +69,8 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     private readonly authzVersions: AuthorizationVersionService,
     // IC-2 PR-6 — live product-entitlement read for the consumer→capability gate.
     private readonly entitlements: TenantEntitlementReader,
+    // AUTH-SIGNIN-1 R1/R2 — provider policy (pin cohort, no cross-provider merge).
+    private readonly idpPolicy: IdentityProviderPolicyService,
   ) {}
 
   // IC-2 PR-6 (IC-0 §F.2 rule 3) — a consumer credential is minted or
@@ -101,6 +105,8 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       provider: input.provider,
       provider_subject: input.provider_subject,
     });
+    // AUTH-SIGNIN-1 — set once the provider policy has run for this sign-in.
+    let idpChecked = false;
     if (user === null) {
       // Reconcile by the IdP-VERIFIED email — normalized-exact (lowercase + trim)
       // — to an EXISTING identity, then LINK the federated sub. NO open JIT
@@ -110,15 +116,30 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       if (existing === null) {
         return { kind: 'denied', reason: 'user_not_provisioned' };
       }
+      // AUTH-SIGNIN-1 R1/R2 — the provider policy runs BEFORE the link is
+      // written: no second provider merged into this user on email equality,
+      // and an enforced-pin tenant (Sign signup cohort) accepts only its pinned
+      // provider; its owner's first federation sets the pin exactly once.
+      // (The policy reads the user's single membership tenant itself, so the
+      // load-bearing link → activate → tenants order below is unchanged.)
+      const decision = await this.idpPolicy.evaluate({ user_id: existing.id, idp: input.idp ?? null, linking: true });
+      if (!decision.ok) {
+        this.logger.warn(JSON.stringify({ event: 'auth.idp_policy', stage: 'link', outcome: decision.reason, idp: input.idp ?? null }));
+        return { kind: 'denied', reason: decision.reason };
+      }
+      const pinnedNow = decision.pinned_now;
+      idpChecked = true;
       // Account-takeover guard (invariant 3): reached ONLY on a by-sub MISS, so
       // the (provider, sub) row is absent and only the upsert create branch runs
       // — the link is created, never moved.
-      await this.identity.linkExternalIdentity({
+      const link = await this.identity.linkExternalIdentity({
         user_id: existing.id,
         provider: input.provider,
         provider_subject: input.provider_subject,
         email_snapshot: input.verified_email,
       });
+      const linkIdp = normalizeIdp(input.idp ?? null);
+      if (linkIdp === 'google' || linkIdp === 'microsoft') await this.idpPolicy.recordLinkIdp(link.id, linkIdp);
       // Canonical linked audit — INSIDE the adapter (§2.3): internal to resolution,
       // best-effort (the underlying writeGlobalEvent swallows failures).
       await this.audit.writeGlobalEvent({
@@ -130,6 +151,10 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
           provider: input.provider,
           provider_subject: input.provider_subject,
           reason: 'reconcile_by_verified_email',
+          // AUTH-SIGNIN-1 — which federated provider, and whether this sign-in
+          // established the tenant's provider pin (Sign signup cohort).
+          idp: input.idp ?? null,
+          ...(pinnedNow ? { idp_pinned: true } : {}),
         },
       });
       user = existing;
@@ -164,6 +189,17 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       return { kind: 'denied', reason: 'tenant_resolution_ambiguous' };
     }
     const selectedTenant = tenants[0]!;
+
+    // AUTH-SIGNIN-1 R1 — every later sign-in into an enforced-pin tenant must
+    // come from its pinned provider (a returning user resolves by sub, so the
+    // link-time check above did not run).
+    if (!idpChecked) {
+      const decision = await this.idpPolicy.evaluate({ user_id: user.id, tenant_id: selectedTenant.id, idp: input.idp ?? null, linking: false });
+      if (!decision.ok) {
+        this.logger.warn(JSON.stringify({ event: 'auth.idp_policy', stage: 'session', outcome: decision.reason, idp: input.idp ?? null }));
+        return { kind: 'denied', reason: decision.reason };
+      }
+    }
 
     // IC-2 PR-4 (F-5) — host binding: AFTER tenant selection, BEFORE the status
     // gate, so a mismatched host never learns another tenant's lifecycle state.

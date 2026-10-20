@@ -1,3 +1,4 @@
+import type { IdentityProviderPolicyService } from '@aramo/identity';
 import {
   afterAll,
   afterEach,
@@ -163,6 +164,7 @@ function makeService(mocks: Mocks): SessionOrchestratorService {
     mocks.audit,
     mocks.authzVersions,
     mocks.entitlements,
+    { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined } as unknown as IdentityProviderPolicyService,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new SessionOrchestratorService(

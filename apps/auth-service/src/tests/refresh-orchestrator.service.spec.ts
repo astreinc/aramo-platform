@@ -1,3 +1,4 @@
+import type { IdentityProviderPolicyService } from '@aramo/identity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   TenantEntitlementReader,
@@ -105,6 +106,7 @@ function makeSvc(mocks: Mocks): RefreshOrchestratorService {
     {} as IdentityAuditService,
     { getCurrentVersion: async () => 1 } as unknown as AuthorizationVersionService,
     mocks.entitlements,
+    { evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined } as unknown as IdentityProviderPolicyService,
   );
   const auditSink = new IdentityAuditSinkAdapter(mocks.audit);
   return new RefreshOrchestratorService(

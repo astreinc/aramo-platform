@@ -82,6 +82,9 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
   // Aramo Sign launch — self-service BUSINESS signup requests (additive table).
   'libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql',
+  // AUTH-SIGNIN-1 / Sign federated owner signup — the narrow provider-pin cohort
+  // and per-link provider (two additive tables; no existing read changes).
+  'libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each
