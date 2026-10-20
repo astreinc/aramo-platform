@@ -5017,6 +5017,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/auth-signin-1-idp-policy.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a-reads.service-repo.spec.ts",
         "project": "identity",
         "status": "excluded"

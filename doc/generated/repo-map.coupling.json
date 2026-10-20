@@ -19899,6 +19899,11 @@
       "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
