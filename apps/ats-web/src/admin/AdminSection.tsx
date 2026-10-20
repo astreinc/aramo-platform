@@ -1,4 +1,4 @@
-import { PageHeader, Input, orgHref } from '@aramo/fe-foundation';
+import { PageHeader, Input, orgEntryHref } from '@aramo/fe-foundation';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -73,7 +73,7 @@ export function AdminSection() {
         <div className="rc-formfoot">
           {/* D-ORG-3 — a host-level anchor to the App Home SPA (not an ATS route). */}
           <a
-            href={orgHref('users', { app: 'ats', path: '/ats/admin/tools' })}
+            href={orgEntryHref('users', { app: 'ats', path: '/ats/admin/tools' })}
             className="rc-link-action"
             data-testid="admin-users-link"
           >

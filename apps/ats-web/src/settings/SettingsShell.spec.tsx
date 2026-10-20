@@ -1,4 +1,4 @@
-import { ToastProvider, type Session } from '@aramo/fe-foundation';
+import { ToastProvider, type Session, ssoEntryHref } from '@aramo/fe-foundation';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
@@ -118,7 +118,7 @@ describe('Settings shell + rail', () => {
     // the exact current ATS page as the return context.
     const org = screen.getByTestId('settings-nav-organization');
     expect(org.tagName).toBe('A');
-    expect(org.getAttribute('href')).toBe(`/org/profile?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`);
+    expect(org.getAttribute('href')).toBe(ssoEntryHref(`/org/profile?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`, 'org'));
     expect(org).toHaveTextContent('App Home');
   });
 

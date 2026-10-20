@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { IconBranch, IconBuilding, IconUsers, orgHref } from '@aramo/fe-foundation';
+import { IconBranch, IconBuilding, IconUsers, orgEntryHref } from '@aramo/fe-foundation';
 
 import { Card } from '../../ui';
 import { SettingCardHead, SettingHint, SettingsSection } from '../components';
@@ -33,7 +33,7 @@ export function BranchesSection() {
           </span>
           <a
             className="set-org-row__btn"
-            href={orgHref('sites', { app: 'ats', path: hereForReturn() })}
+            href={orgEntryHref('sites', { app: 'ats', path: hereForReturn() })}
             data-testid="branches-sites-link"
           >
             Open Sites <span className="set-navbtn__badge set-navbtn__badge--app">App Home</span>

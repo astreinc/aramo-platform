@@ -790,6 +790,7 @@
       "NAV_COLLAPSED_KEY",
       "NavCollapseProvider",
       "NavLink",
+      "PRODUCT_CONSUMER",
       "PageHeader",
       "RadioGroup",
       "RouteGuard",
@@ -824,6 +825,7 @@
       "hasScope",
       "loginUrl",
       "logout",
+      "orgEntryHref",
       "orgHref",
       "parseReturnContext",
       "productByKey",
@@ -836,6 +838,7 @@
       "rememberReturnContext",
       "safeReturnTo",
       "signInPageUrl",
+      "ssoEntryHref",
       "useCompactRailPage",
       "useMyProducts",
       "useNavCollapse",
@@ -7420,6 +7423,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/LegacyOrgRedirect.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/SettingsShell.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7445,6 +7454,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/documents/RtrDraftEditorHtml.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sections/AtsRolesSection.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },

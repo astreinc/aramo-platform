@@ -15,7 +15,7 @@ import {
   IconShieldCheck,
   IconSliders,
   IconUpload,
-  orgHref,
+  orgEntryHref,
 } from '@aramo/fe-foundation';
 
 // Settings Rebuild Directive 1 — the settings shell.
@@ -198,7 +198,7 @@ function RailLink({ item, active }: { item: NavItem; active: boolean }) {
     // A host-level link to Organization administration (App Home SPA), carrying
     // the exact current ATS page as the return context ("Back to ATS Settings").
     const here = typeof window === 'undefined' ? '' : `${window.location.pathname}${window.location.search}`;
-    const href = orgHref(item.to.replace(/^\/org\//, ''), { app: 'ats', path: here });
+    const href = orgEntryHref(item.to.replace(/^\/org\//, ''), { app: 'ats', path: here });
     return (
       <a href={href} className="set-navbtn" data-testid={`settings-nav-${item.key}`}>
         {item.icon}

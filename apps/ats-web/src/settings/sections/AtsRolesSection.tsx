@@ -1,4 +1,4 @@
-import { IconBuilding, orgHref } from '@aramo/fe-foundation';
+import { IconBuilding, orgEntryHref } from '@aramo/fe-foundation';
 import { RolesMatrixView, type RoleCatalogView } from '@aramo/org-admin-web';
 
 import { Card } from '../../ui';
@@ -40,7 +40,7 @@ export function AtsRolesSection() {
           </span>
           <a
             className="set-org-row__btn"
-            href={orgHref('roles', { app: 'ats', path: hereForReturn() })}
+            href={orgEntryHref('roles', { app: 'ats', path: hereForReturn() })}
             data-testid="ats-roles-manage-access"
           >
             Manage user access <span className="set-navbtn__badge set-navbtn__badge--app">App Home</span>

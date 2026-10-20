@@ -65,12 +65,31 @@ export async function fetchMyProducts(): Promise<ProductAvailabilityView> {
 export function productEntryHref(product: ProductAvailability): string | null {
   if (!product.available || product.entry_path === null) return null;
   // A tenant-host path (/ats/, /org/) or an absolute http(s) URL for a product on
-  // its own host (Sign: https://esign.aramo.ai/ — Lead Host & Workspace Ruling
+  // its own host (Sign: https://sign.aramo.ai/ — Lead Host & Workspace Ruling
   // v1.0). Anything else (javascript:, protocol-relative //host) is never a link.
   const p = product.entry_path;
-  if (/^https?:\/\//i.test(p)) return p;
-  if (p.startsWith('/') && !p.startsWith('//')) return p;
-  return null;
+  if (!(/^https?:\/\//i.test(p) || (p.startsWith('/') && !p.startsWith('//')))) return null;
+  return ssoEntryHref(p, PRODUCT_CONSUMER[product.key]);
+}
+
+// The auth consumer each product app signs in as (consumer-isolated sessions).
+export const PRODUCT_CONSUMER: Readonly<Record<ProductKey, string>> = { ats: 'recruiter', sign: 'sign', org: 'org' };
+
+/**
+ * AUTH-SIGNIN-1 R6 (existing SSO preserved) — opening another Aramo app from
+ * inside Aramo goes through that app's sign-in route, not its root. The user is
+ * already signed in at the identity provider, so Cognito answers silently and the
+ * app opens with its own session; without this, the app's guard shows its sign-in
+ * page (§3.2.2) and asks a signed-in user to click again. A user who is not signed
+ * in (or just signed out) still gets the sign-in page from the app itself.
+ * `return_to` is sealed server-side (sanitizeReturnTo, per consumer).
+ */
+export function ssoEntryHref(entry: string, consumer: string): string {
+  if (/^https?:\/\//i.test(entry)) {
+    const u = new URL(entry);
+    return `${u.origin}/auth/${consumer}/login?${new URLSearchParams({ return_to: `${u.pathname}${u.search}` }).toString()}`;
+  }
+  return `/auth/${consumer}/login?${new URLSearchParams({ return_to: entry }).toString()}`;
 }
 
 export type ProductsState =

@@ -214,7 +214,7 @@ function ensureLeadingSlash(p: string): string {
 // AUTH_POST_LOGIN_REDIRECT (existing behavior preserved). Null when neither is
 // available — the caller's post_login_redirect_missing throw posture survives.
 // D-ORG-2 (topology T1) — each consumer lands in ITS app on the tenant host:
-// recruiter → the ATS app at /ats/; org → App Home at /; esign → App Home until the
+// recruiter → the ATS app at /ats/; org → App Home at /; sign → App Home until the
 // Sign entry is activated (its path is reported by /v1/me/products); platform and
 // portal keep /. GOVERNED PRECEDENCE (Gate-6 V4 ruling — the legacy global must
 // not silently override the topology): AUTH_POST_LOGIN_PATH_<CONSUMER> (explicit
@@ -223,7 +223,7 @@ function ensureLeadingSlash(p: string): string {
 export const CONSUMER_APP_BASE: Readonly<Record<string, string>> = {
   recruiter: '/ats/',
   org: '/',
-  esign: '/',
+  sign: '/',
   platform: '/',
   portal: '/',
   ingestion: '/',

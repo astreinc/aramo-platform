@@ -1,7 +1,7 @@
 import { IconBriefcase, IconBuilding, IconDesk, IconPencil } from '../ui/icons';
 import type { AppSwitcherItem } from '../ui/AppSwitcher';
 
-import { productByKey, productEntryHref, type ProductAvailability, type ProductAvailabilityView } from './products';
+import { productByKey, productEntryHref, ssoEntryHref, type ProductAvailability, type ProductAvailabilityView } from './products';
 
 // The app-switcher rows for every Aramo app on the tenant host, built from the
 // backend-authoritative availability read. App Home is always present (it is
@@ -32,7 +32,9 @@ export function buildAppSwitcherItems(args: {
 }): AppSwitcherItem[] {
   const { current, products } = args;
   const inHomeApp = current === 'home' || current === 'org';
-  const link = (path: string): { to?: string; href?: string } => (inHomeApp ? { to: path } : { href: path });
+  // From another app, App Home and Organization open through the org consumer's
+  // sign-in route so the existing SSO session carries over (no second sign-in).
+  const link = (path: string): { to?: string; href?: string } => (inHomeApp ? { to: path } : { href: ssoEntryHref(path, 'org') });
   const items: AppSwitcherItem[] = [
     {
       key: 'home',

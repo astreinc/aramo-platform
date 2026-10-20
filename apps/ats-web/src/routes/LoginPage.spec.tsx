@@ -58,7 +58,7 @@ describe('ats-web LoginPage', () => {
   it('TENANT_CAPABILITY_NOT_ENTITLED: no access to Aramo ATS with an App Home link (no buttons)', () => {
     renderAt('/login?error=TENANT_CAPABILITY_NOT_ENTITLED');
     expect(screen.getByText('You don’t have access to Aramo ATS')).toBeInTheDocument();
-    expect(screen.getByTestId('login-open-app-home')).toHaveAttribute('href', '/');
+    expect(screen.getByTestId('login-open-app-home')).toHaveAttribute('href', '/auth/org/login?return_to=%2F');
     expect(screen.queryByRole('button', { name: /continue with/i })).toBeNull();
   });
 });
