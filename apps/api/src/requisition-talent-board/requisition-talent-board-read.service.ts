@@ -511,7 +511,10 @@ export class RequisitionTalentBoardReadService {
       days_in_stage,
       stage_entered_at,
       assigned_recruiter_user_id: ctx.assigned_recruiter_user_id,
-      next_actions: deriveNextActions(winner, row.id, ctx.engaged),
+      // DOC-TEMPLATE-ADMIN-RTR-1 §32 — the SAME conditional RTR verdict the drawer/TR360 and
+      // the write-path qualify gate use (DocumentReadinessGate.assessMany ≡ assess), so the
+      // Board never offers "Mark qualified" the backend would refuse (422).
+      next_actions: deriveNextActions(winner, row.id, ctx.engaged, ctx.rtr_verdict?.satisfied === true),
       handoff: HANDOFF_COLUMNS.has(winner.column),
     };
   }
@@ -530,6 +533,10 @@ function deriveNextActions(
   winner: Extract<CardDecision, { kind: 'active' }>,
   pipelineId: string,
   engaged: boolean,
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§31-32) — whether the RTR precondition for `qualified` is met
+  // (true when no RTR is required OR an EXECUTED RTR exists). Fail-closed: an absent verdict
+  // withholds the action. Mirrors talent-journey-read.deriveRecruitingAvailableActions.
+  rtrReadyForQualify: boolean,
 ): BoardNextAction[] {
   const PIPELINE_ROUTE = `POST /v1/pipelines/${pipelineId}/actions`;
   // Evidence-backed milestones are NOT reached by a naked /actions POST (§17). These
@@ -564,7 +571,9 @@ function deriveNextActions(
         case 'talent_responded':
           return [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
         case 'qualifying':
-          return [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          return rtrReadyForQualify
+            ? [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }]
+            : [];
         default:
           // `qualified` (top of the recruiter ladder — submit runs in the drawer wizard) and
           // the `started`/`completed` fallback have no bounded pipeline command here.

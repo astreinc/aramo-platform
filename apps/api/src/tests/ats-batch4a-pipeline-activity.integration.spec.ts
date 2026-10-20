@@ -27,6 +27,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { seedTalentRecord } from './talent-record-fixtures.js';
 
 // PR-A5a Gate 5 — ATS Batch 4a (pipeline state machine + activity)
 // integration spec.
@@ -709,6 +710,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Requisition-expander enrichment fixtures (talent records + consent +
       // pipelines). Seeded once; the E-section reads them through GET.
       await seedEnrichmentFixtures();
+      // Add Talent requires the Talent to exist in the tenant (Lane2-DDR §0/§6) — the
+      // shared create fixture's TalentRecord.
+      await seedTalentRecord(setupClient, { id: TALENT_RECORD_ID, tenant_id: TENANT_ATS });
 
       const kp = await generateKeyPair(ALG);
       const publicPem = await exportSPKI(kp.publicKey as never);
@@ -865,8 +869,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await cleanupPipeline(created.id);
     });
 
+    // DEF-1 (Lane2-C §5 AC-7(b) / DDR §2) — `completed` is written only by the system COMPLETE
+    // command; the generic transition route refuses it (403) with no write.
+    it('DEF-1: POST /v1/pipelines/:id/transition to `completed` is 403 PIPELINE_COMPLETE_SYSTEM_ONLY; status unchanged', async () => {
+      const talentId = randomUUID();
+      await seedTalentRecord(setupClient, { id: talentId, tenant_id: TENANT_ATS });
+      const created = await postPipeline(recruiterJwt_Ats_SiteA, randomUUID(), talentId);
+      expect(created.status).toBe(201);
+      const { id } = (await created.json()) as { id: string };
+
+      const res = await transition(recruiterJwt_Ats_SiteA, id, 'completed');
+      expect(res.status).toBe(403);
+      expect((res.body as { error?: { code?: string } }).error?.code).toBe('PIPELINE_COMPLETE_SYSTEM_ONLY');
+
+      const row = await setupClient.query<{ status: string }>(
+        `SELECT status FROM pipeline."Pipeline" WHERE id = $1::uuid`,
+        [id],
+      );
+      expect(row.rows[0]?.status).toBe('no_contact');
+    });
+
     it('L2-B AC-8: Idempotency-Key required; replay returns the stored response (no dup, no 409); a new key after terminal makes a new episode', async () => {
       const talentId = randomUUID();
+      await seedTalentRecord(setupClient, { id: talentId, tenant_id: TENANT_ATS });
 
       // A create with NO Idempotency-Key is a client contract error (400).
       const noKey = await postPipeline(
@@ -1050,12 +1075,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(legal.status).toBe(200);
       expect(await countUsageEvents()).toBe(usageBefore + 1);
 
-      // Illegal from qualifying -> completed: +0 usage (completed is legal only from qualified).
+      // Illegal from qualifying -> no_contact: +0 usage (not a matrix edge from qualifying).
+      // (`completed` is no longer the probe: the generic route refuses it up front with 403
+      // PIPELINE_COMPLETE_SYSTEM_ONLY — covered by DEF-1 above.)
       const usageMid = await countUsageEvents();
       const illegal = await transition(
         recruiterJwt_Ats_SiteA,
         created.id,
-        'completed',
+        'no_contact',
       );
       expect(illegal.status).toBe(422);
       expect(await countUsageEvents()).toBe(usageMid);

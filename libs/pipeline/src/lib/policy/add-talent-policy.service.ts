@@ -32,6 +32,15 @@ export const NO_POLICY_PUBLISHED_REASON = 'NO_POLICY_PUBLISHED';
 const NO_POLICY_VERSION = '__none__';
 const NO_POLICY_RULE_ID = '__no_policy__';
 
+// FAIL-CLOSED sentinel (Lane2-DDR RP-1 "enforced fail-closed") — a requisition id that
+// does not resolve IN THIS TENANT (absent, or another tenant's) has no declared status, so
+// no matrix cell can match and the package's permissive no-match default would ALLOW an
+// orphan episode. The policy is never evaluated against an unresolved requisition: it is
+// DENIED here, before package retrieval, with its own reason_code (provenance still
+// records the attempt).
+export const REQUISITION_NOT_FOUND_REASON = 'REQUISITION_NOT_FOUND';
+const UNRESOLVED_REQUISITION_RULE_ID = '__requisition_not_found__';
+
 export interface AddTalentPolicyInput {
   readonly tenant_id: string;
   readonly requisition_id: string;
@@ -99,6 +108,23 @@ export class AddTalentPolicyService {
       origin: input.origin,
       correlation_id: input.correlation_id,
     };
+
+    if (status === null) {
+      // FAIL CLOSED — unresolved requisition (absent or cross-tenant) = DENY (RP-1).
+      const provenance: InsertPolicyDecisionRecordInput = {
+        ...base,
+        decision: 'DENY' as Decision,
+        policy_version: NO_POLICY_VERSION,
+        rule_id: UNRESOLVED_REQUISITION_RULE_ID,
+        reason_code: REQUISITION_NOT_FOUND_REASON,
+      };
+      return {
+        disposition: 'DENY',
+        reason_code: REQUISITION_NOT_FOUND_REASON,
+        required_capabilities: [],
+        provenance,
+      };
+    }
 
     // Retrieve the tenant's active package (checksum-verified inside the store).
     const resolved = await this.policyStore.getActiveVersion(

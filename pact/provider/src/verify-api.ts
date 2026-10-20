@@ -2463,6 +2463,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_OFFERED_ID = '00000000-0000-7000-8000-71be00000002';
     const ATSW_PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
+    // The sourcing consumer's promote-to-pipeline requisition (sourcing.consumer.test.ts
+    // REQ_ID). Add Talent fails closed on an unresolved requisition (Lane2-DDR RP-1), so the
+    // promote-to-pipeline states seed it (defaults to `open`, an ADD-ALLOW lifecycle state).
+    const ATSW_SOURCING_REQ_ID = '00000000-0000-7000-8000-4e9300000001';
+    async function seedAtsWebSourcingRequisition(c: Client): Promise<void> {
+      await seedAtsWebRequisition(c, {
+        id: ATSW_SOURCING_REQ_ID,
+        title: 'Sourcing Requisition',
+        companyId: '00000000-0000-7000-8000-c0a000000001',
+      });
+    }
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
     // Recruiting-Journey §5/§27 (email→CONTACT) — the deterministic microsoft_graph
@@ -7872,7 +7883,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // -- create: no pre-existing pipeline (the endpoint mints it at
       // no_contact). talent_record_id/requisition_id are logical refs.
       'an ats-web recruiter can create pipelines': async () => {
-        await withClient((c) => resetAllRows(c));
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // Add Talent fails closed on an unresolved requisition (Lane2-DDR RP-1) and on
+          // a Talent absent from the tenant (DDR §0/§6) — seed both so the create verifies
+          // (the requisition defaults to `open`, an ADD-ALLOW lifecycle state).
+          await seedAtsWebRequisition(c, {
+            id: ATSW_PIPE_REQ_ID,
+            title: 'Senior Engineer',
+            companyId: '00000000-0000-7000-8000-c0a000000001',
+          });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_PIPE_TALENT_ID,
+            firstName: 'Dana',
+            lastName: 'Rivera',
+          });
+        });
       },
 
       // TI-1D-D — a pipeline whose talent owns ONE active resume edition (the
@@ -8571,6 +8597,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebResolutionSubject(c, { id: ATSW_MINT_SUBJECT_ID });
+          await seedAtsWebSourcingRequisition(c);
           await seedAtsWebResolutionSubjectRef(c, {
             id: '00000000-0000-7000-8000-50c000000002',
             subjectId: ATSW_MINT_SUBJECT_ID,
@@ -8613,6 +8640,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_PROMOTED_SUBJECT_ID });
+            await seedAtsWebSourcingRequisition(c);
             await seedAtsWebResolutionSubjectRef(c, {
               id: '00000000-0000-7000-8000-50c000000003',
               subjectId: ATSW_PROMOTED_SUBJECT_ID,
@@ -8640,6 +8668,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_ID });
+            await seedAtsWebSourcingRequisition(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_B_ID });
             await seedAtsWebResolutionSubjectRef(c, {
               id: '00000000-0000-7000-8000-50c000000005',

@@ -15,6 +15,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { applyTalentRecordMigrations, seedTalentRecord } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -137,6 +138,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return app;
     }
 
+    // Add Talent requires the Talent to exist in the caller's tenant (Lane2-DDR §0/§6):
+    // seed a fresh live TalentRecord per POST (a fresh id keeps each a distinct triple).
+    async function seedTalent(tenant: string): Promise<string> {
+      const id = uuid();
+      await seedTalentRecord(db, { id, tenant_id: tenant });
+      return id;
+    }
     function baseUrl(app: INestApplication): string {
       const url = app.getHttpServer().address();
       const p = typeof url === 'object' && url !== null ? url.port : 0;
@@ -148,7 +156,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         method: 'POST',
         // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
         headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
-        body: JSON.stringify({ talent_record_id: uuid(), requisition_id: requisitionId, site_id: SITE }),
+        body: JSON.stringify({ talent_record_id: await seedTalent(TENANT), requisition_id: requisitionId, site_id: SITE }),
       });
     }
 
@@ -176,6 +184,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
+      // Add Talent requires the Talent to exist in the tenant (Lane2-DDR §0/§6).
+      await applyTalentRecordMigrations(db);
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       await db.query(
         `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'ats')
@@ -262,7 +272,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       it('B-http-one-live: a second POST for the same live triple is refused 409 PIPELINE_EPISODE_ALREADY_LIVE; no second row', async () => {
         const req = await seedRequisition('open');
         const jwt = await signJwt(ADD_SCOPES);
-        const talent = uuid();
+        const talent = await seedTalent(TENANT);
 
         const first = await postAddTalent(app, jwt, req, talent);
         expect(first.status).toBe(201);
@@ -274,6 +284,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(body.error?.code).toBe('PIPELINE_EPISODE_ALREADY_LIVE');
 
         expect(await pipelineCount(req)).toBe(1); // no second row
+      });
+
+      // DEF-4 (Lane2-DDR §0/§6) — the episode is born only for a Talent that exists in the
+      // caller's tenant. Proves the apps/api TALENT_RECORD_EXISTENCE_READER is bound.
+      it('DEF-4: an absent talent, or one from another tenant, is 404 NOT_FOUND; no pipeline row', async () => {
+        const req = await seedRequisition('open');
+        const jwt = await signJwt(ADD_SCOPES);
+
+        const absent = await postAddTalent(app, jwt, req, uuid());
+        expect(absent.status).toBe(404);
+        expect(((await absent.json()) as { error?: { code?: string } }).error?.code).toBe('NOT_FOUND');
+
+        const foreign = uuid();
+        await seedTalentRecord(db, { id: foreign, tenant_id: uuid() });
+        const crossTenant = await postAddTalent(app, jwt, req, foreign);
+        expect(crossTenant.status).toBe(404);
+
+        expect(await pipelineCount(req)).toBe(0);
+      });
+
+      // DEF-2 (Lane2-DDR RP-1 "enforced fail-closed") — an unresolved requisition (absent, or
+      // another tenant's) is DENIED, never the package's permissive no-match default.
+      it('DEF-2: an absent requisition, or one from another tenant, is 403 POLICY_DENIED REQUISITION_NOT_FOUND; no pipeline row', async () => {
+        const jwt = await signJwt(ADD_SCOPES);
+
+        const absentReq = uuid();
+        const absent = await postAdd(app, jwt, absentReq);
+        expect(absent.status).toBe(403);
+        const absentBody = (await absent.json()) as { error?: { code?: string; details?: { reason_code?: string } } };
+        expect(absentBody.error?.code).toBe('POLICY_DENIED');
+        expect(absentBody.error?.details?.reason_code).toBe('REQUISITION_NOT_FOUND');
+        expect(await pipelineCount(absentReq)).toBe(0);
+
+        const foreignReq = uuid();
+        await db.query(
+          `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status)
+           VALUES ($1, $2, 'req-foreign', $3, 'open'::"requisition"."RecruitingStatus")`,
+          [foreignReq, uuid(), uuid()],
+        );
+        const crossTenant = await postAdd(app, jwt, foreignReq);
+        expect(crossTenant.status).toBe(403);
+        expect(await pipelineCount(foreignReq)).toBe(0);
       });
 
       it('ATOMICITY: a provenance-write failure on ALLOW rolls back the pipeline row (no row persists)', async () => {

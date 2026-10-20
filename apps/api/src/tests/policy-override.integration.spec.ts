@@ -19,6 +19,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { seedTalentRecord } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -129,6 +130,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return id;
     }
+    // Add Talent requires the Talent to exist in the caller's tenant (Lane2-DDR §0/§6):
+    // seed a fresh live TalentRecord per POST (a fresh id keeps each a distinct triple).
+    async function seedTalent(tenant: string): Promise<string> {
+      const id = uuid();
+      await seedTalentRecord(db, { id, tenant_id: tenant });
+      return id;
+    }
     function baseUrl(): string {
       const a = app.getHttpServer().address();
       return `http://127.0.0.1:${typeof a === 'object' && a !== null ? a.port : 0}`;
@@ -138,7 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         method: 'POST',
         // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
         headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
-        body: JSON.stringify({ talent_record_id: uuid(), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }),
+        body: JSON.stringify({ talent_record_id: await seedTalent(TENANT), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }),
       });
     }
     async function postSourcing(jwt: string, reqId: string, overrideReason?: string): Promise<Response> {

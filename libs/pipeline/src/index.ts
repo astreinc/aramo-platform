@@ -15,6 +15,10 @@ export {
   type ResumeEditionSummary,
 } from './lib/resume-edition-reader.port.js';
 export {
+  TALENT_RECORD_EXISTENCE_READER,
+  type TalentRecordExistenceReaderPort,
+} from './lib/talent-record-existence.port.js';
+export {
   resumeSelectionEligibility,
   type ResumeSelectionEligibility,
 } from './lib/resume-selection-eligibility.js';
@@ -91,6 +95,7 @@ export {
   AddTalentPolicyService,
   REQUISITION_LIFECYCLE_PACKAGE_NAME,
   NO_POLICY_PUBLISHED_REASON,
+  REQUISITION_NOT_FOUND_REASON,
   type AddTalentPolicyInput,
   type AddTalentPolicyOutcome,
 } from './lib/policy/add-talent-policy.service.js';

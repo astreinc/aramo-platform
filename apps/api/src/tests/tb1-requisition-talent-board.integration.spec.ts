@@ -745,6 +745,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ---------------------------------------------------------------------------------------
+    // TB3-1b/c — DOC-TEMPLATE-ADMIN-RTR-1 §32: the Board derives Qualify availability from the
+    // SAME conditional RTR verdict as the drawer/TR360 and the write-path qualify gate — when
+    // the client policy requires an RTR and none is executed, "Mark qualified" is WITHHELD (the
+    // backend would refuse it 422 PIPELINE_QUALIFY_REQUIRES_RTR); once executed, it returns.
+    // ---------------------------------------------------------------------------------------
+    it('TB3-1b: RTR required + not executed → a `qualifying` card projects NO Mark qualified action', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualifying');
+      await seedRtrRequirement(tenant, req); // gate applies; no executed RTR seeded
+
+      const board = await call(tenant, req);
+      const card = anyCard(board, talent)!;
+      expect(card.next_actions.map((a) => a.key)).not.toContain('pipeline.mark_qualified');
+      expect(card.next_actions).toHaveLength(0);
+    });
+
+    it('TB3-1c: RTR required + executed for the exact (talent, requisition) → Mark qualified is projected', async () => {
+      const tenant = randomUUID(); const talent = randomUUID(); const req = randomUUID();
+      await seedPipeline(tenant, req, talent, 'qualifying');
+      await seedRtrRequirement(tenant, req);
+      await seedExecutedRtr(tenant, req, talent);
+
+      const board = await call(tenant, req);
+      const card = anyCard(board, talent)!;
+      expect(card.next_actions.map((a) => a.key)).toEqual(['pipeline.mark_qualified']);
+    });
+
+    // ---------------------------------------------------------------------------------------
     // TB3-2 — the offer-create action is SELECTED-gated (the S3-FIX sequencing guard): a card in
     // INTERVIEW never advertises Create offer; a SELECTED card does, on POST /v1/offers.
     // ---------------------------------------------------------------------------------------
