@@ -280,6 +280,13 @@ server {
     client_max_body_size 1m;
     proxy_pass http://esign-service:3003;
   }
+  # Workspace — the recipient inbox ("Waiting for me", S-7): GET /v1/esign/inbox
+  # plus /claim and /:id/sign. Authenticated (Aramo SSO); the prefix has no
+  # trailing slash so the bare list path matches too.
+  location /v1/esign/inbox {
+    client_max_body_size 16k;
+    proxy_pass http://esign-service:3003;
+  }
   # Public entry — self-service signup (platform-admin owns the provisioning
   # saga). Session-less; dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1.
   location /v1/signup/sign/ {

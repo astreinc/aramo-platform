@@ -14,7 +14,7 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 //   - dev port 4206 (the registered local Cognito callback is
 //     http://localhost:4206/auth/esign/callback); preview 4306
 //   - dev proxies mirror the nginx sign block: /auth → auth-service,
-//     /v1/esign/{sender,billing,signing} → esign-service, /v1/signup/sign → platform-admin
+//     /v1/esign/{sender,billing,signing,inbox} → esign-service, /v1/signup/sign → platform-admin
 export default defineConfig({
   root,
   // Per-app dependency cache. Without it every SPA dev server resolves the SAME
@@ -36,6 +36,7 @@ export default defineConfig({
       '/v1/esign/sender': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/esign/billing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/esign/signing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/esign/inbox': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/signup/sign': { target: 'http://localhost:3002', changeOrigin: false, secure: false },
     },
   },
