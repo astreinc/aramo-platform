@@ -24,6 +24,10 @@ describe('transitionErrorMessage (v1.2 §2.4)', () => {
     );
   });
 
+  it('requisition status does not permit the step (S2)', () => {
+    expect(transitionErrorMessage(new ApiError(409, 'x', 'REQUISITION_NOT_ADVANCEABLE'))).toMatch(/isn’t available while the requisition/);
+  });
+
   it('an unknown error keeps the generic fallback', () => {
     expect(transitionErrorMessage(new Error('boom'))).toBe('The status change failed. Please try again.');
   });

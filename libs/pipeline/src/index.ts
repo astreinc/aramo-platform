@@ -1,5 +1,11 @@
 export { PipelineModule } from './lib/pipeline.module.js';
 export { PipelineController } from './lib/pipeline.controller.js';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §5.1 — A1 AM-1 §2.2 as a pure code rule.
+export {
+  requisitionPermits,
+  isTerminalRequisitionStatus,
+  type RequisitionPipelineActivity,
+} from './lib/requisition-activity-rule.js';
 export {
   PipelineRepository,
   type CurrentStage,

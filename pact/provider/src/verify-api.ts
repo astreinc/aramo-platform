@@ -2508,6 +2508,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         status?: string;
       },
     ): Promise<void> {
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.3 / §2.6 — Pipeline activity reads the
+      // requisition's status (FOR SHARE) and refuses one that does not resolve. Every pipeline
+      // fixture therefore carries its (open, by default) requisition — ON CONFLICT DO NOTHING,
+      // so a state that seeds the requisition itself keeps its own status/company.
+      await seedAtsWebRequisition(c, {
+        id: params.requisitionId,
+        title: 'Pact requisition',
+        companyId: '00000000-0000-7000-8000-c0a000000001',
+      });
       if (params.status === undefined) {
         await c.query(
           `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id)

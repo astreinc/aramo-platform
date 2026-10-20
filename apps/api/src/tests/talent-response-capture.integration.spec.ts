@@ -31,6 +31,10 @@ import { VoiceEvidenceReaderAdapter } from '../engagement/voice-evidence.adapter
 const ROOT = resolve(__dirname, '../../../..');
 
 const PIPELINE_MIGRATIONS = [
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.3 — Pipeline writes read the requisition
+  // status in-tx (and refuse an unresolved requisition), so the requisition table is migrated.
+  'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
+  'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
   'libs/activity/prisma/migrations/20260801120000_add_activity_redaction_fields/migration.sql',
   'libs/activity/prisma/migrations/20260921160000_rn1_activity_note_extension/migration.sql',
@@ -78,6 +82,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seedEpisode(): Promise<{ id: string; talent: string; req: string }> {
       const talent = randomUUID();
       const req = randomUUID();
+      // v1.2 §5.3 — the episode's requisition must resolve in the tenant (an ordinary, open one).
+      await db.query(
+        `INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id) VALUES ($1,$2,'fixture',$3)`,
+        [req, TENANT, randomUUID()],
+      );
       const created = await pipelines.create({
         tenant_id: TENANT,
         input: { talent_record_id: talent, requisition_id: req },

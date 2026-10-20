@@ -427,6 +427,9 @@ export class PipelineController {
         initiated_by_kind: authContext.actor_kind,
         initiated_by_id: authContext.sub,
       },
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — pin the status the ADD
+      // decision was made on; the create transaction refuses if it changed underneath.
+      expected_requisition_status: outcome.requisition_status,
     });
 
     // L2-B — persist the idempotency record AFTER the mutation commits so a

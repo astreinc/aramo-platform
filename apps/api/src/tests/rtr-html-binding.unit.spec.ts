@@ -61,6 +61,7 @@ describe('A1 — rtr-html-v1 request path', () => {
     } as unknown as TemplatesRepository;
     const requisitions = {
       findCompanyId: async () => REQ_COMPANY,
+      findStatusById: async () => 'open', // v1.2 §5.6 — pre-send CONTACT_SEND gate
       findByIdAdmin: async () => ({ title: 'BA', requisition_number: 7, description: null }),
     } as unknown as RequisitionRepository;
     const talent = { findById: async () => ({ first_name: 'Ravi', last_name: 'Shankar', email1: 'r@x.test', desired_pay: '70/hr' }) } as unknown as TalentRecordRepository;

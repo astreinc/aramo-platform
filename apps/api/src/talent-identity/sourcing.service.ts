@@ -212,6 +212,9 @@ export class SourcingService {
       // Lane 2 / L2-D — the initiating actor kind (AuthContext.actor_kind), threaded
       // so the ARAMO_SOURCING entry-provenance records who birthed the episode.
       initiated_by_kind?: ActorKind;
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — the requisition status the
+      // ADD policy decision was made on; the create transaction refuses if it changed.
+      expected_requisition_status?: string | null;
     },
   ): Promise<SourcingResult> {
     const outcome = await this.promotion.promoteSubject(subjectRef, opts);
@@ -226,6 +229,9 @@ export class SourcingService {
         ...(opts?.requestId === undefined ? {} : { requestId: opts.requestId }),
         ...(opts?.provenance === undefined ? {} : { provenance: opts.provenance }),
         ...(opts?.created_by_id === undefined ? {} : { created_by_id: opts.created_by_id }),
+        ...(opts?.expected_requisition_status === undefined
+          ? {}
+          : { expected_requisition_status: opts.expected_requisition_status }),
         // Lane 2 / L2-D — the Aramo-sourcing episode birth: ARAMO_SOURCING. The
         // sourced subject's OWN upstream ingestion source is SRC-1 territory (out of
         // scope), so source_system stays null here.

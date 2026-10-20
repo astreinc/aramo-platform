@@ -13,6 +13,8 @@ import { IntegrationConnectionService } from '@aramo/integration';
 import { PipelineRepository, type PipelineView } from '@aramo/pipeline';
 import { TalentRecordRepository } from '@aramo/talent-record';
 
+import { assertRequisitionPermitsContactSend } from '../requisition-lifecycle/requisition-contact.gate.js';
+
 import type { CallPhoneSlot, CommunicationInteractionViewDto, InitiateCommunicationCallDto } from './dto/communications.dto.js';
 
 // COMM-C2A — the Pipeline scope that authorizes the governed no_contact→contacted
@@ -118,6 +120,12 @@ export class CommunicationCallService {
           { requestId, details: { requisition_id: dto.regarding.requisition_id } },
         );
       }
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 (A1 AM-1 §2.2, D-3) — NEW contact
+      // made THROUGH a requisition is refused on closed / canceled, BEFORE the call (T-4).
+      await assertRequisitionPermitsContactSend(
+        { findStatusById: ({ tenant_id, id }) => this.requisitions.findStatus(tenant_id, id) },
+        { tenant_id: tenantId, requisition_id: dto.regarding.requisition_id, requestId },
+      );
 
       // COMM-C2A (R5) — when a Pipeline episode is supplied, the evidence-bearing
       // call MUST be reliably attributable to the Talent × Requisition. Resolve

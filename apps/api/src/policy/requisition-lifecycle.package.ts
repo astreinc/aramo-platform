@@ -159,8 +159,12 @@ const TRANSITION_MATRIX: Readonly<Record<TransitionAction, Readonly<Record<strin
     canceled: 'DENY', closed: 'DENY',
     draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
   },
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2 §3.1) — v8.0.0: REOPEN from
+  // `closed` is DENY (closed is terminal; a reopened hiring need is a NEW requisition). The
+  // code-level terminal refusal (REQUISITION_STATUS_TERMINAL) is the enforcement point; this
+  // keeps the policy data consistent with it.
   REOPEN: {
-    lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'ALLOW',
+    lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'DENY',
     open: 'DENY', canceled: 'DENY',
     draft: 'DENY', pending_approval: 'DENY', archived: 'DENY',
   },
@@ -231,7 +235,7 @@ export const REQUISITION_LIFECYCLE_PACKAGE: PolicyPackage = {
   // v6.0.0 Amendment B approval actions → v7.0.0 CLOSE_SUBMITTALS). Prior versions
   // stay in the store with their windows closed; earlier provenance still names the
   // version it was decided under when re-read from the DB (§D17b).
-  version: '7.0.0',
+  version: '8.0.0',
   registry: {
     resources: [
       'REQUISITION_TALENT',

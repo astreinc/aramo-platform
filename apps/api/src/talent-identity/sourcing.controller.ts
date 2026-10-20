@@ -163,6 +163,8 @@ export class SourcingController {
       created_by_id: authContext.sub,
       // L2-D — the initiating actor kind for the ARAMO_SOURCING entry-provenance.
       initiated_by_kind: authContext.actor_kind,
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — pin the decided status.
+      expected_requisition_status: outcome.requisition_status,
     });
     // Track-wide invariant: a mutation never commits without its provenance
     // (create() commits it in-tx); provenance MAY exist without a mutation.

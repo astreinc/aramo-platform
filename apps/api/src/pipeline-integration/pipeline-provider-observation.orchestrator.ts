@@ -28,6 +28,11 @@ export const PIPELINE_RECONCILE_REASON = {
   PROVIDER_TOKEN_UNMAPPABLE: 'PROVIDER_TOKEN_UNMAPPABLE',
   ILLEGAL_FROM_STATE: 'ILLEGAL_FROM_STATE',
   DUAL_CONTROL_PENDING: 'DUAL_CONTROL_PENDING',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.3 — the requisition's status does not
+  // permit the mapped Pipeline activity (A1 AM-1 §2.2), or a transient lock / deadlock /
+  // timeout conflict aborted the command with no effect (T-3). Pending, never advanced.
+  REQUISITION_NOT_ADVANCEABLE: 'REQUISITION_NOT_ADVANCEABLE',
+  CONCURRENT_CONFLICT: 'CONCURRENT_CONFLICT',
 } as const;
 
 export type PipelineObservationOutcome =
@@ -156,6 +161,20 @@ export class PipelineProviderObservationOrchestrator {
           mapped_target: mapping.mapped_target,
           current_pipeline_status: episode.status,
           failure_reason: PIPELINE_RECONCILE_REASON.ILLEGAL_FROM_STATE,
+        });
+        return 'pending_illegal';
+      }
+      // v1.2 §5.3 — a requisition-status refusal or a retryable transaction conflict is a
+      // pending observation (recorded for reconciliation), never a thrown failure.
+      if (code === 'REQUISITION_NOT_ADVANCEABLE' || code === 'TRANSACTION_CONFLICT_RETRYABLE') {
+        await this.reconciliations.recordPending({
+          ...base,
+          mapped_target: mapping.mapped_target,
+          current_pipeline_status: episode.status,
+          failure_reason:
+            code === 'REQUISITION_NOT_ADVANCEABLE'
+              ? PIPELINE_RECONCILE_REASON.REQUISITION_NOT_ADVANCEABLE
+              : PIPELINE_RECONCILE_REASON.CONCURRENT_CONFLICT,
         });
         return 'pending_illegal';
       }

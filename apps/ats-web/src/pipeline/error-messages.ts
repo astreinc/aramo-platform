@@ -21,6 +21,10 @@ export function transitionErrorMessage(error: unknown): string {
     if (error.code === 'PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED') {
       return 'This talent can’t be marked Qualified yet: the Right to Represent policy isn’t set for this client. Ask an admin to set it.';
     }
+    // v1.2 §5 (A1 AM-1 §2.2) — the requisition's status does not permit this step.
+    if (error.code === 'REQUISITION_NOT_ADVANCEABLE') {
+      return 'This step isn’t available while the requisition is in its current status (for example closed, canceled, or a lead).';
+    }
     if (error.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
       return 'Something changed at the same moment, so nothing was saved. Try again.';
     }

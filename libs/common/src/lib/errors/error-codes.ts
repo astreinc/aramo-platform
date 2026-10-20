@@ -1010,6 +1010,13 @@ export const ERROR_CODES = [
   // v1.2 §2.2 T-3 — a lock wait timeout, deadlock or transaction timeout aborted the
   // command; nothing was written. The caller may retry (idempotency-safe). HTTP 409.
   'TRANSACTION_CONFLICT_RETRYABLE',
+  // v1.2 §2.4 (S2, A1 AM-1 §2.2) — a Pipeline activity (add / requisition-scoped contact /
+  // contact evidence / response / qualifying-qualified) is not permitted in the
+  // requisition's current status (details.status, details.activity). HTTP 409.
+  'REQUISITION_NOT_ADVANCEABLE',
+  // v1.2 §2.4 (S2, A1 AM-2) — a status change was requested FROM a terminal requisition
+  // (closed / canceled are terminal for the ordinary lifecycle). HTTP 409.
+  'REQUISITION_STATUS_TERMINAL',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -342,6 +342,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED',
       'SUBMITTAL_RTR_POLICY_UNRESOLVED',
       'TRANSACTION_CONFLICT_RETRYABLE',
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S2).
+      'REQUISITION_NOT_ADVANCEABLE',
+      'REQUISITION_STATUS_TERMINAL',
     ]);
   });
 });

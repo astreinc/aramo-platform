@@ -325,6 +325,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED: 422,
   SUBMITTAL_RTR_POLICY_UNRESOLVED: 409,
   TRANSACTION_CONFLICT_RETRYABLE: 409,
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S2).
+  REQUISITION_NOT_ADVANCEABLE: 409,
+  REQUISITION_STATUS_TERMINAL: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

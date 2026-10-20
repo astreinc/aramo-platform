@@ -50,7 +50,11 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
   let reqCompany: string | null;
   let companyNames: Map<string, string>;
   let signing: { prepare: ReturnType<typeof vi.fn>; send: ReturnType<typeof vi.fn>; remind: ReturnType<typeof vi.fn> };
-  let documents: { ensureRequirement: ReturnType<typeof vi.fn>; getDocument: ReturnType<typeof vi.fn> };
+  let documents: {
+    ensureRequirement: ReturnType<typeof vi.fn>;
+    getDocument: ReturnType<typeof vi.fn>;
+    findRegardingRequisitionId: ReturnType<typeof vi.fn>;
+  };
   let orch: RtrOrchestratorService;
 
   beforeEach(() => {
@@ -75,6 +79,7 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
     } as unknown as TemplatesRepository;
     const requisitionsFake = {
       findCompanyId: vi.fn(async () => reqCompany),
+      findStatusById: vi.fn(async () => 'open'), // v1.2 §5.6 — pre-send CONTACT_SEND gate
       findByIdAdmin: async () => ({ title: 'Business Analyst', requisition_number: 1001 }),
     } as unknown as RequisitionRepository;
     const talentFake = {
@@ -89,7 +94,8 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
       send: vi.fn(async () => ({ document_id: 'doc-1', envelope_id: 'env-1', status: 'SENT' })),
       remind: vi.fn(),
     };
-    documents = { ensureRequirement: vi.fn(async () => undefined), getDocument: vi.fn() };
+    // v1.2 §5.6 — send resolves the RTR's REGARDING requisition for the pre-send gate.
+    documents = { ensureRequirement: vi.fn(async () => undefined), getDocument: vi.fn(), findRegardingRequisitionId: vi.fn(async () => 'req-1') };
     const binding = new RtrTemplateBindingService(
       talentFake,
       requisitionsFake,

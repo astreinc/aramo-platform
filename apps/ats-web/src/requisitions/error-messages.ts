@@ -98,6 +98,10 @@ export function intakeErrorMessage(error: unknown): string {
 //   · 403 POLICY_DENIED (or any other 403) — the policy engine denied the action.
 export function lifecycleActionErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — closed / canceled are terminal.
+    if (error.code === 'REQUISITION_STATUS_TERMINAL') {
+      return 'A closed or canceled requisition can’t be reopened or changed. If the client is hiring again, create a new requisition.';
+    }
     if (error.status === 409 || error.code === 'REQUISITION_VERSION_CONFLICT') {
       return 'This requisition changed since you loaded it. Reload and try the action again.';
     }

@@ -7,10 +7,12 @@ import {
   MICROSOFT_GRAPH_PORT,
   type MicrosoftGraphPort,
 } from '@aramo/microsoft-graph';
+import { RequisitionRepository } from '@aramo/requisition';
 import { PipelineRepository } from '@aramo/pipeline';
 
 import { SYSTEM_REQUISITION_CONTACT_TEMPLATE_ID } from '../communications/system-requisition-contact-template.service.js';
 import { SYSTEM_GENERAL_TALENT_CONTACT_TEMPLATE_ID } from '../communications/system-general-talent-contact-template.service.js';
+import { assertRequisitionPermitsContactSend } from '../requisition-lifecycle/requisition-contact.gate.js';
 
 import { EMAIL_CONSENT_GATE, type EmailConsentGate } from './email-consent-gate.port.js';
 import {
@@ -88,6 +90,9 @@ export class MicrosoftEmailService {
     // COMM-C4 — composition-root read/act into Pipeline for the governed
     // no_contact→contacted orchestration on acceptance (apps/api edge only).
     private readonly pipelines: PipelineRepository,
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — the requisition status read for the
+    // pre-send CONTACT_SEND gate (closed / canceled refuse new requisition-scoped contact).
+    private readonly requisitions: RequisitionRepository,
   ) {}
 
   async sendRecruiterEmail(args: SendRecruiterEmailArgs): Promise<EmailSendResultView> {
@@ -110,6 +115,17 @@ export class MicrosoftEmailService {
       authContext: args.authContext,
       requestId: args.requestId,
     });
+
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 (A1 AM-1 §2.2, D-3) — NEW contact made
+    // THROUGH a requisition is refused on closed / canceled, BEFORE the Graph send (T-4).
+    // An email with no requisition in scope is unaffected.
+    if (args.requisition_id !== undefined && args.requisition_id !== null) {
+      await assertRequisitionPermitsContactSend(this.requisitions, {
+        tenant_id: args.tenant_id,
+        requisition_id: args.requisition_id,
+        requestId: args.requestId,
+      });
+    }
 
     // COMM-C4 — resolve the AUTHORITATIVE recipient from the live TalentRecord.
     // The client supplies no address; a Talent with no email1 (or a cross-tenant/

@@ -69,6 +69,12 @@ export interface AddTalentPolicyOutcome {
   readonly required_capabilities: readonly string[];
   /** The §D17a record to persist — carries the REAL verdict + stored version. */
   readonly provenance: InsertPolicyDecisionRecordInput;
+  /**
+   * Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — the requisition status this
+   * decision was made on (null when unresolved). The create transaction re-reads it under
+   * lock and refuses if it changed (a stale decision never creates an episode).
+   */
+  readonly requisition_status: string | null;
 }
 
 @Injectable()
@@ -123,6 +129,7 @@ export class AddTalentPolicyService {
         reason_code: REQUISITION_NOT_FOUND_REASON,
         required_capabilities: [],
         provenance,
+        requisition_status: status,
       };
     }
 
@@ -146,6 +153,7 @@ export class AddTalentPolicyService {
         reason_code: NO_POLICY_PUBLISHED_REASON,
         required_capabilities: [],
         provenance,
+        requisition_status: status,
       };
     }
 
@@ -167,6 +175,7 @@ export class AddTalentPolicyService {
       reason_code: decision.reason_code,
       required_capabilities: decision.required_capabilities,
       provenance,
+      requisition_status: status,
     };
   }
 }

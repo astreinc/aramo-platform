@@ -39,6 +39,7 @@ import {
   projectEntryProvenanceForEvent,
   type EntryProvenanceInput,
 } from './pipeline-entry-provenance.js';
+import { requisitionGateForTransition, requisitionPermits } from './requisition-activity-rule.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // §4.1 race-floor identification — a concurrent insert that lost the race on the
@@ -401,6 +402,11 @@ export class PipelineRepository {
     // the NOT-NULL origin_type guarantee no episode is born un-classified). Written
     // in-tx after the pipeline row AND projected onto the pipeline.created event.
     entry_provenance: EntryProvenanceInput;
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 / §5.3 — the requisition status the
+    // caller's pre-transaction ADD policy decision was made on. The in-transaction locked
+    // re-read must return the SAME status, or the add is refused (retryable): a stale decision
+    // can never create an episode against a requisition whose status has since changed.
+    expected_requisition_status?: string | null;
   }): Promise<PipelineView> {
     // Initial state hard-coded to `no_contact` per directive §2 /
     // state-machine proof initial-state invariant. Body cannot override.
@@ -432,6 +438,36 @@ export class PipelineRepository {
             status: 'no_contact',
           },
         });
+        // v1.2 §5.3 (A1 AM-1 §2.2, T-2) — the requisition status, FOR SHARE, AFTER the insert
+        // (lock order Pipeline → requisition). Refusals roll back the insert + every later write.
+        const requisitionStatus = await lockRequisitionStatusInTx(tx, args.tenant_id, args.input.requisition_id);
+        if (
+          args.expected_requisition_status !== undefined &&
+          args.expected_requisition_status !== null &&
+          requisitionStatus !== null &&
+          requisitionStatus !== args.expected_requisition_status
+        ) {
+          throw new AramoError(
+            'TRANSACTION_CONFLICT_RETRYABLE',
+            'The requisition changed while this talent was being added; retry',
+            409,
+            {
+              requestId: args.requestId ?? '',
+              details: { operation: 'pipeline.create', decided_status: args.expected_requisition_status, status: requisitionStatus },
+            },
+          );
+        }
+        if (requisitionStatus === null || !requisitionPermits(requisitionStatus, 'ADD')) {
+          throw new AramoError(
+            'REQUISITION_NOT_ADVANCEABLE',
+            'Talent cannot be added while the requisition is in its current status',
+            409,
+            {
+              requestId: args.requestId ?? '',
+              details: { requisition_id: args.input.requisition_id, status: requisitionStatus, activity: 'ADD' },
+            },
+          );
+        }
         // Lane 2 / L2-B — the birth history row (NULL -> no_contact) so the
         // append-only audit is complete from the episode's first instant.
         await tx.pipelineStatusHistory.create({
@@ -798,6 +834,30 @@ export class PipelineRepository {
         const updated = (await tx.pipeline.findFirst({
           where: { id: args.id },
         })) as PipelineRow;
+        // 4a'' — Talent Lifecycle R1–R5 Impl Directive v1.2 §5.2/§5.3 (A1 AM-1 §2.2): the
+        // requisition-status gate, IN this transaction AFTER the CAS (lock order Pipeline →
+        // requisition, §2.2 T-2). The status is read FOR SHARE, so a concurrent status write
+        // (FOR UPDATE + CAS) cannot change it under this transition before commit. A refusal
+        // throws and rolls back the CAS + every later write (history/activity/metering/outbox).
+        const requisitionStatus = await lockRequisitionStatusInTx(tx, tenant_id, requisition_id);
+        const refusal = requisitionGateForTransition({
+          from_status: fromStatus,
+          to_status: args.to_status,
+          requisition_status: requisitionStatus,
+          has_disposition: args.disposition !== undefined,
+          system_downstream: args.disposition?.authority_class === 'DOWNSTREAM_OUTCOME',
+        });
+        if (refusal !== null) {
+          throw new AramoError(
+            'REQUISITION_NOT_ADVANCEABLE',
+            'This change is not permitted while the requisition is in its current status',
+            409,
+            {
+              requestId: args.requestId,
+              details: { pipeline_id: args.id, status: requisitionStatus, activity: refusal, to_status: args.to_status },
+            },
+          );
+        }
         // 4a' — v1.2 §4.3: the RTR precondition for `qualified`, on THIS transaction, after
         // the CAS (lock order Pipeline → documents). Resolves the effective RTR requirement at
         // the linearization instant and locks the executed RTR FOR SHARE; throws (rolling back
@@ -2014,4 +2074,23 @@ export class PipelineRepository {
     return out;
   }
 
+}
+
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §5.3 (T-1/T-2) — the requisition status read
+// INSIDE a Pipeline transaction, FOR SHARE (conflicts with the status writer's FOR UPDATE /
+// UPDATE; never FOR KEY SHARE). Tenant-pinned; null when the requisition does not resolve in
+// the tenant (fail-closed at the caller). libs/pipeline already depends on @aramo/requisition
+// (no new nx edge); the read is a cross-schema raw SELECT on the transaction's connection.
+async function lockRequisitionStatusInTx(
+  tx: { $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T> },
+  tenant_id: string,
+  requisition_id: string,
+): Promise<string | null> {
+  const rows = await tx.$queryRawUnsafe<Array<{ status: string }>>(
+    `SELECT "status"::text AS status FROM "requisition"."Requisition"
+      WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid FOR SHARE`,
+    requisition_id,
+    tenant_id,
+  );
+  return rows[0]?.status ?? null;
 }

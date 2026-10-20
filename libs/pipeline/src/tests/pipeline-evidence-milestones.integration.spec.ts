@@ -11,6 +11,7 @@ import { PipelineRepository } from '../lib/pipeline.repository.js';
 
 import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
 import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ensureOpenRequisition, openRequisition, REQUISITION_FIXTURE_MIGRATIONS } from './helpers/requisition-fixture.js';
 
 // Recruiting-Journey Evidence-Governed Milestones — the EVIDENCE GATE, the
 // evidence-bearing commands, and FORWARD RECONCILIATION proven against real
@@ -49,6 +50,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   // v1.2 §4.6 — the in-tx RTR policy audit record on `qualified`.
   ...POLICY_STORE_DECISION_RECORD_MIGRATIONS,
+  // v1.2 §5.3 — Pipeline writes read the requisition status in-tx.
+  ...REQUISITION_FIXTURE_MIGRATIONS,
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -129,7 +132,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seed(tenant: string): Promise<string> {
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() },
+        input: { talent_record_id: randomUUID(), requisition_id: await openRequisition(setup, tenant) },
         entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       expect(created.status).toBe('no_contact');

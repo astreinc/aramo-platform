@@ -178,6 +178,17 @@ export class DocumentsRepository {
     return doc;
   }
 
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — the requisition a document is REGARDING
+  // (null when it has none in this tenant). Generic + workflow-neutral; the RTR send / remind
+  // paths use it for the pre-send CONTACT_SEND gate (their inputs carry no requisition id).
+  async findRegardingRequisitionId(tenant_id: string, document_id: string): Promise<string | null> {
+    const a = await this.prisma.documentAssociation.findFirst({
+      where: { tenant_id, document_id, resource_type: 'REQUISITION', relationship: 'REGARDING' },
+      select: { resource_id: true },
+    });
+    return a?.resource_id ?? null;
+  }
+
   async listDocuments(tenant_id: string) {
     return this.prisma.document.findMany({ where: { tenant_id }, orderBy: { created_at: 'desc' } });
   }

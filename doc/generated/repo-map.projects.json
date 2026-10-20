@@ -1251,12 +1251,14 @@
       "isProviderSourcedOrigin",
       "isRecruiterDispositionAuthority",
       "isRecruiterPipelineAction",
+      "isTerminalRequisitionStatus",
       "isValidDispositionReason",
       "isValidInitiatedByKind",
       "isVoidReason",
       "legalNextStates",
       "projectEntryProvenanceForEvent",
       "projectExternalSourceEventToEntryProvenance",
+      "requisitionPermits",
       "resolveAddTalentOutcome",
       "resumeSelectionEligibility",
       "toEnforcementDisposition"
@@ -3491,6 +3493,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s1-rtr-policy-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4241,6 +4249,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-template-tenant-logo.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s1-rtr-policy-integrity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6589,6 +6603,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s1-rtr-policy-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/sign-s6-ats-transport.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7234,6 +7254,12 @@
       {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/ats-web/src/org/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/pipeline/error-messages.spec.ts",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -8554,6 +8580,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s1-rtr-policy-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8903,6 +8935,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s1-rtr-policy-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-policy-coverage.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9123,6 +9161,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-semantic.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/requisition-transition.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

@@ -359,9 +359,15 @@ export class SubmitTalentToClientService {
         // SW-2 (R4-A) — also read the bill-rate VALUE + currency + period so the send
         // can FREEZE a client-facing commercial snapshot onto the submittal (historical
         // truth). The live requisition remains the sole editable commercial authority.
+        // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.4 (LR-F A) — FOR SHARE: the checked
+        // status stays protected until this submit commits. A concurrent PUT_ON_HOLD (status
+        // writer: FOR UPDATE + CAS UPDATE) blocks until we commit; a hold committed first is
+        // what this locking read sees (→ REQUISITION_NOT_OPEN). Lock order T-2: submittal →
+        // Pipeline → requisition (→ documents). Never FOR KEY SHARE.
         `SELECT "status","company_id","bill_rate_amount","bill_rate_currency","bill_rate_period"
            FROM "requisition"."Requisition"
-          WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid`,
+          WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid
+          FOR SHARE`,
         requisition_id,
         tenant_id,
       );

@@ -501,6 +501,64 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     });
 
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.4 (LR-F A) — submit versus PUT_ON_HOLD.
+    // The submit holds the requisition FOR SHARE until commit; a status writer (the real PATCH
+    // and seam writers take FOR UPDATE then CAS-UPDATE — proven in requisition-transition spec)
+    // conflicts with it. Two orders.
+    it('S2-hold(i) an in-flight submit holds the requisition FOR SHARE → a hold waits; the submit commits on OPEN', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      const pauser = new Client({ connectionString: container.getConnectionUri() });
+      const writer = new Client({ connectionString: container.getConnectionUri() });
+      await pauser.connect();
+      await writer.connect();
+      try {
+        await pauser.query('BEGIN');
+        await pauser.query('LOCK TABLE submittal_policy."SubmittalConsumption" IN EXCLUSIVE MODE'); // pause after the status read
+        const submit = svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 's2-hold-i' });
+        await waitUntilBlocked();
+        await writer.query('BEGIN');
+        await writer.query(`SET LOCAL lock_timeout = '1500ms'`);
+        await expect(
+          writer.query(`SELECT status FROM requisition."Requisition" WHERE id=$1 FOR UPDATE`, [req]),
+        ).rejects.toMatchObject({ code: '55P03' }); // the hold cannot take the row while the submit holds it
+        await writer.query('ROLLBACK');
+        await pauser.query('COMMIT');
+        await expect(submit).resolves.toMatchObject({ state: 'submitted_to_client' });
+      } finally {
+        await pauser.end();
+        await writer.end();
+      }
+    });
+
+    it('S2-hold(ii) a hold committed first → the submit sees on_hold under its lock and is refused 409 REQUISITION_NOT_OPEN', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      const writer = new Client({ connectionString: container.getConnectionUri() });
+      await writer.connect();
+      try {
+        await writer.query('BEGIN');
+        await writer.query(`SELECT status FROM requisition."Requisition" WHERE id=$1 FOR UPDATE`, [req]);
+        const submit = svc
+          .submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 's2-hold-ii' })
+          .then(() => 'NO_THROW', (e: { code?: string }) => e.code);
+        await waitUntilBlocked(); // the submit waits on the requisition row
+        await writer.query(`UPDATE requisition."Requisition" SET status='on_hold'::requisition."RecruitingStatus" WHERE id=$1`, [req]);
+        await writer.query('COMMIT');
+        expect(await submit).toBe('REQUISITION_NOT_OPEN');
+        expect(await submittalState(sub)).toBe('ready_for_review|false');
+        expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      } finally {
+        await writer.end();
+      }
+    });
+
     it('S1 — no RTR policy at any layer → submit refused 409 SUBMITTAL_RTR_POLICY_UNRESOLVED (D-5), nothing consumed', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
       // Raw requisition seed WITHOUT ensureRtrResolved — the requirement stays UNRESOLVED.

@@ -99,6 +99,7 @@ function makeService(opts: {
 
   const requisitions = {
     exists: vi.fn(async () => true),
+    findStatus: vi.fn(async () => 'open'), // v1.2 §5.6 — pre-send CONTACT_SEND gate
   } as unknown as ConstructorParameters<typeof CommunicationCallService>[6];
 
   const service = new CommunicationCallService(
