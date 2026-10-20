@@ -10,6 +10,9 @@ import {
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
+import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+
 // Accidental-Add Correction — the governed VOID command, end-to-end against real
 // Postgres 17. Proves the DOMAIN axis (the apps/api engagement + downstream guards are
 // proven separately): VOID succeeds ONLY from no_contact; it releases the live-episode
@@ -41,6 +44,8 @@ const MIGRATIONS = [
   // the 3-member live-index recreate). Applied in order, exactly as migrate deploy runs.
   '../../prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
+  // v1.2 §4.6 — the in-tx RTR policy audit record on `qualified`.
+  ...POLICY_STORE_DECISION_RECORD_MIGRATIONS,
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -79,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD);
     }, 120_000);
 
     afterAll(async () => {

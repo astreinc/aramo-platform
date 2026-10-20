@@ -48,6 +48,12 @@ export {
   REVISION_REGEX,
 } from './lib/util/release-identity.js';
 export { AramoError, AramoExceptionFilter, ERROR_CODES } from './lib/errors/index.js';
+export {
+  LOCKED_TX_OPTIONS,
+  LOCK_TIMEOUT_SQL,
+  isRetryableTransactionConflict,
+  rethrowTransactionConflict,
+} from './lib/errors/index.js';
 export type { AramoErrorContext, ErrorCode } from './lib/errors/index.js';
 export { CONTACT_CHANNELS } from './lib/types/contact-channel.js';
 export type { ContactChannel } from './lib/types/contact-channel.js';

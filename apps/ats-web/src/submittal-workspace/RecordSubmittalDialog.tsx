@@ -94,6 +94,15 @@ export function RecordSubmittalDialog({
         onRaceConflict();
         return;
       }
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 — the S1 refusals, with specific copy.
+      if (err instanceof ApiError && err.code === 'SUBMITTAL_RTR_POLICY_UNRESOLVED') {
+        setError('This submittal can’t be recorded: the Right to Represent policy isn’t set for this client. Ask an admin to set it.');
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
+        setError('Something changed at the same moment, so nothing was recorded. Try again.');
+        return;
+      }
       setError(safeErrorMessage(err, 'Couldn’t record the submittal. Please try again.'));
     } finally {
       setSubmitting(false);

@@ -48,7 +48,10 @@ export interface InsertClientSubmittalVersionInput {
   readonly version: string;
   readonly definition: unknown;
   readonly checksum: string;
-  readonly effective_from: Date;
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(b)/(c) (PO ruling C-1, immediate
+  // effect) — NO caller-supplied effective_from: the gateway stamps it from the DATABASE
+  // clock (clock_timestamp()) under the per-tenant client-submittal-policy advisory lock,
+  // so a version is effective exactly from its linearized publication instant.
   readonly published_by: string;
 }
 
@@ -61,6 +64,9 @@ export interface ClientSubmittalPolicyGateway {
   /** All stored versions for the given scope package_names, tenant-scoped. */
   findVersionRows(tenantId: string, packageNames: readonly string[]): Promise<StoredPolicyVersionRow[]>;
 
-  /** Atomic publish (dup-version reject + prior-window close + insert-open). */
+  /**
+   * Atomic publish (dup-version reject + prior-window close + insert-open), serialized
+   * per tenant by the EXCLUSIVE client-submittal-policy advisory lock (v1.2 §4.4(b)).
+   */
   insertVersion(input: InsertClientSubmittalVersionInput): Promise<StoredPolicyVersionRow>;
 }

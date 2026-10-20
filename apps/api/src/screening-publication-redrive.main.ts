@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { createAramoLogger } from '@aramo/common';
 import { TechnicalScreeningService } from '@aramo/technical-screening';
 
-import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
+import { ScreeningPublicationRedriveModule } from './screening-publication-redrive.module.js';
 
 // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §7(c)) — GOVERNED operator redrive
 // for a CONFIRMED screening session's PENDING publication intents. Each attempt
@@ -13,6 +13,7 @@ import { TechnicalScreeningApiModule } from './technical-screening/technical-scr
 //   docker compose run --rm api \
 //     node dist/apps/api/src/screening-publication-redrive.main.js <tenantId> <sessionId>
 const REDRIVE_ACTOR = 'screening-publication-redrive';
+
 
 async function main(): Promise<void> {
   const logger = createAramoLogger('ScreeningPublicationRedrive');
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const app = await NestFactory.createApplicationContext(TechnicalScreeningApiModule, { bufferLogs: false });
+  const app = await NestFactory.createApplicationContext(ScreeningPublicationRedriveModule, { bufferLogs: false });
   try {
     const screening = app.get(TechnicalScreeningService, { strict: false });
     const results = await screening.publishPending({

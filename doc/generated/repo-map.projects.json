@@ -375,6 +375,8 @@
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
       "LOCAL_REVISION_SENTINEL",
+      "LOCKED_TX_OPTIONS",
+      "LOCK_TIMEOUT_SQL",
       "RATE_PERIOD_VALUES",
       "RELEASE_REVISION_ENV_VAR",
       "REVISION_REGEX",
@@ -394,6 +396,7 @@
       "isGovernedRuntime",
       "isIso4217Currency",
       "isRatePeriod",
+      "isRetryableTransactionConflict",
       "isoDateInTimeZone",
       "loadIdentityAdmissionPolicy",
       "loadIdentityPepper",
@@ -406,6 +409,7 @@
       "resolveIdentityMigrations",
       "resolveReleaseRevision",
       "resolveTalentTrustMigrations",
+      "rethrowTransactionConflict",
       "secretsManagerClientConfig"
     ],
     "@aramo/communications": [
@@ -2791,6 +2795,12 @@
       { "project": "integration", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-add-qualify-integrity.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/pipeline/src/tests/pipeline-resume-edition-routes.spec.ts",
         "project": "pipeline",
         "status": "excluded"
@@ -3475,6 +3485,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/my-desk.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/submit-talent.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3491,7 +3507,12 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
     ],
     "@aramo/client-talent-restriction": [
       {

@@ -20,7 +20,7 @@ import { RequisitionTalentBoardReadService } from '../requisition-talent-board/r
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/document-readiness.gate.js';
 import type { EngagementGateService } from '../engagement/engagement-gate.service.js';
 
-import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
+import { makeDocumentReadinessGate, notRequiredQualifiedGuard, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
 
 // Requisition Talent Board (TB-1) — the Board read-composer, end-to-end against real
 // Postgres 17. The composer is constructed with the REAL owner read repositories over the
@@ -100,6 +100,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // the canonical UNGOVERNED ≠ NOT_REQUIRED distinction (only the latter earns a chip).
     const rtrRequiredReqs = new Set<string>();
     const rtrNotRequiredReqs = new Set<string>();
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — requisitions that resolve UNRESOLVED
+    // (no RTR policy). Every OTHER requisition resolves an explicit NOT_REQUIRED, so specs that
+    // are not ABOUT RTR keep a resolved requirement.
+    const rtrUnresolvedReqs = new Set<string>();
     let restrictionRepo: ClientTalentRestrictionRepository;
     const prismas: Array<{ $disconnect: () => Promise<void> }> = [];
     // TB-4 harness controls: the requisition→company_id map (a trivial select, stubbed for
@@ -160,7 +164,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await (p as unknown as { $connect: () => Promise<void> }).$connect();
         prismas.push(p as never);
       }
-      pipelineRepo = new PipelineRepository(pipelinePrisma);
+      pipelineRepo = new PipelineRepository(pipelinePrisma, notRequiredQualifiedGuard());
       submittalRepo = new SubmittalRepository(submittalPrisma, {} as never, {} as never, NOOP_LOGGER, {} as never);
       selectionRepo = new ClientSelectionProcessRepository(csPrisma);
       offerRepo = new OfferRepository(placementPrisma, {} as never);
@@ -170,7 +174,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const docsRepo = new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma) as never);
       documentReadiness = makeDocumentReadinessGate({
         documents: docsRepo,
-        policy: rtrPolicyStub(rtrRequiredReqs, rtrNotRequiredReqs),
+        policy: rtrPolicyStub(rtrRequiredReqs, rtrNotRequiredReqs, {
+          otherwise: 'NOT_REQUIRED',
+          unresolvedRequisitionIds: rtrUnresolvedReqs,
+        }),
       });
       restrictionRepo = new ClientTalentRestrictionRepository(ctrPrisma as never, NOOP_LOGGER);
       // Trivial company_id select — stubbed (the restriction READER + seeded rows are real).
@@ -906,13 +913,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(anyCard(noPay, tConfirmed)!.email_evidence).toBe(true);
     });
 
-    // TB-chips — UNGOVERNED: no published RTR policy for the requisition → rtr_status is null
-    // (the chip renders nothing — requirement unspecified, NOT an affirmative "Not required").
-    it('TB-chips: ungoverned (no RTR policy) → rtr_status null (chip N/A, no affirmative label)', async () => {
-      const tenant = randomUUID(); const req = randomUUID(); const talent = randomUUID();
+    // TB-chips — SUPERSEDED (v1.2 §4.7, A1 AM-6 §7.3): no published RTR policy is UNRESOLVED,
+    // an ACTIONABLE state — rtr_status 'POLICY_UNRESOLVED', the readiness carries the
+    // rtr_policy_unresolved blocker, and a qualifying card projects NO Mark qualified.
+    it('TB-chips: unresolved (no RTR policy) → POLICY_UNRESOLVED chip + blocker; Qualify withheld', async () => {
+      const tenant = randomUUID(); const req = randomUUID(); const talent = randomUUID(); const t2 = randomUUID();
+      rtrUnresolvedReqs.add(req);
       await seedPipeline(tenant, req, talent, 'qualified');
+      await seedPipeline(tenant, req, t2, 'qualifying');
       const board = await call(tenant, req);
-      expect(anyCard(board, talent)!.rtr_status).toBeNull();
+      const card = anyCard(board, talent)!;
+      expect(card.rtr_status).toBe('POLICY_UNRESOLVED');
+      expect(card.rtr_state).toBe('POLICY_UNRESOLVED');
+      expect(card.readiness?.blockers).toContain('rtr_policy_unresolved');
+      expect(anyCard(board, t2)!.next_actions.map((a) => a.key)).not.toContain('pipeline.mark_qualified');
     });
 
     // TB-chips — NOT_REQUIRED: policy EXPLICITLY relaxes RTR → rtr_status 'NOT_REQUIRED' (the

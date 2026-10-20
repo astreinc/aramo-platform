@@ -321,6 +321,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   LLM_PROVIDER_NOT_CONFIGURED: 422,
   SCREENING_AI_UNAVAILABLE: 503,
   MEETING_ARTIFACT_ACCESS_UNAVAILABLE: 409,
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S1).
+  PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED: 422,
+  SUBMITTAL_RTR_POLICY_UNRESOLVED: 409,
+  TRANSACTION_CONFLICT_RETRYABLE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

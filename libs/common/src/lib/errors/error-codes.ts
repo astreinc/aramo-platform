@@ -1000,6 +1000,16 @@ export const ERROR_CODES = [
   // (§10.1) are not met, e.g. Graph transcript access disabled or the
   // meeting_artifacts capability not consented. HTTP 409.
   'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S1, A1 AM-6 §7.3) — Qualified
+  // refused: the effective RTR requirement is UNRESOLVED (no policy layer, or no
+  // rtr_present key), or the RTR guard is unbound in this process. HTTP 422.
+  'PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED',
+  // v1.2 §2.4 (S1, A1 AM-6 §7.3 / D-5) — new client submittal refused: the effective
+  // RTR requirement is UNRESOLVED. HTTP 409 (submit eligibility family).
+  'SUBMITTAL_RTR_POLICY_UNRESOLVED',
+  // v1.2 §2.2 T-3 — a lock wait timeout, deadlock or transaction timeout aborted the
+  // command; nothing was written. The caller may retry (idempotency-safe). HTTP 409.
+  'TRANSACTION_CONFLICT_RETRYABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

@@ -6,6 +6,8 @@ import {
   type StoredPolicyVersionRow,
 } from '@aramo/client-submittal-policy';
 
+import { acquireCspPublishLock, readDatabaseClock } from './csp-linearization.js';
+
 // CSP PR-2 — the apps/api raw-SQL adapter for the Client Submittal Policy
 // persistence PORT. It reuses the governed StoredPolicyVersion table (policy_store
 // schema) via parameterized raw SQL — no generated Prisma client crosses the lib
@@ -54,6 +56,12 @@ export class ClientSubmittalPolicyGatewayAdapter implements ClientSubmittalPolic
 
   async insertVersion(input: InsertClientSubmittalVersionInput): Promise<StoredPolicyVersionRow> {
     return this.db.$transaction(async (tx) => {
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(b) — EXCLUSIVE per-tenant lock as
+      // the FIRST statement: serializes this publish against every in-flight Qualified /
+      // client submit (shared holders) and against a concurrent publish (closes the
+      // double-open-window race, §13 PE-1). effective_from is then the DATABASE clock.
+      await acquireCspPublishLock(tx, input.tenant_id);
+      const effectiveFrom = await readDatabaseClock(tx);
       const dup = await tx.$queryRawUnsafe<Array<{ id: string }>>(
         `SELECT "id" FROM "policy_store"."StoredPolicyVersion"
           WHERE "tenant_id" = $1::uuid AND "package_name" = $2 AND "version" = $3`,
@@ -77,7 +85,7 @@ export class ClientSubmittalPolicyGatewayAdapter implements ClientSubmittalPolic
       );
       if (open.length > 0) {
         const openRow = open[0]!;
-        if (input.effective_from.getTime() <= openRow.effective_from.getTime()) {
+        if (effectiveFrom.getTime() <= new Date(openRow.effective_from).getTime()) {
           throw new AramoError(
             'CLIENT_SUBMITTAL_POLICY_INVALID',
             'effective_from must be strictly after the current open version',
@@ -88,7 +96,7 @@ export class ClientSubmittalPolicyGatewayAdapter implements ClientSubmittalPolic
         await tx.$executeRawUnsafe(
           `UPDATE "policy_store"."StoredPolicyVersion" SET "effective_to" = $2 WHERE "id" = $1::uuid`,
           openRow.id,
-          input.effective_from,
+          effectiveFrom,
         );
       }
       const inserted = await tx.$queryRawUnsafe<Row[]>(
@@ -101,7 +109,7 @@ export class ClientSubmittalPolicyGatewayAdapter implements ClientSubmittalPolic
         input.version,
         JSON.stringify(input.definition),
         input.checksum,
-        input.effective_from,
+        effectiveFrom,
         input.published_by,
       );
       return toRow(inserted[0]!);

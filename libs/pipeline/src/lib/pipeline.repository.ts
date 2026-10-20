@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { AramoError, LOCK_TIMEOUT_SQL, LOCKED_TX_OPTIONS, rethrowTransactionConflict } from '@aramo/common';
 import { insertActivityInTx } from '@aramo/activity';
 import { recordUsage } from '@aramo/metering';
 import {
@@ -251,8 +251,10 @@ export class PipelineRepository {
     private readonly prisma: PrismaService,
     // DOC-TEMPLATE-ADMIN-RTR-1 (§29-32) — the RTR precondition guard for the `qualified`
     // milestone. @Optional + a STRING token: the concrete adapter is bound @Global at
-    // apps/api (ADR-0029 wall; the guard composes Documents readiness). Absent (every
-    // hand-wired `new PipelineRepository(prisma)` test site) ⇒ ungated.
+    // apps/api (ADR-0029 wall; the guard composes Documents readiness). Talent Lifecycle
+    // R1–R5 Impl Directive v1.2 §4.5 — the guard is MANDATORY for `qualified`: when it is
+    // absent the transition is REFUSED (never ungated). Other targets are unaffected, so
+    // hand-wired `new PipelineRepository(prisma)` specs that never qualify still boot.
     @Optional()
     @Inject(QUALIFIED_TRANSITION_GUARD)
     private readonly qualifiedGuard?: QualifiedTransitionGuardPort,
@@ -688,23 +690,22 @@ export class PipelineRepository {
       );
     }
 
-    // Step 3c — RTR QUALIFIED GATE (DOC-TEMPLATE-ADMIN-RTR-1 §29-32). Runs AFTER the
-    // no-op + legality + evidence checks and ONLY for the `qualified` target, so an
-    // illegal / no-op qualified transition never reaches it (and specs without the
-    // Documents schema never pay the readiness query). Composed at apps/api via the
-    // @Optional QUALIFIED_TRANSITION_GUARD port (ADR-0029 Pipeline⊥ATS wall): a no-op
-    // when RTR is not required for the requisition; otherwise it requires an EXECUTED
-    // RTR for the exact (talent, requisition) and throws PIPELINE_QUALIFY_REQUIRES_RTR
-    // (422). `qualifying` entry is never gated. The row is already loaded, so the exact
-    // (talent, requisition) is passed in — the guard needs no Pipeline read.
-    if (args.to_status === 'qualified' && this.qualifiedGuard !== undefined) {
-      await this.qualifiedGuard.assertCanQualify({
-        tenant_id: args.tenant_id,
-        talent_id: (current as PipelineRow).talent_record_id,
-        requisition_id: (current as PipelineRow).requisition_id,
-        requestId: args.requestId,
-      });
+    // Step 3c — RTR QUALIFIED GATE (DOC-TEMPLATE-ADMIN-RTR-1 §29-32; Talent Lifecycle
+    // R1–R5 Impl Directive v1.2 §4.3–§4.5). Runs AFTER the no-op + legality + evidence
+    // checks and ONLY for the `qualified` target. The guard itself now runs INSIDE the
+    // transaction below (shared client-submittal-policy lock first, RTR check after the
+    // CAS — §2.2 T-2), so here only the MANDATORY-binding rule applies: a process without
+    // the guard bound refuses `qualified` rather than skipping the RTR precondition.
+    const qualifying = args.to_status === 'qualified';
+    if (qualifying && this.qualifiedGuard === undefined) {
+      throw new AramoError(
+        'PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED',
+        'This talent cannot be marked Qualified: the Right to Represent check is not available in this process.',
+        422,
+        { requestId: args.requestId, details: { pipeline_id: args.id, reason: 'rtr_guard_unbound' } },
+      );
     }
+    const qualifiedGuard = this.qualifiedGuard;
 
     // Step 4 — atomic interactive transaction (PR-A5b-1 widens the
     // composition with the placement decrement leg; the interactive form
@@ -741,6 +742,14 @@ export class PipelineRepository {
 
     const { updatedRow, historyRow } = await this.prisma.$transaction(
       async (tx) => {
+        // 4·0 — v1.2 §2.2 T-3: a server-side bound on every lock wait in this transaction.
+        await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+        // v1.2 §4.4(d) / T-2: for `qualified`, the SHARED per-tenant client-submittal-
+        // policy advisory lock is the FIRST lock taken, so a concurrent policy publish is
+        // linearized against this transition (it waits, or committed before us and applies).
+        if (qualifying) {
+          await qualifiedGuard!.beginQualifyInTx(tx as never, { tenant_id });
+        }
         // 4a — UPDATE Pipeline.status (+ bump the optimistic-concurrency version
         // in the SAME tx; L2-A). The CAS is enforced IN THE WRITE, not only by the
         // JS pre-check above: `version = currentVersion` is a WHERE predicate, so a
@@ -789,6 +798,41 @@ export class PipelineRepository {
         const updated = (await tx.pipeline.findFirst({
           where: { id: args.id },
         })) as PipelineRow;
+        // 4a' — v1.2 §4.3: the RTR precondition for `qualified`, on THIS transaction, after
+        // the CAS (lock order Pipeline → documents). Resolves the effective RTR requirement at
+        // the linearization instant and locks the executed RTR FOR SHARE; throws (rolling back
+        // the CAS) when UNRESOLVED or REQUIRED-and-absent. Its decision is audited below.
+        const rtrDecision = qualifying
+          ? await qualifiedGuard!.assertCanQualifyInTx(tx as never, {
+              tenant_id,
+              talent_id: talent_record_id,
+              requisition_id,
+              requestId: args.requestId,
+            })
+          : null;
+        if (rtrDecision !== null) {
+          // v1.2 §4.6 — the applied RTR policy (disposition + source layer + version +
+          // checksum + t_L), recorded IN the transition transaction.
+          await insertPolicyDecisionRecordInTx(tx, {
+            tenant_id,
+            decision: 'ALLOW',
+            policy_version: rtrDecision.composite_version ?? '__none__',
+            rule_id: 'rtr_present',
+            reason_code: `RTR_${rtrDecision.disposition}`,
+            resource: 'REQUISITION_TALENT',
+            action: 'QUALIFY',
+            inputs: {
+              resource: 'REQUISITION_TALENT',
+              action: 'QUALIFY',
+              declared: { pipeline_id: args.id, requisition_id, talent_record_id },
+              derived: { rtr_policy: { ...rtrDecision } },
+              capabilities: {},
+            },
+            actor_id: args.changed_by_id,
+            origin: 'ui',
+            correlation_id: args.requestId,
+          });
+        }
         // 4b — INSERT PipelineStatusHistory
         const history = await tx.pipelineStatusHistory.create({
           data: {
@@ -838,6 +882,8 @@ export class PipelineRepository {
                     evidence_kind: args.evidence_provenance.kind,
                     evidence_id: args.evidence_provenance.id,
                   }),
+              // v1.2 §4.6 — additive: the RTR policy applied to a `qualified` transition.
+              ...(rtrDecision === null ? {} : { rtr_policy: { ...rtrDecision } }),
             },
           },
         });
@@ -862,6 +908,8 @@ export class PipelineRepository {
         }
         return { updatedRow: updated, historyRow: history };
       },
+      // v1.2 §2.2 T-3 — explicit bounds (the qualified path waits on the policy lock).
+      LOCKED_TX_OPTIONS,
     ).catch((err: unknown) => {
       // Exact-name translation of the one-disposition-per-pipeline violation —
       // never a generic P2002/23505 leak (mirrors PIPELINE_EPISODE_ALREADY_LIVE).
@@ -873,7 +921,9 @@ export class PipelineRepository {
           { requestId: args.requestId, details: { pipeline_id: args.id } },
         );
       }
-      throw err;
+      // v1.2 §2.2 T-3 — a timeout / deadlock / lock-wait abort left no effect → 409
+      // TRANSACTION_CONFLICT_RETRYABLE (never auto-retried here); everything else rethrows.
+      return rethrowTransactionConflict(err, args.requestId, 'pipeline.transition');
     });
 
     this.logger.log({

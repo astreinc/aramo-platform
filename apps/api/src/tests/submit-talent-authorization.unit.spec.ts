@@ -23,6 +23,8 @@ const EVENT_ID = '66666666-6666-7666-8666-666666666666';
 const ACTOR_ID = '77777777-7777-7777-8777-777777777777';
 const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1f00';
 const OTHER_REQ = '99999999-9999-7999-8999-999999999999';
+// v1.2 §4.4(d) — the two statements that now precede the submittal read in the tx.
+const LEAD_STATEMENTS = 2;
 
 function makeInput(
   over: Partial<SubmitTalentToClientInput> = {},
@@ -59,11 +61,16 @@ function buildService(over: { pipelineSiteId?: string | null } = {}) {
     site_id: over.pipelineSiteId ?? null,
     status: 'qualified', // live (non-terminal) → passes the link-liveness verdict
   };
-  // Sequential raw-SQL returns inside the orchestration tx:
+  // Sequential raw-SQL returns inside the orchestration tx (Talent Lifecycle R1–R5 Impl
+  // Directive v1.2 §4.4(d): the shared client-submittal-policy lock + the database-clock
+  // linearization read now LEAD the transaction — LEAD_STATEMENTS below):
+  //   0a) pg_advisory_xact_lock_shared   0b) clock_timestamp()
   //   1) submittal SELECT ... FOR UPDATE   2) pipeline SELECT ... FOR UPDATE
   //   3) requisition-open gate read (empty → REQUISITION_NOT_OPEN; only reached on PASS)
   const queryRaw = vi
     .fn()
+    .mockResolvedValueOnce([{ locked: '' }])
+    .mockResolvedValueOnce([{ t: new Date('2026-10-20T00:00:00Z') }])
     .mockResolvedValueOnce([submittalRow])
     .mockResolvedValueOnce([pipelineRow])
     .mockResolvedValue([]);
@@ -96,7 +103,7 @@ describe('SubmitTalentToClientService — INC-1b send-path authorization', () =>
       service.submitToClient(makeInput({ actor_site_id: 'site-A' })),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     // Only the two reads ran — the mutation path (3rd+ query) was never entered.
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 
   it('hidden requisition: requisition not in actor visible set → 404, no mutation', async () => {
@@ -104,7 +111,7 @@ describe('SubmitTalentToClientService — INC-1b send-path authorization', () =>
     await expect(
       service.submitToClient(makeInput({ visible_requisition_ids: new Set([OTHER_REQ]) })),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 
   it('tenant-wide actor (null site) + see_all (null visible) → authz passes, reaches open-gate', async () => {
@@ -115,7 +122,7 @@ describe('SubmitTalentToClientService — INC-1b send-path authorization', () =>
         makeInput({ actor_site_id: null, visible_requisition_ids: null }),
       ),
     ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN' });
-    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 3);
   });
 
   it('valid access: site + requisition visibility match → authz passes, reaches open-gate', async () => {
@@ -125,7 +132,7 @@ describe('SubmitTalentToClientService — INC-1b send-path authorization', () =>
         makeInput({ actor_site_id: 'site-A', visible_requisition_ids: new Set([REQ_ID]) }),
       ),
     ).rejects.toMatchObject({ code: 'REQUISITION_NOT_OPEN' });
-    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 3);
   });
 });
 
@@ -141,7 +148,7 @@ describe('SubmitTalentToClientService — INC-1d service-level attestation floor
         makeInput({ handoff_performed: undefined, visible_requisition_ids: null }),
       ),
     ).rejects.toMatchObject({ code: 'ATTESTATION_MISSING', statusCode: 422 });
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 
   it('handoff_performed:false (non-true) → ATTESTATION_MISSING (422), no mutation', async () => {
@@ -151,7 +158,7 @@ describe('SubmitTalentToClientService — INC-1d service-level attestation floor
         makeInput({ handoff_performed: false, visible_requisition_ids: null }),
       ),
     ).rejects.toMatchObject({ code: 'ATTESTATION_MISSING', statusCode: 422 });
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 
   it('attested but delivery_channel missing → SUBMITTAL_DELIVERY_CHANNEL_INVALID (422, required), no mutation', async () => {
@@ -165,7 +172,7 @@ describe('SubmitTalentToClientService — INC-1d service-level attestation floor
       statusCode: 422,
       context: { details: { reason: 'required' } },
     });
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 
   it('attestation floor runs AFTER authorization (an unauthorized + unattested send is denied on authz first)', async () => {
@@ -177,6 +184,6 @@ describe('SubmitTalentToClientService — INC-1d service-level attestation floor
         makeInput({ actor_site_id: 'site-A', handoff_performed: undefined }),
       ),
     ).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(LEAD_STATEMENTS + 2);
   });
 });

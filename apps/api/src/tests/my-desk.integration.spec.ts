@@ -21,11 +21,13 @@ import {
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
+import { ClientSubmittalPolicyService } from '@aramo/client-submittal-policy';
 
 import { AppModule } from '../app.module.js';
 
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
+import { publishRtrPolicy } from './helpers/rtr-readiness-harness.js';
 
 // GET /v1/my-desk — recruiter command-center READ composition, proven against
 // real Postgres 17 + the full AppModule (real guards + visibility interceptor +
@@ -418,6 +420,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await app.init();
       const server = await app.listen(0);
       port = (server.address() as AddressInfo).port;
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — an absent RTR requirement is
+      // UNRESOLVED (never "not required"). This composition spec is not ABOUT RTR, so the
+      // fixture tenant carries an explicit TENANT-scope NOT_REQUIRED via the real publish path.
+      await publishRtrPolicy(app.get(ClientSubmittalPolicyService, { strict: false }), {
+        tenant_id: TENANT_A,
+        disposition: 'NOT_REQUIRED',
+      });
 
       // --- seed reference data directly (SQL): a company + named talent ---
       const companyId = await seedCompany(TENANT_A, 'Freddie Mac');

@@ -37,10 +37,13 @@ export type EligibilityDenyCode =
   // DOC-5 — document-readiness (RTR) refusal (409). The apps/api orchestrator
   // pre-resolves the PL-1 same-document executed-RTR verdict; this pure port
   // never reads Documents — it only honours the passed verdict.
-  | 'SUBMITTAL_RTR_NOT_EXECUTED';
+  | 'SUBMITTAL_RTR_NOT_EXECUTED'
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1/§4.6 (A1 AM-6 §7.3, D-5) — the
+  // effective RTR requirement is UNRESOLVED (not configured); refuses new submittal (409).
+  | 'SUBMITTAL_RTR_POLICY_UNRESOLVED';
 
 /** DOC-5 document-readiness deny reasons (subset of EligibilityDenyCode). */
-export type DocumentEligibilityDenyCode = 'SUBMITTAL_RTR_NOT_EXECUTED';
+export type DocumentEligibilityDenyCode = 'SUBMITTAL_RTR_NOT_EXECUTED' | 'SUBMITTAL_RTR_POLICY_UNRESOLVED';
 
 /** COMM-C3 engagement deny reasons (subset of EligibilityDenyCode). */
 export type EngagementEligibilityDenyCode =

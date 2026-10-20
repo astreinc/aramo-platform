@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AramoError, type AramoLogger } from '@aramo/common';
+import { AramoError, LOCK_TIMEOUT_SQL, LOCKED_TX_OPTIONS, rethrowTransactionConflict, type AramoLogger } from '@aramo/common';
 import { recordUsage } from '@aramo/metering';
 import { canTransitionSubmittal } from '@aramo/submittal';
 import {
@@ -23,7 +23,8 @@ import {
 import { insertPolicyDecisionRecordInTx } from '@aramo/policy-store';
 
 import { EngagementGateService } from '../engagement/engagement-gate.service.js';
-import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
+import { DocumentReadinessGate, type RtrPolicyDecision } from '../rtr/document-readiness.gate.js';
+import { acquireCspReadLock, readDatabaseClock } from '../client-submittal-policy/csp-linearization.js';
 
 // Lane L8-B1 (v1.2) — the "Submit Talent to Client" orchestration command.
 //
@@ -149,7 +150,10 @@ interface RawTxClient {
   $executeRaw(template: TemplateStringsArray, ...values: unknown[]): Promise<number>;
 }
 interface OrchestratorDb {
-  $transaction<T>(fn: (tx: RawTxClient) => Promise<T>): Promise<T>;
+  $transaction<T>(
+    fn: (tx: RawTxClient) => Promise<T>,
+    options?: { maxWait?: number; timeout?: number },
+  ): Promise<T>;
 }
 
 @Injectable()
@@ -180,7 +184,15 @@ export class SubmitTalentToClientService {
     ) =>
       new AramoError(code as never, message, status, { requestId, details });
 
-    return this.db.$transaction(async (tx) => {
+    return this.db.$transaction<SubmitTalentToClientResult>(async (tx) => {
+      // 0 — Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(d) / §2.2 T-2: the SHARED per-
+      // tenant client-submittal-policy advisory lock is the FIRST statement, then the
+      // linearization instant t_L (DATABASE clock, read under the lock). Every policy read
+      // below resolves AT t_L, so a concurrent publish either committed before us (applies)
+      // or waits for this submit to commit (does not apply) — one consistent snapshot.
+      await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL); // v1.2 §2.2 T-3 — bounded lock waits
+      await acquireCspReadLock(tx, tenant_id);
+      const linearizedAt = await readDatabaseClock(tx);
       // 1 — read + lock the submittal (serializes concurrent submits of the SAME submittal).
       const subs = await tx.$queryRawUnsafe<SubmittalRow[]>(
         `SELECT "id","tenant_id","talent_id","job_id","pipeline_id","state"
@@ -464,10 +476,14 @@ export class SubmitTalentToClientService {
       // DOC-5 — document-readiness (RTR) gate, resolved after engagement, before
       // the pure decision. The gate reads Documents on its own connection (never
       // mutates Submittal); the pure decision denies LAST with the carried reason.
-      const document = await this.documentReadiness.assess({
+      // v1.2 §4.6 — on THIS transaction at t_L: UNRESOLVED refuses (D-5); REQUIRED locks
+      // the executed RTR FOR SHARE (T-2 position: after the submittal/Pipeline/requisition
+      // locks), so an invalidating Document UPDATE cannot slip past this submit.
+      const { verdict: document, policy: rtrPolicy } = await this.documentReadiness.assessInTx(tx, {
         tenant_id,
         talent_id: talent_record_id,
         requisition_id,
+        at: linearizedAt,
       });
       // INC-1c (TIP-E2E) — provisional MANDATORY-RTR interim product policy,
       // fail-closed BEFORE slot consumption / state mutation / outbox. Enforced only
@@ -509,10 +525,11 @@ export class SubmitTalentToClientService {
       // a policy denial consumes NO slot. The command SUPPLIES the facts; the pure
       // generic engine decides. resolveEffective is fail-closed (FLOOR); a null result
       // (no published client-submittal policy) is a no-op (an ungoverned tenant).
-      const clientPolicy = await this.clientSubmittalPolicy.resolveEffective(tenant_id, {
-        company_id,
-        requisition_id,
-      });
+      const clientPolicy = await this.clientSubmittalPolicy.resolveEffective(
+        tenant_id,
+        { company_id, requisition_id },
+        linearizedAt,
+      );
       if (clientPolicy !== null) {
         const workAuthRows = await tx.$queryRawUnsafe<Array<{ work_authorization: string | null }>>(
           `SELECT "work_authorization" FROM "talent_record"."TalentRecord"
@@ -557,7 +574,7 @@ export class SubmitTalentToClientService {
             resource: CLIENT_SUBMITTAL_RESOURCE,
             action: CLIENT_SUBMITTAL_ACTION,
             declared: {},
-            derived: { ...facts },
+            derived: { ...facts, rtr_policy: rtrPolicyAudit(rtrPolicy) },
             capabilities: {},
             ...(overridden
               ? {
@@ -707,7 +724,12 @@ export class SubmitTalentToClientService {
         pipeline_id: pipeline.id,
         state: 'submitted_to_client',
       };
-    });
+    }, LOCKED_TX_OPTIONS).catch((e: unknown) =>
+      // v1.2 §2.2 T-3 — a timeout / deadlock / lock-wait abort left no effect → 409
+      // TRANSACTION_CONFLICT_RETRYABLE (never auto-retried; the caller's Idempotency-Key
+      // replay makes a retry safe). Typed refusals thrown inside rethrow unchanged.
+      rethrowTransactionConflict(e, requestId, 'submittal.submit_to_client'),
+    );
   }
 
   private async readPolicyInputs(
@@ -774,4 +796,18 @@ export class SubmitTalentToClientService {
     );
     return restr.length > 0;
   }
+}
+
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §4.6 — the PII-free RTR policy audit facts
+// (disposition + source layer + version + checksum + linearization instant t_L).
+function rtrPolicyAudit(p: RtrPolicyDecision): Record<string, unknown> {
+  return {
+    disposition: p.disposition,
+    source: p.source,
+    scope_ref: p.scope_ref,
+    version: p.version,
+    checksum: p.checksum,
+    composite_version: p.composite_version,
+    resolved_at: p.resolved_at,
+  };
 }

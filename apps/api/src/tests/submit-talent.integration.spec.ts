@@ -18,7 +18,7 @@ import {
   PrismaService as DocumentsPrismaService,
 } from '@aramo/documents';
 // CSP PR-3 — the REAL client-submittal-policy service over the same policy_store DB.
-import { ClientSubmittalPolicyService } from '@aramo/client-submittal-policy';
+import { ClientSubmittalPolicyService, checksumDefinition } from '@aramo/client-submittal-policy';
 
 // COMM-C3 — the engagement gate is composed into the orchestrator; imported here
 // to construct the real gate against the same test DB (dormant unless a policy is
@@ -36,7 +36,7 @@ import { EngagementGateService } from '../engagement/engagement-gate.service.js'
 import { ClientSubmittalPolicyGatewayAdapter } from '../client-submittal-policy/client-submittal-policy-gateway.adapter.js';
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 
-import { makeDocumentReadinessGate, nullCompanyIdResolver, publishRtrRequired } from './helpers/rtr-readiness-harness.js';
+import { ensureRtrResolved, makeDocumentReadinessGate, nullCompanyIdResolver, publishRtrRequired } from './helpers/rtr-readiness-harness.js';
 // CSP PR-3 — the REAL client-submittal-policy service over the same policy_store
 // DB. Ungoverned tenants (no published client-submittal-policy) resolve null, so
 // the decision step is a no-op and the pre-CSP proofs stay unchanged.
@@ -295,6 +295,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1,$2,'L1-C fixture',$3,$4::requisition."RecruitingStatus")`,
         [req, t, randomUUID(), status],
       );
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — an absent RTR requirement is
+      // UNRESOLVED and refuses submit; specs that are not ABOUT RTR get an explicit
+      // NOT_REQUIRED (a spec that published its own RTR requirement first keeps it).
+      await ensureRtrResolved(clientSubmittalPolicy, { tenant_id: t, requisition_id: req });
     }
     async function seedPolicy(t: string, req: string, limit: number | null): Promise<void> {
       await sql.query(
@@ -326,6 +330,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1,$2,'SW-2 fixture',$3,$4::requisition."RecruitingStatus",$5::numeric,$6,$7::requisition."RatePeriod")`,
         [req, t, randomUUID(), status, amount, currency, period],
       );
+      await ensureRtrResolved(clientSubmittalPolicy, { tenant_id: t, requisition_id: req }); // v1.2 §4.1
     }
     const provenance = (id: string) =>
       sql.query<{
@@ -414,6 +419,106 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ---- P1: happy path — authoritative fact + mirror --------------------------
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4/§4.9 — Concurrency B for CLIENT SUBMIT:
+    // the policy publish is linearized against the submit by the per-tenant client-submittal-
+    // policy advisory lock (shared in the submit tx, exclusive in publish). Two orders.
+    async function waitUntilBlocked(): Promise<void> {
+      for (let i = 0; i < 200; i++) {
+        const r = await sql.query<{ n: string }>(`SELECT count(*)::text AS n FROM pg_locks WHERE NOT granted`);
+        if (Number(r.rows[0]!.n) > 0) return;
+        await new Promise((res) => setTimeout(res, 25));
+      }
+      throw new Error('timed out waiting for a blocked backend');
+    }
+    async function settledWithin(p: Promise<unknown>, ms: number): Promise<boolean> {
+      const marker = Symbol('pending');
+      const r = await Promise.race([p.then(() => 'done', () => 'done'), new Promise((res) => setTimeout(() => res(marker), ms))]);
+      return r !== marker;
+    }
+    const rtrDef = (disposition: 'REQUIRED' | 'NOT_REQUIRED') => ({
+      requirements: [{ key: 'rtr_present', disposition, override_class: 'HARD_DENY', override_policy: 'DEFAULT' }],
+    });
+
+    it('S1-B(i) submit holds the shared policy lock → a publish (→ RTR REQUIRED) waits; the submit applies the OLD (not required) policy', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open'); // ensureRtrResolved → REQUISITION-scope NOT_REQUIRED
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      const pauser = new Client({ connectionString: container.getConnectionUri() });
+      await pauser.connect();
+      try {
+        // Pause the submit AFTER its shared lock + policy read: block its slot-consumption INSERT.
+        await pauser.query('BEGIN');
+        await pauser.query('LOCK TABLE submittal_policy."SubmittalConsumption" IN EXCLUSIVE MODE');
+        const submit = svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 's1-b-i' });
+        await waitUntilBlocked();
+        const pub = clientSubmittalPolicy.publish({
+          tenant_id: t, scope: 'REQUISITION', scope_ref: req, version: 'rtr-required-2',
+          definition: rtrDef('REQUIRED'), published_by: randomUUID(),
+        });
+        expect(await settledWithin(pub, 1_000)).toBe(false); // blocked on the exclusive advisory lock
+        await pauser.query('COMMIT');
+        await expect(submit).resolves.toMatchObject({ state: 'submitted_to_client' });
+        await pub;
+      } finally {
+        await pauser.end();
+      }
+    });
+
+    it('S1-B(ii) a publish holding the exclusive lock commits first → the submit waits, then applies the NEW policy (refused: RTR not executed)', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      await seedRequisition(t, req, 'open');
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      const publisher = new Client({ connectionString: container.getConnectionUri() });
+      await publisher.connect();
+      try {
+        await publisher.query('BEGIN');
+        await publisher.query(`SELECT pg_advisory_xact_lock(hashtextextended('csp:' || $1::text, 0))`, [t]);
+        const submit = svc
+          .submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 's1-b-ii' })
+          .then(() => 'NO_THROW', (e: { code?: string }) => e.code);
+        await waitUntilBlocked(); // the submit waits on the shared lock
+        const pkg = `client-submittal-policy:requisition:${req}`;
+        await publisher.query(
+          `UPDATE policy_store."StoredPolicyVersion" SET effective_to = clock_timestamp()
+            WHERE tenant_id=$1 AND package_name=$2 AND effective_to IS NULL`,
+          [t, pkg],
+        );
+        await publisher.query(
+          `INSERT INTO policy_store."StoredPolicyVersion"
+             (id, tenant_id, package_name, version, definition, checksum, effective_from, effective_to, published_by, published_at)
+           VALUES (gen_random_uuid(), $1, $2, 'rtr-required-2', $3::jsonb, $4, clock_timestamp(), NULL, $5, now())`,
+          [t, pkg, JSON.stringify(rtrDef('REQUIRED')), checksumDefinition(rtrDef('REQUIRED') as never), randomUUID()],
+        );
+        await publisher.query('COMMIT');
+        expect(await submit).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
+        expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      } finally {
+        await publisher.end();
+      }
+    });
+
+    it('S1 — no RTR policy at any layer → submit refused 409 SUBMITTAL_RTR_POLICY_UNRESOLVED (D-5), nothing consumed', async () => {
+      const t = randomUUID(), talent = randomUUID(), req = randomUUID(), pipe = randomUUID(), sub = randomUUID();
+      // Raw requisition seed WITHOUT ensureRtrResolved — the requirement stays UNRESOLVED.
+      await sql.query(
+        `INSERT INTO requisition."Requisition" (id,tenant_id,title,company_id,status)
+         VALUES ($1,$2,'S1 unresolved',$3,'open'::requisition."RecruitingStatus")`,
+        [req, t, randomUUID()],
+      );
+      await seedPipeline(t, pipe, talent, req);
+      await seedSubmittal(t, sub, talent, req, pipe);
+      await seedRequisitionResume(t, talent, req, TI1DD_EDITION);
+      await expect(
+        svc.submitToClient({ tenant_id: t, submittal_id: sub, event_id: randomUUID(), actor_id: randomUUID(), handoff_performed: true, delivery_channel: 'manual_vms', requestId: 's1-unresolved' }),
+      ).rejects.toMatchObject({ code: 'SUBMITTAL_RTR_POLICY_UNRESOLVED', statusCode: 409 });
+      expect(await count('submittal_policy."SubmittalConsumption"', 'requisition_id=$1', [req])).toBe('0');
+      expect(await submittalState(sub)).toBe('ready_for_review|false');
+    });
+
     it('P1 happy path: submitted_to_client is AUTHORITATIVE and the Pipeline is UNTOUCHED (mirror retired)', async () => {
       const t = randomUUID(), talent = randomUUID(), req = randomUUID();
       const pipe = randomUUID(), sub = randomUUID();

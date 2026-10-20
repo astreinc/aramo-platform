@@ -29,6 +29,7 @@ import { SECRETS_MANAGER_PORT, SECRETS_MANAGER_WRITER } from '@aramo/integration
 // a default-ALLOW package suffices (the interactions assert the view, not the
 // provenance record) — the six-state matrix is the apps/api seed DATA.
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+import { checksumDefinition } from '@aramo/client-submittal-policy';
 // PC-6 — resume mock-infra: overrideProvider(Class) needs the concrete class
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
@@ -4095,6 +4096,28 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         }
       } finally {
         await policyPrisma.onModuleDestroy();
+      }
+
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — an absent client-submittal
+      // policy is UNRESOLVED and refuses Qualified + client submit. The verifier tenant
+      // gets an EXPLICIT TENANT-scope `rtr_present: NOT_REQUIRED` so the happy-path
+      // submit-to-client / qualify replays resolve (the pacts assert their own outcomes,
+      // not RTR). Seeded once with a valid checksum (decode is checksum fail-closed).
+      {
+        const cspDefinition = {
+          requirements: [
+            { key: 'rtr_present', disposition: 'NOT_REQUIRED', override_class: 'HARD_DENY', override_policy: 'DEFAULT' },
+          ],
+        };
+        await withClient((c) =>
+          c.query(
+            `INSERT INTO "policy_store"."StoredPolicyVersion"
+               ("id","tenant_id","package_name","version","definition","checksum","effective_from","effective_to","published_by","published_at")
+             VALUES (gen_random_uuid(),$1::uuid,'client-submittal-policy','1.0.0',$2::jsonb,$3,'2020-01-01T00:00:00Z',NULL,$4::uuid,NOW())
+             ON CONFLICT DO NOTHING`,
+            [TENANT_ID, JSON.stringify(cspDefinition), checksumDefinition(cspDefinition as never), '00000000-0000-0000-0000-000000000000'],
+          ),
+        );
       }
 
       // Inline JWT signing per Amendment §2.2 — production issuer

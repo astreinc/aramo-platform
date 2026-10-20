@@ -8,6 +8,8 @@ export {
 export {
   QUALIFIED_TRANSITION_GUARD,
   type QualifiedTransitionGuardPort,
+  type QualifiedGuardTx,
+  type QualifiedRtrDecision,
 } from './lib/qualified-transition-guard.port.js';
 export {
   RESUME_EDITION_READER,

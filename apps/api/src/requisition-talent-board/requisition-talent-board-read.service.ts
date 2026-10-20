@@ -455,8 +455,9 @@ export class RequisitionTalentBoardReadService {
       assigned_recruiter_user_id: string | null;
       // TB-chips — the recruiting-stage readiness facts. rtr_status carries the canonical
       // three-way effective requirement: NOT_SENT/SENT/CONFIRMED (REQUIRED signing status) |
-      // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | null (UNGOVERNED → nothing).
-      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
+      // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | 'POLICY_UNRESOLVED' (v1.2
+      // §4.7: requirement not configured — actionable) | null (no verdict computed).
+      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
       email_evidence: boolean;
       voice_evidence: boolean;
       desired_pay: string | null;
@@ -474,7 +475,13 @@ export class RequisitionTalentBoardReadService {
     // NOT_EXECUTED state is surfaced; a satisfied verdict (executed OR RTR-not-required) carries
     // no RTR concern, so it stays null rather than fabricating an EXECUTED value the verdict
     // shape cannot distinguish from ungated.
-    const rtr_state = ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied ? 'NOT_EXECUTED' : null;
+    // v1.2 §4.7 — an UNRESOLVED requirement is its own actionable state, never NOT_EXECUTED.
+    const rtr_state =
+      ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied
+        ? ctx.rtr_verdict.deny === 'SUBMITTAL_RTR_POLICY_UNRESOLVED'
+          ? 'POLICY_UNRESOLVED'
+          : 'NOT_EXECUTED'
+        : null;
     // Readiness band (§6) — meaningful only for the Qualified column. TB-4 (remediated): grounded
     // on the REAL `evaluateEligibility` port over ALL applicable submit gates — window (raw policy
     // inputs), client restriction (authoritative batched), engagement (requisition-grain
@@ -783,6 +790,9 @@ function denyToBlocker(deny: string): string {
       return 'engagement_readiness_unavailable';
     case 'SUBMITTAL_RTR_NOT_EXECUTED':
       return 'rtr_not_executed';
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — RTR requirement not configured.
+    case 'SUBMITTAL_RTR_POLICY_UNRESOLVED':
+      return 'rtr_policy_unresolved';
     default:
       return deny.toLowerCase();
   }

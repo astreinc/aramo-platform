@@ -122,7 +122,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // RTR requirement (empty set → not required), so mark_qualified stays available (§14).
         makeDocumentReadinessGate({
           documents: new DocumentsRepository(documentsPrisma, new DocumentIdempotencyService(documentsPrisma)),
-          policy: rtrPolicyStub(new Set<string>()),
+          // v1.2 §4.1 — not an RTR spec: the requirement resolves to an explicit NOT_REQUIRED.
+          policy: rtrPolicyStub(new Set<string>(), new Set<string>(), { otherwise: 'NOT_REQUIRED' }),
         }),
         NOOP_LOGGER,
       );
