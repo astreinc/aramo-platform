@@ -11055,6 +11055,11 @@
       "to": "apps/sign-web/vite.config.ts"
     },
     {
+      "from": "apps/sign-web/src/workspace/routes/SignupPage.tsx",
+      "status": "production",
+      "to": "openapi/platform.yaml"
+    },
+    {
       "from": "apps/sign-web/tsconfig.spec.json",
       "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"

@@ -794,6 +794,7 @@
       "SESSION_PATH",
       "Select",
       "Shell",
+      "SignInPage",
       "SignedOut",
       "Switch",
       "TENANT_ACCESS_DENIED_PATH",
@@ -804,6 +805,7 @@
       "ToastProvider",
       "WrongAccountRecovery",
       "accessDeniedPath",
+      "allowedConsumer",
       "apiClient",
       "appPath",
       "buildAppSwitcherItems",
@@ -824,11 +826,14 @@
       "parseReturnContext",
       "productByKey",
       "productEntryHref",
+      "providersFrom",
       "readNavCollapsed",
       "readRememberedReturnContext",
       "redirectToAccessDenied",
       "redirectToLogin",
       "rememberReturnContext",
+      "safeReturnTo",
+      "signInPageUrl",
       "useCompactRailPage",
       "useMyProducts",
       "useNavCollapse",
@@ -7377,6 +7382,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/routes/LoginPage.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/routes/VerifyEmailConfirmPage.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7561,7 +7572,19 @@
         "project": "aramo-home-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/routes/LoginPage.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
       { "project": "aramo-home-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/LoginPage.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
@@ -7615,6 +7638,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/routes/LoginPage.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
