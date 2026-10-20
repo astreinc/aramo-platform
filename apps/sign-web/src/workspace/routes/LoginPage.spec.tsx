@@ -31,7 +31,7 @@ describe('sign-web workspace LoginPage', () => {
 
   it('renders the Aramo sign-in screen with both provider buttons and no automatic navigation', async () => {
     renderAt('/login');
-    expect(screen.getByText('Use your work account to continue to Aramo Sign.')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to send, manage, and sign documents.')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(fetchSpy).toHaveBeenCalledWith('/auth/sign/login-options', expect.anything());
@@ -49,9 +49,9 @@ describe('sign-web workspace LoginPage', () => {
     expect(screen.queryByRole('button', { name: /continue with/i })).toBeNull();
   });
 
-  it('TENANT_CAPABILITY_NOT_ENTITLED: Aramo Sign not available (no buttons)', () => {
+  it('TENANT_CAPABILITY_NOT_ENTITLED: no access to Aramo Sign (no provider buttons)', () => {
     renderAt('/login?error=TENANT_CAPABILITY_NOT_ENTITLED');
-    expect(screen.getByText('Aramo Sign not available')).toBeInTheDocument();
+    expect(screen.getByText('You don’t have access to Aramo Sign')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /continue with/i })).toBeNull();
   });
 

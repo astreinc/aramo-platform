@@ -31,7 +31,7 @@ describe('ats-web LoginPage', () => {
 
   it('renders the Aramo sign-in screen with both provider buttons and no automatic navigation', async () => {
     renderAt('/login');
-    expect(screen.getByText('Use your work account to continue to Aramo ATS.')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to Aramo ATS with your work account.')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(fetchSpy).toHaveBeenCalledWith('/auth/recruiter/login-options', expect.anything());
@@ -55,9 +55,9 @@ describe('ats-web LoginPage', () => {
     expect(screen.getByRole('link', { name: /sign out of microsoft/i })).toBeInTheDocument();
   });
 
-  it('TENANT_CAPABILITY_NOT_ENTITLED: product-not-available with an App Home link (no buttons)', () => {
+  it('TENANT_CAPABILITY_NOT_ENTITLED: no access to Aramo ATS with an App Home link (no buttons)', () => {
     renderAt('/login?error=TENANT_CAPABILITY_NOT_ENTITLED');
-    expect(screen.getByText('Product not available')).toBeInTheDocument();
+    expect(screen.getByText('You don’t have access to Aramo ATS')).toBeInTheDocument();
     expect(screen.getByTestId('login-open-app-home')).toHaveAttribute('href', '/');
     expect(screen.queryByRole('button', { name: /continue with/i })).toBeNull();
   });

@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
+  AUTH_PRODUCTS,
   ForbiddenState,
   RouteGuard,
   SignedOut,
@@ -51,7 +52,7 @@ export function App() {
   if (location.pathname === '/signed-out') {
     return (
       <ToastProvider>
-        <SignedOut offerAccountSwitch />
+        <SignedOut offerAccountSwitch product={AUTH_PRODUCTS.platform} />
       </ToastProvider>
     );
   }

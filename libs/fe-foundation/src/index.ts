@@ -34,6 +34,8 @@ export {
 export type { FederatedIdp, LoginOptions, Session, SessionState } from './auth/session';
 // AUTH-SIGNIN-1 §3.2 — the shared Aramo sign-in screen.
 export { SignInPage, allowedConsumer, providersFrom, safeReturnTo } from './auth/SignInPage';
+export { AUTH_PRODUCTS, AuthShell } from './auth/AuthShell';
+export type { AuthProduct } from './auth/AuthShell';
 export type { SignInErrorCopy, SignInPageProps } from './auth/SignInPage';
 // Inc-2 PR-2 — single auth-consumer bootstrap point (default 'recruiter';
 // platform-web calls this with 'platform'). Parameterizes the /auth/:consumer/*

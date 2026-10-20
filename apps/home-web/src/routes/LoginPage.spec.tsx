@@ -31,7 +31,7 @@ describe('home-web LoginPage', () => {
 
   it('renders the Aramo sign-in screen with both provider buttons and no automatic navigation', async () => {
     renderAt('/login');
-    expect(screen.getByText('Use your work account to continue to Aramo.')).toBeInTheDocument();
+    expect(screen.getByText('Sign in to Aramo with your work account.')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
     expect(fetchSpy).toHaveBeenCalledWith('/auth/org/login-options', expect.anything());

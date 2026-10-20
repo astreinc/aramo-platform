@@ -1,17 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { Button } from '../components/Button';
-import { InlineAlert } from '../components/InlineAlert';
-import { WrongAccountRecovery } from '../components/WrongAccountRecovery';
-
+import { AuthShell, resolveAuthProduct, type AuthProduct } from './AuthShell';
 import { authPath, getAuthConsumer } from './consumer';
-import { loginUrl, type FederatedIdp } from './session';
-
-import './sign-in.css';
+import { MICROSOFT_SIGN_OUT_URL, loginUrl, logout, type FederatedIdp } from './session';
 
 // AUTH-SIGNIN-1 §3.2 — the ONE Aramo-branded sign-in screen every Cognito-backed
-// app serves at its own `/login` (ATS, App Home, Sign, Platform console).
+// app serves at its own `/login` (ATS, App Home, Sign, Platform console). Visual
+// design and copy follow the PO's sign-in prototype ("Aramo Sign In", Claude
+// Design, 2026-10-20).
 //
 //   - Asks the auth-service which providers this host offers (login-options) and
 //     shows one button per provider, Microsoft first. If that call fails, both
@@ -19,12 +16,15 @@ import './sign-in.css';
 //     tenant's provider at the callback (R1/R4).
 //   - A button goes to `/auth/<consumer>/login?idp=…&return_to=…`, which sends
 //     the browser straight to Google or Microsoft (no Cognito screen).
-//   - `?error=CODE` (the callback's failure redirect) shows a message with the
-//     buttons; TENANT_ACCESS_DENIED keeps the wrong-account recovery page, except
-//     the provider-policy reasons, which say to use the organization's provider.
-//   - `?consumer=` is honoured only from an allowlist (§3.2.1): the configured
-//     consumer, or — for the two tenant-host consumers — the other one.
+//   - `?error=CODE` (the callback's failure redirect) renders the matching error
+//     screen. TENANT_ACCESS_DENIED keeps the wrong-account recovery (account
+//     picker, sign out, sign out of Microsoft); the provider-policy reasons say
+//     to use the organization's provider.
+//   - `?consumer=` is honoured only from an allowlist (§3.2.1).
 //   - Performs NO automatic navigation.
+//
+// Deliberately NOT built (need backend/directive work): the organization name
+// and initials header, and "find your organization" by work email.
 
 export interface SignInErrorCopy {
   title: string;
@@ -34,56 +34,26 @@ export interface SignInErrorCopy {
 }
 
 export interface SignInPageProps {
-  /** What the user is signing in to, e.g. "Aramo ATS". */
-  productName?: string;
+  /** Product presentation (AUTH_PRODUCTS.ats / .sign / .home / .platform). */
+  product?: AuthProduct;
   /** Per-app copy for specific error codes (overrides the defaults). */
   errorCopy?: Readonly<Record<string, SignInErrorCopy>>;
-  /** Extra action rendered under a TENANT_CAPABILITY_NOT_ENTITLED message. */
+  /** Extra action rendered on the TENANT_CAPABILITY_NOT_ENTITLED screen. */
   notEntitledAction?: ReactNode;
+  /** Show the "signing a document someone sent you?" aside (Aramo Sign). */
+  signerNote?: boolean;
   // Test seams.
   search?: string;
   onNavigate?: (url: string) => void;
+  onSignOut?: () => void;
   fetchLoginOptions?: (consumer: string) => Promise<unknown>;
 }
 
 const PROVIDER_ORDER: readonly FederatedIdp[] = ['microsoft', 'google'];
+const PROVIDER_NAME: Record<FederatedIdp, string> = { microsoft: 'Microsoft', google: 'Google' };
 const TENANT_HOST_CONSUMERS: ReadonlySet<string> = new Set(['recruiter', 'org']);
 const IDP_POLICY_REASONS: ReadonlySet<string> = new Set(['idp_not_permitted_for_tenant', 'idp_identity_conflict']);
 const OPTIONS_TIMEOUT_MS = 5000;
-
-const DEFAULT_ERROR_COPY: Readonly<Record<string, SignInErrorCopy>> = {
-  TENANT_SUSPENDED: {
-    title: 'Workspace suspended',
-    message:
-      'This workspace has been suspended, so sign-in is paused. Please contact your provider to restore access.',
-    retry: true,
-  },
-  TENANT_CLOSED: {
-    title: 'Workspace closed',
-    message:
-      'This workspace has been closed and is no longer available. Please contact your provider if you believe this is a mistake.',
-    retry: false,
-  },
-  TENANT_CAPABILITY_NOT_ENTITLED: {
-    title: 'Product not available',
-    message:
-      "This product is not included in your organization's Aramo subscription. Contact your organization administrator.",
-    retry: false,
-  },
-};
-
-const GENERIC_ERROR: SignInErrorCopy = {
-  title: 'Sign-in failed',
-  message: 'We could not complete your sign-in. Please try again, and contact your administrator if the problem continues.',
-  retry: true,
-};
-
-const IDP_POLICY_ERROR: SignInErrorCopy = {
-  title: 'Use your organization’s sign-in',
-  message:
-    'Your organization signs in with a different provider. Continue with the provider and work account your organization uses for Aramo.',
-  retry: true,
-};
 
 /** §3.2.1 — the consumer this page signs in to: an allowlisted `?consumer=` or the configured one. */
 export function allowedConsumer(requested: string | null, configured: string = getAuthConsumer()): string {
@@ -146,38 +116,158 @@ function GoogleLogo() {
   );
 }
 
-function AramoMark() {
-  return (
-    <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
-      <rect width="64" height="64" rx="14" fill="var(--c-text, #1C1917)" />
-      <g stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round">
-        <line x1="43" y1="32" x2="56" y2="32" />
-        <line x1="32" y1="43" x2="32" y2="56" />
-        <line x1="24.2" y1="39.8" x2="15" y2="49" />
-        <line x1="21" y1="32" x2="8" y2="32" />
-        <line x1="24.2" y1="24.2" x2="15" y2="15" />
-        <line x1="32" y1="21" x2="32" y2="8" />
-        <line x1="39.8" y1="39.8" x2="49" y2="49" />
-      </g>
-      <line x1="39.8" y1="24.2" x2="54.5" y2="9.5" stroke="#d97757" strokeWidth="6" strokeLinecap="round" />
-      <circle cx="32" cy="32" r="6" fill="#FFFFFF" />
-    </svg>
-  );
+const ICON = {
+  warn: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  cross: 'M18 6 6 18M6 6l12 12',
+  denied: 'M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM9.5 9.5l5 5M14.5 9.5l-5 5',
+  person: 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0',
+  shieldInfo: 'M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6zM12 9v4M12 16h.01',
+} as const;
+
+type Tone = 'amber' | 'grey' | 'red' | 'blue';
+type ErrorAction = 'providers' | 'different-account' | 'sign-out' | 'not-entitled';
+
+interface ErrorScreen {
+  tone: Tone;
+  icon: string;
+  title: string;
+  body: string;
+  note?: ReactNode;
+  actions: readonly ErrorAction[];
 }
 
-const PROVIDER_LABEL: Record<FederatedIdp, string> = {
-  microsoft: 'Continue with Microsoft',
-  google: 'Continue with Google',
-};
+function errorScreen(
+  error: string,
+  reason: string | null,
+  productName: string,
+  providers: FederatedIdp[] | null,
+  errorCopy: Readonly<Record<string, SignInErrorCopy>> | undefined,
+  signerNote: boolean,
+): ErrorScreen {
+  const override = errorCopy?.[error];
+  if (override !== undefined) {
+    return {
+      tone: override.retry ? 'amber' : 'blue',
+      icon: override.retry ? ICON.warn : ICON.shieldInfo,
+      title: override.title,
+      body: override.message,
+      actions: override.retry ? ['providers'] : error === 'TENANT_CAPABILITY_NOT_ENTITLED' ? ['not-entitled'] : [],
+    };
+  }
+  if (error === 'TENANT_ACCESS_DENIED' && reason !== null && IDP_POLICY_REASONS.has(reason)) {
+    const first = providers !== null && providers.length === 1 ? providers[0] : undefined;
+    const only = first === undefined ? null : PROVIDER_NAME[first];
+    return {
+      tone: 'amber',
+      icon: ICON.warn,
+      title: only === null ? 'Use your organization’s sign-in provider' : `Your organization uses ${only} for sign-in.`,
+      body:
+        only === null
+          ? `Continue with the provider and work account your organization uses for ${productName}.`
+          : `Continue with your ${only} work account to open ${productName}.`,
+      note: 'An account from a different provider can’t open your organization, even if the email address is the same.',
+      actions: ['providers', 'different-account'],
+    };
+  }
+  switch (error) {
+    case 'TENANT_ACCESS_DENIED':
+      // Host-binding SSO recovery: the signed-in account does not belong to this
+      // host. Names no tenant, workspace or account.
+      return {
+        tone: 'red',
+        icon: ICON.denied,
+        title: 'Signed in with a different account',
+        body: 'The account you signed in with doesn’t have access here. This usually happens when another account is already signed in on this browser.',
+        note: (
+          <>
+            If Microsoft keeps signing you in with the wrong account,{' '}
+            <a href={MICROSOFT_SIGN_OUT_URL} rel="noopener noreferrer">
+              sign out of Microsoft
+            </a>{' '}
+            and then sign in again.
+          </>
+        ),
+        actions: ['different-account', 'sign-out'],
+      };
+    case 'INSUFFICIENT_PERMISSIONS':
+      return {
+        tone: 'grey',
+        icon: ICON.person,
+        title: 'We couldn’t find an Aramo account for you',
+        body: 'Aramo doesn’t create accounts at sign-in. Ask your organization’s administrator to invite you.',
+        note: signerNote ? 'Signing a document someone sent you? Open the link in your email. You don’t need an account.' : undefined,
+        actions: ['different-account'],
+      };
+    case 'TENANT_CAPABILITY_NOT_ENTITLED':
+      return {
+        tone: 'blue',
+        icon: ICON.shieldInfo,
+        title: `You don’t have access to ${productName}`,
+        body: `You’re signed in, but ${productName} isn’t enabled for your organization. Ask your administrator for access.`,
+        actions: ['not-entitled', 'different-account'],
+      };
+    case 'TENANT_SUSPENDED':
+      return {
+        tone: 'amber',
+        icon: ICON.warn,
+        title: 'Workspace suspended',
+        body: 'This workspace has been suspended, so sign-in is paused. Please contact your provider to restore access.',
+        actions: ['providers'],
+      };
+    case 'TENANT_CLOSED':
+      return {
+        tone: 'grey',
+        icon: ICON.cross,
+        title: 'Workspace closed',
+        body: 'This workspace has been closed and is no longer available. Please contact your provider if you believe this is a mistake.',
+        actions: [],
+      };
+    case 'VALIDATION_ERROR':
+      return reason === 'cognito_error'
+        ? {
+            tone: 'grey',
+            icon: ICON.cross,
+            title: 'Sign-in was canceled',
+            body: 'The sign-in closed before it finished. Nothing was changed.',
+            actions: ['providers'],
+          }
+        : {
+            tone: 'grey',
+            icon: ICON.cross,
+            title: 'Sign-in was interrupted',
+            body: 'The sign-in took too long or was started in another tab. Nothing was changed. Try again.',
+            actions: ['providers'],
+          };
+    case 'INTERNAL_ERROR':
+      return {
+        tone: 'amber',
+        icon: ICON.warn,
+        title: 'Sign-in is temporarily unavailable',
+        body: 'We couldn’t complete sign-in with your identity provider. This is usually brief. Try again in a minute.',
+        actions: ['providers'],
+      };
+    default:
+      return {
+        tone: 'amber',
+        icon: ICON.warn,
+        title: 'Sign-in failed',
+        body: 'We could not complete your sign-in. Please try again, and contact your administrator if the problem continues.',
+        actions: ['providers'],
+      };
+  }
+}
 
 export function SignInPage({
-  productName,
+  product,
   errorCopy,
   notEntitledAction,
+  signerNote = false,
   search,
   onNavigate,
+  onSignOut,
   fetchLoginOptions,
 }: SignInPageProps) {
+  const p = resolveAuthProduct(product);
   const location = useLocation();
   const params = new URLSearchParams(search ?? location.search);
   const error = params.get('error');
@@ -206,70 +296,109 @@ export function SignInPage({
 
   const navigate = onNavigate ?? ((url: string) => window.location.assign(url));
 
-  if (error === 'TENANT_ACCESS_DENIED' && (reason === null || !IDP_POLICY_REASONS.has(reason))) {
+  const providerButtons =
+    providers === null ? (
+      <p className="aramo-auth__loading" role="status">
+        Loading sign-in options…
+      </p>
+    ) : (
+      providers.map((idp) => (
+        <button
+          key={idp}
+          type="button"
+          className="aramo-auth__btn"
+          data-testid={`signin-${idp}`}
+          onClick={() => navigate(loginUrl({ idp, consumer, returnTo }))}
+        >
+          {idp === 'microsoft' ? <MicrosoftLogo /> : <GoogleLogo />}
+          <span>{`Continue with ${PROVIDER_NAME[idp]}`}</span>
+        </button>
+      ))
+    );
+
+  if (error !== null) {
+    const screen = errorScreen(error, reason, p.name, providers, errorCopy, signerNote);
     return (
-      <main className="aramo-signin" data-testid="aramo-signin">
-        <div className="aramo-signin__panel aramo-signin__panel--wide">
-          <WrongAccountRecovery
-            onSelectAccount={() => navigate(loginUrl({ selectAccount: true, consumer, returnTo: null }))}
-          />
+      <AuthShell product={p}>
+        <div role="alert">
+          <span className={`aramo-auth__tile aramo-auth__tile--${screen.tone}`}>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d={screen.icon} />
+            </svg>
+          </span>
+          <h1 className="aramo-auth__title aramo-auth__title--error">{screen.title}</h1>
+          <p className="aramo-auth__sub">{screen.body}</p>
         </div>
-      </main>
+        {screen.actions.length > 0 ? (
+          <div className="aramo-auth__actions">
+            {screen.actions.map((action) => {
+              switch (action) {
+                case 'providers':
+                  return <div key={action} className="aramo-auth__actions" style={{ marginTop: 0 }}>{providerButtons}</div>;
+                case 'different-account':
+                  return (
+                    <button
+                      key={action}
+                      type="button"
+                      className="aramo-auth__btn"
+                      onClick={() => navigate(loginUrl({ selectAccount: true, consumer, returnTo: null }))}
+                    >
+                      Sign in with a different account
+                    </button>
+                  );
+                case 'sign-out':
+                  return (
+                    <button key={action} type="button" className="aramo-auth__btn" onClick={() => (onSignOut ? onSignOut() : void logout())}>
+                      Sign out and start over
+                    </button>
+                  );
+                case 'not-entitled':
+                  return notEntitledAction === undefined ? null : <div key={action}>{notEntitledAction}</div>;
+              }
+            })}
+          </div>
+        ) : null}
+        {screen.note !== undefined ? (
+          <div className="aramo-auth__note">
+            <span>{screen.note}</span>
+          </div>
+        ) : null}
+      </AuthShell>
     );
   }
 
-  const copy: SignInErrorCopy | null =
-    error === null
-      ? null
-      : error === 'TENANT_ACCESS_DENIED'
-        ? IDP_POLICY_ERROR
-        : (errorCopy?.[error] ?? DEFAULT_ERROR_COPY[error] ?? GENERIC_ERROR);
-  const showButtons = copy === null || copy.retry;
-
+  const single = providers !== null && providers.length === 1 ? (providers[0] ?? null) : null;
   return (
-    <main className="aramo-signin" data-testid="aramo-signin">
-      <div className="aramo-signin__panel">
-        <div className="aramo-signin__brand">
-          <AramoMark />
-          <span className="aramo-signin__wordmark">Aramo</span>
+    <AuthShell product={p}>
+      <h1 className="aramo-auth__title">{p.heading}</h1>
+      <p className="aramo-auth__sub">{p.sub}</p>
+      {returnTo !== null ? (
+        <div className="aramo-auth__return" data-testid="signin-return-note">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#5C6770" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" />
+          </svg>
+          <span>After you sign in, you’ll return to where you left off.</span>
         </div>
-        <h1 className="aramo-signin__title">{copy === null ? 'Sign in' : copy.title}</h1>
-        {copy === null ? (
-          <p className="aramo-signin__lede">
-            {productName === undefined ? 'Use your work account to continue.' : `Use your work account to continue to ${productName}.`}
-          </p>
-        ) : (
-          <div className="aramo-signin__alert">
-            <InlineAlert variant="error">{copy.message}</InlineAlert>
-          </div>
-        )}
-        {showButtons ? (
-          <div className="aramo-signin__providers">
-            {providers === null ? (
-              <p className="aramo-signin__loading" role="status">
-                Loading sign-in options…
-              </p>
-            ) : (
-              providers.map((idp) => (
-                <Button
-                  key={idp}
-                  unstyled
-                  className="aramo-signin__provider"
-                  data-testid={`signin-${idp}`}
-                  onClick={() => navigate(loginUrl({ idp, consumer, returnTo }))}
-                >
-                  {idp === 'microsoft' ? <MicrosoftLogo /> : <GoogleLogo />}
-                  <span>{PROVIDER_LABEL[idp]}</span>
-                </Button>
-              ))
-            )}
-          </div>
-        ) : null}
-        {error === 'TENANT_CAPABILITY_NOT_ENTITLED' && notEntitledAction !== undefined ? (
-          <div className="aramo-signin__action">{notEntitledAction}</div>
-        ) : null}
-        <p className="aramo-signin__footer">Secured by Aramo</p>
-      </div>
-    </main>
+      ) : null}
+      <div className="aramo-auth__actions">{providerButtons}</div>
+      {single !== null ? (
+        <div className="aramo-auth__note">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1F7A4D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+          <span>
+            {single === 'microsoft'
+              ? 'Single sign-on through your organization’s Microsoft account. Aramo never sees your password.'
+              : 'Single sign-on through your organization’s Google Workspace account. Aramo never sees your password.'}
+          </span>
+        </div>
+      ) : null}
+      {signerNote && single === null ? (
+        <div className="aramo-auth__aside">
+          <b>Signing a document someone sent you?</b> Open the link in your email. You don’t need an Aramo account.
+        </div>
+      ) : null}
+    </AuthShell>
   );
 }
