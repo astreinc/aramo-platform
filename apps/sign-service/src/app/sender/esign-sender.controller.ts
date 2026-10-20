@@ -98,7 +98,7 @@ export class EsignSenderController {
 
   @Patch('envelopes/:id')
   @EsignSenderBoundary(ESIGN_CREATE_SCOPE)
-  update(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { subject?: unknown }) {
+  update(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { subject?: unknown; routing_mode?: unknown }) {
     return this.run(requestId, () => this.envelopes.update(auth, id, body, requestId));
   }
 
@@ -173,8 +173,8 @@ export class EsignSenderController {
   @Post('envelopes/:id/remind')
   @HttpCode(HttpStatus.OK)
   @EsignSenderBoundary(ESIGN_SEND_SCOPE)
-  remind(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
-    return this.run(requestId, () => this.envelopes.remind(auth, id, requestId));
+  remind(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { signer_id?: unknown } = {}) {
+    return this.run(requestId, () => this.envelopes.remind(auth, id, body ?? {}, requestId));
   }
 
   @Post('envelopes/:id/void')

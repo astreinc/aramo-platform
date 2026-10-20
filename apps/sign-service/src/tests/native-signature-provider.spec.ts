@@ -72,4 +72,24 @@ describe('NativeAramoSignatureProvider.sendEnvelope — OC-1 signer delivery', (
     const provider = new NativeAramoSignatureProvider(mkRepo(), mkService(), passGate, undefined);
     await expect(provider.sendEnvelope('tenant-1', 'env-1')).resolves.toBeDefined();
   });
+  // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §7 — usage is one envelope per send,
+  // whatever the signer count: the gate is entered once, keyed by the envelope id.
+  it('charges a multi-signer envelope once per send while inviting every signer', async () => {
+    process.env['SIGN_WEB_BASE_URL'] = 'https://sign.aramo.ai';
+    const repo = mkRepo();
+    const signers = [1, 2, 3].map((n) => ({ id: `sg-${n}`, email: `s${n}@example.com`, name: `Signer ${n}`, status: 'PENDING' }));
+    (repo.getEnvelopeFull as ReturnType<typeof vi.fn>).mockResolvedValue({ id: 'env-1', status: 'SENT', subject: 'Agreement', signers });
+    const service = {
+      send: vi.fn(async () => ({ envelope: {}, sessions: signers.map((s, i) => ({ session_id: `sess-${i}`, signer_id: s.id, raw_token: `RAW-${i}` })) })),
+    } as unknown as EsignService;
+    const guardSend = vi.fn(<T,>(_t: string, _e: string, send: () => Promise<T>) => send());
+    const notifier = { notify: vi.fn(async () => ({ delivered: true })) };
+    const provider = new NativeAramoSignatureProvider(repo, service, { guardSend } as unknown as AramoSignAllowanceGate, notifier);
+
+    await provider.sendEnvelope('tenant-1', 'env-1');
+
+    expect(guardSend).toHaveBeenCalledTimes(1);
+    expect(guardSend).toHaveBeenCalledWith('tenant-1', 'env-1', expect.any(Function));
+    expect(notifier.notify).toHaveBeenCalledTimes(3);
+  });
 });

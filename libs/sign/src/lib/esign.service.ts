@@ -17,6 +17,7 @@ import {
   ReminderNotAllowedError,
   SignatureFieldIncompleteError,
   SignerNotFoundError,
+  SignerNotYetEligibleError,
   SigningSessionExpiredError,
   SigningSessionInvalidError,
 } from './domain/errors.js';
@@ -139,7 +140,11 @@ export class EsignService {
       });
       await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { expires_at: envelopeExpiresAt(now) } });
       const sessions: IssuedSession[] = [];
-      for (const signer of full.signers) {
+      // Multi-Signer §3/§4 — PARALLEL: every signer gets a live link now. SEQUENTIAL:
+      // only the first signer (lowest signing_order); each next signer is invited when
+      // the previous one completes (completeSigner records a durable intent).
+      const invited = full.routing_mode === 'SEQUENTIAL' ? full.signers.slice(0, 1) : full.signers;
+      for (const signer of invited) {
         const minted = generateSigningToken();
         const sessionId = randomUUID();
         await tx.signingSession.create({
@@ -173,6 +178,7 @@ export class EsignService {
         await tx.signingSession.update({ where: { id: session.id }, data: { status: 'EXPIRED' } });
         return 'spent' as const;
       }
+      await this.assertEligible(tx, { tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id });
       await tx.signingSession.update({
         where: { id: session.id },
         data: { status: 'ACTIVE', first_accessed_at: session.first_accessed_at ?? new Date(), last_accessed_at: new Date() },
@@ -238,6 +244,29 @@ export class EsignService {
     }
   }
 
+  // Multi-Signer §4 — the signer allowed to act in a SEQUENTIAL envelope: the lowest
+  // signing_order among signers who have not SIGNED (null when everyone has).
+  private async currentSequentialSigner(client: Pick<LockingTx, 'signer'>, tenant_id: string, envelope_id: string): Promise<string | null> {
+    const next = await client.signer.findFirst({
+      where: { tenant_id, envelope_id, status: { not: 'SIGNED' } },
+      orderBy: { signing_order: 'asc' },
+      select: { id: true },
+    });
+    return next?.id ?? null;
+  }
+
+  // Multi-Signer §4 — enforced by the ENGINE on every signer action (exchange, view,
+  // disclosure, fill, complete): in a SEQUENTIAL envelope a signer may act only when
+  // every earlier signer has signed, whatever link or token they present.
+  private async assertEligible(
+    client: Pick<LockingTx, 'signer' | 'signatureEnvelope'>,
+    ctx: { tenant_id: string; envelope_id: string; signer_id: string },
+  ): Promise<void> {
+    const env = await client.signatureEnvelope.findFirst({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { routing_mode: true } });
+    if (env?.routing_mode !== 'SEQUENTIAL') return;
+    if ((await this.currentSequentialSigner(client, ctx.tenant_id, ctx.envelope_id)) !== ctx.signer_id) throw new SignerNotYetEligibleError(ctx.signer_id);
+  }
+
   // ── Accept the e-sign disclosure (R16). Versioned frozen text + hash. ES-1:
   // under the envelope row lock, with a live session. ──
   async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string }): Promise<void> {
@@ -249,6 +278,7 @@ export class EsignService {
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
+      await this.assertEligible(tx, ctx);
       await tx.signerDisclosureAcceptance.create({
         data: {
           id: randomUUID(),
@@ -287,6 +317,7 @@ export class EsignService {
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
+      await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
@@ -301,6 +332,7 @@ export class EsignService {
   // the Sign Web viewer. Disclosure-gated (same guard as fillField). Returns only
   // the signer's own (or unbound) fields; NO tenant_id, NO source bytes. ──
   async getSignerDocumentView(ctx: SessionContext): Promise<SignerDocumentView> {
+    await this.assertEligible(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
@@ -333,6 +365,7 @@ export class EsignService {
   // the composition root's source resolver ONLY and is never returned to the
   // client. ──
   async resolveSignerSource(ctx: SessionContext, documentId: string): Promise<SignerSourceDescriptor> {
+    await this.assertEligible(this.prisma, ctx);
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const doc = full.documents.find((d) => d.id === documentId);
@@ -353,10 +386,12 @@ export class EsignService {
   // exactly one of them performs the COMPLETED transition — and only that one
   // produces executed artifacts, after commit. Parallel signing is unchanged:
   // signers complete in any order; signing_order is not enforced. ──
-  async completeSigner(ctx: SessionContext): Promise<{ envelope_status: string }> {
+  async completeSigner(ctx: SessionContext): Promise<{ envelope_status: string; next_signer_id?: string }> {
+    let nextSignerId: string | undefined;
     const completed = await this.prisma.$transaction(async (tx) => {
       const envelopeStatus = await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
       await this.assertLiveSession(tx, ctx);
+      await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       const required = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, required: true } });
       if (required.some((f) => f.filled_at === null)) throw new SignatureFieldIncompleteError(ctx.signer_id);
@@ -373,7 +408,28 @@ export class EsignService {
       });
 
       const signers = await tx.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true } });
-      if (!signers.every((s) => s.status === 'SIGNED')) return false;
+      if (!signers.every((s) => s.status === 'SIGNED')) {
+        // Multi-Signer §4 — SEQUENTIAL: record the next signer's invitation as a
+        // durable intent IN THIS TRANSACTION (it commits with the completion or not at
+        // all). SigningInvitationService issues the link and sends the email after
+        // commit; its worker retries an intent that was recorded but not delivered.
+        const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { routing_mode: true } });
+        if (env.routing_mode === 'SEQUENTIAL') {
+          const nextId = await this.currentSequentialSigner(tx, ctx.tenant_id, ctx.envelope_id);
+          if (nextId !== null) {
+            const open = await tx.notificationDelivery.count({
+              where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: nextId, notification_kind: 'SIGNATURE_REQUEST', status: { in: ['PENDING', 'DISPATCHING'] } },
+            });
+            if (open === 0) {
+              await tx.notificationDelivery.create({
+                data: { id: randomUUID(), tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: nextId, notification_kind: 'SIGNATURE_REQUEST', status: 'PENDING' },
+              });
+            }
+            nextSignerId = nextId;
+          }
+        }
+        return false;
+      }
       // A signer may complete without a prior exchange (SENT); the lifecycle
       // only reaches COMPLETED through IN_PROGRESS, so record that step first.
       if (envelopeStatus === 'SENT') {
@@ -396,7 +452,7 @@ export class EsignService {
       });
       return true;
     });
-    if (!completed) return { envelope_status: 'IN_PROGRESS' };
+    if (!completed) return nextSignerId === undefined ? { envelope_status: 'IN_PROGRESS' } : { envelope_status: 'IN_PROGRESS', next_signer_id: nextSignerId };
     // DOC-4 (R-4-3) — produce executed bytes + completion notification when a
     // producer is bound (apps/sign-service composition root). Runs only for the
     // transaction that won the COMPLETED transition.
@@ -412,7 +468,11 @@ export class EsignService {
     await this.prisma.$transaction(async (tx) => {
       const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
       if (status !== 'SENT' && status !== 'IN_PROGRESS') throw new EnvelopeIllegalTransitionError(status, 'DECLINED');
-      if (session_id !== undefined) await this.assertLiveSession(tx, { session_id, tenant_id, envelope_id, signer_id });
+      if (session_id !== undefined) {
+        await this.assertLiveSession(tx, { session_id, tenant_id, envelope_id, signer_id });
+        // Multi-Signer §4 — a signer acting through their link may decline only on their turn.
+        await this.assertEligible(tx, { tenant_id, envelope_id, signer_id });
+      }
       await tx.signer.update({ where: { id: signer_id }, data: { status: 'DECLINED', declined_at: new Date(), decline_reason: reason } });
       await this.repo.transitionEnvelopeIn(tx, {
         tenant_id, envelope_id, to: 'DECLINED', event_type: 'ENVELOPE_DECLINED', actor_type: 'SIGNER', actor_ref: signer_id, timestampField: 'declined_at', payload: { reason },
@@ -536,6 +596,8 @@ export class EsignService {
     tenant_id: string,
     envelope_id: string,
     actor_ref: string,
+    // Multi-Signer M-3a — remind ONE signer. Omitted: every signer who may sign now.
+    signer_id?: string,
   ): Promise<{ sessions: IssuedSession[] }> {
     const now = new Date();
     // ES-1 — status check and re-mint under the envelope row lock, so a reminder
@@ -552,8 +614,18 @@ export class EsignService {
       if (incomplete.length === 0) {
         throw new ReminderNotAllowedError('no incomplete signer to remind');
       }
+      // Multi-Signer §4 — in a SEQUENTIAL envelope only the signer whose turn it is
+      // holds a link, so only they can be reminded.
+      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
+      const eligible = env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete;
+      const targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
+      if (targets.length === 0) {
+        throw new ReminderNotAllowedError(
+          env.routing_mode === 'SEQUENTIAL' ? 'only the signer whose turn it is can be reminded' : 'that signer has already signed or is not on this envelope',
+        );
+      }
       const minted: IssuedSession[] = [];
-      for (const signer of incomplete) {
+      for (const signer of targets) {
         // Revoke prior live sessions FIRST → one live capability per signer.
         await tx.signingSession.updateMany({
           where: {

@@ -413,6 +413,10 @@ services:
       - SIGN_EXECUTED_ACCESS_TTL_DAYS
       - SIGN_EXPIRY_WORKER_ENABLED
       - SIGN_EXPIRY_INTERVAL_MS
+      # Multi-Signer §4 — the retry worker for SEQUENTIAL next-signer invitations
+      # (0 disables; interval default 60000 ms).
+      - SIGN_INVITATION_WORKER_ENABLED
+      - SIGN_INVITATION_INTERVAL_MS
       # Aramo Sign launch — self-service billing (Stripe). Unset key ⇒ billing is
       # unavailable (503) and nothing is charged; live keys need separate
       # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price

@@ -11,7 +11,9 @@ export type SigningNotificationKind =
   | 'SIGNATURE_COMPLETED'
   | 'SIGNATURE_DECLINED'
   | 'SIGNATURE_EXPIRED'
-  | 'SIGNATURE_VOIDED';
+  | 'SIGNATURE_VOIDED'
+  // Multi-Signer M-3b — the sender's progress notice: a signer has signed (not the last).
+  | 'SIGNER_SIGNED';
 
 // Who the notification is for: a signer (recipient) or the envelope's sender.
 export type SigningNotificationAudience = 'SIGNER' | 'SENDER';
@@ -31,6 +33,12 @@ export interface SigningNotification {
   console_url?: string;
   // Decline / void reason, shown to the sender (decline) or recipients (void).
   reason?: string;
+  // SIGNER_SIGNED — who signed and the progress (display only).
+  signer_name?: string;
+  signed_count?: number;
+  signer_count?: number;
+  // SIGNER_SIGNED in a SEQUENTIAL envelope — who is invited next.
+  next_signer_name?: string;
 }
 
 export interface SigningNotificationResult {

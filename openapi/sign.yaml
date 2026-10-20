@@ -613,11 +613,15 @@ paths:
           application/json:
             schema:
               type: object
-              required: [subject]
+              description: At least one of subject or routing_mode.
               properties:
                 subject:
                   type: string
                   maxLength: 200
+                routing_mode:
+                  type: string
+                  enum: [PARALLEL, SEQUENTIAL]
+                  description: Multi-signer routing - PARALLEL (sign in any order, default) or SEQUENTIAL (sign in order).
       responses:
         '200':
           description: OK.
@@ -856,7 +860,7 @@ paths:
       operationId: replaceSenderRecipients
       summary: Replace the recipients of a DRAFT envelope.
       description: >
-        Keeps listed existing ids, creates new recipients, deletes the rest with their fields. All recipients sign in parallel. DRAFT only. Requires sign:envelope:create.
+        Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). 1 to 10 recipients with distinct emails. DRAFT only. Requires sign:envelope:create.
       tags: [sender]
       security:
         - senderSession: []
@@ -873,7 +877,7 @@ paths:
               properties:
                 recipients:
                   type: array
-                  maxItems: 20
+                  maxItems: 10
                   items:
                     type: object
                     required: [name, email]
@@ -986,15 +990,26 @@ paths:
   /v1/sign/sender/envelopes/{id}/remind:
     post:
       operationId: remindSenderEnvelope
-      summary: Send a reminder to every incomplete signer.
+      summary: Send a reminder to one signer, or to every signer who may sign now.
       description: >
-        Same envelope; prior links are revoked and a fresh link is emailed. Requires sign:envelope:send.
+        Same envelope; prior links are revoked and a fresh link is emailed. With signer_id, only that signer; without, every
+        unsigned signer who may sign now (when signing in order, only the signer whose turn it is). Requires sign:envelope:send.
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signer_id:
+                  type: string
+                  format: uuid
       responses:
         '200':
           description: OK.
@@ -1432,15 +1447,26 @@ paths:
   /v1/sign/api/envelopes/{id}/remind:
     post:
       operationId: remindSignApiEnvelope
-      summary: Remind the signers who have not signed.
+      summary: Remind one signer, or every signer who may sign now.
       description: >
         Requires sign:envelope:send. Only envelopes the integration's own application created; another member's only with
-        sign:envelope:read:all (reads) or sign:envelope:manage:all (changes). Otherwise 404 / 403.
+        sign:envelope:read:all (reads) or sign:envelope:manage:all (changes). Otherwise 404 / 403. With signer_id, only that
+        signer; when signing in order, only the signer whose turn it is can be reminded.
       tags: [platform]
       security:
         - signApiToken: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signer_id:
+                  type: string
+                  format: uuid
       responses:
         '200':
           description: OK.
@@ -2558,6 +2584,9 @@ components:
             description: Either content_base64 (+ title, filename) or, for Aramo applications, document_ref + document_revision_ref + source_sha256.
         signers:
           type: array
+          minItems: 1
+          maxItems: 10
+          description: Distinct emails; signing_order values 1 to N with no gaps or repeats (list position when omitted).
           items:
             type: object
             required: [name, email]
@@ -2568,6 +2597,11 @@ components:
                 type: string
               signing_order:
                 type: integer
+                minimum: 1
+        routing_mode:
+          type: string
+          enum: [PARALLEL, SEQUENTIAL]
+          description: PARALLEL (default) - every signer may sign at once. SEQUENTIAL - only the signer whose turn it is may act; the next is invited when they sign.
         fields:
           type: array
           items:
@@ -2644,6 +2678,12 @@ components:
           enum: [DRAFT, SENT, IN_PROGRESS, COMPLETED, DECLINED, VOIDED, EXPIRED]
         editable:
           type: boolean
+        routing_mode:
+          type: string
+          enum: [PARALLEL, SEQUENTIAL]
+        next_signer_id:
+          type: [string, 'null']
+          description: When signing in order and the envelope is open, the signer whose turn it is.
         documents:
           type: array
           items:
@@ -2652,6 +2692,7 @@ components:
           type: array
           items:
             type: object
+            description: Includes signing_order and can_remind (an unsigned signer who may sign now).
         fields:
           type: array
           items:

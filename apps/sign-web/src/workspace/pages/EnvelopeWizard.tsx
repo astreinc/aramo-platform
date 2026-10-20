@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
 
-import { errorMessage, fileToBase64, senderApi, type ContactRow, type EnvelopeDetail } from '../api';
+import { errorMessage, fileToBase64, MAX_SIGNERS, senderApi, type ContactRow, type EnvelopeDetail, type RoutingMode } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -278,6 +278,8 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Multi-Signer §5 — Sign in any order (PARALLEL) or Sign in order (SEQUENTIAL).
+  const [routing, setRouting] = useState<RoutingMode>(env.routing_mode ?? 'PARALLEL');
   useEffect(() => {
     senderApi
       .contacts()
@@ -288,22 +290,50 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   const keyGen = useRef(0);
   const add = (name = '', email = '') => setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email }]);
   const upd = (key: string, patch: Partial<DraftRecipient>) => setList((l) => l.map((r) => (r.key === key ? { ...r, ...patch } : r)));
-  const dirty =
+  const move = (key: string, by: -1 | 1) =>
+    setList((l) => {
+      const i = l.findIndex((r) => r.key === key);
+      const j = i + by;
+      if (i < 0 || j < 0 || j >= l.length) return l;
+      const copy = [...l];
+      [copy[i], copy[j]] = [copy[j]!, copy[i]!];
+      return copy;
+    });
+  const listDirty =
     list.length !== env.recipients.length ||
     list.some((r, i) => r.id !== env.recipients[i]?.id || r.name !== env.recipients[i]?.name || r.email !== env.recipients[i]?.email);
+  const routingDirty = routing !== (env.routing_mode ?? 'PARALLEL');
+  const duplicate = (() => {
+    const seen = new Set<string>();
+    for (const r of list) {
+      const k = r.email.trim().toLowerCase();
+      if (k === '') continue;
+      if (seen.has(k)) return r.email.trim();
+      seen.add(k);
+    }
+    return null;
+  })();
 
   const save = async (to: string) => {
     setError('');
-    if (!dirty) {
+    if (!listDirty && !routingDirty) {
       nav(to);
+      return;
+    }
+    if (duplicate !== null) {
+      setError(`${duplicate} is on this envelope twice. Each signer needs their own email address.`);
       return;
     }
     setSaving(true);
     try {
-      const d = await senderApi.recipients(
-        env.id,
-        list.map((r) => ({ ...(r.id !== undefined ? { id: r.id } : {}), name: r.name.trim(), email: r.email.trim() })),
-      );
+      let d = env;
+      if (routingDirty) d = await senderApi.setRouting(env.id, routing);
+      if (listDirty) {
+        d = await senderApi.recipients(
+          env.id,
+          list.map((r) => ({ ...(r.id !== undefined ? { id: r.id } : {}), name: r.name.trim(), email: r.email.trim() })),
+        );
+      }
       onChange(d);
       nav(to);
     } catch (e) {
@@ -318,13 +348,34 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return `${f.filter((x) => x.required).length} required · ${f.filter((x) => !x.required).length} optional`;
   };
   const inList = (email: string) => list.some((r) => r.email.trim().toLowerCase() === email.toLowerCase());
-  // PX-V1 §15 — one signer per envelope in V1.
-  const full = list.length >= 1;
+  // Multi-Signer M-2 — up to MAX_SIGNERS signers per envelope.
+  const full = list.length >= MAX_SIGNERS;
+  const ordered = routing === 'SEQUENTIAL';
 
   return (
     <>
       <div className="sg-grid sg-grid--main">
         <div>
+          <section className="sg-card" style={{ marginBottom: 12 }}>
+            <div className="sg-card__body">
+              <div className="sg-label">Signing order</div>
+              <div role="radiogroup" aria-label="Signing order" style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Input unstyled type="radio" name="routing" checked={!ordered} onChange={() => setRouting('PARALLEL')} data-testid="routing-parallel" />
+                  Sign in any order
+                </label>
+                <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Input unstyled type="radio" name="routing" checked={ordered} onChange={() => setRouting('SEQUENTIAL')} data-testid="routing-sequential" />
+                  Sign in order
+                </label>
+              </div>
+              <p className="sg-muted" style={{ fontSize: 12.5, margin: '6px 0 0' }}>
+                {ordered
+                  ? 'Each signer gets the document after the person before them signs, in the order shown below.'
+                  : 'Everyone gets the document now and can sign at any time.'}
+              </p>
+            </div>
+          </section>
           {list.length === 0 ? <div className="sg-card sg-empty">No recipients yet. Add the people who need to sign.</div> : null}
           {list.map((r, i) => (
             <section key={r.key} className="sg-card sg-recipient" style={{ borderLeftColor: COLORS[i % COLORS.length], marginBottom: 12 }} data-testid="recipient-card">
@@ -361,10 +412,28 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     <Area id={`rm-${r.key}`} rows={1} disabled placeholder="Per-recipient messages are a proposed capability" />
                   </Field>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <LinkBtn bad onClick={() => setList((l) => l.filter((x) => x.key !== r.key))}>
-                    Remove
-                  </LinkBtn>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                  <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {ordered ? (
+                      <span className="sg-tag sg-tag--dark" data-testid="signing-position">
+                        Signs {i + 1}
+                        {i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}
+                      </span>
+                    ) : null}
+                    {list.length > 1 ? (
+                      <>
+                        <LinkBtn disabled={i === 0} onClick={() => move(r.key, -1)} aria-label={`Move ${r.name || 'recipient'} up`}>
+                          Move up
+                        </LinkBtn>
+                        <LinkBtn disabled={i === list.length - 1} onClick={() => move(r.key, 1)} aria-label={`Move ${r.name || 'recipient'} down`}>
+                          Move down
+                        </LinkBtn>
+                      </>
+                    ) : null}
+                    <LinkBtn bad onClick={() => setList((l) => l.filter((x) => x.key !== r.key))}>
+                      Remove
+                    </LinkBtn>
+                  </span>
                   <span className="sg-faint" style={{ fontSize: 12.5 }}>
                     {fieldCounts(r.id)}
                   </span>
@@ -381,10 +450,10 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 + Add me as counter-signer
               </Btn>
             ) : null}
-            {full ? <span className="sg-tag sg-tag--grey">Multiple signers · Not in V1</span> : null}
+            {full ? <span className="sg-tag sg-tag--grey">Up to {MAX_SIGNERS} signers</span> : null}
           </div>
           <p className="sg-muted" style={{ fontSize: 12.5 }}>
-            This version sends each envelope to one signer. Multiple signers, signing in parallel or in order, are planned for a later version.
+            Add up to {MAX_SIGNERS} signers. Each signer gets their own secure link and signs only the fields assigned to them.
           </p>
           {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
         </div>

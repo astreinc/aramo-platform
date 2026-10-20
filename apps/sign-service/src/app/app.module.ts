@@ -39,6 +39,7 @@ import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
 import { EsignExpiryWorker } from './esign-expiry.worker.js';
+import { SigningInvitationWorker } from './signing-invitation.worker.js';
 import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adapter.js';
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
@@ -124,6 +125,8 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
         { provide: SENDER_DIRECTORY_PORT, useClass: IdentitySenderDirectoryAdapter },
         { provide: ENVELOPE_NOTIFICATION_SERVICE, useClass: EnvelopeNotificationService },
         EsignExpiryWorker,
+        // Multi-Signer §4 — retries undelivered SEQUENTIAL next-signer invitations.
+        SigningInvitationWorker,
         // A1 — kept artifacts (signed copies, certificates) count toward storage.
         { provide: STORAGE_ACCOUNTING_PORT, useClass: AramoSignStorageGate },
       ],

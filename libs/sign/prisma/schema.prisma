@@ -26,6 +26,8 @@ model SignatureEnvelope {
   subject        String
   status         String // CHECK: DRAFT|SENT|IN_PROGRESS|COMPLETED|DECLINED|VOIDED|EXPIRED
   execution_mode String // CHECK: ACKNOWLEDGEMENT|SINGLE_SIGNATURE|MULTI_SIGNATURE
+  // Multi-Signer Amendment §4 — PARALLEL (everyone at once) | SEQUENTIAL (in signing_order). CHECK.
+  routing_mode       String    @default("PARALLEL")
   created_by     String    @db.Uuid
   created_at     DateTime  @default(now()) @db.Timestamptz
   updated_at     DateTime  @updatedAt @db.Timestamptz
@@ -82,9 +84,11 @@ model EnvelopeDocument {
   @@schema("sign")
 }
 
-/// A party who must sign/acknowledge. Signing is PARALLEL: every signer receives a
-/// live session at send and may complete in any order. signing_order is a stable
-/// per-envelope sequence number (unique per envelope); it is NOT enforced (ES-1).
+/// A party who must sign/acknowledge. Signing follows the envelope's routing_mode
+/// (Multi-Signer Amendment): PARALLEL — every signer receives a live session at send
+/// and may complete in any order; SEQUENTIAL — only the lowest-ordered unsigned signer
+/// holds a session and may act, and the next is invited when they complete.
+/// signing_order is 1..N, unique per envelope.
 model Signer {
   id            String    @id @db.Uuid
   tenant_id     String    @db.Uuid
@@ -215,8 +219,10 @@ model NotificationDelivery {
   tenant_id         String    @db.Uuid
   envelope_id       String    @db.Uuid
   signer_id         String?   @db.Uuid
-  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED
-  status            String // CHECK: PENDING|SENT|FAILED
+  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED|SIGNER_SIGNED
+  status            String // CHECK: PENDING|DISPATCHING|SENT|FAILED|CANCELLED
+  // Multi-Signer §4 — when a dispatcher claimed this invitation intent (stale claims are reclaimable).
+  claimed_at        DateTime? @db.Timestamptz
   attempts          Int       @default(0)
   last_error        String?
   created_at        DateTime  @default(now()) @db.Timestamptz

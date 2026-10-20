@@ -127,7 +127,28 @@ export class EnvelopeNotificationService {
     });
   }
 
-  private async toSender(env: EnvelopeFull, n: Pick<SigningNotification, 'kind' | 'reason'>): Promise<void> {
+  // Multi-Signer M-3b — the sender hears each signer's signature while others remain
+  // (console envelopes only, like every sender notice). Recorded like every notice.
+  async signerSigned(tenant_id: string, envelope_id: string, signer_id: string): Promise<void> {
+    const env = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
+    const signer = env.signers.find((s) => s.id === signer_id);
+    if (signer === undefined) return;
+    const signed = env.signers.filter((s) => s.status === 'SIGNED').length;
+    if (signed >= env.signers.length) return; // the completion notice covers the last one
+    const next = env.routing_mode === 'SEQUENTIAL' ? env.signers.find((s) => s.status !== 'SIGNED') : undefined;
+    await this.toSender(env, {
+      kind: 'SIGNER_SIGNED',
+      signer_name: signer.name,
+      signed_count: signed,
+      signer_count: env.signers.length,
+      ...(next !== undefined ? { next_signer_name: next.name } : {}),
+    });
+  }
+
+  private async toSender(
+    env: EnvelopeFull,
+    n: Pick<SigningNotification, 'kind' | 'reason' | 'signer_name' | 'signed_count' | 'signer_count' | 'next_signer_name'>,
+  ): Promise<void> {
     // Sender notifications are a Sign-console feature (OWNED documents only).
     if (!env.documents.some((d) => d.source_mode === 'OWNED')) return;
     if (this.senders === undefined) return;

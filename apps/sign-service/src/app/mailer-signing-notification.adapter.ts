@@ -87,6 +87,19 @@ export function renderSigningNotification(n: SigningNotification): Rendered {
         subject: `Withdrawn: ${doc}`,
         lines: [`The sender withdrew the request to sign "${doc}".`, ...(n.reason ? [`Reason given — ${n.reason}`] : []), "Your signing link no longer works. You don't need to do anything."],
       };
+    case 'SIGNER_SIGNED': {
+      const url = safeUrl(n.console_url);
+      const who = n.signer_name ?? 'A signer';
+      const progress = n.signed_count !== undefined && n.signer_count !== undefined ? ` (${n.signed_count} of ${n.signer_count})` : '';
+      return {
+        subject: `${who} signed ${doc}${progress}`,
+        lines: [
+          `${who} signed "${doc}"${progress}.`,
+          n.next_signer_name ? `${n.next_signer_name} is next and has been sent the document.` : 'The others can still sign.',
+        ],
+        action: url ? { label: 'View in Aramo Sign', url } : undefined,
+      };
+    }
     case 'SIGNATURE_EXPIRED': {
       if (sender) {
         const url = safeUrl(n.console_url);

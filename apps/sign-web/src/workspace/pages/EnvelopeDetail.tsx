@@ -3,7 +3,7 @@ import { Link, Navigate, useParams } from 'react-router-dom';
 import { Dialog } from '@aramo/fe-foundation';
 
 import { errorMessage, fetchSourcePdf, senderApi, sourceLabel, type EnvelopeDetail as Detail, type Evidence, type LedgerEvent } from '../api';
-import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, StatusPill, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail } from '../ui';
+import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, Loading, RecipientPill, StatusPill, downloadBase64, eventDot, eventLabel, fmtDate, maskEmail, LinkBtn } from '../ui';
 import { useWorkspace } from '../workspace';
 
 // Envelope detail (read-only). Actions by state + permission: Send reminder
@@ -62,11 +62,15 @@ export function EnvelopeDetail() {
   const signed = env.recipients.filter((r) => r.status === 'SIGNED').length;
   const live = env.status === 'SENT' || env.status === 'IN_PROGRESS';
 
-  const remind = async () => {
+  const ordered = env.routing_mode === 'SEQUENTIAL';
+  const next = ordered ? env.recipients.find((r) => r.id === env.next_signer_id) : undefined;
+
+  // Multi-Signer M-3a — remind one signer, or (no id) everyone who may sign now.
+  const remind = async (signer?: { id: string; name: string }) => {
     setBusy(true);
     try {
-      setEnv(await senderApi.remind(env.id));
-      toast('Reminder sent to everyone who hasn’t signed yet');
+      setEnv(await senderApi.remind(env.id, signer?.id));
+      toast(signer !== undefined ? `Reminder sent to ${signer.name}` : ordered ? 'Reminder sent to the signer whose turn it is' : 'Reminder sent to everyone who hasn’t signed yet');
       load();
     } catch (e) {
       toast(errorMessage(e));
@@ -181,6 +185,11 @@ export function EnvelopeDetail() {
                 {signed} of {env.recipients.length} signed
               </span>
             </div>
+            {live && next !== undefined ? (
+              <div className="sg-row__s" style={{ padding: '8px 16px' }} data-testid="next-signer">
+                Signing in order · waiting for <strong>{next.name}</strong>
+              </div>
+            ) : null}
             {env.recipients.map((r, i) => (
               <div key={r.id} className="sg-row">
                 <Avatar name={r.name} color={COLORS[i % COLORS.length]} />
@@ -189,12 +198,18 @@ export function EnvelopeDetail() {
                     <strong>{r.name}</strong> <span className="sg-muted">· {r.email}</span>
                   </div>
                   <div className="sg-row__s">
-                    Needs to sign · Secure link
+                    {ordered ? `Signs ${i + 1} of ${env.recipients.length} · ` : ''}
+                    {ordered && live && r.status !== 'SIGNED' && r.id !== env.next_signer_id ? 'Waiting for earlier signers · ' : ''}Needs to sign · Secure link
                     {r.signed_at !== null ? ` · signed ${fmtDate(r.signed_at, true)}` : ''}
                     {r.declined_at !== null ? ` · declined ${fmtDate(r.declined_at, true)}` : ''}
                   </div>
                   {r.decline_reason !== null ? <div className="sg-row__s">“{r.decline_reason}”</div> : null}
                 </div>
+                {canAct && live && r.can_remind === true ? (
+                  <LinkBtn disabled={busy} onClick={() => void remind(r)} data-testid={`remind-${r.id}`}>
+                    Remind
+                  </LinkBtn>
+                ) : null}
                 <RecipientPill status={r.status} />
               </div>
             ))}
@@ -253,7 +268,7 @@ export function EnvelopeDetail() {
               <div style={{ fontWeight: 600, marginBottom: 8 }}>Settings</div>
               <div className="sg-grid" style={{ gridTemplateColumns: '120px 1fr', gap: 6 }}>
                 <span className="sg-muted">Signing order</span>
-                <span>Parallel</span>
+                <span data-testid="routing-mode">{ordered ? 'In order' : 'Any order'}</span>
                 <span className="sg-muted">Signing window</span>
                 <span>{env.signing_window_days} days</span>
                 <span className="sg-muted">Reminders</span>

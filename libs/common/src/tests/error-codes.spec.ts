@@ -155,6 +155,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
       'ESIGN_WEBHOOKS_UNAVAILABLE',
       'SIGNER_NOT_FOUND',
+      'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',
       'SIGNING_SESSION_EXPIRED',
       'DISCLOSURE_NOT_ACCEPTED',

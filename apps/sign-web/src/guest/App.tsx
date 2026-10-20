@@ -31,6 +31,7 @@ type Screen =
   | 'invalid'
   | 'expired'
   | 'ended'
+  | 'notyet'
   | 'network'
   | 'error';
 
@@ -77,6 +78,8 @@ function screenForError(e: unknown): Screen {
     if (e.code === 'SIGNING_SESSION_INVALID') return 'invalid';
     if (e.code === 'SIGNING_SESSION_EXPIRED') return 'expired';
     if (e.code === 'ENVELOPE_ALREADY_EXECUTED') return 'ended';
+    // Multi-Signer §4 — signing in order: an earlier signer has not signed yet.
+    if (e.code === 'SIGNER_NOT_YET_ELIGIBLE') return 'notyet';
     if (e.code === 'NETWORK') return 'network';
   }
   return 'error';
@@ -613,6 +616,17 @@ export function App(): JSX.Element {
       <>
         <Header />
         <EndState tone="muted" title="This document is no longer available to sign" body="Signing has ended for this document — it may have been completed, declined or withdrawn by the sender." />
+      </>
+    );
+  if (screen === 'notyet')
+    return (
+      <>
+        <Header />
+        <EndState
+          tone="muted"
+          title="It's not your turn to sign yet"
+          body="This document is signed in a set order, and someone before you hasn't signed yet. We'll email you a new link as soon as it's your turn."
+        />
       </>
     );
   if (screen === 'declined')

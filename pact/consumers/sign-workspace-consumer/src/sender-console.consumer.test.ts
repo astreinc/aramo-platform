@@ -299,6 +299,68 @@ describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/recipients', () => {
   });
 });
 
+// Aramo-Sign-Multi-Signer-Amendment §5/§8 — several signers, and signing in order.
+describe('esign-web → multiple signers', () => {
+  it('replaces the draft recipients with three signers (each with its own signing position)', async () => {
+    const recipients = {
+      recipients: [
+        { name: 'Jane Doe', email: 'jane@example.com' },
+        { name: 'Raj Patel', email: 'raj@example.com' },
+        { name: 'Lee Chen', email: 'lee@example.com' },
+      ],
+    };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: RECIPIENTS_ENVELOPE_ID })
+      .uponReceiving('a three-signer recipients replace from the Aramo Sign console')
+      .withRequest('PUT', `${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(recipients);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: RECIPIENTS_ENVELOPE_ID,
+          status: 'DRAFT',
+          recipients: eachLike(
+            { id: uuid('e5000000-0000-7000-8000-0000000000d3'), name: like('Jane Doe'), email: like('jane@example.com'), status: 'PENDING', signing_order: integer(1) },
+            3,
+          ),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(recipients),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { recipients: unknown[] };
+        expect(body.recipients.length).toBe(3);
+      });
+  });
+
+  it('switches a draft to signing in order', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: RECIPIENTS_ENVELOPE_ID })
+      .uponReceiving('a routing change to Sign in order from the Aramo Sign console')
+      .withRequest('PATCH', `${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody({ routing_mode: 'SEQUENTIAL' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ id: RECIPIENTS_ENVELOPE_ID, status: 'DRAFT', routing_mode: 'SEQUENTIAL' });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}`, {
+          method: 'PATCH',
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ routing_mode: 'SEQUENTIAL' }),
+        });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { routing_mode: string }).routing_mode).toBe('SEQUENTIAL');
+      });
+  });
+});
+
 describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/fields', () => {
   it('replaces the draft fields (PDF-native geometry, validated against the source page)', async () => {
     const fields = {

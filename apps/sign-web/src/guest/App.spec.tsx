@@ -167,6 +167,7 @@ describe('signer app', () => {
     ['SIGNING_SESSION_INVALID', 401, "This signing link isn't valid"],
     ['SIGNING_SESSION_EXPIRED', 401, 'This link is no longer active'],
     ['ENVELOPE_ALREADY_EXECUTED', 409, 'This document is no longer available to sign'],
+    ['SIGNER_NOT_YET_ELIGIBLE', 409, "It's not your turn to sign yet"],
   ])('token state %s → its own screen with no navigation', async (code, status, heading) => {
     transport({ exchange: () => json({ error: { code } }, status) });
     render(<App />);
