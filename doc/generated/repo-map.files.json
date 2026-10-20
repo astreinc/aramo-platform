@@ -3168,6 +3168,7 @@
     "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql",
     "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql",
     "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql",
+    "libs/identity/prisma/migrations/20261020100000_sign_role_display_names/migration.sql",
     "libs/identity/prisma/migrations/migration_lock.toml",
     "libs/identity/prisma/schema.prisma",
     "libs/identity/prisma/seed-astre.ts",
