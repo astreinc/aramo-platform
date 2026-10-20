@@ -45,41 +45,48 @@ This conflicts with AUTH-SIGNIN-1 R2: no cross-provider merging on email equalit
 | One user, one tenant | Unchanged (Aramo, IC-1) |
 | Auditable outcomes | One structured CloudWatch line per decision: `allowed`, `refused_provider`, `refused_no_email` or `refused_unverified_email`, with provider, email domain only, and the provider-verified flag |
 
-Tests: `node --test pre-signup/v2/` (8 tests, using real PreSignUp_ExternalProvider event shapes).
+Tests: `node --test pre-signup/v2/index.test.mjs pre-signup/v2/harness/replay.test.mjs` (13 tests: 8 unit tests, plus 5 replays against redacted production shapes).
 
-## Open questions sandbox validation must answer (HALT disposition D)
+## Production-first validation (ruling 2026-10-20: no sandbox)
 
-1. **Does Microsoft send `xms_edov`?** The pool maps Microsoft's `email_verified` from the optional `xms_edov` claim. If the Entra app registration doesn't emit it, new Microsoft users would arrive with no verified flag, and v2 (default) would refuse them. If so, there are two options:
-   - configure `xms_edov` as an optional claim in the Entra app registration (preferred; it's the provider's own evidence);
-   - or get a ruling on a Microsoft-specific verification source, for example single-tenant issuer trust.
+A private read-only backup was taken on 2026-10-20, outside the repo, chmod 700, with a SHA256SUMS manifest: `~/.aramo-cognito-backups/20261020-prod-first/`. It holds:
+- both function configurations, code zips, versions, aliases and resource policies;
+- the user pool, the app client and both identity providers;
+- the groups and users, with their identity links.
 
-   **Do not** just set `REQUIRE_PROVIDER_EMAIL_VERIFIED=false`.
-2. **Google:** confirm `email_verified` is `true` for Google Workspace accounts.
-3. **Existing Microsoft users** keep signing in with an unchanged `sub`. PreSignUp doesn't run for existing users, so this is expected; prove it.
-4. **A Google sign-in matching a Microsoft user's email** creates a *separate* Cognito user, with its own `sub`, which Aramo refuses or does not grant privileges to.
+The captured PreSignUp `index.mjs` matches `pre-signup/deployed-2025-12-18/index.mjs` (`58def2b9…`).
 
-**Sandbox needs** (production is not touched):
-- A sandbox user pool with v2 attached.
-- A sandbox Google OAuth client and a Microsoft Entra app registration (or the existing ones, with the sandbox pool's redirect URI added).
-- One Google Workspace and one Microsoft 365 test account.
+| Question | Evidence (read-only) | Result |
+|---|---|---|
+| Does Microsoft send `xms_edov`? | The `microsoft` provider maps `email_verified ← xms_edov`. The `aramo.ai` Microsoft user was created on 2025-12-29, after the deployed trigger and its environment (`ALLOWED_EMAIL_DOMAINS=astreinc.com`) were last modified on 2025-12-18. For any other domain that trigger returns the event untouched (`index.mjs:86-88`), so it did not verify this user's email. The user's `email_verified=true` therefore came from Microsoft's claim, and it was still true after a later sign-in (modified 2026-07-28). | **Observed for the configured Entra tenant.** One user in a verified domain; no other population can sign in through this provider (next row) |
+| Who can use the `microsoft` provider? | `oidc_issuer = https://login.microsoftonline.com/d9f7bbd4-…/v2.0`: a single Entra tenant. Cognito checks the token issuer against it. | **Only accounts in that one Entra tenant.** A new Sign organization's own Microsoft 365 accounts **cannot** sign in through it. See the HALT note in the Gate-5 report |
+| Google `email_verified` | The `Google` provider maps `email_verified ← email_verified`, a standard Google ID-token claim | Mapped from the provider. To be observed in the controlled canary (CUTOVER S5) |
+| Existing users unaffected | PreSignUp runs only when Cognito creates a user. v2 imports no SDK and cannot edit users or links (`harness/replay.test.mjs`) | **Holds by construction.** Proven again at cutover by S1–S3 |
+| Google with a Microsoft user's email | Replayed against every captured federated shape: allowed as its own user, with no link and no verification manufactured | **Holds** (`harness/replay.test.mjs`) |
 
-The IdP-side credentials are **PO actions**.
+The replay harness:
+- `harness/capture-shapes.mjs` builds **redacted** event shapes from the private backup into `harness/captured-shapes.json`. That file holds attribute names, provider prefixes, `email_verified` values and which providers each user has linked. It holds no emails or identifiers.
+- `harness/replay.test.mjs` replays v2 against them locally.
 
-## Cutover procedure (needs separate approval; for reference only)
+## Cutover procedure (needs separate approval)
+
+Superseded by **`CUTOVER.md`**: code-only switch of `$LATEST`, a one-command rollback to the captured zip, and the preconditions and smoke tests. The summary below is kept for history.
 
 1. Deploy v2 as a new function, `cognito-pre-signup-v2`, alongside the old one, with the same role minus the Cognito admin permissions it no longer needs.
 2. Point the pool's PreSignUp trigger at v2. Rollback is pointing it back at `cognito-pre-signup-auto-link`.
 3. Watch the decision log lines and sign-ins for the 5 federated users.
 
-## Recovery procedure for the existing Google→Microsoft link (needs separate approval)
+## The existing Google→Microsoft link: PRESERVED pending individual review
 
-The linked Google identity on one `microsoft_*` user lets a Google sign-in assume that user's subject.
+The production-first ruling (2026-10-20) says: do not remove the link yet. Establish which subject is authoritative, whether the link was intentional, and whether removing it would break access. Existing associations are reconciled explicitly, never rewritten automatically. v2 neither edits nor removes it.
 
-**Option 1: keep the link, accept it consciously.** The link was made for a `platform-console`-group Astre user under the old policy. Record the exception and remove it later. Aramo-side enforcement can't tell the two providers apart for this user, because Cognito has already merged them.
+Facts for the review (read-only, 2026-10-20):
+- **Authoritative subject:** the `microsoft_*` Cognito user, created 2025-12-11 14:50 UTC. Its Microsoft identity is primary. The Google identity was linked *into* it, so a Google sign-in for this person carries this user's `sub`.
+- **When and how linked:** the Google identity was linked 2025-12-18 20:12:54 UTC. That is 6 minutes after `cognito-pre-signup-auto-link` was last deployed (20:06:09 UTC). The pattern is consistent with a deliberate post-deploy test of the linking path by its owner.
+- **Groups:** `platform-console` (the linking precondition `REQUIRE_DEST_GROUP`) and `us-east-1_4fKlnGfaW_Microsoft` (a Cognito provider group).
+- **Effect under AUTH-SIGNIN-1:** the token for a Google sign-in names two providers, so Aramo treats the provider as `ambiguous`. That is refused **only** for enforced-pin (new Sign signup) tenants. This person's Astre access is unchanged.
+- **Trigger logs:** CloudWatch (`/aws/lambda/cognito-pre-signup-auto-link`, no retention limit) holds only START/END/REPORT lines. The deployed code logs no event content, so no claim payloads exist to inspect.
 
-**Option 2 (recommended): remove the link.**
-1. Run `AdminDisableProviderForUser` (`ProviderName=Google`, `ProviderAttributeName=Cognito_Subject`, value = the Google user id) on the pool.
-2. The person then signs in with Microsoft (their primary). A later Google sign-in would create a separate Google user, which Aramo does not link (AUTH-SIGNIN-1 R2).
-3. Before running: confirm this person signs in with Microsoft today and doesn't depend on Google sign-in.
-
-This procedure doesn't apply until it's approved.
+**If the review decides to remove it** (needs separate approval):
+1. `aws cognito-idp admin-disable-provider-for-user --user-pool-id us-east-1_4fKlnGfaW --user ProviderName=Google,ProviderAttributeName=Cognito_Subject,ProviderAttributeValue=<google sub from the backup>`.
+2. Before running it, confirm with the person that they sign in with Microsoft and don't depend on Google sign-in.
