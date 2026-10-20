@@ -41,6 +41,10 @@
 # (pure) and tools/db-sync-local.pg-integration.sh (real PostgreSQL).
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Sign naming unification (§3.1): guarded re-key of the historical Sign migration
+# ledger rows (libs/esign → libs/sign). Pure on source; called from main().
+# shellcheck source=sign-naming/ledger-reconcile.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sign-naming/ledger-reconcile.sh"
 
 # Ordered relative migration-dir paths (timestamp dir-name is the sort key).
 mig_list() {
@@ -189,7 +193,13 @@ main() {
       recorded_names=""
     fi
     # Membership is an exact match on the relative dir path (the ledger key), read-only.
+    # Legacy Sign rows (libs/esign/…) are counted as their renamed path here because
+    # apply mode re-keys them (guarded) before walking — status stays read-only.
+    local legacy_sign
+    legacy_sign="$(printf '%s\n' "$recorded_names" | grep -c "^${SIGN_LEDGER_OLD_PREFIX}" || true)"
+    recorded_names="$(printf '%s\n' "$recorded_names" | sed "s#^${SIGN_LEDGER_OLD_PREFIX}#${SIGN_LEDGER_NEW_PREFIX}#")"
     pending="$(compute_pending "$on_disk_all" "$recorded_names")"
+    [ "${legacy_sign:-0}" != "0" ] && echo "db:sync:local sign-ledger — ${legacy_sign} historical Sign row(s) recorded under libs/esign/ (re-keyed, guarded, on the next apply)"
     echo "db:sync:local status — ${rec}/${tot} migrations recorded as applied"
     echo "db:sync:local pending — ${pending} on-disk migration(s) not yet applied"
     if [ -n "$UNTIL" ]; then
@@ -211,6 +221,11 @@ main() {
   # `20260823120000_drop_empty_engagement_schema` migration removes the last residual (the
   # empty engagement schema shell). Removing the guard leaves no obsolete engagement-path
   # reference in the tooling.
+
+  # Sign naming unification (§3.1) — re-key the historical Sign ledger rows BEFORE
+  # the walk, so they are never seen as pending (never replayed). Refusal stops
+  # the run with nothing applied.
+  sign_ledger_reconcile || { echo "db:sync:local: aborted — Sign ledger reconciliation refused (nothing applied)"; exit 3; }
 
   # Ledger snapshot BEFORE the walk: the bounded run's post-verification compares
   # against it to prove nothing beyond the stop point was recorded by this run.

@@ -4,7 +4,7 @@ import { SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/si
 import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, type AllowanceThreshold } from '@aramo/subscription';
 import type { SignatureActor } from '@aramo/documents-contracts';
 
-import { EsignServiceApiProvider } from '../esign/esign-service-api.provider.js';
+import { EsignServiceApiProvider } from '../sign/esign-service-api.provider.js';
 import { isExternalAdapter } from '../esignature-providers/external-signature-adapter.js';
 
 import { SIGNATURE_PROVIDER_REGISTRY, type SignatureProviderRegistry } from './signature-router.js';
@@ -13,7 +13,7 @@ import { SIGNATURE_PROVIDER_REGISTRY, type SignatureProviderRegistry } from './s
 // availability. RTR, Offer, client-submittal policy authoring and the recruiter
 // surfaces all read it; React never re-derives it. Enforcement happens again
 // immediately before the actual send (SignatureRoutingService.forNewSend), and
-// the Aramo Sign allowance is charged at the native send seam in esign-service.
+// the Aramo Sign allowance is charged at the native send seam in sign-service.
 
 export const SIGNATURE_UNAVAILABLE_REASONS = [
   'NO_PROVIDER',
@@ -85,7 +85,7 @@ export class SignatureAvailabilityService {
       return result(state === 'CONNECTED' ? null : 'PROVIDER_DISCONNECTED');
     }
     const caps = await this.entitlements.getCapabilities(tenant_id);
-    if (!caps.has('esign')) return result('NOT_SUBSCRIBED');
+    if (!caps.has('sign')) return result('NOT_SUBSCRIBED');
     // Addendum S6 (D-12) — over the Sign API transport the ATS never reads Sign's
     // subscription library: availability is Sign-owned, asked with the recruiter's
     // delegation. Without a signed-in recruiter (a tenant-level read) only the

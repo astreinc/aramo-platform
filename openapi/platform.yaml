@@ -477,7 +477,7 @@ paths:
                     type: boolean
                   subscription:
                     type: [object, 'null']
-                    description: Same shape as esign.yaml BillingAccount.subscription.
+                    description: Same shape as sign.yaml BillingAccount.subscription.
                   allowance:
                     type: object
                     description: Subscribed allowance status (limit — null when unlimited, unlimited, used, remaining, period) or { subscribed false, state }.
@@ -557,8 +557,8 @@ paths:
             invertible role union (`details.reason` `invertible_role_union`), a
             platform-tier role (`details.reason` `platform_role_not_assignable`),
             or an E-Sign product role (`esign_*`) for a tenant that does not hold
-            the `esign` capability (`details.reason` `esign_role_not_entitled`,
-            `details.missing_capabilities` `["esign"]` — IC-3 PR-8).
+            the `sign` capability (`details.reason` `esign_role_not_entitled`,
+            `details.missing_capabilities` `["sign"]` — IC-3 PR-8).
           content:
             application/json:
               schema:

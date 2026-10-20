@@ -41,8 +41,8 @@ export { AramoSignStandardBusinessPlanKey, AramoSignStandardProfessionalPlanKey,
 export { PrismaService as SubscriptionPrismaService } from './lib/prisma/prisma.service.js';
 
 /** The Aramo Sign envelope allowance and the usage-stream event it writes. */
-export const ESIGN_ENVELOPE_ALLOWANCE = 'esign.envelopes';
-export const ESIGN_ENVELOPE_SENT_EVENT = 'esign.envelope.sent';
+export const ESIGN_ENVELOPE_ALLOWANCE = 'sign.envelopes';
+export const ESIGN_ENVELOPE_SENT_EVENT = 'sign.envelope.sent';
 // Commercial Plans Amendment A1 — capacity (storage), eligibility, legal registry.
 export { CapacityService, type CapacityStatus, type CapacityRefusal, type CapacityReserveResult } from './lib/capacity.service.js';
 export { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './lib/billing/plan-eligibility.port.js';

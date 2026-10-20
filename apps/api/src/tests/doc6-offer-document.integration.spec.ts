@@ -33,7 +33,7 @@ import { OfferDocumentOrchestratorService, OFFER_LETTER_TYPE_ID } from '../offer
 // Talent signer) AND the PL-1 invariant: signing produces evidence only — the Offer's
 // governed state is BYTE-UNCHANGED across request→send (Document advances while
 // Offer=SENT, the intended non-contradictory dual state). The E-Sign HTTP seam +
-// rendering are stubbed (proven separately in libs/esign / DOC-5); this spec isolates
+// rendering are stubbed (proven separately in libs/sign / DOC-5); this spec isolates
 // DOC-6's new behaviour: the Offer read, the document creation, and no-state-mutation.
 
 const ROOT = resolve(__dirname, '../../../..');

@@ -36,7 +36,7 @@ function json(body: unknown, status = 200) {
 function transport(over: Partial<Record<string, () => Response>> = {}) {
   const calls: { path: string; body: Record<string, unknown> }[] = [];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-    const path = url.replace('/v1/esign/signing/', '');
+    const path = url.replace('/v1/sign/signing/', '');
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
     calls.push({ path, body });
     const key = path.startsWith('fields/') ? 'fill' : path;

@@ -74,7 +74,7 @@ interface Props {
 // (ATS_PRODUCT_ROLE_KEYS on the server). "Organization admin" = the person holds
 // a role whose catalog scopes include an organization permission (tenant:admin:*).
 function rolesFor(product: 'ats' | 'sign', role_keys: readonly string[]): string[] {
-  return role_keys.filter((k) => (product === 'sign' ? k.startsWith('esign_') : !k.startsWith('esign_') && k !== 'org_admin'));
+  return role_keys.filter((k) => (product === 'sign' ? k.startsWith('sign_') : !k.startsWith('sign_') && k !== 'org_admin'));
 }
 
 type LoadState =

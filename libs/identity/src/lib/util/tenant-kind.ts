@@ -26,12 +26,12 @@ export function isTenantKind(v: string): v is TenantKind {
 export const DEFAULT_TENANT_KIND: TenantKind = 'BUSINESS';
 
 // The CLOSED capability set a PERSONAL tenant may be provisioned with. `core`
-// ("is an Aramo organization" — the org routes are core-gated) + `esign` (the
+// ("is an Aramo organization" — the org routes are core-gated) + `sign` (the
 // product a personal subscriber subscribes to). A request naming any other
 // capability for a PERSONAL tenant is refused at provisioning (fail closed);
 // ATS / TIP authorization for a personal identity would require an explicit,
 // separately governed entitlement decision that does not exist (IC-4 §4).
-export const PERSONAL_TENANT_CAPABILITIES: readonly string[] = ['core', 'esign'];
+export const PERSONAL_TENANT_CAPABILITIES: readonly string[] = ['core', 'sign'];
 
 // IC-0 J-9 (Platform-Console Inc-2 PR-1 Amendment Inc-2-PR-1-A1) — the owner
 // role keys whose FIRST successful session activates a PROVISIONED tenant

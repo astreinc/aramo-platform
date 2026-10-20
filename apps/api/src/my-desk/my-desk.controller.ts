@@ -67,7 +67,7 @@ export class MyDeskController {
         visibility,
         visible_requisition_ids,
         visible_contact_ids,
-        sign_subscribed: capabilities.has('esign'),
+        sign_subscribed: capabilities.has('sign'),
       },
       Date.now(),
       APP_TIME_ZONE,

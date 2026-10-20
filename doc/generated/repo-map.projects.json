@@ -30,8 +30,6 @@
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
     "@aramo/engagement": "./libs/engagement/src/index.ts",
     "@aramo/entitlement": "./libs/entitlement/src/index.ts",
-    "@aramo/esign": "./libs/esign/src/index.ts",
-    "@aramo/esign-service": "./apps/esign-service/src/app/app.module.ts",
     "@aramo/events": "./libs/events/src/index.ts",
     "@aramo/evidence": "./libs/evidence/src/index.ts",
     "@aramo/examination": "./libs/examination/src/index.ts",
@@ -67,6 +65,8 @@
     "@aramo/saved-list": "./libs/saved-list/src/index.ts",
     "@aramo/selection": "./libs/selection/src/index.ts",
     "@aramo/settings": "./libs/settings/src/index.ts",
+    "@aramo/sign": "./libs/sign/src/index.ts",
+    "@aramo/sign-service": "./apps/sign-service/src/app/app.module.ts",
     "@aramo/signature-routing": "./libs/signature-routing/src/index.ts",
     "@aramo/skills-taxonomy": "./libs/skills-taxonomy/src/index.ts",
     "@aramo/sourced-talent": "./libs/sourced-talent/src/index.ts",
@@ -738,67 +738,6 @@
       "reconcileTenantEntitlements",
       "resolveReconcileTarget"
     ],
-    "@aramo/esign": [
-      "CURRENT_DISCLOSURE_VERSION",
-      "DEFAULT_SIGN_BASE_URL",
-      "DISCLOSURE_V2_TEXT",
-      "DOCUMENT_SOURCE_PROVIDER_PORT",
-      "DOCUMENT_STORAGE_PORT",
-      "DisclosureNotAcceptedError",
-      "DisclosureVersionInvalidError",
-      "ENVELOPE_NOTIFICATION_SERVICE",
-      "ENVELOPE_TTL_DAYS_DEFAULT",
-      "ESIGN_LIFECYCLE_EVENT_VERSION",
-      "ESIGN_SCHEMA",
-      "EVENT_PUBLISHER_PORT",
-      "EVIDENCE_MANIFEST_SIGNER_PORT",
-      "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
-      "EXECUTION_PRODUCER_PORT",
-      "EnvelopeAlreadyExecutedError",
-      "EnvelopeAmbiguousError",
-      "EnvelopeIllegalTransitionError",
-      "EnvelopeNotFoundError",
-      "EnvelopeNotificationService",
-      "EsignIdempotencyConflictError",
-      "EsignModule",
-      "EsignRepository",
-      "EsignSenderRepository",
-      "EsignService",
-      "ExecutionService",
-      "LocalEventPublisher",
-      "OutboxDeliveryService",
-      "OutboxService",
-      "PrismaService",
-      "RECIPIENT_COPY_TTL_MS",
-      "RECIPIENT_SESSION_TTL_MS",
-      "RecipientInboxRepository",
-      "ReminderNotAllowedError",
-      "SENDER_DIRECTORY_PORT",
-      "SIGNING_NOTIFICATION_PORT",
-      "SIGNING_SESSION_TTL_MS",
-      "SIGNING_TOKEN_BYTES",
-      "STORAGE_ACCOUNTING_PORT",
-      "SignIntegrationRepository",
-      "SignWebhookRepository",
-      "SignatureFieldIncompleteError",
-      "SignerNotFoundError",
-      "SigningSessionExpiredError",
-      "SigningSessionInvalidError",
-      "SoftwareEvidenceManifestSigner",
-      "WEBHOOK_DELIVERY_PORT",
-      "backoffMs",
-      "computeEventHash",
-      "currentDisclosure",
-      "envelopeExpiresAt",
-      "findDisclosure",
-      "generateSigningToken",
-      "hashSigningToken",
-      "listDisclosures",
-      "signBaseUrl",
-      "signingSessionExpiresAt",
-      "toLifecycleEvent"
-    ],
-    "@aramo/esign-service": ["AppModule"],
     "@aramo/events": ["EventsModule", "OUTBOX_PUBLISHER_PORT", "buildEventEnvelope"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
     "@aramo/examination": [
@@ -1596,6 +1535,68 @@
       "isLlmActiveProvider",
       "isMetricGoalMap"
     ],
+    "@aramo/sign": [
+      "CURRENT_DISCLOSURE_VERSION",
+      "DEFAULT_SIGN_BASE_URL",
+      "DISCLOSURE_V2_TEXT",
+      "DOCUMENT_SOURCE_PROVIDER_PORT",
+      "DOCUMENT_STORAGE_PORT",
+      "DisclosureNotAcceptedError",
+      "DisclosureVersionInvalidError",
+      "ENVELOPE_NOTIFICATION_SERVICE",
+      "ENVELOPE_TTL_DAYS_DEFAULT",
+      "ESIGN_LIFECYCLE_EVENT_VERSION",
+      "ESIGN_SCHEMA",
+      "EVENT_PUBLISHER_PORT",
+      "EVIDENCE_MANIFEST_SIGNER_PORT",
+      "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
+      "EXECUTION_PRODUCER_PORT",
+      "EnvelopeAlreadyExecutedError",
+      "EnvelopeAmbiguousError",
+      "EnvelopeIllegalTransitionError",
+      "EnvelopeNotFoundError",
+      "EnvelopeNotificationService",
+      "EsignIdempotencyConflictError",
+      "EsignModule",
+      "EsignRepository",
+      "EsignSenderRepository",
+      "EsignService",
+      "ExecutionService",
+      "LocalEventPublisher",
+      "OutboxDeliveryService",
+      "OutboxService",
+      "PrismaService",
+      "RECIPIENT_COPY_TTL_MS",
+      "RECIPIENT_SESSION_TTL_MS",
+      "RecipientInboxRepository",
+      "ReminderNotAllowedError",
+      "SENDER_DIRECTORY_PORT",
+      "SIGNING_NOTIFICATION_PORT",
+      "SIGNING_SESSION_TTL_MS",
+      "SIGNING_TOKEN_BYTES",
+      "STORAGE_ACCOUNTING_PORT",
+      "SignIntegrationRepository",
+      "SignWebhookRepository",
+      "SignatureFieldIncompleteError",
+      "SignerNotFoundError",
+      "SigningSessionExpiredError",
+      "SigningSessionInvalidError",
+      "SoftwareEvidenceManifestSigner",
+      "WEBHOOK_DELIVERY_PORT",
+      "backoffMs",
+      "canonicalSignEventType",
+      "computeEventHash",
+      "currentDisclosure",
+      "envelopeExpiresAt",
+      "findDisclosure",
+      "generateSigningToken",
+      "hashSigningToken",
+      "listDisclosures",
+      "signBaseUrl",
+      "signingSessionExpiresAt",
+      "toLifecycleEvent"
+    ],
+    "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
       "DEFAULT_SIGNATURE_PROVIDER",
       "SIGNATURE_PROVIDERS",
@@ -2722,49 +2723,6 @@
         "status": "excluded"
       },
       { "project": "entitlement", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/billing.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-webhooks.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
       { "project": "examination", "status": "production" },
       { "project": "export", "status": "production" },
       {
@@ -2886,6 +2844,49 @@
         "status": "excluded"
       },
       { "project": "selection", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.controller.unit.spec.ts",
@@ -3271,25 +3272,6 @@
       { "project": "consent", "status": "production" },
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
@@ -3343,6 +3325,25 @@
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
       { "project": "selection", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
@@ -4932,121 +4933,6 @@
       { "project": "entitlement", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/envelope-provenance.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-launch-lifecycle.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-lifecycle-guard.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-reminder.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-schema.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/execution-stamping.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/outbox-delivery.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/sender-workspace.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/signer-document-view.integration.spec.ts",
-        "project": "esign",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/billing.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-event-grant.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-webhooks.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/evidence/src/tests/evidence.repository.cross-schema-validator.integration.spec.ts",
         "project": "evidence",
         "status": "excluded"
@@ -5811,6 +5697,121 @@
         "status": "excluded"
       },
       { "project": "settings", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/envelope-provenance.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/esign-launch-lifecycle.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/esign-lifecycle-guard.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/esign-reminder.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/esign-schema.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/outbox-delivery.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/sender-workspace.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/signer-document-view.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/signature-routing/src/tests/signature-routing.integration.spec.ts",
@@ -6631,26 +6632,26 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/document-source-http.adapter.spec.ts",
-        "project": "esign-service",
+        "from": "apps/sign-service/src/tests/document-source-http.adapter.spec.ts",
+        "project": "sign-service",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/envelope-field-mapper.spec.ts",
-        "project": "esign-service",
+        "from": "apps/sign-service/src/tests/envelope-field-mapper.spec.ts",
+        "project": "sign-service",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/native-signature-provider-fields.spec.ts",
-        "project": "esign-service",
+        "from": "apps/sign-service/src/tests/native-signature-provider-fields.spec.ts",
+        "project": "sign-service",
         "status": "excluded"
       },
-      { "project": "esign-service", "status": "production" },
+      { "project": "sign-service", "status": "production" },
       {
-        "from": "pact/consumers/esign-source-consumer/src/source-pull.consumer.test.ts",
-        "project": "esign-source-consumer-pact",
+        "from": "pact/consumers/sign-source-consumer/src/source-pull.consumer.test.ts",
+        "project": "sign-source-consumer-pact",
         "status": "unscoped"
       }
     ],
@@ -6683,18 +6684,18 @@
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/esign-flow.integration.spec.ts",
-        "project": "esign",
+        "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
+        "project": "sign",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/esign/src/tests/execution-stamping.integration.spec.ts",
-        "project": "esign",
+        "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
+        "project": "sign",
         "status": "excluded"
       },
-      { "project": "esign", "status": "production" },
-      { "project": "esign-service", "status": "production" }
+      { "project": "sign", "status": "production" },
+      { "project": "sign-service", "status": "production" }
     ],
     "@aramo/engagement": [
       {
@@ -6762,19 +6763,6 @@
       { "project": "company", "status": "production" },
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
       { "project": "export", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -6821,126 +6809,22 @@
       { "project": "reporting", "status": "production" },
       { "project": "requisition", "status": "production" },
       { "project": "saved-list", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
-    ],
-    "@aramo/esign": [
-      {
-        "from": "pact/provider/src/verify-esign.ts",
-        "project": "aramo-pact-provider",
-        "status": "unscoped"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/app-module-boot.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/envelope-document-source.resolver.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-delivery.worker.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-provider-errors.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-signer-source.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/native-signature-provider-fields.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/native-signature-provider.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-event-grant.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-webhooks.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/webhook-event-publisher.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" }
-    ],
-    "@aramo/esign-service": [
-      {
-        "from": "pact/provider/src/verify-esign.ts",
-        "project": "aramo-pact-provider",
-        "status": "unscoped"
-      }
     ],
     "@aramo/events": [
       {
@@ -7973,61 +7857,6 @@
       { "project": "company", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/billing.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/esign-sender.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/recipient-inbox.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-api.integration.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-integrations.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-permission-contract.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/sign-webhooks.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8058,6 +7887,61 @@
       },
       { "project": "platform-admin", "status": "production" },
       { "project": "portal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-webhooks.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/identity-index": [
@@ -8330,13 +8214,6 @@
       { "project": "auth-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/launch-lifecycle.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -8354,7 +8231,14 @@
         "project": "platform-admin",
         "status": "excluded"
       },
-      { "project": "platform-admin", "status": "production" }
+      { "project": "platform-admin", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" }
     ],
     "@aramo/matching": [
       {
@@ -8479,7 +8363,6 @@
         "status": "unscoped"
       },
       { "project": "attachment", "status": "production" },
-      { "project": "esign-service", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/resume-parse/src/tests/resume-parse.integration.spec.ts",
@@ -8487,6 +8370,7 @@
         "status": "excluded"
       },
       { "project": "resume-parse", "status": "production" },
+      { "project": "sign-service", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/org-admin-web": [
@@ -9349,6 +9233,123 @@
       { "project": "api", "status": "production" },
       { "project": "reporting", "status": "production" }
     ],
+    "@aramo/sign": [
+      {
+        "from": "pact/provider/src/verify-sign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/app-module-boot.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/envelope-document-source.resolver.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-delivery.worker.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-signer-source.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/native-signature-provider-fields.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/native-signature-provider.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/webhook-event-publisher.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" }
+    ],
+    "@aramo/sign-service": [
+      {
+        "from": "pact/provider/src/verify-sign.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
     "@aramo/signature-routing": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9509,25 +9510,6 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/billing.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/esign-service/src/tests/storage-quota.spec.ts",
-        "project": "esign-service",
-        "status": "excluded"
-      },
-      { "project": "esign-service", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -9538,7 +9520,26 @@
         "project": "platform-admin",
         "status": "excluded"
       },
-      { "project": "platform-admin", "status": "production" }
+      { "project": "platform-admin", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/storage-quota.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      { "project": "sign-service", "status": "production" }
     ],
     "@aramo/talent-embedding": [
       {
@@ -10332,41 +10333,6 @@
       "targets": ["build", "lint", "test"]
     },
     {
-      "name": "esign",
-      "root": "libs/esign",
-      "sourceRoot": "libs/esign/src",
-      "tags": ["scope:boundary"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "esign-consumer-pact",
-      "root": "pact/consumers/esign-consumer",
-      "sourceRoot": "pact/consumers/esign-consumer/src",
-      "tags": ["pact-consumer"],
-      "targets": ["lint", "pact-test", "test"]
-    },
-    {
-      "name": "esign-service",
-      "root": "apps/esign-service",
-      "sourceRoot": "apps/esign-service/src",
-      "tags": [],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "esign-source-consumer-pact",
-      "root": "pact/consumers/esign-source-consumer",
-      "sourceRoot": "pact/consumers/esign-source-consumer/src",
-      "tags": ["pact-consumer"],
-      "targets": ["lint", "pact-test", "test"]
-    },
-    {
-      "name": "esign-web-consumer-pact",
-      "root": "pact/consumers/esign-web-consumer",
-      "sourceRoot": "pact/consumers/esign-web-consumer/src",
-      "tags": ["pact-consumer"],
-      "targets": ["lint", "pact-test", "test"]
-    },
-    {
       "name": "events",
       "root": "libs/events",
       "sourceRoot": "libs/events/src",
@@ -10647,9 +10613,44 @@
       "targets": ["build", "lint", "test"]
     },
     {
+      "name": "sign",
+      "root": "libs/sign",
+      "sourceRoot": "libs/sign/src",
+      "tags": ["scope:boundary"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-consumer-pact",
+      "root": "pact/consumers/sign-consumer",
+      "sourceRoot": "pact/consumers/sign-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "sign-service",
+      "root": "apps/sign-service",
+      "sourceRoot": "apps/sign-service/src",
+      "tags": [],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "sign-source-consumer-pact",
+      "root": "pact/consumers/sign-source-consumer",
+      "sourceRoot": "pact/consumers/sign-source-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
       "name": "sign-web-consumer-pact",
       "root": "pact/consumers/sign-web-consumer",
       "sourceRoot": "pact/consumers/sign-web-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "sign-workspace-consumer-pact",
+      "root": "pact/consumers/sign-workspace-consumer",
+      "sourceRoot": "pact/consumers/sign-workspace-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
     },

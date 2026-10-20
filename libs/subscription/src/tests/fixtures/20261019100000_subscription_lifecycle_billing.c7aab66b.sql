@@ -46,7 +46,7 @@ VALUES ('019a0000-5150-7000-8000-000000000002'::uuid, 'aramo-sign-business-v1', 
         '100 envelopes per month for your organization. Unused envelopes do not roll over.')
 ON CONFLICT ("key") DO NOTHING;
 INSERT INTO "subscription"."PlanAllowance" ("plan_id", "allowance_key", "included_quantity", "period")
-VALUES ('019a0000-5150-7000-8000-000000000002'::uuid, 'esign.envelopes', 100, 'MONTHLY')
+VALUES ('019a0000-5150-7000-8000-000000000002'::uuid, 'sign.envelopes', 100, 'MONTHLY')
 ON CONFLICT ("plan_id", "allowance_key") DO NOTHING;
 
 -- 3. Who started a checkout, for which tenant and plan. The subscribing-owner

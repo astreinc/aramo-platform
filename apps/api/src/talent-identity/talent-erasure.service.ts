@@ -160,7 +160,7 @@ const ORDINARY_OUTBOXES = [
   'client_selection."OutboxEvent"',
   'consent."OutboxEvent"',
   'documents."OutboxEvent"',
-  'esign."OutboxEvent"',
+  'sign."OutboxEvent"',
   'pipeline."OutboxEvent"',
   'selection."OutboxEvent"',
   'submittal."OutboxEvent"',
@@ -300,7 +300,7 @@ const INVENTORY: ErasureStep[] = [
   //      UNPUBLISHED one blocks in the preflight until it drains). ----
   { label: 'consent."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   { label: 'documents."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
-  { label: 'esign."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
+  { label: 'sign."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   ...ORDINARY_OUTBOXES.map((label): ErasureStep => ({ label, keyspace: 'record', where: `published_at IS NOT NULL AND ${NAMES_A_RECORD('event_payload')}` })),
   // ---- GROUP B trust-side PII (subject keyspace; real FKs, NO cascade → order enforced) ----
   { label: 'talent_trust."EvidenceEvent"', keyspace: 'evidence-set', where: `evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))` },
@@ -417,7 +417,7 @@ export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   { holder: 'placement."PermanentPlacement"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PermanentPlacement" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'permanent placement (fee / guarantee record)', authority: PO_LEGAL },
   { holder: 'placement."PermanentPlacementRemedy"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PermanentPlacementRemedy" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'guarantee remedy (financial record)', authority: PO_LEGAL },
   { holder: 'submittal_policy."SubmittalConsumption"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM submittal_policy."SubmittalConsumption" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'submittal consumption (client commercial policy record)', authority: PO_LEGAL },
-  { holder: 'esign."EnvelopeDocument"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM esign."EnvelopeDocument" WHERE document_ref IN (${TALENT_DOCUMENTS})`, reason: 'e-signature envelope over a talent document (executed-record retention; signer PII)', authority: PO_LEGAL },
+  { holder: 'sign."EnvelopeDocument"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM sign."EnvelopeDocument" WHERE document_ref IN (${TALENT_DOCUMENTS})`, reason: 'e-signature envelope over a talent document (executed-record retention; signer PII)', authority: PO_LEGAL },
   { holder: 'offer."OutboxEvent" / placement."OutboxEvent"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT (SELECT count(*) FROM offer."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')}) + (SELECT count(*) FROM placement."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')})::int AS n`, reason: 'immutable commercial outbox event names the talent', authority: PO_LEGAL },
   // ---- an unpublished outbox event still has to reach its consumers: retry after it drains ----
   { holder: 'OutboxEvent (unpublished)', classification: 'PENDING_OUTBOX_DRAIN', keyspace: 'record', sql: `SELECT (${ORDINARY_OUTBOXES.map((o) => `(SELECT count(*) FROM ${o} WHERE published_at IS NULL AND ${NAMES_A_RECORD('event_payload')})`).join(' + ')})::int AS n`, reason: 'an unpublished outbox event names the talent — retry once the outbox has drained', authority: 'none (transient)' },

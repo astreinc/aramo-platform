@@ -977,7 +977,7 @@ export const ERROR_CODES = [
   // governed mapping for a User.email P2002 lost race on the create path.
   'EMAIL_UNAVAILABLE',
   // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0)
-  // — a Core route that only esign-service may call cannot authenticate the
+  // — a Core route that only sign-service may call cannot authenticate the
   // service request because the shared signing secret is not configured. Fail
   // closed (503) in every mode; never served unauthenticated.
   'ESIGN_SERVICE_AUTH_UNAVAILABLE',

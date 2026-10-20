@@ -99,6 +99,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('signature routing
   it('an accepted external send is recorded in the usage stream (operational, not a quota)', async () => {
     await repo.recordExternalSend(T1, 'docusign');
     const r = await pg.query(`SELECT event_type FROM metering."UsageEvent" WHERE tenant_id = $1`, [T1]);
-    expect(r.rows.map((x) => x.event_type)).toEqual(['esign.external.envelope.sent.docusign']);
+    expect(r.rows.map((x) => x.event_type)).toEqual(['sign.external.envelope.sent.docusign']);
   });
 });

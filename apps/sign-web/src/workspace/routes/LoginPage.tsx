@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Button, Card, InlineAlert, WrongAccountRecovery, redirectToLogin } from '@aramo/fe-foundation';
 
 // Inc-3 PR-3.5 (Workstream B) — the App Home's login landing (Aramo Sign, esign consumer). Same param,
-// same pattern as ats-web: the auth-service /auth/esign/callback navigates here on a
+// same pattern as ats-web: the auth-service /auth/sign/callback navigates here on a
 // login failure with `?error=<CODE>`.
 //
 // Two modes:

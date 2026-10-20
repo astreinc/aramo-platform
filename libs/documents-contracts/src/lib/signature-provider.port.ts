@@ -1,6 +1,6 @@
 // DOC-3 §229 — the PROVIDER-NEUTRAL cross-service contract Documents invokes to
 // drive signature execution. apps/api (Documents composition) depends ONLY on
-// this port; the concrete transport is an HTTP adapter to apps/esign-service.
+// this port; the concrete transport is an HTTP adapter to apps/sign-service.
 // Future DocuSign/AdobeSign/Tenant providers implement the SAME caller-facing
 // contract without changing RTR/Offer orchestration (R29 deferred). This is a
 // TRANSPORT contract — no RTR/Submittal/Offer/Placement/recruiter-workflow shape.

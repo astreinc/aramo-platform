@@ -24,11 +24,11 @@ import { DocumentsEsignController } from '../documents/documents-esign.controlle
 import { EsignWriteBackOrchestrator } from '../documents/esign-writeback.js';
 
 // ES-2 (Aramo-E-Sign-ES-2-Core-Service-Trust-Implementation-Authorization-v1_0) —
-// the Core document-source route that esign-service pulls, over real HTTP on a
+// the Core document-source route that sign-service pulls, over real HTTP on a
 // real Postgres 17 documents schema with a controlled fixture revision.
 //
 //   1. Reproduction: an ANONYMOUS request reads the fixture document's bytes.
-//   2. Only a correctly signed esign-service request (aramo-esign-s2s-v1) is
+//   2. Only a correctly signed sign-service request (aramo-sign-s2s-v1) is
 //      served; unsigned / stale / tampered / wrong-path / wrong-query /
 //      cross-purpose / malformed requests are refused (401).
 //   3. A missing signing secret fails closed (503) in EVERY mode; `log` mode is
@@ -48,9 +48,9 @@ const SECRET = 'es2-integration-esign-secret';
 const SOURCE_BYTES = Buffer.from('%PDF-1.4 es2 controlled fixture source document');
 const sha256 = (b: Buffer): string => createHash('sha256').update(b).digest('hex');
 
-const ENV_KEYS = ['ESIGN_WEBHOOK_SIGNING_SECRET', 'ESIGN_S2S_AUTH_MODE', 'ESIGN_S2S_AUTH_LOG_UNTIL'] as const;
+const ENV_KEYS = ['SIGN_WEBHOOK_SIGNING_SECRET', 'SIGN_S2S_AUTH_MODE', 'SIGN_S2S_AUTH_LOG_UNTIL'] as const;
 
-describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-service → Core source request authentication (Postgres 17)', () => {
+describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 sign-service → Core source request authentication (Postgres 17)', () => {
   let container: StartedPostgreSqlContainer;
   let sql: Client;
   let docsPrisma: DocumentsPrismaService;
@@ -88,7 +88,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
 
   function setEnv(values: Partial<Record<(typeof ENV_KEYS)[number], string | undefined>>): void {
     for (const k of ENV_KEYS) {
-      const v = k in values ? values[k] : k === 'ESIGN_WEBHOOK_SIGNING_SECRET' ? SECRET : undefined;
+      const v = k in values ? values[k] : k === 'SIGN_WEBHOOK_SIGNING_SECRET' ? SECRET : undefined;
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
@@ -171,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
     });
   });
 
-  describe('signed esign-service requests', () => {
+  describe('signed sign-service requests', () => {
     it('a correctly signed request returns the unchanged document bytes', async () => {
       setEnv({});
       const url = sourceUrl(REV_ID, TENANT);
@@ -218,7 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
       const webhookSig = createHmac('sha256', SECRET).update(`${ts}.`).digest('base64');
       const url = sourceUrl(REV_ID, TENANT);
       const asS2s = await get(url, { [ESIGN_S2S_TIMESTAMP_HEADER]: ts, [ESIGN_S2S_SIGNATURE_HEADER]: webhookSig });
-      const asWebhook = await get(url, { 'x-aramo-esign-timestamp': ts, 'x-aramo-esign-signature': webhookSig });
+      const asWebhook = await get(url, { 'x-aramo-sign-timestamp': ts, 'x-aramo-sign-signature': webhookSig });
       expect(asS2s.status).toBe(401);
       expect(asWebhook.status).toBe(401);
     });
@@ -233,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
 
   describe('fail-closed configuration', () => {
     it('a missing signing secret refuses with 503 — even a signed request', async () => {
-      setEnv({ ESIGN_WEBHOOK_SIGNING_SECRET: undefined });
+      setEnv({ SIGN_WEBHOOK_SIGNING_SECRET: undefined });
       const url = sourceUrl(REV_ID, TENANT);
       const r = await get(url, signed(url));
       expect(r.status).toBe(503);
@@ -241,13 +241,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
     });
 
     it('log mode never downgrades a missing secret', async () => {
-      setEnv({ ESIGN_WEBHOOK_SIGNING_SECRET: undefined, ESIGN_S2S_AUTH_MODE: 'log', ESIGN_S2S_AUTH_LOG_UNTIL: new Date(Date.now() + 3_600_000).toISOString() });
+      setEnv({ SIGN_WEBHOOK_SIGNING_SECRET: undefined, SIGN_S2S_AUTH_MODE: 'log', SIGN_S2S_AUTH_LOG_UNTIL: new Date(Date.now() + 3_600_000).toISOString() });
       const r = await get(sourceUrl(REV_ID, TENANT));
       expect(r.status).toBe(503);
     });
 
     it('explicit, bounded log mode serves an unsigned request during the window', async () => {
-      setEnv({ ESIGN_S2S_AUTH_MODE: 'log', ESIGN_S2S_AUTH_LOG_UNTIL: new Date(Date.now() + 3_600_000).toISOString() });
+      setEnv({ SIGN_S2S_AUTH_MODE: 'log', SIGN_S2S_AUTH_LOG_UNTIL: new Date(Date.now() + 3_600_000).toISOString() });
       const r = await get(sourceUrl(REV_ID, TENANT));
       expect(r.status).toBe(200);
     });
@@ -258,13 +258,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-2 esign-servic
       ['an end time beyond the 7-day ceiling', new Date(Date.now() + 8 * 24 * 3_600_000).toISOString()],
       ['an unparseable end time', 'soon'],
     ] as const)('log mode with %s enforces', async (_label, until) => {
-      setEnv({ ESIGN_S2S_AUTH_MODE: 'log', ESIGN_S2S_AUTH_LOG_UNTIL: until });
+      setEnv({ SIGN_S2S_AUTH_MODE: 'log', SIGN_S2S_AUTH_LOG_UNTIL: until });
       const r = await get(sourceUrl(REV_ID, TENANT));
       expect(r.status).toBe(401);
     });
 
     it('an unknown mode value enforces', async () => {
-      setEnv({ ESIGN_S2S_AUTH_MODE: 'off' });
+      setEnv({ SIGN_S2S_AUTH_MODE: 'off' });
       const r = await get(sourceUrl(REV_ID, TENANT));
       expect(r.status).toBe(401);
     });

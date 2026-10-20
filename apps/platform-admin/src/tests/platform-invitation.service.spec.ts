@@ -331,11 +331,11 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
 
     it('Sign-only ([esign]): core is added, owner role is org_admin, NO ATS projection (policy package / RTR template), entitlements [core, esign]', async () => {
       const mocks = armed();
-      const out = await provision(mocks, ['esign']);
-      expect(out.capabilities).toEqual(['core', 'esign']);
+      const out = await provision(mocks, ['sign']);
+      expect(out.capabilities).toEqual(['core', 'sign']);
       expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['org_admin']);
       expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['org_admin'] }));
-      expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-x', capabilities: ['core', 'esign'] });
+      expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-x', capabilities: ['core', 'sign'] });
       expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
       expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).not.toHaveBeenCalled();
       // exactly ONE tenant and ONE owner identity
@@ -345,8 +345,8 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
 
     it('ATS + Sign ([core, ats, portal, esign]): ONE tenant, ONE owner (tenant_owner), both product entitlements, ATS projections run', async () => {
       const mocks = armed();
-      const out = await provision(mocks, ['core', 'ats', 'portal', 'esign']);
-      expect(out.capabilities).toEqual(['core', 'ats', 'portal', 'esign']);
+      const out = await provision(mocks, ['core', 'ats', 'portal', 'sign']);
+      expect(out.capabilities).toEqual(['core', 'ats', 'portal', 'sign']);
       expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['tenant_owner']);
       expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledWith('tenant-x');
       expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).toHaveBeenCalledWith('tenant-x');
@@ -373,7 +373,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     it('Sign-only entitlement-grant failure: tenant soft-disabled (no partial product access), 500 — same compensation as ATS', async () => {
       const mocks = armed();
       mocks.entitlementRepo.grantCapabilities.mockRejectedValue(new Error('entitlement schema down'));
-      await expect(provision(mocks, ['esign'])).rejects.toMatchObject({ code: 'INTERNAL_ERROR', context: { details: { reason: 'entitlement_grant_failed' } } });
+      await expect(provision(mocks, ['sign'])).rejects.toMatchObject({ code: 'INTERNAL_ERROR', context: { details: { reason: 'entitlement_grant_failed' } } });
       expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-x', reason: 'entitlement_grant_failed' }));
       expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
     });
@@ -1142,15 +1142,15 @@ describe('PlatformInvitationService — IC-4 PR-9 PERSONAL tenant provisioning',
     expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({ kind: 'PERSONAL', owner_email: 'jane.doe@gmail.com' }));
     expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['org_admin']);
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-p', role_keys: ['org_admin'] }));
-    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'esign'] });
+    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'] });
     expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
     expect(mocks.docTemplateProvisioning.publishDefaultRtrTemplate).not.toHaveBeenCalled();
-    expect(out).toMatchObject({ tenant_id: 'tenant-p', tenant_kind: 'PERSONAL', capabilities: ['core', 'esign'] });
+    expect(out).toMatchObject({ tenant_id: 'tenant-p', tenant_kind: 'PERSONAL', capabilities: ['core', 'sign'] });
   });
   it('PERSONAL with capabilities [esign] (explicit) → [core, esign]; with [core, ats] → 400 personal_tenant_capability_not_allowed BEFORE Cognito and before any tenant/identity call', async () => {
     const ok = happyMocks();
-    await buildService(ok).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', capabilities: ['esign'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' });
-    expect(ok.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'esign'] });
+    await buildService(ok).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', capabilities: ['sign'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' });
+    expect(ok.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'] });
 
     const refused = happyMocks();
     await expect(

@@ -47,14 +47,14 @@ export const REQUIRED_PASSTHROUGH: Record<string, string[]> = {
     'MAILER_PROVIDER', // no default → fails loud at module binding
     // E-Sign production wiring (Aramo-E-Sign-Production-Service-URL-Wiring-Authorization-v1_0)
     // — failure mode (1) "silently degraded/dark": without these the api boots but every
-    // E-Sign call targets its own localhost / every esign-service request is refused.
-    'ESIGN_SERVICE_URL', // api → esign-service origin (http://esign-service:3003)
-    'ESIGN_WEBHOOK_SIGNING_SECRET', // verifies the webhook + ES-2 source requests
+    // E-Sign call targets its own localhost / every sign-service request is refused.
+    'SIGN_SERVICE_URL', // api → sign-service origin (http://sign-service:3003)
+    'SIGN_WEBHOOK_SIGNING_SECRET', // verifies the webhook + ES-2 source requests
   ],
-  'esign-service': [
-    'DOCUMENTS_API_URL', // esign-service → api origin (http://api:3000): source pull + webhook
-    'ESIGN_WEBHOOK_SIGNING_SECRET', // signs the webhook + ES-2 source requests (same value as api)
-    'ESIGN_SIGN_WEB_BASE_URL', // signer link base (https://sign.aramo.ai); unset ⇒ no invitation sent
+  'sign-service': [
+    'DOCUMENTS_API_URL', // sign-service → api origin (http://api:3000): source pull + webhook
+    'SIGN_WEBHOOK_SIGNING_SECRET', // signs the webhook + ES-2 source requests (same value as api)
+    'SIGN_WEB_BASE_URL', // signer link base (https://sign.aramo.ai); unset ⇒ no invitation sent
     // SES credentials — without them the SDK uses the Lightsail instance role (no ses:SendEmail)
     // and every signer invitation/reminder is dropped.
     'AWS_ACCESS_KEY_ID',
@@ -235,7 +235,7 @@ services:
   // Fixture 4 — a local-only setting and a mail service without NODE_ENV=production.
   const localProblems = validateLocalOnly(`
 services:
-  esign-service:
+  sign-service:
     environment:
       - MAILER_PROVIDER
       - MAILER_OUTBOX_DIR=/tmp/mail

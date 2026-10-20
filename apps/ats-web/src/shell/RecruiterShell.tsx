@@ -145,7 +145,7 @@ function RecruiterShellInner({
   // the SAME backend-authoritative availability as App Home; the account menu's
   // "Switch application" opens it.
   const products = useMyProducts();
-  const signSubscribed = products.status === 'ready' ? (productByKey(products.view, 'esign')?.subscribed ?? false) : null;
+  const signSubscribed = products.status === 'ready' ? (productByKey(products.view, 'sign')?.subscribed ?? false) : null;
   const [switcherSignal, setSwitcherSignal] = useState(0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

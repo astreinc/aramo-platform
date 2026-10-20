@@ -384,7 +384,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // IC-2 PR-6 — one identity, three consumers, three disjoint authorizations.
     it('IC-2 PR-6: ONE principal holding ATS + esign + platform scopes resolves a DISJOINT set per consumer; esign only while entitled', async () => {
-      const p = await seedPrincipal(['talent:read', 'esign:envelope:send', 'platform:tenant:read']);
+      const p = await seedPrincipal(['talent:read', 'sign:envelope:send', 'platform:tenant:read']);
       const forConsumer = (c: EffectiveAuthorizationInput['consumer_type']) => ({ ...p.input(1), consumer_type: c });
       const recruiter = await resolver.resolve(forConsumer('recruiter'));
       expect(recruiter.status).toBe('ok');
@@ -395,13 +395,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const platform = await resolver.resolve(forConsumer('platform'));
       if (platform.status === 'ok') expect(platform.scopes.map((x) => x.split('-')[0])).toEqual(['platform:tenant:read']);
       // esign: NOT entitled → nothing; entitled → esign:* only; revoked again → nothing (no version bump needed).
-      const before = await resolver.resolve(forConsumer('esign'));
+      const before = await resolver.resolve(forConsumer('sign'));
       expect(before).toEqual({ status: 'ok', scopes: [] });
-      entitlementCaps.current = new Set(['core', 'ats', 'portal', 'esign']);
-      const entitled = await resolver.resolve(forConsumer('esign'));
-      if (entitled.status === 'ok') expect(entitled.scopes.map((x) => x.split('-')[0])).toEqual(['esign:envelope:send']);
+      entitlementCaps.current = new Set(['core', 'ats', 'portal', 'sign']);
+      const entitled = await resolver.resolve(forConsumer('sign'));
+      if (entitled.status === 'ok') expect(entitled.scopes.map((x) => x.split('-')[0])).toEqual(['sign:envelope:send']);
       entitlementCaps.current = new Set(['core', 'ats', 'portal']);
-      expect(await resolver.resolve(forConsumer('esign'))).toEqual({ status: 'ok', scopes: [] });
+      expect(await resolver.resolve(forConsumer('sign'))).toEqual({ status: 'ok', scopes: [] });
     });
 
     it('PORTAL: fixed scopes, version pinned to 1 (independent of RBAC growth)', async () => {

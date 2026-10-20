@@ -9,9 +9,9 @@ import {
 } from '@aramo/documents';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 
-import { SignApiClient } from '../esign/sign-api.client.js';
-import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
-import { EsignServiceRequestGuard } from '../integrations/esign/esign-service-request.guard.js';
+import { SignApiClient } from '../sign/sign-api.client.js';
+import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
+import { EsignServiceRequestGuard } from '../integrations/sign/esign-service-request.guard.js';
 
 import { AramoS3DocumentStorageAdapter } from './aramo-s3-document-storage.adapter.js';
 import {
@@ -56,7 +56,7 @@ const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
       inject: [DOCUMENTS_ESIGN_PRISMA, DOCUMENTS_ESIGN_STORAGE],
     },
     EsignWriteBackOrchestrator,
-    // ES-2 — authenticates esign-service requests on the source route.
+    // ES-2 — authenticates sign-service requests on the source route.
     EsignServiceRequestGuard,
   ],
 })

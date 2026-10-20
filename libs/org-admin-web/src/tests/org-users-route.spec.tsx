@@ -43,14 +43,14 @@ afterEach(() => {
 const ROSTER = {
   items: [
     { user_id: 'u-1', email: 'owner@acme.test', display_name: 'Olive Owner', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['tenant_owner'] },
-    { user_id: 'u-2', email: 'rec@acme.test', display_name: 'Rae Recruiter', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['recruiter', 'esign_sender'] },
+    { user_id: 'u-2', email: 'rec@acme.test', display_name: 'Rae Recruiter', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['recruiter', 'sign_sender'] },
   ],
 };
 const CATALOG = {
   roles: [
     { key: 'tenant_owner', display: 'Tenant Owner', description: '', tier: 'Administration', scopes: ['tenant:admin:user-manage', 'talent:read'] },
     { key: 'recruiter', display: 'Recruiter', description: '', tier: 'Operations', scopes: ['talent:read'] },
-    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['esign:envelope:send'] },
+    { key: 'sign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['sign:envelope:send'] },
   ],
 };
 

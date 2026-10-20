@@ -68,7 +68,7 @@ describe('evaluateHostBinding — matrix', () => {
   });
   it.each(['PORTAL', 'PRODUCT'] as const)('%s → host_class_consumer_mismatch regardless of consumer', (cls) => {
     expect(verdict({ host_class: cls })).toEqual({ ok: false, reason: 'host_class_consumer_mismatch' });
-    expect(verdict({ host_class: cls, consumer: 'esign' })).toEqual({ ok: false, reason: 'host_class_consumer_mismatch' });
+    expect(verdict({ host_class: cls, consumer: 'sign' })).toEqual({ ok: false, reason: 'host_class_consumer_mismatch' });
   });
   it.each([null, undefined, 'DEV'] as const)('unbound (%s): host_unbound unless allow_unbound', (cls) => {
     expect(verdict({ host_class: cls, context_id: null })).toEqual({ ok: false, reason: 'host_unbound' });

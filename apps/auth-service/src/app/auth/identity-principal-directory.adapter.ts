@@ -71,7 +71,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
 
   // IC-2 PR-6 (IC-0 §F.2 rule 3) — a consumer credential is minted or
   // re-minted ONLY when the tenant holds the consumer's product capability:
-  // recruiter/ingestion → `ats`, esign → `esign`, platform → exempt (sentinel),
+  // recruiter/ingestion → `ats`, esign → `sign`, platform → exempt (sentinel),
   // portal/unknown → unsupported on this path. Re-proven at EVERY mint and
   // refresh from the entitlement store (never from the token), so a removed
   // entitlement cannot be resurrected by refresh. A valid identity is not

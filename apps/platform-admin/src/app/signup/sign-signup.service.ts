@@ -43,7 +43,7 @@ import { PlatformInvitationService } from '../platform/platform-invitation.servi
 
 export const SIGN_SIGNUP_SYSTEM_ACTOR_ID = '01900000-0000-7000-8000-00000000519e';
 export const SIGN_SIGNUP_AUDIT_SOURCE = 'sign.self_service_signup';
-const SIGN_CAPABILITIES = ['core', 'esign'] as const;
+const SIGN_CAPABILITIES = ['core', 'sign'] as const;
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
 const RESEND_GAP_MS = 60 * 1000;
@@ -85,9 +85,9 @@ function esc(v: string): string {
 }
 
 // Sign Unified Product S-2 — the one Sign base URL (same resolution as
-// libs/esign signBaseUrl; inlined: platform-admin does not depend on @aramo/esign).
+// libs/sign signBaseUrl; inlined: platform-admin does not depend on @aramo/sign).
 function consoleBase(): string {
-  for (const key of ['ARAMO_SIGN_BASE_URL', 'ESIGN_SIGN_WEB_BASE_URL', 'ESIGN_SENDER_WEB_BASE_URL']) {
+  for (const key of ['ARAMO_SIGN_BASE_URL', 'SIGN_WEB_BASE_URL', 'SIGN_SENDER_WEB_BASE_URL']) {
     const v = process.env[key]?.trim();
     if (v !== undefined && v !== '') return v.replace(/\/+$/, '');
   }

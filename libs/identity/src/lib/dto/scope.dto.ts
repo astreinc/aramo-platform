@@ -99,25 +99,25 @@ export const SEED_SCOPE_KEYS = [
   'document_template:manage',   // tenant_admin+ (create/activate/retire templates + versions)
   'document_requirement:read',  // recruiter+ (read requirement status)
   'document_requirement:manage',// tenant_admin+ (create/satisfy/waive requirements)
-  // PX-V1 PX-3 — E-Sign SENDER product scopes (esign.aramo.ai). Distinct `esign:`
+  // PX-V1 PX-3 — E-Sign SENDER product scopes (esign.aramo.ai). Distinct `sign:`
   // namespace granted ONLY to esign_* roles — never to ATS roles, never reusing
   // the ATS document:execute scope. dedicated ESIGN_SEED_BUNDLES (range 0x1330+).
-  'esign:envelope:read',        // esign_viewer+ (list/track envelopes)
-  'esign:envelope:create',      // esign_sender+ (upload PDF, place fields, create envelope)
-  'esign:envelope:send',        // esign_sender+ (dispatch an envelope for signature)
+  'sign:envelope:read',        // sign_viewer+ (list/track envelopes)
+  'sign:envelope:create',      // sign_sender+ (upload PDF, place fields, create envelope)
+  'sign:envelope:send',        // sign_sender+ (dispatch an envelope for signature)
   // Sign Unified Product S-1 — the Sign permission contract (esign-permissions.ts;
   // Aramo-Sign-Unified-Product-Permission-Contract-Platform-API-Directive-v1_0-LOCKED
   // §4.3). Granted ONLY to esign_* roles (ESIGN_ROLE_CONTRACT_SEED_BUNDLES).
-  'esign:envelope:read:all',    // esign_viewer/admin/owner (every organization envelope)
-  'esign:envelope:manage:all',  // esign_admin/owner (lifecycle + drafts of any envelope)
-  'esign:contact:read',         // esign_sender/admin/owner
-  'esign:template:use',         // esign_sender/admin/owner (templates not yet built)
-  'esign:template:manage',      // esign_admin/owner (templates not yet built)
-  'esign:report:read',          // esign_viewer/admin/owner
-  'esign:member:manage',        // esign_admin/owner (assign Sign roles)
-  'esign:settings:manage',      // esign_admin/owner
-  'esign:billing:manage',       // esign_owner only
-  'esign:integration:manage',   // esign_admin/owner (applications + installations, S-4)
+  'sign:envelope:read:all',    // sign_viewer/admin/owner (every organization envelope)
+  'sign:envelope:manage:all',  // sign_admin/owner (lifecycle + drafts of any envelope)
+  'sign:contact:read',         // sign_sender/admin/owner
+  'sign:template:use',         // sign_sender/admin/owner (templates not yet built)
+  'sign:template:manage',      // sign_admin/owner (templates not yet built)
+  'sign:report:read',          // sign_viewer/admin/owner
+  'sign:member:manage',        // sign_admin/owner (assign Sign roles)
+  'sign:settings:manage',      // sign_admin/owner
+  'sign:billing:manage',       // sign_owner only
+  'sign:integration:manage',   // sign_admin/owner (applications + installations, S-4)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context resume selection (PUT
   // /v1/pipelines/{id}/resume-edition). DEDICATED mutation scope, EXPLICIT

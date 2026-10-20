@@ -8,11 +8,11 @@ import type { DocumentsRepository, RenderService } from '@aramo/documents';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import type { SignatureRouter } from '../document-signing/signature-router.js';
-import { EsignServiceApiProvider, esignAtsTransport } from '../esign/esign-service-api.provider.js';
-import { SignApiClient } from '../esign/sign-api.client.js';
+import { EsignServiceApiProvider, esignAtsTransport } from '../sign/esign-service-api.provider.js';
+import { SignApiClient } from '../sign/sign-api.client.js';
 import { EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
-import { EsignEventsController } from '../integrations/esign/esign-events.controller.js';
-import { computeEsignWebhookSignature } from '../integrations/esign/esign-webhook-signature.js';
+import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
+import { computeEsignWebhookSignature } from '../integrations/sign/esign-webhook-signature.js';
 import { SignatureAvailabilityService } from '../document-signing/signature-availability.service.js';
 
 
@@ -25,10 +25,10 @@ const env = (over: Partial<EnvelopeSummary> = {}): EnvelopeSummary => ({ envelop
 
 let saved: Record<string, string | undefined> = {};
 beforeEach(() => {
-  saved = Object.fromEntries(['ESIGN_ATS_TRANSPORT', 'ESIGN_ATS_CLIENT_ID', 'ESIGN_ATS_CLIENT_SECRET', 'ESIGN_SERVICE_URL'].map((k) => [k, process.env[k]]));
-  process.env['ESIGN_ATS_CLIENT_ID'] = 'sgc_ats';
-  process.env['ESIGN_ATS_CLIENT_SECRET'] = 'sgs_ats_secret';
-  process.env['ESIGN_SERVICE_URL'] = 'http://esign.test';
+  saved = Object.fromEntries(['SIGN_ATS_TRANSPORT', 'SIGN_ATS_CLIENT_ID', 'SIGN_ATS_CLIENT_SECRET', 'SIGN_SERVICE_URL'].map((k) => [k, process.env[k]]));
+  process.env['SIGN_ATS_CLIENT_ID'] = 'sgc_ats';
+  process.env['SIGN_ATS_CLIENT_SECRET'] = 'sgs_ats_secret';
+  process.env['SIGN_SERVICE_URL'] = 'http://esign.test';
 });
 afterEach(() => {
   for (const [k, v] of Object.entries(saved)) {
@@ -52,8 +52,8 @@ describe('typed actor credential — never serialized or inspected', () => {
 describe('transport switch (default internal)', () => {
   it('only the literal `api` selects the Sign API', () => {
     expect(esignAtsTransport({})).toBe('internal');
-    expect(esignAtsTransport({ ESIGN_ATS_TRANSPORT: 'API' })).toBe('internal');
-    expect(esignAtsTransport({ ESIGN_ATS_TRANSPORT: 'api' })).toBe('api');
+    expect(esignAtsTransport({ SIGN_ATS_TRANSPORT: 'API' })).toBe('internal');
+    expect(esignAtsTransport({ SIGN_ATS_TRANSPORT: 'api' })).toBe('api');
   });
 });
 
@@ -116,7 +116,7 @@ describe('API transport provider (user-initiated)', () => {
       'fetch',
       vi.fn(async (url: string, init: RequestInit) => {
         calls.push({ url, init });
-        if (url.endsWith('/v1/esign/oauth/token')) return tokenResponse({ access_token: 'sgt_user_grant_000000000000000000000', expires_in: 300, tenant_id: 't1', installation_id: 'i1' });
+        if (url.endsWith('/v1/sign/oauth/token')) return tokenResponse({ access_token: 'sgt_user_grant_000000000000000000000', expires_in: 300, tenant_id: 't1', installation_id: 'i1' });
         return tokenResponse(env({ envelope_id: 'E-new', status: 'DRAFT' }), 201);
       }),
     );
@@ -127,7 +127,7 @@ describe('API transport provider (user-initiated)', () => {
     );
     const exchange = JSON.parse(String(calls[0]!.init.body)) as Record<string, string>;
     expect(exchange).toMatchObject({ grant_type: 'urn:ietf:params:oauth:grant-type:token-exchange', subject_token: TOKEN, client_id: 'sgc_ats' });
-    expect(calls[1]!.url).toBe('http://esign.test/v1/esign/api/envelopes');
+    expect(calls[1]!.url).toBe('http://esign.test/v1/sign/api/envelopes');
     expect((calls[1]!.init.headers as Record<string, string>)['authorization']).toBe('Bearer sgt_user_grant_000000000000000000000');
     const body = JSON.parse(String(calls[1]!.init.body)) as Record<string, unknown>;
     expect(body).not.toHaveProperty('tenant_id');
@@ -159,7 +159,7 @@ describe('API transport provider (user-initiated)', () => {
 
 describe('completion write-back (no user): the event-bound grant', () => {
   it('API transport: needs the delivered event; presents it with the ATS client credential; refuses a mismatched scope', async () => {
-    process.env['ESIGN_ATS_TRANSPORT'] = 'api';
+    process.env['SIGN_ATS_TRANSPORT'] = 'api';
     const calls: { url: string; init: RequestInit }[] = [];
     vi.stubGlobal(
       'fetch',
@@ -173,7 +173,7 @@ describe('completion write-back (no user): the event-bound grant', () => {
     await expect(client.fetchExecuted('t1', 'E1')).rejects.toThrow(/completion event/);
     await client.fetchExecuted('t1', 'E1', '66666666-6666-7666-8666-666666666666');
     expect(JSON.parse(String(calls[0]!.init.body))).toMatchObject({ grant_type: 'urn:aramo:params:oauth:grant-type:sign-event', event_id: '66666666-6666-7666-8666-666666666666', client_id: 'sgc_ats' });
-    expect(calls[1]!.url).toBe('http://esign.test/v1/esign/api/envelopes/E1/executed');
+    expect(calls[1]!.url).toBe('http://esign.test/v1/sign/api/envelopes/E1/executed');
     await expect(new EsignExecutedArtifactsClient(new SignApiClient()).fetchExecuted('t1', 'OTHER', '77777777-7777-7777-8777-777777777777')).rejects.toThrow(/scope mismatch/);
   });
 
@@ -181,14 +181,14 @@ describe('completion write-back (no user): the event-bound grant', () => {
     const f = vi.fn(async () => tokenResponse({ envelope_id: 'E1', documents: [], certificate: null }));
     vi.stubGlobal('fetch', f);
     await new EsignExecutedArtifactsClient(new SignApiClient()).fetchExecuted('t1', 'E1');
-    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('http://esign.test/v1/esign/envelopes/E1/executed?tenant_id=t1');
+    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('http://esign.test/v1/sign/envelopes/E1/executed?tenant_id=t1');
   });
 });
 
 // ── Completion webhook: the ATS subscription's OWN secret (S-5/S6) ─────────────
 
 describe('completion webhook verification', () => {
-  const body = Buffer.from(JSON.stringify({ event_id: 'ev-1', event_type: 'esign.envelope.executed.v1', tenant_id: 't1', envelope_id: 'E1' }));
+  const body = Buffer.from(JSON.stringify({ event_id: 'ev-1', event_type: 'sign.envelope.executed.v1', tenant_id: 't1', envelope_id: 'E1' }));
   function call(headers: Record<string, string>) {
     const orchestrator = { writeBackEnvelope: vi.fn(async () => ({ envelope_id: 'E1', documents_written: 1 })) };
     const ctl = new EsignEventsController(orchestrator as never);
@@ -198,30 +198,30 @@ describe('completion webhook verification', () => {
   }
   const signed = (secret: string, extra: Record<string, string> = {}) => {
     const ts = String(Math.floor(Date.now() / 1000));
-    return { 'x-aramo-esign-timestamp': ts, 'x-aramo-esign-signature': computeEsignWebhookSignature(ts, body, secret), ...extra };
+    return { 'x-aramo-sign-timestamp': ts, 'x-aramo-sign-signature': computeEsignWebhookSignature(ts, body, secret), ...extra };
   };
   let keep: Record<string, string | undefined> = {};
   beforeEach(() => {
-    keep = { a: process.env['ESIGN_WEBHOOK_SIGNING_SECRET'], b: process.env['ESIGN_EVENTS_SUBSCRIPTION_SECRET'] };
-    process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = 'legacy-shared';
-    process.env['ESIGN_EVENTS_SUBSCRIPTION_SECRET'] = 'whs_ats_subscription';
+    keep = { a: process.env['SIGN_WEBHOOK_SIGNING_SECRET'], b: process.env['SIGN_EVENTS_SUBSCRIPTION_SECRET'] };
+    process.env['SIGN_WEBHOOK_SIGNING_SECRET'] = 'legacy-shared';
+    process.env['SIGN_EVENTS_SUBSCRIPTION_SECRET'] = 'whs_ats_subscription';
   });
   afterEach(() => {
-    for (const [k, v] of [['ESIGN_WEBHOOK_SIGNING_SECRET', keep['a']], ['ESIGN_EVENTS_SUBSCRIPTION_SECRET', keep['b']]] as const) {
+    for (const [k, v] of [['SIGN_WEBHOOK_SIGNING_SECRET', keep['a']], ['SIGN_EVENTS_SUBSCRIPTION_SECRET', keep['b']]] as const) {
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
   });
 
   it('a subscription delivery verifies with the subscription secret and passes the event to the write-back', async () => {
-    const c = call(signed('whs_ats_subscription', { 'x-aramo-esign-subscription-id': 'sub-1' }));
+    const c = call(signed('whs_ats_subscription', { 'x-aramo-sign-subscription-id': 'sub-1' }));
     await c.run();
     expect(c.res.statusCode).toBe(200);
     expect(c.orchestrator.writeBackEnvelope).toHaveBeenCalledWith(expect.objectContaining({ event_id: 'ev-1', tenant_id: 't1', envelope_id: 'E1' }));
   });
 
   it('a subscription delivery signed with the legacy shared secret is spoofed → 401', async () => {
-    const c = call(signed('legacy-shared', { 'x-aramo-esign-subscription-id': 'sub-1' }));
+    const c = call(signed('legacy-shared', { 'x-aramo-sign-subscription-id': 'sub-1' }));
     await c.run();
     expect(c.res.statusCode).toBe(401);
     expect(c.orchestrator.writeBackEnvelope).not.toHaveBeenCalled();
@@ -234,8 +234,8 @@ describe('completion webhook verification', () => {
   });
 
   it('a subscription delivery with no subscription secret configured is refused (fail closed)', async () => {
-    delete process.env['ESIGN_EVENTS_SUBSCRIPTION_SECRET'];
-    const c = call(signed('whs_ats_subscription', { 'x-aramo-esign-subscription-id': 'sub-1' }));
+    delete process.env['SIGN_EVENTS_SUBSCRIPTION_SECRET'];
+    const c = call(signed('whs_ats_subscription', { 'x-aramo-sign-subscription-id': 'sub-1' }));
     await c.run();
     expect(c.res.statusCode).toBe(503);
   });
@@ -246,7 +246,7 @@ describe('availability over the API transport (D-12)', () => {
     const allowance = { getStatus: vi.fn() };
     const s = new SignatureAvailabilityService(
       { getSelectedProvider: vi.fn(async () => ({ provider: 'aramo_sign' })) } as never,
-      { getCapabilities: vi.fn(async () => new Set(['ats', 'esign'])) } as never,
+      { getCapabilities: vi.fn(async () => new Set(['ats', 'sign'])) } as never,
       allowance as never,
       new Map([['aramo_sign', port]]) as never,
     );

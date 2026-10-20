@@ -93,10 +93,10 @@ export const SEED_IDS = {
     auditor_with_financials: '01900000-0000-7000-8000-00000000001e',
     // PX-V1 PX-3 — E-Sign sender product roles (dedicated 0x2a0+ range; namespace-
     // separate from the ATS tenant roles, excluded from the tenant RolePicker).
-    esign_owner: '01900000-0000-7000-8000-0000000002a0',
-    esign_admin: '01900000-0000-7000-8000-0000000002a1',
-    esign_sender: '01900000-0000-7000-8000-0000000002a2',
-    esign_viewer: '01900000-0000-7000-8000-0000000002a3',
+    sign_owner: '01900000-0000-7000-8000-0000000002a0',
+    sign_admin: '01900000-0000-7000-8000-0000000002a1',
+    sign_sender: '01900000-0000-7000-8000-0000000002a2',
+    sign_viewer: '01900000-0000-7000-8000-0000000002a3',
     // IC-3 PR-7 — org_admin, the product-neutral organization administrator
     // (dedicated 0x2b0 id; a TENANT role, visible in the tenant catalog).
     org_admin: '01900000-0000-7000-8000-0000000002b0',
@@ -176,9 +176,9 @@ export const SEED_IDS = {
     'document_requirement:read': '01900000-0000-7000-8000-0000000001d6',
     'document_requirement:manage': '01900000-0000-7000-8000-0000000001d7',
     // PX-V1 PX-3 — E-Sign sender product scopes (dedicated 0x1e0+ range).
-    'esign:envelope:create': '01900000-0000-7000-8000-0000000001e0',
-    'esign:envelope:send': '01900000-0000-7000-8000-0000000001e1',
-    'esign:envelope:read': '01900000-0000-7000-8000-0000000001e2',
+    'sign:envelope:create': '01900000-0000-7000-8000-0000000001e0',
+    'sign:envelope:send': '01900000-0000-7000-8000-0000000001e1',
+    'sign:envelope:read': '01900000-0000-7000-8000-0000000001e2',
     'pipeline:read': '01900000-0000-7000-8000-000000000087',
     // Lane 2 / L2-F (F1) — Client-Selection owner scopes.
     'client-selection:create': '01900000-0000-7000-8000-0000000000f3',
@@ -455,16 +455,16 @@ export const SEED_IDS = {
     // 0x1409 (append-don't-renumber; verified free).
     'screening:transcript:read': '01900000-0000-7000-8000-000000001409',
     // Sign Unified Product S-1 — the Sign permission contract (10 scopes, 0x140a..0x1413).
-    'esign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
-    'esign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
-    'esign:contact:read': '01900000-0000-7000-8000-00000000140c',
-    'esign:template:use': '01900000-0000-7000-8000-00000000140d',
-    'esign:template:manage': '01900000-0000-7000-8000-00000000140e',
-    'esign:report:read': '01900000-0000-7000-8000-00000000140f',
-    'esign:member:manage': '01900000-0000-7000-8000-000000001410',
-    'esign:settings:manage': '01900000-0000-7000-8000-000000001411',
-    'esign:billing:manage': '01900000-0000-7000-8000-000000001412',
-    'esign:integration:manage': '01900000-0000-7000-8000-000000001413',
+    'sign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
+    'sign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
+    'sign:contact:read': '01900000-0000-7000-8000-00000000140c',
+    'sign:template:use': '01900000-0000-7000-8000-00000000140d',
+    'sign:template:manage': '01900000-0000-7000-8000-00000000140e',
+    'sign:report:read': '01900000-0000-7000-8000-00000000140f',
+    'sign:member:manage': '01900000-0000-7000-8000-000000001410',
+    'sign:settings:manage': '01900000-0000-7000-8000-000000001411',
+    'sign:billing:manage': '01900000-0000-7000-8000-000000001412',
+    'sign:integration:manage': '01900000-0000-7000-8000-000000001413',
   },
   // RoleScope ids — one per (role,scope) assignment. Hardcoded sequence
   // 0x30..0x39 (10 assignments: 6 tenant_admin + 4 recruiter; the 3
@@ -2885,10 +2885,10 @@ const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['esign_owner', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
-  ['esign_admin', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
-  ['esign_sender', ['esign:envelope:create', 'esign:envelope:send', 'esign:envelope:read']],
-  ['esign_viewer', ['esign:envelope:read']],
+  ['sign_owner', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
+  ['sign_admin', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
+  ['sign_sender', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
+  ['sign_viewer', ['sign:envelope:read']],
 ];
 
 // Sign Unified Product S-1 — the Sign permission contract grants that complete
@@ -3102,10 +3102,10 @@ export async function runIdentitySeed(
   // EXACTLY the ORG_ADMIN_SCOPE_KEYS bundle (no ATS/Sign/platform scope). The
   // owner role of a tenant provisioned without the ats capability.
   await upsertRole(prisma, SEED_IDS.roles.org_admin, 'org_admin', 'Organization Admin — product-neutral organization administrator (profile, domain, sites, users and roles, settings, audit trail); no ATS, Sign or platform authority');
-  await upsertRole(prisma, SEED_IDS.roles.esign_owner, 'esign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).');
-  await upsertRole(prisma, SEED_IDS.roles.esign_admin, 'esign_admin', 'Sign Admin — administrative operator of a Sign organization; full envelope authority (create/send/read).');
-  await upsertRole(prisma, SEED_IDS.roles.esign_sender, 'esign_sender', 'Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
-  await upsertRole(prisma, SEED_IDS.roles.esign_viewer, 'esign_viewer', 'Sign Viewer — read-only access to envelopes + signing history (read).');
+  await upsertRole(prisma, SEED_IDS.roles.sign_owner, 'sign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.sign_admin, 'sign_admin', 'Sign Admin — administrative operator of a Sign organization; full envelope authority (create/send/read).');
+  await upsertRole(prisma, SEED_IDS.roles.sign_sender, 'sign_sender', 'Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
+  await upsertRole(prisma, SEED_IDS.roles.sign_viewer, 'sign_viewer', 'Sign Viewer — read-only access to envelopes + signing history (read).');
 
   // 6. Scopes (6 pre-A1a + 7 PR-A1a = 13 entries).
   await upsertScope(prisma, SEED_IDS.scopes['consent:read'], 'consent:read', 'Read consent state');
@@ -3362,20 +3362,20 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:read'], 'document_requirement:read', 'DOC-2 — read document requirements and requirement status (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:manage'], 'document_requirement:manage', 'DOC-2 — create/satisfy/waive document requirements (admin act; waiver authority). NO scope.created (scope-seed precedent).');
   // PX-V1 PX-3 — E-Sign sender product scopes (dedicated ESIGN_SENDER_SEED_BUNDLES).
-  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:create'], 'esign:envelope:create', 'PX-V1 PX-3 — create an E-Sign envelope (upload PDF, place fields). E-Sign sender product scope; NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:send'], 'esign:envelope:send', 'PX-V1 PX-3 — dispatch an E-Sign envelope for signature. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:read'], 'esign:envelope:read', 'PX-V1 PX-3 — list/track E-Sign envelopes + evidence. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:create'], 'sign:envelope:create', 'PX-V1 PX-3 — create an E-Sign envelope (upload PDF, place fields). E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:send'], 'sign:envelope:send', 'PX-V1 PX-3 — dispatch an E-Sign envelope for signature. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:read'], 'sign:envelope:read', 'PX-V1 PX-3 — list/track E-Sign envelopes + evidence. E-Sign sender product scope; NO scope.created (scope-seed precedent).');
   // Sign Unified Product S-1 — the Sign permission contract scopes.
-  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:read:all'], 'esign:envelope:read:all', 'Sign S-1 — read every envelope in the organization (not only own). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:envelope:manage:all'], 'esign:envelope:manage:all', 'Sign S-1 — edit drafts and remind/void any envelope in the organization. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:contact:read'], 'esign:contact:read', 'Sign S-1 — read the organization Sign contacts (past recipients). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:template:use'], 'esign:template:use', 'Sign S-1 — use Sign templates. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:template:manage'], 'esign:template:manage', 'Sign S-1 — create and maintain Sign templates. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:report:read'], 'esign:report:read', 'Sign S-1 — read Sign reports. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:member:manage'], 'esign:member:manage', 'Sign S-1 — assign and remove Sign roles for organization members. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:settings:manage'], 'esign:settings:manage', 'Sign S-1 — manage Sign settings. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:billing:manage'], 'esign:billing:manage', 'Sign S-1 — manage the Sign plan and billing. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['esign:integration:manage'], 'esign:integration:manage', 'Sign S-1 — manage applications, installations and webhooks for Sign. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:read:all'], 'sign:envelope:read:all', 'Sign S-1 — read every envelope in the organization (not only own). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:manage:all'], 'sign:envelope:manage:all', 'Sign S-1 — edit drafts and remind/void any envelope in the organization. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:contact:read'], 'sign:contact:read', 'Sign S-1 — read the organization Sign contacts (past recipients). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:template:use'], 'sign:template:use', 'Sign S-1 — use Sign templates. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:template:manage'], 'sign:template:manage', 'Sign S-1 — create and maintain Sign templates. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:report:read'], 'sign:report:read', 'Sign S-1 — read Sign reports. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:member:manage'], 'sign:member:manage', 'Sign S-1 — assign and remove Sign roles for organization members. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:settings:manage'], 'sign:settings:manage', 'Sign S-1 — manage Sign settings. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:billing:manage'], 'sign:billing:manage', 'Sign S-1 — manage the Sign plan and billing. NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['sign:integration:manage'], 'sign:integration:manage', 'Sign S-1 — manage applications, installations and webhooks for Sign. NO scope.created (scope-seed precedent).');
 
   for (const [roleKey, scopeKeys] of Object.entries(ROLE_SCOPE_ASSIGNMENTS)) {
     const role_id = roleIdForKey(roleKey);

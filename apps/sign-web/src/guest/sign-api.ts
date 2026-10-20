@@ -1,5 +1,5 @@
 // DOC-4 (R-4-8) — the E-Sign public signer transport client. Talks ONLY to
-// /v1/esign/signing/* (proxied to esign-service). The tenant is resolved
+// /v1/sign/signing/* (proxied to sign-service). The tenant is resolved
 // server-side FROM the capability token; the client never sends a tenant id.
 // Unified UX (signer handoff §6–§7): typed errors so each token state gets its
 // own screen, plus the existing document / source / decline endpoints.
@@ -63,7 +63,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     // Sign Unified Product S-2 — guest signing shares the host with the signed-in
     // workspace; the capability token in the body is the ONLY authority, so the
     // request never carries workspace cookies (credentials: 'omit').
-    res = await fetch(`/v1/esign/signing/${path}`, {
+    res = await fetch(`/v1/sign/signing/${path}`, {
       method: 'POST',
       credentials: 'omit',
       headers: { 'Content-Type': 'application/json' },

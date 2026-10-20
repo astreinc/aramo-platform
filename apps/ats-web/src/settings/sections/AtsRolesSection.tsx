@@ -13,7 +13,7 @@ import { SettingsSection } from '../components';
 // The list shows the ATS roles: the Sign (`esign_*`) roles and the
 // product-neutral `org_admin` belong to other surfaces (display filter only).
 export function isAtsRole(role: RoleCatalogView): boolean {
-  return !role.key.startsWith('esign_') && role.key !== 'org_admin';
+  return !role.key.startsWith('sign_') && role.key !== 'org_admin';
 }
 
 function hereForReturn(): string {

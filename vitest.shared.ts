@@ -41,7 +41,7 @@ export default defineConfig({
       // runtime resolves the test-bootstrap import in pact/provider/src/
       // verify.ts. eslint-side boundary override is scoped to that file pair.
       '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
-      '@aramo/esign-service': resolve(root, 'apps/esign-service/src/app/app.module.ts'),
+      '@aramo/sign-service': resolve(root, 'apps/sign-service/src/app/app.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       // PR-A1a §3 — new leaf lib hosting RolesGuard + @RequireScopes /
       // @RequireSiteMatch decorators. Mirrors tsconfig.base.json
@@ -77,7 +77,7 @@ export default defineConfig({
       '@aramo/documents': resolve(root, 'libs/documents/src/index.ts'),
       '@aramo/documents-contracts': resolve(root, 'libs/documents-contracts/src/index.ts'),
       '@aramo/documents-rendering': resolve(root, 'libs/documents-rendering/src/index.ts'),
-      '@aramo/esign': resolve(root, 'libs/esign/src/index.ts'),
+      '@aramo/sign': resolve(root, 'libs/sign/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.

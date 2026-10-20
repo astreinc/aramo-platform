@@ -18,7 +18,7 @@ export interface ResolveSessionInput {
   provider_subject: string;
   // The IdP-VERIFIED email (the adapter normalises it for reconcile-by-email).
   verified_email: string;
-  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
+  consumer: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'sign' | 'org';
   // IC-2 PR-4 (Auth-Decoupling PR-4 Amendment A1 §2 item 4) — OPTIONAL host
   // classification + host context sealed at login. Auth passes them through;
   // the ADAPTER applies the binding rules (host-binding.ts) after tenant
@@ -55,7 +55,7 @@ export interface ResolveScopesInput {
   // IC-2 PR-5 (Auth-Decoupling PR-4 Amendment A2) — OPTIONAL consumer so the
   // adapter applies the same platform-sentinel status-gate exemption at refresh
   // that it applies at login. undefined = tenant consumer (gate applies).
-  consumer?: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'esign' | 'org';
+  consumer?: 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'sign' | 'org';
 }
 
 // The re-mint path (refresh): re-resolve a known principal's authz_version + site

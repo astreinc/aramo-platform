@@ -11,7 +11,7 @@ import { SignatureRoutingService } from '../document-signing/signature-routing.s
 // document for signature now, and through which provider", with typed reasons.
 
 const PERIOD_END = new Date('2026-11-01T00:00:00.000Z');
-const status = (used: number, limit = 100) => ({ subscribed: true as const, plan_key: 'p', allowance_key: 'esign.envelopes', limit, used, remaining: Math.max(0, limit - used), period_start: new Date('2026-10-01T00:00:00Z'), period_end: PERIOD_END, threshold: used >= limit ? 'EXHAUSTED' : used >= 80 ? 'WARNING' : 'OK' });
+const status = (used: number, limit = 100) => ({ subscribed: true as const, plan_key: 'p', allowance_key: 'sign.envelopes', limit, used, remaining: Math.max(0, limit - used), period_start: new Date('2026-10-01T00:00:00Z'), period_end: PERIOD_END, threshold: used >= limit ? 'EXHAUSTED' : used >= 80 ? 'WARNING' : 'OK' });
 
 function make(opts: { provider?: SignatureProviderKey; caps?: string[]; allowance?: unknown; registry?: SignatureProviderKey[] } = {}) {
   const routing = {
@@ -19,7 +19,7 @@ function make(opts: { provider?: SignatureProviderKey; caps?: string[]; allowanc
     findRoute: vi.fn(async () => null),
     recordRoute: vi.fn(async () => undefined),
   } as unknown as SignatureRoutingRepository;
-  const entitlements = { getCapabilities: vi.fn(async () => new Set(opts.caps ?? ['core', 'ats', 'esign'])) } as unknown as EntitlementRepository;
+  const entitlements = { getCapabilities: vi.fn(async () => new Set(opts.caps ?? ['core', 'ats', 'sign'])) } as unknown as EntitlementRepository;
   const allowance = { getStatus: vi.fn(async () => opts.allowance ?? status(3)) } as unknown as AllowanceService;
   const port = { name: 'aramo' } as unknown as SignatureProviderPort;
   const registry = new Map<SignatureProviderKey, SignatureProviderPort>((opts.registry ?? ['aramo_sign']).map((k) => [k, port]));
@@ -38,7 +38,7 @@ describe('SignatureAvailabilityService', () => {
   it.each([
     ['NOT_AUTHORIZED', { }, ['document:create']],
     ['NOT_SUBSCRIBED', { caps: ['core', 'ats'] }, SENDER],
-    ['NOT_SUBSCRIBED', { allowance: { subscribed: false, allowance_key: 'esign.envelopes' } }, SENDER],
+    ['NOT_SUBSCRIBED', { allowance: { subscribed: false, allowance_key: 'sign.envelopes' } }, SENDER],
     ['LIMIT_REACHED', { allowance: status(100) }, SENDER],
     ['PROVIDER_UNAVAILABLE', { provider: 'docusign' as const }, SENDER],
   ])('%s', async (reason, opts, scopes) => {

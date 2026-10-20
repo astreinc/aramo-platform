@@ -32,7 +32,7 @@ interface ProductCopy {
 
 const PRODUCT_COPY: Record<Exclude<ProductKey, 'org'>, ProductCopy> = {
   ats: { name: 'Aramo ATS', short: 'ATS', blurb: 'Requisitions, talent, submittals and placements', icon: <IconBriefcase /> },
-  esign: { name: 'Aramo Sign', short: 'Sign', blurb: 'Send and track documents for e-signature', icon: <IconPencil /> },
+  sign: { name: 'Aramo Sign', short: 'Sign', blurb: 'Send and track documents for e-signature', icon: <IconPencil /> },
 };
 
 function greeting(now: Date): string {

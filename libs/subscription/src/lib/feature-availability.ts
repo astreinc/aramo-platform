@@ -9,19 +9,19 @@ export type FeatureAvailability = 'AVAILABLE' | 'NOT_AVAILABLE';
 
 export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>> = {
   // Sending envelopes for signature (the Sign engine).
-  'esign.envelopes': 'AVAILABLE',
+  'sign.envelopes': 'AVAILABLE',
   // Per-tenant storage allocation (enforced at upload).
-  'esign.storage_bytes': 'AVAILABLE',
+  'sign.storage_bytes': 'AVAILABLE',
   // Shared organization workspace: several users with Sign roles see and act on
   // the organization's envelopes (PX-1 business workspace, role-based access).
-  'esign.team_collaboration': 'AVAILABLE',
+  'sign.team_collaboration': 'AVAILABLE',
   // Not built: the console shows templates as a future capability (PX-V1 §15);
   // there is no forms feature; no AI summary exists for Sign.
-  'esign.templates': 'NOT_AVAILABLE',
-  'esign.forms': 'NOT_AVAILABLE',
-  'esign.ai_assist_summary': 'NOT_AVAILABLE',
-  'esign.advanced_analytics': 'NOT_AVAILABLE',
-  'esign.custom_domain': 'NOT_AVAILABLE',
+  'sign.templates': 'NOT_AVAILABLE',
+  'sign.forms': 'NOT_AVAILABLE',
+  'sign.ai_assist_summary': 'NOT_AVAILABLE',
+  'sign.advanced_analytics': 'NOT_AVAILABLE',
+  'sign.custom_domain': 'NOT_AVAILABLE',
 };
 
 /** Unknown keys are not available (never advertise what is not registered). */

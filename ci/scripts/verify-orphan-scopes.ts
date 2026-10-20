@@ -52,23 +52,23 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'identity:user:read': { cls: 'ACTIVE_RESERVED', reason: 'Lead-ratified auditor/compliance bundle (E2 §182); read surface deferred to Reporting/Audit DDR' },
   'identity:tenant:read': { cls: 'ACTIVE_RESERVED', reason: 'same auditor/compliance bundle' },
   'examination:read': { cls: 'ACTIVE_RESERVED', reason: 'examination-read gate reserved by the OpenAPI contract (x-required-scope on 5 routes; PR-A1a-2 §48); no live handler yet' },
-  // PX-1 — esign:envelope:read / :create / :send are now ENFORCED on the
-  // authenticated sender surface (/v1/esign/sender/*). :send is a literal
+  // PX-1 — sign:envelope:read / :create / :send are now ENFORCED on the
+  // authenticated sender surface (/v1/sign/sender/*). :send is a literal
   // RequireScopes (the boundary's default); :read and :create reach RequireScopes
   // through EsignSenderBoundary(scope) — a parameter the literal scan cannot see.
-  'esign:envelope:read': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_READ_SCOPE) → RequireScopes on every sender read route (apps/esign-service/src/app/sender/esign-sender.controller.ts)' },
-  'esign:envelope:create': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_CREATE_SCOPE) → RequireScopes on every sender draft-authoring route (apps/esign-service/src/app/sender/esign-sender.controller.ts)' },
+  'sign:envelope:read': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_READ_SCOPE) → RequireScopes on every sender read route (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
+  'sign:envelope:create': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_CREATE_SCOPE) → RequireScopes on every sender draft-authoring route (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
   // Sign Unified Product S-1 — the Sign permission contract (esign-permissions.ts).
-  'esign:contact:read': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.CONTACT_READ) → RequireScopes on GET /v1/esign/sender/contacts (apps/esign-service/src/app/sender/esign-sender.controller.ts)' },
-  'esign:member:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE) → RequireScopes on the Sign member routes (apps/esign-service/src/app/sender/esign-sender.controller.ts)' },
-  'esign:envelope:read:all': { cls: 'SERVICE_ENFORCED', reason: 'visibility filter — no owner filter when held (SenderEnvelopeService.visibleOwner, apps/esign-service/src/app/sender/sender-envelope.service.ts)' },
-  'esign:envelope:manage:all': { cls: 'SERVICE_ENFORCED', reason: 'ownership gate — mutating another member\'s envelope needs it (SenderEnvelopeService.assertMayChange, apps/esign-service/src/app/sender/sender-envelope.service.ts)' },
-  'esign:billing:manage': { cls: 'SERVICE_ENFORCED', reason: 'billing management authority, any-of with tenant:admin:settings (canManageBilling, apps/esign-service/src/app/billing/esign-billing.controller.ts)' },
-  'esign:template:use': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — templates are catalogued but not built (libs/subscription feature-availability); enforcement lands with the templates surface' },
-  'esign:template:manage': { cls: 'ACTIVE_RESERVED', reason: 'same — Sign templates not built' },
-  'esign:report:read': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — dedicated Sign reports API not built; the dashboard summary follows envelope visibility' },
-  'esign:settings:manage': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — no Sign-owned settings write surface yet' },
-  'esign:integration:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE) → RequireScopes on the installation administration routes (apps/esign-service/src/app/integrations/integration-admin.controller.ts)' },
+  'sign:contact:read': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.CONTACT_READ) → RequireScopes on GET /v1/sign/sender/contacts (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
+  'sign:member:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE) → RequireScopes on the Sign member routes (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
+  'sign:envelope:read:all': { cls: 'SERVICE_ENFORCED', reason: 'visibility filter — no owner filter when held (SenderEnvelopeService.visibleOwner, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
+  'sign:envelope:manage:all': { cls: 'SERVICE_ENFORCED', reason: 'ownership gate — mutating another member\'s envelope needs it (SenderEnvelopeService.assertMayChange, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
+  'sign:billing:manage': { cls: 'SERVICE_ENFORCED', reason: 'billing management authority, any-of with tenant:admin:settings (canManageBilling, apps/sign-service/src/app/billing/esign-billing.controller.ts)' },
+  'sign:template:use': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — templates are catalogued but not built (libs/subscription feature-availability); enforcement lands with the templates surface' },
+  'sign:template:manage': { cls: 'ACTIVE_RESERVED', reason: 'same — Sign templates not built' },
+  'sign:report:read': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — dedicated Sign reports API not built; the dashboard summary follows envelope visibility' },
+  'sign:settings:manage': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — no Sign-owned settings write surface yet' },
+  'sign:integration:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE) → RequireScopes on the installation administration routes (apps/sign-service/src/app/integrations/integration-admin.controller.ts)' },
   // SKILL-TAX-1F-B2 — platform:skill:read / platform:skill:manage are now LITERALLY
   // enforced by the SkillGovernanceController @RequireScopes handlers (the platform
   // taxonomy-governance admin API), so their ACTIVE_RESERVED classification entries

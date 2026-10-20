@@ -469,12 +469,12 @@ describe('JwtAuthGuard — generic tier tripwire (PR-5)', () => {
   it('assertTierTripwire is pure: the matrix', () => {
     const ok = (c: string, t: string, p: string) => assertTierTripwire({ consumer_type: c as never, tenant_id: t }, p, 'r');
     expect(() => ok('recruiter', 't-1', '/v1/x')).not.toThrow();
-    expect(() => ok('esign', 't-1', '/v1/esign/sender')).not.toThrow();
+    expect(() => ok('sign', 't-1', '/v1/sign/sender')).not.toThrow();
     expect(() => ok('platform', PLATFORM_TENANT_SENTINEL_ID, '/platform/x')).not.toThrow();
     expect(() => ok('portal', PLATFORM_TENANT_SENTINEL_ID, '/v1/portal/x')).not.toThrow();
     expect(() => ok('platform', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
     expect(() => ok('recruiter', 't-1', '/platform/x')).toThrow();
-    expect(() => ok('esign', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
+    expect(() => ok('sign', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
     expect(() => ok('ingestion', PLATFORM_TENANT_SENTINEL_ID, '/v1/x')).toThrow();
   });
 });
@@ -558,7 +558,7 @@ describe('JwtAuthGuard — consumer-isolated session cookies (D-ORG-4)', () => {
     const recruiter = await makeToken({ consumer_type: 'recruiter' });
     const ok = makeRequest({ 'X-Aramo-Consumer': 'recruiter' }, { aramo_access_token: recruiter });
     expect(await guard.canActivate(makeContext(ok))).toBe(true);
-    const bad = makeRequest({ 'X-Aramo-Consumer': 'esign' }, { aramo_access_token: recruiter });
+    const bad = makeRequest({ 'X-Aramo-Consumer': 'sign' }, { aramo_access_token: recruiter });
     await expect(guard.canActivate(makeContext(bad))).rejects.toMatchObject({ code: 'INVALID_TOKEN', context: { details: { reason: 'consumer_header_mismatch' } } });
   });
   it('no header: a single consumer cookie is unambiguous and used; two consumer cookies → 401 ambiguous_consumer_cookie (fail closed)', async () => {

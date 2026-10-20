@@ -116,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
     expect(row.domain_verification_status).toBe('UNVERIFIED');
     const birth = await prisma.identityAuditEvent.findFirst({ where: { event_type: 'identity.tenant.created', tenant_id: tenant.id } });
     expect(birth?.event_payload).toMatchObject({ kind: 'PERSONAL', allowed_domain: null, source: 'platform.provision' });
-    caps.set(personalTenantId, new Set(['core', 'esign']));
+    caps.set(personalTenantId, new Set(['core', 'sign']));
   });
 
   it('#1 — the owner is an ordinary tenant-owned User: one membership, org_admin only, authz baseline; NO ATS role', async () => {
@@ -156,50 +156,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
     expect(await prisma.user.count({ where: { email: PERSONAL_EMAIL } })).toBe(1);
   });
 
-  it('#4 / #6 — authorization: esign consumer carries the organization subset only (no send scope) until esign_owner is granted through the governed path; recruiter consumer carries NO esign scope; ATS scopes need the ats entitlement the tenant does not hold', async () => {
+  it('#4 / #6 — authorization: esign consumer carries the organization subset only (no send scope) until sign_owner is granted through the governed path; recruiter consumer carries NO esign scope; ATS scopes need the ats entitlement the tenant does not hold', async () => {
     const resolver = new IdentityEffectiveAuthorizationResolver(roleSvc, versions, new InMemoryScopeCache(), { portalScopes: ['portal:profile:read'], scopeCacheTtlSeconds: 300 }, entitlements);
     const v = () => versions.getCurrentVersion({ tenant_id: personalTenantId, principal_id: personalUserId });
-    const input = async (consumer_type: 'esign' | 'recruiter') => ({ tenant_id: personalTenantId, principal_id: personalUserId, consumer_type, actor_kind: 'user' as const, token_authz_version: await v() });
-    const before = await resolver.resolve(await input('esign'));
+    const input = async (consumer_type: 'sign' | 'recruiter') => ({ tenant_id: personalTenantId, principal_id: personalUserId, consumer_type, actor_kind: 'user' as const, token_authz_version: await v() });
+    const before = await resolver.resolve(await input('sign'));
     expect(before.status).toBe('ok');
     if (before.status === 'ok') {
       expect([...before.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
       expect(before.scopes).not.toContain(ESIGN_SENDER_SCOPE_KEY);
     }
-    // The governed grant (IC-3 PR-8): the org_admin owner assigns esign_owner in
+    // The governed grant (IC-3 PR-8): the org_admin owner assigns sign_owner in
     // its own esign-entitled tenant — the SAME primitive PATCH roles uses.
     await identitySvc.replaceMembershipRoles({
       membership_id: personalMembershipId, tenant_id: personalTenantId,
-      role_keys: ['org_admin', 'esign_owner'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.esign_owner], request_id: 'rq-pr9-6',
+      role_keys: ['org_admin', 'sign_owner'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.sign_owner], request_id: 'rq-pr9-6',
     });
-    const after = await resolver.resolve(await input('esign'));
+    const after = await resolver.resolve(await input('sign'));
     expect(after.status).toBe('ok');
     if (after.status === 'ok') expect(after.scopes).toContain(ESIGN_SENDER_SCOPE_KEY);
     const recruiter = await resolver.resolve(await input('recruiter'));
     expect(recruiter.status).toBe('ok');
     if (recruiter.status === 'ok') {
-      expect(recruiter.scopes.some((s) => s.startsWith('esign:'))).toBe(false);
+      expect(recruiter.scopes.some((s) => s.startsWith('sign:'))).toBe(false);
       expect(recruiter.scopes).not.toContain('talent:read');
     }
     // An ATS-only tenant could not grant the Sign role at all (PR-8 assignability).
     caps.set(personalTenantId, new Set(['core']));
     await expect(identitySvc.replaceMembershipRoles({
       membership_id: personalMembershipId, tenant_id: personalTenantId,
-      role_keys: ['org_admin', 'esign_sender'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.esign_sender], request_id: 'rq-pr9-6b',
+      role_keys: ['org_admin', 'sign_sender'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.sign_sender], request_id: 'rq-pr9-6b',
     })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'esign_role_not_entitled' } } });
-    caps.set(personalTenantId, new Set(['core', 'esign']));
+    caps.set(personalTenantId, new Set(['core', 'sign']));
   });
 
-  it('D-ORG — product availability on the real spine: the PERSONAL owner (org_admin + esign_owner) sees Organization available, Sign subscribed+authorized but not_activated, ATS not_subscribed; the ATS-role gate refuses a recruiter role in this tenant', async () => {
+  it('D-ORG — product availability on the real spine: the PERSONAL owner (org_admin + sign_owner) sees Organization available, Sign subscribed+authorized but not_activated, ATS not_subscribed; the ATS-role gate refuses a recruiter role in this tenant', async () => {
     const products = new ProductAvailabilityService(roleSvc, entitlements);
     const v = await products.forPrincipal({ user_id: personalUserId, tenant_id: personalTenantId });
     const by = Object.fromEntries(v.products.map((p) => [p.key, p]));
     expect(by['org']).toMatchObject({ subscribed: true, authorized: true, available: true, entry_path: '/org/' });
-    expect(by['esign']).toMatchObject({ subscribed: true, authorized: true, available: false, reason: 'not_activated' });
+    expect(by['sign']).toMatchObject({ subscribed: true, authorized: true, available: false, reason: 'not_activated' });
     expect(by['ats']).toMatchObject({ subscribed: false, authorized: false, available: false, reason: 'not_subscribed' });
     await expect(identitySvc.replaceMembershipRoles({
       membership_id: personalMembershipId, tenant_id: personalTenantId,
-      role_keys: ['org_admin', 'esign_owner', 'recruiter'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.esign_owner, SEED_IDS.roles.recruiter], request_id: 'rq-dorg-1',
+      role_keys: ['org_admin', 'sign_owner', 'recruiter'], role_ids: [SEED_IDS.roles.org_admin, SEED_IDS.roles.sign_owner, SEED_IDS.roles.recruiter], request_id: 'rq-dorg-1',
     })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'ats_role_not_entitled' } } });
   });
 
@@ -225,7 +225,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
     expect(Number(fks[0]?.count ?? -1)).toBe(0);
   });
 
-  it('#12 — the portal credential resolves EXACTLY the fixed portal set: the roles the same-email tenant User holds (org_admin + esign_owner) never widen it', async () => {
+  it('#12 — the portal credential resolves EXACTLY the fixed portal set: the roles the same-email tenant User holds (org_admin + sign_owner) never widen it', async () => {
     const resolver = new IdentityEffectiveAuthorizationResolver(roleSvc, versions, new InMemoryScopeCache(), { portalScopes: ['portal:profile:read'], scopeCacheTtlSeconds: 300 }, entitlements);
     const portal = await resolver.resolve({ tenant_id: PLATFORM_TENANT_SENTINEL_ID, principal_id: personalUserId, consumer_type: 'portal', actor_kind: 'user', token_authz_version: 1 });
     expect(portal).toEqual({ status: 'ok', scopes: ['portal:profile:read'] });

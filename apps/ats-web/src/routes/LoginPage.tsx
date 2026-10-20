@@ -39,7 +39,7 @@ function copyForError(code: string): ErrorCopy {
         retry: true,
       };
     // D-ORG (§3.D) — the tenant does not hold this product (recruiter needs
-    // `ats`, esign needs `esign`): the sign-in itself succeeded, but the
+    // `ats`, esign needs `sign`): the sign-in itself succeeded, but the
     // product is not part of the organization's subscription. Retrying cannot
     // help; the App Home shows what IS available.
     case 'TENANT_CAPABILITY_NOT_ENTITLED':

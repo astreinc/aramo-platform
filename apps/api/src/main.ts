@@ -20,7 +20,7 @@ import {
 import {
   ESIGN_EVENTS_MAX_BODY_BYTES,
   ESIGN_EVENTS_WEBHOOK_ROUTE,
-} from './integrations/esign/esign-webhook.constants.js';
+} from './integrations/sign/esign-webhook.constants.js';
 import {
   DOCUSIGN_WEBHOOK_MAX_BODY_BYTES,
   DOCUSIGN_WEBHOOK_ROUTE,
@@ -61,7 +61,7 @@ async function bootstrap(): Promise<void> {
     express.raw({ type: () => true, limit: ZOOM_WEBHOOK_MAX_BODY_BYTES }),
   );
   // E-Sign OC v2 — route-scoped RAW body for the canonical E-Sign lifecycle-event
-  // receiver ONLY: the x-aramo-esign-signature HMAC covers `${timestamp}.${raw
+  // receiver ONLY: the x-aramo-sign-signature HMAC covers `${timestamp}.${raw
   // body}`, so the exact signed bytes must survive to the verifier (never the
   // re-serialized JSON).
   app.use(

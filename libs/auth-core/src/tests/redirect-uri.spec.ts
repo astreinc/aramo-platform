@@ -186,7 +186,7 @@ describe('D-ORG-2 — per-consumer post-login landing and return_to', () => {
     delete process.env['AUTH_POST_LOGIN_PATH'];
     expect(defaultPostLoginPath('recruiter')).toBe('/ats/');
     expect(defaultPostLoginPath('org')).toBe('/');
-    expect(defaultPostLoginPath('esign')).toBe('/');
+    expect(defaultPostLoginPath('sign')).toBe('/');
     expect(defaultPostLoginPath('platform')).toBe('/');
     expect(defaultPostLoginPath(undefined)).toBe('/');
     process.env['AUTH_POST_LOGIN_PATH_RECRUITER'] = '/ats/desk';

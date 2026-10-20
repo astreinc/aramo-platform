@@ -96,7 +96,7 @@ describe('HostBaseResolver.resolve', () => {
 
   // IC-2 PR-4 (F-3) — the DARK product host class via the env chain: an exact
   // AUTH_PRODUCT_HOSTS match classifies PRODUCT and PRECEDES the tenant slug
-  // match, so a tenant that happened to own the slug `esign` is never bound.
+  // match, so a tenant that happened to own the slug `sign` is never bound.
   it('PRODUCT host (AUTH_PRODUCT_HOSTS exact): class PRODUCT, https base, NO tenant context even if the slug resolves', async () => {
     process.env['AUTH_PRODUCT_HOSTS'] = 'esign.aramo.ai';
     const { resolver } = make(vi.fn().mockResolvedValue({ id: ASTRE_ID, identity_provider: null }));

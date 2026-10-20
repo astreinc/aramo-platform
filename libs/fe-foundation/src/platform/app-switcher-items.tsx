@@ -45,7 +45,7 @@ export function buildAppSwitcherItems(args: {
   ];
   for (const [key, productKey] of [
     ['ats', 'ats'],
-    ['sign', 'esign'],
+    ['sign', 'sign'],
   ] as const) {
     const p = productByKey(products, productKey);
     const label = key === 'ats' ? 'Aramo ATS' : 'Aramo Sign';

@@ -130,7 +130,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_LAST_OWNER: 409,
   // Sign Unified Product S-4 — the installation was revoked by a Sign admin.
   ESIGN_INSTALLATION_REVOKED: 409,
-  // Sign Unified Product S-5 — ESIGN_WEBHOOK_SECRET_KEY is not configured.
+  // Sign Unified Product S-5 — SIGN_WEBHOOK_SECRET_KEY is not configured.
   ESIGN_WEBHOOKS_UNAVAILABLE: 503,
   SIGNER_NOT_FOUND: 404,
   SIGNING_SESSION_INVALID: 401,
@@ -311,7 +311,7 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   MICROSOFT_SCHEDULING_IN_PROGRESS: 409,
   // IC-1 PR-1 (Amendment A1 §4) — cross-tenant invitation refusal (both tiers).
   EMAIL_UNAVAILABLE: 409,
-  // ES-2 — esign-service request authentication not configured (fail closed).
+  // ES-2 — sign-service request authentication not configured (fail closed).
   ESIGN_SERVICE_AUTH_UNAVAILABLE: 503,
   // TIP-E2E INC-3 (directive §9, D6) — screening session lifecycle refusals.
   SCREENING_SESSION_STATE_INVALID: 422,

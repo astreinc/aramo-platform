@@ -20,7 +20,7 @@ function build(tenant: unknown = { id: T, kind: 'BUSINESS' }) {
   } as unknown as SubscriptionLifecycleService;
   const c = new PlatformSignController(
     { getTenantById: vi.fn(async () => tenant) } as unknown as TenantService,
-    { getCapabilities: vi.fn(async () => new Set(['esign', 'core'])) } as unknown as EntitlementRepository,
+    { getCapabilities: vi.fn(async () => new Set(['sign', 'core'])) } as unknown as EntitlementRepository,
     lifecycle,
   );
   return { c, lifecycle };
@@ -30,13 +30,13 @@ describe('PlatformSignController', () => {
   it('composes capabilities, subscription, usage and recent billing events', async () => {
     const { c, lifecycle } = build();
     const res = await c.sign(T, auth('platform'), 'r');
-    expect(res).toMatchObject({ tenant_id: T, tenant_kind: 'BUSINESS', capabilities: ['core', 'esign'], sign_entitled: true, allowance: { used: 3, limit: 100 } });
+    expect(res).toMatchObject({ tenant_id: T, tenant_kind: 'BUSINESS', capabilities: ['core', 'sign'], sign_entitled: true, allowance: { used: 3, limit: 100 } });
     expect(res.billing_events).toHaveLength(1);
-    expect(lifecycle.account).toHaveBeenCalledWith(T, 'esign.envelopes');
+    expect(lifecycle.account).toHaveBeenCalledWith(T, 'sign.envelopes');
   });
 
   it('refuses a non-platform token and 404s an unknown tenant', async () => {
-    await expect(build().c.sign(T, auth('esign'), 'r')).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+    await expect(build().c.sign(T, auth('sign'), 'r')).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
     await expect(build(null).c.sign(T, auth('platform'), 'r')).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
   });
 });

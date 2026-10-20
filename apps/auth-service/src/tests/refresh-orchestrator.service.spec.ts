@@ -408,11 +408,11 @@ describe('IC-2 PR-6 — refresh re-proves the consumer\'s product capability', (
     expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
   });
   it('esign refresh on an ATS-only tenant → consumer_not_entitled; with esign → success', async () => {
-    const esignDto = () => makeDto({ consumer_type: 'esign' });
+    const esignDto = () => makeDto({ consumer_type: 'sign' });
     const base = () => ({ ...makeMocks().refreshTokens, findByHash: vi.fn().mockResolvedValue(esignDto()) } as unknown as RefreshTokenService);
-    const denied = await makeSvc(makeMocks({ refreshTokens: base() })).handleRefresh({ consumer: 'esign', refreshCookie: 'p' });
+    const denied = await makeSvc(makeMocks({ refreshTokens: base() })).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
     expect(denied).toEqual({ kind: 'token_invalid', reason: 'consumer_not_entitled' });
-    const ok = await makeSvc(makeMocks({ refreshTokens: base(), entitlements: { getCapabilities: async () => new Set(['core', 'esign']) } as unknown as TenantEntitlementReader })).handleRefresh({ consumer: 'esign', refreshCookie: 'p' });
+    const ok = await makeSvc(makeMocks({ refreshTokens: base(), entitlements: { getCapabilities: async () => new Set(['core', 'sign']) } as unknown as TenantEntitlementReader })).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
     expect(ok.kind).toBe('success');
   });
 });

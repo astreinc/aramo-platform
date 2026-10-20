@@ -22,7 +22,7 @@ import type { RoleCatalogView } from './role-catalog.view.js';
 // per-tenant custom roles) — reference data with no tenant-specific content to
 // leak. IC-3 PR-8: the caller's tenant (AuthContext, never a request input)
 // selects ONE partition — the E-Sign product roles appear only for a tenant
-// that holds the `esign` capability (RoleCatalogService).
+// that holds the `sign` capability (RoleCatalogService).
 @Controller('v1/tenant/roles-catalog')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')

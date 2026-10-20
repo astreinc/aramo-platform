@@ -12,7 +12,7 @@ import {
   verifyEsignServiceRequest,
 } from '../lib/esign-service-request-auth.js';
 
-// ES-2 — the shared esign-service → Core request-signature scheme.
+// ES-2 — the shared sign-service → Core request-signature scheme.
 
 const SECRET = 'unit-test-esign-secret';
 const NOW = 1_800_000_000;

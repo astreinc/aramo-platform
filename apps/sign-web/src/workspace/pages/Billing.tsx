@@ -4,7 +4,7 @@ import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, typ
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
 
 // Aramo Sign launch — the organization's plan, usage and self-service billing.
-// Everything shown is the backend's view (GET /v1/esign/billing/*). The
+// Everything shown is the backend's view (GET /v1/sign/billing/*). The
 // subscription opens only when the backend has verified the payment with the
 // provider: a return from checkout never asserts it, so on `?checkout=success`
 // this page waits for the backend instead of trusting the redirect.
@@ -26,10 +26,10 @@ const STATUS_LABEL: Record<string, [string, string]> = {
 };
 
 const FEATURE_LABEL: Record<string, string> = {
-  'esign.ai_assist_summary': 'AI assist summary',
-  'esign.team_collaboration': 'Team collaboration',
-  'esign.advanced_analytics': 'Advanced analytics',
-  'esign.custom_domain': 'Custom domain',
+  'sign.ai_assist_summary': 'AI assist summary',
+  'sign.team_collaboration': 'Team collaboration',
+  'sign.advanced_analytics': 'Advanced analytics',
+  'sign.custom_domain': 'Custom domain',
 };
 
 function go(url: string): void {
@@ -149,10 +149,10 @@ function PlanCard({
   salesUrl: string | null;
 }) {
   const lines = [
-    allowanceLine(plan, 'esign.envelopes', 'E-Signs'),
-    allowanceLine(plan, 'esign.forms', 'forms'),
-    capacityLine(plan, 'esign.templates', (n) => `${n} template${n === 1 ? '' : 's'}`, 'Unlimited templates'),
-    capacityLine(plan, 'esign.storage_bytes', (n) => `${bytes(n)} storage`, 'Storage by agreement'),
+    allowanceLine(plan, 'sign.envelopes', 'E-Signs'),
+    allowanceLine(plan, 'sign.forms', 'forms'),
+    capacityLine(plan, 'sign.templates', (n) => `${n} template${n === 1 ? '' : 's'}`, 'Unlimited templates'),
+    capacityLine(plan, 'sign.storage_bytes', (n) => `${bytes(n)} storage`, 'Storage by agreement'),
     // Only entitlements that are built and operational are advertised.
     ...plan.features.filter((f) => f.enabled && f.available === true).map((f) => FEATURE_LABEL[f.feature_key] ?? f.feature_key),
     plan.support_tier === 'BASIC' ? 'Basic support' : null,

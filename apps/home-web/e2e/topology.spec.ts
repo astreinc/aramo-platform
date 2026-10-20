@@ -35,7 +35,7 @@ const CATALOG = [
   { key: 'org_admin', display: 'Organization Admin', description: 'Administers the organization.', tier: 'Administration', scopes: ORG_ADMIN_SCOPES },
   { key: 'tenant_admin', display: 'Tenant Admin', description: 'Administrative operator of the tenant.', tier: 'Administration', scopes: ['tenant:admin:settings', 'talent:read'] },
   { key: 'recruiter', display: 'Recruiter', description: 'Works requisitions and talent.', tier: 'Operations', scopes: ['talent:read', 'requisition:read'] },
-  { key: 'esign_sender', display: 'Sign Sender', description: 'Sends documents for signature.', tier: 'Sign', scopes: ['esign:envelope:send'] },
+  { key: 'sign_sender', display: 'Sign Sender', description: 'Sends documents for signature.', tier: 'Sign', scopes: ['sign:envelope:send'] },
 ];
 
 async function stubBackends(page: Page, jar: Jar, seen: { consumerHeaders: Set<string>; loginUrls: string[] }) {
@@ -78,7 +78,7 @@ async function stubBackends(page: Page, jar: Jar, seen: { consumerHeaders: Set<s
         tenant_id: TENANT,
         products: [
           { key: 'ats', subscribed: true, authorized: true, available: true, entry_path: '/ats/', reason: null },
-          { key: 'esign', subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' },
+          { key: 'sign', subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' },
           { key: 'org', subscribed: true, authorized: jar.orgAdmin, available: jar.orgAdmin, entry_path: jar.orgAdmin ? '/org/' : null, reason: jar.orgAdmin ? null : 'not_authorized' },
         ],
       });
@@ -107,7 +107,7 @@ test.describe('unified multi-product experience on the integrated nginx bundle',
     expect(seen.loginUrls[0]).toBe('/auth/org/login');
     await expect(page.getByRole('complementary', { name: 'Main navigation' })).toBeVisible();
     await expect(page.getByTestId('home-org-tiles')).toBeVisible();
-    await expect(page.getByTestId('home-other-esign')).toContainText('Not subscribed');
+    await expect(page.getByTestId('home-other-sign')).toContainText('Not subscribed');
     await shot(page, '01-app-home-1440');
     await page.getByRole('button', { name: 'Switch application' }).click();
     await expect(page.getByTestId('app-switch-home')).toContainText('You are here');
@@ -248,8 +248,8 @@ const SIGN = process.env['DORG_E2E_SIGN_URL'] ?? 'https://sign.localhost:8443';
 
 test.describe('signer app (sign host) — reached only through a signing link', () => {
   async function stubSigning(page: Page, exchangeCode?: string) {
-    await page.route('**/v1/esign/signing/**', async (route) => {
-      const path = new URL(route.request().url()).pathname.replace('/v1/esign/signing/', '');
+    await page.route('**/v1/sign/signing/**', async (route) => {
+      const path = new URL(route.request().url()).pathname.replace('/v1/sign/signing/', '');
       if (path === 'exchange') {
         return exchangeCode
           ? json(route, { error: { code: exchangeCode } }, exchangeCode === 'ENVELOPE_ALREADY_EXECUTED' ? 409 : 401)

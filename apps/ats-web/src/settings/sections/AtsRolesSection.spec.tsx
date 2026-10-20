@@ -11,7 +11,7 @@ afterEach(() => vi.restoreAllMocks());
 const CATALOG = {
   roles: [
     { key: 'recruiter', display: 'Recruiter', description: 'Works talent.', tier: 'Operations', scopes: ['talent:read'] },
-    { key: 'esign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['esign:envelope:send'] },
+    { key: 'sign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['sign:envelope:send'] },
     { key: 'org_admin', display: 'Organization Admin', description: '', tier: 'Administration', scopes: ['tenant:admin:profile'] },
   ],
 };
@@ -37,7 +37,7 @@ describe('AtsRolesSection', () => {
 
   it('isAtsRole partitions the catalog for display only', () => {
     expect(isAtsRole({ key: 'recruiter' } as never)).toBe(true);
-    expect(isAtsRole({ key: 'esign_owner' } as never)).toBe(false);
+    expect(isAtsRole({ key: 'sign_owner' } as never)).toBe(false);
     expect(isAtsRole({ key: 'org_admin' } as never)).toBe(false);
   });
 });

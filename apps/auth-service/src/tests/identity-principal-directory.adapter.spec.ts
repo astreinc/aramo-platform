@@ -478,14 +478,14 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
     expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
   });
   it('esign on an ATS-only tenant → denied; on an esign-entitled tenant → resolved (Sign-only tenant: recruiter denied)', async () => {
-    expect(await adapter(makeDeps({ capabilities: ['core', 'ats', 'portal'] })).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
-    expect((await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
-    expect(await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(await adapter(makeDeps({ capabilities: ['core', 'ats', 'portal'] })).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect((await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).kind).toBe('resolved');
+    expect(await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
   it('multi-product tenant: BOTH consumers resolve (scope isolation is the resolver\'s job)', async () => {
-    const d = makeDeps({ capabilities: ['core', 'ats', 'portal', 'esign'] });
+    const d = makeDeps({ capabilities: ['core', 'ats', 'portal', 'sign'] });
     expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
-    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).kind).toBe('resolved');
   });
   it('platform is exempt (sentinel has no entitlements); portal and unknown consumers are unsupported on this path', async () => {
     const d = makeDeps({ capabilities: [] });
@@ -502,8 +502,8 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
   });
   it('refresh: the capability is re-proven — a removed ats/esign entitlement denies consumer_not_entitled; missing consumer is unsupported', async () => {
     expect(await adapter(makeDeps({ capabilities: ['core'] })).resolveScopes({ ...REFRESH, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
-    expect(await adapter(makeDeps({ capabilities: ['core', 'ats'] })).resolveScopes({ ...REFRESH, consumer: 'esign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
-    expect((await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveScopes({ ...REFRESH, consumer: 'esign' })).kind).toBe('resolved');
+    expect(await adapter(makeDeps({ capabilities: ['core', 'ats'] })).resolveScopes({ ...REFRESH, consumer: 'sign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect((await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveScopes({ ...REFRESH, consumer: 'sign' })).kind).toBe('resolved');
     expect(await adapter(makeDeps()).resolveScopes(REFRESH)).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
     expect((await adapter(makeDeps({ capabilities: [] })).resolveScopes({ ...REFRESH, consumer: 'platform' })).kind).toBe('resolved');
   });
@@ -516,8 +516,8 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
 // or a refresh; never changes the minted session.
 describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
   it('PROVISIONED tenant + org_admin membership (Sign-only / PERSONAL owner) → resolved AND transitionTenantStatus(→ACTIVE, system actor, owner_first_session)', async () => {
-    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'esign'] });
-    const r = await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'esign' });
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'sign'] });
+    const r = await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'sign' });
     expect(r.kind).toBe('resolved');
     expect(d.findMembership).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
     expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
@@ -555,7 +555,7 @@ describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
     expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
   });
   it('the hook runs AFTER the gates: a denied session (not entitled / suspended / mismatched host under enforce) never activates', async () => {
-    const d1 = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'esign'] });
+    const d1 = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'sign'] });
     expect(await adapter(d1).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
     expect(d1.transitionTenantStatus).not.toHaveBeenCalled();
     const d2 = makeDeps({ status: 'SUSPENDED', roleKeys: ['org_admin'] });
@@ -575,11 +575,11 @@ describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
 // tenant creation, product entitlement and Sign sender eligibility stay separate.
 describe('IC-4 PR-9 — personal Sign tenant never mints an ATS credential', () => {
   it('recruiter consumer → denied consumer_not_entitled (no scopes read); esign consumer → resolved; refresh of a recruiter token → denied', async () => {
-    const personal = { capabilities: ['core', 'esign'], roleKeys: ['org_admin'] };
+    const personal = { capabilities: ['core', 'sign'], roleKeys: ['org_admin'] };
     const d = makeDeps(personal);
     expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
     expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
-    expect((await adapter(makeDeps(personal)).resolveSession({ ...SESSION_INPUT, consumer: 'esign' })).kind).toBe('resolved');
+    expect((await adapter(makeDeps(personal)).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).kind).toBe('resolved');
     expect(await adapter(makeDeps(personal)).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
 });
@@ -593,9 +593,9 @@ describe('D-ORG — org consumer mint and refresh', () => {
   const ORG = { ...SESSION_INPUT, consumer: 'org' as const };
   it.each([
     ['ATS-only', ['core', 'ats', 'portal']],
-    ['Sign-only', ['core', 'esign']],
-    ['ATS+Sign', ['core', 'ats', 'portal', 'esign']],
-    ['PERSONAL', ['core', 'esign']],
+    ['Sign-only', ['core', 'sign']],
+    ['ATS+Sign', ['core', 'ats', 'portal', 'sign']],
+    ['PERSONAL', ['core', 'sign']],
   ])('%s tenant → org session resolved', async (_label, capabilities) => {
     const r = await adapter(makeDeps({ capabilities })).resolveSession(ORG);
     expect(r.kind).toBe('resolved');
@@ -612,9 +612,9 @@ describe('D-ORG — org consumer mint and refresh', () => {
     expect((await adapter(makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'] })).resolveSession(ORG)).kind).toBe('resolved');
   });
   it('refresh re-proves core for org; an org token never refreshes as another consumer', async () => {
-    const ok = await adapter(makeDeps({ capabilities: ['core', 'esign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
+    const ok = await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
     expect(ok.kind).toBe('resolved');
-    const noCore = await adapter(makeDeps({ capabilities: ['esign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
+    const noCore = await adapter(makeDeps({ capabilities: ['sign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });
     expect(noCore).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
 });

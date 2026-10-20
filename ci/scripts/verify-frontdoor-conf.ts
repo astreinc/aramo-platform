@@ -133,16 +133,16 @@ function checkRepo(): Issue[] {
   // (k) Sign Unified Product S-2 (Aramo-Sign-Unified-Product-Permission-Contract-
   // Platform-API-Directive-v1_0-LOCKED §4.1) — ONE Aramo Sign host. The sign block's
   // /v1 locations are EXACTLY: guest signing, the authenticated sender zone,
-  // self-service billing and the recipient inbox (S-7) (esign-service), and public
+  // self-service billing and the recipient inbox (S-7) (sign-service), and public
   // signup (platform-admin).
   // Never apps/api, never the internal envelopes surface. Guest signing and signup
   // are rate-limited; the SPA is /srv/sign; security headers are set host-wide and
   // the guest pages carry their own stricter, uncached policy.
   const SIGN_V1 = new Map<string, string>([
-    ['/v1/esign/signing/', 'esign-service:3003'],
-    ['/v1/esign/sender/', 'esign-service:3003'],
-    ['/v1/esign/billing/', 'esign-service:3003'],
-    ['/v1/esign/inbox', 'esign-service:3003'],
+    ['/v1/sign/signing/', 'sign-service:3003'],
+    ['/v1/sign/sender/', 'sign-service:3003'],
+    ['/v1/sign/billing/', 'sign-service:3003'],
+    ['/v1/sign/inbox', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
   ]);
   const signV1 = [...sign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
@@ -155,8 +155,8 @@ function checkRepo(): Issue[] {
       if (!loc.includes(`proxy_pass http://${upstream};`)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must proxy_pass to ${upstream}` });
       if (!/client_max_body_size\s+\d+[mk];/.test(loc)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must set client_max_body_size` });
     }
-    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/esign/signing/') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/esign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
+    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/sign/signing/') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
     }
     if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
       issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });

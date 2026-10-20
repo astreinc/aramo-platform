@@ -1210,8 +1210,8 @@ const PLATFORM_GOVERNANCE_PACT = resolve(
   ROOT,
   'pact/pacts/platform-governance-consumer-aramo-core.json',
 );
-// DOC-4C (R1 seam C) — esign-service → apps/api source-document pull.
-const ESIGN_SOURCE_PACT = resolve(ROOT, 'pact/pacts/esign-service-aramo-core.json');
+// DOC-4C (R1 seam C) — sign-service → apps/api source-document pull.
+const ESIGN_SOURCE_PACT = resolve(ROOT, 'pact/pacts/sign-service-aramo-core.json');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -4115,7 +4115,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // webhook with a FRESH timestamp over the exact forwarded bytes, so production
       // tolerance is never weakened for Pact. TEST-ONLY secret; matches the value the
       // consumer/requestFilter sign with.
-      process.env['ESIGN_WEBHOOK_SIGNING_SECRET'] = 'pact-test-esign-webhook-secret';
+      process.env['SIGN_WEBHOOK_SIGNING_SECRET'] = 'pact-test-esign-webhook-secret';
 
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
@@ -4529,7 +4529,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         markResumeCommitted: async () => undefined,
         // DOC-4C (R1 seam C) — the source-PDF read the RevisionSourceService performs
         // (via AramoS3DocumentStorageAdapter.getArtifact → objectStorage.getObjectBytes)
-        // for the esign-service source pull. Object storage is external infra (already
+        // for the sign-service source pull. Object storage is external infra (already
         // overridden here); returning fixed bytes exercises the HTTP seam without a
         // real bucket — no production/boundary change.
         getObjectBytes: async (): Promise<Buffer> => Buffer.from('%PDF-1.4 pact source bytes', 'utf8'),
@@ -4723,7 +4723,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // BEFORE app.init() so it precedes Nest's default json parser; scoped to the
       // one path, so no other pact interaction's body parsing changes.
       const expressForEsignRaw = require('express') as typeof import('express');
-      app.use('/v1/integrations/esign/events', expressForEsignRaw.raw({ type: () => true }));
+      app.use('/v1/integrations/sign/events', expressForEsignRaw.raw({ type: () => true }));
       app.useGlobalPipes(
         new ValidationPipe({
           whitelist: true,
@@ -5119,7 +5119,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             );
           });
         },
-      // ===== DOC-4C seam C — esign-service → apps/api source-document pull =====
+      // ===== DOC-4C seam C — sign-service → apps/api source-document pull =====
       // Seed a frozen Document + revision + SOURCE_UPLOAD artifact so
       // RevisionSourceService.getSourceBase64 resolves (object storage is the mock
       // above, returning fixed bytes). Fixed ids + ON CONFLICT ⇒ idempotent.
@@ -9477,7 +9477,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // consumer_type==='platform' assertion returns 403.
         req.headers['authorization'] = `Bearer ${platformJwt}`;
       }
-      // ES-2 — re-sign the esign-service source pull (aramo-esign-s2s-v1) with a
+      // ES-2 — re-sign the sign-service source pull (aramo-sign-s2s-v1) with a
       // FRESH timestamp over the replayed method + path + query, so the recorded
       // (dynamic) signature is verified by the STRICT, unchanged production guard
       // (EsignServiceRequestGuard) — no tolerance weakening, no mode downgrade.
@@ -9502,7 +9502,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // — more reliable than url/method. The proxy forwards
       // Buffer.from(JSON.stringify(req.body)) (see parseBody), so we sign the same.
       const esignReq = req as unknown as { body?: unknown };
-      if (req.headers['x-aramo-esign-signature'] !== undefined && esignReq.body !== undefined && esignReq.body !== null) {
+      if (req.headers['x-aramo-sign-signature'] !== undefined && esignReq.body !== undefined && esignReq.body !== null) {
         const { createHmac } = require('node:crypto') as typeof import('node:crypto');
         const forwarded = Buffer.isBuffer(esignReq.body)
           ? esignReq.body
@@ -9511,8 +9511,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         const sig = createHmac('sha256', 'pact-test-esign-webhook-secret')
           .update(`${ts}.${forwarded.toString('utf8')}`)
           .digest('base64');
-        req.headers['x-aramo-esign-timestamp'] = ts;
-        req.headers['x-aramo-esign-signature'] = sig;
+        req.headers['x-aramo-sign-timestamp'] = ts;
+        req.headers['x-aramo-sign-signature'] = sig;
       }
       next();
     }

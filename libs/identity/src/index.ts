@@ -27,7 +27,7 @@ export {
   type ProductConsumer,
 } from './lib/authorization/consumer-scope-policy.js';
 // IC-3 PR-8 — the Sign SENDER authorization boundary (guard composition + the
-// pure decision) a `v1/esign/sender/*` route mounts; see the module header for
+// pure decision) a `v1/sign/sender/*` route mounts; see the module header for
 // the activation dependency.
 // D-ORG — the backend-authoritative product-availability projection (App Home).
 export {
