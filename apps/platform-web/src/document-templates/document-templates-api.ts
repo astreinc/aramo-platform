@@ -115,6 +115,21 @@ export function parseProductTags(raw: string): string[] {
   return out;
 }
 
+// DOC-TEMPLATE-LIB-1 T-6 (§9) — the default notice length for a withdrawal (days).
+export const DEFAULT_WITHDRAW_NOTICE_DAYS = 7;
+export const MAX_WITHDRAW_NOTICE_DAYS = 365;
+
+export type WithdrawalState = 'NONE' | 'PENDING' | 'IN_EFFECT';
+
+// The withdrawal state of a default at `now` (the server is authoritative; display only).
+export function withdrawalStateOf(
+  t: Pick<PlatformTemplate, 'withdraw_effective_at'>,
+  now: Date = new Date(),
+): WithdrawalState {
+  if (t.withdraw_effective_at === null) return 'NONE';
+  return new Date(t.withdraw_effective_at).getTime() <= now.getTime() ? 'IN_EFFECT' : 'PENDING';
+}
+
 export const documentTemplatesApi = {
   listDocumentTypes(): Promise<{ document_types: DocumentTypeOption[] }> {
     return apiClient.get('/platform/document-templates/document-types');
@@ -136,6 +151,13 @@ export const documentTemplatesApi = {
   },
   updateTemplate(id: string, body: { name?: string; description?: string | null; products?: string[] }): Promise<PlatformTemplate> {
     return apiClient.patch(`/platform/document-templates/${id}`, body);
+  },
+  // DOC-TEMPLATE-LIB-1 T-6 (§9) — publish / cancel a withdrawal of an Aramo default.
+  withdraw(id: string, body: { notice_days: number; reason: string | null }): Promise<PlatformTemplate> {
+    return apiClient.post(`/platform/document-templates/${id}/withdraw`, body);
+  },
+  cancelWithdrawal(id: string): Promise<PlatformTemplate> {
+    return apiClient.post(`/platform/document-templates/${id}/withdraw/cancel`);
   },
   allowedBindings(id: string): Promise<{ bindings: AllowedBinding[] }> {
     return apiClient.get(`/platform/document-templates/${id}/allowed-bindings`);

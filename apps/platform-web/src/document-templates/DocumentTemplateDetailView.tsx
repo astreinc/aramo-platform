@@ -7,6 +7,7 @@ import {
   InlineAlert,
   Input,
   Select,
+  StatusPill,
   TagList,
   TextArea,
   formatDate,
@@ -16,11 +17,14 @@ import {
 } from '@aramo/fe-foundation';
 
 import {
+  DEFAULT_WITHDRAW_NOTICE_DAYS,
   DOC_TEMPLATE_MANAGE_SCOPE,
   HTML_CONTENT_VERSION,
+  MAX_WITHDRAW_NOTICE_DAYS,
   documentTemplatesApi,
   htmlContentOf,
   parseProductTags,
+  withdrawalStateOf,
   type AllowedBinding,
   type PlatformTemplateDetail,
   type SamplePreview,
@@ -139,6 +143,30 @@ export function DocumentTemplateDetailView({ session }: { readonly session: Sess
         />
       </section>
 
+      <WithdrawalPanel
+        template={detail}
+        canManage={canManage}
+        busy={busy}
+        onWithdraw={(notice_days, reason) =>
+          run(async () => {
+            const t = await documentTemplatesApi.withdraw(id, { notice_days, reason });
+            await load();
+            setNotice(
+              t.withdraw_effective_at !== null
+                ? `Withdrawal published. It takes effect on ${formatDate(t.withdraw_effective_at)}.`
+                : 'Withdrawal published.',
+            );
+          }, 'Could not publish the withdrawal.')
+        }
+        onCancel={() =>
+          run(async () => {
+            await documentTemplatesApi.cancelWithdrawal(id);
+            await load();
+            setNotice('Withdrawal cancelled.');
+          }, 'Could not cancel the withdrawal.')
+        }
+      />
+
       {draft !== null ? (
         <DraftEditor
           key={draft.id}
@@ -170,6 +198,100 @@ export function DocumentTemplateDetailView({ session }: { readonly session: Sess
         <DataTable columns={VERSION_COLUMNS} rows={detail.versions} rowKey={(v) => v.id} emptyMessage="No versions yet." />
       </section>
     </div>
+  );
+}
+
+// DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — withdrawal status + actions. Publishing a
+// withdrawal gives organizations a notice (default 7 days); from the effective date the
+// default is no longer used and organizations fall back to their own approved template,
+// or are asked to choose. A pending withdrawal can be cancelled before it takes effect.
+export function WithdrawalPanel({
+  template,
+  canManage,
+  busy,
+  onWithdraw,
+  onCancel,
+}: {
+  readonly template: Pick<PlatformTemplateDetail, 'status' | 'current_version' | 'withdraw_notice_at' | 'withdraw_effective_at'>;
+  readonly canManage: boolean;
+  readonly busy: boolean;
+  readonly onWithdraw: (noticeDays: number, reason: string | null) => Promise<void>;
+  readonly onCancel: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [days, setDays] = useState(String(DEFAULT_WITHDRAW_NOTICE_DAYS));
+  const [reason, setReason] = useState('');
+  const state = withdrawalStateOf(template);
+  const published = template.status === 'ACTIVE' && template.current_version !== null;
+  const parsedDays = Number(days);
+  const daysValid = days.trim() !== '' && Number.isInteger(parsedDays) && parsedDays >= 0 && parsedDays <= MAX_WITHDRAW_NOTICE_DAYS;
+
+  return (
+    <section className="pw-panel" aria-label="Withdrawal">
+      <h2 className="pw-panel__title">Withdrawal</h2>
+      {state === 'NONE' ? (
+        <p>{published ? 'Not withdrawn. Organizations use this default.' : 'Not published yet, so it cannot be withdrawn.'}</p>
+      ) : state === 'PENDING' ? (
+        <p>
+          <StatusPill tone="warn">Withdrawal pending</StatusPill>{' '}
+          Published{template.withdraw_notice_at !== null ? ` on ${formatDate(template.withdraw_notice_at)}` : ''}. It takes effect on{' '}
+          {formatDate(template.withdraw_effective_at)}. Until then organizations still use this default and see a notice.
+        </p>
+      ) : (
+        <p>
+          <StatusPill tone="neutral">Withdrawn</StatusPill>{' '}
+          Since {formatDate(template.withdraw_effective_at)}. Organizations now use their own approved template, or are asked to choose one.
+        </p>
+      )}
+      {canManage && state === 'NONE' && published && !open ? (
+        <div className="pw-toolbar">
+          <Button variant="secondary" onClick={() => setOpen(true)} disabled={busy}>
+            Withdraw…
+          </Button>
+        </div>
+      ) : null}
+      {canManage && state === 'NONE' && published && open ? (
+        <div>
+          <FormField label={`Notice period in days (0–${MAX_WITHDRAW_NOTICE_DAYS})`}>
+            <Input
+              unstyled
+              aria-label="Notice days"
+              className="tc-input"
+              type="number"
+              min={0}
+              max={MAX_WITHDRAW_NOTICE_DAYS}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Reason (optional, recorded in the audit log)">
+            <TextArea unstyled aria-label="Reason" className="tc-input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
+          </FormField>
+          <div className="pw-toolbar">
+            <Button
+              variant="primary"
+              disabled={busy || !daysValid}
+              onClick={() => {
+                void onWithdraw(parsedDays, reason.trim() === '' ? null : reason.trim()).then(() => setOpen(false));
+              }}
+            >
+              Publish withdrawal
+            </Button>
+            <Button variant="secondary" onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+          </div>
+          {!daysValid ? <p className="pw-panel__sub">Enter a whole number of days between 0 and {MAX_WITHDRAW_NOTICE_DAYS}.</p> : null}
+        </div>
+      ) : null}
+      {canManage && state === 'PENDING' ? (
+        <div className="pw-toolbar">
+          <Button variant="secondary" onClick={() => void onCancel()} disabled={busy}>
+            Cancel withdrawal
+          </Button>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

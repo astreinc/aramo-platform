@@ -227,6 +227,25 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DocumentTemplate'
+  /v1/document-templates/notices:
+    get:
+      operationId: listDocumentTemplateWithdrawalNotices
+      summary: Aramo default withdrawal notices that affect this organization.
+      description: |
+        DOC-TEMPLATE-LIB-1 §9 (ADR-0034 D10). The Aramo (PLATFORM) default templates with a
+        published withdrawal that this tenant relies on — a template selection names the
+        default, or the tenant has no organization-wide selection for the document type and
+        no other live default would be used instead. Lists pending withdrawals and those
+        that took effect in the last 30 days. Product tags are informational and never
+        filter the list (ADR-0034 D9). Feeds the Org Home banner. Requires
+        `document_template:read`.
+      responses:
+        '200':
+          description: The notices (possibly empty), ordered by effective date.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateWithdrawalNoticesResponse'
   /v1/document-templates/{id}:
     get:
       operationId: getDocumentTemplate
@@ -1176,6 +1195,81 @@ components:
         current_version_id:
           type: [string, 'null']
           format: uuid
+        owner_scope:
+          type: string
+          enum: [PLATFORM, TENANT]
+          description: DOC-TEMPLATE-LIB-1 — tenant routes return the organization's own (TENANT) rows.
+        products:
+          type: [array, 'null']
+          description: Product tags — PLATFORM defaults only (null on TENANT rows). Recorded, not enforced (ADR-0034 D9).
+          items:
+            type: string
+        withdraw_notice_at:
+          type: [string, 'null']
+          format: date-time
+          description: PLATFORM defaults only.
+        withdraw_effective_at:
+          type: [string, 'null']
+          format: date-time
+          description: PLATFORM defaults only.
+    TemplateWithdrawalNoticesResponse:
+      type: object
+      required: [notices]
+      properties:
+        notices:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateWithdrawalNotice'
+    TemplateWithdrawalNotice:
+      type: object
+      description: One Aramo default withdrawal that affects the calling organization.
+      required:
+        - template_id
+        - name
+        - document_type_id
+        - products
+        - withdraw_notice_at
+        - withdraw_effective_at
+        - status
+        - selected_for_client_ids
+        - relies_on_default
+        - has_own_template
+      properties:
+        template_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        document_type_id:
+          type: string
+          format: uuid
+        products:
+          type: array
+          description: Product tags as recorded (not enforced — ADR-0034 D9).
+          items:
+            type: string
+        withdraw_notice_at:
+          type: string
+          format: date-time
+        withdraw_effective_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [PENDING, IN_EFFECT]
+          description: PENDING before the effective date, IN_EFFECT after it.
+        selected_for_client_ids:
+          type: array
+          description: The organization's selections that name this default (null = organization-wide).
+          items:
+            type: [string, 'null']
+            format: uuid
+        relies_on_default:
+          type: boolean
+          description: True when the organization has no organization-wide selection for the type and would fall back to this default.
+        has_own_template:
+          type: boolean
+          description: True when the organization has an approved template of its own for the type (the fallback after the effective date). False means a choice is needed.
     TemplateVersion:
       type: object
       description: An immutable-after-activation template version (DOC-2).

@@ -69,6 +69,24 @@ export class RtrTemplateResolverService {
         },
       );
     }
+    // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo RTR default this tenant relied
+    // on has been withdrawn (effective date passed) and the tenant has no approved RTR
+    // template of its own: the tenant admin/owner must choose. Distinct from
+    // RTR_TEMPLATE_NOT_CONFIGURED (never configured) — the wording is never swapped silently.
+    if (r.outcome === 'SELECTION_REQUIRED') {
+      throw new AramoError(
+        'TEMPLATE_SELECTION_REQUIRED',
+        'The Aramo Right to Represent default was withdrawn; choose a template for this organization',
+        409,
+        {
+          requestId: input.requestId,
+          details: {
+            document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+            withdrawn_template_ids: r.withdrawn_template_ids,
+          },
+        },
+      );
+    }
     if (r.outcome === 'INVALID') {
       throw this.invalid(input.requestId, r.template_id, r.reason, r.details);
     }

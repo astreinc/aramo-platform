@@ -1724,6 +1724,85 @@ paths:
         '404':
           $ref: '#/components/responses/PlatformTemplateNotFound'
 
+  /platform/document-templates/{id}/withdraw:
+    post:
+      operationId: withdrawPlatformDocumentTemplate
+      tags: [Platform Document Templates]
+      summary: Publish the withdrawal of an Aramo default (notice, then fallback).
+      description: |
+        DOC-TEMPLATE-LIB-1 §9 (ADR-0034 D10). Sets `withdraw_notice_at` = now and
+        `withdraw_effective_at` = now + `notice_days` (default 7, 0–365). Until the
+        effective date the default is still resolved and affected organizations see a
+        notice (`GET /v1/document-templates/notices`). From the effective date the
+        resolver falls back to the organization's own approved template for the type,
+        otherwise the flow refuses with 409 `TEMPLATE_SELECTION_REQUIRED`. Generated
+        documents keep their pinned version. Only a published default with no withdrawal
+        pending (409 `TEMPLATE_PLATFORM_DEFAULT_CONFLICT`, `details.reason`
+        `template_not_published` / `already_withdrawn`). Writes a global audit event
+        before the change. Requires `platform:document_template:manage` and a platform
+        session.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawPlatformDocumentTemplateRequest'
+      responses:
+        '200':
+          description: The template with its withdrawal dates set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplate'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateDefaultConflict'
+
+  /platform/document-templates/{id}/withdraw/cancel:
+    post:
+      operationId: cancelPlatformDocumentTemplateWithdrawal
+      tags: [Platform Document Templates]
+      summary: Cancel a pending withdrawal of an Aramo default.
+      description: |
+        Clears both withdrawal dates. Allowed only before the effective date, and not
+        while a replacement default of the same document type is live (one live default
+        per type) — 409 `TEMPLATE_PLATFORM_DEFAULT_CONFLICT` with `details.reason`
+        `not_withdrawn` / `withdrawal_in_effect` / `platform_default_live`. Writes a
+        global audit event before the change. Requires `platform:document_template:manage`
+        and a platform session.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      responses:
+        '200':
+          description: The template with its withdrawal cleared.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplate'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateDefaultConflict'
+
   /platform/document-templates/{id}/allowed-bindings:
     get:
       operationId: listPlatformTemplateAllowedBindings
@@ -2160,7 +2239,13 @@ components:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
     PlatformTemplateConflict:
-      description: '`TEMPLATE_DRAFT_ALREADY_EXISTS` / `TEMPLATE_IMMUTABLE` / `TEMPLATE_PREVIEW_REQUIRED`.'
+      description: '`TEMPLATE_DRAFT_ALREADY_EXISTS` / `TEMPLATE_IMMUTABLE` / `TEMPLATE_PREVIEW_REQUIRED` / `TEMPLATE_PLATFORM_DEFAULT_CONFLICT` (publish: another default of the type is live — `platform_default_live` — or this default''s withdrawal is in effect — `withdrawal_in_effect`).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTemplateDefaultConflict:
+      description: '`TEMPLATE_PLATFORM_DEFAULT_CONFLICT` — the Aramo default lifecycle write is refused by state (`details.reason`: `template_not_published`, `already_withdrawn`, `not_withdrawn`, `withdrawal_in_effect`, `platform_default_live`).'
       content:
         application/json:
           schema:
@@ -3051,9 +3136,11 @@ components:
         withdraw_notice_at:
           type: [string, 'null']
           format: date-time
+          description: When the withdrawal was published (null = no withdrawal).
         withdraw_effective_at:
           type: [string, 'null']
           format: date-time
+          description: From this instant the default is no longer resolved (ADR-0034 D10).
         created_at:
           type: string
           format: date-time
@@ -3114,6 +3201,19 @@ components:
           items:
             type: string
             pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+    WithdrawPlatformDocumentTemplateRequest:
+      type: object
+      properties:
+        notice_days:
+          type: integer
+          minimum: 0
+          maximum: 365
+          default: 7
+          description: Days between the notice and the effective date (0 = effective immediately).
+        reason:
+          type: [string, 'null']
+          maxLength: 500
+          description: Operator note, recorded in the audit event only.
     CreatePlatformTemplateDraftRequest:
       type: object
       properties:

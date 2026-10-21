@@ -191,11 +191,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     // ── Withdrawal (D10) — resolver half; the publishing flow is T-6 ─────────────
-    it('a withdrawn Aramo default (effective date passed) is skipped → NOT_CONFIGURED when nothing else applies', async () => {
+    // T-6 (§9) — the tenant relied on the withdrawn default and has no own template:
+    // SELECTION_REQUIRED (no longer NOT_CONFIGURED, which means "never configured").
+    it('a withdrawn Aramo default (effective date passed) is skipped → SELECTION_REQUIRED when nothing else applies', async () => {
       const type = await newDocumentType();
-      await platformDefault(type, { withdrawEffective: new Date(Date.now() - 60_000) });
+      const gone = await platformDefault(type, { withdrawEffective: new Date(Date.now() - 60_000) });
       const tenant = randomUUID();
-      expect(await resolution.resolve({ tenant_id: tenant, document_type_id: type })).toEqual({ outcome: 'NOT_CONFIGURED' });
+      expect(await resolution.resolve({ tenant_id: tenant, document_type_id: type })).toEqual({
+        outcome: 'SELECTION_REQUIRED',
+        withdrawn_template_ids: [gone.templateId],
+      });
     });
 
     it('a withdrawal with a FUTURE effective date still resolves (notice period)', async () => {
@@ -206,28 +211,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       if (r.outcome === 'RESOLVED') expect(r.template.id).toBe(def.templateId);
     });
 
-    it('a selection naming a withdrawn Aramo default is skipped and resolution continues down the order', async () => {
+    // T-6 (§9; D10) — a selection naming a withdrawn default falls to the tenant's own
+    // approved template, NEVER to another (live) Aramo default (no silent wording swap).
+    it('a selection naming a withdrawn Aramo default falls back to the tenant’s own approved template, not another default', async () => {
       const type = await newDocumentType();
       const tenant = randomUUID();
       const client = randomUUID();
-      const live = await platformDefault(type);
-      await tenantTemplate(tenant, type, client); // client selection, then re-point it below
-      // A second default that is withdrawn after the tenant selected it.
-      const gone = await platformDefault(type);
+      const forClient = await tenantTemplate(tenant, type, client); // client selection, then re-point it below
+      // The selected default is being withdrawn (notice), a replacement default is live.
+      const gone = await platformDefault(type, { withdrawEffective: new Date(Date.now() + 86_400_000) });
+      await platformDefault(type);
       await templates.upsertSelection({ tenant_id: tenant, document_type_id: type, client_id: client, template_id: gone.templateId, selected_by: ACTOR });
       await db.query(
         `UPDATE "documents"."DocumentTemplate" SET withdraw_notice_at = now() - interval '8 days', withdraw_effective_at = now() - interval '1 day' WHERE id = $1`,
         [gone.templateId],
       );
       const r = await resolution.resolve({ tenant_id: tenant, document_type_id: type, client_id: client });
-      expect(r).toMatchObject({ outcome: 'RESOLVED', source: 'PLATFORM_DEFAULT' });
-      if (r.outcome === 'RESOLVED') expect(r.template.id).toBe(live.templateId);
+      expect(r).toMatchObject({ outcome: 'RESOLVED', source: 'WITHDRAWAL_FALLBACK', owner_scope: 'TENANT' });
+      if (r.outcome === 'RESOLVED') expect(r.version.id).toBe(forClient.versionId);
     });
 
+    // T-6: two defaults with NO withdrawal can no longer coexist (DB index) — ambiguity is
+    // still possible when every live default of the type is in its notice window.
     it('fails closed (INVALID, never a guess) when two live Aramo defaults exist for a type and nothing is selected', async () => {
       const type = await newDocumentType();
-      await platformDefault(type);
-      await platformDefault(type);
+      await platformDefault(type, { withdrawEffective: new Date(Date.now() + 86_400_000) });
+      await platformDefault(type, { withdrawEffective: new Date(Date.now() + 2 * 86_400_000) });
       const r = await resolution.resolve({ tenant_id: randomUUID(), document_type_id: type });
       expect(r).toMatchObject({ outcome: 'INVALID', reason: 'platform_default_ambiguous' });
     });

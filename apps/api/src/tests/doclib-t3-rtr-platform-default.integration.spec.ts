@@ -319,7 +319,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(view.preview.blocks).toEqual([{ type: 'TEXT', text: 'Client wording.' }]);
     });
 
-    it('(e) a withdrawn Aramo default is skipped → NOT_CONFIGURED for a tenant relying on it; an own selection is unaffected', async () => {
+    // T-6 (§9): a tenant relying on the withdrawn default with no own template is asked to
+    // choose — TEMPLATE_SELECTION_REQUIRED (409), distinct from RTR_TEMPLATE_NOT_CONFIGURED.
+    it('(e) a withdrawn Aramo default is skipped → TEMPLATE_SELECTION_REQUIRED for a tenant relying on it; an own selection is unaffected', async () => {
       const own = randomUUID();
       brandingByTenant.set(own, branding({ display_name: 'Own Co 2' }));
       const ownVersion = await ownRtrTemplate(own, 'Mine.');
@@ -330,9 +332,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [platformTemplateId],
       );
       try {
-        await expectCode(requestFor(relying), 'RTR_TEMPLATE_NOT_CONFIGURED');
+        await expectCode(requestFor(relying), 'TEMPLATE_SELECTION_REQUIRED');
         const rev = await docsRepo.getCurrentRevision(own, await requestFor(own));
         expect(rev?.template_version_id).toBe(ownVersion);
+      } finally {
+        await db.query(`UPDATE "documents"."DocumentTemplate" SET withdraw_notice_at = NULL, withdraw_effective_at = NULL WHERE id = $1`, [platformTemplateId]);
+      }
+    });
+
+    // T-6 (§9; D10) — after the effective date a tenant that had switched back to the Aramo
+    // default falls back to its own approved RTR template; an RTR generated BEFORE the
+    // withdrawal keeps its pinned PLATFORM version.
+    it('(f) after the effective date: own-template fallback; an RTR generated before keeps its pinned Aramo version', async () => {
+      const tenant = randomUUID();
+      brandingByTenant.set(tenant, branding({ display_name: 'Fallback Co' }));
+      const ownVersion = await ownRtrTemplate(tenant, 'Fallback wording.');
+      await templates.deleteSelection(tenant, RIGHT_TO_REPRESENT_TYPE_ID, null); // back to the Aramo default
+      const before = await requestFor(tenant);
+      expect((await docsRepo.getCurrentRevision(tenant, before))?.template_version_id).toBe(platformVersionId);
+      await db.query(
+        `UPDATE "documents"."DocumentTemplate" SET withdraw_notice_at = now() - interval '8 days', withdraw_effective_at = now() - interval '1 second' WHERE id = $1`,
+        [platformTemplateId],
+      );
+      try {
+        const after = await requestFor(tenant);
+        expect((await docsRepo.getCurrentRevision(tenant, after))?.template_version_id).toBe(ownVersion);
+        // The earlier document is untouched: same pinned PLATFORM version, provenance still reads it.
+        expect((await docsRepo.getCurrentRevision(tenant, before))?.template_version_id).toBe(platformVersionId);
+        const provenance = await (orchestrator as unknown as {
+          resolveProvenance(t: string, d: string): Promise<{ name: string; version_number: number } | null>;
+        }).resolveProvenance(tenant, before);
+        expect(provenance).toEqual({ name: 'Standard Right to Represent', version_number: 1 });
       } finally {
         await db.query(`UPDATE "documents"."DocumentTemplate" SET withdraw_notice_at = NULL, withdraw_effective_at = NULL WHERE id = $1`, [platformTemplateId]);
       }

@@ -28,6 +28,7 @@ export {
   TEMPLATE_AUDIT,
   type TemplateAuditPort,
   type TemplateDraftDiscardedAudit,
+  type TemplatePlatformWithdrawalAudit,
 } from './lib/template-audit.port.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 export {
@@ -95,6 +96,9 @@ export {
   TemplateVariableNotFoundError,
   TemplateVariableKeyConflictError,
   TemplateSelectionInvalidError,
+  // DOC-TEMPLATE-LIB-1 T-6 — Aramo default withdrawal / one-live-default refusals.
+  TemplatePlatformDefaultConflictError,
+  type TemplatePlatformDefaultConflictReason,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

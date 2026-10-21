@@ -72,6 +72,7 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
       findSelection: async (_tenant: string, _type: string, client: string | null) =>
         client === null ? { template_id: templateId } : null,
       findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
       findTemplateByIdOwnerAware: async () => ({
         id: templateId,
         current_version_id: versionId,

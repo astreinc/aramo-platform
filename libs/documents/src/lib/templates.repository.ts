@@ -8,6 +8,7 @@ import {
   TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
   TemplateNotFoundError,
+  TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
   TemplateSelectionInvalidError,
   TemplateVersionNotFoundError,
@@ -39,6 +40,25 @@ function mapOneDraftConflict(e: unknown, templateId: string): unknown {
   }
   return e;
 }
+
+// DOC-TEMPLATE-LIB-1 T-6 — map a unique-violation on the one-live-default partial index
+// (migration 20261021160000) to the typed 409 platform_default_live. Same driver-message
+// probe as the one-DRAFT backstop above.
+function mapOneLiveDefaultConflict(e: unknown, templateId: string): unknown {
+  const originalMessage = (e as {
+    meta?: { driverAdapterError?: { cause?: { originalMessage?: string } } };
+  })?.meta?.driverAdapterError?.cause?.originalMessage;
+  const message = e instanceof Error ? e.message : '';
+  if (
+    (typeof originalMessage === 'string' && originalMessage.includes('DocumentTemplate_one_live_platform_default')) ||
+    message.includes('DocumentTemplate_one_live_platform_default')
+  ) {
+    return new TemplatePlatformDefaultConflictError(templateId, 'platform_default_live');
+  }
+  return e;
+}
+
+const DAY_MS = 86_400_000;
 
 // DOC-TEMPLATE-LIB-1 T-2 (§6.1, ADR-0034 §4 rule 2) — the OWNER a template write/read is
 // scoped to. TENANT = the caller's own rows (every tenant route; tenant_id equality, so
@@ -683,8 +703,228 @@ export class TemplatesRepository {
   // Publish: DRAFT → ACTIVE behind the §18 preview gate (always required — no
   // bootstrap bypass on the platform surface); the prior ACTIVE version is RETIRED and
   // current_version_id moves, so tenants only ever resolve the current version (D3).
+  //
+  // DOC-TEMPLATE-LIB-1 T-6 (one live default per type) — the FIRST publish of a default
+  // makes it live, so it is refused (409 platform_default_live) while another default of
+  // the same type is live (ACTIVE, no withdrawal published). The partial unique index
+  // DocumentTemplate_one_live_platform_default is the race backstop, mapped to the same
+  // typed refusal. Publishing a new version of a default whose withdrawal has TAKEN
+  // EFFECT is refused (nobody resolves it any more). During the notice window a new
+  // version may still be published (tenants still use it until the effective date).
   async activatePlatformVersion(input: { version_id: string; actor_id: string }) {
-    return this.activateVersionFor(PLATFORM_OWNER, { ...input, require_preview: true });
+    const v = await this.getVersionFor(PLATFORM_OWNER, input.version_id);
+    const t = await this.getTemplateFor(PLATFORM_OWNER, v.template_id);
+    if (t.withdraw_effective_at !== null && t.withdraw_effective_at.getTime() <= Date.now()) {
+      throw new TemplatePlatformDefaultConflictError(t.id, 'withdrawal_in_effect', {
+        withdraw_effective_at: t.withdraw_effective_at.toISOString(),
+      });
+    }
+    if (t.status !== 'ACTIVE') {
+      const live = await this.findLivePlatformDefault(t.document_type_id, t.id);
+      if (live !== null) throw new TemplatePlatformDefaultConflictError(t.id, 'platform_default_live', { live_template_id: live.id });
+    }
+    try {
+      return await this.activateVersionFor(PLATFORM_OWNER, { ...input, require_preview: true });
+    } catch (e) {
+      throw mapOneLiveDefaultConflict(e, t.id);
+    }
+  }
+
+  // ── DOC-TEMPLATE-LIB-1 T-6 — withdrawal (§9; ADR-0034 D10) ─────────────────
+  // Publishing a withdrawal sets withdraw_notice_at = now and withdraw_effective_at =
+  // now + notice_days. Until the effective date the default is still resolved (notice
+  // window, Org Home banner). From the effective date the resolver never resolves it and
+  // falls back to the tenant's own approved template, else TEMPLATE_SELECTION_REQUIRED.
+  // Generated documents keep their pinned version (versions are never touched here).
+
+  // The live default of a type (ACTIVE, no withdrawal published), other than `exceptId`.
+  async findLivePlatformDefault(document_type_id: string, exceptId?: string) {
+    return this.prisma.documentTemplate.findFirst({
+      where: {
+        ...templateWhere(PLATFORM_OWNER),
+        document_type_id,
+        status: 'ACTIVE',
+        withdraw_effective_at: null,
+        ...(exceptId !== undefined ? { id: { not: exceptId } } : {}),
+      },
+    });
+  }
+
+  // `beforeWrite` runs after every state check and before the conditional write (the
+  // platform controller writes the audit event there — no withdrawal without its audit
+  // record; a failing hook aborts the withdrawal).
+  async withdrawPlatformTemplate(input: {
+    id: string;
+    notice_days: number;
+    now?: Date;
+    beforeWrite?: (planned: { template: { id: string; document_type_id: string }; withdraw_notice_at: Date; withdraw_effective_at: Date }) => Promise<void>;
+  }) {
+    const now = input.now ?? new Date();
+    const t = await this.getPlatformTemplate(input.id);
+    if (t.status !== 'ACTIVE' || t.current_version_id === null) {
+      throw new TemplatePlatformDefaultConflictError(t.id, 'template_not_published', { status: t.status });
+    }
+    if (t.withdraw_effective_at !== null) {
+      throw new TemplatePlatformDefaultConflictError(t.id, 'already_withdrawn', {
+        withdraw_effective_at: t.withdraw_effective_at.toISOString(),
+      });
+    }
+    const effective = new Date(now.getTime() + input.notice_days * DAY_MS);
+    if (input.beforeWrite !== undefined) {
+      await input.beforeWrite({ template: t, withdraw_notice_at: now, withdraw_effective_at: effective });
+    }
+    // Conditional write: a concurrent withdrawal of the same default loses cleanly.
+    const r = await this.prisma.documentTemplate.updateMany({
+      where: { ...templateWhere(PLATFORM_OWNER), id: t.id, status: 'ACTIVE', withdraw_effective_at: null },
+      data: { withdraw_notice_at: now, withdraw_effective_at: effective },
+    });
+    if (r.count === 0) throw new TemplatePlatformDefaultConflictError(t.id, 'already_withdrawn');
+    return this.getPlatformTemplate(t.id);
+  }
+
+  // Cancel a PENDING withdrawal (effective date still ahead). Refused once it has taken
+  // effect, when none is pending, and while a replacement default of the same type is
+  // live (one live default per type — the index backstops the race).
+  async cancelPlatformWithdrawal(input: {
+    id: string;
+    now?: Date;
+    beforeWrite?: (current: { template: { id: string; document_type_id: string }; withdraw_notice_at: Date | null; withdraw_effective_at: Date }) => Promise<void>;
+  }) {
+    const now = input.now ?? new Date();
+    const t = await this.getPlatformTemplate(input.id);
+    if (t.withdraw_effective_at === null) throw new TemplatePlatformDefaultConflictError(t.id, 'not_withdrawn');
+    if (t.withdraw_effective_at.getTime() <= now.getTime()) {
+      throw new TemplatePlatformDefaultConflictError(t.id, 'withdrawal_in_effect', {
+        withdraw_effective_at: t.withdraw_effective_at.toISOString(),
+      });
+    }
+    if (t.status === 'ACTIVE') {
+      const live = await this.findLivePlatformDefault(t.document_type_id, t.id);
+      if (live !== null) throw new TemplatePlatformDefaultConflictError(t.id, 'platform_default_live', { live_template_id: live.id });
+    }
+    if (input.beforeWrite !== undefined) {
+      await input.beforeWrite({ template: t, withdraw_notice_at: t.withdraw_notice_at, withdraw_effective_at: t.withdraw_effective_at });
+    }
+    let count: number;
+    try {
+      const r = await this.prisma.documentTemplate.updateMany({
+        where: { ...templateWhere(PLATFORM_OWNER), id: t.id, withdraw_effective_at: { gt: now } },
+        data: { withdraw_notice_at: null, withdraw_effective_at: null },
+      });
+      count = r.count;
+    } catch (e) {
+      throw mapOneLiveDefaultConflict(e, t.id);
+    }
+    if (count === 0) throw new TemplatePlatformDefaultConflictError(t.id, 'withdrawal_in_effect');
+    return this.getPlatformTemplate(t.id);
+  }
+
+  // The Aramo defaults with a published withdrawal whose effective date is after `since`
+  // (pending notices, plus recently effective ones when `since` is in the past — the
+  // tenant notice grace window). Ordered by effective date.
+  async listPlatformWithdrawals(since: Date) {
+    return this.prisma.documentTemplate.findMany({
+      where: { ...templateWhere(PLATFORM_OWNER), withdraw_notice_at: { not: null }, withdraw_effective_at: { gt: since } },
+      orderBy: [{ withdraw_effective_at: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  // §9 tenant notice — the Aramo default withdrawals THIS tenant relies on: pending ones,
+  // and ones that took effect less than `grace_days` ago. A tenant relies on a default
+  // when one of its selections names it, or when it has no tenant-wide selection for the
+  // type and no other live default (no withdrawal published) would be resolved instead.
+  // Product tags are returned as recorded and NEVER filter (ADR-0034 D9 — not enforced).
+  // The only tenant data read is the caller's own selections / templates.
+  async listWithdrawalNoticesForTenant(input: { tenant_id: string; now?: Date; grace_days: number }) {
+    const now = input.now ?? new Date();
+    const withdrawals = await this.listPlatformWithdrawals(new Date(now.getTime() - input.grace_days * DAY_MS));
+    if (withdrawals.length === 0) return [];
+    const selections = await this.listSelections(input.tenant_id);
+    const out: Array<{
+      template_id: string;
+      name: string;
+      document_type_id: string;
+      products: string[];
+      withdraw_notice_at: Date;
+      withdraw_effective_at: Date;
+      in_effect: boolean;
+      selected_for_client_ids: Array<string | null>;
+      relies_on_default: boolean;
+      has_own_template: boolean;
+    }> = [];
+    for (const w of withdrawals) {
+      if (w.withdraw_notice_at === null || w.withdraw_effective_at === null) continue;
+      const selected = selections.filter((s) => s.template_id === w.id).map((s) => s.client_id);
+      const hasTenantWide = selections.some((s) => s.document_type_id === w.document_type_id && s.client_id === null);
+      const relies_on_default =
+        !hasTenantWide && w.status === 'ACTIVE' && (await this.findLivePlatformDefault(w.document_type_id, w.id)) === null;
+      if (selected.length === 0 && !relies_on_default) continue;
+      const own = await this.prisma.documentTemplate.count({
+        where: {
+          tenant_id: input.tenant_id,
+          owner_scope: 'TENANT',
+          document_type_id: w.document_type_id,
+          status: 'ACTIVE',
+          current_version_id: { not: null },
+        },
+      });
+      out.push({
+        template_id: w.id,
+        name: w.name,
+        document_type_id: w.document_type_id,
+        products: w.products ?? [],
+        withdraw_notice_at: w.withdraw_notice_at,
+        withdraw_effective_at: w.withdraw_effective_at,
+        in_effect: w.withdraw_effective_at.getTime() <= now.getTime(),
+        selected_for_client_ids: selected,
+        relies_on_default,
+        has_own_template: own > 0,
+      });
+    }
+    return out;
+  }
+
+  // Ids of the Aramo defaults of a type whose withdrawal has taken effect at `now`.
+  async listWithdrawnPlatformDefaultIds(document_type_id: string, now: Date): Promise<string[]> {
+    const rows = await this.prisma.documentTemplate.findMany({
+      where: { ...templateWhere(PLATFORM_OWNER), document_type_id, status: 'ACTIVE', withdraw_effective_at: { lte: now } },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    return rows.map((r) => r.id);
+  }
+
+  // The tenant's own ACTIVE templates of a type that a withdrawal fallback may use: for a
+  // known client, that client's templates first, then the tenant-wide ones. Within each
+  // group most recently approved first (current version activated_at, then id). Rows
+  // without a current version are excluded (the resolver pins current_version_id).
+  async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null) {
+    const rows = await this.prisma.documentTemplate.findMany({
+      where: {
+        tenant_id,
+        owner_scope: 'TENANT',
+        document_type_id,
+        status: 'ACTIVE',
+        current_version_id: { not: null },
+        client_id,
+      },
+    });
+    const tenantWide =
+      client_id === null
+        ? []
+        : await this.prisma.documentTemplate.findMany({
+            where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, client_id: null },
+          });
+    const all = [...rows, ...tenantWide];
+    const versionIds = all.map((t) => t.current_version_id).filter((id): id is string => id !== null);
+    const versions = await this.prisma.templateVersion.findMany({
+      where: { id: { in: versionIds }, tenant_id },
+      select: { id: true, activated_at: true },
+    });
+    const activated = new Map(versions.map((v) => [v.id, v.activated_at?.getTime() ?? 0]));
+    const recency = (t: (typeof all)[number]): number => (t.current_version_id === null ? 0 : (activated.get(t.current_version_id) ?? 0));
+    const order = (a: (typeof all)[number], b: (typeof all)[number]): number => recency(b) - recency(a) || (a.id < b.id ? -1 : 1);
+    return [...rows.sort(order), ...tenantWide.sort(order)];
   }
 
   // ── Fields (canonical field model, NOT AcroForm) ─────────────────────────

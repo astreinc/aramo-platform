@@ -118,6 +118,28 @@ export class TemplateSelectionInvalidError extends Error {
   }
 }
 
+// DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — an Aramo (PLATFORM) default lifecycle write
+// refused by state. reason ∈ template_not_published | already_withdrawn | not_withdrawn |
+// withdrawal_in_effect | platform_default_live. Mapped to 409
+// TEMPLATE_PLATFORM_DEFAULT_CONFLICT (details.reason).
+export type TemplatePlatformDefaultConflictReason =
+  | 'template_not_published'
+  | 'already_withdrawn'
+  | 'not_withdrawn'
+  | 'withdrawal_in_effect'
+  | 'platform_default_live';
+
+export class TemplatePlatformDefaultConflictError extends Error {
+  constructor(
+    public readonly templateId: string,
+    public readonly reason: TemplatePlatformDefaultConflictReason,
+    public readonly details: Record<string, unknown> = {},
+  ) {
+    super(`Aramo default ${templateId}: ${reason}`);
+    this.name = 'TemplatePlatformDefaultConflictError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);

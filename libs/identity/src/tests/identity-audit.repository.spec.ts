@@ -85,10 +85,14 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // IC-3 PR-7: +1 tenant_user.enabled (42 -> 43).
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
-  it('EVENT_TYPES contains 46 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(46);
+  // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
+  it('EVENT_TYPES contains 48 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(48);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
+    // T-6 — Aramo default withdrawal events are GLOBAL (a PLATFORM template has no tenant).
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.withdrawal_published')).toBe(false);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.withdrawal_cancelled')).toBe(false);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.draft_discarded')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.tenant_user.enabled')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.invitation.rejected_cross_tenant')).toBe(true);

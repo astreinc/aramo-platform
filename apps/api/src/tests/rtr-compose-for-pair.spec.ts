@@ -108,6 +108,7 @@ describe('SEAM 4 — RtrOrchestratorService.composeForPair (read-only Send RTR p
         return t === undefined ? null : { template_id: t.id };
       },
       findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
       findTemplateByIdOwnerAware: async (_tenant: string, id: string) => {
         const t = [...templateByTenant.values()].find((x) => x.id === id);
         return t === undefined ? null : asTemplateRow(t);

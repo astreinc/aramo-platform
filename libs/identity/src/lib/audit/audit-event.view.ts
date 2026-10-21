@@ -200,6 +200,10 @@ export function summarizeDetail(
       const n = payload['version_number'];
       return typeof n === 'number' ? `Discarded a document template draft (v${n})` : 'Discarded a document template draft';
     }
+    case 'identity.document_template.withdrawal_published':
+      return 'Published the withdrawal of an Aramo default template';
+    case 'identity.document_template.withdrawal_cancelled':
+      return 'Cancelled the withdrawal of an Aramo default template';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

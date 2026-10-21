@@ -252,6 +252,9 @@ model DocumentTemplate {
   @@index([tenant_id])
   @@index([tenant_id, document_type_id])
   @@index([owner_scope, document_type_id])
+  // DOC-TEMPLATE-LIB-1 T-6 — partial UNIQUE index DocumentTemplate_one_live_platform_default
+  // (document_type_id) WHERE owner_scope='PLATFORM' AND status='ACTIVE' AND
+  // withdraw_effective_at IS NULL (migration 20261021160000 — not expressible in Prisma).
   @@schema("documents")
 }
 

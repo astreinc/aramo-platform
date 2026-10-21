@@ -4,8 +4,10 @@ import type { ExecutionContext } from '@nestjs/common';
 import { JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import {
+  TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
   TemplateVariableKeyConflictError,
+  type TemplateAuditPort,
   type TemplateCapabilitiesPort,
   type TemplateVariablesRepository,
   type TemplatesRepository,
@@ -41,6 +43,9 @@ const ROUTE_SCOPES: Record<string, string> = {
   publish: MANAGE,
   createVariable: MANAGE,
   updateVariable: MANAGE,
+  // DOC-TEMPLATE-LIB-1 T-6 (§9).
+  withdraw: MANAGE,
+  cancelWithdrawal: MANAGE,
 };
 
 function auth(consumer_type: string, scopes: string[] = [READ, MANAGE]): AuthContextType {
@@ -79,6 +84,28 @@ function build() {
     activatePlatformVersion: vi.fn(async () => ({ id: VID, status: 'ACTIVE' })),
     recordPlatformPreview: vi.fn(async () => ({})),
     updatePlatformDraftVersion: vi.fn(async () => ({ id: VID })),
+    listPlatformVersions: vi.fn(async () => []),
+    // T-6 — the repository runs the beforeWrite hook (audit) then returns the row.
+    withdrawPlatformTemplate: vi.fn(
+      async (i: { id: string; notice_days: number; beforeWrite?: (p: unknown) => Promise<void> }) => {
+        const now = new Date('2026-10-21T00:00:00.000Z');
+        const eff = new Date(now.getTime() + i.notice_days * 86_400_000);
+        await i.beforeWrite?.({ template: { id: i.id, document_type_id: TYPE }, withdraw_notice_at: now, withdraw_effective_at: eff });
+        return { ...PUBLISHED_ROW, withdraw_notice_at: now, withdraw_effective_at: eff };
+      },
+    ),
+    cancelPlatformWithdrawal: vi.fn(async (i: { id: string; beforeWrite?: (p: unknown) => Promise<void> }) => {
+      await i.beforeWrite?.({
+        template: { id: i.id, document_type_id: TYPE },
+        withdraw_notice_at: new Date('2026-10-21T00:00:00.000Z'),
+        withdraw_effective_at: new Date('2026-10-28T00:00:00.000Z'),
+      });
+      return PUBLISHED_ROW;
+    }),
+  };
+  const audit = {
+    recordDraftDiscarded: vi.fn(async () => undefined),
+    recordPlatformWithdrawal: vi.fn(async () => undefined),
   };
   const variables = {
     listAll: vi.fn(async () => []),
@@ -99,9 +126,26 @@ function build() {
     templates as unknown as TemplatesRepository,
     variables as unknown as TemplateVariablesRepository,
     caps as unknown as TemplateCapabilitiesPort,
+    audit as unknown as TemplateAuditPort,
   );
-  return { c, templates, variables, caps };
+  return { c, templates, variables, caps, audit };
 }
+
+const PUBLISHED_ROW = {
+  id: ID,
+  owner_scope: 'PLATFORM',
+  document_type_id: TYPE,
+  name: 'Aramo standard RTR',
+  description: null,
+  template_kind: 'GENERATED',
+  status: 'ACTIVE',
+  products: ['ATS'],
+  current_version_id: VID,
+  withdraw_notice_at: null as Date | null,
+  withdraw_effective_at: null as Date | null,
+  created_at: new Date(),
+  updated_at: new Date(),
+};
 
 // Invoke one route handler with (args…, auth, requestId) in its declared order.
 function call(c: PlatformDocumentTemplatesController, name: string, a: AuthContextType): Promise<unknown> {
@@ -113,7 +157,10 @@ function call(c: PlatformDocumentTemplatesController, name: string, a: AuthConte
       return m[name]!(a, RID);
     case 'get':
     case 'allowedBindings':
+    case 'cancelWithdrawal':
       return m[name]!(ID, a, RID);
+    case 'withdraw':
+      return m[name]!(ID, {}, a, RID);
     case 'getVersion':
     case 'preview':
     case 'publish':
@@ -222,5 +269,87 @@ describe('PlatformDocumentTemplatesController — behaviour', () => {
     expect(dup.statusCode).toBe(409);
     expect(dup.context?.details?.['reason']).toBe('key_exists');
     expect((await errorOf(c.createVariable({ key: 'a.b', label: 'L', group_label: 'G', data_type: 'BOOLEAN' }, auth('platform'), RID))).code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — withdrawal routes.
+describe('PlatformDocumentTemplatesController — withdrawal (T-6)', () => {
+  it('withdraw: notice_days defaults to 7; the audit event is written (global, before the write) with the planned dates + reason', async () => {
+    const { c, templates, audit } = build();
+    const v = await c.withdraw(ID, { reason: ' Superseded ' }, auth('platform'), RID);
+    expect(templates.withdrawPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ id: ID, notice_days: 7 }));
+    expect(audit.recordPlatformWithdrawal).toHaveBeenCalledWith({
+      action: 'published',
+      actor_id: auth('platform').sub,
+      template_id: ID,
+      document_type_id: TYPE,
+      withdraw_notice_at: '2026-10-21T00:00:00.000Z',
+      withdraw_effective_at: '2026-10-28T00:00:00.000Z',
+      notice_days: 7,
+      reason: 'Superseded',
+      requestId: RID,
+    });
+    expect(v).toMatchObject({ withdraw_notice_at: new Date('2026-10-21T00:00:00.000Z'), withdraw_effective_at: new Date('2026-10-28T00:00:00.000Z') });
+  });
+
+  it('withdraw: notice_days must be an integer 0..365 (0 = effective immediately)', async () => {
+    const { c, templates } = build();
+    for (const bad of [-1, 366, 1.5, '7']) {
+      const e = await errorOf(c.withdraw(ID, { notice_days: bad }, auth('platform'), RID));
+      expect(e.code, String(bad)).toBe('VALIDATION_ERROR');
+      expect(e.context?.details?.['reason']).toBe('invalid_notice_days');
+    }
+    expect(templates.withdrawPlatformTemplate).not.toHaveBeenCalled();
+    await c.withdraw(ID, { notice_days: 0 }, auth('platform'), RID);
+    expect(templates.withdrawPlatformTemplate).toHaveBeenCalledWith(expect.objectContaining({ notice_days: 0 }));
+    await c.withdraw(ID, { notice_days: 365 }, auth('platform'), RID);
+    expect(templates.withdrawPlatformTemplate).toHaveBeenLastCalledWith(expect.objectContaining({ notice_days: 365 }));
+  });
+
+  it('a lifecycle refusal maps to 409 TEMPLATE_PLATFORM_DEFAULT_CONFLICT with details.reason', async () => {
+    const { c, templates } = build();
+    templates.withdrawPlatformTemplate.mockRejectedValueOnce(new TemplatePlatformDefaultConflictError(ID, 'already_withdrawn'));
+    const e = await errorOf(c.withdraw(ID, {}, auth('platform'), RID));
+    expect(e.code).toBe('TEMPLATE_PLATFORM_DEFAULT_CONFLICT');
+    expect(e.statusCode).toBe(409);
+    expect(e.context?.details?.['reason']).toBe('already_withdrawn');
+    templates.cancelPlatformWithdrawal.mockRejectedValueOnce(new TemplatePlatformDefaultConflictError(ID, 'withdrawal_in_effect'));
+    const e2 = await errorOf(c.cancelWithdrawal(ID, auth('platform'), RID));
+    expect(e2.statusCode).toBe(409);
+    expect(e2.context?.details?.['reason']).toBe('withdrawal_in_effect');
+  });
+
+  it('cancel: writes the cancelled audit event with the dates being cleared', async () => {
+    const { c, audit } = build();
+    await c.cancelWithdrawal(ID, auth('platform'), RID);
+    expect(audit.recordPlatformWithdrawal).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'cancelled', template_id: ID, withdraw_effective_at: '2026-10-28T00:00:00.000Z' }),
+    );
+  });
+
+  it('a failing audit write aborts the withdrawal (the hook throws before the write)', async () => {
+    const { c, audit } = build();
+    audit.recordPlatformWithdrawal.mockRejectedValueOnce(new Error('audit down'));
+    const e = await errorOf(c.withdraw(ID, {}, auth('platform'), RID));
+    expect(e.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('refuses withdrawal when no audit seam is bound (audit is a MUST)', async () => {
+    const { templates, variables, caps } = build();
+    const bare = new PlatformDocumentTemplatesController(
+      templates as unknown as TemplatesRepository,
+      variables as unknown as TemplateVariablesRepository,
+      caps as unknown as TemplateCapabilitiesPort,
+    );
+    expect((await errorOf(bare.withdraw(ID, {}, auth('platform'), RID))).code).toBe('INTERNAL_ERROR');
+    expect((await errorOf(bare.cancelWithdrawal(ID, auth('platform'), RID))).code).toBe('INTERNAL_ERROR');
+    expect(templates.withdrawPlatformTemplate).not.toHaveBeenCalled();
+  });
+
+  it('D9: list/get expose product tags as recorded (no filtering)', async () => {
+    const { c, templates } = build();
+    templates.listPlatformTemplates.mockResolvedValueOnce([{ ...PUBLISHED_ROW, products: ['SIGN'], versions: [] }] as never);
+    const r = await c.list(auth('platform'), RID);
+    expect(r.templates[0]?.products).toEqual(['SIGN']);
   });
 });

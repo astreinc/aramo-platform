@@ -38,6 +38,30 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         requestId: e.requestId,
       });
     },
+    // DOC-TEMPLATE-LIB-1 T-6 (§9) — Aramo default withdrawal published / cancelled. GLOBAL
+    // event (tenant_id NULL — a PLATFORM template belongs to no tenant); actor = the
+    // platform operator. Non-swallowing: a failed write fails the withdrawal.
+    async recordPlatformWithdrawal(e) {
+      await repo.writeEvent({
+        event_type:
+          e.action === 'published'
+            ? 'identity.document_template.withdrawal_published'
+            : 'identity.document_template.withdrawal_cancelled',
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: null,
+        subject_id: e.template_id,
+        event_payload: {
+          template_id: e.template_id,
+          document_type_id: e.document_type_id,
+          withdraw_notice_at: e.withdraw_notice_at,
+          withdraw_effective_at: e.withdraw_effective_at,
+          ...(e.notice_days !== undefined ? { notice_days: e.notice_days } : {}),
+          ...(e.reason !== undefined && e.reason !== null ? { reason: e.reason } : {}),
+        },
+        requestId: e.requestId,
+      });
+    },
   };
 }
 

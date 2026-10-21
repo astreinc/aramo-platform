@@ -16,6 +16,7 @@ import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
+  TEMPLATE_AUDIT,
   TEMPLATE_CAPABILITIES,
   TEMPLATE_VARIABLE_DATA_TYPES,
   TemplateVariableKeyConflictError,
@@ -23,6 +24,7 @@ import {
   TemplateVariablesRepository,
   TemplatesRepository,
   templateErrorToHttp,
+  type TemplateAuditPort,
   type TemplateCapabilitiesPort,
   type TemplateVariableDataType,
   type TemplateVariableRow,
@@ -47,7 +49,12 @@ import {
 // primitives the tenant admin flow uses (DRAFT one-per-template, §18 preview gate via
 // content_fingerprint, publish = activate which retires the prior ACTIVE version) and
 // the SAME TEMPLATE_CAPABILITIES port (catalog-driven closed-binding validation,
-// fixed-sample preview, html sanitisation). Withdrawal is T-6; selection/resolution T-3.
+// fixed-sample preview, html sanitisation). Selection/resolution is T-3.
+//
+// T-6 (§9; ADR-0034 D10) — withdrawal: POST :id/withdraw publishes a withdrawal (notice
+// now, effective now + notice_days, default 7) and POST :id/withdraw/cancel cancels a
+// pending one. Each writes a GLOBAL audit event (TEMPLATE_AUDIT port → identity audit
+// ledger, tenant_id NULL) BEFORE the state change; a failed audit write refuses it.
 
 const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
 const NAME_MAX = 120;
@@ -62,6 +69,11 @@ const VARIABLE_KEY = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 const VARIABLE_KEY_MAX = 64;
 const LABEL_MAX = 80;
 const SAMPLE_MAX = 2000;
+// Withdrawal notice (§9: N default 7, set per withdrawal). 0 = effective immediately.
+// Upper bound 365 [TD] — a notice longer than a year is not a withdrawal.
+const DEFAULT_NOTICE_DAYS = 7;
+const MAX_NOTICE_DAYS = 365;
+const WITHDRAW_REASON_MAX = 500;
 
 export interface PlatformTemplateVersionSummary {
   id: string;
@@ -199,6 +211,9 @@ export class PlatformDocumentTemplatesController {
     // The same capability port the tenant admin flow uses (provided @Global by
     // TemplateCapabilitiesModule). @Optional only so the class can be unit-built.
     @Optional() @Inject(TEMPLATE_CAPABILITIES) private readonly caps?: TemplateCapabilitiesPort,
+    // T-6 — the template audit seam (@Global, bound in apps/api). @Optional only so the
+    // class can be unit-built; withdrawal REFUSES when it is absent (audit is a MUST).
+    @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
   ) {}
 
   // ---- Aramo default templates -------------------------------------------
@@ -295,6 +310,82 @@ export class PlatformDocumentTemplatesController {
     if (Object.keys(patch).length === 0) throw bad('one of name, description, products is required', requestId);
     return this.run(requestId, async () => {
       const t = await this.templates.updatePlatformTemplate(id, patch);
+      return toTemplateView(t, await this.templates.listPlatformVersions(id));
+    });
+  }
+
+  // T-6 (§9) — publish a withdrawal: withdraw_notice_at = now, withdraw_effective_at =
+  // now + notice_days. Only a published (ACTIVE) default with no withdrawal pending.
+  // Affected tenants see it at GET /v1/document-templates/notices until the effective
+  // date (+ grace); from the effective date the resolver falls back (D10).
+  @Post('document-templates/:id/withdraw')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:document_template:manage')
+  async withdraw(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: Record<string, unknown> | undefined,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PlatformTemplateView> {
+    this.assertPlatform(auth, requestId);
+    const rawDays = body?.['notice_days'];
+    let notice_days = DEFAULT_NOTICE_DAYS;
+    if (rawDays !== undefined && rawDays !== null) {
+      if (typeof rawDays !== 'number' || !Number.isInteger(rawDays) || rawDays < 0 || rawDays > MAX_NOTICE_DAYS) {
+        throw bad(`notice_days must be an integer between 0 and ${MAX_NOTICE_DAYS}`, requestId, 'invalid_notice_days');
+      }
+      notice_days = rawDays;
+    }
+    const reason = optionalText(body?.['reason'], 'reason', WITHDRAW_REASON_MAX, requestId);
+    const audit = this.requireAudit(requestId);
+    return this.run(requestId, async () => {
+      const t = await this.templates.withdrawPlatformTemplate({
+        id,
+        notice_days,
+        beforeWrite: (p) =>
+          audit.recordPlatformWithdrawal({
+            action: 'published',
+            actor_id: auth.sub,
+            template_id: p.template.id,
+            document_type_id: p.template.document_type_id,
+            withdraw_notice_at: p.withdraw_notice_at.toISOString(),
+            withdraw_effective_at: p.withdraw_effective_at.toISOString(),
+            notice_days,
+            reason,
+            requestId,
+          }),
+      });
+      return toTemplateView(t, await this.templates.listPlatformVersions(id));
+    });
+  }
+
+  // T-6 (§9) — cancel a PENDING withdrawal (before its effective date). Refused once it
+  // has taken effect, when none is pending, or while a replacement default of the same
+  // type is live (one live default per type) — 409 TEMPLATE_PLATFORM_DEFAULT_CONFLICT.
+  @Post('document-templates/:id/withdraw/cancel')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:document_template:manage')
+  async cancelWithdrawal(
+    @Param('id', ParseUUIDPipe) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PlatformTemplateView> {
+    this.assertPlatform(auth, requestId);
+    const audit = this.requireAudit(requestId);
+    return this.run(requestId, async () => {
+      const t = await this.templates.cancelPlatformWithdrawal({
+        id,
+        beforeWrite: (c) =>
+          audit.recordPlatformWithdrawal({
+            action: 'cancelled',
+            actor_id: auth.sub,
+            template_id: c.template.id,
+            document_type_id: c.template.document_type_id,
+            withdraw_notice_at: c.withdraw_notice_at?.toISOString() ?? null,
+            withdraw_effective_at: c.withdraw_effective_at.toISOString(),
+            requestId,
+          }),
+      });
       return toTemplateView(t, await this.templates.listPlatformVersions(id));
     });
   }
@@ -578,6 +669,13 @@ export class PlatformDocumentTemplatesController {
   // never carries a logo asset).
   private versionView<V extends object>(v: V): V & { logo: null } {
     return { ...v, logo: null };
+  }
+
+  private requireAudit(requestId: string): TemplateAuditPort {
+    if (this.audit === undefined) {
+      throw new AramoError('INTERNAL_ERROR', 'Template audit is not configured; withdrawal refused', 500, { requestId });
+    }
+    return this.audit;
   }
 
   private assertPlatform(auth: AuthContextType, requestId: string): void {

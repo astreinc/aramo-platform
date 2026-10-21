@@ -59,6 +59,7 @@ describe('A1 — rtr-html-v1 request path', () => {
       // tenant's own TENANT template).
       findSelection: async (_t: string, _type: string, client: string | null) => (client === null ? { template_id: templateId } : null),
       findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
       findTemplateByIdOwnerAware: async () => ({
         id: templateId, current_version_id: versionId, name: 'Exclusive RTR', document_type_id: 'd0c50005-0000-7000-8000-000000000001',
         owner_scope: 'TENANT', status: 'ACTIVE', withdraw_effective_at: null,

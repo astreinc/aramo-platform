@@ -193,8 +193,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const platformTpl = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId });
       await insertVersion(platformTpl, null, 1, 'DRAFT');
       await expect(insertVersion(platformTpl, null, 2, 'DRAFT')).rejects.toThrow(/TemplateVersion_one_draft_per_template/);
-      // A second DRAFT on a different PLATFORM template is fine.
-      const other = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId });
+      // A second DRAFT on a different PLATFORM template is fine. (Another document type:
+      // T-6 allows only one live — ACTIVE, not withdrawn — Aramo default per type.)
+      const other = await insertTemplate({ owner_scope: 'PLATFORM', tenant_id: null, typeId: await newDocumentType() });
       await expect(insertVersion(other, null, 1, 'DRAFT')).resolves.toBeTypeOf('string');
     });
 

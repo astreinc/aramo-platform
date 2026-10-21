@@ -134,6 +134,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TEMPLATE_DRAFT_ALREADY_EXISTS',
       'TEMPLATE_PREVIEW_REQUIRED',
       'TEMPLATE_BINDING_UNSUPPORTED',
+      // DOC-TEMPLATE-LIB-1 T-6 (§9) — withdrawal: no fallback (409) / lifecycle conflict (409).
+      'TEMPLATE_SELECTION_REQUIRED',
+      'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
       'DOCUMENT_REQUIREMENT_NOT_FOUND',
       'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
       'DOCUMENT_RENDER_FAILED',

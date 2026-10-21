@@ -394,6 +394,16 @@ export const ERROR_CODES = [
   'TEMPLATE_DRAFT_ALREADY_EXISTS',
   'TEMPLATE_PREVIEW_REQUIRED',
   'TEMPLATE_BINDING_UNSUPPORTED',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default for this document type
+  // has been withdrawn (effective date passed) and the tenant has no approved template of
+  // its own to fall back to: the tenant admin/owner must choose a template (409). Never a
+  // silent wording swap.
+  'TEMPLATE_SELECTION_REQUIRED',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9) — an Aramo default lifecycle write refused by state
+  // (withdraw an unpublished/already-withdrawn default, cancel a withdrawal that is not
+  // pending or already effective, publish/cancel while another live default exists for
+  // the type). details.reason names the case (409).
+  'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
   'DOCUMENT_REQUIREMENT_NOT_FOUND',
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',

@@ -146,7 +146,9 @@ export class RtrOrchestratorService {
     // 1. Resolve the tenant's RTR template and PIN its exact version. DOC-TEMPLATE-LIB-1
     //    T-3: selection (tenant, RTR, the requisition's CLIENT company) → selection
     //    (tenant, RTR, tenant-wide) → the Aramo RTR default. Throws
-    //    RTR_TEMPLATE_NOT_CONFIGURED / _CONFIGURATION_INVALID — no fallback.
+    //    RTR_TEMPLATE_NOT_CONFIGURED / _CONFIGURATION_INVALID — no fallback. T-6: a
+    //    withdrawn Aramo default falls to the tenant's own approved RTR template, else
+    //    TEMPLATE_SELECTION_REQUIRED (409).
     const derived_company_id = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
     const template = await this.resolver.resolveActive({
       tenant_id: input.tenant_id,

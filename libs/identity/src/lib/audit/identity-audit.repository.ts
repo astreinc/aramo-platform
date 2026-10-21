@@ -148,6 +148,13 @@ export const EVENT_TYPES = [
   // is the user. Written ONLY by that migration (names follow the directive verbatim).
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — an Aramo (PLATFORM) default template
+  // withdrawal was published / cancelled by a platform operator. GLOBAL (tenant_id NULL):
+  // a PLATFORM template belongs to no tenant. subject_id = the DocumentTemplate id;
+  // payload { document_type_id, withdraw_notice_at, withdraw_effective_at, notice_days?,
+  // reason? }. Written through the non-swallowing repository BEFORE the state change.
+  'identity.document_template.withdrawal_published',
+  'identity.document_template.withdrawal_cancelled',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
