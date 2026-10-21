@@ -927,6 +927,7 @@
       "NodeDnsAdapter",
       "ORG_ADMIN_SCOPE_KEYS",
       "ORG_ENTRY_PATH",
+      "ORG_ROLE_KEYS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
@@ -5253,6 +5254,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
