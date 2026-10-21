@@ -79,12 +79,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     await container?.stop();
   });
 
-  it('sign_sender resolves EXACTLY the esign:* scopes — no ATS scope leaks', async () => {
+  it('sign_sender resolves EXACTLY the esign:* scopes (+ document_template:read) — no ATS scope leaks', async () => {
     const userId = await assignRoleToFreshUser('e1', SEED_IDS.roles.sign_sender);
     const scopes = await roleSvc.getScopesByUserAndTenant({ user_id: userId, tenant_id: SEED_IDS.tenant });
-    expect([...scopes].sort()).toEqual(['sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
-    // The decisive partition: every resolved scope is in the esign namespace.
-    expect([...scopes].every((s) => s.startsWith('sign:'))).toBe(true);
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.3) — + document_template:read (Sign starts envelopes from
+    // templates); templates are Documents-owned, not an ATS scope.
+    expect([...scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
+    // The decisive partition: every resolved scope is in the esign namespace (or the
+    // Documents template read).
+    expect([...scopes].every((s) => s.startsWith('sign:') || s === 'document_template:read')).toBe(true);
   });
 
   // IC-2 PR-6 — through the EFFECTIVE resolver (what the guard and /session use):
@@ -107,8 +110,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     caps.current = new Set(['core', 'ats', 'portal', 'sign']);
     const entitled = await resolver.resolve(input('sign'));
     expect(entitled.status).toBe('ok');
-    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
-    expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: [] });
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the sign session also carries document_template:read.
+    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
+    // The recruiter (ATS) consumer is unchanged: it carries whatever non-Sign scope is held —
+    // for a Sign-only identity that is just document_template:read.
+    expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: ['document_template:read'] });
   });
 
   // IC-3 PR-7 row 0x2b0 — ROLES-1 PR-2: tenant_admin, the ORGANIZATION administrator
@@ -142,7 +148,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     const esign = await resolver.resolve(input('sign'));
     expect(esign.status).toBe('ok');
     if (esign.status === 'ok') {
-      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
+      // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — + document_template:read on the sign session.
+      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s) || s === 'document_template:read')).toBe(true);
+      expect(esign.scopes).toContain('document_template:read');
+      expect(esign.scopes).not.toContain('document_template:manage');
       expect(esign.scopes).toContain('sign:envelope:send');
       expect(esign.scopes).not.toContain('talent:read');
     }
@@ -153,7 +162,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
       expect(recruiter.scopes).toContain('talent:read');
     }
     const org = await resolver.resolve(input('org'));
-    if (org.status === 'ok') expect([...org.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the org session = the org set + document_template:{read,manage}.
+    if (org.status === 'ok') expect([...org.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS, 'document_template:manage', 'document_template:read'].sort());
     expect(await resolver.resolve(input('platform'))).toEqual({ status: 'ok', scopes: [] });
     // Sign capability revoked → the esign consumer resolves nothing (no admin via a dead product).
     caps.current = new Set(['core']);

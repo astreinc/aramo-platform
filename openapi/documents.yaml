@@ -246,6 +246,120 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TemplateWithdrawalNoticesResponse'
+  /v1/document-templates/library:
+    get:
+      operationId: listDocumentTemplateLibrary
+      summary: The Org Home template gallery (own templates and Aramo defaults).
+      description: |
+        DOC-TEMPLATE-LIB-1 T-4. The tenant's own templates plus the Aramo (PLATFORM) defaults
+        the tenant can use now (ACTIVE, with a current version, withdrawal not yet effective).
+        Only the CURRENT version of an Aramo default is listed. `updated_at` is the current
+        version's activation time (the gallery "Updated {date}" badge). Also returns the
+        system document types (with whether each is configurable). Requires
+        `document_template:read`.
+      responses:
+        '200':
+          description: The gallery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateLibraryResponse'
+  /v1/document-templates/library/{id}/preview:
+    get:
+      operationId: previewDocumentTemplateDefault
+      summary: Preview an Aramo default with the tenant's branding.
+      description: |
+        DOC-TEMPLATE-LIB-1 T-4. Renders the CURRENT version of an Aramo (PLATFORM) default
+        with the tenant's organization values (organization.* variables from the tenant
+        profile) and fixed sample values for every other variable. Read-only: no preview is
+        recorded and nothing is written. Not an Aramo default, not usable now, or unknown → 404.
+        Requires `document_template:read`.
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: The branded preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateDefaultPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/document-templates/selections:
+    get:
+      operationId: listDocumentTemplateSelections
+      summary: The tenant's active template choice per document type (and client).
+      description: |
+        DOC-TEMPLATE-LIB-1 T-4. A document type with no tenant-wide row uses the Aramo
+        default. Requires `document_template:read`.
+      responses:
+        '200':
+          description: The selections.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TemplateSelection'
+    put:
+      operationId: setDocumentTemplateSelection
+      summary: Set the active template for a document type (and optional client).
+      description: |
+        DOC-TEMPLATE-LIB-1 T-4. The template must be an Aramo default or one of the tenant's
+        own templates, of the same document type, ACTIVE (else 404 for a template the tenant
+        cannot see, 422 VALIDATION_ERROR with details.reason `template_not_active`,
+        `template_withdrawn` or `template_client_mismatch`). Replaces any existing choice for
+        the same (document type, client). Requires `document_template:manage`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetTemplateSelectionRequest'
+      responses:
+        '200':
+          description: The stored selection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateSelection'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      operationId: clearDocumentTemplateSelection
+      summary: Clear the active template choice (revert to the Aramo default).
+      description: |
+        DOC-TEMPLATE-LIB-1 T-4. Removes the choice for (document type, client); without a
+        client, the tenant-wide choice. Idempotent (204 whether or not a choice existed).
+        Requires `document_template:manage`.
+      parameters:
+        - name: document_type_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: client_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Cleared.
+        '400':
+          $ref: '#/components/responses/BadRequest'
   /v1/document-templates/{id}:
     get:
       operationId: getDocumentTemplate
@@ -1438,6 +1552,81 @@ components:
       properties:
         printed_name:
           type: [string, 'null']
+    TemplateLibraryItem:
+      type: object
+      description: One gallery entry — an Aramo (PLATFORM) default or one of the tenant's own (TENANT) templates.
+      required: [id, owner_scope, document_type_id, name, description, template_kind, status, client_id, current_version_id, current_version_number, updated_at, products, withdraw_effective_at, configurable]
+      properties:
+        id: { type: string, format: uuid }
+        owner_scope: { type: string, enum: [PLATFORM, TENANT] }
+        document_type_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        template_kind: { type: string }
+        status: { type: string }
+        client_id: { type: [string, 'null'], format: uuid }
+        current_version_id: { type: [string, 'null'], format: uuid }
+        current_version_number: { type: [integer, 'null'] }
+        updated_at: { type: string, format: date-time }
+        products:
+          type: [array, 'null']
+          description: Aramo defaults only — the product tags (recorded, not enforced).
+          items: { type: string }
+        withdraw_effective_at: { type: [string, 'null'], format: date-time }
+        configurable: { type: boolean }
+    TemplateLibraryResponse:
+      type: object
+      required: [items, document_types]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateLibraryItem'
+        document_types:
+          type: array
+          items:
+            type: object
+            required: [id, key, name, configurable]
+            properties:
+              id: { type: string, format: uuid }
+              key: { type: string }
+              name: { type: string }
+              configurable: { type: boolean }
+    TemplateDefaultPreview:
+      description: An Aramo default's current version rendered with the tenant's branding.
+      allOf:
+        - $ref: '#/components/schemas/TemplateSamplePreview'
+        - type: object
+          required: [template_id, version_id, version_number, updated_at, letterhead]
+          properties:
+            template_id: { type: string, format: uuid }
+            version_id: { type: string, format: uuid }
+            version_number: { type: integer }
+            updated_at: { type: string, format: date-time }
+            letterhead:
+              type: object
+              required: [organization_name, logo_available]
+              properties:
+                organization_name: { type: [string, 'null'] }
+                logo_available: { type: boolean }
+    TemplateSelection:
+      type: object
+      required: [id, tenant_id, document_type_id, client_id, template_id, selected_by, selected_at]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        document_type_id: { type: string, format: uuid }
+        client_id: { type: [string, 'null'], format: uuid }
+        template_id: { type: string, format: uuid }
+        selected_by: { type: string, format: uuid }
+        selected_at: { type: string, format: date-time }
+    SetTemplateSelectionRequest:
+      type: object
+      required: [document_type_id, template_id]
+      properties:
+        document_type_id: { type: string, format: uuid }
+        client_id: { type: [string, 'null'], format: uuid }
+        template_id: { type: string, format: uuid }
     AllowedBindingsResponse:
       type: object
       description: The governed Insert-field binding catalog (§15) for a template's document type.

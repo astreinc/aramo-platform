@@ -232,7 +232,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
       // esign consumer: the three Sign scopes + ONLY the product-neutral
       // organization subset (IC-3 PR-7 rule) — never an ATS product scope.
       expect(esign.scopes.filter((s) => s.startsWith('sign:')).sort()).toEqual(['sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
-      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
+      // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the sign session also carries document_template:read.
+      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s) || s === 'document_template:read')).toBe(true);
       expect(esign.scopes).not.toContain('talent:read');
       // recruiter consumer: the ATS scopes, never a Sign scope.
       expect(recruiter.scopes.some((s) => s.startsWith('sign:'))).toBe(false);

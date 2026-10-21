@@ -9,6 +9,7 @@ import {
   DocumentRequirementsController,
   DocumentTemplatesController,
 } from './templates.controller.js';
+import { DocumentTemplateLibraryController } from './template-library.controller.js';
 import { DocumentsRepository } from './documents.repository.js';
 import { TemplatesRepository } from './templates.repository.js';
 import { TemplateVariablesRepository } from './template-variables.repository.js';
@@ -28,6 +29,9 @@ import { PrismaService } from './prisma/prisma.service.js';
   controllers: [
     DocumentTypesController,
     DocumentsController,
+    // DOC-TEMPLATE-LIB-1 T-4 — BEFORE DocumentTemplatesController: its static paths
+    // (library, selections) must be registered ahead of that controller's `:id` route.
+    DocumentTemplateLibraryController,
     DocumentTemplatesController,
     DocumentRequirementsController,
     DocumentPacketsController,

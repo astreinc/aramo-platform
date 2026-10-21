@@ -105,6 +105,7 @@
     "libs/contact/src/lib/contact.controller.ts": "AP",
     "libs/documents/src/lib/documents.controller.ts": "AP",
     "libs/documents/src/lib/templates.controller.ts": "AP",
+    "libs/documents/src/lib/template-library.controller.ts": "AP",
     "libs/examination/src/lib/match-list.controller.ts": "AP",
     "libs/examination/src/lib/override.controller.ts": "AP",
     "libs/export/src/lib/export.controller.ts": "AP",

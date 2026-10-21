@@ -80,8 +80,10 @@ describe('AppHomeView', () => {
     expect(await screen.findByTestId('home-no-app-role')).toBeInTheDocument();
     expect(screen.queryByTestId('home-open-ats')).toBeNull();
     const tiles = screen.getByTestId('home-org-tiles');
-    expect(tiles.querySelectorAll('a')).toHaveLength(7);
+    // DOC-TEMPLATE-LIB-1 T-4 — + the Document templates section (7 → 8).
+    expect(tiles.querySelectorAll('a')).toHaveLength(8);
     expect(screen.getByTestId('home-org-roles')).toHaveAttribute('href', '/org/roles');
+    expect(screen.getByTestId('home-org-document-templates')).toHaveAttribute('href', '/org/document-templates');
   });
 
   it('error state: "We couldn\'t load your applications" with Try again', async () => {

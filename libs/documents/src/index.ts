@@ -10,6 +10,8 @@ export {
   DocumentPacketsController,
   templateErrorToHttp,
 } from './lib/templates.controller.js';
+// DOC-TEMPLATE-LIB-1 T-4 — Org Home template library (gallery, default preview, selection).
+export { DocumentTemplateLibraryController, type TemplateLibraryItem } from './lib/template-library.controller.js';
 
 export {
   TEMPLATE_CAPABILITIES,
@@ -23,6 +25,10 @@ export {
   type TenantLogoInfo,
   type CapturedTenantLogo,
   type TemplateLogoRef,
+  // DOC-TEMPLATE-LIB-1 T-4 — tenant branding for the Org Home Aramo-default preview.
+  TEMPLATE_TENANT_BRANDING,
+  type TemplateTenantBrandingPort,
+  type TenantBrandingView,
 } from './lib/template-capabilities.port.js';
 export {
   TEMPLATE_AUDIT,

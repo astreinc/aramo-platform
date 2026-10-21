@@ -146,15 +146,26 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     return { v1: content };
   }
 
-  async renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<TemplateSamplePreview> {
+  async renderSamplePreview(input: {
+    document_type_id: string;
+    field_schema: unknown;
+    render_schema_version: string;
+    requestId: string;
+    sample_overrides?: Readonly<Record<string, string>>;
+  }): Promise<TemplateSamplePreview> {
     if (!this.isConfigurable(input.document_type_id)) {
       throw new AramoError('VALIDATION_ERROR', 'this document type is not configurable', 400, { requestId: input.requestId });
     }
     const cat = await this.atsCatalog();
     const parsed = await this.validateAgainst(cat, input); // validate structure + bindings first (fail closed)
-    const samples = new Map(cat.allowed.map((d) => [d.key, d.sample]));
+    // DOC-TEMPLATE-LIB-1 T-4 — a tenant-branded preview replaces the sample of an allowed
+    // key with the tenant's own value (organization.*); unknown keys are ignored.
+    const overrides = input.sample_overrides ?? {};
+    const valueOf = (d: CatalogBinding): string =>
+      Object.prototype.hasOwnProperty.call(overrides, d.key) ? (overrides[d.key] as string) : d.sample;
+    const samples = new Map(cat.allowed.map((d) => [d.key, valueOf(d)]));
     const sub = (text: string): string => text.replace(TOKEN_RE, (_whole, key: string) => samples.get(key) ?? `{{${key}}}`);
-    const sample_values = cat.allowed.map((d) => ({ key: d.key, label: d.label, value: d.sample }));
+    const sample_values = cat.allowed.map((d) => ({ key: d.key, label: d.label, value: valueOf(d) }));
     const signature_block = { printed_name: samples.get('talent.full_name') ?? null };
     if ('html' in parsed) {
       const { content, nodes } = parsed.html;

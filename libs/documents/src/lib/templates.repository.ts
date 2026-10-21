@@ -245,6 +245,20 @@ export class TemplatesRepository {
     });
   }
 
+  // DOC-TEMPLATE-LIB-1 T-4 (§8.2) — the version summaries the Org Home gallery shows for
+  // the templates it lists (their CURRENT versions): owner-aware, so a PLATFORM default's
+  // current version resolves for any tenant and another tenant's version never does.
+  async listVersionSummariesOwnerAware(tenant_id: string, ids: readonly string[]) {
+    if (ids.length === 0) return [];
+    return this.prisma.templateVersion.findMany({
+      where: {
+        id: { in: [...ids] },
+        OR: [{ tenant_id }, { tenant_id: null, template: { owner_scope: 'PLATFORM' } }],
+      },
+      select: { id: true, template_id: true, version_number: true, status: true, activated_at: true, created_at: true },
+    });
+  }
+
   // ── DOC-TEMPLATE-LIB-1 T-3 — explicit selection (§4.2) ──────────────────────
   // TenantTemplateSelection is the tenant's active choice per (document type, optional
   // client). `client_id` null is the tenant-wide row; the DB unique index is NULLS NOT

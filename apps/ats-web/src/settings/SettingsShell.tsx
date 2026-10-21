@@ -152,7 +152,8 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
   {
     heading: 'Documents & data',
     items: [
-      { key: 'document-templates', label: 'Document templates', icon: <IconFile />, to: '/admin/settings/document-templates', match: '/admin/settings/document-templates', status: 'live', badge: NEW },
+      // DOC-TEMPLATE-LIB-1 T-4 — managed in Org Home now; this page links there.
+      { key: 'document-templates', label: 'Document templates', icon: <IconFile />, to: '/admin/settings/document-templates', match: '/admin/settings/document-templates', status: 'live', badge: APP_HOME },
       { key: 'import', label: 'Import data', icon: <IconUpload />, to: '/admin/settings/import', match: '/admin/settings/import', status: 'live', badge: NEW },
       { key: 'compliance', label: 'Data & compliance', icon: <IconShieldCheck />, to: '/admin/settings/compliance', match: '/admin/settings/compliance', status: 'live' },
       { key: 'fields', label: 'Custom fields', icon: <IconSliders />, to: '/admin/settings/fields', match: '/admin/settings/fields', status: 'soon', badge: SOON },

@@ -106,8 +106,12 @@ export class ProductAvailabilityService {
     // the HELD scopes; the capability half of "authorized" is applied below).
     const signScopes = held.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX));
     // Organization — the org consumer's view minus the baseline session marker.
+    // DOC-TEMPLATE-LIB-1 T-4: the org session also carries document_template:* (Org Home
+    // template administration, §6.2). Holding only those (e.g. a recruiter's
+    // document_template:read) does not make a member an organization administrator, so
+    // "authorized" for the org tile stays the organization-administration subset.
     const orgScopes = filterScopesForConsumer({ consumer: 'org', scopes: held, tenantHasEsign }).filter(
-      (s) => !ORG_BASELINE_SCOPES.has(s),
+      (s) => !ORG_BASELINE_SCOPES.has(s) && orgSubset.includes(s),
     );
 
     const signActivated = signEntryActivated();

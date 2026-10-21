@@ -173,7 +173,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
       expect(signed.scopes).toContain(ESIGN_SENDER_SCOPE_KEY);
       expect(signed.scopes).toContain('sign:billing:manage');
       for (const k of ORG_ADMIN_SCOPE_KEYS) expect(signed.scopes).toContain(k);
-      expect(signed.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
+      // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the sign session also carries document_template:read.
+      expect(signed.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s) || s === 'document_template:read')).toBe(true);
     }
     const recruiter = await resolver.resolve(await input('recruiter'));
     expect(recruiter.status).toBe('ok');

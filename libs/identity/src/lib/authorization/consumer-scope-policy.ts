@@ -17,7 +17,8 @@
 //      `esign:*` or `platform:*`; `sign` carries ONLY `esign:*` and ONLY while
 //      the tenant holds the `sign` capability (read live, never cached) PLUS
 //      the product-neutral organization subset (ORG_ADMIN_SCOPE_KEYS — IC-3
-//      PR-7 / N-2) so a Sign-only organization can be administered;
+//      PR-7 / N-2) so a Sign-only organization can be administered, PLUS
+//      document_template:read (DOC-TEMPLATE-LIB-1 T-4 §6.2);
 //      `platform` carries ONLY `platform:*`; `portal` is the fixed set handled
 //      before this filter; an unknown consumer resolves NOTHING (fail closed).
 //
@@ -28,6 +29,26 @@
 // tenant_owner / tenant_admin bundles).
 
 import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
+
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.2; conforming amendment row 8) — the
+// Documents template scopes each non-product credential additionally carries. Template
+// administration lives in Org Home (the `org` consumer: read + manage); Sign starts
+// envelopes from templates (the `sign` consumer: read only). Never platform:* — the
+// platform tier is `platform:document_template:*`, a different namespace.
+export const ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS = [
+  'document_template:read',
+  'document_template:manage',
+] as const;
+export const SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS = ['document_template:read'] as const;
+
+const ORG_SESSION_SCOPES: ReadonlySet<string> = new Set<string>([
+  ...ORG_ADMIN_SCOPE_KEYS,
+  ...ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
+]);
+const SIGN_SESSION_NON_SIGN_SCOPES: ReadonlySet<string> = new Set<string>([
+  ...ORG_ADMIN_SCOPE_KEYS,
+  ...SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
+]);
 
 export type ProductConsumer = 'recruiter' | 'portal' | 'ingestion' | 'platform' | 'sign' | 'org';
 
@@ -75,11 +96,7 @@ export function filterScopesForConsumer(args: {
       );
     case 'sign':
       return args.tenantHasEsign
-        ? args.scopes.filter(
-            (s) =>
-              s.startsWith(ESIGN_SCOPE_PREFIX) ||
-              (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s),
-          )
+        ? args.scopes.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX) || SIGN_SESSION_NON_SIGN_SCOPES.has(s))
         : [];
     case 'platform':
       return args.scopes.filter((s) => s.startsWith(PLATFORM_SCOPE_PREFIX));
@@ -89,8 +106,10 @@ export function filterScopesForConsumer(args: {
     // Possession of `core` is NOT organization administration — an ordinary member
     // resolves only the baseline marker(s) its roles carry (e.g. auth:session:read),
     // which is enough for App Home (/v1/me needs no scope) and nothing else.
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — plus document_template:{read,manage} (Org Home
+    // template administration), still only what the principal holds.
     case 'org':
-      return args.scopes.filter((s) => (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s));
+      return args.scopes.filter((s) => ORG_SESSION_SCOPES.has(s));
     default:
       // portal (fixed set, handled upstream) and unknown consumers: nothing.
       return [];

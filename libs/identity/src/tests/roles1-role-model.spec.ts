@@ -127,8 +127,11 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // The static derivation equals what the seed actually grants ats_admin (a new bundle
     // source missing from ROLES1_ATS_GRANT_SOURCES would fail here).
     expect([...ROLES1_ATS_ADMIN_SCOPES].sort()).toEqual([...ats].sort());
-    // Exactly: org set ∪ ats_admin ∪ Sign admin set.
-    expect([...admin].sort()).toEqual([...new Set([...ORG_ADMIN_SCOPE_KEYS, ...ats, ...ROLES1_ADMIN_SIGN_SCOPES])].sort());
+    // Exactly: org set ∪ ats_admin ∪ Sign admin set ∪ the organization template pair
+    // (DOC-TEMPLATE-LIB-1 T-4 §6.3: document_template:manage left ats_admin, kept here).
+    expect([...admin].sort()).toEqual(
+      [...new Set([...ORG_ADMIN_SCOPE_KEYS, ...ats, ...ROLES1_ADMIN_SIGN_SCOPES, 'document_template:read', 'document_template:manage'])].sort(),
+    );
   });
 
   it('ats_admin loses the six organization-wide scopes (D-2), keeps auth:session:read + directory (F-6), never Sign', async () => {
@@ -138,8 +141,11 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     expect(ats.has('auth:session:read')).toBe(true);
     expect(ats.has('tenant:user:read:directory')).toBe(true);
     expect([...ats].some((k) => k.startsWith('sign:'))).toBe(false);
-    // Today's 146 minus the six.
-    expect(ats.size).toBe(140);
+    // Today's 146 minus the six, minus document_template:manage (DOC-TEMPLATE-LIB-1 T-4
+    // §6.3: template administration moved to the organization roles) → 139.
+    expect(ats.size).toBe(139);
+    expect(ats.has('document_template:manage')).toBe(false);
+    expect(ats.has('document_template:read')).toBe(true);
   });
 
   it('the owner holds everything the administrator holds, plus billing', async () => {
@@ -155,10 +161,13 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // Baseline 788 (786 + DOC-TEMPLATE-LIB-1 T-2's 2 super_admin platform grants) → −6
     // (ats_admin D-2) +11 (tenant_owner Sign) +148 (tenant_admin: 140 ats_admin + 10 Sign −
     // the 2 baseline scopes already in its org set) = 941.
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.3): −1 (ats_admin × document_template:manage) +2
+    // (sign_admin, sign_sender × document_template:read) → 942. tenant_owner/tenant_admin
+    // already held both template scopes (sizes unchanged).
     expect(bundles.get('tenant_owner')?.size).toBe(157);
     expect(bundles.get('tenant_admin')?.size).toBe(156);
-    expect(bundles.get('ats_admin')?.size).toBe(140);
-    expect(pairs).toBe(941);
+    expect(bundles.get('ats_admin')?.size).toBe(139);
+    expect(pairs).toBe(942);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

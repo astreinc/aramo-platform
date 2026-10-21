@@ -3,6 +3,7 @@ import {
   DocumentsModule,
   TEMPLATE_AUDIT,
   TEMPLATE_CAPABILITIES,
+  TEMPLATE_TENANT_BRANDING,
   TEMPLATE_TENANT_LOGO,
   type TemplateAuditPort,
 } from '@aramo/documents';
@@ -12,6 +13,7 @@ import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage
 import { AramoS3DocumentStorageAdapter } from '../documents/aramo-s3-document-storage.adapter.js';
 
 import { RtrTemplateCapabilities } from './rtr-template-capabilities.service.js';
+import { RtrTemplateTenantBrandingService } from './rtr-template-tenant-branding.service.js';
 import { RtrTemplateTenantLogoService } from './rtr-template-tenant-logo.service.js';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 — provides the RTR template-content capability (catalog +
@@ -81,7 +83,13 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         new RtrTemplateTenantLogoService(tenants, new AramoS3DocumentStorageAdapter(storage)),
       inject: [TenantRepository, ObjectStorageService],
     },
+    // DOC-TEMPLATE-LIB-1 T-4 — tenant branding for the Org Home Aramo-default preview.
+    {
+      provide: TEMPLATE_TENANT_BRANDING,
+      useFactory: (tenants: TenantRepository) => new RtrTemplateTenantBrandingService(tenants),
+      inject: [TenantRepository],
+    },
   ],
-  exports: [TEMPLATE_CAPABILITIES, TEMPLATE_AUDIT, TEMPLATE_TENANT_LOGO],
+  exports: [TEMPLATE_CAPABILITIES, TEMPLATE_AUDIT, TEMPLATE_TENANT_LOGO, TEMPLATE_TENANT_BRANDING],
 })
 export class TemplateCapabilitiesModule {}

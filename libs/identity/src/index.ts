@@ -23,6 +23,8 @@ export {
   filterScopesForConsumer,
   ESIGN_SCOPE_PREFIX,
   PLATFORM_SCOPE_PREFIX,
+  ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
+  SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
   type ConsumerCapabilityRequirement,
   type ProductConsumer,
 } from './lib/authorization/consumer-scope-policy.js';

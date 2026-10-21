@@ -66,7 +66,16 @@ export interface TemplateCapabilitiesPort {
 
   // Fixed-sample preview (§17) of the CURRENT draft content. Validates first, then
   // substitutes the fixed SAFE sample values. Never persists a business Document.
-  renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<TemplateSamplePreview>;
+  // DOC-TEMPLATE-LIB-1 T-4 (§8.2, ADR-0034 D8) — `sample_overrides`: catalog keys whose
+  // preview value is the tenant's own (the organization.* branding values) instead of the
+  // fixed sample; keys outside the allowed catalog are ignored.
+  renderSamplePreview(input: {
+    document_type_id: string;
+    field_schema: unknown;
+    render_schema_version: string;
+    requestId: string;
+    sample_overrides?: Readonly<Record<string, string>>;
+  }): Promise<TemplateSamplePreview>;
 
   // A1 §2.2 — authoritative PATCH-time normalisation of DRAFT content. For a sanitised
   // content version (rtr-html-v1) the html is re-serialised against the allowlist and
@@ -122,4 +131,20 @@ export interface TemplateTenantLogoPort {
   // logo; 422 VALIDATION_ERROR reason=logo_* on an unusable logo (scheme/size/type/fetch).
   capture(input: { tenant_id: string; requestId: string }): Promise<CapturedTenantLogo>;
   read(input: { storage_locator: string; requestId: string }): Promise<Buffer>;
+}
+
+// DOC-TEMPLATE-LIB-1 T-4 (§8.2, ADR-0034 D8) — the tenant branding seam for the Org Home
+// gallery preview of an Aramo default (bound at the composition root, apps/api, from the
+// tenant profile). Read-only: no logo capture, no asset, no Document. `values` holds the
+// organization.* catalog keys the tenant has on record (non-empty only).
+export const TEMPLATE_TENANT_BRANDING = 'TEMPLATE_TENANT_BRANDING';
+
+export interface TenantBrandingView {
+  readonly organization_name: string | null;
+  readonly logo_available: boolean;
+  readonly values: Readonly<Record<string, string>>;
+}
+
+export interface TemplateTenantBrandingPort {
+  forTenant(tenant_id: string): Promise<TenantBrandingView>;
 }

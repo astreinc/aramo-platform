@@ -148,6 +148,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
       `INSERT INTO identity."RoleScope" (id, role_id, scope_id) SELECT gen_random_uuid(), $1, id FROM identity."Scope" WHERE key = ANY($2::text[])`,
       [R.ats, SIX_ORG_WIDE],
     );
+    // DOC-TEMPLATE-LIB-1 T-4 — the pre-T-4 production row 0010 also held
+    // document_template:manage (the seed no longer grants it; the T-4 migration, not this
+    // one, removes it). Rewound with its retired fixed seed id 0x1311.
+    await run(
+      `INSERT INTO identity."RoleScope" (id, role_id, scope_id) SELECT '01900000-0000-7000-8000-000000001311', $1, id FROM identity."Scope" WHERE key = 'document_template:manage'`,
+      [R.ats],
+    );
     // A production-only grant on rows 0010 and 0014 (unknown to the seed).
     const extra = uuidv7();
     await run(`INSERT INTO identity."Scope" (id, key, description) VALUES ($1, $2, 'prod-only')`, [extra, EXTRA_SCOPE_KEY]);
@@ -179,8 +186,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
     await container?.stop();
   }, 60_000);
 
-  it('registration — the reconciliation is the last entry of the shared identity set', () => {
-    expect(IDENTITY_MIGRATIONS.at(-1)).toBe(MIGRATION);
+  it('registration — the reconciliation is registered after the last-owner invariant (later identity migrations follow it)', () => {
+    // DOC-TEMPLATE-LIB-1 T-4 appends its grants migration after this one (it requires the
+    // ROLES-1 role model), so "last" became "registered, after its dependency".
+    expect(IDENTITY_MIGRATIONS).toContain(MIGRATION);
+    expect(IDENTITY_MIGRATIONS.indexOf(MIGRATION)).toBeGreaterThan(
+      IDENTITY_MIGRATIONS.indexOf('libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql'),
+    );
   });
 
   it('fresh database — the migration ran first as a no-op and the seed wrote the target model directly', async () => {
@@ -225,7 +237,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
   it('bundles — relational on fixed ids, equal to the fresh-seed model (+ the production-only grant)', async () => {
     const withExtra = (s: Set<string> | undefined) => new Set([...(s ?? []), EXTRA_SCOPE_KEY]);
     const sorted = (s: Set<string>) => [...s].sort();
-    expect(sorted(await roleScopeKeys(R.ats))).toEqual(sorted(withExtra(seedSets['ats'])));
+    // DOC-TEMPLATE-LIB-1 T-4: ats_admin still carries document_template:manage after THIS
+    // migration (the T-4 grants migration removes it — covered by its own spec).
+    expect(sorted(await roleScopeKeys(R.ats))).toEqual(sorted(new Set([...withExtra(seedSets['ats']), 'document_template:manage'])));
     expect(sorted(await roleScopeKeys(R.org))).toEqual(sorted(withExtra(seedSets['org'])));
     expect(sorted(await roleScopeKeys(R.owner))).toEqual(sorted(withExtra(seedSets['owner'])));
 

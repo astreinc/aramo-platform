@@ -2858,22 +2858,37 @@ const DOCUMENTS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // DOC-2 — Templates + Requirements grants. Dedicated bundle at 0x1310+
 // (append-don't-renumber; the DOC-1a 0x1300 range is frozen). Templates/requirements
 // READ → the ATS delivery matrix; MANAGE (incl. requirement waiver) → admins.
-// 12 grants total.
-export const DOCUMENTS_DOC2_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
+// 12 grants originally; 11 since DOC-TEMPLATE-LIB-1 T-4 (see below).
+//
+// DOCUMENTS_DOC2_ID_LAYOUT is the FROZEN original bundle: it only pins the RoleScope row
+// ids (iteration order), so retiring a pair never shifts the id of a later pair.
+const DOCUMENTS_DOC2_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['ats_admin', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
   ['tenant_owner', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
   ['recruiter', ['document_template:read', 'document_requirement:read']],
   ['account_manager', ['document_template:read', 'document_requirement:read']],
 ];
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.3; ADR-0034 D11) — template
+// administration moves to the organization: document_template:manage is removed from
+// ats_admin (row …0010; its fixed RoleScope id is retired, not reused). The organization
+// roles hold it (tenant_owner here; tenant_admin via ROLES1_SIGN_SEED_BUNDLES).
+export const DOCLIB_T4_RETIRED_GRANTS: ReadonlyArray<readonly [string, string]> = [
+  ['ats_admin', 'document_template:manage'],
+];
+export const DOCUMENTS_DOC2_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = DOCUMENTS_DOC2_ID_LAYOUT.map(
+  ([role, scopes]) =>
+    [role, scopes.filter((scope) => !DOCLIB_T4_RETIRED_GRANTS.some(([r, k]) => r === role && k === scope))] as const,
+);
 
-// Deterministic RoleScope row ids for the 12 DOC-2 grants. Fresh contiguous range
-// 0x1310+ (DOC-1a's 0x1300 range untouched). Iteration order pins the assignment.
+// Deterministic RoleScope row ids for the DOC-2 grants. Fresh contiguous range
+// 0x1310+ (DOC-1a's 0x1300 range untouched). Iteration order of the FROZEN layout pins
+// the assignment.
 const DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1310;
-  for (const [role, scopes] of DOCUMENTS_DOC2_SEED_BUNDLES) {
+  for (const [role, scopes] of DOCUMENTS_DOC2_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -3046,16 +3061,31 @@ export const ROLES1_ATS_ADMIN_SCOPES: readonly string[] = [
     ),
   ),
 ];
+// DOC-TEMPLATE-LIB-1 T-4 (§6.3) — the organization template-administration pair. ats_admin
+// no longer holds document_template:manage, so tenant_admin names it explicitly (same
+// roles1RoleScopeId as the ROLES-1 PR-2 migration wrote for it: no id change on a live DB).
+export const DOCLIB_T4_ORG_TEMPLATE_SCOPES: readonly string[] = ['document_template:read', 'document_template:manage'];
 export const ROLES1_SIGN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ROLES1_OWNER_SIGN_SCOPES],
   // The org set itself is ORG_ADMIN_SEED_BUNDLES' (row 02b0's original grants).
   [
     'tenant_admin',
     [
-      ...ROLES1_ATS_ADMIN_SCOPES.filter((k) => !(ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(k)),
+      ...new Set([
+        ...ROLES1_ATS_ADMIN_SCOPES.filter((k) => !(ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(k)),
+        ...DOCLIB_T4_ORG_TEMPLATE_SCOPES,
+      ]),
       ...ROLES1_ADMIN_SIGN_SCOPES,
     ],
   ],
+];
+
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.3; ADR-0034 O-3 "Sign senders get
+// document_template:read") — the Sign roles that start envelopes from templates. 2 grants.
+// Ids: doclibT4RoleScopeId (identical to the 20261021150000 migration's for the same pair).
+export const DOCLIB_T4_SIGN_TEMPLATE_READ_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['sign_admin', ['document_template:read']],
+  ['sign_sender', ['document_template:read']],
 ];
 
 // The display names (leading phrase) — written by the seed on a fresh database and
@@ -3074,6 +3104,13 @@ export const ROLES1_ROLE_DESCRIPTIONS = {
 // as a uuid — the SQL `md5(...)::uuid` cast. Disjoint from the 01900000-… seed ranges.
 export function roles1RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`roles1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// DOC-TEMPLATE-LIB-1 T-4 — md5('doclib-t4:' || role_id || ':' || scope_id) as a uuid,
+// the SQL `md5(...)::uuid` cast in 20261021150000_doclib_t4_document_template_grants.
+export function doclibT4RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`doclib-t4:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -4574,6 +4611,20 @@ export async function runIdentitySeed(
         where: { role_id_scope_id: { role_id, scope_id } },
         update: {},
         create: { id: roles1RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-4 (§6.3) — document_template:read for the Sign roles. Ids:
+  // doclibT4RoleScopeId (identical to the migration's for the same pair).
+  for (const [roleKey, scopeKeys] of DOCLIB_T4_SIGN_TEMPLATE_READ_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: doclibT4RoleScopeId(role_id, scope_id), role_id, scope_id },
       });
     }
   }
