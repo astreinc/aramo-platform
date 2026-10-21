@@ -143,3 +143,22 @@ describe('E6 collapse — coexisting episodes are counted once per (talent, req)
     expect(collapseToCurrentEpisode(pipelines)).toHaveLength(1);
   });
 });
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-10; Accidental-Add §11/§16).
+describe('voided episodes never count (R3, DEF-10)', () => {
+  it('a voided episode is not active, not in total, and in no funnel cell', () => {
+    const items = [pipe('r1', 'contacted'), pipe('r1', 'voided'), pipe('r1', 'not_in_consideration')];
+    expect(rollupByRequisition(items)['r1']).toEqual({ active: 1 });
+    const funnel = funnelByRequisition(items)['r1']!;
+    expect(funnel.total).toBe(2);
+    expect(funnel.cells.reduce((n, c) => n + c.count, 0)).toBe(2);
+  });
+
+  it('a voided episode never wins the current-episode collapse', () => {
+    const items = [
+      pipeFor('r1', 'not_in_consideration', 't1', { id: 'a', created_at: '2026-01-01' }),
+      pipeFor('r1', 'voided', 't1', { id: 'b', created_at: '2026-02-01' }),
+    ];
+    expect(collapseToCurrentEpisode(items).map((p) => p.status)).toEqual(['not_in_consideration']);
+  });
+});

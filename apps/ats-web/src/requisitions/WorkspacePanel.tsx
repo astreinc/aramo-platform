@@ -68,6 +68,10 @@ interface WorkspacePanelProps {
   readonly attentionItems: readonly AttentionItem[];
   readonly scopes: readonly string[];
   readonly existingTalentIds: readonly string[];
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — previously-ended talent and
+  // whether the actor may re-add them (pipeline:re-add).
+  readonly endedTalentIds?: readonly string[];
+  readonly canReAdd?: boolean;
   readonly canAddTalent: boolean;
   readonly canSource: boolean;
   // Talent-in-play embedded Board (the SAME board + drawer + VOID context as the
@@ -124,6 +128,8 @@ export function WorkspacePanel({
   attentionItems,
   scopes,
   existingTalentIds,
+  endedTalentIds,
+  canReAdd,
   canAddTalent,
   canSource,
   pipelines,
@@ -353,6 +359,8 @@ export function WorkspacePanel({
                         <AddTalentDialog
                           requisitionId={req.id}
                           existingTalentIds={existingTalentIds}
+                          endedTalentIds={endedTalentIds}
+                          canReAdd={canReAdd}
                           onAdded={() => {
                             setFindOpen(false);
                             onRefresh();
@@ -455,6 +463,8 @@ export function WorkspacePanel({
                   <AddTalentDialog
                     requisitionId={req.id}
                     existingTalentIds={existingTalentIds}
+                    endedTalentIds={endedTalentIds}
+                    canReAdd={canReAdd}
                     onAdded={onRefresh}
                   />
                 </div>

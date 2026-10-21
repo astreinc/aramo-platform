@@ -405,6 +405,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterJwt_Ats_WrongSite: string;
     let unscopedJwt_Ats_SiteA: string;
     let tenantAdminJwt_Ats_SiteA: string;
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — a senior-role token (the
+    // recruiter scope set + pipeline:re-add) that may re-add a Talent after an ended episode.
+    let reAddJwt_Ats_SiteA: string;
     let enrichJwt_WithTalent: string;
     let enrichJwt_NoTalent: string;
 
@@ -753,6 +756,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         site_id: SITE_A,
         scopes: RECRUITER_SCOPES,
       });
+      reAddJwt_Ats_SiteA = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: [...RECRUITER_SCOPES, 'pipeline:re-add'],
+      });
       recruiterJwt_NotAts_SiteA = await signJwt(privateKey, {
         sub: RECRUITER,
         tenant_id: TENANT_NOT_ATS,
@@ -951,9 +960,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const term = await disposition(recruiterJwt_Ats_SiteA, firstBody.id);
       expect(term.status).toBe(200);
 
+      // Remediation Directive v1.0 R3 (DEF-15(b)) — re-adding after an ENDED episode is refused
+      // for a plain recruiter (no pipeline:re-add), and permitted to a senior-role holder.
+      const refused = await postPipeline(recruiterJwt_Ats_SiteA, randomUUID(), talentId);
+      expect(refused.status).toBe(403);
+      expect(((await refused.json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason).toBe(
+        'pipeline_re_add_requires_senior_role',
+      );
       const secondKey = randomUUID();
       const second = await postPipeline(
-        recruiterJwt_Ats_SiteA,
+        reAddJwt_Ats_SiteA,
         secondKey,
         talentId,
       );

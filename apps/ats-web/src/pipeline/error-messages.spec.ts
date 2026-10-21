@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '@aramo/fe-foundation';
 
-import { transitionErrorMessage } from './error-messages';
+import { addTalentErrorMessage, transitionErrorMessage } from './error-messages';
 
 // Talent Lifecycle R1–R5 Implementation Directive v1.2 §2.4 — every new typed refusal on the
 // Qualified path gets specific, honest recruiter copy (never the generic rejection).
@@ -37,3 +37,33 @@ describe('transitionErrorMessage (v1.2 §2.4)', () => {
     expect(transitionErrorMessage(new Error('boom'))).toBe('The status change failed. Please try again.');
   });
 });
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-11, DEF-14) — Add Talent refusals.
+describe('addTalentErrorMessage (R3)', () => {
+  it('already on the requisition', () => {
+    expect(addTalentErrorMessage(new ApiError(409, 'x', 'PIPELINE_EPISODE_ALREADY_LIVE'))).toMatch(/already on this requisition/);
+  });
+  it('re-add needs a senior role', () => {
+    expect(
+      addTalentErrorMessage(new ApiError(403, 'x', 'INSUFFICIENT_PERMISSIONS', { reason: 'pipeline_re_add_requires_senior_role' })),
+    ).toMatch(/Only a Recruiter Lead, Recruiting Manager or admin/);
+  });
+  it('requisition status, policy, not found — each specific', () => {
+    expect(addTalentErrorMessage(new ApiError(409, 'x', 'REQUISITION_NOT_ADVANCEABLE'))).toMatch(/current status/);
+    expect(addTalentErrorMessage(new ApiError(403, 'x', 'POLICY_DENIED'))).toMatch(/rules don’t allow/);
+    expect(addTalentErrorMessage(new ApiError(404, 'x', 'NOT_FOUND'))).toMatch(/no longer available/);
+  });
+  it('never claims the talent may already be on the pipeline for an unknown error', () => {
+    expect(addTalentErrorMessage(new Error('boom'))).toBe('Could not add this talent. Please try again.');
+  });
+});
+
+describe('transitionErrorMessage — DEF-14 codes', () => {
+  it('each code has specific copy; no stale "Placed"', () => {
+    expect(transitionErrorMessage(new ApiError(422, 'x', 'PIPELINE_STAGE_REQUIRES_EVIDENCE'))).toMatch(/recorded contact or response/);
+    expect(transitionErrorMessage(new ApiError(422, 'x', 'PIPELINE_EVIDENCE_INADMISSIBLE'))).toMatch(/confirmed response/);
+    expect(transitionErrorMessage(new ApiError(403, 'x', 'PIPELINE_COMPLETE_SYSTEM_ONLY'))).toMatch(/recorded automatically/);
+    expect(transitionErrorMessage(new ApiError(409, 'x', 'REQUISITION_NO_OPENINGS'))).not.toMatch(/Placed/);
+  });
+});
+

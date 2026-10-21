@@ -35,7 +35,7 @@ import {
   SYSTEM_COMPLETE_ACTION,
 } from './pipeline-state.js';
 import { PipelineRepository } from './pipeline.repository.js';
-import { AddTalentPolicyService } from './policy/add-talent-policy.service.js';
+import { AddTalentPolicyService, REQUISITION_NOT_FOUND_REASON } from './policy/add-talent-policy.service.js';
 import { resolveAddTalentOutcome } from './policy/override-resolution.js';
 import {
   RESUME_EDITION_READER,
@@ -51,6 +51,9 @@ import {
   type PipelineResumeEditionView,
 } from './dto/pipeline-resume-edition.view.js';
 import { resumeSelectionEligibility } from './resume-selection-eligibility.js';
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — re-add after an ended episode.
+const PIPELINE_RE_ADD_SCOPE = 'pipeline:re-add';
 
 // PipelineController — PR-A5a Gate 5 ATS Batch 4a (the state machine).
 //
@@ -106,11 +109,16 @@ export class PipelineController {
     @Query('requisition_id') requisitionId: string | undefined,
     @Query('talent_record_id') talentRecordId: string | undefined,
     @Req() req: Request,
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-10; Accidental-Add §11/§16) — a voided
+    // (removed-by-mistake) episode never inflates requisition counts: excluded by default;
+    // `include_voided=true` returns it for surfaces that show correction history.
+    @Query('include_voided') includeVoided?: string,
   ): Promise<{ items: PipelineView[] }> {
     const visibleReqIds = await req.resolveVisibleRequisitionIds!();
     const items = await this.pipelineRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visible_requisition_ids: visibleReqIds,
+      exclude_voided: includeVoided !== 'true',
       ...(requisitionId === undefined ? {} : { requisition_id: requisitionId }),
       ...(talentRecordId === undefined
         ? {}
@@ -320,6 +328,7 @@ export class PipelineController {
     @Body() body: CreatePipelineRequestDto,
     @RequestId() requestId: string,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @Req() req: Request,
   ): Promise<PipelineView> {
     // L2-B — the create command is idempotency-gated (mirrors libs/selection
     // SelectionController.create). A required v4-shaped Idempotency-Key is the
@@ -356,6 +365,36 @@ export class PipelineController {
       });
     }
 
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-9) — write-visibility parity with
+    // list / get / transition: a requisition the actor cannot see conceals as the SAME 404 as one
+    // that does not exist (no existence or status leak), before any policy call or write.
+    const visibleReqIds = await req.resolveVisibleRequisitionIds!();
+    if (visibleReqIds !== null && !visibleReqIds.has(body.requisition_id)) {
+      throw new AramoError('NOT_FOUND', 'Requisition not found', 404, {
+        requestId,
+        details: { field: 'requisition_id' },
+      });
+    }
+
+    // R3 (DEF-15(b); PO ruling 2026-10-21) — re-adding a Talent whose earlier episode on this
+    // requisition ENDED is restricted to pipeline:re-add holders (Recruiter Lead, Recruiting
+    // Manager, Tenant Admin, Tenant Owner). Server-enforced; the UI is a convenience (A1-TE TE-6).
+    if (
+      !authContext.scopes.includes(PIPELINE_RE_ADD_SCOPE) &&
+      (await this.pipelineRepository.hasEndedEpisode({
+        tenant_id: authContext.tenant_id,
+        talent_record_id: body.talent_record_id,
+        requisition_id: body.requisition_id,
+      }))
+    ) {
+      throw new AramoError(
+        'INSUFFICIENT_PERMISSIONS',
+        'Only a Recruiter Lead, Recruiting Manager or admin can add this talent again',
+        403,
+        { requestId, details: { reason: 'pipeline_re_add_requires_senior_role' } },
+      );
+    }
+
     // ADR-0024 §D10 — the policy call runs AFTER authorization (the guard chain
     // above) and BEFORE the write. It is placed at the CONTROLLER, never the
     // repository: a repository-level call would also gate repointTalentRecordRefs
@@ -383,6 +422,15 @@ export class PipelineController {
       // Record provenance standalone (the attempt), then refuse with the
       // reason_code ONLY — never rule_id / policy_version / any engine internal.
       await this.pipelineRepository.recordDecision(resolution.provenance);
+      // R3 C-1 (PO-approved) — an unresolved requisition is refused with the SAME 404 as a hidden
+      // one, so "missing" and "not visible" cannot be told apart. The DENY reason stays recorded
+      // in the decision record above; it is not returned.
+      if (resolution.reason_code === REQUISITION_NOT_FOUND_REASON) {
+        throw new AramoError('NOT_FOUND', 'Requisition not found', 404, {
+          requestId,
+          details: { field: 'requisition_id' },
+        });
+      }
       throw new AramoError(
         'POLICY_DENIED',
         'The requisition lifecycle policy denied this command',

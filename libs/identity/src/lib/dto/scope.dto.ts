@@ -497,6 +497,10 @@ export const SEED_SCOPE_KEYS = [
   // excerpt read, separate from screening:read (CI v1.2 :1034-1044). id-map node
   // 0x1409; granted to the same three recruiter-tier roles only.
   'screening:transcript:read',
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b); PO 2026-10-21) — re-add a
+  // Talent after an ended episode. id-map node 0x1414; granted to lead_recruiter,
+  // recruiting_manager, tenant_admin, tenant_owner only.
+  'pipeline:re-add',
 ] as const;
 export type SeedScopeKey = (typeof SEED_SCOPE_KEYS)[number];
 

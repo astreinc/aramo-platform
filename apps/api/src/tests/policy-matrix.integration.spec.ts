@@ -171,8 +171,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     describe('ADD column over HTTP — both boundaries honour ONE rulebook', () => {
-      const base = ['pipeline:add', 'talent:source'];
-      const withCap = ['pipeline:add', 'talent:source', OVERRIDE_CAP];
+      // Remediation v1.0 R3 (DEF-9) — visibility-neutral actor (requisition:read:all).
+      const base = ['pipeline:add', 'talent:source', 'requisition:read:all'];
+      const withCap = ['pipeline:add', 'talent:source', 'requisition:read:all', OVERRIDE_CAP];
 
       it('open -> pipeline 201; closed -> 403 DENY', async () => {
         expect((await postPipeline(await signJwt(base), await seedRequisition('open'))).status).toBe(201);
@@ -200,7 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '3.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'open', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
-      const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, authz_version: __authzTestResolver.grant(T, ACTOR, ['pipeline:add'])})
+      const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, authz_version: __authzTestResolver.grant(T, ACTOR, ['pipeline:add', 'requisition:read:all'])})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
       expect((await postPipeline(jwt, req, undefined, T)).status).toBe(201);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];

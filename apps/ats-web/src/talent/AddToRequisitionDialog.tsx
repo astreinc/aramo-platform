@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button, Dialog, InlineAlert, Select } from '@aramo/fe-foundation';
 
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
+import { addTalentErrorMessage } from '../pipeline/error-messages';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 
@@ -25,6 +26,8 @@ export function AddToRequisitionDialog({
   const [busy, setBusy] = useState(false);
   const [actionErr, setActionErr] = useState<string | null>(null);
   const [added, setAdded] = useState(false);
+  // Remediation v1.0 R3 (DEF-11) — "already on this requisition" is NOT a success.
+  const [alreadyOn, setAlreadyOn] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -32,12 +35,15 @@ export function AddToRequisitionDialog({
     setLoading(true);
     setLoadErr(false);
     setAdded(false);
+    setAlreadyOn(false);
     setActionErr(null);
     setReqId('');
     listRequisitions()
       .then((r) => {
         if (cancelled) return;
-        setReqs(r.items.filter((x) => x.status === 'open'));
+        // R3 (side finding; A1 AM-1 §2.2) — Add Talent is permitted on open, on hold and lead
+        // requisitions; the server re-checks.
+        setReqs(r.items.filter((x) => x.status === 'open' || x.status === 'on_hold' || x.status === 'lead'));
         setLoading(false);
       })
       .catch(() => {
@@ -61,13 +67,13 @@ export function AddToRequisitionDialog({
       })
       .catch((err: unknown) => {
         setBusy(false);
-        const status = (err as { status?: number } | null)?.status;
-        // Already on this pipeline — treat as success (idempotent intent).
-        if (status === 409 || status === 422) {
-          setAdded(true);
+        // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-11) — a refusal is never shown
+        // as "added": the server's typed refusal is stated as it is.
+        if ((err as { code?: string } | null)?.code === 'PIPELINE_EPISODE_ALREADY_LIVE') {
+          setAlreadyOn(true);
           return;
         }
-        setActionErr('We couldn’t add this talent to the requisition. Please try again.');
+        setActionErr(addTalentErrorMessage(err));
       });
   };
 
@@ -83,6 +89,13 @@ export function AddToRequisitionDialog({
         <p>Loading requisitions…</p>
       ) : loadErr ? (
         <InlineAlert variant="error">Could not load requisitions.</InlineAlert>
+      ) : alreadyOn ? (
+        <>
+          <p className="talent-detail__empty" role="status">This talent is already on this requisition. Nothing was changed.</p>
+          <div className="talent-detail__dialog-actions">
+            <Button variant="secondary" onClick={onClose}>Done</Button>
+          </div>
+        </>
       ) : added ? (
         <>
           <InlineAlert variant="success">Talent added to the requisition.</InlineAlert>
@@ -91,7 +104,7 @@ export function AddToRequisitionDialog({
           </div>
         </>
       ) : reqs.length === 0 ? (
-        <p className="talent-detail__empty">No open requisitions to add to.</p>
+        <p className="talent-detail__empty">No requisitions to add to.</p>
       ) : (
         <>
           <label className="talent-detail__dialog-field">

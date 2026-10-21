@@ -530,6 +530,16 @@ export function RequisitionDetailView({
   });
   // Talent display names for the Workspace Board rows — reuses the already-loaded
   // talents enrichment (no per-card re-fetch).
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b); Accidental-Add §12) — only a
+  // LIVE episode hides a talent from Add Talent; a talent whose episode here ENDED (not in
+  // consideration / completed) is offered as "add again", to pipeline:re-add holders only.
+  const ENDED_PIPELINE_STATUSES = ['not_in_consideration', 'completed', 'voided'];
+  const liveTalentIds = pipelines.filter((p) => !ENDED_PIPELINE_STATUSES.includes(p.status)).map((p) => p.talent_record_id);
+  const liveSet = new Set(liveTalentIds);
+  const endedTalentIds = pipelines
+    .filter((p) => ENDED_PIPELINE_STATUSES.includes(p.status) && !liveSet.has(p.talent_record_id))
+    .map((p) => p.talent_record_id);
+  const canReAdd = scopes.includes('pipeline:re-add');
   const talentNames: Record<string, string> = Object.fromEntries(
     Object.entries(talents).map(([id, t]) => [id, `${t.first_name} ${t.last_name}`.trim()]),
   );
@@ -558,7 +568,9 @@ export function RequisitionDetailView({
         activities={activities}
         attentionItems={attentionItems}
         scopes={scopes}
-        existingTalentIds={pipelines.map((p) => p.talent_record_id)}
+        existingTalentIds={liveTalentIds}
+        endedTalentIds={endedTalentIds}
+        canReAdd={canReAdd}
         canAddTalent={canAddTalent}
         canSource={scopes.includes('talent:source')}
         pipelines={pipelines}
@@ -877,7 +889,9 @@ export function RequisitionDetailView({
           {canAddTalent ? (
             <AddTalentDialog
               requisitionId={req.id}
-              existingTalentIds={pipelines.map((p) => p.talent_record_id)}
+              existingTalentIds={liveTalentIds}
+              endedTalentIds={endedTalentIds}
+              canReAdd={canReAdd}
               onAdded={refresh}
             />
           ) : null}

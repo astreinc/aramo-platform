@@ -1621,6 +1621,22 @@ export class PipelineRepository {
   // This is the authoritative Pipeline-domain reader the apps/api create-submittal
   // orchestration composes to derive the submittal's pipeline_id server-side; the
   // HTTP caller never supplies a pipeline_id.
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — whether this Talent already
+  // had an episode on this requisition that ENDED (voided / not_in_consideration / completed). A
+  // re-add after an ended episode is restricted to holders of pipeline:re-add (senior roles).
+  async hasEndedEpisode(args: { tenant_id: string; talent_record_id: string; requisition_id: string }): Promise<boolean> {
+    const row = await this.prisma.pipeline.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        status: { in: [...TERMINAL_STATUSES] },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async findLiveEpisode(args: {
     tenant_id: string;
     talent_record_id: string;
@@ -1667,9 +1683,14 @@ export class PipelineRepository {
     requisition_id?: string;
     talent_record_id?: string;
     limit?: number;
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-10; Accidental-Add §11 "Do not fix
+    // only the UI") — omit voided (removed-by-mistake) episodes. Opt-in per caller so existing
+    // history readers keep seeing corrections.
+    exclude_voided?: boolean;
   }): Promise<PipelineView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
     const where: Record<string, unknown> = { tenant_id: args.tenant_id };
+    if (args.exclude_voided === true) where['status'] = { not: 'voided' };
     if (args.visible_requisition_ids !== null) {
       where['requisition_id'] = {
         in: Array.from(args.visible_requisition_ids),

@@ -454,6 +454,10 @@ export const SEED_IDS = {
     // TIP-E2E INC-3 A1 (§B.7) — transcript excerpt read. Dedicated clear node
     // 0x1409 (append-don't-renumber; verified free).
     'screening:transcript:read': '01900000-0000-7000-8000-000000001409',
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — re-add a Talent whose
+    // episode on the requisition ENDED. Dedicated clear node 0x1414 (append-don't-renumber;
+    // verified free — the Sign S-1 scopes occupy 0x140a..0x1413).
+    'pipeline:re-add': '01900000-0000-7000-8000-000000001414',
     // Sign Unified Product S-1 — the Sign permission contract (10 scopes, 0x140a..0x1413).
     'sign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
     'sign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
@@ -2457,6 +2461,30 @@ const SCREENING_TRANSCRIPT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (()
   return map;
 })();
 
+// Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b); PO ruling 2026-10-21) — only a
+// Recruiter Lead, Recruiting Manager, Tenant Admin or Tenant Owner may re-add a Talent whose
+// episode on the requisition ended (voided / not in consideration / completed). A recruiter,
+// sourcer or any other role may not. 4 grants, dedicated range 0x1740..0x1743 (next clear range
+// after the Sign S-1 role-contract grants at 0x1720+; append-don't-renumber).
+export const PIPELINE_RE_ADD_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['lead_recruiter', ['pipeline:re-add']],
+  ['recruiting_manager', ['pipeline:re-add']],
+  ['tenant_admin', ['pipeline:re-add']],
+  ['tenant_owner', ['pipeline:re-add']],
+];
+
+const PIPELINE_RE_ADD_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  let i = 0x1740;
+  for (const [role, scopes] of PIPELINE_RE_ADD_SEED_BUNDLES) {
+    for (const scope of scopes) {
+      map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
+      i++;
+    }
+  }
+  return map;
+})();
+
 // COMM PART A — Engagement Policy OVERRIDE grants. engagement:policy:override ->
 // tenant_admin + tenant_owner (the authorized-user/manager tier; recruiter/
 // account_manager excluded). A DEDICATED, DISJOINT bundle (range 0xf40+,
@@ -3162,6 +3190,8 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['screening:confirm'], 'screening:confirm', 'Confirm a manual technical screening session (INC-3; recruiter-tier; self-confirmation permitted).');
   // TIP-E2E INC-3 A1 (§B.7) — transcript excerpt read, separate from screening:read.
   await upsertScope(prisma, SEED_IDS.scopes['screening:transcript:read'], 'screening:transcript:read', 'Read screening meeting transcript excerpts (INC-3 A1; recruiter-tier).');
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)).
+  await upsertScope(prisma, SEED_IDS.scopes['pipeline:re-add'], 'pipeline:re-add', 'Re-add a talent to a requisition after their earlier episode on it ended (Remediation v1.0 R3; Recruiter Lead / Recruiting Manager / Tenant Admin / Tenant Owner only).');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:create'], 'requisition:create', 'Create a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:edit'], 'requisition:edit', 'Edit a requisition');
   await upsertScope(prisma, SEED_IDS.scopes['requisition:delete'], 'requisition:delete', 'Delete a requisition (tenant_admin only — Ruling 1)');
@@ -4002,6 +4032,24 @@ export async function runIdentitySeed(
       const rsId = SCREENING_TRANSCRIPT_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
       if (rsId === undefined) {
         throw new Error(`INC-3 A1 Screening-Transcript-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
+      }
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: rsId, role_id, scope_id },
+      });
+    }
+  }
+
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — pipeline:re-add grants
+  // (4 rows, range 0x1740+) per PIPELINE_RE_ADD_SEED_BUNDLES.
+  for (const [roleKey, scopeKeys] of PIPELINE_RE_ADD_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const rsId = PIPELINE_RE_ADD_SEED_ROLE_SCOPE_ROW_IDS[`${roleKey}:${scopeKey}`];
+      if (rsId === undefined) {
+        throw new Error(`Remediation R3 Pipeline-Re-Add-Scope-Seed: Missing generated RoleScope id for ${roleKey}:${scopeKey}`);
       }
       const scope_id = scopeIdForKey(scopeKey);
       await prisma.roleScope.upsert({
