@@ -20064,7 +20064,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql"
+      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
@@ -20909,7 +20909,7 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
       "status": "excluded",
-      "to": "libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql"
+      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

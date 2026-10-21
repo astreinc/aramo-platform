@@ -3213,7 +3213,7 @@
     "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql",
     "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql",
     "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql",
-    "libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql",
+    "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql",
     "libs/identity/prisma/migrations/migration_lock.toml",
     "libs/identity/prisma/schema.prisma",
     "libs/identity/prisma/seed-astre.ts",

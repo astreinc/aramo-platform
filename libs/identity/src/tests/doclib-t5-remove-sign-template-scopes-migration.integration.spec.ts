@@ -22,7 +22,7 @@ import { SEED_IDS, runIdentitySeed } from '../../prisma/seed.js';
 // unexpected grant / key is refused with nothing applied.
 
 const ROOT = resolve(__dirname, '../../../..');
-const MIGRATION = 'libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql';
+const MIGRATION = 'libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql';
 const S_USE = '01900000-0000-7000-8000-00000000140d';
 const S_MANAGE = '01900000-0000-7000-8000-00000000140e';
 const R = {
