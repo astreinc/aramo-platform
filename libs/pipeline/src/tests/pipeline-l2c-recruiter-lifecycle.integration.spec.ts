@@ -15,6 +15,7 @@ import { isLiveStatus } from '../lib/pipeline-state.js';
 
 import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
 import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
 
 // L2-C — Recruiter Lifecycle (Aramo-Talent-Pipeline-Lane2-C-Recruiter-Lifecycle-
 // Directive). The lib-local acceptance proofs for the RECRUITER command surface:
@@ -115,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -158,7 +159,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         changed_by_id: actor,
         requestId: 'walk-contact',
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       await repo.recordResponseEvidence({
         tenant_id: tenant,
@@ -167,7 +168,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         changed_by_id: actor,
         requestId: 'walk-response',
         visible_requisition_ids: null,
-        evidence: { kind: 'test_response', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({
@@ -577,7 +578,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         changed_by_id: actor,
         requestId: 'ac10-contact',
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
 
       await expect(

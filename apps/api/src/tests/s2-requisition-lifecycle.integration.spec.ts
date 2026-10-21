@@ -9,6 +9,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { PipelinePrismaService, PipelineRepository } from '@aramo/pipeline';
 
 import { notRequiredQualifiedGuard } from './helpers/rtr-readiness-harness.js';
+import { acceptingEvidenceVerifier } from './helpers/evidence-verifier.js';
 
 // Talent Lifecycle R1–R5 Implementation Directive v1.2 LOCKED §5 (S2, A1 AM-1 / AM-2) — the
 // requisition-status gate on Pipeline activity, on REAL Postgres 17, through the real
@@ -34,6 +35,8 @@ const MIGRATIONS = [
 
 const ACTOR = '01900000-0000-7000-8000-00000000a002';
 const EVIDENCE = (): { kind: string; id: string } => ({ kind: 'communication_interaction', id: randomUUID() });
+// v1.2 §7.2 (S4) — talent_responded rests on a recruiter response confirmation only.
+const RESPONSE_EVIDENCE = (): { kind: string; id: string } => ({ kind: 'recruiter_response_confirmation', id: randomUUID() });
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'S2 — requisition lifecycle enforcement on Pipeline activity (v1.2 §5; real Postgres 17)',
@@ -52,7 +55,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const m of MIGRATIONS) await db.query(readFileSync(m, 'utf8'));
       prisma = new PipelinePrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma, notRequiredQualifiedGuard());
+      repo = new PipelineRepository(prisma, notRequiredQualifiedGuard(), acceptingEvidenceVerifier());
     }, 180_000);
 
     afterAll(async () => {
@@ -112,7 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return repo.recordContactEvidence({ ...base(tenant, p), expected_version: await versionOf(p), evidence: EVIDENCE() });
     }
     async function respond(tenant: string, p: string) {
-      return repo.recordResponseEvidence({ ...base(tenant, p), expected_version: await versionOf(p), evidence: EVIDENCE() });
+      return repo.recordResponseEvidence({ ...base(tenant, p), expected_version: await versionOf(p), evidence: RESPONSE_EVIDENCE() });
     }
     async function move(tenant: string, p: string, to: 'qualifying' | 'qualified' | 'no_contact' | 'talent_responded' | 'not_in_consideration') {
       return repo.transition({ ...base(tenant, p), to_status: to, expected_version: await versionOf(p) });

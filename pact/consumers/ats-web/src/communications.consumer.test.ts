@@ -470,8 +470,16 @@ describe('ats-web → POST /v1/communications/talent-responses (Recruiting-Journ
   it('returns 200 recording attested response evidence and advancing the milestone', async () => {
     const PIPE_ID = '00000000-0000-7000-8000-71be00000001';
     const IDEMPOTENCY_KEY = '00000000-0000-7000-8000-7e5900000001';
-    // email channel; a past instant with no prior contact floor to violate.
-    const BODY = { pipeline_id: PIPE_ID, channel: 'email', occurred_at: '2026-09-10T15:04:05Z' };
+    // email channel; a past instant with no prior contact floor to violate. Talent Lifecycle R1–R5
+    // v1.2 §7.4 (S4) — the recruiter attests a substantive response and, with no source
+    // interaction, grounds it on a note.
+    const BODY = {
+      pipeline_id: PIPE_ID,
+      channel: 'email',
+      occurred_at: '2026-09-10T15:04:05Z',
+      substantive_response_attested: true,
+      note: 'Replied by email: interested, available from October.',
+    };
     await provider
       .addInteraction()
       .given('an ats-web recruiter and a pipeline at contacted exist')
@@ -490,6 +498,11 @@ describe('ats-web → POST /v1/communications/talent-responses (Recruiting-Journ
           // The milestone advanced through canonical evidence authority.
           pipeline_stage: like('talent_responded'),
           pipeline_version: like(1),
+          // v1.2 §7.4 (S4) — the accountable record.
+          advanced: like(true),
+          occurred_at: like('2026-09-10T15:04:05.000Z'),
+          recorded_at: like('2026-09-10T15:05:00.000Z'),
+          recorded_by_id: uuid('11111111-1111-7111-8111-111111111111'),
         });
       })
       .executeTest(async (mock) => {

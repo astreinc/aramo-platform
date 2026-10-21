@@ -27,6 +27,9 @@ const QUALIFYING_TWO_WAY_DISPOSITIONS: ReadonlySet<string> = new Set([
   'interested',
   'callback_requested',
   'follow_up_required',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — a recruiter response confirmation's
+  // disposition (previously written as `connected`); keeps the two read sites' output unchanged.
+  'response_confirmed',
 ]);
 
 @Injectable()

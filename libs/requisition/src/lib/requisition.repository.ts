@@ -933,6 +933,19 @@ export class RequisitionRepository {
     return row === null ? null : (row.status as RecruitingStatus);
   }
 
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.5 (S4, A1 AM-1 §2.4) — the instant a closed /
+  // canceled requisition closed: the newest lifecycle event INTO closed or canceled (index
+  // (tenant_id, requisition_id, occurred_at)). A historical response may be recorded on a
+  // terminal requisition only if it occurred BEFORE this. Null when no such event exists.
+  async findClosingInstant(args: { tenant_id: string; id: string }): Promise<Date | null> {
+    const ev = await this.prisma.requisitionLifecycleEvent.findFirst({
+      where: { tenant_id: args.tenant_id, requisition_id: args.id, next_status: { in: ['closed', 'canceled'] } },
+      orderBy: { occurred_at: 'desc' },
+      select: { occurred_at: true },
+    });
+    return ev?.occurred_at ?? null;
+  }
+
   // CB-D2-R (ADR-0030) — READ-ONLY status + version accessor for the external
   // reconciliation drain worker's optimistic re-attempt. The worker reloads the
   // CURRENT (status, version) and threads version as expected_version into the

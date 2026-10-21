@@ -13,6 +13,11 @@ export interface RecordTalentResponseViewDto {
   deduped: boolean;
   pipeline_stage: string;
   pipeline_version: number;
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4/§7.5 (S4) — the accountable record.
+  advanced: boolean;
+  occurred_at: string;
+  recorded_at: string;
+  recorded_by_id: string;
 }
 
 // Recruiting-Journey §7/§15 — the canonical "Record Talent response" command. The
@@ -55,6 +60,8 @@ export class TalentResponseController {
       channel: dto.channel,
       occurredAt: new Date(dto.occurred_at),
       note: dto.note ?? null,
+      ...(dto.substantive_response_attested === undefined ? {} : { substantiveResponseAttested: dto.substantive_response_attested }),
+      sourceInteractionId: dto.source_interaction_id ?? null,
       idempotencyKey,
       requestId,
       visibleRequisitionIds: visibleReqIds,
@@ -64,6 +71,10 @@ export class TalentResponseController {
       deduped: result.deduped,
       pipeline_stage: result.pipeline.status,
       pipeline_version: result.pipeline.version,
+      advanced: result.advanced,
+      occurred_at: result.occurred_at.toISOString(),
+      recorded_at: result.recorded_at.toISOString(),
+      recorded_by_id: result.recorded_by_id,
     };
   }
 }

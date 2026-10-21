@@ -54,6 +54,9 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
   'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql',
   'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
+  // Talent Lifecycle R1–R5 v1.2 §7.4 (S4) — response_confirmed disposition + source_interaction_id.
+  'libs/communications/prisma/migrations/20261021100000_s4_disposition_response_confirmed/migration.sql',
+  'libs/communications/prisma/migrations/20261021100100_s4_interaction_source_interaction_id/migration.sql',
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
   'libs/talent-record/prisma/migrations/20260602120000_init_talent_record_model/migration.sql',
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',

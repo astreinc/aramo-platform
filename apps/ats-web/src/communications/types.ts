@@ -91,8 +91,13 @@ export const DISPOSITION_LABELS: Readonly<Record<CommunicationDispositionOutcome
   not_interested: 'Not interested',
   do_not_contact: 'Do not contact',
 };
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — written only by the "Record Talent
+// response" command, never offered in the disposition picker; displayed on the timeline.
+const COMMAND_ONLY_DISPOSITION_LABELS: Readonly<Record<string, string>> = {
+  response_confirmed: 'Response confirmed by recruiter',
+};
 export function dispositionOutcomeLabel(code: string): string {
-  return codeLabel(DISPOSITION_LABELS, code);
+  return COMMAND_ONLY_DISPOSITION_LABELS[code] ?? codeLabel(DISPOSITION_LABELS, code);
 }
 
 // COMM-C2A — provider-neutral derived voice evidence for a Talent × Requisition

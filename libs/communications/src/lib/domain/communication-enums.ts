@@ -74,7 +74,16 @@ export const COMMUNICATION_DISPOSITION_OUTCOMES = [
   'follow_up_required',
   'do_not_contact',
 ] as const;
-export type CommunicationDispositionOutcome = (typeof COMMUNICATION_DISPOSITION_OUTCOMES)[number];
+/**
+ * Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4, LR L-6 REVISED) — dispositions written ONLY
+ * by a governed command, never selectable on the generic disposition surface:
+ * `response_confirmed` is the disposition of a recruiter response confirmation
+ * (POST /v1/communications/talent-responses), which is what the evidence verifier accepts.
+ */
+export const COMMAND_ONLY_DISPOSITION_OUTCOMES = ['response_confirmed'] as const;
+export type CommunicationDispositionOutcome =
+  | (typeof COMMUNICATION_DISPOSITION_OUTCOMES)[number]
+  | (typeof COMMAND_ONLY_DISPOSITION_OUTCOMES)[number];
 
 /** The durable idempotent provider-event inbox disposition (R-COMM-WEBHOOK). */
 export const COMMUNICATION_PROVIDER_EVENT_STATUSES = [

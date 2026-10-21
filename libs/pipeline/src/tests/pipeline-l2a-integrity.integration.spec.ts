@@ -10,6 +10,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 
 import { ensureOpenRequisition, openRequisition, REQUISITION_FIXTURE_MIGRATIONS } from './helpers/requisition-fixture.js';
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
 
 // Lane 2 / L2-A — Pipeline INTEGRITY proofs (real Postgres 17).
 //
@@ -115,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, undefined, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -150,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'cas-1a',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(first.version).toBe(1); // EXACT after
       // Two history rows now: the L2-B birth row + this committed transition.
@@ -165,7 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           requestId: 'cas-1b',
           expected_version: 0,
           visible_requisition_ids: null,
-          evidence: { kind: 'test_response', id: randomUUID() },
+          evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
         }),
       ).rejects.toMatchObject({
         code: 'PIPELINE_TRANSITION_CONFLICT',
@@ -194,13 +195,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const contacted = await repo.recordContactEvidence({
         tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
         requestId: 'mono-contacted', expected_version: v, visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(contacted.version).toBe(v + 1); v = contacted.version;
       const responded = await repo.recordResponseEvidence({
         tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
         requestId: 'mono-responded', expected_version: v, visible_requisition_ids: null,
-        evidence: { kind: 'test_response', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(responded.version).toBe(v + 1); v = responded.version;
       const qualifying = await repo.transition({
@@ -269,7 +270,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             requestId: 'cas-3-stale',
             expected_version: 0,
             visible_requisition_ids: null,
-            evidence: { kind: 'test_response', id: randomUUID() },
+            evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
           }),
         ).rejects.toMatchObject({ code: 'PIPELINE_TRANSITION_CONFLICT', statusCode: 409 });
       } finally {
@@ -308,7 +309,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           requestId: 'vis-1',
           expected_version: 0,
           visible_requisition_ids: excludes,
-          evidence: { kind: 'test_contact', id: randomUUID() },
+          evidence: { kind: 'communication_interaction', id: randomUUID() },
         }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
 
@@ -328,7 +329,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'vis-1-ok',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(ok.status).toBe('contacted');
     });
@@ -357,7 +358,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'vis-3-seed',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       const excludes = new Set<string>([randomUUID()]);
 

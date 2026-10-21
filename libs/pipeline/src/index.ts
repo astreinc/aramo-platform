@@ -17,6 +17,20 @@ export {
   type QualifiedGuardTx,
   type QualifiedRtrDecision,
 } from './lib/qualified-transition-guard.port.js';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2 (S4) — the evidence allowlist + verifier port.
+export {
+  ADMISSIBLE_EVIDENCE_BY_STAGE,
+  PIPELINE_EVIDENCE_KINDS,
+  isEvidenceAdmissible,
+  type PipelineEvidenceKind,
+} from './lib/evidence-admissibility.js';
+export {
+  EVIDENCE_REFERENCE_VERIFIER,
+  type EvidenceReferenceVerifierPort,
+  type EvidenceReferenceInput,
+  type EvidenceVerification,
+  type EvidenceVerifierTx,
+} from './lib/evidence-reference-verifier.port.js';
 export {
   RESUME_EDITION_READER,
   type ResumeEditionReaderPort,

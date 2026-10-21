@@ -415,6 +415,7 @@
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",
       "CATEGORY_TEMPLATE_TOKENS",
+      "COMMAND_ONLY_DISPOSITION_OUTCOMES",
       "COMMUNICATION_CHANNELS",
       "COMMUNICATION_DIRECTIONS",
       "COMMUNICATION_DISPOSITION_OUTCOMES",
@@ -1218,12 +1219,15 @@
     ],
     "@aramo/pipeline": [
       "ACTIVE_FLOW_STAGES",
+      "ADMISSIBLE_EVIDENCE_BY_STAGE",
       "AddTalentPolicyService",
+      "EVIDENCE_REFERENCE_VERIFIER",
       "LIVE_EPISODE_EXCLUSION_STATUSES",
       "NO_POLICY_PUBLISHED_REASON",
       "PIPELINE_DISPOSITION_AUTHORITY_VALUES",
       "PIPELINE_DISPOSITION_REASONS",
       "PIPELINE_ENTRY_ORIGIN_VALUES",
+      "PIPELINE_EVIDENCE_KINDS",
       "PIPELINE_STATUS_VALUES",
       "PROVIDER_SOURCED_ORIGINS",
       "PipelineController",
@@ -1243,6 +1247,7 @@
       "VALID_OVERRIDE_REASON_CODES",
       "VOID_REASON_VALUES",
       "canTransition",
+      "isEvidenceAdmissible",
       "isLiveStatus",
       "isOverrideReasonCode",
       "isPipelineDispositionAuthority",
@@ -4267,6 +4272,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/s2-requisition-lifecycle.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s3-requisition-hold-details.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -7438,6 +7449,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/ats-web/src/requisitions/error-messages.spec.ts",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/talent-requisition-360/TalentRequisition360View.spec.tsx",
         "project": "aramo-ats-web",
@@ -8689,6 +8706,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s3-requisition-hold-details.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8953,6 +8976,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s3-requisition-hold-details.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-policy-coverage.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9202,6 +9231,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/s3-requisition-hold-details.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9227,6 +9262,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intelligence-requisition-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-response-capture.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

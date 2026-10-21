@@ -9,6 +9,8 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
+
 // L2-B — Durable Episode Substrate (Aramo-Talent-Pipeline-Lane2-B-Durable-
 // Episode-Substrate-Directive-v1_0-LOCKED). The lib-local acceptance proofs for
 // the substrate half of the slice: DB-enforced append-only status history
@@ -104,7 +106,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, undefined, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {

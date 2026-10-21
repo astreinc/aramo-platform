@@ -12,6 +12,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
 import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
 
 // Accidental-Add Correction — the governed VOID command, end-to-end against real
 // Postgres 17. Proves the DOMAIN axis (the apps/api engagement + downstream guards are
@@ -84,7 +85,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -157,7 +158,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // contacted
       const rc = await seedRequisition(tenant); const tc = randomUUID();
       const c = await create(tenant, tc, rc, actor);
-      await repo.recordContactEvidence({ tenant_id: tenant, id: c.id, expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'c', visible_requisition_ids: null, evidence: { kind: 'test_contact', id: randomUUID() } });
+      await repo.recordContactEvidence({ tenant_id: tenant, id: c.id, expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'c', visible_requisition_ids: null, evidence: { kind: 'communication_interaction', id: randomUUID() } });
       expect(await status(tenant, c.id)).toBe('contacted'); // BEFORE
       let e1: unknown;
       try { await repo.void({ tenant_id: tenant, id: c.id, reason: 'ADDED_BY_MISTAKE', expected_version: await version(tenant, c.id), changed_by_id: actor, requestId: 'v', visible_requisition_ids: null }); } catch (e) { e1 = e; }
@@ -170,8 +171,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const q = await create(tenant, tq, rq, actor);
       // contacted + talent_responded are evidence-backed (evidence commands); qualifying
       // + qualified remain recruiter DECISION actions (applyAction).
-      await repo.recordContactEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-contact', visible_requisition_ids: null, evidence: { kind: 'test_contact', id: randomUUID() } });
-      await repo.recordResponseEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-response', visible_requisition_ids: null, evidence: { kind: 'test_response', id: randomUUID() } });
+      await repo.recordContactEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-contact', visible_requisition_ids: null, evidence: { kind: 'communication_interaction', id: randomUUID() } });
+      await repo.recordResponseEvidence({ tenant_id: tenant, id: q.id, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: 'q-response', visible_requisition_ids: null, evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() } });
       for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({ tenant_id: tenant, id: q.id, action, expected_version: await version(tenant, q.id), changed_by_id: actor, requestId: action, visible_requisition_ids: null });
       }

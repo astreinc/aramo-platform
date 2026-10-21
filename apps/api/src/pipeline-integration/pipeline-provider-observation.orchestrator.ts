@@ -8,7 +8,11 @@ import {
   PipelineExternalTransitionProvenanceRepository,
 } from '@aramo/integration';
 
-import { resolveProviderEvidenceTarget, resolveReasonAuthority } from './pipeline-provider-mapping-target.js';
+import {
+  RETIRED_PROVIDER_EVIDENCE_TARGETS,
+  resolveProviderEvidenceTarget,
+  resolveReasonAuthority,
+} from './pipeline-provider-mapping-target.js';
 
 // L2-I (D1) — the inbound PIPELINE provider-observation reconciler-analog (apps/api
 // composition root; the ONLY layer permitted to hold both the integration mapping seam AND
@@ -33,6 +37,12 @@ export const PIPELINE_RECONCILE_REASON = {
   // timeout conflict aborted the command with no effect (T-3). Pending, never advanced.
   REQUISITION_NOT_ADVANCEABLE: 'REQUISITION_NOT_ADVANCEABLE',
   CONCURRENT_CONFLICT: 'CONCURRENT_CONFLICT',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.1/§7.2(b) (S4) — a persisted RESPONSE_EVIDENCE
+  // mapping is retired (Talent responded is recruiter-confirmed only); and a provider observation
+  // has no durable, tenant-scoped, verified receipt written before the command, so it can never
+  // ground an evidence-backed milestone. Both stay pending; the Pipeline never advances.
+  RESPONSE_EVIDENCE_RETIRED: 'RESPONSE_EVIDENCE_RETIRED',
+  EVIDENCE_NOT_DURABLE: 'EVIDENCE_NOT_DURABLE',
 } as const;
 
 export type PipelineObservationOutcome =
@@ -41,7 +51,9 @@ export type PipelineObservationOutcome =
   | 'pending_no_lineage'
   | 'pending_unmappable'
   | 'pending_illegal'
-  | 'pending_dual_control';
+  | 'pending_dual_control'
+  | 'pending_retired'
+  | 'pending_not_durable';
 
 export interface PipelineProviderObservation {
   readonly tenant_id: string;
@@ -96,6 +108,13 @@ export class PipelineProviderObservationOrchestrator {
       return 'pending_dual_control';
     }
 
+    // 4b — v1.2 §7.1 (S4): a persisted RESPONSE_EVIDENCE mapping takes the explicit RETIRED
+    // branch — pending, never advanced, never falling through to applyAction.
+    if (mapping.target_kind !== 'reason' && RETIRED_PROVIDER_EVIDENCE_TARGETS.includes(mapping.mapped_target as string)) {
+      await this.reconciliations.recordPending({ ...base, mapped_target: mapping.mapped_target, failure_reason: PIPELINE_RECONCILE_REASON.RESPONSE_EVIDENCE_RETIRED });
+      return 'pending_retired';
+    }
+
     // 5 — external_authority EXECUTE_ACTION → the governed Pipeline command.
     const episode = await this.pipeline.findById({ tenant_id: obs.tenant_id, id: identity.pipeline_id });
     if (episode === null) {
@@ -106,13 +125,9 @@ export class PipelineProviderObservationOrchestrator {
     // The CAS token is ALWAYS the Aramo episode version — NEVER obs.provider_sequence.
     const expected_version = episode.version;
     const isReason = mapping.target_kind === 'reason';
-    // L2I convergence (Recruiting-Journey ruling) — an EVIDENCE-backed milestone is
-    // advanced through the CANONICAL evidence command (reconcileForward), carrying
-    // PROVIDER-VERIFIED provenance (the durable external provider event), NEVER a naked
-    // action and NEVER manufactured recruiter attestation. The provider connector now
-    // shares the exact seam used by email/voice/recruiter-attested flows — one canonical
-    // evidence-backed authority. Decision edges (START_QUALIFICATION / QUALIFY) and
-    // disposition REASONS remain plain governed actions.
+    // An EVIDENCE-backed target (CONTACT_EVIDENCE) is never a naked action and never
+    // manufactured recruiter attestation; it waits for a durable receipt (below). Decision
+    // edges (START_QUALIFICATION / QUALIFY) and disposition REASONS remain governed actions.
     const evidenceStage = isReason
       ? null
       : resolveProviderEvidenceTarget(mapping.mapped_target as string);
@@ -121,37 +136,37 @@ export class PipelineProviderObservationOrchestrator {
     // ENGAGEMENT) — resolved from the pipeline vocabulary here (apps/api).
     const authority_class = isReason && reason !== undefined ? resolveReasonAuthority(reason) : null;
 
+    // v1.2 §7.2(b) (S4) — an evidence-backed milestone needs a DURABLE, tenant-scoped, verified
+    // receipt written BEFORE the command; this ingress has none (caller-supplied input, provenance
+    // written only after success), so a provider evidence observation stays PENDING and the
+    // Pipeline never advances speculatively. When a durable-receipt ingress exists, the evidence
+    // verifier admits it with no change to the allowlist.
+    if (evidenceStage !== null) {
+      await this.reconciliations.recordPending({
+        ...base,
+        mapped_target: mapping.mapped_target,
+        current_pipeline_status: episode.status,
+        failure_reason: PIPELINE_RECONCILE_REASON.EVIDENCE_NOT_DURABLE,
+      });
+      return 'pending_not_durable';
+    }
+
     try {
-      if (evidenceStage !== null) {
-        // CONVERGED provider-verified evidence path (CONTACT_EVIDENCE / RESPONSE_EVIDENCE).
-        // reconcileForward walks FORWARD through the ordered milestones, is idempotent,
-        // forward-only, and CAS-protected — the provider sequence is NEVER the CAS token.
-        await this.pipeline.reconcileForward({
-          tenant_id: obs.tenant_id,
-          id: identity.pipeline_id,
-          target: evidenceStage,
-          changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
-          requestId: obs.requestId,
-          visible_requisition_ids: null,
-          evidence: { kind: 'provider_observation', id: obs.external_event_id },
-        });
-      } else {
-        // Recruiter DECISION edge (START_QUALIFICATION / QUALIFY) or DISPOSITION reason.
-        const action: RecruiterPipelineAction = isReason
-          ? 'DISPOSITION'
-          : (mapping.mapped_target as RecruiterPipelineAction);
-        await this.pipeline.applyAction({
-          tenant_id: obs.tenant_id,
-          id: identity.pipeline_id,
-          action,
-          expected_version,
-          changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
-          requestId: obs.requestId,
-          visible_requisition_ids: null,
-          ...(reason === undefined ? {} : { reason }),
-          ...(authority_class === null ? {} : { authority_class }),
-        });
-      }
+      // Recruiter DECISION edge (START_QUALIFICATION / QUALIFY) or DISPOSITION reason.
+      const action: RecruiterPipelineAction = isReason
+        ? 'DISPOSITION'
+        : (mapping.mapped_target as RecruiterPipelineAction);
+      await this.pipeline.applyAction({
+        tenant_id: obs.tenant_id,
+        id: identity.pipeline_id,
+        action,
+        expected_version,
+        changed_by_id: CONNECTOR_PIPELINE_SYSTEM_ACTOR_ID,
+        requestId: obs.requestId,
+        visible_requisition_ids: null,
+        ...(reason === undefined ? {} : { reason }),
+        ...(authority_class === null ? {} : { authority_class }),
+      });
     } catch (err) {
       // Illegal-from-state / invalid reason → pending (NEVER a partial mutation).
       const code = err instanceof AramoError ? err.code : undefined;

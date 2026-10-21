@@ -12,6 +12,7 @@ import type { PipelineStatus } from '../lib/pipeline-state.js';
 
 import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
 import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER, syntheticEvidenceFor } from './helpers/evidence-verifier.stub.js';
 
 // L1 (pre-E6 coverage) — libs/pipeline's FIRST lib-local integration spec.
 //
@@ -138,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -191,7 +192,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // through them with synthetic evidence (the gate itself is proven in the
         // evidence-milestones spec — here we assert history/events/projections/capacity).
         ...(to === 'contacted' || to === 'talent_responded'
-          ? { evidence_provenance: { kind: 'communication_interaction', id: randomUUID() } }
+          ? { evidence_provenance: syntheticEvidenceFor(to, randomUUID()) }
           : {}),
       });
     }

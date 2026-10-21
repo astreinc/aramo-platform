@@ -345,6 +345,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S2).
       'REQUISITION_NOT_ADVANCEABLE',
       'REQUISITION_STATUS_TERMINAL',
+      // v1.2 §7.2 (S4).
+      'PIPELINE_EVIDENCE_INADMISSIBLE',
     ]);
   });
 });

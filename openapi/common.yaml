@@ -2019,6 +2019,7 @@ components:
         - TRANSACTION_CONFLICT_RETRYABLE
         - REQUISITION_NOT_ADVANCEABLE
         - REQUISITION_STATUS_TERMINAL
+        - PIPELINE_EVIDENCE_INADMISSIBLE
 
     ErrorObject:
       type: object

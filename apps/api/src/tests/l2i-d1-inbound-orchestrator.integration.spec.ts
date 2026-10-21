@@ -17,6 +17,7 @@ import {
 } from '@aramo/integration';
 
 import { PipelineProviderObservationOrchestrator } from '../pipeline-integration/pipeline-provider-observation.orchestrator.js';
+import { resolveCanonicalMappingTargetKind } from '../pipeline-integration/pipeline-provider-mapping-target.js';
 
 // L2-I (D1) — AC-2 (unmappable/illegal → pending, NEVER mutate) + AC-4 (mapping_version in
 // provenance + provider_sequence ⊥ Aramo CAS) for the inbound reconciler-analog, end-to-end
@@ -154,26 +155,61 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await reconciliations.findByExternalEvent(TENANT, conn, 'e-nolineage'))!.failure_reason).toBe('NO_EPISODE_LINEAGE');
     });
 
-    it('positive + AC-4: a mapped-and-legal action executes via the governed command; provenance carries mapping_version + Aramo CAS token, NOT the provider sequence', async () => {
+    it('positive + AC-4: a mapped-and-legal target executes via the governed command; provenance carries mapping_version + Aramo CAS token, NOT the provider sequence', async () => {
       const { conn, pipeline_id } = await seedConnBoundEpisode('EXT-C');
-      // CONTACT is legal from no_contact.
-      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'reached', mapped_target: 'CONTACT_EVIDENCE', target_kind: 'action' });
+      // A non-system disposition reason is a legal governed DISPOSITION from no_contact.
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'withdrew', mapped_target: 'not_a_fit', target_kind: 'reason' });
       expect(await statusOf(pipeline_id)).toBe('no_contact');
       // A deliberately BOGUS huge provider sequence — must NEVER be the CAS token.
       const BOGUS_SEQ = 999999;
-      const outcome = await orchestrator.ingest({ tenant_id: TENANT, connection_id: conn, external_episode_id: 'EXT-C', external_event_id: 'e-exec', provider_token: 'reached', provider_sequence: BOGUS_SEQ, requestId: 'r' });
+      const outcome = await orchestrator.ingest({ tenant_id: TENANT, connection_id: conn, external_episode_id: 'EXT-C', external_event_id: 'e-exec', provider_token: 'withdrew', provider_sequence: BOGUS_SEQ, requestId: 'r' });
       expect(outcome).toBe('executed');
-      expect(await statusOf(pipeline_id)).toBe('contacted'); // governed command advanced it
+      expect(await statusOf(pipeline_id)).toBe('not_in_consideration'); // governed command applied
       const prov = await db.query<{ mapping_version: number; aramo_expected_version: number; provider_sequence: string | null; mapped_target: string }>(
         `SELECT mapping_version, aramo_expected_version, provider_sequence, mapped_target FROM integration."PipelineExternalTransitionProvenance" WHERE external_event_id='e-exec'`,
       );
       const p = prov.rows[0]!;
       expect(p.mapping_version).toBe(1); // resolved from the ACTIVE set
-      expect(p.mapped_target).toBe('CONTACT_EVIDENCE');
+      expect(p.mapped_target).toBe('not_a_fit');
       expect(Number(p.aramo_expected_version)).toBe(0); // the episode version at execution (created=0)
       expect(Number(p.provider_sequence)).toBe(BOGUS_SEQ); // recorded for audit ONLY
       // AC-4 core: the CAS token used (0) is the Aramo version, NOT the provider sequence (999999).
       expect(Number(p.aramo_expected_version)).not.toBe(BOGUS_SEQ);
+    });
+
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2(b) (S4) — a provider CONTACT_EVIDENCE observation
+    // has no durable, verified receipt, so it stays pending EVIDENCE_NOT_DURABLE and never advances.
+    it('S4: a CONTACT_EVIDENCE observation stays pending EVIDENCE_NOT_DURABLE; the episode is UNCHANGED; no provenance', async () => {
+      const { conn, pipeline_id } = await seedConnBoundEpisode('EXT-E');
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'reached', mapped_target: 'CONTACT_EVIDENCE', target_kind: 'action' });
+      const outcome = await orchestrator.ingest({ tenant_id: TENANT, connection_id: conn, external_episode_id: 'EXT-E', external_event_id: 'e-notdurable', provider_token: 'reached', requestId: 'r' });
+      expect(outcome).toBe('pending_not_durable');
+      expect(await statusOf(pipeline_id)).toBe('no_contact');
+      const row = await reconciliations.findByExternalEvent(TENANT, conn, 'e-notdurable');
+      expect(row!.failure_reason).toBe('EVIDENCE_NOT_DURABLE');
+      expect(row!.status).toBe('pending');
+      const prov = await db.query(`SELECT 1 FROM integration."PipelineExternalTransitionProvenance" WHERE external_event_id='e-notdurable'`);
+      expect(prov.rowCount).toBe(0);
+    });
+
+    // v1.2 §7.1 (S4) — a PERSISTED RESPONSE_EVIDENCE mapping takes the explicit retired branch:
+    // pending RESPONSE_EVIDENCE_RETIRED, never advanced, never falling through to applyAction.
+    it('S4: a persisted RESPONSE_EVIDENCE mapping is retired → pending RESPONSE_EVIDENCE_RETIRED; the episode is UNCHANGED', async () => {
+      const { conn, pipeline_id } = await seedConnBoundEpisode('EXT-F');
+      await mappings.upsertMapping({ tenant_id: TENANT, connection_id: conn, provider_token: 'replied', mapped_target: 'RESPONSE_EVIDENCE', target_kind: 'action' });
+      const outcome = await orchestrator.ingest({ tenant_id: TENANT, connection_id: conn, external_episode_id: 'EXT-F', external_event_id: 'e-retired', provider_token: 'replied', requestId: 'r' });
+      expect(outcome).toBe('pending_retired');
+      expect(await statusOf(pipeline_id)).toBe('no_contact');
+      const row = await reconciliations.findByExternalEvent(TENANT, conn, 'e-retired');
+      expect(row!.failure_reason).toBe('RESPONSE_EVIDENCE_RETIRED');
+      expect(row!.mapped_target).toBe('RESPONSE_EVIDENCE');
+    });
+
+    it('S4: RESPONSE_EVIDENCE is no longer an authorable provider mapping target', () => {
+      expect(() => resolveCanonicalMappingTargetKind('RESPONSE_EVIDENCE', 'r')).toThrow(
+        expect.objectContaining({ code: 'PIPELINE_PROVIDER_MAPPING_TARGET_INVALID' }),
+      );
+      expect(resolveCanonicalMappingTargetKind('CONTACT_EVIDENCE', 'r')).toBe('action');
     });
 
     it('a mapped reason-kind target dispositions via the governed DISPOSITION command', async () => {

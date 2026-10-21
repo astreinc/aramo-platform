@@ -373,6 +373,17 @@ const COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261016140000_inc3_a1_screening_meetings/migration.sql',
 );
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.7 (S4) — the 2 additive communications
+// migrations: the response_confirmed disposition value (its own migration — an enum value cannot
+// be used in the transaction that adds it) and the nullable source_interaction_id column.
+const COMMUNICATIONS_S4_RESPONSE_CONFIRMED_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261021100000_s4_disposition_response_confirmed/migration.sql',
+);
+const COMMUNICATIONS_S4_SOURCE_INTERACTION_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261021100100_s4_interaction_source_interaction_id/migration.sql',
+);
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
 // formerly exercised through the retired thin-consumer pacts) now emits
@@ -3852,6 +3863,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_MUTATION_FENCE_MIGRATION,
         COMMUNICATIONS_RECONCILIATION_MIGRATION,
         COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION,
+        // v1.2 §7.7 (S4) — additive response_confirmed + source_interaction_id.
+        COMMUNICATIONS_S4_RESPONSE_CONFIRMED_MIGRATION,
+        COMMUNICATIONS_S4_SOURCE_INTERACTION_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,

@@ -1017,6 +1017,10 @@ export const ERROR_CODES = [
   // v1.2 §2.4 (S2, A1 AM-2) — a status change was requested FROM a terminal requisition
   // (closed / canceled are terminal for the ordinary lifecycle). HTTP 409.
   'REQUISITION_STATUS_TERMINAL',
+  // v1.2 §7.2 (S4, A1 AM-4) — the evidence an evidence-backed milestone was asked to rest on
+  // is not admissible for that stage, could not be verified, or (a recruiter confirmation's
+  // source) is not a substantive response. details.reason names which. HTTP 422.
+  'PIPELINE_EVIDENCE_INADMISSIBLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

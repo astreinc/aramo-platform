@@ -40,6 +40,11 @@ import {
   type EntryProvenanceInput,
 } from './pipeline-entry-provenance.js';
 import { requisitionGateForTransition, requisitionPermits } from './requisition-activity-rule.js';
+import { isEvidenceAdmissible } from './evidence-admissibility.js';
+import {
+  EVIDENCE_REFERENCE_VERIFIER,
+  type EvidenceReferenceVerifierPort,
+} from './evidence-reference-verifier.port.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // §4.1 race-floor identification — a concurrent insert that lost the race on the
@@ -244,6 +249,37 @@ function projectHistoryView(
   };
 }
 
+// The transition command input (shared by transition() and the in-transaction core).
+export interface PipelineTransitionArgs {
+  tenant_id: string;
+  id: string;
+  to_status: PipelineStatus;
+  changed_by_id: string;
+  note?: string;
+  requestId: string;
+  // Lane 2 / L2-A — optimistic-concurrency token the caller last read.
+  expected_version: number;
+  // Lane 2 / L2-A — AUTHZ-D4b write-visibility parity. The actor's visible
+  // requisition set (null ⇒ see-all-requisition). A pipeline on a requisition
+  // outside this set is CONCEALED as 404 — identical to a missing row — so a
+  // caller can neither read nor mutate a row they cannot see.
+  visible_requisition_ids: ReadonlySet<string> | null;
+  // Lane 2 / L2-C — an optional immutable disposition written in the SAME tx as
+  // a TERMINAL transition (DISPOSITION → not_in_consideration; COMPLETE →
+  // completed). A second disposition on the pipeline_id is exact-name translated
+  // to PIPELINE_ALREADY_DISPOSITIONED (409). Callers validate authority/reason.
+  disposition?: DispositionWriteInput;
+  // Recruiting-Journey Evidence-Governed Milestones (§3/§7/§17, I1/I2) — the
+  // grounding evidence a transition into an EVIDENCE_BACKED stage (contacted /
+  // talent_responded) rests on. REQUIRED for those targets (absent → refused with
+  // PIPELINE_STAGE_REQUIRES_EVIDENCE); the evidence-bearing commands set it, the
+  // generic /transition + recruiter /actions surfaces never do. `kind` is the
+  // evidence TYPE (e.g. communication_interaction) and `id` its durable
+  // identifier — carried into the outbox payload + history note for §28
+  // reconstruction (a reference/provenance, NOT a copy of the evidence payload).
+  evidence_provenance?: { kind: string; id: string };
+}
+
 @Injectable()
 export class PipelineRepository {
   private readonly logger = new Logger(PipelineRepository.name);
@@ -259,6 +295,12 @@ export class PipelineRepository {
     @Optional()
     @Inject(QUALIFIED_TRANSITION_GUARD)
     private readonly qualifiedGuard?: QualifiedTransitionGuardPort,
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2(a) (S4) — the evidence-reference
+    // verifier, bound @Global at apps/api (it reads Communications). MANDATORY for the
+    // evidence-backed milestones: when absent those transitions are REFUSED (verifier_unbound).
+    @Optional()
+    @Inject(EVIDENCE_REFERENCE_VERIFIER)
+    private readonly evidenceVerifier?: EvidenceReferenceVerifierPort,
   ) {}
 
   // TR-2a-B3b (DDR-3 §4) + E6 A4 PRESERVE-ALL — OPERATIONAL re-point.
@@ -571,36 +613,51 @@ export class PipelineRepository {
   // Write path — THE state-machine transition (directive §3)
   // -------------------------------------------------------------------------
 
-  async transition(args: {
-    tenant_id: string;
-    id: string;
-    to_status: PipelineStatus;
-    changed_by_id: string;
-    note?: string;
-    requestId: string;
-    // Lane 2 / L2-A — optimistic-concurrency token the caller last read.
-    expected_version: number;
-    // Lane 2 / L2-A — AUTHZ-D4b write-visibility parity. The actor's visible
-    // requisition set (null ⇒ see-all-requisition). A pipeline on a requisition
-    // outside this set is CONCEALED as 404 — identical to a missing row — so a
-    // caller can neither read nor mutate a row they cannot see.
-    visible_requisition_ids: ReadonlySet<string> | null;
-    // Lane 2 / L2-C — an optional immutable disposition written in the SAME tx as
-    // a TERMINAL transition (DISPOSITION → not_in_consideration; COMPLETE →
-    // completed). A second disposition on the pipeline_id is exact-name translated
-    // to PIPELINE_ALREADY_DISPOSITIONED (409). Callers validate authority/reason.
-    disposition?: DispositionWriteInput;
-    // Recruiting-Journey Evidence-Governed Milestones (§3/§7/§17, I1/I2) — the
-    // grounding evidence a transition into an EVIDENCE_BACKED stage (contacted /
-    // talent_responded) rests on. REQUIRED for those targets (absent → refused with
-    // PIPELINE_STAGE_REQUIRES_EVIDENCE); the evidence-bearing commands set it, the
-    // generic /transition + recruiter /actions surfaces never do. `kind` is the
-    // evidence TYPE (e.g. communication_interaction) and `id` its durable
-    // identifier — carried into the outbox payload + history note for §28
-    // reconstruction (a reference/provenance, NOT a copy of the evidence payload).
-    evidence_provenance?: { kind: string; id: string };
-  }): Promise<PipelineView> {
-    const current = await this.prisma.pipeline.findFirst({
+  async transition(args: PipelineTransitionArgs): Promise<PipelineView> {
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.3 (S4) — the transition body runs in ONE
+    // interactive transaction (transitionInTx) so reconcileForward can compose several hops in a
+    // single transaction. The pre-write reads/refusals now run on that transaction too; their
+    // behaviour (codes, ordering, concealment) is unchanged.
+    const { view, committed } = await this.prisma
+      .$transaction(
+        async (tx) => {
+          // 4·0 — v1.2 §2.2 T-3: a server-side bound on every lock wait in this transaction.
+          await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+          return this.transitionInTx(tx, args);
+        },
+        // v1.2 §2.2 T-3 — explicit bounds (the qualified path waits on the policy lock).
+        LOCKED_TX_OPTIONS,
+      )
+      .catch((err: unknown) => this.rethrowTransitionError(err, args.requestId, args.id));
+    if (committed !== null) this.logger.log(committed);
+    return view;
+  }
+
+  // The translation of a transition-transaction failure (shared by transition and
+  // reconcileForward).
+  private rethrowTransitionError(err: unknown, requestId: string, pipelineId: string): never {
+    // Exact-name translation of the one-disposition-per-pipeline violation —
+    // never a generic P2002/23505 leak (mirrors PIPELINE_EPISODE_ALREADY_LIVE).
+    if (isDispositionUniqueViolation(err)) {
+      throw new AramoError(
+        'PIPELINE_ALREADY_DISPOSITIONED',
+        'This pipeline episode already has a disposition',
+        409,
+        { requestId, details: { pipeline_id: pipelineId } },
+      );
+    }
+    // v1.2 §2.2 T-3 — a timeout / deadlock / lock-wait abort left no effect → 409
+    // TRANSACTION_CONFLICT_RETRYABLE (never auto-retried here); everything else rethrows.
+    return rethrowTransactionConflict(err, requestId, 'pipeline.transition');
+  }
+
+  // THE state-machine transition, on the caller's transaction. Returns the post-write view and
+  // the log record to emit AFTER commit (null for a no-op).
+  private async transitionInTx(
+    tx: Prisma.TransactionClient,
+    args: PipelineTransitionArgs,
+  ): Promise<{ view: PipelineView; committed: Record<string, unknown> | null }> {
+    const current = await tx.pipeline.findFirst({
       where: { tenant_id: args.tenant_id, id: args.id },
     });
     // Concealment: missing row, OR a row whose requisition is not visible to the
@@ -660,7 +717,7 @@ export class PipelineRepository {
         pipeline_id: args.id,
         status: fromStatus,
       });
-      return projectView(current as PipelineRow);
+      return { view: projectView(current as PipelineRow), committed: null };
     }
 
     // Client submit-to-client is Submittal-owned and is NOT a Pipeline transition; there
@@ -726,6 +783,36 @@ export class PipelineRepository {
       );
     }
 
+    // Step 3b' — v1.2 §7.2 (S4, A1 AM-4) — the evidence must be ADMISSIBLE for the stage (the
+    // per-stage allowlist), and its reference must be VERIFIED (below, in this transaction). A
+    // process without the verifier bound refuses rather than trusting the reference.
+    const evidenceToVerify =
+      isEvidenceBackedStage(args.to_status) && args.evidence_provenance !== undefined
+        ? args.evidence_provenance
+        : null;
+    if (evidenceToVerify !== null) {
+      if (!isEvidenceAdmissible(args.to_status, evidenceToVerify.kind)) {
+        throw new AramoError(
+          'PIPELINE_EVIDENCE_INADMISSIBLE',
+          `Evidence of kind ${evidenceToVerify.kind} cannot establish ${args.to_status}`,
+          422,
+          {
+            requestId: args.requestId,
+            details: { pipeline_id: args.id, to_status: args.to_status, kind: evidenceToVerify.kind, reason: 'kind_not_admissible' },
+          },
+        );
+      }
+      if (this.evidenceVerifier === undefined) {
+        throw new AramoError(
+          'PIPELINE_EVIDENCE_INADMISSIBLE',
+          'The evidence for this milestone cannot be verified in this process',
+          422,
+          { requestId: args.requestId, details: { pipeline_id: args.id, to_status: args.to_status, reason: 'verifier_unbound' } },
+        );
+      }
+    }
+    const evidenceVerifier = this.evidenceVerifier;
+
     // Step 3c — RTR QUALIFIED GATE (DOC-TEMPLATE-ADMIN-RTR-1 §29-32; Talent Lifecycle
     // R1–R5 Impl Directive v1.2 §4.3–§4.5). Runs AFTER the no-op + legality + evidence
     // checks and ONLY for the `qualified` target. The guard itself now runs INSIDE the
@@ -776,10 +863,9 @@ export class PipelineRepository {
     const eventInstant = new Date();
     const talent_record_id = (current as PipelineRow).talent_record_id;
 
-    const { updatedRow, historyRow } = await this.prisma.$transaction(
-      async (tx) => {
-        // 4·0 — v1.2 §2.2 T-3: a server-side bound on every lock wait in this transaction.
-        await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+    const { updatedRow, historyRow } = await (async () => {
+        // 4·0 — v1.2 §2.2 T-3: the server-side lock-wait bound is the transaction's FIRST
+        // statement, set by the caller that opened it (transition / reconcileForward).
         // v1.2 §4.4(d) / T-2: for `qualified`, the SHARED per-tenant client-submittal-
         // policy advisory lock is the FIRST lock taken, so a concurrent policy publish is
         // linearized against this transition (it waits, or committed before us and applies).
@@ -857,6 +943,30 @@ export class PipelineRepository {
               details: { pipeline_id: args.id, status: requisitionStatus, activity: refusal, to_status: args.to_status },
             },
           );
+        }
+        // 4a''' — v1.2 §7.2(a)/(b) (S4): verify the evidence reference on THIS transaction —
+        // it must exist in the tenant and be bound to THIS Talent × Requisition (arbitrary ids are
+        // never trusted). A refusal rolls back the CAS and every later write.
+        if (evidenceToVerify !== null) {
+          const verification = await evidenceVerifier!.verifyInTx(tx as never, {
+            tenant_id,
+            talent_id: talent_record_id,
+            requisition_id,
+            kind: evidenceToVerify.kind,
+            id: evidenceToVerify.id,
+            requestId: args.requestId,
+          });
+          if (!verification.verified) {
+            throw new AramoError(
+              'PIPELINE_EVIDENCE_INADMISSIBLE',
+              'The evidence for this milestone could not be verified',
+              422,
+              {
+                requestId: args.requestId,
+                details: { pipeline_id: args.id, to_status: args.to_status, kind: evidenceToVerify.kind, reason: verification.reason },
+              },
+            );
+          }
         }
         // 4a' — v1.2 §4.3: the RTR precondition for `qualified`, on THIS transaction, after
         // the CAS (lock order Pipeline → documents). Resolves the effective RTR requirement at
@@ -967,26 +1077,11 @@ export class PipelineRepository {
           });
         }
         return { updatedRow: updated, historyRow: history };
-      },
-      // v1.2 §2.2 T-3 — explicit bounds (the qualified path waits on the policy lock).
-      LOCKED_TX_OPTIONS,
-    ).catch((err: unknown) => {
-      // Exact-name translation of the one-disposition-per-pipeline violation —
-      // never a generic P2002/23505 leak (mirrors PIPELINE_EPISODE_ALREADY_LIVE).
-      if (isDispositionUniqueViolation(err)) {
-        throw new AramoError(
-          'PIPELINE_ALREADY_DISPOSITIONED',
-          'This pipeline episode already has a disposition',
-          409,
-          { requestId: args.requestId, details: { pipeline_id: args.id } },
-        );
-      }
-      // v1.2 §2.2 T-3 — a timeout / deadlock / lock-wait abort left no effect → 409
-      // TRANSACTION_CONFLICT_RETRYABLE (never auto-retried here); everything else rethrows.
-      return rethrowTransactionConflict(err, args.requestId, 'pipeline.transition');
-    });
+    })();
 
-    this.logger.log({
+    return {
+      view: projectView(updatedRow as PipelineRow),
+      committed: {
       event: 'pipeline_transitioned',
       tenant_id,
       pipeline_id: args.id,
@@ -996,8 +1091,8 @@ export class PipelineRepository {
       history_id: (historyRow as PipelineStatusHistoryRow).id,
       // T4-B2 §7 — NO openings_decremented: a Pipeline transition does not
       // mutate requisition capacity (that authority moved to ContractAssignment).
-    });
-    return projectView(updatedRow as PipelineRow);
+      },
+    };
   }
 
   // Lane 2 / L2-C (SB-8) — the recruiter named-command surface. A thin translation
@@ -1148,59 +1243,66 @@ export class PipelineRepository {
         { requestId: args.requestId, details: { pipeline_id: args.id, target: args.target } },
       );
     }
-    const current = await this.prisma.pipeline.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
-    });
-    if (
-      current === null ||
-      (args.visible_requisition_ids !== null &&
-        !args.visible_requisition_ids.has((current as PipelineRow).requisition_id))
-    ) {
-      throw new AramoError(
-        'NOT_FOUND',
-        'Pipeline not found in tenant (or not visible to actor)',
-        404,
-        { requestId: args.requestId, details: { id: args.id } },
-      );
-    }
-    let row = current as PipelineRow;
-    const targetOrdinal = activeStageOrdinal(args.target);
-    // Terminal (ordinal -1) or already at/past target → idempotent no-op. Forward-
-    // only: a terminal episode is never reopened (§11), and we never move backward.
-    let currentOrdinal = activeStageOrdinal(row.status);
-    if (currentOrdinal < 0 || currentOrdinal >= targetOrdinal) {
-      return projectView(row);
-    }
-    // Walk the ordered evidence-backed milestones strictly ABOVE the current stage,
-    // up to and including target. Each hop re-reads the version it just advanced
-    // (CAS) so a concurrent writer surfaces as a conflict rather than a clobber.
-    for (const stage of EVIDENCE_BACKED_STAGES) {
-      const stageOrdinal = activeStageOrdinal(stage);
-      if (stageOrdinal <= currentOrdinal || stageOrdinal > targetOrdinal) continue;
-      const advanced =
-        stage === 'contacted'
-          ? await this.recordContactEvidence({
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.3 (S4) — ALL hops run in ONE transaction:
+    // a refusal on any hop (requisition gate, evidence allowlist, verifier, CAS) rolls back
+    // every hop, so a later-hop refusal can never leave an earlier hop committed. Each hop still
+    // writes its own history / activity / outbox rows (transitionInTx).
+    const { view, committed } = await this.prisma
+      .$transaction(
+        async (tx) => {
+          await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+          const current = await tx.pipeline.findFirst({
+            where: { tenant_id: args.tenant_id, id: args.id },
+          });
+          if (
+            current === null ||
+            (args.visible_requisition_ids !== null &&
+              !args.visible_requisition_ids.has((current as PipelineRow).requisition_id))
+          ) {
+            throw new AramoError(
+              'NOT_FOUND',
+              'Pipeline not found in tenant (or not visible to actor)',
+              404,
+              { requestId: args.requestId, details: { id: args.id } },
+            );
+          }
+          let row = current as PipelineRow;
+          const targetOrdinal = activeStageOrdinal(args.target);
+          const logs: Array<Record<string, unknown>> = [];
+          // Terminal (ordinal -1) or already at/past target → idempotent no-op. Forward-
+          // only: a terminal episode is never reopened (§11), and we never move backward.
+          let currentOrdinal = activeStageOrdinal(row.status);
+          if (currentOrdinal < 0 || currentOrdinal >= targetOrdinal) {
+            return { view: projectView(row), committed: logs };
+          }
+          // Walk the ordered evidence-backed milestones strictly ABOVE the current stage,
+          // up to and including target. Each hop CASes on the version the previous hop wrote.
+          let last = projectView(row);
+          for (const stage of EVIDENCE_BACKED_STAGES) {
+            const stageOrdinal = activeStageOrdinal(stage);
+            if (stageOrdinal <= currentOrdinal || stageOrdinal > targetOrdinal) continue;
+            const hop = await this.transitionInTx(tx, {
               tenant_id: args.tenant_id,
               id: args.id,
-              expected_version: row.version,
+              to_status: stage,
               changed_by_id: args.changed_by_id,
               requestId: args.requestId,
-              visible_requisition_ids: args.visible_requisition_ids,
-              evidence: args.evidence,
-            })
-          : await this.recordResponseEvidence({
-              tenant_id: args.tenant_id,
-              id: args.id,
               expected_version: row.version,
-              changed_by_id: args.changed_by_id,
-              requestId: args.requestId,
               visible_requisition_ids: args.visible_requisition_ids,
-              evidence: args.evidence,
+              evidence_provenance: args.evidence,
             });
-      row = { ...row, status: advanced.status, version: advanced.version };
-      currentOrdinal = activeStageOrdinal(row.status);
-    }
-    return projectView(row);
+            if (hop.committed !== null) logs.push(hop.committed);
+            last = hop.view;
+            row = { ...row, status: hop.view.status, version: hop.view.version };
+            currentOrdinal = activeStageOrdinal(row.status);
+          }
+          return { view: last, committed: logs };
+        },
+        LOCKED_TX_OPTIONS,
+      )
+      .catch((err: unknown) => this.rethrowTransitionError(err, args.requestId, args.id));
+    for (const entry of committed) this.logger.log(entry);
+    return view;
   }
 
   // Accidental-Add Correction — the governed VOID command (no_contact → voided).

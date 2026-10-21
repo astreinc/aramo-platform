@@ -80,6 +80,9 @@ const VOICE_TWO_WAY_DISPOSITIONS: ReadonlySet<string> = new Set([
   'interested',
   'callback_requested',
   'follow_up_required',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — a recruiter response confirmation's
+  // disposition (previously written as `connected`); keeps the two read sites' output unchanged.
+  'response_confirmed',
 ]);
 
 @Injectable()
@@ -158,12 +161,22 @@ export class CommunicationsRepository {
     disposition: CommunicationDispositionOutcome;
     note?: string | null;
     idempotency_key: string;
-  }): Promise<{ interaction_id: string; deduped: boolean }> {
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — the interaction this confirmation
+    // confirms, when the recruiter identified one (null otherwise).
+    source_interaction_id?: string | null;
+  }): Promise<{ interaction_id: string; deduped: boolean; recorded_at: Date; dispositioned_by_id: string }> {
     const existing = await this.prisma.communicationInteraction.findFirst({
       where: { tenant_id: args.tenant_id, idempotency_key: args.idempotency_key },
-      select: { id: true },
+      select: { id: true, created_at: true, initiated_by_id: true },
     });
-    if (existing !== null) return { interaction_id: existing.id, deduped: true };
+    if (existing !== null) {
+      return {
+        interaction_id: existing.id,
+        deduped: true,
+        recorded_at: existing.created_at,
+        dispositioned_by_id: existing.initiated_by_id ?? args.recorded_by_id,
+      };
+    }
 
     const interaction = await this.prisma.$transaction(async (tx) => {
       const created = await tx.communicationInteraction.create({
@@ -184,6 +197,8 @@ export class CommunicationsRepository {
           idempotency_key: args.idempotency_key,
           // occurred_at — WHEN the Talent responded (recruiter-supplied).
           connected_at: args.occurred_at,
+          // v1.2 §7.4 (S4) — the confirmed source interaction (additive; null when none).
+          source_interaction_id: args.source_interaction_id ?? null,
         },
       });
       await tx.communicationAssociation.createMany({
@@ -215,16 +230,58 @@ export class CommunicationsRepository {
         data: {
           tenant_id: args.tenant_id,
           interaction_id: created.id,
-          // A recorded response is a two-way contact fact (the Talent responded);
-          // `connected` is its canonical recruiter-attested disposition.
-          disposition: 'connected' satisfies CommunicationDispositionOutcome,
+          // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — the caller's disposition is
+          // HONOURED (it was previously ignored and always written as `connected`); a recruiter
+          // response confirmation passes `response_confirmed`.
+          disposition: args.disposition,
           notes: args.note ?? null,
           dispositioned_by_id: args.recorded_by_id,
         },
       });
       return created;
     });
-    return { interaction_id: interaction.id, deduped: false };
+    return {
+      interaction_id: interaction.id,
+      deduped: false,
+      recorded_at: interaction.created_at,
+      dispositioned_by_id: args.recorded_by_id,
+    };
+  }
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — the facts a recruiter response
+  // confirmation needs about the interaction it names as its source: whether it exists in the
+  // tenant, whether it is bound to THIS Talent (subject) and THIS requisition (regarding), and
+  // its LATEST disposition (a non-substantive outcome refuses the confirmation). Null when the
+  // interaction does not exist in the tenant.
+  async findSourceInteractionFacts(args: {
+    tenant_id: string;
+    interaction_id: string;
+    talent_record_id: string;
+    requisition_id: string;
+  }): Promise<{ talent_ok: boolean; requisition_ok: boolean; latest_disposition: string | null } | null> {
+    const row = await this.prisma.communicationInteraction.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.interaction_id },
+      select: {
+        associations: {
+          where: { tenant_id: args.tenant_id },
+          select: { subject_type: true, subject_id: true, relation_type: true },
+        },
+        dispositions: {
+          where: { tenant_id: args.tenant_id },
+          orderBy: [{ dispositioned_at: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { disposition: true },
+        },
+      },
+    });
+    if (row === null) return null;
+    const has = (type: string, id: string, rel: string) =>
+      row.associations.some((a) => a.subject_type === type && a.subject_id === id && a.relation_type === rel);
+    return {
+      talent_ok: has('talent_record', args.talent_record_id, 'subject'),
+      requisition_ok: has('requisition', args.requisition_id, 'regarding'),
+      latest_disposition: row.dispositions[0]?.disposition ?? null,
+    };
   }
 
   // Recruiting-Journey §7 (watch-item #2) — the instant of the FIRST grounded

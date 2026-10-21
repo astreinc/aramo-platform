@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
@@ -41,8 +41,17 @@ const MIGRATIONS = [
   'libs/communications/prisma/migrations/20261010120000_m365_sched_1_scheduling_persistence/migration.sql',
   'libs/communications/prisma/migrations/20261011120000_m365_sched_1_mutation_fence_and_fingerprint/migration.sql',
   'libs/communications/prisma/migrations/20261012120000_m365_sched_1_reconciliation_intent/migration.sql',
+  // Talent Lifecycle R1–R5 v1.2 §7.4 (S4) — response_confirmed disposition + source_interaction_id.
+  'libs/communications/prisma/migrations/20261021100000_s4_disposition_response_confirmed/migration.sql',
+  'libs/communications/prisma/migrations/20261021100100_s4_interaction_source_interaction_id/migration.sql',
   'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql',
 ].map(M);
+// Talent Lifecycle R1–R5 v1.2 §7.8 (S4) — the pipeline schema, so a two-way call can be bound to an
+// episode and the spec can prove the webhook leaves it UNCHANGED.
+const PIPELINE_MIGRATIONS = readdirSync(M('libs/pipeline/prisma/migrations'))
+  .filter((n) => /^\d/.test(n))
+  .sort()
+  .map((n) => M(`libs/pipeline/prisma/migrations/${n}/migration.sql`));
 
 const TENANT = '01900000-0000-7000-8000-00000000b6a1';
 const CONNECTION = '01900000-0000-7000-8000-00000000b6c1';
@@ -55,6 +64,9 @@ const INTX_RINGABLE = '01900000-0000-7000-8000-00000000d101'; // initiated, elem
 const ELEM_RINGABLE = 'elem-ring-1';
 const INTX_ENDONLY = '01900000-0000-7000-8000-00000000d102'; // initiated, elem-end (illegal ->completed)
 const ELEM_ENDONLY = 'elem-end-1';
+const INTX_TWOWAY = '01900000-0000-7000-8000-00000000d103'; // bound to PIPELINE_TWOWAY
+const ELEM_TWOWAY = 'elem-twoway-1';
+const PIPELINE_TWOWAY = '01900000-0000-7000-8000-00000000e103';
 
 class FakeSecretsWriter implements SecretsManagerWriterPort {
   async putSecretValue(): Promise<void> {
@@ -111,6 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
+      for (const p of PIPELINE_MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       await db.query(
         `INSERT INTO integration."IntegrationConnection"
@@ -120,6 +133,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       await seedInteraction(INTX_RINGABLE, ELEM_RINGABLE);
       await seedInteraction(INTX_ENDONLY, ELEM_ENDONLY);
+      // v1.2 §7.8 (S4) — a call bound to a no_contact Pipeline episode.
+      await seedInteraction(INTX_TWOWAY, ELEM_TWOWAY);
+      await db.query(
+        `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id, status, created_at, updated_at)
+         VALUES ($1::uuid,$2::uuid,gen_random_uuid(),gen_random_uuid(),'no_contact',now(),now())`,
+        [PIPELINE_TWOWAY, TENANT],
+      );
+      await db.query(
+        `INSERT INTO communications."CommunicationAssociation" (id, tenant_id, interaction_id, subject_type, subject_id, relation_type)
+         VALUES (gen_random_uuid(),$1::uuid,$2::uuid,'pipeline',$3::uuid,'regarding')`,
+        [TENANT, INTX_TWOWAY, PIPELINE_TWOWAY],
+      );
 
       savedEnv = { DATABASE_URL: process.env['DATABASE_URL'], ARAMO_ENV: process.env['ARAMO_ENV'] };
       process.env['DATABASE_URL'] = url;
@@ -261,6 +286,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await statusOf(INTX_ENDONLY)).toBe('initiated'); // initiated→completed is illegal
       const inbox = await inboxRow('phone.call_ended:elem-end-1:1800000000002');
       expect(inbox?.status).toBe('failed');
+    });
+
+    // Talent Lifecycle R1–R5 Implementation Directive v1.2 §7.1/§7.8 (S4) — evidence ingestion is
+    // independent of progression: the call is recorded through connected and completed, but the
+    // bound Pipeline is NEVER advanced (Talent responded is recruiter-confirmed only).
+    it('S4: a call reaching connected and then completed is recorded; the bound Pipeline is UNCHANGED', async () => {
+      const event = (name: string, ts: number) =>
+        JSON.stringify({ event: name, event_ts: ts, payload: { account_id: ACCOUNT_ID, object: { call_element_id: ELEM_TWOWAY } } });
+      expect((await postSigned(event('phone.callee_ringing', 1_800_000_001_000))).status).toBe(204);
+      expect((await postSigned(event('phone.callee_answered', 1_800_000_001_001))).status).toBe(204);
+      expect(await statusOf(INTX_TWOWAY)).toBe('connected');
+      expect((await postSigned(event('phone.call_ended', 1_800_000_001_002))).status).toBe(204);
+      expect(await statusOf(INTX_TWOWAY)).toBe('completed');
+      const p = await db.query(`SELECT status::text AS status, version FROM pipeline."Pipeline" WHERE id=$1::uuid`, [PIPELINE_TWOWAY]);
+      expect(p.rows[0]).toEqual({ status: 'no_contact', version: 0 });
+      const h = await db.query(`SELECT 1 FROM pipeline."PipelineStatusHistory" WHERE pipeline_id=$1::uuid`, [PIPELINE_TWOWAY]);
+      expect(h.rowCount).toBe(0);
     });
   },
 );
