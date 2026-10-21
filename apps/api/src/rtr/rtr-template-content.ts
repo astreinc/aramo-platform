@@ -35,6 +35,12 @@ export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
 //   - agreed_pay_rate.* is DELIBERATELY EXCLUDED (§13): no authoritative
 //     Talent × Requisition agreed-pay fact exists (confirmed PRODUCT/DATA GAP). It is
 //     NOT substituted from desired pay / requisition range / bill rate / offer / placement.
+// DOC-TEMPLATE-LIB-1 T-2 (§2 F-7) — the RUNTIME allowed-binding catalog is now the
+// Aramo-maintained documents.TemplateVariable table (seeded from exactly this list by
+// migration 20261021120000_doclib_t1_template_ownership_foundation). This list stays as
+// the seed source of record and the parity reference the catalog tests compare against;
+// RTR_BINDING_KEYS below is the RESOLVER key set (a catalog key without a resolver is
+// fail-closed). Adding a key = a catalog row + a resolver branch + a test.
 export interface RtrBindingDescriptor {
   readonly key: string; // canonical token
   readonly label: string; // human-readable chip label (Insert field + reading mode)
@@ -78,8 +84,8 @@ export function isRtrBindingKey(value: string): value is RtrBindingKey {
   return (RTR_BINDING_KEYS as readonly string[]).includes(value);
 }
 
-// Admin preview (§17) — the fixed SAFE sample value for each binding. Keyed lookup
-// derived from the single catalog so sample data can never drift from the keys.
+// Admin preview (§17) — the fixed SAFE sample value for each binding (seed reference;
+// T-2 previews read sample_value from the catalog).
 export const RTR_BINDING_SAMPLE_VALUES: Readonly<Record<RtrBindingKey, string>> =
   Object.fromEntries(RTR_BINDING_CATALOG.map((d) => [d.key, d.sample])) as Record<RtrBindingKey, string>;
 

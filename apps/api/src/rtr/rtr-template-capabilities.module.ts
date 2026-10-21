@@ -1,5 +1,11 @@
 import { Global, Module } from '@nestjs/common';
-import { TEMPLATE_AUDIT, TEMPLATE_CAPABILITIES, TEMPLATE_TENANT_LOGO, type TemplateAuditPort } from '@aramo/documents';
+import {
+  DocumentsModule,
+  TEMPLATE_AUDIT,
+  TEMPLATE_CAPABILITIES,
+  TEMPLATE_TENANT_LOGO,
+  type TemplateAuditPort,
+} from '@aramo/documents';
 import { IdentityAuditRepository, IdentityCoreModule, TenantRepository } from '@aramo/identity';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 
@@ -11,8 +17,8 @@ import { RtrTemplateTenantLogoService } from './rtr-template-tenant-logo.service
 // DOC-TEMPLATE-ADMIN-RTR-1 — provides the RTR template-content capability (catalog +
 // closed-binding validation + fixed-sample preview) under the generic TEMPLATE_CAPABILITIES
 // token. @Global so the generic DocumentTemplatesController (declared in @aramo/documents'
-// DocumentsModule) can resolve it by token without forRoot restructuring. The impl is pure
-// (no repos/renderer).
+// DocumentsModule) can resolve it by token without forRoot restructuring. No renderer;
+// DOC-TEMPLATE-LIB-1 T-2: reads the TemplateVariable catalog (one read-only repository).
 //
 // Amendment A1 §1 — also binds TEMPLATE_AUDIT (Discard draft MUST write a template audit
 // event) to the tenant audit ledger via IdentityAuditRepository — the NON-swallowing
@@ -37,7 +43,9 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
 
 @Global()
 @Module({
-  imports: [IdentityCoreModule, ObjectStorageModule],
+  // DOC-TEMPLATE-LIB-1 T-2 — DocumentsModule exports TemplateVariablesRepository (the
+  // Aramo variable catalog the capability reads its allowed bindings from).
+  imports: [IdentityCoreModule, ObjectStorageModule, DocumentsModule],
   providers: [
     RtrTemplateCapabilities,
     { provide: TEMPLATE_CAPABILITIES, useExisting: RtrTemplateCapabilities },

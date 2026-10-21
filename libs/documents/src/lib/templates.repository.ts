@@ -39,6 +39,34 @@ function mapOneDraftConflict(e: unknown, templateId: string): unknown {
   return e;
 }
 
+// DOC-TEMPLATE-LIB-1 T-2 (§6.1, ADR-0034 §4 rule 2) — the OWNER a template write/read is
+// scoped to. TENANT = the caller's own rows (every tenant route; tenant_id equality, so
+// a PLATFORM row — tenant_id NULL — can never match). PLATFORM = the Aramo defaults,
+// reached ONLY through the platform* methods below, which only the platform-tier
+// controller (apps/api, consumer_type=platform + platform:document_template:*) calls.
+// The DRAFT / preview-gate / activate logic is shared by both owners (one code path).
+type TemplateOwner = { readonly kind: 'TENANT'; readonly tenant_id: string } | { readonly kind: 'PLATFORM' };
+const PLATFORM_OWNER: TemplateOwner = { kind: 'PLATFORM' };
+const tenantOwner = (tenant_id: string): TemplateOwner => ({ kind: 'TENANT', tenant_id });
+// The tenant_id value carried by the owner's rows (NULL for PLATFORM — DB CHECK).
+const ownerTenantId = (o: TemplateOwner): string | null => (o.kind === 'TENANT' ? o.tenant_id : null);
+// DocumentTemplate filter for the owner. The PLATFORM arm names owner_scope explicitly
+// (never "tenant_id IS NULL matches").
+const templateWhere = (o: TemplateOwner) =>
+  o.kind === 'TENANT' ? { tenant_id: o.tenant_id } : { owner_scope: 'PLATFORM', tenant_id: null };
+// TemplateVersion filter for the owner (a PLATFORM version: tenant_id NULL + PLATFORM parent).
+const versionWhere = (o: TemplateOwner) =>
+  o.kind === 'TENANT' ? { tenant_id: o.tenant_id } : { tenant_id: null, template: { owner_scope: 'PLATFORM' } };
+
+export interface CreatePlatformTemplateInput {
+  document_type_id: string;
+  name: string;
+  description?: string;
+  template_kind: string;
+  products: string[];
+  created_by: string;
+}
+
 // DOC-2 boundary 4 — DocumentTemplate + TemplateVersion + TemplateFieldDefinition
 // + TemplateAsset + DocumentPacket. A TemplateVersion is immutable once ACTIVE
 // (app-surface guard here; the DB trigger from the migration is the backstop).
@@ -66,6 +94,11 @@ export interface CreateVersionInput {
   internal_notes?: string | null;
   created_by: string;
 }
+
+type DraftTransform = (c: { render_schema_version: string; field_schema: unknown }) => {
+  render_schema_version: string;
+  field_schema: unknown;
+};
 
 export interface AddFieldInput {
   tenant_id: string;
@@ -110,7 +143,11 @@ export class TemplatesRepository {
   }
 
   async getTemplate(tenant_id: string, id: string) {
-    const t = await this.prisma.documentTemplate.findFirst({ where: { tenant_id, id } });
+    return this.getTemplateFor(tenantOwner(tenant_id), id);
+  }
+
+  private async getTemplateFor(owner: TemplateOwner, id: string) {
+    const t = await this.prisma.documentTemplate.findFirst({ where: { ...templateWhere(owner), id } });
     if (t === null) throw new TemplateNotFoundError(id);
     return t;
   }
@@ -189,17 +226,23 @@ export class TemplatesRepository {
 
   // ── Versions ─────────────────────────────────────────────────────────────
   async createVersion(input: CreateVersionInput) {
-    await this.getTemplate(input.tenant_id, input.template_id);
+    const { tenant_id, ...rest } = input;
+    return this.createVersionFor(tenantOwner(tenant_id), rest);
+  }
+
+  private async createVersionFor(owner: TemplateOwner, input: Omit<CreateVersionInput, 'tenant_id'>) {
+    await this.getTemplateFor(owner, input.template_id);
+    const tenant_id = ownerTenantId(owner);
     // §41 one-DRAFT invariant — app-surface guard: if an open DRAFT already exists,
     // refuse (return/navigate to it at the caller). The partial unique index is the
     // concurrent-race backstop (mapOneDraftConflict below).
     const existingDraft = await this.prisma.templateVersion.findFirst({
-      where: { tenant_id: input.tenant_id, template_id: input.template_id, status: 'DRAFT' },
+      where: { tenant_id, template_id: input.template_id, status: 'DRAFT' },
     });
     if (existingDraft !== null) throw new TemplateDraftAlreadyExistsError(input.template_id, existingDraft.id);
     // Next version_number = max + 1 (unique tuple (template_id, version_number)).
     const last = await this.prisma.templateVersion.findFirst({
-      where: { tenant_id: input.tenant_id, template_id: input.template_id },
+      where: { tenant_id, template_id: input.template_id },
       orderBy: { version_number: 'desc' },
     });
     const nextNumber = (last?.version_number ?? 0) + 1;
@@ -207,7 +250,7 @@ export class TemplatesRepository {
       return await this.prisma.templateVersion.create({
         data: {
           id: randomUUID(),
-          tenant_id: input.tenant_id,
+          tenant_id,
           template_id: input.template_id,
           version_number: nextNumber,
           status: 'DRAFT',
@@ -239,13 +282,21 @@ export class TemplatesRepository {
     tenant_id: string;
     template_id: string;
     created_by: string;
-    transform?: (c: { render_schema_version: string; field_schema: unknown }) => { render_schema_version: string; field_schema: unknown };
+    transform?: DraftTransform;
   }) {
-    const template = await this.getTemplate(input.tenant_id, input.template_id);
+    const { tenant_id, ...rest } = input;
+    return this.createDraftFromActiveFor(tenantOwner(tenant_id), rest);
+  }
+
+  private async createDraftFromActiveFor(
+    owner: TemplateOwner,
+    input: { template_id: string; created_by: string; transform?: DraftTransform },
+  ) {
+    const template = await this.getTemplateFor(owner, input.template_id);
     const active =
       template.current_version_id !== null
         ? await this.prisma.templateVersion.findFirst({
-            where: { tenant_id: input.tenant_id, id: template.current_version_id },
+            where: { ...versionWhere(owner), id: template.current_version_id },
           })
         : null;
     const base = {
@@ -253,8 +304,7 @@ export class TemplatesRepository {
       field_schema: (active?.field_schema ?? undefined) as unknown,
     };
     const start = input.transform !== undefined && active !== null ? input.transform(base) : base;
-    return this.createVersion({
-      tenant_id: input.tenant_id,
+    return this.createVersionFor(owner, {
       template_id: input.template_id,
       render_schema_version: start.render_schema_version,
       field_schema: start.field_schema ?? undefined,
@@ -281,7 +331,15 @@ export class TemplatesRepository {
     render_schema_version?: string;
     internal_notes?: string | null;
   }) {
-    const v = await this.getVersion(input.tenant_id, input.version_id);
+    const { tenant_id, ...rest } = input;
+    return this.updateDraftVersionFor(tenantOwner(tenant_id), rest);
+  }
+
+  private async updateDraftVersionFor(
+    owner: TemplateOwner,
+    input: { version_id: string; field_schema?: unknown; render_schema_version?: string; internal_notes?: string | null },
+  ) {
+    const v = await this.getVersionFor(owner, input.version_id);
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
     const contentEdit = input.field_schema !== undefined || input.render_schema_version !== undefined;
     return this.prisma.templateVersion.update({
@@ -328,25 +386,37 @@ export class TemplatesRepository {
   // previewed_fingerprint := content_fingerprint. Deterministic + durable (not FE
   // state). DRAFT-only (admin preview-before-approval targets a DRAFT).
   async recordPreview(input: { tenant_id: string; version_id: string }) {
-    const v = await this.getVersion(input.tenant_id, input.version_id);
-    if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.version_id);
+    return this.recordPreviewFor(tenantOwner(input.tenant_id), input.version_id);
+  }
+
+  private async recordPreviewFor(owner: TemplateOwner, version_id: string) {
+    const v = await this.getVersionFor(owner, version_id);
+    if (v.status !== 'DRAFT') throw new TemplateImmutableError(version_id);
     const fp = v.content_fingerprint ?? templateContentFingerprint(v.field_schema ?? null);
     return this.prisma.templateVersion.update({
-      where: { id: input.version_id },
+      where: { id: version_id },
       data: { content_fingerprint: fp, previewed_fingerprint: fp },
     });
   }
 
   async listVersions(tenant_id: string, template_id: string) {
-    await this.getTemplate(tenant_id, template_id);
+    return this.listVersionsFor(tenantOwner(tenant_id), template_id);
+  }
+
+  private async listVersionsFor(owner: TemplateOwner, template_id: string) {
+    await this.getTemplateFor(owner, template_id);
     return this.prisma.templateVersion.findMany({
-      where: { tenant_id, template_id },
+      where: { tenant_id: ownerTenantId(owner), template_id },
       orderBy: { version_number: 'asc' },
     });
   }
 
   async getVersion(tenant_id: string, id: string) {
-    const v = await this.prisma.templateVersion.findFirst({ where: { tenant_id, id } });
+    return this.getVersionFor(tenantOwner(tenant_id), id);
+  }
+
+  private async getVersionFor(owner: TemplateOwner, id: string) {
+    const v = await this.prisma.templateVersion.findFirst({ where: { ...versionWhere(owner), id } });
     if (v === null) throw new TemplateVersionNotFoundError(id);
     return v;
   }
@@ -372,7 +442,15 @@ export class TemplatesRepository {
     actor_id: string;
     require_preview?: boolean;
   }) {
-    const v = await this.getVersion(input.tenant_id, input.version_id);
+    const { tenant_id, ...rest } = input;
+    return this.activateVersionFor(tenantOwner(tenant_id), rest);
+  }
+
+  private async activateVersionFor(
+    owner: TemplateOwner,
+    input: { version_id: string; actor_id: string; require_preview?: boolean },
+  ) {
+    const v = await this.getVersionFor(owner, input.version_id);
     if (v.status === 'ACTIVE') return v; // no-op
     if (v.status === 'RETIRED') throw new TemplateImmutableError(input.version_id);
     if (input.require_preview !== false) {
@@ -384,7 +462,7 @@ export class TemplatesRepository {
     return this.prisma.$transaction(async (tx) => {
       // Retire the current ACTIVE version of this template, if any.
       await tx.templateVersion.updateMany({
-        where: { tenant_id: input.tenant_id, template_id: v.template_id, status: 'ACTIVE' },
+        where: { tenant_id: ownerTenantId(owner), template_id: v.template_id, status: 'ACTIVE' },
         data: { status: 'RETIRED', retired_at: new Date() },
       });
       await tx.templateVersion.update({
@@ -397,6 +475,102 @@ export class TemplatesRepository {
       });
       return tx.templateVersion.findFirstOrThrow({ where: { id: input.version_id } });
     });
+  }
+
+  // ── DOC-TEMPLATE-LIB-1 T-2 — PLATFORM (Aramo default) authoring (§6.1, §8.1) ──
+  // Called ONLY by the platform-tier controller (apps/api PlatformDocumentTemplates
+  // Controller: consumer_type=platform + platform:document_template:*). Tenant routes
+  // never reach these: they call the tenant methods above (tenant_id equality), which
+  // cannot match a PLATFORM row. The DRAFT / §18 preview gate / activate logic is the
+  // SAME code path the tenant admin flow uses (the *For(owner) primitives).
+
+  async createPlatformTemplate(input: CreatePlatformTemplateInput) {
+    return this.prisma.documentTemplate.create({
+      data: {
+        id: randomUUID(),
+        tenant_id: null,
+        owner_scope: 'PLATFORM',
+        document_type_id: input.document_type_id,
+        client_id: null,
+        name: input.name,
+        description: input.description ?? null,
+        template_kind: input.template_kind,
+        status: 'DRAFT',
+        products: input.products,
+        created_by: input.created_by,
+      },
+    });
+  }
+
+  // Each default with its version summaries (the list view derives the current ACTIVE
+  // version + the open DRAFT from them).
+  async listPlatformTemplates() {
+    return this.prisma.documentTemplate.findMany({
+      where: templateWhere(PLATFORM_OWNER),
+      orderBy: { created_at: 'desc' },
+      include: { versions: { select: { id: true, version_number: true, status: true, activated_at: true, created_at: true } } },
+    });
+  }
+
+  // The SYSTEM document types (tenant_id NULL) — the only types an Aramo default may
+  // target (a TENANT/CLIENT document type belongs to one tenant).
+  async listSystemDocumentTypes() {
+    return this.prisma.documentType.findMany({ where: { tenant_id: null, active: true }, orderBy: { key: 'asc' } });
+  }
+
+  async getPlatformTemplate(id: string) {
+    return this.getTemplateFor(PLATFORM_OWNER, id);
+  }
+
+  // Name / description / product tags (D9: recorded, not enforced). Never touches
+  // status / current_version_id / versions / withdrawal (T-6).
+  async updatePlatformTemplate(id: string, patch: { name?: string; description?: string | null; products?: string[] }) {
+    const r = await this.prisma.documentTemplate.updateMany({
+      where: { ...templateWhere(PLATFORM_OWNER), id },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.description !== undefined ? { description: patch.description } : {}),
+        ...(patch.products !== undefined ? { products: patch.products } : {}),
+      },
+    });
+    if (r.count === 0) throw new TemplateNotFoundError(id);
+    return this.getPlatformTemplate(id);
+  }
+
+  async listPlatformVersions(template_id: string) {
+    return this.listVersionsFor(PLATFORM_OWNER, template_id);
+  }
+
+  async getPlatformVersion(id: string) {
+    return this.getVersionFor(PLATFORM_OWNER, id);
+  }
+
+  async createPlatformVersion(input: Omit<CreateVersionInput, 'tenant_id'>) {
+    return this.createVersionFor(PLATFORM_OWNER, input);
+  }
+
+  async createPlatformDraftFromActive(input: { template_id: string; created_by: string; transform?: DraftTransform }) {
+    return this.createDraftFromActiveFor(PLATFORM_OWNER, input);
+  }
+
+  async updatePlatformDraftVersion(input: {
+    version_id: string;
+    field_schema?: unknown;
+    render_schema_version?: string;
+    internal_notes?: string | null;
+  }) {
+    return this.updateDraftVersionFor(PLATFORM_OWNER, input);
+  }
+
+  async recordPlatformPreview(version_id: string) {
+    return this.recordPreviewFor(PLATFORM_OWNER, version_id);
+  }
+
+  // Publish: DRAFT → ACTIVE behind the §18 preview gate (always required — no
+  // bootstrap bypass on the platform surface); the prior ACTIVE version is RETIRED and
+  // current_version_id moves, so tenants only ever resolve the current version (D3).
+  async activatePlatformVersion(input: { version_id: string; actor_id: string }) {
+    return this.activateVersionFor(PLATFORM_OWNER, { ...input, require_preview: true });
   }
 
   // ── Fields (canonical field model, NOT AcroForm) ─────────────────────────

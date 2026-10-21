@@ -8,6 +8,7 @@ export {
   DocumentTemplatesController,
   DocumentRequirementsController,
   DocumentPacketsController,
+  templateErrorToHttp,
 } from './lib/templates.controller.js';
 
 export {
@@ -39,9 +40,20 @@ export {
 export {
   TemplatesRepository,
   type CreateTemplateInput,
+  type CreatePlatformTemplateInput,
   type CreateVersionInput,
   type AddFieldInput,
 } from './lib/templates.repository.js';
+// DOC-TEMPLATE-LIB-1 T-2 — the Aramo template variable catalog.
+export {
+  TemplateVariablesRepository,
+  TEMPLATE_VARIABLE_DATA_TYPES,
+  type TemplateVariableDataType,
+  type TemplateVariableRow,
+  type TemplateVariableCatalogReader,
+  type CreateTemplateVariableInput,
+  type UpdateTemplateVariableInput,
+} from './lib/template-variables.repository.js';
 export {
   RequirementsRepository,
   type CreateRequirementInput,
@@ -71,6 +83,11 @@ export {
   TemplateVersionNotFoundError,
   TemplateVersionNotActiveError,
   TemplateImmutableError,
+  // DOC-TEMPLATE-LIB-1 T-2 — the preview gate / one-DRAFT refusals (platform routes + tests).
+  TemplatePreviewRequiredError,
+  TemplateDraftAlreadyExistsError,
+  TemplateVariableNotFoundError,
+  TemplateVariableKeyConflictError,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

@@ -200,6 +200,10 @@ export const SEED_IDS = {
     // SKILL-TAX-1F-A — platform taxonomy-governance scopes (super_admin only).
     'platform:skill:read': '01900000-0000-7000-8000-000000000320',
     'platform:skill:manage': '01900000-0000-7000-8000-000000000321',
+    // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring
+    // (Aramo defaults + the variable catalog). super_admin only.
+    'platform:document_template:read': '01900000-0000-7000-8000-000000000322',
+    'platform:document_template:manage': '01900000-0000-7000-8000-000000000323',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -570,6 +574,10 @@ export const SEED_IDS = {
     // scopes (0x303..0x3ff platform range is free per the note above).
     super_admin_platform_skill_read: '01900000-0000-7000-8000-000000000310',
     super_admin_platform_skill_manage: '01900000-0000-7000-8000-000000000311',
+    // DOC-TEMPLATE-LIB-1 T-2 — super_admin RoleScope rows for the 2 platform
+    // document-template scopes (0x303..0x3ff platform range).
+    super_admin_platform_document_template_read: '01900000-0000-7000-8000-000000000312',
+    super_admin_platform_document_template_manage: '01900000-0000-7000-8000-000000000313',
     // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
     // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
     // since they live in AUTHZ1_BUNDLES).
@@ -815,6 +823,9 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     // SKILL-TAX-1F-A — taxonomy governance (read + manage).
     'platform:skill:read',
     'platform:skill:manage',
+    // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog.
+    'platform:document_template:read',
+    'platform:document_template:manage',
   ],
 } as const;
 
@@ -924,6 +935,11 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_skill_read,
   'super_admin:platform:skill:manage':
     SEED_IDS.role_scopes.super_admin_platform_skill_manage,
+  // DOC-TEMPLATE-LIB-1 T-2 — super_admin grants for the 2 document-template scopes.
+  'super_admin:platform:document_template:read':
+    SEED_IDS.role_scopes.super_admin_platform_document_template_read,
+  'super_admin:platform:document_template:manage':
+    SEED_IDS.role_scopes.super_admin_platform_document_template_manage,
   // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
   'tenant_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
   'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
@@ -3194,6 +3210,9 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:read'], 'platform:skill:read', 'Platform-tier: read canonical Skills taxonomy + unresolved review queue (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:manage'], 'platform:skill:manage', 'Platform-tier: mutate canonical Skills taxonomy — create/update/deactivate/merge, alias/version/relationship, override, ratify AI proposals (super_admin only)');
+  // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring.
+  await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:read'], 'platform:document_template:read', 'Platform-tier: read Aramo default document templates + the template variable catalog (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:manage'], 'platform:document_template:manage', 'Platform-tier: author, preview and publish Aramo default document templates + maintain the template variable catalog (super_admin only)');
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');

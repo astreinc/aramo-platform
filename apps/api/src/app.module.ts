@@ -131,6 +131,8 @@ import { CiProcessingModule } from './conversation-intelligence/ci-processing.mo
 import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
+// DOC-TEMPLATE-LIB-1 T-2 — platform-tier Aramo default templates + variable catalog.
+import { PlatformDocumentTemplatesModule } from './document-templates-platform/platform-document-templates.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -613,6 +615,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // DOC-TEMPLATE-ADMIN-RTR-1 — @Global RTR template-content capability (catalog +
     // validation + sample preview) behind the generic TEMPLATE_CAPABILITIES token.
     TemplateCapabilitiesModule,
+    // DOC-TEMPLATE-LIB-1 T-2 — /platform/document-templates + /platform/template-variables.
+    PlatformDocumentTemplatesModule,
     RtrQualifiedTransitionGuardModule,
     EvidenceReferenceVerifierModule,
     // Lane2-DDR §0/§6 — @Global TALENT_RECORD_EXISTENCE_READER for the Pipeline Add-Talent

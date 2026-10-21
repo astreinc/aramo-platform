@@ -54,17 +54,19 @@ export interface TemplateCapabilitiesPort {
   // The governed binding catalog for a document type (the Insert-field source, §15). The
   // SAME canonical catalog the backend validates against — the FE fetches this, so there
   // is no FE mirror to drift (§14). Empty for non-configurable types.
-  listAllowedBindings(documentTypeId: string): readonly TemplateBindingDescriptor[];
+  // DOC-TEMPLATE-LIB-1 T-2 (§2 F-7, ADR-0034 D7) — read from the Aramo-maintained
+  // TemplateVariable catalog (active rows), hence async.
+  listAllowedBindings(documentTypeId: string): Promise<readonly TemplateBindingDescriptor[]>;
 
   // Closed-binding validation (§14): the draft content must be structurally valid for the
   // type and reference ONLY catalog bindings. Throws (TemplateBindingUnsupportedError /
   // VALIDATION_ERROR) on an unknown token, structural invalidity, or empty content. A
   // non-configurable type is a no-op (nothing to validate). Authoritative at activation.
-  validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): void;
+  validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void>;
 
   // Fixed-sample preview (§17) of the CURRENT draft content. Validates first, then
   // substitutes the fixed SAFE sample values. Never persists a business Document.
-  renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): TemplateSamplePreview;
+  renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<TemplateSamplePreview>;
 
   // A1 §2.2 — authoritative PATCH-time normalisation of DRAFT content. For a sanitised
   // content version (rtr-html-v1) the html is re-serialised against the allowlist and
@@ -77,7 +79,7 @@ export interface TemplateCapabilitiesPort {
     field_schema: unknown;
     existing_field_schema: unknown;
     requestId: string;
-  }): unknown;
+  }): Promise<unknown>;
 
   // A1 §2.1 — the content a NEW DRAFT starts from, given the ACTIVE version's content
   // (rtr-generated-v1 is converted to rtr-html-v1; html content is copied as-is, logo

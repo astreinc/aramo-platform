@@ -52,6 +52,15 @@ tags:
       token is refused with 403 `INSUFFICIENT_PERMISSIONS` (DDR §13.1 tripwire).
       The taxonomy is platform-global — these routes carry NO tenant scoping and
       NO PII; the review queue is counts-only (never a tenant id in a response).
+  - name: Platform Document Templates
+    description: |
+      DOC-TEMPLATE-LIB-1 T-2 — Aramo default document templates (PLATFORM owner, no
+      tenant) and the Aramo template variable catalog. Reads require
+      `platform:document_template:read`; every write requires
+      `platform:document_template:manage` (super_admin only). Platform-tier only: a
+      tenant-tier token is refused with 403 `INSUFFICIENT_PERMISSIONS`. These are the
+      only routes that write PLATFORM template rows or the catalog; PLATFORM rows carry
+      no tenant data.
 
 paths:
   /v1/signup/sign/terms:
@@ -1587,6 +1596,409 @@ paths:
         '409':
           $ref: '#/components/responses/SkillProposalNotPending'
 
+  # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
+  # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
+  /platform/document-templates/document-types:
+    get:
+      operationId: listPlatformTemplateDocumentTypes
+      tags: [Platform Document Templates]
+      summary: List the SYSTEM document types an Aramo default may target.
+      description: 'Active SYSTEM document types (tenant_id NULL) plus whether each is configurable in the editor. Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The SYSTEM document types.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformTemplateDocumentTypeListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/document-templates:
+    get:
+      operationId: listPlatformDocumentTemplates
+      tags: [Platform Document Templates]
+      summary: List the Aramo default templates.
+      description: 'Every PLATFORM template with its current published version, open draft, product tags and timestamps. Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The Aramo default templates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplateListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformDocumentTemplate
+      tags: [Platform Document Templates]
+      summary: Create an Aramo default template (PLATFORM, no tenant).
+      description: 'Creates a DRAFT PLATFORM template for a SYSTEM document type. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlatformDocumentTemplateRequest'
+      responses:
+        '201':
+          description: The created template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplate'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/document-templates/{id}:
+    get:
+      operationId: getPlatformDocumentTemplate
+      tags: [Platform Document Templates]
+      summary: Read one Aramo default template with its versions.
+      description: 'Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      responses:
+        '200':
+          description: The template and its versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplateDetail'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+    patch:
+      operationId: updatePlatformDocumentTemplate
+      tags: [Platform Document Templates]
+      summary: Update an Aramo default's name, description or product tags.
+      description: 'Product tags are recorded, not enforced (ADR-0034 D9). Status, versions and withdrawal are not writable here. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePlatformDocumentTemplateRequest'
+      responses:
+        '200':
+          description: The updated template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformDocumentTemplate'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+
+  /platform/document-templates/{id}/allowed-bindings:
+    get:
+      operationId: listPlatformTemplateAllowedBindings
+      tags: [Platform Document Templates]
+      summary: The governed Insert-field catalog for this default's document type.
+      description: 'Read from the Aramo variable catalog (active rows with a resolver). Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      responses:
+        '200':
+          description: The allowed bindings.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/AllowedBindingsResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+
+  /platform/document-templates/{id}/versions:
+    post:
+      operationId: createPlatformTemplateDraft
+      tags: [Platform Document Templates]
+      summary: Open the DRAFT version of an Aramo default.
+      description: |
+        One DRAFT per template (409 `TEMPLATE_DRAFT_ALREADY_EXISTS`). Without content the
+        draft starts from the current published version; with `render_schema_version` +
+        `field_schema` it starts from that content (sanitised; catalog keys only).
+        Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlatformTemplateDraftRequest'
+      responses:
+        '201':
+          description: The DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
+  /platform/document-templates/versions/{versionId}:
+    get:
+      operationId: getPlatformTemplateVersion
+      tags: [Platform Document Templates]
+      summary: Read one version of an Aramo default.
+      description: 'Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The version.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+    patch:
+      operationId: updatePlatformTemplateDraft
+      tags: [Platform Document Templates]
+      summary: Update the DRAFT content or notes of an Aramo default.
+      description: 'DRAFT only (409 `TEMPLATE_IMMUTABLE` otherwise). A content edit re-arms the preview gate. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: 'documents.yaml#/components/schemas/UpdateVersionRequest'
+      responses:
+        '200':
+          description: The updated DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
+  /platform/document-templates/versions/{versionId}/preview:
+    post:
+      operationId: previewPlatformTemplateDraft
+      tags: [Platform Document Templates]
+      summary: Fixed-sample preview of the DRAFT (arms the publish gate).
+      description: 'Substitutes the catalog sample values; creates no Document. Records the preview for exactly the current content. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The sample preview.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/TemplateSamplePreview'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
+  /platform/document-templates/versions/{versionId}/publish:
+    post:
+      operationId: publishPlatformTemplateVersion
+      tags: [Platform Document Templates]
+      summary: Publish the DRAFT as the current version.
+      description: |
+        Validates the content against the variable catalog, enforces the preview gate
+        (409 `TEMPLATE_PREVIEW_REQUIRED` unless the current content was previewed), then
+        retires the previous published version. Tenants only ever resolve the current
+        version; documents already generated keep their pinned version.
+        Requires `platform:document_template:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PlatformTemplateVersionIdParam'
+      responses:
+        '200':
+          description: The published (ACTIVE) version.
+          content:
+            application/json:
+              schema:
+                $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+        '409':
+          $ref: '#/components/responses/PlatformTemplateConflict'
+        '422':
+          $ref: '#/components/responses/PlatformTemplateContentRejected'
+
+  /platform/template-variables:
+    get:
+      operationId: listPlatformTemplateVariables
+      tags: [Platform Document Templates]
+      summary: List the Aramo template variable catalog.
+      description: 'Every catalog row, active and inactive. Requires `platform:document_template:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVariableListResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformTemplateVariable
+      tags: [Platform Document Templates]
+      summary: Add a variable to the catalog.
+      description: 'The key is the token stored in template content and is immutable. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateVariableRequest'
+      responses:
+        '201':
+          description: The created variable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVariable'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          $ref: '#/components/responses/TemplateVariableKeyExists'
+
+  /platform/template-variables/{id}:
+    patch:
+      operationId: updatePlatformTemplateVariable
+      tags: [Platform Document Templates]
+      summary: Update a catalog variable (key immutable).
+      description: 'label / group_label / data_type / products / ats_binding_key / sample_value / active. Requires `platform:document_template:manage`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateVariableIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateVariableRequest'
+      responses:
+        '200':
+          description: The updated variable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TemplateVariable'
+        '400':
+          $ref: '#/components/responses/PlatformTemplateValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTemplateNotFound'
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant 4
@@ -1623,6 +2035,30 @@ components:
       in: path
       required: true
       description: The SkillGovernanceProposal UUID.
+      schema:
+        type: string
+        format: uuid
+    PlatformTemplateIdParam:
+      name: id
+      in: path
+      required: true
+      description: The PLATFORM DocumentTemplate UUID.
+      schema:
+        type: string
+        format: uuid
+    PlatformTemplateVersionIdParam:
+      name: versionId
+      in: path
+      required: true
+      description: The TemplateVersion UUID (of a PLATFORM template).
+      schema:
+        type: string
+        format: uuid
+    TemplateVariableIdParam:
+      name: id
+      in: path
+      required: true
+      description: The TemplateVariable UUID.
       schema:
         type: string
         format: uuid
@@ -1705,6 +2141,37 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
     SkillProposalPayloadInvalid:
       description: '`SKILL_PROPOSAL_PAYLOAD_INVALID` — the accepted proposal payload is not a valid spec for its type.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+    PlatformTemplateValidation:
+      description: '`VALIDATION_ERROR` — a request-shape invariant was violated (or the document type is not configurable / not a SYSTEM type).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTemplateNotFound:
+      description: '`TEMPLATE_NOT_FOUND` / `TEMPLATE_VERSION_NOT_FOUND` / `NOT_FOUND` — no such PLATFORM template, version or catalog variable.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTemplateConflict:
+      description: '`TEMPLATE_DRAFT_ALREADY_EXISTS` / `TEMPLATE_IMMUTABLE` / `TEMPLATE_PREVIEW_REQUIRED`.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    PlatformTemplateContentRejected:
+      description: '`TEMPLATE_BINDING_UNSUPPORTED` (a key outside the catalog, or without a resolver) or `VALIDATION_ERROR` (content rejected by the sanitiser).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    TemplateVariableKeyExists:
+      description: '`VALIDATION_ERROR` (`details.reason` `key_exists`) — the catalog already has this key.'
       content:
         application/json:
           schema:
@@ -2496,3 +2963,268 @@ components:
         reason:
           type: [string, 'null']
           maxLength: 2000
+
+    # DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog.
+    PlatformTemplateDocumentTypeListResponse:
+      type: object
+      required: [document_types]
+      properties:
+        document_types:
+          type: array
+          items:
+            type: object
+            required: [id, key, name, configurable]
+            properties:
+              id:
+                type: string
+                format: uuid
+              key:
+                type: string
+              name:
+                type: string
+              configurable:
+                type: boolean
+    PlatformTemplateVersionSummary:
+      type: object
+      required: [id, version_number, status, activated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        activated_at:
+          type: [string, 'null']
+          format: date-time
+    PlatformDocumentTemplate:
+      type: object
+      required:
+        - id
+        - owner_scope
+        - document_type_id
+        - name
+        - template_kind
+        - status
+        - products
+        - current_version
+        - draft_version_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_scope:
+          type: string
+          enum: [PLATFORM]
+        document_type_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        template_kind:
+          type: string
+          enum: [GENERATED, UPLOADED_PDF, HYBRID]
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        products:
+          type: array
+          description: Product tags (recorded, not enforced — ADR-0034 D9).
+          items:
+            type: string
+        current_version:
+          oneOf:
+            - $ref: '#/components/schemas/PlatformTemplateVersionSummary'
+            - type: 'null'
+        draft_version_id:
+          type: [string, 'null']
+          format: uuid
+        withdraw_notice_at:
+          type: [string, 'null']
+          format: date-time
+        withdraw_effective_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    PlatformDocumentTemplateListResponse:
+      type: object
+      required: [templates]
+      properties:
+        templates:
+          type: array
+          items:
+            $ref: '#/components/schemas/PlatformDocumentTemplate'
+    PlatformDocumentTemplateDetail:
+      allOf:
+        - $ref: '#/components/schemas/PlatformDocumentTemplate'
+        - type: object
+          required: [versions]
+          properties:
+            versions:
+              type: array
+              items:
+                $ref: 'documents.yaml#/components/schemas/TemplateVersion'
+    CreatePlatformDocumentTemplateRequest:
+      type: object
+      required: [document_type_id, name, template_kind]
+      properties:
+        document_type_id:
+          type: string
+          format: uuid
+          description: An active SYSTEM document type.
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        template_kind:
+          type: string
+          enum: [GENERATED, UPLOADED_PDF, HYBRID]
+        products:
+          type: array
+          items:
+            type: string
+            pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+    UpdatePlatformDocumentTemplateRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: [string, 'null']
+          maxLength: 500
+        products:
+          type: array
+          items:
+            type: string
+            pattern: '^[A-Z][A-Z0-9_]{0,31}$'
+    CreatePlatformTemplateDraftRequest:
+      type: object
+      properties:
+        render_schema_version:
+          type: string
+          description: Required when field_schema is supplied.
+        field_schema:
+          description: The starting content (e.g. rtr-html-v1); omitted = start from the current published version.
+        internal_notes:
+          type: [string, 'null']
+          maxLength: 500
+    TemplateVariable:
+      type: object
+      required:
+        - id
+        - key
+        - label
+        - group_label
+        - data_type
+        - products
+        - ats_binding_key
+        - sample_value
+        - active
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: The token stored in template content (immutable).
+        label:
+          type: string
+        group_label:
+          type: string
+        data_type:
+          type: string
+          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY]
+        products:
+          type: array
+          items:
+            type: string
+        ats_binding_key:
+          type: [string, 'null']
+          description: The ATS resolver this variable is filled from (null = not fillable by ATS).
+        sample_value:
+          type: [string, 'null']
+          description: The safe sample used by previews.
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TemplateVariableListResponse:
+      type: object
+      required: [variables]
+      properties:
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/TemplateVariable'
+    CreateTemplateVariableRequest:
+      type: object
+      required: [key, label, group_label, data_type]
+      properties:
+        key:
+          type: string
+          pattern: '^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$'
+          maxLength: 64
+        label:
+          type: string
+          maxLength: 80
+        group_label:
+          type: string
+          maxLength: 80
+        data_type:
+          type: string
+          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY]
+        products:
+          type: array
+          items:
+            type: string
+        ats_binding_key:
+          type: [string, 'null']
+        sample_value:
+          type: [string, 'null']
+          maxLength: 2000
+        active:
+          type: boolean
+    UpdateTemplateVariableRequest:
+      type: object
+      description: The key is immutable and may not be sent.
+      properties:
+        label:
+          type: string
+          maxLength: 80
+        group_label:
+          type: string
+          maxLength: 80
+        data_type:
+          type: string
+          enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY]
+        products:
+          type: array
+          items:
+            type: string
+        ats_binding_key:
+          type: [string, 'null']
+        sample_value:
+          type: [string, 'null']
+          maxLength: 2000
+        active:
+          type: boolean

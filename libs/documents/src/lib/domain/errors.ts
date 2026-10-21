@@ -131,3 +131,19 @@ export class DocumentStorageNotSupportedError extends Error {
     this.name = 'DocumentStorageNotSupportedError';
   }
 }
+
+// DOC-TEMPLATE-LIB-1 T-2 — the Aramo template variable catalog (platform routes map
+// these to NOT_FOUND 404 / VALIDATION_ERROR 409 reason=key_exists).
+export class TemplateVariableNotFoundError extends Error {
+  constructor(public readonly variableId: string) {
+    super(`TemplateVariable ${variableId} not found`);
+    this.name = 'TemplateVariableNotFoundError';
+  }
+}
+
+export class TemplateVariableKeyConflictError extends Error {
+  constructor(public readonly key: string) {
+    super(`TemplateVariable key ${key} already exists`);
+    this.name = 'TemplateVariableKeyConflictError';
+  }
+}

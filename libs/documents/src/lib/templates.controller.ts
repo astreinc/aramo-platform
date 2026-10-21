@@ -86,6 +86,10 @@ function toHttp(e: unknown, requestId: string): AramoError {
     : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
 
+// DOC-TEMPLATE-LIB-1 T-2 — the same domain→HTTP mapping for the platform-tier template
+// routes (apps/api), so both surfaces return identical error codes.
+export const templateErrorToHttp = toHttp;
+
 function validate(condition: boolean, message: string, requestId: string): void {
   if (!condition) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
 }
@@ -326,7 +330,7 @@ export class DocumentTemplatesController {
         if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
         const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
         if (this.caps.isConfigurable(t.document_type_id)) {
-          field_schema = this.caps.normalizeDraftContent({
+          field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version ?? existing.render_schema_version,
             field_schema: body.field_schema,
@@ -390,7 +394,7 @@ export class DocumentTemplatesController {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
       validate(this.caps !== undefined && this.caps.isConfigurable(ctx.document_type_id), 'this document type is not configurable', requestId);
-      const preview = this.caps!.renderSamplePreview({ ...ctx, requestId });
+      const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId });
       await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
       return preview;
     } catch (e) {
@@ -411,7 +415,7 @@ export class DocumentTemplatesController {
       // letterhead shows beside it).
       const tenant_logo =
         configurable && this.tenantLogo !== undefined ? await this.tenantLogo.info(auth.tenant_id) : { available: false, tenant_name: null };
-      return { bindings: this.caps?.listAllowedBindings(t.document_type_id) ?? [], tenant_logo };
+      return { bindings: (await this.caps?.listAllowedBindings(t.document_type_id)) ?? [], tenant_logo };
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -503,7 +507,7 @@ export class DocumentTemplatesController {
       // gate + §21 actor + the DRAFT->ACTIVE transition.
       if (this.caps !== undefined) {
         const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
-        this.caps.validateDraftContent({ ...ctx, requestId });
+        await this.caps.validateDraftContent({ ...ctx, requestId });
       }
       return await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
     } catch (e) {
