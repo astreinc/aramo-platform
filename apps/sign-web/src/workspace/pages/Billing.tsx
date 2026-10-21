@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { ApiError } from '@aramo/fe-foundation';
 
 import { billingApi, errorMessage, type BillingAccount, type BillingCatalog, type BillingPlan, type Money } from '../api';
 import { Btn, Check, ErrorBox, Loading, fmtDate } from '../ui';
@@ -213,6 +214,16 @@ function PlanCard({
   );
 }
 
+// Domain-Enforcement P3 §4 — a new subscription needs a verified (AUTHORITATIVE)
+// organization email domain; checkout is refused with this reason until then.
+const DOMAIN_REQUIRED_MESSAGE = 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator in Settings.';
+// Plans offered here are business plans, so the workspace is always /sign.
+export const DOMAIN_SETTINGS_HREF = '/sign/settings/domain';
+
+function isDomainVerificationRequired(e: unknown): boolean {
+  return e instanceof ApiError && e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required';
+}
+
 export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => void; pollMs?: number } = {}) {
   const returned = checkoutReturn();
   const { account, error, waiting, gaveUp, reload } = useAccount(returned === 'success', pollMs);
@@ -220,6 +231,7 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
   const [busy, setBusy] = useState(false);
   const [terms, setTerms] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [domainRequired, setDomainRequired] = useState(false);
 
   useEffect(() => {
     billingApi
@@ -235,10 +247,12 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
   const act = (fn: () => Promise<{ url: string }>) => {
     setBusy(true);
     setActionError(null);
+    setDomainRequired(false);
     fn()
       .then((r) => go(r.url))
       .catch((e: unknown) => {
-        setActionError(errorMessage(e));
+        if (isDomainVerificationRequired(e)) setDomainRequired(true);
+        else setActionError(errorMessage(e));
         setBusy(false);
       });
   };
@@ -266,6 +280,16 @@ export function BillingPanel({ onSending, pollMs = 3000 }: { onSending?: () => v
       ) : null}
       {returned === 'canceled' ? <div className="sg-note">Checkout was canceled. You haven’t been charged.</div> : null}
       {actionError !== null ? <ErrorBox>{actionError}</ErrorBox> : null}
+      {domainRequired ? (
+        <ErrorBox>
+          <span data-testid="billing-domain-required">
+            {DOMAIN_REQUIRED_MESSAGE}{' '}
+            <a href={DOMAIN_SETTINGS_HREF} data-testid="billing-domain-settings-link">
+              Go to Settings → Domain
+            </a>
+          </span>
+        </ErrorBox>
+      ) : null}
 
       <section className="sg-card" data-testid="billing-current">
         <div className="sg-card__head">

@@ -28,4 +28,11 @@ export interface OrganizationBillingProfilePort {
   eligibleProfile(tenant_id: string): Promise<{ profile: OrganizationBillingProfile } | { refused: OrganizationProfileRefusal }>;
   /** Hold the tenant's organization profile to the US (idempotent). */
   lockRegion(tenant_id: string): Promise<void>;
+  /**
+   * Domain-Enforcement P3 §4 (sending gate, ruling 5) — true only when the
+   * tenant's email-domain claim is AUTHORITATIVE. A new self-service
+   * subscription needs it at checkout start and at activation. Fail closed: any
+   * doubt (no claim, no binding) is false.
+   */
+  domainAuthoritative(tenant_id: string): Promise<boolean>;
 }

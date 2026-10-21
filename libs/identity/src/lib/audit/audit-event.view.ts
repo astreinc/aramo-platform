@@ -204,6 +204,19 @@ export function summarizeDetail(
       return 'Published the withdrawal of an Aramo default template';
     case 'identity.document_template.withdrawal_cancelled':
       return 'Cancelled the withdrawal of an Aramo default template';
+    // Domain-Enforcement P3 — the organization's claim on its email domain.
+    case 'identity.domain.claim.provisional':
+      return 'Reserved the organization email domain';
+    case 'identity.domain.claim.authoritative':
+      return 'Confirmed the organization email domain';
+    case 'identity.domain.claim.lapsed':
+      return 'The organization email domain reservation lapsed';
+    case 'identity.domain.claim.released':
+      return 'Released the organization email domain';
+    case 'identity.domain.exception.granted':
+      return 'Granted a shared email domain exception';
+    case 'identity.domain.exception.revoked':
+      return 'Revoked a shared email domain exception';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

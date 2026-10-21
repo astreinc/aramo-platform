@@ -4,6 +4,7 @@ import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import { v7 as uuidv7 } from 'uuid';
 
 import { IdentityAuditService } from './audit/identity-audit.service.js';
+import { DomainClaimService, domainUnavailableError } from './domain-claim/domain-claim.service.js';
 import type { EventType } from './audit/identity-audit.repository.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { TenantRepository, type PlatformTenantListRow } from './tenant.repository.js';
@@ -38,6 +39,8 @@ export class TenantService {
   constructor(
     private readonly tenantRepo: TenantRepository,
     private readonly audit: IdentityAuditService,
+    // Domain-Enforcement P3 (LOCKED) — one organization per email domain.
+    private readonly domainClaims: DomainClaimService,
   ) {}
 
   async getTenantsByUser(args: { user_id: string }): Promise<TenantDto[]> {
@@ -280,6 +283,16 @@ export class TenantService {
       allowed_domain = deriveAllowedDomainOrThrow(args.owner_email, 'provision');
     }
 
+    // Domain-Enforcement P3 (LOCKED) §3 — one organization per email domain. A
+    // clean pre-check (read-only; ignores an expired provisional holder); the
+    // authoritative check runs below under the per-domain lock, in the same
+    // transaction as the tenant insert.
+    const now = new Date();
+    const claimDomain = kind === 'BUSINESS' ? allowed_domain : null;
+    if (claimDomain !== null && (await this.domainClaims.isDomainHeld(claimDomain, now))) {
+      throw domainUnavailableError('provision');
+    }
+
     // Subdomain-Identity Directive A — validate the slug (if supplied) at the
     // same authoritative spine, throwing 4xx for a non-DNS-safe value. The
     // normalized (lowercased) form is what gets persisted to the UNIQUE column.
@@ -295,14 +308,25 @@ export class TenantService {
         : Object.fromEntries(
             Object.entries(args.profile).filter(([k]) => (PROFILE_FIELDS as readonly string[]).includes(k)),
           ) as Record<string, string | null>;
-    const tenant = await this.tenantRepo.createTenant({
+    const createArgs = {
       id: tenant_id,
       name: args.name,
       allowed_domain,
       slug,
       kind,
       ...(profile === undefined ? {} : { profile }),
-    });
+    };
+    // P3 §3 — a BUSINESS tenant with a domain is born holding a PROVISIONAL
+    // claim: the insert and the claim commit (or roll back) together. PERSONAL
+    // tenants (no domain) are unchanged.
+    const tenant =
+      claimDomain === null
+        ? await this.tenantRepo.createTenant(createArgs)
+        : await this.tenantRepo.withTransaction(async (tx) => {
+            const created = await this.tenantRepo.createTenant(createArgs, tx);
+            await this.domainClaims.claimForNewTenant(tx, { tenant_id: created.id, domain: claimDomain, now });
+            return created;
+          });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
       actor_type: args.actor_type ?? 'user',
@@ -336,6 +360,9 @@ export class TenantService {
     actor_type?: 'user' | 'system';
   }): Promise<void> {
     await this.tenantRepo.deactivateTenant({ id: args.tenant_id });
+    // Domain-Enforcement P3 §3 — a soft-disabled failed provisioning no longer
+    // holds its domain (LAPSED, reason provisioning_failed). Nothing is deleted.
+    await this.domainClaims.lapse(args.tenant_id, 'provisioning_failed');
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',
       // Reuse the existing tenant-scoped event_type for the rollback

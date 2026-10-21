@@ -159,6 +159,15 @@ describe('EsignBillingController', () => {
     });
     expect(billingHttpError(new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED'), 'r')).toMatchObject({ context: { details: { reason: 'organization_profile_incomplete' } } });
   });
+
+  it('maps DOMAIN_VERIFICATION_REQUIRED to a 409 with reason domain_verification_required (Domain-Enforcement P3 §4)', () => {
+    expect(billingHttpError(new BillingRefusedError('DOMAIN_VERIFICATION_REQUIRED'), 'r-9')).toMatchObject({
+      code: 'ESIGN_BILLING_CONFLICT',
+      statusCode: 409,
+      message: 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator in Settings.',
+      context: { requestId: 'r-9', details: { reason: 'domain_verification_required' } },
+    });
+  });
 });
 
 describe('EsignOwnerActivationService', () => {

@@ -466,6 +466,57 @@ model TenantBillingRegionPolicy {
   @@schema("identity")
 }
 
+// Domain-Enforcement P3 (LOCKED) §2 — the tenant's claim on its email domain.
+// Held = claim PROVISIONAL|AUTHORITATIVE and !exception (partial unique index
+// TenantDomainClaim_holder_key on domain). Only BUSINESS tenants with a domain
+// have a row; `domain` is lower(Tenant.allowed_domain), which is never cleared.
+model TenantDomainClaim {
+  tenant_id  String    @id @db.Uuid
+  domain     String
+  claim      String
+  expires_at DateTime? @db.Timestamptz(6)
+  reason     String?
+  exception  Boolean   @default(false)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([domain])
+  @@schema("identity")
+}
+
+// Domain-Enforcement P3 §6 — audited operator shared-domain exceptions.
+model TenantDomainException {
+  id                 String    @id @db.Uuid
+  tenant_id          String    @db.Uuid
+  domain             String
+  justification      String
+  evidence_ref       String
+  granted_by_user_id String    @db.Uuid
+  granted_at         DateTime  @default(now()) @db.Timestamptz(6)
+  revoked_by_user_id String?   @db.Uuid
+  revoked_at         DateTime? @db.Timestamptz(6)
+
+  @@index([tenant_id])
+  @@schema("identity")
+}
+
+// Domain-Enforcement P3 §5 — delegated (session-less, time-limited) domain
+// verification for an IT / domain administrator. No membership.
+model DomainVerificationDelegation {
+  id                String    @id @db.Uuid
+  tenant_id         String    @db.Uuid
+  delegate_email    String
+  token_hash        String    @unique
+  issued_by_user_id String    @db.Uuid
+  expires_at        DateTime  @db.Timestamptz(6)
+  revoked_at        DateTime? @db.Timestamptz(6)
+  last_used_at      DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id])
+  @@schema("identity")
+}
+
 model TenantIdentityProviderPolicy {
   tenant_id         String    @id @db.Uuid
   created_at        DateTime  @default(now()) @db.Timestamptz(6)

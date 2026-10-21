@@ -17,10 +17,17 @@ export class FakeOrganizationBillingProfile implements OrganizationBillingProfil
   refused: OrganizationProfileRefusal | null = null;
   profile: OrganizationBillingProfile = US_PROFILE;
   locked: string[] = [];
+  /** P3 §4 — the tenant's domain claim is AUTHORITATIVE (default: yes, as grandfathered). */
+  authoritative = true;
+  domainChecks: string[] = [];
   async eligibleProfile(): Promise<{ profile: OrganizationBillingProfile } | { refused: OrganizationProfileRefusal }> {
     return this.refused !== null ? { refused: this.refused } : { profile: this.profile };
   }
   async lockRegion(tenant_id: string): Promise<void> {
     this.locked.push(tenant_id);
+  }
+  async domainAuthoritative(tenant_id: string): Promise<boolean> {
+    this.domainChecks.push(tenant_id);
+    return this.authoritative;
   }
 }

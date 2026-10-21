@@ -17,9 +17,11 @@ import {
 // Security & SSO settings group). Reuses the TenantProfileForm fetch→display→
 // action template + StatusPill (DOMAIN_TONE) + a monospace TXT block with copy.
 //
-// INFORMATIONAL (PO ruling (a)): verifying gates nothing — it is a status the
-// tenant can prove + display. The panel makes the proof self-serve: show the TXT
-// record to publish, then a "Check DNS record" button that flips it to VERIFIED.
+// Domain-Enforcement P3 (LOCKED) §4: VERIFIED makes the organization the
+// authoritative owner of its domain (unless another organization already holds
+// it — then Aramo support resolves it), and is required before a new
+// self-service Aramo Sign plan. The panel makes the proof self-serve: show the
+// TXT record to publish, then a "Check DNS record" button that flips it to VERIFIED.
 
 // §7 — displayed status → StatusPill tone (mirrors the invite-S3 STATUS_TONE).
 const DOMAIN_TONE: Record<DomainVerificationStatus, PillTone> = {
@@ -55,6 +57,9 @@ function messageForError(err: unknown): string {
     }
     if (reason === 'no_token_issued') {
       return 'Request verification first to generate a DNS record to publish.';
+    }
+    if (reason === 'already_verified') {
+      return 'This domain is already verified.';
     }
     return safeErrorMessage(err, 'Something went wrong.');
   }
@@ -158,6 +163,21 @@ export function DomainVerificationPanel({ fetchFn, requestFn, checkFn }: Props =
             title="Verified"
             sub={`On ${formatInstant(v.verified_at)}`}
           />
+        ) : null}
+
+        {v.status === 'VERIFIED' && v.domain_claim === 'AUTHORITATIVE' ? (
+          <InlineAlert variant="success">
+            <span data-testid="domain-authoritative">
+              Your organization is the verified owner of {v.allowed_domain} on Aramo.
+            </span>
+          </InlineAlert>
+        ) : null}
+        {v.domain_claim_conflict === true ? (
+          <InlineAlert variant="error">
+            <span data-testid="domain-conflict">
+              Another Aramo organization holds this domain. Contact Aramo support.
+            </span>
+          </InlineAlert>
         ) : null}
 
         {hasDomain && v.record_value !== null && v.record_name !== null ? (

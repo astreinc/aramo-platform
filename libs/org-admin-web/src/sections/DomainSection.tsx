@@ -12,7 +12,7 @@ export function DomainSection() {
   return (
     <SettingsSection
       title="Domain"
-      description="Prove your organization controls its email domain, and review how people sign in. Verification is a trust signal today; it does not change who can sign in or be invited."
+      description="Prove your organization controls its email domain, and review how people sign in. Verifying makes your organization the owner of its email domain on Aramo, and is required before starting a new self-service Aramo Sign plan."
     >
       <DomainVerificationPanel />
       <SsoSeam />

@@ -2311,6 +2311,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'ROLES1_RECONCILE_REVOKE',
         // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1 — template draft discard audit.
         'identity.document_template.draft_discarded',
+        // Domain-Enforcement P3 — claim / exception / delegation events (sorted).
+        'identity.domain.claim.authoritative',
+        'identity.domain.claim.lapsed',
+        'identity.domain.claim.provisional',
+        'identity.domain.claim.released',
+        'identity.domain.exception.granted',
+        'identity.domain.exception.revoked',
+        'identity.domain.verification.delegation.issued',
+        'identity.domain.verification.delegation.revoked',
+        'identity.domain.verification.delegation.used',
         'identity.domain.verification.requested',
         'identity.domain.verified',
         'identity.invitation.accepted',

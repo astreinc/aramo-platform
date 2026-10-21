@@ -114,6 +114,7 @@
     "libs/identity/src/lib/audit/audit.controller.ts": "AP",
     "libs/identity/src/lib/d4a.controller.ts": "AP",
     "libs/identity/src/lib/domain-verification/domain-verification.controller.ts": "AP",
+    "libs/identity/src/lib/domain-verification/domain-verification-delegate.controller.ts": "PZ",
     "libs/identity/src/lib/role-catalog/role-catalog.controller.ts": "AP",
     "libs/identity/src/lib/sites/sites.controller.ts": "AP",
     "libs/identity/src/lib/tenant-profile/tenant-profile.controller.ts": "AP",

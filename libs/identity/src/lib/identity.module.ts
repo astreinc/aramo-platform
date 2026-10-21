@@ -31,6 +31,14 @@ import {
 import { DnsResolverModule } from './dns/dns-resolver.module.js';
 import { DomainVerificationController } from './domain-verification/domain-verification.controller.js';
 import { DomainVerificationService } from './domain-verification/domain-verification.service.js';
+// Domain-Enforcement P3 §5 — delegated domain verification (tenant routes live on
+// DomainVerificationController; the session-less delegate routes on their own
+// un-guarded controller).
+import { DelegateBudget } from './domain-verification/delegate-budget.js';
+import { DomainVerificationDelegateController } from './domain-verification/domain-verification-delegate.controller.js';
+import { DomainVerificationDelegationRepository } from './domain-verification/domain-verification-delegation.repository.js';
+import { DomainVerificationDelegationService } from './domain-verification/domain-verification-delegation.service.js';
+import { PrismaService } from './prisma/prisma.service.js';
 
 // Options for IdentityModule.forRoot — the composition-root entry point.
 // cognitoAdapter is the live TenantCognitoPort implementation (apps/api's
@@ -117,6 +125,9 @@ export interface IdentityModuleOptions {
     // Domain-Enforcement P2b — the tenant-admin domain-verification surface
     // (GET/POST /v1/tenant/domain-verification + /check, tenant:admin:domain).
     DomainVerificationController,
+    // Domain-Enforcement P3 §5 — POST /v1/domain-verification/delegate (+ /check):
+    // session-less, token-in-body, rate-limited. No guards by design.
+    DomainVerificationDelegateController,
   ],
   providers: [
     TenantUserLifecycleService,
@@ -124,6 +135,15 @@ export interface IdentityModuleOptions {
     // match/transition). Injects TenantRepository (from IdentityCoreModule) +
     // DNS_RESOLVER_PORT (from DnsResolverModule).
     DomainVerificationService,
+    // Domain-Enforcement P3 §5 — delegation service + its repository + the
+    // in-memory per-IP / per-token budget (one instance per process). The
+    // repository needs the identity Prisma client; IdentityCoreModule does not
+    // export its PrismaService, so this module binds its own (same schema client,
+    // lazily connected — a second pool only once a delegation query runs).
+    DomainVerificationDelegationService,
+    DomainVerificationDelegationRepository,
+    DelegateBudget,
+    PrismaService,
     // Invite-S2 — the public acceptance flow's lifecycle service (exported
     // below so apps/api's PublicInvitationController can inject it).
     InvitationLifecycleService,

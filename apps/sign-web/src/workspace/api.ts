@@ -434,7 +434,13 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
-    if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
+    // Sign Signup A1 §2.6 — checkout needs a complete US organization profile.
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_country_not_supported') return 'Aramo Sign is currently available to organizations registered in the United States.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_profile_incomplete') return 'Add your organization’s legal name, US address and billing email in Settings before subscribing.';
+    // Domain-Enforcement P3 §4 — the organization must own its verified email domain.
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'domain_verification_required') return 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'NO_BILLING_ACCOUNT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
+    if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization can’t subscribe right now. Check Settings, or contact Aramo.';
     if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
     if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';

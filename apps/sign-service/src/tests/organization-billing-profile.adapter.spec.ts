@@ -1,4 +1,4 @@
-import type { OrganizationRegionService, TenantRepository } from '@aramo/identity';
+import type { DomainClaimService, OrganizationRegionService, TenantRepository } from '@aramo/identity';
 import { describe, expect, it, vi } from 'vitest';
 
 import { OrganizationBillingProfileAdapter } from '../app/billing/organization-billing-profile.adapter.js';
@@ -33,6 +33,14 @@ function adapter(profile: unknown) {
   return { a: new OrganizationBillingProfileAdapter(tenants, regions), regions };
 }
 
+// Domain-Enforcement P3 §4 — a stand-in for DomainClaimService.isAuthoritative.
+function withClaims(isAuthoritative: (tenant_id: string) => Promise<boolean>) {
+  const claims = { isAuthoritative: vi.fn(isAuthoritative) } as unknown as DomainClaimService;
+  const tenants = { findProfileById: vi.fn(async () => US) } as unknown as TenantRepository;
+  const regions = { lockUs: vi.fn(async () => undefined) } as unknown as OrganizationRegionService;
+  return { a: new OrganizationBillingProfileAdapter(tenants, regions, claims), claims };
+}
+
 describe('OrganizationBillingProfileAdapter', () => {
   it('maps a complete US profile to the billing profile', async () => {
     expect(await adapter(US).a.eligibleProfile('t-1')).toEqual({
@@ -59,5 +67,21 @@ describe('OrganizationBillingProfileAdapter', () => {
     const { a, regions } = adapter(US);
     await a.lockRegion('t-1');
     expect(regions.lockUs).toHaveBeenCalledWith('t-1');
+  });
+
+  it('domain authority (P3 §4): reads DomainClaimService.isAuthoritative for the tenant', async () => {
+    const yes = withClaims(async () => true);
+    expect(await yes.a.domainAuthoritative('t-1')).toBe(true);
+    expect(yes.claims.isAuthoritative).toHaveBeenCalledWith('t-1');
+    expect(await withClaims(async () => false).a.domainAuthoritative('t-1')).toBe(false);
+  });
+
+  it('domain authority (P3 §4): fails closed with no binding or a failed lookup', async () => {
+    expect(await adapter(US).a.domainAuthoritative('t-1')).toBe(false);
+    expect(
+      await withClaims(async () => {
+        throw new Error('db down');
+      }).a.domainAuthoritative('t-1'),
+    ).toBe(false);
   });
 });

@@ -150,6 +150,9 @@ services:
     container_name: aramo-prod-api
     restart: unless-stopped
     environment:
+      # Domain-Enforcement P3 §5 — delegated domain-verification links point at the
+      # Sign host (the delegate page lives in sign-web). Default https://sign.aramo.ai.
+      - ARAMO_SIGN_BASE_URL
       - PORT=3000
       - NODE_ENV=production
       # host localhost → compose-network service names; creds from POSTGRES_*
@@ -519,6 +522,10 @@ services:
       - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # Domain-Enforcement P3 — opt-in expiry sweep of PROVISIONAL domain claims
+      # (unset ⇒ off; an expired claim still lapses on the next claim attempt).
+      - DOMAIN_CLAIM_SWEEP_ENABLED
+      - DOMAIN_CLAIM_SWEEP_INTERVAL_MS
     depends_on:
       postgres:
         condition: service_healthy

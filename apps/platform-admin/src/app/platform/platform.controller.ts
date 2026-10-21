@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -18,6 +19,7 @@ import {
 } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
+  DomainClaimService,
   IdentityAuditRepository,
   TenantService,
   type AuditEventRow,
@@ -40,6 +42,12 @@ import {
   SuspendTenantRequestDto,
   type TenantLifecycleActionResponseDto,
 } from './dto/tenant-lifecycle.request.dto.js';
+import {
+  GrantTenantDomainExceptionRequestDto,
+  PromoteTenantDomainRequestDto,
+  ReleaseTenantDomainRequestDto,
+  type TenantDomainResponseDto,
+} from './dto/tenant-domain.request.dto.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 
 // PlatformController — the apps/platform-admin HTTP surface (Lead ruling
@@ -55,6 +63,7 @@ import { PlatformInvitationService } from './platform-invitation.service.js';
 //   GET  /platform/tenants                                list (super_admin view)
 //   POST /platform/tenants/:tenant_id/invitations         invite a user into a tenant
 //   POST /platform/admins/invitations                     invite another platform admin
+//   GET/POST/DELETE /platform/tenants/:tenant_id/domain…  domain claim (P3 §6)
 @Controller('platform')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PlatformController {
@@ -62,6 +71,8 @@ export class PlatformController {
     private readonly invitations: PlatformInvitationService,
     private readonly tenantSvc: TenantService,
     private readonly auditRepo: IdentityAuditRepository,
+    // Domain-Enforcement P3 (LOCKED) §6 — operator domain-claim actions.
+    private readonly domainClaims: DomainClaimService,
   ) {}
 
   @Post('tenants')
@@ -329,6 +340,118 @@ export class PlatformController {
       request_id: requestId,
     });
     return { tenant_id, from: r.from, to: r.to, status: r.to, changed: r.changed };
+  }
+
+  // Domain-Enforcement P3 (LOCKED) §6 — the operator's view of a tenant's email-
+  // domain claim and its shared-domain exceptions, and the four audited actions
+  // (release, evidence promotion, grant / revoke exception). Lifecycle power
+  // (platform:tenant:lifecycle:manage) for all five, reads included: the claim
+  // is an operator-only surface. Each write is audited in its own transaction.
+  @Get('tenants/:tenant_id/domain')
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async getTenantDomain(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantDomainResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    await this.assertTenantExists(tenant_id, requestId);
+    return this.domainView(tenant_id);
+  }
+
+  @Post('tenants/:tenant_id/domain/release')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async releaseTenantDomain(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: ReleaseTenantDomainRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantDomainResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    await this.assertTenantExists(tenant_id, requestId);
+    await this.domainClaims.release(tenant_id, authCtx.sub, body.reason);
+    return this.domainView(tenant_id);
+  }
+
+  @Post('tenants/:tenant_id/domain/promote')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async promoteTenantDomain(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: PromoteTenantDomainRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantDomainResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    await this.assertTenantExists(tenant_id, requestId);
+    await this.domainClaims.promoteWithEvidence(tenant_id, authCtx.sub, body.evidence_ref);
+    return this.domainView(tenant_id);
+  }
+
+  @Post('tenants/:tenant_id/domain/exception')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async grantTenantDomainException(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @Body() body: GrantTenantDomainExceptionRequestDto,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantDomainResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    await this.assertTenantExists(tenant_id, requestId);
+    await this.domainClaims.grantException(tenant_id, authCtx.sub, body.justification, body.evidence_ref);
+    return this.domainView(tenant_id);
+  }
+
+  @Delete('tenants/:tenant_id/domain/exception')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async revokeTenantDomainException(
+    @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TenantDomainResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    await this.assertTenantExists(tenant_id, requestId);
+    await this.domainClaims.revokeException(tenant_id, authCtx.sub);
+    return this.domainView(tenant_id);
+  }
+
+  private async assertTenantExists(tenant_id: string, requestId: string): Promise<void> {
+    if ((await this.tenantSvc.getTenantById(tenant_id)) === null) {
+      throw new AramoError('NOT_FOUND', 'Tenant not found', 404, {
+        requestId,
+        details: { tenant_id },
+      });
+    }
+  }
+
+  private async domainView(tenant_id: string): Promise<TenantDomainResponseDto> {
+    const v = await this.domainClaims.operatorView(tenant_id);
+    return {
+      tenant_id,
+      domain_claim:
+        v.claim === null
+          ? null
+          : {
+              domain: v.claim.domain,
+              claim: v.claim.claim,
+              expires_at: v.claim.expires_at === null ? null : v.claim.expires_at.toISOString(),
+              reason: v.claim.reason,
+              exception: v.claim.exception,
+            },
+      exceptions: v.exceptions.map((e) => ({
+        id: e.id,
+        domain: e.domain,
+        justification: e.justification,
+        evidence_ref: e.evidence_ref,
+        granted_by_user_id: e.granted_by_user_id,
+        granted_at: e.granted_at.toISOString(),
+        revoked_by_user_id: e.revoked_by_user_id,
+        revoked_at: e.revoked_at === null ? null : e.revoked_at.toISOString(),
+      })),
+    };
   }
 
   @Post('admins/invitations')

@@ -9768,6 +9768,248 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
       security:
         - BearerAuth: []
+  # Domain-Enforcement P2b (LOCKED) + P3 (LOCKED §4/§5) — tenant domain verification.
+  # Served by apps/api; on the Aramo Sign host these two prefixes are the named nginx
+  # exception (P3 §4) so Sign-only organizations reach them.
+  /v1/tenant/domain-verification:
+    get:
+      operationId: getTenantDomainVerification
+      summary: The caller's tenant domain-verification status and the DNS record to publish.
+      description: |
+        P2b — status (UNVERIFIED | PENDING | VERIFIED), the TXT record name and value
+        to publish. P3 (additive) — `domain_claim` (the tenant's claim on its email
+        domain) and `domain_claim_conflict` (VERIFIED, but another Aramo organization
+        holds the domain; resolved by Aramo support). Requires `tenant:admin:domain`
+        and the `core` capability; the tenant is always the caller's own.
+      responses:
+        '200':
+          description: The verification view.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: requestTenantDomainVerification
+      summary: Issue (or re-issue) the DNS verification token → PENDING.
+      description: |
+        Mints a fresh token and moves the status to PENDING (an earlier record becomes
+        inert). P3 §4 — refused while VERIFIED (VERIFIED is sticky): 409 with
+        `details.reason` `already_verified`; nothing changes.
+      responses:
+        '200':
+          description: The verification view (PENDING, with the record value).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationView'
+        '400':
+          description: '`VALIDATION_ERROR` — the tenant has no locked domain (`details.reason` `no_allowed_domain`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          description: '`DOMAIN_ALREADY_VERIFIED` with `details.reason` `already_verified` — the domain is already verified.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/tenant/domain-verification/check:
+    post:
+      operationId: checkTenantDomainVerification
+      summary: Resolve the TXT record and match it → VERIFIED, or stay PENDING.
+      description: |
+        A match moves the status to VERIFIED and (P3 §4) promotes the tenant's domain
+        claim to AUTHORITATIVE. If another organization holds the domain the promotion
+        is refused: the status stays VERIFIED, `domain_claim` is not AUTHORITATIVE and
+        `domain_claim_conflict` is true. No match stays PENDING (not an error). A check
+        of an already VERIFIED tenant does not re-resolve DNS; it retries the claim
+        promotion when the claim is not yet AUTHORITATIVE.
+      responses:
+        '200':
+          description: The verification view after the check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationView'
+        '400':
+          description: '`VALIDATION_ERROR` — no token issued yet (`no_token_issued`) or no locked domain (`no_allowed_domain`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+  /v1/tenant/domain-verification/delegations:
+    get:
+      operationId: listTenantDomainVerificationDelegations
+      summary: Active (unexpired, unrevoked) delegations of the domain verification.
+      description: Lists the caller's tenant's active delegations (P3 §5) so the owner sees "assigned to {email}". Requires `tenant:admin:domain`.
+      responses:
+        '200':
+          description: The active delegations, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DomainVerificationDelegation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: issueTenantDomainVerificationDelegation
+      summary: Assign the domain verification to an IT / domain administrator (P3 §5).
+      description: |
+        Creates a 7-day, session-less grant and emails the delegate a link carrying a
+        secret token in the URL fragment (only its SHA-256 is stored). The delegate gets
+        no membership, scope, billing, Sign or administrative access. At most 5 active
+        links per tenant. Audited (`identity.domain.verification.delegation.issued`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [delegate_email]
+              properties:
+                delegate_email:
+                  type: string
+                  format: email
+                  maxLength: 254
+      responses:
+        '201':
+          description: The delegation (never the token).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationDelegation'
+        '400':
+          description: '`VALIDATION_ERROR` — invalid email (`invalid_delegate_email`), no locked domain (`no_allowed_domain`) or too many active links (`too_many_active_delegations`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '409':
+          description: '`DOMAIN_ALREADY_VERIFIED` with `details.reason` `already_verified` — the domain is already verified.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/tenant/domain-verification/delegations/{id}:
+    delete:
+      operationId: revokeTenantDomainVerificationDelegation
+      summary: Revoke a delegation (idempotent; audited once).
+      description: Revokes the caller's tenant's delegation; the link stops working at once. Another tenant's id is 404. Audited (`identity.domain.verification.delegation.revoked`).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The delegation, with `revoked_at` set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationDelegation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/domain-verification/delegate:
+    post:
+      operationId: viewDomainVerificationDelegate
+      summary: Session-less — the DNS record the delegate must publish (P3 §5).
+      description: |
+        The token from the link's URL fragment is posted in the body (never a URL path
+        or query). If the tenant has no verification token yet, the first one is minted
+        (an existing token is never rotated). Unknown, expired, revoked, malformed or
+        rate-limited requests all return the same 404. Rate-limited per address and per
+        token. Audited (`identity.domain.verification.delegation.used`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainVerificationDelegateRequest'
+      responses:
+        '200':
+          description: The domain, the record and the status — nothing else.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationDelegateView'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security: []
+  /v1/domain-verification/delegate/check:
+    post:
+      operationId: checkDomainVerificationDelegate
+      summary: Session-less — run the DNS check (and the claim promotion) for the delegating tenant.
+      description: |
+        The same P2b check (and P3 §4 promotion) as `POST /v1/tenant/domain-verification/check`,
+        for the delegating tenant only. Same token rules, same constant 404 and rate limit as
+        `POST /v1/domain-verification/delegate`. Audited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainVerificationDelegateRequest'
+      responses:
+        '200':
+          description: The status after the check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainVerificationDelegateView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security: []
 
 components:
   securitySchemes:
@@ -9819,6 +10061,89 @@ components:
         opaque reference and never documented. Paired with the `x-zm-request-timestamp` header.
 
   schemas:
+    # Domain-Enforcement P2b + P3 — domain verification views.
+    DomainVerificationView:
+      type: object
+      additionalProperties: false
+      required: [status, allowed_domain, record_name, record_value, verified_at, token_issued_at, domain_claim, domain_claim_conflict]
+      properties:
+        status:
+          type: string
+          enum: [UNVERIFIED, PENDING, VERIFIED]
+        allowed_domain:
+          type: [string, 'null']
+        record_name:
+          type: [string, 'null']
+          description: TXT record name to publish, e.g. `_aramo-challenge.acme.example`.
+        record_value:
+          type: [string, 'null']
+          description: TXT record value (public by design); null until a token is issued.
+        verified_at:
+          type: [string, 'null']
+          format: date-time
+        token_issued_at:
+          type: [string, 'null']
+          format: date-time
+        domain_claim:
+          type: [string, 'null']
+          enum: [PROVISIONAL, AUTHORITATIVE, LAPSED, RELEASED, null]
+          description: P3 §2 — the tenant's claim on its email domain; null when it has none.
+        domain_claim_conflict:
+          type: boolean
+          description: P3 §4 — VERIFIED, but another Aramo organization holds the domain.
+    DomainVerificationDelegation:
+      type: object
+      additionalProperties: false
+      required: [id, delegate_email, expires_at, created_at, last_used_at, revoked_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        delegate_email:
+          type: string
+          format: email
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+    DomainVerificationDelegateRequest:
+      type: object
+      additionalProperties: false
+      required: [token]
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 128
+    DomainVerificationDelegateView:
+      type: object
+      additionalProperties: false
+      required: [domain, record, status, domain_claim_conflict]
+      properties:
+        domain:
+          type: string
+        record:
+          type: object
+          additionalProperties: false
+          required: [name, value]
+          properties:
+            name:
+              type: [string, 'null']
+            value:
+              type: [string, 'null']
+        status:
+          type: string
+          enum: [UNVERIFIED, PENDING, VERIFIED]
+        domain_claim_conflict:
+          type: boolean
     # ── TIP-E2E INC-3 — Manual Technical Screening (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §4/§9) ──
     CreateScreeningSessionRequest:
       type: object

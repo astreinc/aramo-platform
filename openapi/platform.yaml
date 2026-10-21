@@ -102,7 +102,10 @@ paths:
       description: |
         Always 202 for a well-formed request with a work address, whatever the
         address's state (an address that already has an Aramo account receives a
-        sign-in email instead). Rate-limited per source IP and per address.
+        sign-in email instead; an address whose email domain already belongs to an
+        organization on Aramo — Domain-Enforcement P3 — receives an "already uses
+        Aramo" email and no signup request is stored). Rate-limited per source IP
+        and per address.
       security: []
       requestBody:
         required: true
@@ -338,7 +341,7 @@ paths:
         '404':
           $ref: '#/components/responses/SignupNotFound'
         '409':
-          description: '`TENANT_ALREADY_EXISTS` (details.reason organization_name_taken) or `EMAIL_UNAVAILABLE`.'
+          description: '`TENANT_ALREADY_EXISTS` (details.reason organization_name_taken), `EMAIL_UNAVAILABLE`, or `TENANT_DOMAIN_UNAVAILABLE` (details.reason organization_domain_taken — another organization already holds this email domain; Domain-Enforcement P3).'
           content:
             application/json:
               schema:
@@ -479,7 +482,12 @@ paths:
             `TENANT_ALREADY_EXISTS` — a tenant with this name already exists
             (case-insensitive); or `EMAIL_UNAVAILABLE` — the owner email is
             already registered to a user owned by another tenant (`details` is
-            exactly `{}`; IC-1 PR-1 — refused before any Cognito side effect).
+            exactly `{}`; IC-1 PR-1 — refused before any Cognito side effect);
+            or `TENANT_DOMAIN_UNAVAILABLE` — a BUSINESS organization already
+            holds the owner's email domain (`details.reason`
+            `organization_domain_taken`; Domain-Enforcement P3 — one organization
+            per email domain, refused before any Cognito side effect). Checked in
+            the order name → email → domain.
           content:
             application/json:
               schema:
@@ -894,6 +902,170 @@ paths:
           $ref: '#/components/responses/PlatformTenantNotFound'
         '422':
           $ref: '#/components/responses/IllegalTransition'
+
+  /platform/tenants/{tenant_id}/domain:
+    get:
+      operationId: getTenantDomainClaim
+      tags: [Platform Tenants]
+      summary: View a tenant's email-domain claim and its shared-domain exceptions.
+      description: |
+        Domain-Enforcement P3 §6 — the tenant's claim on its email domain
+        (`PROVISIONAL | AUTHORITATIVE | LAPSED | RELEASED`, or null for a tenant
+        without a domain) and the append-only exception history (newest first).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/TenantDomainOk'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
+  /platform/tenants/{tenant_id}/domain/release:
+    post:
+      operationId: releaseTenantDomainClaim
+      tags: [Platform Tenants]
+      summary: Release a tenant's domain claim (audited).
+      description: |
+        Domain-Enforcement P3 §6 — the only path to `RELEASED`; the tenant keeps
+        working and keeps its users and documents, it no longer holds the domain.
+        A CLOSED tenant keeps its claim until released. Idempotent on an
+        already-released claim. The audit event is written in the same
+        transaction. 404 when the tenant has no domain claim.
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReleaseTenantDomainRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TenantDomainOk'
+        '400':
+          $ref: '#/components/responses/TenantDomainBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
+  /platform/tenants/{tenant_id}/domain/promote:
+    post:
+      operationId: promoteTenantDomainClaim
+      tags: [Platform Tenants]
+      summary: Promote a tenant's domain claim to AUTHORITATIVE with recorded evidence (audited).
+      description: |
+        Domain-Enforcement P3 §2/§6 — an operator promotion with a reference to
+        the recorded domain-control evidence (reason `operator_evidence`). The
+        tenant's DNS verification status is not changed. Refused with 409
+        `TENANT_DOMAIN_UNAVAILABLE` while another tenant holds the domain
+        (nothing changes).
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteTenantDomainRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TenantDomainOk'
+        '400':
+          $ref: '#/components/responses/TenantDomainBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '409':
+          $ref: '#/components/responses/TenantDomainUnavailable'
+
+  /platform/tenants/{tenant_id}/domain/exception:
+    post:
+      operationId: grantTenantDomainException
+      tags: [Platform Tenants]
+      summary: Grant a shared-domain exception (audited).
+      description: |
+        Domain-Enforcement P3 §1/§6 — records an append-only exception (tenant,
+        justification, domain-control evidence reference, operator, time) and
+        marks the claim as an exception, so the tenant no longer blocks another
+        organization on the same domain. Idempotent while an exception is active.
+        404 when the tenant has no domain claim.
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantTenantDomainExceptionRequest'
+      responses:
+        '200':
+          $ref: '#/components/responses/TenantDomainOk'
+        '400':
+          $ref: '#/components/responses/TenantDomainBadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+    delete:
+      operationId: revokeTenantDomainException
+      tags: [Platform Tenants]
+      summary: Revoke a shared-domain exception (audited; fails closed).
+      description: |
+        Domain-Enforcement P3 §6 — clears the exception in one transaction and
+        marks the exception record revoked. If the tenant would then collide with
+        another holder of the domain, it is refused with 409
+        `TENANT_DOMAIN_UNAVAILABLE` and nothing changes. A no-op when no
+        exception is active.
+
+        Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          $ref: '#/components/responses/TenantDomainOk'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+        '409':
+          $ref: '#/components/responses/TenantDomainUnavailable'
 
   /platform/admins/invitations:
     post:
@@ -2250,6 +2422,24 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    TenantDomainOk:
+      description: The tenant's domain claim and exception history after the action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/TenantDomainResponse'
+    TenantDomainBadRequest:
+      description: '`VALIDATION_ERROR` — a required field is missing or empty, or the tenant has no email domain (details.reason tenant_has_no_domain).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    TenantDomainUnavailable:
+      description: '`TENANT_DOMAIN_UNAVAILABLE` — another organization holds this email domain (details.reason organization_domain_taken); nothing changed.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     PlatformTenantNotFound:
       description: '`NOT_FOUND` — no tenant with this id.'
       content:
@@ -2844,6 +3034,105 @@ components:
         changed:
           type: boolean
           description: false when the request was an idempotent no-op (already in the target status).
+
+    ReleaseTenantDomainRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    PromoteTenantDomainRequest:
+      type: object
+      additionalProperties: false
+      required: [evidence_ref]
+      properties:
+        evidence_ref:
+          type: string
+          minLength: 1
+          maxLength: 500
+          description: Reference to the recorded domain-control evidence.
+
+    GrantTenantDomainExceptionRequest:
+      type: object
+      additionalProperties: false
+      required: [justification, evidence_ref]
+      properties:
+        justification:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        evidence_ref:
+          type: string
+          minLength: 1
+          maxLength: 500
+
+    TenantDomainClaim:
+      type: object
+      additionalProperties: false
+      required: [domain, claim, expires_at, reason, exception]
+      properties:
+        domain:
+          type: string
+          description: The lower-cased email domain.
+        claim:
+          type: string
+          enum: [PROVISIONAL, AUTHORITATIVE, LAPSED, RELEASED]
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Set for a PROVISIONAL claim (creation + 30 days).
+        reason:
+          type: [string, 'null']
+        exception:
+          type: boolean
+
+    TenantDomainException:
+      type: object
+      additionalProperties: false
+      required: [id, domain, justification, evidence_ref, granted_by_user_id, granted_at, revoked_by_user_id, revoked_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        justification:
+          type: string
+        evidence_ref:
+          type: string
+        granted_by_user_id:
+          type: string
+          format: uuid
+        granted_at:
+          type: string
+          format: date-time
+        revoked_by_user_id:
+          type: [string, 'null']
+          format: uuid
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+
+    TenantDomainResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, domain_claim, exceptions]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        domain_claim:
+          oneOf:
+            - $ref: '#/components/schemas/TenantDomainClaim'
+            - type: 'null'
+        exceptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantDomainException'
 
     InvitePlatformAdminRequest:
       type: object

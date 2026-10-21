@@ -12,6 +12,8 @@ import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage } from './pages/
 import { TemplatesPage } from './pages/Templates';
 import { LoginPage } from './routes/LoginPage';
 import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
+import { DomainDelegatePage } from './routes/DomainDelegatePage';
+import { DomainCard } from './pages/DomainCard';
 import { ConsoleShell } from './shell';
 import { Btn } from './ui';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
@@ -40,6 +42,9 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
+        {/* Domain-Enforcement P3 §5 — the IT administrator's delegate link
+            (session-less; the token is in the URL fragment). */}
+        <Route path="/domain-verification" element={<DomainDelegatePage />} />
         {/* Sign Unified Product S-7 — "Waiting for me": a recipient right, open to
             any signed-in Sign user (with or without a Sign role). */}
         <Route
@@ -84,6 +89,14 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
           <div className="sg-lede" style={{ marginBottom: 16 }}>
             Choose a plan to start sending documents for signature. As the organization owner, you manage the plan.
           </div>
+          {/* Domain-Enforcement P3 §4 — a new subscription needs the organization's
+              verified (authoritative) email domain, and this owner cannot reach
+              Settings yet, so the Domain card sits above the plans. */}
+          {scopes.includes('tenant:admin:domain') ? (
+            <div style={{ marginBottom: 16 }}>
+              <DomainCard />
+            </div>
+          ) : null}
           <BillingPanel onSending={ctx.retry} />
           <div style={{ marginTop: 16 }}>
             <Btn onClick={() => void logout()}>Sign out</Btn>
@@ -139,7 +152,7 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
         <Route path="documents" element={<DocumentsPage />} />
         <Route path="activity" element={<ActivityPage />} />
         <Route path="settings" element={<Navigate to="personal" replace />} />
-        <Route path="settings/:section" element={<SettingsPage />} />
+        <Route path="settings/:section" element={<SettingsPage scopes={scopes} />} />
         {/* S-7 — documents sent TO this user, inside the workspace shell. */}
         <Route path="inbox" element={<InboxPage embedded />} />
         {expected === 'sign' ? (

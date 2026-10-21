@@ -106,6 +106,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // Sign Signup Amendment A1 (LOCKED) — OrganizationAuthorityAttestation + TenantBillingRegionPolicy.
   // Two new tables (FK to Tenant). No returned-shape change.
   'libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql',
+  // Domain-Enforcement P3 (LOCKED) — TenantDomainClaim + holder index (grandfather
+  // backfill), TenantDomainException, DomainVerificationDelegation. New tables only; no
+  // existing table or response shape changes.
+  'libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

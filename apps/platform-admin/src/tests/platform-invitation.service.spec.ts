@@ -95,6 +95,11 @@ function makeMocks(): Mocks {
     policyProvisioning: {
       publishDefaultLifecyclePackage: vi.fn(),
     },
+    // Domain-Enforcement P3 — default: the domain is free.
+    domainClaims: {
+      isDomainHeld: vi.fn().mockResolvedValue(false),
+      lapse: vi.fn().mockResolvedValue(undefined),
+    },
   };
 }
 
@@ -105,6 +110,7 @@ function buildService(mocks: Mocks): PlatformInvitationService {
     mocks.identitySvc as never,
     mocks.entitlementRepo as never,
     mocks.policyProvisioning as never,
+    mocks.domainClaims as never,
   );
 }
 
@@ -453,7 +459,8 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     expect(out.tenant_id).toBe('tenant-z');
     // The service has no documents dependency at all (constructor arity) and never
     // soft-disables for an RTR template reason.
-    expect(PlatformInvitationService.length).toBe(5);
+    // Domain-Enforcement P3 adds the domain-claim dependency (5 → 6); still no documents dependency.
+    expect(PlatformInvitationService.length).toBe(6);
     expect(mocks.tenantSvc.deactivateTenant).not.toHaveBeenCalled();
     expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledWith('tenant-z');
     expect(mocks.tenantSvc.recordOwnerInviteSent).toHaveBeenCalledTimes(1);
@@ -1179,5 +1186,71 @@ describe('PlatformInvitationService — IC-4 PR-9 PERSONAL tenant provisioning',
       buildService(mocks).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' }),
     ).rejects.toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 500 });
     expect(mocks.tenantSvc.deactivateTenant).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-p', reason: 'entitlement_grant_failed' }));
+  });
+});
+
+// Domain-Enforcement P3 (LOCKED) §3/§7 (unit) — the console's BUSINESS pre-check
+// order is name → email → domain, all BEFORE Cognito; PERSONAL skips the domain
+// check; an orphaned tenant (identity-tx failure after the tenant insert) lapses.
+describe('PlatformInvitationService — Domain-Enforcement P3 pre-checks', () => {
+  const args = { name: 'AcmeCo', owner_email: 'owner@acme.io', actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true };
+
+  it('a held domain → 409 TENANT_DOMAIN_UNAVAILABLE before Cognito (no AdminCreateUser)', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.domainClaims.isDomainHeld.mockResolvedValue(true);
+    await expect(buildService(mocks).provisionTenantAndInviteOwner(args)).rejects.toMatchObject({
+      code: 'TENANT_DOMAIN_UNAVAILABLE',
+      statusCode: 409,
+      context: { details: { reason: 'organization_domain_taken' } },
+    });
+    expect(mocks.domainClaims.isDomainHeld).toHaveBeenCalledWith('acme.io');
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.tenantSvc.provisionTenant).not.toHaveBeenCalled();
+  });
+
+  it('order name → email → domain: a taken name or a registered email is reported first', async () => {
+    const nameTaken = makeMocks();
+    nameTaken.tenantSvc.findByNameCaseInsensitive.mockResolvedValue({ id: 't', name: 'AcmeCo' });
+    nameTaken.identitySvc.findUserByEmail.mockResolvedValue({ id: 'u' });
+    nameTaken.domainClaims.isDomainHeld.mockResolvedValue(true);
+    await expect(buildService(nameTaken).provisionTenantAndInviteOwner(args)).rejects.toMatchObject({ code: 'TENANT_ALREADY_EXISTS' });
+    expect(nameTaken.identitySvc.findUserByEmail).not.toHaveBeenCalled();
+    expect(nameTaken.domainClaims.isDomainHeld).not.toHaveBeenCalled();
+
+    const emailTaken = makeMocks();
+    emailTaken.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    emailTaken.identitySvc.findUserByEmail.mockResolvedValue({ id: 'u' });
+    emailTaken.domainClaims.isDomainHeld.mockResolvedValue(true);
+    await expect(buildService(emailTaken).provisionTenantAndInviteOwner(args)).rejects.toMatchObject({ code: 'EMAIL_UNAVAILABLE' });
+    expect(emailTaken.domainClaims.isDomainHeld).not.toHaveBeenCalled();
+    expect(emailTaken.cognito.adminCreateUser).not.toHaveBeenCalled();
+  });
+
+  it('PERSONAL never runs the domain check', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.domainClaims.isDomainHeld.mockResolvedValue(true);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r1', 'r2']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'sub' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({ id: 'tp', name: 'Jane', is_active: true, created_at: '', updated_at: '' });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'u', email: 'jane@gmail.com', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'm',
+    });
+    await buildService(mocks).provisionTenantAndInviteOwner({ ...args, name: 'Jane', owner_email: 'jane@gmail.com', kind: 'PERSONAL' });
+    expect(mocks.domainClaims.isDomainHeld).not.toHaveBeenCalled();
+  });
+
+  it('identity-tx failure after the tenant insert lapses the orphan tenant\'s claim (provisioning_failed) and compensates Cognito', async () => {
+    const mocks = makeMocks();
+    mocks.tenantSvc.findByNameCaseInsensitive.mockResolvedValue(null);
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r1', 'r2']);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'sub' });
+    mocks.cognito.adminGetUser.mockResolvedValue({ cognito_sub: 'sub' });
+    mocks.tenantSvc.provisionTenant.mockResolvedValue({ id: 'orphan', name: 'AcmeCo', is_active: true, created_at: '', updated_at: '' });
+    mocks.identitySvc.createUserFromInvitation.mockRejectedValue(new Error('boom'));
+    await expect(buildService(mocks).provisionTenantAndInviteOwner(args)).rejects.toThrow('boom');
+    expect(mocks.domainClaims.lapse).toHaveBeenCalledWith('orphan', 'provisioning_failed');
   });
 });

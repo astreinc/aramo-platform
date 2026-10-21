@@ -114,6 +114,15 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
         details: { reason },
       });
     }
+    if (e.reason === 'DOMAIN_VERIFICATION_REQUIRED') {
+      // Domain-Enforcement P3 §4 — a new subscription needs an AUTHORITATIVE domain claim.
+      return new AramoError(
+        'ESIGN_BILLING_CONFLICT',
+        'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator in Settings.',
+        409,
+        { requestId, details: { reason: 'domain_verification_required' } },
+      );
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }

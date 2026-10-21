@@ -1790,6 +1790,14 @@ components:
         OFFBOARDING write normally. This is a policy applied uniformly across every
         authenticated tenant mutation, so it is documented here rather than on each
         path's responses.
+        Domain-Enforcement P3 also adds DOMAIN_ALREADY_VERIFIED (HTTP 409) — the P2b
+        verification token cannot be re-issued, nor verification delegated, once the
+        domain is VERIFIED (details.reason already_verified).
+        Domain-Enforcement P3 adds TENANT_DOMAIN_UNAVAILABLE (HTTP 409) — a new
+        BUSINESS organization was refused because another organization already
+        holds the owner's email domain (one organization per email domain;
+        details.reason organization_domain_taken). Also returned when an operator
+        revokes a shared-domain exception while another holder exists.
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -2025,6 +2033,8 @@ components:
         - REQUISITION_STATUS_TERMINAL
         - PIPELINE_EVIDENCE_INADMISSIBLE
         - RTR_STAGE_NOT_ELIGIBLE
+        - TENANT_DOMAIN_UNAVAILABLE
+        - DOMAIN_ALREADY_VERIFIED
 
     ErrorObject:
       type: object

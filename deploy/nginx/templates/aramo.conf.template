@@ -240,6 +240,10 @@ server {
 # one fill per field, complete) — the guest zone allows that burst.
 limit_req_zone $binary_remote_addr zone=sign_guest:10m  rate=10r/s;
 limit_req_zone $binary_remote_addr zone=sign_signup:10m rate=10r/m;
+# Domain-Enforcement P3 §5 — the session-less domain-verification delegate link
+# (one record read plus a few "Check" clicks per visit; apps/api also budgets per
+# address and per token).
+limit_req_zone $binary_remote_addr zone=domain_delegate:10m rate=30r/m;
 limit_req_status 429;
 
 # ── sign.aramo.ai — the ONE Aramo Sign application (Sign Unified Product S-2) ──
@@ -306,6 +310,23 @@ server {
     limit_req zone=sign_signup burst=10 nodelay;
     client_max_body_size 16k;
     proxy_pass http://platform-admin:3002;
+  }
+  # Domain-Enforcement P3 (LOCKED) §4 — the NAMED EXCEPTION to "only the Sign
+  # surfaces are proxied": Sign-only organizations have no tenant host, so the
+  # P2b domain-verification routes (Settings → Domain, and the first-time owner's
+  # setup page) and the session-less delegate link reach apps/api here. EXACTLY
+  # these two prefixes; nothing else of apps/api is exposed on this host.
+  #   /v1/tenant/domain-verification      GET/POST, /check, /delegations[/{id}]
+  #                                       (Aramo SSO `sign` session; tenant:admin:domain)
+  #   /v1/domain-verification/delegate    POST, /check (token in the body only)
+  location /v1/tenant/domain-verification {
+    client_max_body_size 16k;
+    proxy_pass http://api:3000;
+  }
+  location /v1/domain-verification/delegate {
+    limit_req zone=domain_delegate burst=10 nodelay;
+    client_max_body_size 16k;
+    proxy_pass http://api:3000;
   }
   location /auth/ {
     proxy_pass http://auth-service:3001;

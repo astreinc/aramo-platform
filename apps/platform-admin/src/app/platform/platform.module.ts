@@ -12,6 +12,7 @@ import {
 import { SubscriptionModule } from '@aramo/subscription';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
+import { DomainClaimSweeper } from './domain-claim-sweeper.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
@@ -65,6 +66,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     PolicyStorePrismaService,
     PolicyStore,
     TenantPolicyProvisioningService,
+    // Domain-Enforcement P3 — opt-in expiry sweep (DOMAIN_CLAIM_SWEEP_ENABLED=1).
+    DomainClaimSweeper,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.
