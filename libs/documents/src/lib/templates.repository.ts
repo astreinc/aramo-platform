@@ -142,8 +142,49 @@ export class TemplatesRepository {
 
   // RTR-TEMPLATE-1 (§13) — nullable template read for provenance resolution from
   // a PINNED version's template_id (does not throw; never consults current_version_id).
+  // Tenant-owned rows ONLY (unchanged). The owner-aware variant is
+  // findTemplateByIdOwnerAware (DOC-TEMPLATE-LIB-1 §4.4).
   async findTemplateById(tenant_id: string, id: string) {
     return this.prisma.documentTemplate.findFirst({ where: { tenant_id, id } });
+  }
+
+  // ── DOC-TEMPLATE-LIB-1 T-1 — read union (§4.1) + owner-aware provenance (§4.4) ──
+  // Every tenant read that may see Aramo defaults is an EXPLICIT union
+  // `tenant_id = :tenant OR owner_scope = 'PLATFORM'` (precedent:
+  // documents.repository.ts DocumentType read). A NULL tenant_id never matches by
+  // accident: the PLATFORM arm names owner_scope, and the DB CHECK pins
+  // tenant_id IS NULL ⇔ PLATFORM. Tenant admin listing/CRUD stays tenant-only
+  // (listTemplates/getTemplate/getVersion) — these methods are additive.
+
+  // Nullable template read: the tenant's own row or a PLATFORM default.
+  async findTemplateByIdOwnerAware(tenant_id: string, id: string) {
+    return this.prisma.documentTemplate.findFirst({
+      where: { id, OR: [{ tenant_id }, { owner_scope: 'PLATFORM', tenant_id: null }] },
+    });
+  }
+
+  // Nullable version read for provenance from a PINNED template_version_id. A tenant
+  // Document may pin a PLATFORM version (tenant_id NULL, parent owner_scope
+  // PLATFORM). Any status (a pinned version may since have been RETIRED).
+  async findVersionByIdOwnerAware(tenant_id: string, id: string) {
+    return this.prisma.templateVersion.findFirst({
+      where: {
+        id,
+        OR: [{ tenant_id }, { tenant_id: null, template: { owner_scope: 'PLATFORM' } }],
+      },
+    });
+  }
+
+  // The tenant's own templates plus the Aramo (PLATFORM) defaults, optionally for one
+  // DocumentType. Not wired to any tenant route in T-1 (Org Home gallery is T-4).
+  async listTemplatesForTenantIncludingPlatform(tenant_id: string, document_type_id?: string) {
+    return this.prisma.documentTemplate.findMany({
+      where: {
+        ...(document_type_id !== undefined ? { document_type_id } : {}),
+        OR: [{ tenant_id }, { owner_scope: 'PLATFORM', tenant_id: null }],
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 
   // ── Versions ─────────────────────────────────────────────────────────────
@@ -406,6 +447,9 @@ export class TemplatesRepository {
   }
 
   // A1 §2.4 — tenant-scoped asset read (null when unknown / cross-tenant).
+  // DOC-TEMPLATE-LIB-1 §3.5 [TD]: TemplateAsset stays tenant-only — PLATFORM content
+  // carries no tenant asset (branding is bound at render, T-3), so the owner-aware
+  // read of an asset IS this tenant-scoped read.
   async findAssetById(tenant_id: string, id: string) {
     return this.prisma.templateAsset.findFirst({ where: { tenant_id, id } });
   }

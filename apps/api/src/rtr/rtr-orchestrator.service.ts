@@ -503,9 +503,11 @@ export class RtrOrchestratorService {
   private async resolveProvenance(tenant_id: string, document_id: string): Promise<RtrProvenanceView | null> {
     const revision = await this.documents.getCurrentRevision(tenant_id, document_id);
     if (revision === null || revision.template_version_id === null) return null;
-    const version = await this.templates.findVersionById(tenant_id, revision.template_version_id);
+    // DOC-TEMPLATE-LIB-1 §4.4 — owner-aware: a tenant Document may pin a PLATFORM
+    // (Aramo default) version. Tenant-owned results are unchanged.
+    const version = await this.templates.findVersionByIdOwnerAware(tenant_id, revision.template_version_id);
     if (version === null) return null;
-    const template = await this.templates.findTemplateById(tenant_id, version.template_id);
+    const template = await this.templates.findTemplateByIdOwnerAware(tenant_id, version.template_id);
     if (template === null) return null;
     return { name: template.name, version_number: version.version_number };
   }

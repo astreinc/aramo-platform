@@ -523,6 +523,15 @@ const DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql',
 );
+// DOC-TEMPLATE-LIB-1 T-1 (ADR-0034) — DocumentTemplate owner_scope/products/withdraw_*
+// + nullable tenant_id (template + version), TenantTemplateSelection, TemplateVariable
+// catalog seed. Changes the returned DocumentTemplate shape (the regenerated client
+// SELECTs the new columns) → registered (CLAUDE.md law); after the provider-evidence
+// migration. Depends only on DOC-2 objects.
+const DOCUMENTS_DOCLIB_T1_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3770,6 +3779,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TEMPLATE_ADMIN_MIGRATION,
         DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION,
         DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION,
+        DOCUMENTS_DOCLIB_T1_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

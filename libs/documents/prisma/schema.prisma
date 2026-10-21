@@ -220,24 +220,38 @@ model IdempotencyKey {
 /// DOC-2 — a reusable document template. GENERATED (deterministic renderer),
 /// UPLOADED_PDF (client PDF + field overlays), or HYBRID. current_version_id FK
 /// added in the migration (avoids a Prisma cycle with TemplateVersion).
+///
+/// DOC-TEMPLATE-LIB-1 T-1 (ADR-0034) — owner_scope PLATFORM (Aramo default) |
+/// TENANT. tenant_id is NULL if and only if owner_scope = 'PLATFORM'. A PLATFORM
+/// row is never client-specific. products + withdraw_* are PLATFORM-only (all DB
+/// CHECKs in the migration). Every tenant read is an EXPLICIT own-tenant ∪ PLATFORM
+/// union — never "tenant_id IS NULL matches any tenant".
 model DocumentTemplate {
-  id                 String   @id @db.Uuid
-  tenant_id          String   @db.Uuid
-  document_type_id   String   @db.Uuid
-  client_id          String?  @db.Uuid
-  name               String
-  description        String?
-  template_kind      String // CHECK: GENERATED|UPLOADED_PDF|HYBRID (migration)
-  status             String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
-  current_version_id String?  @db.Uuid // FK -> TemplateVersion added in migration (avoids cycle)
-  created_by         String   @db.Uuid
-  created_at         DateTime @default(now()) @db.Timestamptz
-  updated_at         DateTime @updatedAt @db.Timestamptz
+  id                    String    @id @db.Uuid
+  tenant_id             String?   @db.Uuid // NULL iff owner_scope = PLATFORM (CHECK, migration)
+  owner_scope           String    @default("TENANT") // CHECK: PLATFORM|TENANT (migration)
+  document_type_id      String    @db.Uuid
+  client_id             String?   @db.Uuid // NULL when owner_scope = PLATFORM (CHECK, migration)
+  name                  String
+  description           String?
+  template_kind         String // CHECK: GENERATED|UPLOADED_PDF|HYBRID (migration)
+  status                String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
+  current_version_id    String?   @db.Uuid // FK -> TemplateVersion added in migration (avoids cycle)
+  // PLATFORM only (CHECK, migration). The column is NULLABLE (NULL for TENANT rows)
+  // NOTE: Prisma cannot express an optional list, so it is typed String[] here.
+  products              String[]
+  withdraw_notice_at    DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
+  withdraw_effective_at DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
+  created_by            String    @db.Uuid
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  updated_at            DateTime  @updatedAt @db.Timestamptz
 
-  versions           TemplateVersion[]
+  versions              TemplateVersion[]
+  selections            TenantTemplateSelection[]
 
   @@index([tenant_id])
   @@index([tenant_id, document_type_id])
+  @@index([owner_scope, document_type_id])
   @@schema("documents")
 }
 
@@ -247,7 +261,10 @@ model DocumentTemplate {
 /// TEMPLATE_SOURCE artifact for UPLOADED_PDF templates.
 model TemplateVersion {
   id                    String    @id @db.Uuid
-  tenant_id             String    @db.Uuid
+  // DOC-TEMPLATE-LIB-1 T-1 — NULL for a PLATFORM template's versions. A DB trigger
+  // asserts it always equals the parent DocumentTemplate.tenant_id, and the
+  // immutability trigger freezes tenant_id + template_id on every UPDATE.
+  tenant_id             String?   @db.Uuid
   template_id           String    @db.Uuid
   version_number        Int
   status                String // CHECK: DRAFT|ACTIVE|RETIRED (migration)
@@ -280,7 +297,52 @@ model TemplateVersion {
   @@index([tenant_id, template_id])
   // NOTE: the one-DRAFT partial unique index (tenant_id, template_id) WHERE
   // status='DRAFT' is defined in the migration (Prisma schema cannot express a
-  // partial/WHERE index). It is the §41 race backstop.
+  // partial/WHERE index). It is the §41 race backstop. DOC-TEMPLATE-LIB-1 T-1 rebuilt
+  // it NULLS NOT DISTINCT so it also holds for PLATFORM (NULL tenant) templates.
+  @@schema("documents")
+}
+
+/// DOC-TEMPLATE-LIB-1 T-1 (ADR-0034 D6) — a tenant's explicit active template
+/// choice per document type and optional client (NULL client = tenant-wide).
+/// The target is a PLATFORM template or a TENANT template of the same tenant, of
+/// the same document type (DB trigger, migration). Resolution (T-3) reads it.
+model TenantTemplateSelection {
+  id               String   @id @db.Uuid
+  tenant_id        String   @db.Uuid
+  document_type_id String   @db.Uuid // FK -> DocumentType (RESTRICT) added in migration
+  client_id        String?  @db.Uuid
+  template_id      String   @db.Uuid
+  selected_by      String   @db.Uuid
+  selected_at      DateTime @default(now()) @db.Timestamptz
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  template         DocumentTemplate @relation(fields: [template_id], references: [id], onDelete: Restrict)
+
+  @@index([tenant_id])
+  @@index([template_id])
+  // NOTE: UNIQUE NULLS NOT DISTINCT (tenant_id, document_type_id, client_id) is
+  // defined in the migration (Prisma schema cannot express NULLS NOT DISTINCT), so
+  // two tenant-wide (NULL client) selections for one type are rejected.
+  @@schema("documents")
+}
+
+/// DOC-TEMPLATE-LIB-1 T-1 (ADR-0034 D7) — the Aramo-maintained template variable
+/// catalog. Platform-maintained: NO tenant_id. Seeded with the 8 RTR binding keys.
+/// Not read by code until T-2.
+model TemplateVariable {
+  id              String   @id @db.Uuid
+  key             String   @unique
+  label           String
+  group_label     String
+  data_type       String // CHECK: TEXT|MULTILINE_TEXT|DATE|NUMBER|CURRENCY (migration)
+  products        String[] @default([])
+  ats_binding_key String?
+  sample_value    String?
+  active          Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz
+  updated_at      DateTime @updatedAt @db.Timestamptz
+
   @@schema("documents")
 }
 
