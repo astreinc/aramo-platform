@@ -473,6 +473,82 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(await db.tenantBillingRegionPolicy.count({ where: { tenant_id: tenant.id } })).toBe(1);
   });
 
+  // ── Domain-Enforcement P3 (LOCKED) — one organization per email domain ──────
+
+  it('P3 #2 — start on a held domain: the same 202, an "already uses Aramo" email, and no request row', async () => {
+    const first = await started();
+    expect((await http().post('/v1/signup/sign/complete').send({ token: first.token, organization: ORG })).body.status).toBe('PROVISIONED');
+    const domain = first.email.split('@')[1]!;
+    const colleague = { email: `colleague@${domain.toUpperCase()}`, organization_name: 'Colleague Org', display_name: 'Colleague' };
+    const res = await http().post('/v1/signup/sign/start').send(colleague);
+    expect(res.status).toBe(202);
+    const last = mail[mail.length - 1]!;
+    expect(last).toMatchObject({ to: `colleague@${domain}`, subject: 'Your organization already uses Aramo' });
+    expect(last.html).toContain('Ask your organization\u2019s Aramo administrator to invite you.');
+    expect(last.html).toContain('https://esign.example.test/login');
+    expect(await db.signupRequest.count({ where: { email: `colleague@${domain}` } })).toBe(0);
+  });
+
+  it('P3 #2 — complete when the domain became held after start → 409 organization_domain_taken; nothing created', async () => {
+    const c = await started();
+    const domain = c.email.split('@')[1]!;
+    const other = await started({ email: `other@${domain}`, organization_name: 'Other Org Same Domain', display_name: 'Other' });
+    expect((await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG })).body.status).toBe('PROVISIONED');
+    const cognitoCalls = cognitoMock.adminCreateUser.mock.calls.length;
+    const res = await http().post('/v1/signup/sign/complete').send({ token: other.token, organization: ORG });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatchObject({
+      code: 'TENANT_DOMAIN_UNAVAILABLE',
+      message: 'Your organization already uses Aramo. Ask your administrator to invite you.',
+      details: { reason: 'organization_domain_taken' },
+    });
+    expect(await db.tenant.count({ where: { name: 'Other Org Same Domain' } })).toBe(0);
+    expect(await db.user.count({ where: { email: `other@${domain}` } })).toBe(0);
+    expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(cognitoCalls);
+    expect((await db.signupRequest.findFirstOrThrow({ where: { email: `other@${domain}` } })).status).toBe('FAILED');
+  });
+
+  it('P3 — the new tenant holds a PROVISIONAL domain claim', async () => {
+    const c = await started();
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    expect(await db.tenantDomainClaim.findUnique({ where: { tenant_id: tenant.id } })).toMatchObject({
+      domain: c.email.split('@')[1],
+      claim: 'PROVISIONAL',
+      reason: 'provisioned',
+    });
+  });
+
+  it('P3 #17 — adopt-after-crash still works (adoption runs before the domain check)', async () => {
+    const c = await started();
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    await db.signupRequest.updateMany({ where: { email: c.email }, data: { status: 'PENDING', tenant_id: null, owner_user_id: null } });
+    const again = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe('PROVISIONED');
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    expect(await db.signupRequest.findFirstOrThrow({ where: { email: c.email } })).toMatchObject({ status: 'PROVISIONED', tenant_id: tenant.id });
+    expect(await db.tenant.count({ where: { name: c.organization_name } })).toBe(1);
+  });
+
+  it.each([
+    ['an inactive (soft-disabled) tenant', { is_active: false }, null],
+    ['a tenant whose domain claim lapsed', null, 'LAPSED'],
+  ] as const)('P3 #17 — %s is not adopted', async (_l, tenantPatch, claim) => {
+    const c = await started();
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    if (tenantPatch !== null) await db.tenant.update({ where: { id: tenant.id }, data: tenantPatch });
+    if (claim !== null) await db.tenantDomainClaim.update({ where: { tenant_id: tenant.id }, data: { claim } });
+    await db.signupRequest.updateMany({ where: { email: c.email }, data: { status: 'PENDING', tenant_id: null, owner_user_id: null } });
+    const again = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    expect(again.status).toBe(409);
+    expect(again.body.status).toBeUndefined();
+    const row = await db.signupRequest.findFirstOrThrow({ where: { email: c.email } });
+    expect(row.status).toBe('FAILED');
+    expect(row.tenant_id).toBeNull();
+  });
+
   describe('A1 §2.3 — address search (Geoapify, proxied)', () => {
     let stand: import('node:http').Server;
     let calls: string[] = [];

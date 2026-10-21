@@ -21,6 +21,10 @@ export interface DomainVerificationView {
   readonly record_value: string | null;
   readonly verified_at: string | null;
   readonly token_issued_at: string | null;
+  // Domain-Enforcement P3 (additive; absent on an older backend) — the tenant's
+  // claim on its domain, and whether another organization holds it.
+  readonly domain_claim?: 'PROVISIONAL' | 'AUTHORITATIVE' | 'LAPSED' | 'RELEASED' | null;
+  readonly domain_claim_conflict?: boolean;
 }
 
 export function fetchDomainVerification(): Promise<DomainVerificationView> {

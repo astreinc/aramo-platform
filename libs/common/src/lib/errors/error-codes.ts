@@ -1038,6 +1038,14 @@ export const ERROR_CODES = [
   // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-7; RTR-1 AC-21) — an RTR is requested
   // or sent only from Talent responded onward; the Talent's episode is at an earlier stage. HTTP 409.
   'RTR_STAGE_NOT_ELIGIBLE',
+  // Domain-Enforcement P3 (LOCKED) §3 — a new BUSINESS organization was refused because
+  // another organization already holds this email domain (one organization per domain).
+  // details.reason = 'organization_domain_taken'. HTTP 409.
+  'TENANT_DOMAIN_UNAVAILABLE',
+  // Domain-Enforcement P3 (LOCKED) precedence over P2b — the P2b token cannot be
+  // re-issued (or verification delegated) once the domain is VERIFIED (VERIFIED is
+  // sticky). details.reason = 'already_verified'. HTTP 409.
+  'DOMAIN_ALREADY_VERIFIED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

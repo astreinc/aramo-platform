@@ -7,6 +7,7 @@ import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
+import { DomainCard } from './DomainCard';
 
 // Sign Settings (change log §B): Personal (Shared · read-only vs Sign-only),
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
@@ -17,6 +18,10 @@ import { BillingPanel } from './Billing';
 const SECTIONS = [
   { key: 'personal', label: 'Personal' },
   { key: 'billing', label: 'Plan & billing' },
+  // Domain-Enforcement P3 §4 — the organization's email-domain verification
+  // (organization owner / admin: tenant:admin:domain). Key matches Billing's
+  // DOMAIN_SETTINGS_HREF (/sign/settings/domain).
+  { key: 'domain', label: 'Domain' },
   { key: 'members', label: 'Members' },
   { key: 'branding', label: 'Branding' },
   { key: 'security', label: 'Signing security' },
@@ -24,14 +29,16 @@ const SECTIONS = [
   { key: 'audit', label: 'Envelope audit' },
 ] as const;
 
-export function SettingsPage() {
+export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {}) {
   const { section = 'personal' } = useParams();
   const { base, ctx } = useWorkspace();
   const personalWs = ctx.workspace === 'personal';
   // Sign Unified Product S-1 — Members only for holders of sign:member:manage.
   const allowed = personalWs
     ? ['personal']
-    : SECTIONS.map((s) => s.key).filter((k) => k !== 'members' || ctx.permissions.members === true);
+    : SECTIONS.map((s) => s.key)
+        .filter((k) => k !== 'members' || ctx.permissions.members === true)
+        .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
   return (
@@ -60,6 +67,7 @@ export function SettingsPage() {
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
           {section === 'billing' ? <BillingPanel /> : null}
+          {section === 'domain' ? <DomainCard /> : null}
           {section === 'members' ? <MembersSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}

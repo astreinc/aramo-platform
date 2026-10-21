@@ -761,6 +761,9 @@ const IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION = resolve(ROOT, 'libs/identity/pr
 const IDENTITY_TENANT_KIND_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
 // Sign Signup Amendment A1 — the tenant-profile PATCH consults identity.TenantBillingRegionPolicy.
 const IDENTITY_SIGN_SIGNUP_ORG_DETAILS_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql');
+// Domain-Enforcement P3 (LOCKED) — TenantDomainClaim (+ exception / delegation tables).
+// GET /v1/tenant/domain-verification reads the tenant's claim (additive domain_claim field).
+const IDENTITY_DOMAIN_ENFORCEMENT_P3_MIGRATION = resolve(ROOT, 'libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql');
 // PC-4 — activity + pipeline schemas. GET /v1/talent-records runs the
 // apps/api TalentRecordEnrichmentInterceptor, which reads activity
 // (last_activity_at) + pipeline (current_stage) + consent (consent_summary).
@@ -3937,6 +3940,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         IDENTITY_USER_TENANT_IMMUTABLE_MIGRATION,
         IDENTITY_TENANT_KIND_MIGRATION,
         IDENTITY_SIGN_SIGNUP_ORG_DETAILS_MIGRATION,
+        IDENTITY_DOMAIN_ENFORCEMENT_P3_MIGRATION,
         SETTINGS_INIT_MIGRATION,
         // PC-4 — activity + pipeline for the talent-records enrichment reads.
         ACTIVITY_INIT_MIGRATION,

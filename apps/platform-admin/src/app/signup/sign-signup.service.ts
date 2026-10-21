@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { EntitlementRepository } from '@aramo/entitlement';
 import {
+  DomainClaimService,
   IdentityProviderPolicyService,
   IdentityRepository,
   IdentityService,
@@ -11,6 +12,7 @@ import {
   SignupRequestRepository,
   TenantRepository,
   TenantService,
+  domainUnavailableError,
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   normalizeEmail,
@@ -153,6 +155,8 @@ export class SignSignupService {
     private readonly budget: SignupBudget,
     // A1 — signup terms evidence (versioned registry; nothing approved yet).
     private readonly acceptances: LegalAcceptanceService,
+    // Domain-Enforcement P3 (LOCKED) — one organization per email domain.
+    private readonly domainClaims: DomainClaimService,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
@@ -196,6 +200,17 @@ export class SignSignupService {
       await this.send(normalized, 'You already have an Aramo account', [
         'Someone (hopefully you) tried to create a new Aramo Sign organization with this email address.',
         'This address already belongs to an Aramo account, so no new organization was created. Sign in instead.',
+      ], { label: 'Sign in to Aramo Sign', href: `${consoleBase()}/login` });
+      return;
+    }
+
+    // Domain-Enforcement P3 (LOCKED) §3 — the address's domain already belongs to
+    // an organization on Aramo: no request row, the same 202, and an email that
+    // points the person to their administrator (non-enumerating).
+    if (await this.domainClaims.isDomainHeld(extractEmailDomain(normalized), now)) {
+      await this.send(normalized, 'Your organization already uses Aramo', [
+        'Someone (hopefully you) tried to create a new Aramo Sign organization for this email address.',
+        'Your organization already has an Aramo account, so no new organization was created. Ask your organization\u2019s Aramo administrator to invite you.',
       ], { label: 'Sign in to Aramo Sign', href: `${consoleBase()}/login` });
       return;
     }
@@ -258,6 +273,15 @@ export class SignSignupService {
       return { status: 'PROVISIONING', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
     }
 
+    // Domain-Enforcement P3 §3 — adopting this request's own crashed attempt
+    // comes FIRST (its tenant already holds the domain, so the domain pre-check
+    // below would otherwise refuse the owner's own organization).
+    const adoptedFirst = await this.adopt(row, organization_name);
+    if (adoptedFirst !== null) {
+      await this.finishAdopted(row, adoptedFirst, organization, input.ip, now);
+      return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
+    }
+
     try {
       const res = await this.provisionFederatedOwner({
         name: organization_name,
@@ -283,12 +307,7 @@ export class SignSignupService {
         // owned by this address as its only membership).
         const adopted = await this.adopt(row, organization_name);
         if (adopted !== null) {
-          // The crashed attempt wrote the profile in the tenant insert; make sure
-          // its lock and attestation exist too (both idempotent).
-          await this.region.lockUs(adopted.tenant_id);
-          await this.region.recordAttestation(this.attestationFor(adopted.tenant_id, row.id, row.email, organization, input.ip, now));
-          await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
-          await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
+          await this.finishAdopted(row, adopted, organization, input.ip, now);
           return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
         }
       }
@@ -297,6 +316,13 @@ export class SignSignupService {
         throw new AramoError('TENANT_ALREADY_EXISTS', 'An organization with this name already exists on Aramo. Choose another name.', 409, {
           requestId: input.request_id,
           details: { reason: 'organization_name_taken' },
+        });
+      }
+      if (code === 'TENANT_DOMAIN_UNAVAILABLE') {
+        // P3 §3 — another organization already holds this email domain.
+        throw new AramoError('TENANT_DOMAIN_UNAVAILABLE', 'Your organization already uses Aramo. Ask your administrator to invite you.', 409, {
+          requestId: input.request_id,
+          details: { reason: 'organization_domain_taken' },
         });
       }
       if (code === 'EMAIL_UNAVAILABLE') {
@@ -335,6 +361,10 @@ export class SignSignupService {
     }
     if ((await this.identity.findUserByEmail(normalizeEmail(args.owner_email))) !== null) {
       throw new AramoError('EMAIL_UNAVAILABLE', 'This email address is not available', 409, { requestId: args.request_id, details: {} });
+    }
+    // Domain-Enforcement P3 §3 — pre-check order name → email → domain.
+    if (await this.domainClaims.isDomainHeld(extractEmailDomain(args.owner_email), args.at)) {
+      throw domainUnavailableError(args.request_id);
     }
     // ROLES-1 PR-2 (Directive v1.0 LOCKED §6; Conforming Amendment 5) — the signup
     // owner receives the organization roles tenant_owner + tenant_admin.
@@ -377,6 +407,22 @@ export class SignSignupService {
       await disable('sign_signup_provisioning_failed');
       throw err;
     }
+  }
+
+  /** Finish an adopted (crashed) attempt: its lock, attestation, request and terms (all idempotent). */
+  private async finishAdopted(
+    row: { id: string; email: string; terms_ref: string | null; created_at: Date },
+    adopted: { tenant_id: string; user_id: string },
+    organization: UsOrganizationDetails,
+    ip: string,
+    now: Date,
+  ): Promise<void> {
+    // The crashed attempt wrote the profile in the tenant insert; make sure
+    // its lock and attestation exist too (both idempotent).
+    await this.region.lockUs(adopted.tenant_id);
+    await this.region.recordAttestation(this.attestationFor(adopted.tenant_id, row.id, row.email, organization, ip, now));
+    await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
+    await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
   }
 
   private attestationFor(tenant_id: string, signup_request_id: string, email: string, o: UsOrganizationDetails, ip: string, at: Date) {
@@ -444,6 +490,11 @@ export class SignSignupService {
     if (membership === null || !(await this.identity.findRoleKeysForMembership(membership.id)).includes('tenant_owner')) return null;
     const tenant = await this.tenants.findById(tenant_id);
     if (tenant === null || tenant.name.toLowerCase() !== organization_name.toLowerCase() || new Date(tenant.created_at).getTime() < row.created_at.getTime()) return null;
+    // Domain-Enforcement P3 §3 — only a live organization is adopted: active,
+    // and still holding its domain claim (a soft-disabled attempt is not).
+    if (!tenant.is_active) return null;
+    const claim = await this.domainClaims.claimOf(tenant.id);
+    if (claim === null || (claim.claim !== 'PROVISIONAL' && claim.claim !== 'AUTHORITATIVE')) return null;
     return { tenant_id: tenant.id, user_id: user.id };
   }
 

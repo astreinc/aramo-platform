@@ -80,6 +80,7 @@ type AstreSeedPrisma = Pick<
   | 'userTenantMembership'
   | 'userTenantMembershipRole'
   | 'identityAuditEvent'
+  | 'tenantDomainClaim'
 >;
 
 export async function runAstreSeed(
@@ -116,6 +117,22 @@ export async function runAstreSeed(
       allowed_domain: ASTRE_ALLOWED_DOMAIN,
       slug: ASTRE_SLUG,
       identity_provider: ASTRE_IDENTITY_PROVIDER,
+    },
+  });
+
+  // 2b. Domain-Enforcement P3 (LOCKED) §2 (ruling 9) — Astre holds astreinc.com
+  //     as a grandfathered AUTHORITATIVE claim (the migration backfills the same
+  //     row on an existing database). Create-only: an existing claim row is never
+  //     rewritten by a re-seed, and P2b's domain_verification_* columns are not
+  //     touched (the claim is not a verification).
+  await db.tenantDomainClaim.upsert({
+    where: { tenant_id: ASTRE_SEED_IDS.tenant },
+    update: {},
+    create: {
+      tenant_id: ASTRE_SEED_IDS.tenant,
+      domain: ASTRE_ALLOWED_DOMAIN,
+      claim: 'AUTHORITATIVE',
+      reason: 'grandfathered',
     },
   });
 

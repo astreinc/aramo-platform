@@ -947,8 +947,11 @@
       "DEFAULT_SIGN_ENTRY_URL",
       "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
+      "DOMAIN_CLAIM_PROVISIONAL_DAYS",
+      "DOMAIN_CLAIM_STATES",
       "DOMAIN_VERIFICATION_STATUSES",
       "DnsResolverModule",
+      "DomainClaimService",
       "DomainVerificationService",
       "ESIGN_PRODUCT_ROLE_KEYS",
       "ESIGN_ROLE_DISPLAY",
@@ -1027,6 +1030,7 @@
       "decodeCursor",
       "deriveAllowedDomainOrThrow",
       "deriveSlugOrThrow",
+      "domainUnavailableError",
       "encodeCursor",
       "ensureBaselineVersion",
       "evaluateEsignSenderAuthorization",
@@ -1036,12 +1040,14 @@
       "generateDomainVerificationToken",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
+      "isHolderIndexViolation",
       "isInviteStatus",
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
       "isTenantKind",
       "isTenantLastOwnerViolation",
       "isTenantStatus",
+      "normalizeClaimDomain",
       "normalizeEmail",
       "normalizeIdp",
       "normalizeSlug",
@@ -1791,6 +1797,7 @@
       "BillingRefusedError",
       "BillingWebhookSignatureError",
       "CapacityService",
+      "DOMAIN_NOT_AUTHORITATIVE",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
       "FEATURE_AVAILABILITY",
@@ -2349,6 +2356,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification-p3.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3428,6 +3441,12 @@
       { "project": "contact", "status": "production" },
       { "project": "documents", "status": "production" },
       { "project": "export", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/domain-verification-delegation.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "integration", "status": "production" },
@@ -3972,6 +3991,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification-p3.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5307,6 +5332,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/domain-claim.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -7156,6 +7187,12 @@
       { "project": "export", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/domain-verification-delegation.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/ic3-pr8-esign-sender-boundary.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -8019,7 +8056,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/DomainApp.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/DomainCard.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -8152,6 +8201,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t4-tenant-branding.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification-p3.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8651,6 +8706,12 @@
       { "from": "tools/send-mailer-proof.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/domain-verification-p3.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/invite-s2-public-accept.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8675,6 +8736,12 @@
         "status": "excluded"
       },
       { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/domain-verification-delegation.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",

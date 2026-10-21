@@ -140,8 +140,9 @@ function checkRepo(): Issue[] {
   // Platform-API-Directive-v1_0-LOCKED §4.1) — ONE Aramo Sign host. The sign block's
   // /v1 locations are EXACTLY: guest signing, the authenticated sender zone,
   // self-service billing and the recipient inbox (S-7) (sign-service), and public
-  // signup (platform-admin).
-  // Never apps/api, never the internal envelopes surface. Guest signing and signup
+  // signup (platform-admin) — plus the Domain-Enforcement P3 (LOCKED) §4 named
+  // exception: the domain-verification routes and the delegate link (apps/api).
+  // Nothing else of apps/api, never the internal envelopes surface. Guest signing and signup
   // are rate-limited; the SPA is /srv/sign; security headers are set host-wide and
   // the guest pages carry their own stricter, uncached policy.
   const SIGN_V1 = new Map<string, string>([
@@ -150,6 +151,8 @@ function checkRepo(): Issue[] {
     ['/v1/sign/billing/', 'sign-service:3003'],
     ['/v1/sign/inbox', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
+    ['/v1/tenant/domain-verification', 'api:3000'],
+    ['/v1/domain-verification/delegate', 'api:3000'],
   ]);
   const signV1 = [...sign.body.matchAll(/location\s+[=~^]*\s*(\/v1[^\s{]*)/g)].map((m) => m[1] ?? '');
   const expected = [...SIGN_V1.keys()];
@@ -166,6 +169,9 @@ function checkRepo(): Issue[] {
     }
     if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
       issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });
+    }
+    if (!/limit_req\s+zone=domain_delegate\b/.test(locationBody(sign.body, 'location /v1/domain-verification/delegate') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/domain-verification/delegate must be rate-limited (limit_req zone=domain_delegate)' });
     }
   }
   if (!/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_guest:/.test(template) || !/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_signup:/.test(template)) {

@@ -8,6 +8,7 @@ import {
   isCapability,
 } from '@aramo/entitlement';
 import {
+  DomainClaimService,
   IdentityService,
   PLATFORM_ROLE_KEYS,
   TenantService,
@@ -16,6 +17,8 @@ import {
   isTenantKind,
   PERSONAL_TENANT_CAPABILITIES,
   deriveSlugOrThrow,
+  domainUnavailableError,
+  extractEmailDomain,
   normalizeEmail,
 } from '@aramo/identity';
 
@@ -98,6 +101,8 @@ export class PlatformInvitationService {
     private readonly identitySvc: IdentityService,
     private readonly entitlementRepo: EntitlementRepository,
     private readonly policyProvisioning: TenantPolicyProvisioningService,
+    // Domain-Enforcement P3 (LOCKED) — the one-organization-per-domain pre-check.
+    private readonly domainClaims: DomainClaimService,
   ) {}
 
   async provisionTenantAndInviteOwner(args: {
@@ -253,6 +258,14 @@ export class PlatformInvitationService {
       );
     }
 
+    // 0a-quater. Domain-Enforcement P3 (LOCKED) §3 — one organization per email
+    // domain. Pre-check order name → email → domain, all BEFORE Cognito (a refused
+    // provisioning must not email a temporary password). TenantService.
+    // provisionTenant re-checks under the per-domain lock (the authoritative gate).
+    if (kind !== 'PERSONAL' && (await this.domainClaims.isDomainHeld(extractEmailDomain(ownerEmail)))) {
+      throw domainUnavailableError(args.request_id);
+    }
+
     // 0b. Resolve role IDs (the Tenant-Owner-first invite hard-fixes
     // the roles to tenant_owner + tenant_admin — ROLES-1 PR-2 §6).
     const role_ids = await this.identitySvc.resolveRoleIdsByKeys([...ownerRoleKeys]);
@@ -294,6 +307,8 @@ export class PlatformInvitationService {
     // 2. Identity tx — Tenant + User + ExternalIdentity + Membership +
     // MembershipRole. On failure -> compensate Cognito (AdminDeleteUser).
     let tenant_id: string;
+    // P3 — set once the tenant row (and its domain claim) exists.
+    let createdTenantId: string | undefined;
     let owner_user_id: string;
     let membership_id: string;
     try {
@@ -312,6 +327,7 @@ export class PlatformInvitationService {
         ...(args.actor_type === undefined ? {} : { actor_type: args.actor_type }),
       });
       tenant_id = tenant.id;
+      createdTenantId = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
       // in-service D5 union-non-invertibility check has what it needs. The
       // owner roles are hard-fixed to ['tenant_owner', 'tenant_admin'] (see-all-tier roles
@@ -337,6 +353,14 @@ export class PlatformInvitationService {
       owner_user_id = created.user.id;
       membership_id = created.membership_id;
     } catch (err) {
+      // Domain-Enforcement P3 §3 — a tenant row that was created but never got
+      // its owner does not keep holding the domain (the name stays — D3).
+      if (createdTenantId !== undefined) {
+        const orphan = createdTenantId;
+        await this.domainClaims.lapse(orphan, 'provisioning_failed').catch((lapseErr: unknown) => {
+          this.logger.warn(`domain claim lapse failed for ${orphan}: ${(lapseErr as Error).message}`);
+        });
+      }
       await this.compensateCognito({
         email: args.owner_email,
         pool: 'tenant',

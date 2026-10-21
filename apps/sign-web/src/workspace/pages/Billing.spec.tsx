@@ -206,6 +206,25 @@ describe('BillingPanel', () => {
     expect(await screen.findByText(/Online billing isn’t available right now/)).toBeInTheDocument();
     expect(assign).not.toHaveBeenCalled();
   });
+
+  it('domain verification required (Domain-Enforcement P3 §4): the refusal message links to Settings → Domain', async () => {
+    const refusal = {
+      error: {
+        code: 'ESIGN_BILLING_CONFLICT',
+        message: 'Verify your organization’s email domain before subscribing. You can assign this to your IT administrator in Settings.',
+        details: { reason: 'domain_verification_required' },
+      },
+    };
+    vi.stubGlobal('fetch', stub([account()], (url) => (url.endsWith('/checkout') ? json(refusal, 409) : undefined)));
+    render(<BillingPanel />);
+    fireEvent.click(await screen.findByTestId(`billing-subscribe-${BUSINESS.key}`));
+    const box = await screen.findByTestId('billing-domain-required');
+    expect(box).toHaveTextContent('Verify your organization’s email domain before subscribing. You can assign this to your IT administrator in Settings.');
+    expect(screen.getByTestId('billing-domain-settings-link')).toHaveAttribute('href', '/sign/settings/domain');
+    // Not the generic billing-account message.
+    expect(screen.queryByText(/doesn’t have a billing account yet/)).toBeNull();
+    expect(assign).not.toHaveBeenCalled();
+  });
 });
 
 describe('Journey A — organization owner without Sign access', () => {

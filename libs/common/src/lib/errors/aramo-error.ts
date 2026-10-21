@@ -339,6 +339,10 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PIPELINE_EVIDENCE_INADMISSIBLE: 422,
   // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-7).
   RTR_STAGE_NOT_ELIGIBLE: 409,
+  // Domain-Enforcement P3 §3 — email domain already held by another organization.
+  TENANT_DOMAIN_UNAVAILABLE: 409,
+  // Domain-Enforcement P3 — re-issue / delegation refused while VERIFIED.
+  DOMAIN_ALREADY_VERIFIED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

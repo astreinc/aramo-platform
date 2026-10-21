@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { OrganizationRegionService, TenantRepository, usProfileIneligibility } from '@aramo/identity';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { DomainClaimService, OrganizationRegionService, TenantRepository, usProfileIneligibility } from '@aramo/identity';
 import type { OrganizationBillingProfile, OrganizationBillingProfilePort, OrganizationProfileRefusal } from '@aramo/subscription';
 
 // Aramo-Sign-Signup-Federated-Owner Amendment A1 (Organization Details, US only;
@@ -8,11 +8,18 @@ import type { OrganizationBillingProfile, OrganizationBillingProfilePort, Organi
 // only when US, 50 states + DC, and the required fields are present (the same
 // rule the signup form and the profile lock use). Checkout locks the tenant's
 // profile to the US (§2.5).
+//
+// Domain-Enforcement P3 §4 (sending gate, ruling 5) — the tenant's email-domain
+// claim must be AUTHORITATIVE for a new self-service subscription. No binding or
+// a failed lookup is NOT authoritative (fail closed).
 @Injectable()
 export class OrganizationBillingProfileAdapter implements OrganizationBillingProfilePort {
+  private readonly log = new Logger(OrganizationBillingProfileAdapter.name);
+
   constructor(
     private readonly tenants: TenantRepository,
     private readonly regions: OrganizationRegionService,
+    @Optional() private readonly domainClaims?: DomainClaimService,
   ) {}
 
   async eligibleProfile(tenant_id: string): Promise<{ profile: OrganizationBillingProfile } | { refused: OrganizationProfileRefusal }> {
@@ -40,5 +47,15 @@ export class OrganizationBillingProfileAdapter implements OrganizationBillingPro
 
   async lockRegion(tenant_id: string): Promise<void> {
     await this.regions.lockUs(tenant_id);
+  }
+
+  async domainAuthoritative(tenant_id: string): Promise<boolean> {
+    if (this.domainClaims === undefined || this.domainClaims === null) return false;
+    try {
+      return (await this.domainClaims.isAuthoritative(tenant_id)) === true;
+    } catch (e) {
+      this.log.warn(`domain claim lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
   }
 }

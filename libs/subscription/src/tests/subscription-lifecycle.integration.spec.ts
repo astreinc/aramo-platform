@@ -29,6 +29,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
   '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
+  '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'sign.envelopes';
@@ -402,5 +403,131 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'US' });
     expect((await svc.syncSubscription(sub.subscription_ref, AT))).toMatchObject({ outcome: 'APPLIED', detail: 'ACTIVE -> ACTIVE' });
     expect((await flags(t))[0].resolved_at).toEqual(AT);
+  });
+
+  // ── Domain-Enforcement P3 §4 — sending gate (ruling 5) ──────────────────────
+  const DOMAIN_HELD = 'domain_verification_required: held for reconciliation';
+  const COUNTRY_HELD = 'billing_country_not_supported: held for reconciliation';
+
+  it('P3: checkout is refused while the domain claim is not AUTHORITATIVE, before any side effect', async () => {
+    orgProfile.authoritative = false;
+    expect(await reasonOf(checkout())).toBe('DOMAIN_VERIFICATION_REQUIRED:DOMAIN_VERIFICATION_REQUIRED');
+    expect(orgProfile.domainChecks).toEqual([t]);
+    expect(billing.checkouts).toHaveLength(0);
+    expect(billing.accounts).toHaveLength(0);
+    expect(orgProfile.locked).toEqual([]);
+    expect((await pg.query('SELECT count(*)::int AS n FROM subscription."CheckoutIntent" WHERE tenant_id = $1', [t])).rows[0].n).toBe(0);
+    expect((await pg.query('SELECT count(*)::int AS n FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t])).rows[0].n).toBe(0);
+    // The A1 profile check comes first.
+    orgProfile.refused = 'organization_profile_incomplete';
+    expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete');
+    // Authoritative → checkout proceeds.
+    orgProfile.refused = null;
+    orgProfile.authoritative = true;
+    expect(await reasonOf(checkout())).toBe('OK');
+  });
+
+  it('P3: a failing domain lookup fails closed at checkout', async () => {
+    orgProfile.domainAuthoritative = async () => {
+      throw new Error('identity unavailable');
+    };
+    expect(await reasonOf(checkout())).toBe('DOMAIN_VERIFICATION_REQUIRED:DOMAIN_VERIFICATION_REQUIRED');
+    expect(billing.checkouts).toHaveLength(0);
+  });
+
+  it('P3 guard: a new subscription is not opened while not AUTHORITATIVE; IGNORED evidence; one flag across repeated syncs', async () => {
+    await checkout();
+    orgProfile.authoritative = false;
+    const sub = billing.complete('active');
+    const res = await svc.handleEvent(event('evt_d1', sub.subscription_ref), AT);
+    expect(res).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
+    expect('activated_owner_user_id' in res).toBe(false);
+    await svc.handleEvent(event('evt_d2', sub.subscription_ref), AT);
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toEqual([]);
+    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    const ev = await pg.query('SELECT outcome, detail FROM subscription."BillingEvent" WHERE tenant_id = $1 ORDER BY received_at', [t]);
+    expect(ev.rows).toEqual([
+      { outcome: 'IGNORED', detail: DOMAIN_HELD },
+      { outcome: 'IGNORED', detail: DOMAIN_HELD },
+    ]);
+    const f = await flags(t);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ subscription_ref: sub.subscription_ref, reason: 'domain_not_authoritative', account_country: 'US', intent_id: billing.checkouts[0]?.intent_id, resolved_at: null });
+  });
+
+  it('P3 guard: a later sync once AUTHORITATIVE opens the subscription, activates the owner and resolves the flag', async () => {
+    await checkout();
+    orgProfile.authoritative = false;
+    const sub = billing.complete('active');
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    orgProfile.authoritative = true;
+    const res = await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(res).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
+    expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
+    const f = await flags(t);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ reason: 'domain_not_authoritative', resolved_at: AT });
+  });
+
+  it('P3 guard: an unbound profile port fails closed at activation', async () => {
+    await checkout();
+    const sub = billing.complete('active');
+    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
+    expect(await unbound.syncSubscription(sub.subscription_ref, AT)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
+    expect(await subRows(t)).toEqual([]);
+  });
+
+  it('P3 guard: an existing subscription is never (re)activated while not AUTHORITATIVE; cancellation still applies', async () => {
+    await checkout();
+    const sub = billing.complete('incomplete');
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE' }]);
+    orgProfile.authoritative = false;
+    billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active' });
+    const held = await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(held).toMatchObject({ outcome: 'IGNORED', detail: `${DOMAIN_HELD} (INCOMPLETE -> INCOMPLETE, ACTIVE withheld)` });
+    expect('activated_owner_user_id' in held).toBe(false);
+    expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE', ended_at: null }]);
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await flags(t)).toMatchObject([{ reason: 'domain_not_authoritative', resolved_at: null }]);
+    billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled' });
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toMatchObject([{ status: 'CANCELED', ended_at: AT }]);
+  });
+
+  it('P3 + A1 guards together: both flags raised; each resolves on its own; activation only when both pass', async () => {
+    await checkout();
+    orgProfile.authoritative = false;
+    const sub = billing.complete('active', { account_country: 'CA' });
+    expect(await svc.syncSubscription(sub.subscription_ref, AT)).toEqual({ outcome: 'IGNORED', detail: `${COUNTRY_HELD}; ${DOMAIN_HELD}`, tenant_id: t });
+    const both = await flags(t);
+    expect(both.map((f) => f.reason).sort()).toEqual(['billing_country_not_supported', 'domain_not_authoritative']);
+    expect(both.every((f) => f.resolved_at === null)).toBe(true);
+    // Country fixed, domain still not authoritative: still held, only the country flag resolves.
+    const AT2 = new Date(AT.getTime() + 60_000);
+    billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'US' });
+    expect(await svc.syncSubscription(sub.subscription_ref, AT2)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
+    expect(await subRows(t)).toEqual([]);
+    const mid = Object.fromEntries((await flags(t)).map((f) => [f.reason, f.resolved_at]));
+    expect(mid).toEqual({ billing_country_not_supported: AT2, domain_not_authoritative: null });
+    // Domain now authoritative: opened, owner activated, the domain flag resolves.
+    const AT3 = new Date(AT.getTime() + 120_000);
+    orgProfile.authoritative = true;
+    expect(await svc.syncSubscription(sub.subscription_ref, AT3)).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
+    const end = Object.fromEntries((await flags(t)).map((f) => [f.reason, f.resolved_at]));
+    expect(end).toEqual({ billing_country_not_supported: AT2, domain_not_authoritative: AT3 });
+    expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
+  });
+
+  it('P3 migration: the flag reason CHECK admits only the two guard reasons', async () => {
+    const insert = (reason: string) =>
+      pg.query(
+        `INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, reason) VALUES (gen_random_uuid(), $1, 'STRIPE', $2, $3)`,
+        [t, `sub_chk_${reason}_${t}`, reason],
+      );
+    await insert('domain_not_authoritative');
+    await insert('billing_country_not_supported');
+    await expect(insert('something_else')).rejects.toThrow(/BillingReconciliationFlag_reason_check/);
   });
 });

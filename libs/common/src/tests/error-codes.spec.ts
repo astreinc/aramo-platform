@@ -356,6 +356,10 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'PIPELINE_EVIDENCE_INADMISSIBLE',
       // Remediation Directive v1.0 R2.
       'RTR_STAGE_NOT_ELIGIBLE',
+      // Domain-Enforcement P3 §3.
+      'TENANT_DOMAIN_UNAVAILABLE',
+      // Domain-Enforcement P3 (P2b precedence).
+      'DOMAIN_ALREADY_VERIFIED',
     ]);
   });
 });

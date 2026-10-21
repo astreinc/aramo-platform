@@ -26,6 +26,7 @@ export {
   SubscriptionLifecycleService,
   BillingRefusedError,
   BILLING_COUNTRY_NOT_SUPPORTED,
+  DOMAIN_NOT_AUTHORITATIVE,
   billingCountrySupported,
   PAST_DUE_GRACE_DAYS_DEFAULT,
   mapProviderStatus,

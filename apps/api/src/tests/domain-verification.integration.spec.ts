@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -48,32 +48,6 @@ const ENTITLEMENT_INIT = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
 );
-const IDENTITY_INIT = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
-);
-const IDENTITY_ALLOWED_DOMAIN = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
-);
-// Domain-Enforcement P2b — additive Tenant domain-verification columns.
-const IDENTITY_DOMAIN_VERIFICATION = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',
-);
-const IDENTITY_SLUG = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql',
-);
-// Subdomain-Identity Directive B — additive Tenant.identity_provider column.
-const IDENTITY_IDP = resolve(
-  ROOT,
-  'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
-);
-const IDENTITY_IDP_LC = resolve(ROOT, 'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql');
-// IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
-const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
-
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-domain-verification-spec';
 const ALG = 'RS256';
@@ -159,12 +133,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
 
-      for (const p of [
-        ENTITLEMENT_INIT,
-        IDENTITY_INIT,
-        IDENTITY_ALLOWED_DOMAIN,
-        IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_IC4_TENANT_KIND,
-      ]) {
+      // Domain-Enforcement P3 — the GET/check now read and promote the domain claim
+      // (identity."TenantDomainClaim"), so the FULL ordered identity set applies
+      // (the shared helper carries the P3 migration).
+      for (const p of [ENTITLEMENT_INIT, ...resolveIdentityMigrations(ROOT)]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       for (const [t, name, domain] of [

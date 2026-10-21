@@ -52,6 +52,13 @@ import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRu
 // country; anything but US never opens or (re)activates a subscription — the
 // event is kept as IGNORED evidence and a BillingReconciliationFlag is raised
 // (resolved by a later US sync).
+//
+// Domain-Enforcement P3 §4 (sending gate, ruling 5) — a NEW self-service
+// subscription needs the tenant's email-domain claim to be AUTHORITATIVE: checked
+// at checkout start (DOMAIN_VERIFICATION_REQUIRED) and at activation, beside the
+// A1 country guard (hold + a 'domain_not_authoritative' reconciliation flag,
+// resolved by a later sync once authoritative). MANUAL subscriptions and the
+// shared send path are not gated here.
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -64,12 +71,19 @@ export type BillingRefusal =
   | 'PORTAL_NOT_CONFIGURED'
   | 'ALREADY_SUBSCRIBED'
   | 'NO_BILLING_ACCOUNT'
-  | 'ORGANIZATION_PROFILE_REQUIRED';
+  | 'ORGANIZATION_PROFILE_REQUIRED'
+  | 'DOMAIN_VERIFICATION_REQUIRED';
 
 /** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
 export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
 const BILLING_COUNTRY_HELD = `${BILLING_COUNTRY_NOT_SUPPORTED}: held for reconciliation`;
 const BILLING_COUNTRY_ALLOWED = 'US';
+
+/** P3 §4 — the domain activation-guard reason (BillingReconciliationFlag.reason). */
+export const DOMAIN_NOT_AUTHORITATIVE = 'domain_not_authoritative';
+const DOMAIN_VERIFICATION_HELD = 'domain_verification_required: held for reconciliation';
+
+type ActivationGuardReason = typeof BILLING_COUNTRY_NOT_SUPPORTED | typeof DOMAIN_NOT_AUTHORITATIVE;
 
 /** Fail closed: only an explicit US billing country may activate. */
 export function billingCountrySupported(account_country: string | null): boolean {
@@ -385,6 +399,7 @@ export class SubscriptionLifecycleService {
       throw new BillingRefusedError('ALREADY_SUBSCRIBED');
     }
     // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
+    // P3 §4 — then an AUTHORITATIVE domain claim; both before any side effect.
     const profile = await this.lockedBillingProfile(input.tenant_id);
     const account_ref = await this.ensureBillingAccount(input.tenant_id, profile);
     const intent_id = uuidv7();
@@ -436,8 +451,20 @@ export class SubscriptionLifecycleService {
     if (this.orgProfile === undefined) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_profile_incomplete');
     const r = await this.orgProfile.eligibleProfile(tenant_id);
     if ('refused' in r) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', r.refused);
+    if (!(await this.domainAuthoritative(tenant_id))) throw new BillingRefusedError('DOMAIN_VERIFICATION_REQUIRED');
     await this.orgProfile.lockRegion(tenant_id);
     return r.profile;
+  }
+
+  /** P3 §4 — fail closed: an unbound port or any lookup failure is not authoritative. */
+  private async domainAuthoritative(tenant_id: string): Promise<boolean> {
+    if (this.orgProfile === undefined) return false;
+    try {
+      return (await this.orgProfile.domainAuthoritative(tenant_id)) === true;
+    } catch (e) {
+      this.log.warn(`domain claim lookup failed for ${tenant_id}: ${e instanceof Error ? e.message : String(e)}`);
+      return false;
+    }
   }
 
   /**
@@ -544,6 +571,8 @@ export class SubscriptionLifecycleService {
     if (intent !== null && intent.tenant_id !== tenant_id) {
       return { outcome: 'IGNORED', detail: 'checkout intent tenant does not match', tenant_id };
     }
+    // P3 §4 — the domain claim lives in identity; read it before the billing transaction.
+    const domainOk = await this.domainAuthoritative(tenant_id);
 
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${tenant_id}`}, 0))`;
@@ -553,35 +582,51 @@ export class SubscriptionLifecycleService {
       });
       // A1 §2.6 — activation guard (fail closed: a missing country is not US).
       const countryOk = billingCountrySupported(state.account_country);
-      if (!countryOk) await this.raiseCountryFlag(tx, tenant_id, state, intent?.id ?? null);
-      else await this.resolveCountryFlags(tx, state, at);
-      if (row !== null) return this.updateRow(tx, row, state, mapped, at, countryOk);
+      // P3 §4 — and the domain guard (fail closed: not AUTHORITATIVE holds).
+      const intent_id = intent?.id ?? null;
+      await this.guardFlag(tx, tenant_id, state, intent_id, BILLING_COUNTRY_NOT_SUPPORTED, !countryOk, at);
+      await this.guardFlag(tx, tenant_id, state, intent_id, DOMAIN_NOT_AUTHORITATIVE, !domainOk, at);
+      const held = [...(countryOk ? [] : [BILLING_COUNTRY_HELD]), ...(domainOk ? [] : [DOMAIN_VERIFICATION_HELD])].join('; ');
+      if (row !== null) return this.updateRow(tx, row, state, mapped, at, held);
       if (intent === null) return { outcome: 'IGNORED', detail: 'unknown subscription without a checkout intent', tenant_id } as ApplyResult;
-      if (!countryOk) {
-        this.log.warn(`billing country not supported (${state.account_country ?? 'none'}) for ${state.subscription_ref}; held for reconciliation`);
-        return { outcome: 'IGNORED', detail: BILLING_COUNTRY_HELD, tenant_id } as ApplyResult;
+      if (held !== '') {
+        this.log.warn(
+          `${state.subscription_ref} held for reconciliation (country ${state.account_country ?? 'none'}${countryOk ? '' : ' not supported'}${domainOk ? '' : '; domain not authoritative'})`,
+        );
+        return { outcome: 'IGNORED', detail: held, tenant_id } as ApplyResult;
       }
       return this.openRow(tx, tenant_id, intent, state, mapped, at);
     });
   }
 
-  /** Raise (or keep) the open activation-guard flag for this provider subscription. */
-  private async raiseCountryFlag(tx: Tx, tenant_id: string, state: ProviderSubscriptionState, intent_id: string | null): Promise<void> {
+  /**
+   * Raise (or keep) the open activation-guard flag for this provider
+   * subscription and reason when the guard fails; resolve it when it passes.
+   */
+  private async guardFlag(
+    tx: Tx,
+    tenant_id: string,
+    state: ProviderSubscriptionState,
+    intent_id: string | null,
+    reason: ActivationGuardReason,
+    failing: boolean,
+    at: Date,
+  ): Promise<void> {
+    if (!failing) {
+      await tx.billingReconciliationFlag.updateMany({
+        where: { provider: state.provider, subscription_ref: state.subscription_ref, reason, resolved_at: null },
+        data: { resolved_at: at },
+      });
+      return;
+    }
     // The partial unique index (provider, subscription_ref, reason) WHERE
     // resolved_at IS NULL makes a repeated sync a no-op.
     await tx.$executeRaw`
       INSERT INTO "subscription"."BillingReconciliationFlag"
         ("id", "tenant_id", "provider", "subscription_ref", "intent_id", "reason", "account_country")
       VALUES (${uuidv7()}::uuid, ${tenant_id}::uuid, ${state.provider}, ${state.subscription_ref},
-              ${intent_id}::uuid, ${BILLING_COUNTRY_NOT_SUPPORTED}, ${state.account_country})
+              ${intent_id}::uuid, ${reason}, ${state.account_country})
       ON CONFLICT ("provider", "subscription_ref", "reason") WHERE "resolved_at" IS NULL DO NOTHING`;
-  }
-
-  private async resolveCountryFlags(tx: Tx, state: ProviderSubscriptionState, at: Date): Promise<void> {
-    await tx.billingReconciliationFlag.updateMany({
-      where: { provider: state.provider, subscription_ref: state.subscription_ref, reason: BILLING_COUNTRY_NOT_SUPPORTED, resolved_at: null },
-      data: { resolved_at: at },
-    });
   }
 
   private async updateRow(
@@ -599,17 +644,19 @@ export class SubscriptionLifecycleService {
     state: ProviderSubscriptionState,
     provider: ReturnType<typeof mapProviderStatus>,
     at: Date,
-    countryOk = true,
+    heldDetail = '',
   ): Promise<ApplyResult> {
     if (row.ended_at !== null) {
       // An ended subscription is never reopened; a resubscription is a new checkout.
       return { outcome: 'IGNORED', detail: 'subscription already ended', tenant_id: row.tenant_id, subscription_id: row.id };
     }
-    // A1 §2.6 — a non-US billing country never moves a non-sending subscription
-    // to a sending status (no activation / reactivation). Every other change
-    // (cancellation, past-due, period, plan) still applies.
+    // A1 §2.6 / P3 §4 — a non-US billing country or a non-AUTHORITATIVE domain
+    // never moves a non-sending subscription to a sending status (no activation /
+    // reactivation). Every other change (cancellation, past-due, period, plan)
+    // still applies.
     // "Sending" is the effective state (a PAST_DUE row past its grace does not send).
-    const held = !countryOk && !subscriptionSends(row, at) && SENDING.has(provider.status);
+    const guarded = heldDetail !== '';
+    const held = guarded && !subscriptionSends(row, at) && SENDING.has(provider.status);
     const mapped = held ? { status: row.status, grace: false, ends: false } : provider;
     const grace_until = held
       ? row.grace_until
@@ -640,10 +687,10 @@ export class SubscriptionLifecycleService {
       },
     });
     const reactivated = !SENDING.has(row.status) && SENDING.has(mapped.status);
-    if (!countryOk) {
+    if (guarded) {
       return {
         outcome: 'IGNORED',
-        detail: `${BILLING_COUNTRY_HELD} (${row.status} -> ${mapped.status}${held ? `, ${provider.status} withheld` : ''})`,
+        detail: `${heldDetail} (${row.status} -> ${mapped.status}${held ? `, ${provider.status} withheld` : ''})`,
         tenant_id: row.tenant_id,
         subscription_id: row.id,
       };

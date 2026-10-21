@@ -19,6 +19,7 @@ import { RoleRepository } from './role.repository.js';
 import { SignupRequestRepository } from './signup-request.repository.js';
 import { IdentityProviderPolicyService } from './identity-provider-policy.service.js';
 import { OrganizationRegionService } from './organization-region.service.js';
+import { DomainClaimService } from './domain-claim/domain-claim.service.js';
 import { RoleService } from './role.service.js';
 import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
@@ -88,6 +89,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
     IdentityProviderPolicyService,
     // Sign Signup Amendment A1 — billing-region lock + authority attestation.
     OrganizationRegionService,
+    // Domain-Enforcement P3 (LOCKED) — one organization per email domain (the claim).
+    DomainClaimService,
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
@@ -127,6 +130,7 @@ import { ProductAvailabilityService } from './authorization/product-availability
     SignupRequestRepository,
     IdentityProviderPolicyService,
     OrganizationRegionService,
+    DomainClaimService,
     IdentityService,
     TenantService,
     RoleService,

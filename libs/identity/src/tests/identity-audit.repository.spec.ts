@@ -86,8 +86,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
-  it('EVENT_TYPES contains 48 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(48);
+  it('EVENT_TYPES contains 57 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(57);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.domain.claim.authoritative')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
     // T-6 — Aramo default withdrawal events are GLOBAL (a PLATFORM template has no tenant).
@@ -178,7 +179,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'ROLES1_RECONCILE_GRANT',
       'ROLES1_RECONCILE_REVOKE',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(41); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(50); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

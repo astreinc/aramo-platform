@@ -305,3 +305,20 @@ export {
   type ProfileAddressFields,
   type UsOrganizationDetails,
 } from './lib/util/us-organization.js';
+
+// Domain-Enforcement P3 (LOCKED) — one organization per email domain: the domain
+// claim (PROVISIONAL | AUTHORITATIVE | LAPSED | RELEASED), its operator actions
+// and the opt-in expiry sweep.
+export {
+  DomainClaimService,
+  DOMAIN_CLAIM_PROVISIONAL_DAYS,
+  DOMAIN_CLAIM_STATES,
+  domainUnavailableError,
+  isHolderIndexViolation,
+  normalizeClaimDomain,
+  type DomainClaimState,
+  type DomainClaimTx,
+  type DomainClaimView,
+  type DomainExceptionView,
+  type PromoteOutcome,
+} from './lib/domain-claim/domain-claim.service.js';

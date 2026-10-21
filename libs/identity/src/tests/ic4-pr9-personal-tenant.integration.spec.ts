@@ -21,6 +21,7 @@ import { RoleService } from '../lib/role.service.js';
 import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.service.js';
 import { TenantRepository } from '../lib/tenant.repository.js';
 import { TenantService } from '../lib/tenant.service.js';
+import { DomainClaimService } from '../lib/domain-claim/domain-claim.service.js';
 import { RoleBundleValidator } from '../lib/tenant-user/role-bundle-validator.js';
 import { runIdentitySeed, SEED_IDS } from '../../prisma/seed.js';
 
@@ -83,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-4 PR-9 — PER
     await prisma.$connect();
     await runIdentitySeed(prisma);
     const audit = new IdentityAuditService(new IdentityAuditRepository(prisma), createAramoLogger('ic4-pr9-spec'));
-    tenantSvc = new TenantService(new TenantRepository(prisma), audit);
+    tenantSvc = new TenantService(new TenantRepository(prisma), audit, new DomainClaimService(prisma));
     identityRepo = new IdentityRepository(prisma);
     identitySvc = new IdentityService(identityRepo, audit, new RoleBundleValidator(prisma), entitlements);
     versions = new AuthorizationVersionService(prisma);

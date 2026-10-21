@@ -1,3 +1,4 @@
+import type { DomainClaimState } from '../domain-claim/domain-claim.service.js';
 import type { DomainVerificationStatus } from '../util/domain-verification.js';
 
 // Domain-Enforcement P2b §6 — the GET/POST response shape for the
@@ -20,6 +21,14 @@ export interface DomainVerificationView {
   readonly verified_at: string | null;
   // When the current token was minted (observability; NO hard expiry).
   readonly token_issued_at: string | null;
+  // Domain-Enforcement P3 §2/§4 (additive) — this tenant's claim on the domain
+  // (identity."TenantDomainClaim".claim): PROVISIONAL | AUTHORITATIVE | LAPSED |
+  // RELEASED, or null when the tenant has no claim row (no domain / PERSONAL).
+  readonly domain_claim: DomainClaimState | null;
+  // Domain-Enforcement P3 §4 (additive) — true when the domain is VERIFIED but the
+  // claim could not become AUTHORITATIVE because another Aramo organization holds
+  // the domain. P2b's VERIFIED stays sticky; the operator resolves it (§6).
+  readonly domain_claim_conflict: boolean;
 }
 
 // Build the dedicated-subdomain record name (§4). e.g.

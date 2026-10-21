@@ -155,6 +155,22 @@ export const EVENT_TYPES = [
   // reason? }. Written through the non-swallowing repository BEFORE the state change.
   'identity.document_template.withdrawal_published',
   'identity.document_template.withdrawal_cancelled',
+  // Domain-Enforcement P3 (LOCKED) §6 — the domain-claim lifecycle. Every one of these
+  // is inserted IN THE SAME database transaction as the claim / exception write
+  // (DomainClaimService), never through the best-effort audit service. All tenant-scoped
+  // (the claiming tenant); subject_id is the tenant_id; payload carries the domain plus
+  // the reason / evidence reference.
+  'identity.domain.claim.provisional',
+  'identity.domain.claim.authoritative',
+  'identity.domain.claim.lapsed',
+  'identity.domain.claim.released',
+  'identity.domain.exception.granted',
+  'identity.domain.exception.revoked',
+  // Domain-Enforcement P3 §5 — delegated domain verification (issue / use / revoke).
+  // Tenant-scoped (the delegating tenant); subject_id is the delegation id.
+  'identity.domain.verification.delegation.issued',
+  'identity.domain.verification.delegation.used',
+  'identity.domain.verification.delegation.revoked',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -228,6 +244,16 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',
+  // Domain-Enforcement P3 — claim / exception / delegation rows carry the tenant id.
+  'identity.domain.claim.provisional',
+  'identity.domain.claim.authoritative',
+  'identity.domain.claim.lapsed',
+  'identity.domain.claim.released',
+  'identity.domain.exception.granted',
+  'identity.domain.exception.revoked',
+  'identity.domain.verification.delegation.issued',
+  'identity.domain.verification.delegation.used',
+  'identity.domain.verification.delegation.revoked',
 ]);
 
 export interface WriteAuditEventInput {

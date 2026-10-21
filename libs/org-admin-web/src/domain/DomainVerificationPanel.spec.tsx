@@ -114,4 +114,27 @@ describe('DomainVerificationPanel', () => {
     // T10-B2/F-018 — safe fallback, never the raw thrown message.
     expect(await screen.findByText('Something went wrong.')).toBeInTheDocument();
   });
+
+  // Domain-Enforcement P3 §4 — the claim outcome after verification.
+  it('VERIFIED + AUTHORITATIVE claim: the owner message', async () => {
+    renderPanel({
+      fetchFn: () =>
+        Promise.resolve(view({ status: 'VERIFIED', verified_at: '2026-10-21T00:00:00.000Z', domain_claim: 'AUTHORITATIVE', domain_claim_conflict: false })),
+    });
+    expect(await screen.findByTestId('domain-authoritative')).toHaveTextContent(
+      'Your organization is the verified owner of acme.corp on Aramo.',
+    );
+    expect(screen.queryByTestId('domain-conflict')).not.toBeInTheDocument();
+  });
+
+  it('VERIFIED but held by another organization: the conflict message', async () => {
+    renderPanel({
+      fetchFn: () => Promise.resolve(view({ status: 'VERIFIED', domain_claim: 'LAPSED', domain_claim_conflict: true })),
+    });
+    expect(await screen.findByTestId('domain-conflict')).toHaveTextContent(
+      'Another Aramo organization holds this domain. Contact Aramo support.',
+    );
+    expect(screen.queryByTestId('domain-authoritative')).not.toBeInTheDocument();
+  });
 });
+

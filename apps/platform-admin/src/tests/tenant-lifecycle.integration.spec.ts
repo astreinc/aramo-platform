@@ -687,5 +687,108 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         .set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(403);
     });
+
+    // ------------------------------------------- Domain-Enforcement P3 (LOCKED) ---
+    // §7 #1 — the console refuses a second organization on a held domain BEFORE
+    // Cognito; §6 — the operator domain-claim surface (view, exception grant /
+    // revoke-conflict / revoke, release, evidence promotion), audited.
+    it('P3 #1 — a second BUSINESS organization on a held domain → 409 TENANT_DOMAIN_UNAVAILABLE, no Cognito call, no tenant row', async () => {
+      const token = await jwt(LIFECYCLE_SCOPES);
+      const first = await request(server())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'P3 Holder Co', owner_email: 'owner@p3-console.example' });
+      expect(first.status).toBe(201);
+      cognitoMock.adminCreateUser.mockClear();
+      const rival = await request(server())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'P3 Rival Co', owner_email: 'rival@P3-Console.example' });
+      expect(rival.status).toBe(409);
+      expect(rival.body.error).toMatchObject({ code: 'TENANT_DOMAIN_UNAVAILABLE', details: { reason: 'organization_domain_taken' } });
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(await identityPrisma.tenant.count({ where: { name: 'P3 Rival Co' } })).toBe(0);
+      expect(await identityPrisma.user.count({ where: { email: 'rival@p3-console.example' } })).toBe(0);
+    });
+
+    it('P3 §6 — operator domain routes: view, exception (lets a second tenant in), revoke conflict fails closed, release, revoke, promote — all audited', async () => {
+      const token = await jwt(LIFECYCLE_SCOPES);
+      const a = await request(server())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'P3 Shared A', owner_email: 'a@p3-shared.example' });
+      expect(a.status).toBe(201);
+      const aId: string = a.body.tenant_id;
+      const base = `/platform/tenants/${aId}/domain`;
+
+      // View — lifecycle:manage only.
+      expect((await request(server()).get(base).set('Authorization', `Bearer ${await jwt(READ_ONLY_SCOPES)}`)).status).toBe(403);
+      const view = await request(server()).get(base).set('Authorization', `Bearer ${token}`);
+      expect(view.status).toBe(200);
+      expect(view.body).toMatchObject({ tenant_id: aId, domain_claim: { domain: 'p3-shared.example', claim: 'PROVISIONAL', exception: false }, exceptions: [] });
+      expect(typeof view.body.domain_claim.expires_at).toBe('string');
+      expect((await request(server()).get(`/platform/tenants/${uuidv7()}/domain`).set('Authorization', `Bearer ${token}`)).status).toBe(404);
+
+      // Exception: DTO gate, then grant.
+      expect((await request(server()).post(`${base}/exception`).set('Authorization', `Bearer ${token}`).send({ justification: 'x' })).status).toBe(400);
+      const granted = await request(server())
+        .post(`${base}/exception`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ justification: 'Two legal entities share one mail domain', evidence_ref: 'TICKET-P3-1' });
+      expect(granted.status).toBe(200);
+      expect(granted.body.domain_claim.exception).toBe(true);
+      expect(granted.body.exceptions).toEqual([
+        expect.objectContaining({ justification: 'Two legal entities share one mail domain', evidence_ref: 'TICKET-P3-1', granted_by_user_id: SUPER_ADMIN_USER_ID, revoked_at: null }),
+      ]);
+
+      // The second organization now gets in.
+      const b = await request(server())
+        .post('/platform/tenants')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'P3 Shared B', owner_email: 'b@p3-shared.example' });
+      expect(b.status).toBe(201);
+      const bId: string = b.body.tenant_id;
+
+      // Revoking A's exception while B holds → 409 and nothing changes.
+      const conflict = await request(server()).delete(`${base}/exception`).set('Authorization', `Bearer ${token}`);
+      expect(conflict.status).toBe(409);
+      expect(conflict.body.error.code).toBe('TENANT_DOMAIN_UNAVAILABLE');
+      const still = await request(server()).get(base).set('Authorization', `Bearer ${token}`);
+      expect(still.body.domain_claim.exception).toBe(true);
+      expect(still.body.exceptions[0].revoked_at).toBeNull();
+
+      // Release B (reason required), then the revoke succeeds.
+      expect((await request(server()).post(`/platform/tenants/${bId}/domain/release`).set('Authorization', `Bearer ${token}`).send({})).status).toBe(400);
+      const released = await request(server())
+        .post(`/platform/tenants/${bId}/domain/release`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ reason: 'entity merged into A' });
+      expect(released.status).toBe(200);
+      expect(released.body.domain_claim).toMatchObject({ claim: 'RELEASED', reason: 'entity merged into A' });
+      const revoked = await request(server()).delete(`${base}/exception`).set('Authorization', `Bearer ${token}`);
+      expect(revoked.status).toBe(200);
+      expect(revoked.body.domain_claim.exception).toBe(false);
+      expect(revoked.body.exceptions[0]).toMatchObject({ revoked_by_user_id: SUPER_ADMIN_USER_ID });
+      expect(revoked.body.exceptions[0].revoked_at).not.toBeNull();
+
+      // Evidence promotion.
+      const promoted = await request(server())
+        .post(`${base}/promote`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ evidence_ref: 'DNS-CHECK-2026-10-21' });
+      expect(promoted.status).toBe(200);
+      expect(promoted.body.domain_claim).toMatchObject({ claim: 'AUTHORITATIVE', reason: 'operator_evidence', expires_at: null });
+
+      // Every write is audited (same transaction).
+      const types = async (tenant_id: string) =>
+        (await identityPrisma.identityAuditEvent.findMany({ where: { tenant_id, event_type: { startsWith: 'identity.domain.' } } })).map((e) => e.event_type).sort();
+      expect(await types(aId)).toEqual([
+        'identity.domain.claim.authoritative',
+        'identity.domain.claim.provisional',
+        'identity.domain.exception.granted',
+        'identity.domain.exception.revoked',
+      ]);
+      expect(await types(bId)).toEqual(['identity.domain.claim.provisional', 'identity.domain.claim.released']);
+    });
   },
 );

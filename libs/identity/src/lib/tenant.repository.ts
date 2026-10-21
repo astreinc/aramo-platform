@@ -1,7 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
+import type { PrismaClient } from '../../prisma/generated/client/client.js';
+
+import type { DomainClaimTx } from './domain-claim/domain-claim.service.js';
 import type { TenantDto } from './dto/tenant.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+
+/** The client surface createTenant needs (a PrismaService or a transaction client). */
+export type TenantCreateTx = Pick<PrismaClient, 'tenant'>;
 
 // Repository for Tenant reads + (AUTHZ-2) the platform-tier create surface.
 // Per §7 TenantService.getTenantsByUser, callers want tenants the user has an
@@ -87,8 +93,10 @@ export class TenantRepository {
     // Sign Signup Amendment A1 — the organization profile written in the SAME
     // insert that creates the tenant (atomic tenant/profile provisioning).
     profile?: Readonly<Record<string, string | null>>;
-  }): Promise<TenantDto> {
-    const row = await this.prisma.tenant.create({
+  }, tx?: TenantCreateTx): Promise<TenantDto> {
+    // Domain-Enforcement P3 — `tx` lets the tenant insert share a transaction
+    // with the domain claim (TenantService.provisionTenant).
+    const row = await (tx ?? this.prisma).tenant.create({
       data: {
         id: args.id,
         name: args.name,
@@ -99,6 +107,12 @@ export class TenantRepository {
       },
     });
     return toTenantDto(row);
+  }
+
+  // Domain-Enforcement P3 — one interactive transaction for the tenant insert and
+  // the domain claim (TenantService.provisionTenant).
+  async withTransaction<T>(fn: (tx: TenantCreateTx & DomainClaimTx) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (tx) => fn(tx));
   }
 
   async deactivateTenant(args: { id: string }): Promise<void> {
