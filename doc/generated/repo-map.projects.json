@@ -4977,6 +4977,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t1-template-ownership.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/documents-core.integration.spec.ts",
         "project": "documents",
         "status": "excluded"

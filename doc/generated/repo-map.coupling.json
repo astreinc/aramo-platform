@@ -20403,6 +20403,11 @@
       "to": "apps/api/src/rtr/rtr-template-content.ts"
     },
     {
+      "from": "libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
       "from": "libs/documents/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -22894,6 +22899,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
