@@ -2043,7 +2043,7 @@ paths:
       operationId: getBillingAccount
       summary: The organization's Aramo Sign plan, subscription status, period and usage.
       description: >
-        Backend-authoritative. Requires sign:envelope:read or tenant:admin:settings. can_manage_billing is true for a BUSINESS tenant principal holding tenant:admin:settings.
+        Backend-authoritative. Requires sign:envelope:read or sign:billing:manage. can_manage_billing is true for a BUSINESS tenant principal holding sign:billing:manage (ROLES-1 §3.4 — the organization owner, tenant_owner; tenant:admin:settings alone no longer manages billing).
       tags: [billing]
       security:
         - senderSession: []
@@ -2064,7 +2064,7 @@ paths:
       operationId: startBillingCheckout
       summary: Start a Stripe Checkout session for a sellable plan.
       description: >
-        Requires tenant:admin:settings in a BUSINESS tenant. Return URLs are built by the server. The subscription opens only when the verified provider webhook (or reconciliation) confirms it; the subscribing user then receives sign_owner if they hold organization authority.
+        Requires sign:billing:manage (the organization owner, tenant_owner — ROLES-1 §3.4) in a BUSINESS tenant. Return URLs are built by the server. The subscription opens only when the verified provider webhook (or reconciliation) confirms it; the subscribing user is the tenant's tenant_owner (no product-level owner role is granted).
       tags: [billing]
       security:
         - senderSession: []
@@ -2104,7 +2104,7 @@ paths:
     post:
       operationId: openBillingPortal
       summary: Open the Stripe billing portal (payment method, invoices, cancellation).
-      description: Requires tenant:admin:settings.
+      description: Requires sign:billing:manage (the organization owner, tenant_owner — ROLES-1 §3.4).
       tags: [billing]
       security:
         - senderSession: []

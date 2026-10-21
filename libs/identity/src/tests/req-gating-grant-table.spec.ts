@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+// ROLES-1 PR-2 — the bundle grants of row 0010 name ats_admin (formerly tenant_admin); same
+// RoleScope ids. The organization tenant_admin (row 02b0) inherits them via ROLES1_SIGN_SEED_BUNDLES.
 import {
   AUTHZ1_BUNDLES,
   D5_COMPENSATION_BUNDLES,
@@ -169,8 +171,8 @@ describe('PR-A1 grant-table — delivery_manager is the ONLY status-only role (g
   });
 });
 
-describe('PR-A1 grant-table — tenant_admin / tenant_owner (full)', () => {
-  for (const role of ['tenant_admin', 'tenant_owner']) {
+describe('PR-A1 grant-table — ats_admin / tenant_owner (full)', () => {
+  for (const role of ['ats_admin', 'tenant_owner']) {
     const s = effectiveScopes(role);
     it(`${role} holds requisition:edit + all comp edit + financials + profile`, () => {
       expect(s.has('requisition:edit')).toBe(true);
@@ -195,22 +197,22 @@ describe('PR-A1 grant-table — scope holder-sets (exact)', () => {
   });
   it('requisition:profile:generate → exactly the 5-role mgmt tier', () => {
     expect(holders('requisition:profile:generate')).toEqual(
-      ['account_manager', 'lead_recruiter', 'recruiting_manager', 'tenant_admin', 'tenant_owner'].sort(),
+      ['account_manager', 'lead_recruiter', 'recruiting_manager', 'ats_admin', 'tenant_owner'].sort(),
     );
   });
   it('requisition:profile:edit → exactly the 5-role mgmt tier', () => {
     expect(holders('requisition:profile:edit')).toEqual(
-      ['account_manager', 'lead_recruiter', 'recruiting_manager', 'tenant_admin', 'tenant_owner'].sort(),
+      ['account_manager', 'lead_recruiter', 'recruiting_manager', 'ats_admin', 'tenant_owner'].sort(),
     );
   });
   it('requisition:view:financials → {TA, TO, AM, delivery_manager} (DM added by PR-A1)', () => {
     expect(holders('requisition:view:financials')).toEqual(
-      ['account_manager', 'delivery_manager', 'tenant_admin', 'tenant_owner'].sort(),
+      ['account_manager', 'delivery_manager', 'ats_admin', 'tenant_owner'].sort(),
     );
   });
   it('requisition:edit:financials → {TA, TO, AM} only (DM is view-only)', () => {
     expect(holders('requisition:edit:financials')).toEqual(
-      ['account_manager', 'tenant_admin', 'tenant_owner'].sort(),
+      ['account_manager', 'ats_admin', 'tenant_owner'].sort(),
     );
   });
   it('compensation:view:bill → adds RM/LR/DM to the {TA,TO,AM,auditor_with_financials} base', () => {

@@ -96,17 +96,45 @@ describe('RoleCatalogService', () => {
     const rows = [
       roleRow('sign_viewer', 'Sign Viewer — reads', ['sign:envelope:read']),
       roleRow('sign_sender', 'Sign Sender — sends', ['sign:envelope:send']),
-      roleRow('org_admin', 'Organization Admin — org', ['tenant:admin:user-manage']),
+      roleRow('tenant_admin', 'Tenant Admin — org', ['tenant:admin:user-manage']),
       roleRow('recruiter', 'Recruiter — op', ['talent:read']),
       roleRow('super_admin', 'Super Admin — platform', ['platform:tenant:provision']),
     ];
     const signOnly = await makeService(rows, ['core', 'sign']).getCatalog({ tenant_id: TENANT });
-    expect(signOnly.map((r) => r.key)).toEqual(['org_admin', 'recruiter', 'sign_sender', 'sign_viewer']);
+    expect(signOnly.map((r) => r.key)).toEqual(['tenant_admin', 'recruiter', 'sign_sender', 'sign_viewer']);
     expect(signOnly.find((r) => r.key === 'sign_sender')).toMatchObject({ tier: 'Sign', display: 'Sign Sender', scopes: ['sign:envelope:send'] });
     const both = await makeService(rows, ['core', 'ats', 'sign']).getCatalog({ tenant_id: TENANT });
-    expect(both.map((r) => r.key)).toEqual(['org_admin', 'recruiter', 'sign_sender', 'sign_viewer']);
+    expect(both.map((r) => r.key)).toEqual(['tenant_admin', 'recruiter', 'sign_sender', 'sign_viewer']);
     // The platform tier stays excluded regardless of entitlement.
     expect(both.some((r) => r.key === 'super_admin')).toBe(false);
+  });
+
+  // ROLES-1 PR-2 (§3.5) — the organization roles hold Sign scopes but are never hidden
+  // by the Sign partition rule; for a tenant without `sign` their projected scope list
+  // omits sign:* (display mirrors the session filters).
+  it('never hides the organization roles (they hold Sign scopes) — ATS-only tenants see them without sign:* scopes', async () => {
+    const rows = [
+      roleRow('tenant_owner', 'Tenant Owner — owner', ['tenant:admin:user-manage', 'talent:read', 'sign:billing:manage', 'sign:envelope:send']),
+      roleRow('tenant_admin', 'Tenant Admin — admin', ['tenant:admin:user-manage', 'talent:read', 'sign:envelope:send']),
+      roleRow('ats_admin', 'ATS Admin — ats', ['talent:read']),
+      roleRow('sign_admin', 'Sign Admin — sign', ['sign:member:manage']),
+    ];
+    const atsOnly = await makeService(rows, ['core', 'ats']).getCatalog({ tenant_id: TENANT });
+    expect(atsOnly.map((r) => r.key).sort()).toEqual(['ats_admin', 'tenant_admin', 'tenant_owner']);
+    expect(atsOnly.find((r) => r.key === 'tenant_owner')?.scopes).toEqual(['talent:read', 'tenant:admin:user-manage']);
+    const signOnly = await makeService(rows, ['core', 'sign']).getCatalog({ tenant_id: TENANT });
+    expect(signOnly.find((r) => r.key === 'tenant_owner')?.scopes).toEqual(['sign:billing:manage', 'sign:envelope:send', 'talent:read', 'tenant:admin:user-manage']);
+    expect(signOnly.map((r) => r.key)).toContain('sign_admin');
+  });
+
+  it('reads ACTIVE roles only (the deactivated sign_owner row is never projected)', async () => {
+    let where: unknown;
+    const svc = new RoleCatalogService(
+      { role: { findMany: async (args: { where?: unknown }) => ((where = args.where), []) } } as never,
+      { getCapabilities: async () => new Set<string>(['core', 'sign']) } as never,
+    );
+    await svc.getCatalog({ tenant_id: TENANT });
+    expect(where).toEqual({ is_active: true });
   });
 
   it('orders by presentation tier then display', async () => {

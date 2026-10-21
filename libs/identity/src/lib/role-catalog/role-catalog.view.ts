@@ -36,10 +36,11 @@ interface RoleMeta {
 }
 
 export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
+  // ROLES-1 PR-2 — the organization roles (owner, administrator) and the ATS-only
+  // administrator (the renamed …0010 row). org_admin no longer exists.
   tenant_owner: { tier: 'Administration', tierRank: 0 },
   tenant_admin: { tier: 'Administration', tierRank: 0 },
-  // IC-3 PR-7 — product-neutral organization administrator.
-  org_admin: { tier: 'Administration', tierRank: 0 },
+  ats_admin: { tier: 'Administration', tierRank: 0 },
   delivery_manager: { tier: 'Management', tierRank: 1 },
   account_manager: { tier: 'Management', tierRank: 1 },
   recruiting_manager: { tier: 'Management', tierRank: 1 },

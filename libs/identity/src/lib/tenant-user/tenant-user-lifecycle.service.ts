@@ -551,6 +551,9 @@ export class TenantUserLifecycleService {
   async enableTenantUser(args: {
     tenant_id: string;
     user_id: string;
+    // ROLES-1 PR-2 (§4.2, PR-1 gap) — the caller: re-enabling a disabled tenant_owner
+    // restores an owner, so it needs an owner caller (as disable / revoke do).
+    actor_user_id: string;
     request_id: string;
   }): Promise<{ membership_id: string; changed: boolean; cognito: 'enabled' | 'skipped' }> {
     // IC-3 PR-7 (PR-5 residual) — the complete re-enable: identity first
@@ -600,6 +603,10 @@ export class TenantUserLifecycleService {
       user_id: args.user_id,
       tenant_id: args.tenant_id,
     });
+    // ROLES-1 PR-2 (§4.2) — re-enabling a DISABLED membership that holds tenant_owner
+    // grants owner authority back: only a tenant_owner caller may do it (403
+    // owner_role_requires_owner), before any write.
+    await this.assertOwnerTargetAuthority({ ...args, action: 'enable' });
     const result = await this.identitySvc.reEnableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
@@ -824,18 +831,22 @@ export class TenantUserLifecycleService {
   // ROLES-1 PR-1 (§4.2) — disable / revoke of a target whose ACTIVE membership holds
   // tenant_owner removes an owner, so the caller must hold tenant_owner. A target that is
   // not an active owner (or has no membership: the caller's own 404 handles it) passes.
+  // ROLES-1 PR-2 — enable is the mirror: re-enabling a DISABLED membership that holds
+  // tenant_owner restores an owner, so it is gated the same way (an already-active
+  // target is an idempotent no-op and passes).
   private async assertOwnerTargetAuthority(args: {
     tenant_id: string;
     user_id: string;
     actor_user_id: string;
     request_id: string;
-    action: 'disable' | 'revoke';
+    action: 'disable' | 'revoke' | 'enable';
   }): Promise<void> {
     const target = await this.identitySvc.findMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
     });
-    if (target === null || !target.is_active) return;
+    if (target === null) return;
+    if (args.action === 'enable' ? target.is_active : !target.is_active) return;
     const keys = await this.identitySvc.findRoleKeysForMembership(target.id);
     if (!keys.includes(TENANT_OWNER_ROLE_KEY)) return;
     await this.identitySvc.assertOwnerRoleAuthority({

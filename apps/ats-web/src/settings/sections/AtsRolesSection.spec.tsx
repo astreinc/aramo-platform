@@ -13,12 +13,14 @@ const CATALOG = {
   roles: [
     { key: 'recruiter', display: 'Recruiter', description: 'Works talent.', tier: 'Operations', scopes: ['talent:read'] },
     { key: 'sign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['sign:envelope:send'] },
-    { key: 'org_admin', display: 'Organization Admin', description: '', tier: 'Administration', scopes: ['tenant:admin:profile'] },
+    // ROLES-1 PR-2 — the organization roles belong to Organization administration.
+    { key: 'tenant_admin', display: 'Tenant Admin', description: '', tier: 'Administration', scopes: ['tenant:admin:profile'] },
+    { key: 'ats_admin', display: 'ATS Admin', description: '', tier: 'Administration', scopes: ['talent:read'] },
   ],
 };
 
 describe('AtsRolesSection', () => {
-  it('lists ATS roles only (no Sign roles, no org_admin), with no edit or assign controls', async () => {
+  it('lists ATS roles only (ats_admin + staffing roles; no Sign roles, no organization roles), with no edit or assign controls', async () => {
     window.history.pushState({}, '', '/ats/admin/settings/roles');
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(CATALOG), { status: 200, headers: { 'Content-Type': 'application/json' } }),
@@ -26,7 +28,8 @@ describe('AtsRolesSection', () => {
     render(<AtsRolesSection />);
     await waitFor(() => expect(screen.getAllByText('Recruiter').length).toBeGreaterThan(0));
     expect(screen.queryByText('Sign Sender')).toBeNull();
-    expect(screen.queryByText('Organization Admin')).toBeNull();
+    expect(screen.queryByText('Tenant Admin')).toBeNull();
+    expect(screen.getAllByText('ATS Admin').length).toBeGreaterThan(0);
     expect(screen.getByText(/Read-only reference/i)).toBeInTheDocument();
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /assign|edit role|save/i })).toBeNull();
@@ -38,7 +41,11 @@ describe('AtsRolesSection', () => {
 
   it('isAtsRole partitions the catalog for display only', () => {
     expect(isAtsRole({ key: 'recruiter' } as never)).toBe(true);
-    expect(isAtsRole({ key: 'sign_owner' } as never)).toBe(false);
-    expect(isAtsRole({ key: 'org_admin' } as never)).toBe(false);
+    expect(isAtsRole({ key: 'sign_admin' } as never)).toBe(false);
+    // ROLES-1 PR-2 — ats_admin is the ATS administrator; the organization roles
+    // (tenant_owner, tenant_admin) belong to Organization administration.
+    expect(isAtsRole({ key: 'ats_admin' } as never)).toBe(true);
+    expect(isAtsRole({ key: 'tenant_owner' } as never)).toBe(false);
+    expect(isAtsRole({ key: 'tenant_admin' } as never)).toBe(false);
   });
 });

@@ -30,6 +30,8 @@ import {
   SEED_ADMIN_EMAIL,
   SEED_TENANT_NAME,
   SEED_SERVICE_ACCOUNT_NAME,
+  ROLES1_ADMIN_SIGN_SCOPES,
+  ROLES1_OWNER_SIGN_SCOPES,
 } from '../../prisma/seed.js';
 
 // PR-1.5 Workstream C — the identity migration set now comes from the single
@@ -44,6 +46,12 @@ const MIGRATION_PATHS = resolveIdentityMigrations(
 );
 
 const TENANT_KEYSET = '20000000-2222-7222-8222-200000000001';
+
+// ROLES-1 PR-2 — the Sign admin scopes the organization tenant_admin carries on top of the
+// pre-ROLES-1 ATS + organization set.
+function withRoles1AdminSign(list: readonly string[]): string[] {
+  return [...new Set([...list, ...ROLES1_ADMIN_SIGN_SCOPES])].sort();
+}
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'Identity module — integration (real Postgres 17)',
@@ -134,8 +142,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // (catalog 14 total = 13 tenant + 1 platform; the grant is gated by
       // the audit.financials_enabled KNOWN_SETTING at the role-assign
       // path, NOT at seed/catalog level).
+      // ROLES-1 PR-2 — row 0010 = ats_admin, row 02b0 = tenant_admin; org_admin is gone.
       expect(roles.map((r) => r.key)).toEqual([
         'account_manager',
+        'ats_admin',
         'auditor',
         'auditor_with_financials',
         'back_office',
@@ -143,8 +153,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'delivery_manager',
         'finance',
         'lead_recruiter',
-        // IC-3 PR-7 — org_admin (product-neutral organization administrator, 0x2b0).
-        'org_admin',
         'recruiter',
         'recruiting_manager',
         // PX-V1 PX-3 — Sign product roles (seeded Role rows; excluded from the
@@ -482,13 +490,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(788); // DOC-TEMPLATE-LIB-1 T-2 +2 grants (super_admin × platform:document_template:{read,manage}, 0x312/0x313) → 786+2=788. // Sign S-1 +23 Sign role-contract grants (0x1720+) → 763+23=786. // TIP-E2E INC-3 A1 +3 grants (screening:transcript:read × recruiter/lead_recruiter/recruiting_manager, range 0x1710+) → 760+3=763. // TIP-E2E INC-3 +12 grants (screening:{read,create,edit,confirm} × recruiter/lead_recruiter/recruiting_manager, RoleScope range 0x1700..0x170b) → 748+12=760. // IC-3 PR-7 +8 grants (org_admin × ORG_ADMIN_SCOPE_KEYS, range 0x1600+) → 740+8=748. // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (sign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(941); // ROLES-1 PR-2 (§3.2): −6 ats_admin org-wide scopes (D-2) +11 tenant_owner Sign owner set (billing incl., sign:template:* excluded) +148 tenant_admin (140 ats_admin + 10 Sign admin − 2 baseline already in its org set) → 788−6+11+148=941. // DOC-TEMPLATE-LIB-1 T-2 +2 grants (super_admin × platform:document_template:{read,manage}, 0x312/0x313) → 786+2=788. // Sign S-1 +23 Sign role-contract grants (0x1720+) → 763+23=786. // TIP-E2E INC-3 A1 +3 grants (screening:transcript:read × recruiter/lead_recruiter/recruiting_manager, range 0x1710+) → 760+3=763. // TIP-E2E INC-3 +12 grants (screening:{read,create,edit,confirm} × recruiter/lead_recruiter/recruiting_manager, RoleScope range 0x1700..0x170b) → 748+12=760. // IC-3 PR-7 +8 grants (org_admin × ORG_ADMIN_SCOPE_KEYS, range 0x1600+) → 740+8=748. // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (sign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
       });
       expect(utmRole?.membership_id).toBe(SEED_IDS.membership_admin);
-      expect(utmRole?.role_id).toBe(SEED_IDS.roles.tenant_admin);
+      // ROLES-1 PR-2 (§6) — the dev admin's original assignment row is row 0010 = ats_admin;
+      // the organization tenant_admin is the second assignment.
+      expect(utmRole?.role_id).toBe(SEED_IDS.roles.ats_admin);
+      const utmOrg = await prisma.userTenantMembershipRole.findUnique({ where: { id: SEED_IDS.membership_role_admin_org } });
+      expect(utmOrg?.role_id).toBe(SEED_IDS.roles.tenant_admin);
 
       const sa = await prisma.serviceAccount.findUnique({
         where: { id: SEED_IDS.service_account_system },
@@ -752,8 +764,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         include: { role: { select: { key: true } } },
       });
       const grantedRoles = rows.map((r) => r.role.key).sort();
+      // ROLES-1 PR-2 — the …0010 row is ats_admin; tenant_admin inherits every ats_admin scope.
       expect(grantedRoles).toEqual([
         'account_manager',
+        'ats_admin',
         'tenant_admin',
         'tenant_owner',
       ]);
@@ -782,11 +796,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     for (const { scopeKey, expected } of [
       {
         scopeKey: 'requisition:view:financials',
-        expected: ['account_manager', 'delivery_manager', 'tenant_admin', 'tenant_owner'],
+        expected: ['account_manager', 'ats_admin', 'delivery_manager', 'tenant_admin', 'tenant_owner'],
       },
       {
         scopeKey: 'requisition:edit:financials',
-        expected: ['account_manager', 'tenant_admin', 'tenant_owner'],
+        expected: ['account_manager', 'ats_admin', 'tenant_admin', 'tenant_owner'],
       },
     ]) {
       it(`Job-Module/PR-A1 — grant-table: ${scopeKey} → {${expected.join(', ')}}`, async () => {
@@ -831,7 +845,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // AUTHZ-D4a: tenant_admin gains the 4 team-model scopes. 43 + 4 = 47.
       // Track4/T4-D: +4 assignment:* -> 93. Track5/T5-P1: +2 assignment:commercials
       // -> 95. Track8/T8-P2: +2 requisition:import:* -> 97.
-      expect(sorted).toEqual([
+      // ROLES-1 PR-2 (§6) — the dev admin holds ats_admin + tenant_admin: the union is the
+      // pre-ROLES-1 set + the Sign admin set (sign:billing:manage and sign:template:* excluded).
+      expect(sorted).toEqual(withRoles1AdminSign([
         'activity:create',
         'activity:read',
         'activity:redact',
@@ -976,7 +992,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
         'tenant:user:read:directory',
-      ]);
+      ]));
     });
 
     // -----------------------------------------------------------------
@@ -1125,7 +1141,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         user_id: SEED_IDS.user_admin,
         tenant_id: SEED_IDS.tenant,
       });
-      expect([...adminScopes].sort()).toEqual([
+      // ROLES-1 PR-2 (§6) — the dev admin holds ats_admin + tenant_admin: the union is the
+      // pre-ROLES-1 set + the Sign admin set (sign:billing:manage and sign:template:* excluded).
+      expect([...adminScopes].sort()).toEqual(withRoles1AdminSign([
         'activity:create',
         'activity:read',
         'activity:redact',
@@ -1270,7 +1288,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
         'tenant:user:read:directory',
-      ]);
+      ]));
 
       // recruiter scope set (31 post HK-IDENT-SCOPES; 26 + 5 — all new
       // ATS scopes except requisition:assign, which is tenant_admin only).
@@ -1470,7 +1488,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // tenant_owner — 47 scopes (post-AUTHZ-D4a; 43 + 4 team-model scopes).
       // Owner = Admin scope set incl. the AUTHZ-D4a top-tier additions.
-      await expectRoleScopes('tenant_owner', [
+      // ROLES-1 PR-2 (§3.2) — + the Sign owner set (incl. sign:billing:manage, no sign:template:*).
+      await expectRoleScopes('tenant_owner', [...ROLES1_OWNER_SIGN_SCOPES, ...[
         'activity:create',
         'activity:read',
         'activity:redact',
@@ -1615,7 +1634,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'tenant:admin:user-manage',
         'tenant:user:read:assignable',
         'tenant:user:read:directory',
-      ]);
+      ]]);
 
       // account_manager — 35 scopes (Recruiter's 31 operational set +
       // tenant:admin:user-manage + requisition:assign + AUTHZ-D4a's
@@ -2283,6 +2302,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Settings D4: +3 site.created + site.deactivated + site.updated (22 -> 25).
       // Domain-Enforcement P2b: +2 domain.verification.requested + domain.verified (25 -> 27).
       expect([...TENANT_SCOPED_EVENT_TYPES].sort()).toEqual([
+        // ROLES-1 PR-2 §5.3 — the reconciliation migration's grant / removal rows.
+        'ROLES1_RECONCILE_GRANT',
+        'ROLES1_RECONCILE_REVOKE',
         // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1 — template draft discard audit.
         'identity.document_template.draft_discarded',
         'identity.domain.verification.requested',

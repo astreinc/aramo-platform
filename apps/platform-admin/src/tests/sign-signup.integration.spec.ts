@@ -40,7 +40,7 @@ import { generateTestKeyPair } from './test-keys.js';
 // Aramo Sign launch — self-service BUSINESS signup (provisioning integrity), on
 // real Postgres 17 with a mocked Cognito and a capturing mailer: dark by default;
 // nothing exists before the emailed link is used; one answer for every start;
-// BUSINESS + [core, esign] + org_admin (never a Sign sender role); idempotent and
+// BUSINESS + [core, esign] + tenant_owner + tenant_admin (ROLES-1 PR-2; never a Sign product role); idempotent and
 // race-safe completion; rename after a name collision; crash recovery; a newer
 // request supersedes the old link.
 
@@ -65,8 +65,8 @@ const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: 
 const registryDocs: LegalDocumentVersion[] = [...LEGAL_DOCUMENTS];
 const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.splice(0, registryDocs.length, ...docs);
 
-const ORG_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
-const ESIGN_OWNER_ROLE_ID = '01900000-0000-7000-8000-0000000002a0';
+// ROLES-1 PR-2 — row 0x2b0 is tenant_admin (formerly org_admin); sign_owner is retired.
+const TENANT_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin — Aramo Sign self-service signup (real Postgres 17)', () => {
@@ -98,8 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     }
     await setup.role.createMany({
       data: [
-        { id: ORG_ADMIN_ROLE_ID, key: 'org_admin', description: 'Organization Admin', is_active: true },
-        { id: ESIGN_OWNER_ROLE_ID, key: 'sign_owner', description: 'Sign Owner', is_active: true },
+        { id: TENANT_ADMIN_ROLE_ID, key: 'tenant_admin', description: 'Tenant Admin', is_active: true },
         { id: TENANT_OWNER_ROLE_ID, key: 'tenant_owner', description: 'Tenant Owner', is_active: true },
       ],
     });
@@ -204,7 +203,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect((await http().post('/v1/signup/sign/start').send({ email: 'x@acme.test' })).status).toBe(400);
   });
 
-  it('complete provisions a BUSINESS tenant with exactly [core, sign] and an org_admin owner — no Cognito user, no temporary password (federated owner)', async () => {
+  // ROLES-1 PR-2 (§6; Conforming Amendment 5) — the signup owner receives tenant_owner + tenant_admin.
+  it('complete provisions a BUSINESS tenant with exactly [core, sign] and a tenant_owner + tenant_admin owner — no Cognito user, no temporary password (federated owner)', async () => {
     const c = await started();
     expect((await http().post('/v1/signup/sign/preview').send({ token: c.token })).body).toEqual({ email: c.email, organization_name: c.organization_name, status: 'READY' });
     const cognitoCallsBefore = cognitoMock.adminCreateUser.mock.calls.length;
@@ -232,7 +232,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(caps.map((r) => r.capability)).toEqual(['core', 'sign']);
     const user = await db.user.findFirstOrThrow({ where: { email: c.email } });
     const roles = await db.userTenantMembershipRole.findMany({ where: { membership: { user_id: user.id, tenant_id: tenant.id } }, include: { role: true } });
-    expect(roles.map((r) => r.role.key)).toEqual(['org_admin']);
+    expect(roles.map((r) => r.role.key).sort()).toEqual(['tenant_admin', 'tenant_owner']);
     expect(await db.externalIdentity.count({ where: { user_id: user.id } })).toBe(0);
     expect((await db.userTenantMembership.findFirstOrThrow({ where: { user_id: user.id } })).invite_status).toBe('ACTIVE');
     expect(await db.tenantIdentityProviderPolicy.findUnique({ where: { tenant_id: tenant.id } })).not.toBeNull();

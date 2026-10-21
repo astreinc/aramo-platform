@@ -111,19 +111,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: [] });
   });
 
-  // IC-3 PR-7 — org_admin: the product-neutral organization administrator.
-  it('IC-3 PR-7: org_admin resolves EXACTLY ORG_ADMIN_SCOPE_KEYS — no ATS, no esign, no platform scope', async () => {
-    const userId = await assignRoleToFreshUser('oa1', SEED_IDS.roles.org_admin);
+  // IC-3 PR-7 row 0x2b0 — ROLES-1 PR-2: tenant_admin, the ORGANIZATION administrator
+  // (formerly org_admin): the org set + every ats_admin scope + the Sign admin set (no
+  // billing). Static bundle (Option A); each product is exercised only through its consumer.
+  it('ROLES-1 PR-2: tenant_admin (row 0x2b0) resolves the org set + the ATS set + the Sign admin set — no billing, no platform scope', async () => {
+    const userId = await assignRoleToFreshUser('oa1', SEED_IDS.roles.tenant_admin);
     const scopes = await roleSvc.getScopesByUserAndTenant({ user_id: userId, tenant_id: SEED_IDS.tenant });
-    expect([...scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
-    expect(scopes.some((s) => s.startsWith('sign:') || s.startsWith('platform:'))).toBe(false);
+    for (const k of ORG_ADMIN_SCOPE_KEYS) expect(scopes).toContain(k);
     for (const ats of ['talent:read', 'requisition:read', 'pipeline:add', 'org:manage', 'team:manage', 'identity:resolve']) {
-      expect(scopes).not.toContain(ats);
+      expect(scopes).toContain(ats);
     }
+    expect(scopes).toContain('sign:envelope:send');
+    expect(scopes).toContain('sign:member:manage');
+    expect(scopes).not.toContain('sign:billing:manage');
+    expect(scopes.some((s) => s.startsWith('platform:') || s.startsWith('sign:template:'))).toBe(false);
   });
 
-  it('IC-3 PR-7: org_admin through the effective resolver — recruiter (ATS tenant) and esign (Sign tenant) consumers both carry the organization subset; platform carries nothing', async () => {
-    const userId = await assignRoleToFreshUser('oa2', SEED_IDS.roles.org_admin);
+  it('ROLES-1 PR-2: tenant_admin through the effective resolver — each consumer carries only its own product (session isolation, IC-2 PR-6 / R5)', async () => {
+    const userId = await assignRoleToFreshUser('oa2', SEED_IDS.roles.tenant_admin);
     const versions = new AuthorizationVersionService(prisma);
     await versions.ensureBaseline(prisma, { tenant_id: SEED_IDS.tenant, principal_id: userId });
     const caps = { current: new Set<string>(['core', 'sign']) };
@@ -131,16 +136,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
       roleSvc, versions, new InMemoryScopeCache(), { portalScopes: [], scopeCacheTtlSeconds: 300 },
       { getCapabilities: async () => caps.current } as unknown as TenantEntitlementReader,
     );
-    const input = (consumer_type: 'sign' | 'recruiter' | 'platform') => ({
+    const input = (consumer_type: 'sign' | 'recruiter' | 'platform' | 'org') => ({
       tenant_id: SEED_IDS.tenant, principal_id: userId, consumer_type, actor_kind: 'user' as const, token_authz_version: 1,
     });
     const esign = await resolver.resolve(input('sign'));
     expect(esign.status).toBe('ok');
-    if (esign.status === 'ok') expect([...esign.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
+    if (esign.status === 'ok') {
+      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
+      expect(esign.scopes).toContain('sign:envelope:send');
+      expect(esign.scopes).not.toContain('talent:read');
+    }
     const recruiter = await resolver.resolve(input('recruiter'));
-    if (recruiter.status === 'ok') expect([...recruiter.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
+    expect(recruiter.status).toBe('ok');
+    if (recruiter.status === 'ok') {
+      expect(recruiter.scopes.some((s) => s.startsWith('sign:'))).toBe(false);
+      expect(recruiter.scopes).toContain('talent:read');
+    }
+    const org = await resolver.resolve(input('org'));
+    if (org.status === 'ok') expect([...org.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS].sort());
     expect(await resolver.resolve(input('platform'))).toEqual({ status: 'ok', scopes: [] });
-    // Sign capability revoked → the esign consumer resolves nothing (no org admin via a dead product).
+    // Sign capability revoked → the esign consumer resolves nothing (no admin via a dead product).
     caps.current = new Set(['core']);
     expect(await resolver.resolve(input('sign'))).toEqual({ status: 'ok', scopes: [] });
   });

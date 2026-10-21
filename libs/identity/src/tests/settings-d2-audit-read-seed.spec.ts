@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { AUDIT_READ_SEED_BUNDLES } from '../../prisma/seed.js';
+import { AUDIT_READ_SEED_BUNDLES, ORG_ADMIN_SEED_BUNDLES } from '../../prisma/seed.js';
 import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 
 // Settings Rebuild D2 — audit:read scope-catalog + grant-table parity.
 // SEED_SCOPE_KEYS 80 → 81 (audit:read). The 2 RoleScope grants (tenant_admin +
 // tenant_owner) live at the disjoint 0x910+ range in seed.ts.
 
+// ROLES-1 PR-2 — the organization tenant_admin (row 02b0) holds this scope through
+// ORG_ADMIN_SEED_BUNDLES (its original org set); ats_admin (row 0010) no longer holds it.
 function scopesFor(role: string): readonly string[] {
-  return AUDIT_READ_SEED_BUNDLES.filter(([r]) => r === role).flatMap(
+  return [...AUDIT_READ_SEED_BUNDLES, ...ORG_ADMIN_SEED_BUNDLES].filter(([r]) => r === role).flatMap(
     ([, scopes]) => scopes,
   );
 }
@@ -30,6 +32,8 @@ describe('Settings Rebuild D2 — audit:read grant table', () => {
   it('tenant_admin + tenant_owner hold audit:read', () => {
     expect(scopesFor('tenant_admin')).toContain('audit:read');
     expect(scopesFor('tenant_owner')).toContain('audit:read');
+    // ROLES-1 PR-2 (§3.2, D-2) — organization-wide administration: not ATS-only.
+    expect(scopesFor('ats_admin')).not.toContain('audit:read');
   });
 
   it('audit:read is admin/compliance-only (NOT granted to recruiters)', () => {
@@ -38,11 +42,13 @@ describe('Settings Rebuild D2 — audit:read grant table', () => {
     }
   });
 
-  it('grants exactly 2 RoleScope rows', () => {
+  // ROLES-1 PR-2 — the dedicated bundle keeps only tenant_owner's row (the ats_admin
+  // row id is retired, never reused); tenant_admin's grant is ORG_ADMIN_SEED_BUNDLES'.
+  it('grants exactly 1 RoleScope row in the dedicated bundle', () => {
     const rows = AUDIT_READ_SEED_BUNDLES.flatMap(([role, scopes]) =>
       scopes.map((s) => `${role}:${s}`),
     );
-    expect(rows).toHaveLength(2);
-    expect(new Set(rows).size).toBe(2);
+    expect(rows).toHaveLength(1);
+    expect(new Set(rows).size).toBe(1);
   });
 });

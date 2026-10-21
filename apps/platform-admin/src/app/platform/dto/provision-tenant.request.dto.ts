@@ -13,7 +13,8 @@ import { TENANT_KINDS } from '@aramo/identity';
 // as the singular first act (Lead ruling 6). The platform-admin caller
 // supplies the tenant name + the owner's email; the platform-admin
 // service composes TenantService.provisionTenant +
-// IdentityService.createUserFromInvitation with role_keys=['tenant_owner'].
+// IdentityService.createUserFromInvitation with role_keys=['tenant_owner',
+// 'tenant_admin'] (ROLES-1 PR-2 §6).
 //
 // Optional owner_display_name carries through to the Cognito 'name'
 // attribute (AdminCreateUser UserAttributes) and the identity.User
@@ -61,7 +62,7 @@ export class ProvisionTenantRequestDto {
   // IC-4 PR-9 — BUSINESS (default; byte-preserved pre-PR-9 path) or PERSONAL
   // (one-person Sign subscriber: personal-provider owner email allowed,
   // allowed_domain NULL, capabilities CLOSED to [core, esign], owner role
-  // org_admin, no ATS projection). Validated at the DTO (400 on any other
+  // tenant_owner + tenant_admin [ROLES-1 PR-2 §6], no ATS projection). Validated at the DTO (400 on any other
   // value) and again in-service (single-source TENANT_KINDS).
   @IsOptional()
   @IsIn([...TENANT_KINDS])

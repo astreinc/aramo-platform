@@ -50,7 +50,10 @@ export function categoryOf(eventType: EventType): AuditCategory {
     eventType.startsWith('identity.role.') ||
     eventType.startsWith('identity.scope.') ||
     eventType === 'identity.tenant_user.role_assigned' ||
-    eventType === 'identity.tenant_user.role_removed'
+    eventType === 'identity.tenant_user.role_removed' ||
+    // ROLES-1 PR-2 — the role-model reconciliation grants/removals.
+    eventType === 'ROLES1_RECONCILE_GRANT' ||
+    eventType === 'ROLES1_RECONCILE_REVOKE'
   ) {
     return 'access';
   }
@@ -185,6 +188,14 @@ export function summarizeDetail(
     }
     case 'identity.site.deactivated':
       return 'Deactivated a branch (site)';
+    case 'ROLES1_RECONCILE_GRANT':
+    case 'ROLES1_RECONCILE_REVOKE': {
+      const role = str(payload['role_key']);
+      const verb = eventType === 'ROLES1_RECONCILE_GRANT' ? 'Granted' : 'Removed';
+      return role === null
+        ? `Role model update: ${verb.toLowerCase()} a role`
+        : `Role model update: ${verb.toLowerCase()} ${role}`;
+    }
     case 'identity.document_template.draft_discarded': {
       const n = payload['version_number'];
       return typeof n === 'number' ? `Discarded a document template draft (v${n})` : 'Discarded a document template draft';

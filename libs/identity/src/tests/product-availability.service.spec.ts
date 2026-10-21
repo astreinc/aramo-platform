@@ -63,9 +63,20 @@ describe('ProductAvailabilityService (D-ORG)', () => {
     expect(p['sign']).toMatchObject({ subscribed: true, authorized: false, available: false, reason: 'not_authorized' });
   });
 
-  it('a Sign role held in an ATS-only tenant is reported authorized=true but not_subscribed (operator-meaningful, never navigable)', async () => {
+  // ROLES-1 PR-2 (§3.5) — authorized = scope held AND the tenant holds the capability:
+  // the organization roles' static bundles carry Sign and ATS scopes in every tenant.
+  it('a Sign scope held in an ATS-only tenant is NOT authorized (not_subscribed, never navigable)', async () => {
     const p = byKey(await svc(['core', 'ats', 'portal'], SIGN_SENDER).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['sign']).toMatchObject({ subscribed: false, authorized: true, available: false, reason: 'not_subscribed' });
+    expect(p['sign']).toMatchObject({ subscribed: false, authorized: false, available: false, reason: 'not_subscribed' });
+  });
+
+  it('an organization owner (ATS + Sign + org scopes) in a Sign-only tenant: Sign + Organization authorized, ATS not', async () => {
+    const p = byKey(
+      await svc(['core', 'sign'], [...RECRUITER, ...SIGN_SENDER, 'tenant:admin:user-manage', 'sign:billing:manage']).forPrincipal({ user_id: U, tenant_id: T }),
+    );
+    expect(p['ats']).toMatchObject({ subscribed: false, authorized: false, available: false, reason: 'not_subscribed' });
+    expect(p['sign']).toMatchObject({ subscribed: true, authorized: true });
+    expect(p['org']).toMatchObject({ subscribed: true, authorized: true, available: true });
   });
 
   it('the org subset ridden by an ATS role (e.g. tenant_owner) makes Organization authorized; an ordinary baseline marker does not', async () => {

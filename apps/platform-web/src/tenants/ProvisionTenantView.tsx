@@ -91,7 +91,7 @@ export function ProvisionTenantView() {
           label="Tenant kind"
           helper={
             kind === 'PERSONAL'
-              ? 'A one-person Sign account: a personal email is allowed, no locked domain, capabilities fixed to core + esign, owner role org_admin.'
+              ? 'A one-person Sign account: a personal email is allowed, no locked domain, capabilities fixed to core + sign, owner roles Tenant Owner + Tenant Admin.'
               : 'An organization: the owner\'s business email domain becomes the locked allowed domain.'
           }
         >

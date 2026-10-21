@@ -312,8 +312,9 @@ function AuditSection() {
 
 // Sign Unified Product S-1 — Sign member administration. Lists the organization's
 // members with their Sign role; a holder of sign:member:manage assigns or removes
-// it. Only a Sign Owner can grant or remove Owner, and the last Owner stays — the
-// backend enforces both and its message is shown as is.
+// it. Ownership of the organization (and its plan) belongs to the organization
+// owner (ROLES-1 PR-2) — the backend enforces every rule and its message is shown
+// as is.
 function MembersSection() {
   const { ctx, toast } = useWorkspace();
   const [rows, setRows] = useState<SignMember[] | null>(null);
@@ -356,7 +357,7 @@ function MembersSection() {
       <div className="sg-card__body">
         <p className="sg-help" style={{ marginBottom: 12 }}>
           Sign roles decide what each person can do in Aramo Sign. Senders work with their own envelopes; Viewers see every envelope in the organization; Admins
-          manage members and every envelope; Owners also manage the plan.
+          manage members and every envelope. The organization owner manages the plan.
         </p>
         {error !== null ? <div className="sg-note">{error}</div> : null}
         {rows === null && error === null ? <div className="sg-muted">Loading…</div> : null}

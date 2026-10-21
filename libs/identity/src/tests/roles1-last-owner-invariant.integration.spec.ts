@@ -85,8 +85,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-1 last
     );
   const LAST_OWNER = /tenant_last_owner/;
 
-  it('registration — the migration is the last entry of the shared identity set and installs 5 ENABLE ALWAYS triggers', async () => {
-    expect(IDENTITY_MIGRATIONS.at(-1)).toBe(MIGRATION);
+  it('registration — the migration is in the shared identity set (followed only by the ROLES-1 PR-2 reconciliation) and installs 5 ENABLE ALWAYS triggers', async () => {
+    // ROLES-1 PR-2 appends 20261021130000_roles1_role_model after this migration.
+    expect(IDENTITY_MIGRATIONS.at(-2)).toBe(MIGRATION);
+    expect(IDENTITY_MIGRATIONS.at(-1)).toBe('libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql');
     const r = await db.query(
       `SELECT tgname, tgenabled FROM pg_trigger WHERE tgname LIKE 'roles1_last_owner_%' AND NOT tgisinternal ORDER BY tgname`,
     );

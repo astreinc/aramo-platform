@@ -89,7 +89,8 @@ export class SenderContextService {
       manage_all: business && scopes.has(ESIGN_SCOPE.ENVELOPE_MANAGE_ALL),
       contacts: scopes.has(ESIGN_SCOPE.CONTACT_READ),
       members: business && scopes.has(ESIGN_SCOPE.MEMBER_MANAGE),
-      billing: business && (scopes.has(ESIGN_SCOPE.BILLING_MANAGE) || scopes.has('tenant:admin:settings')),
+      // ROLES-1 PR-2 (§3.4) — sign:billing:manage only (the tenant_owner bundle).
+      billing: business && scopes.has(ESIGN_SCOPE.BILLING_MANAGE),
     };
     const tenantBase = tenantHostBase(slug);
     return {

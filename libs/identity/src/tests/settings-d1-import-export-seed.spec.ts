@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+// ROLES-1 PR-2 — the bundle grants of row 0010 name ats_admin (formerly tenant_admin); same
+// RoleScope ids. The organization tenant_admin (row 02b0) inherits them via ROLES1_SIGN_SEED_BUNDLES.
 import { IMPORT_EXPORT_SEED_BUNDLES } from '../../prisma/seed.js';
 import { SCOPE_KEY_FORMAT, SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 
@@ -40,13 +42,13 @@ describe('Settings Rebuild D1 — import/export scope catalog parity', () => {
 // derives its JWT scopes from these RoleScope grants, so this is the chain that
 // makes the controllers return data (not 403) for an admin.
 describe('Settings Rebuild D1 — import/export grant table', () => {
-  it('tenant_admin holds BOTH import:read and export:read (Export is admin-gated)', () => {
-    const admin = scopesFor('tenant_admin');
+  it('ats_admin holds BOTH import:read and export:read (Export is admin-gated)', () => {
+    const admin = scopesFor('ats_admin');
     expect(admin).toContain('import:read');
     expect(admin).toContain('export:read');
   });
 
-  it('tenant_owner mirrors tenant_admin (owner ≥ admin)', () => {
+  it('tenant_owner mirrors ats_admin (owner ≥ admin)', () => {
     const owner = scopesFor('tenant_owner');
     expect(owner).toContain('import:read');
     expect(owner).toContain('export:read');

@@ -677,6 +677,8 @@ describe('TenantUserManagementController.enable (§4.1 + IC-3 PR-7 audit)', () =
     expect(lifecycle.enableTenantUser).toHaveBeenCalledWith({
       tenant_id: TENANT_ID,
       user_id: USER_ID,
+      // ROLES-1 PR-2 (§4.2) — the caller, for the owner-only re-enable rule.
+      actor_user_id: makeAuthContext().sub,
       request_id: REQUEST_ID,
     });
     expect(audit.writeEvent).toHaveBeenCalledWith(

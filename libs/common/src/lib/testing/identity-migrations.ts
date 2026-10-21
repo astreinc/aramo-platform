@@ -89,6 +89,11 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // UserTenantMembershipRole / UserTenantMembership / User (no column, no shape
   // change). Applied LAST: it reads Tenant.status (lifecycle) and the init tables only.
   'libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql',
+  // ROLES-1 PR-2 (§5.2) — the role model reconciliation: one guarded DO block (a no-op on a
+  // database without a role catalog, which is every fresh test database — the seed writes
+  // the ROLES-1 model) + the empty identity._roles1_owner_resolution table (S-2). No
+  // returned-shape change. Applied LAST: it reads every earlier identity table.
+  'libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

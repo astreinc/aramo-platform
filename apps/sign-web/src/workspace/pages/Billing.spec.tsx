@@ -208,7 +208,7 @@ describe('BillingPanel', () => {
   });
 });
 
-describe('Journey A — org admin without a Sign role', () => {
+describe('Journey A — organization owner without Sign access', () => {
   beforeEach(() => configureAuthConsumer('sign'));
   afterEach(() => vi.unstubAllGlobals());
 
@@ -223,8 +223,9 @@ describe('Journey A — org admin without a Sign role', () => {
       return json({ items: [] });
     });
 
-  it('an org admin gets the setup page with the plan', async () => {
-    vi.stubGlobal('fetch', app(['tenant:admin:settings', 'tenant:admin:user-manage']));
+  // ROLES-1 PR-2 (§3.4) — plan management is sign:billing:manage only (tenant_owner).
+  it('the organization owner gets the setup page with the plan', async () => {
+    vi.stubGlobal('fetch', app(['sign:billing:manage', 'tenant:admin:settings', 'tenant:admin:user-manage']));
     render(
       <MemoryRouter initialEntries={['/']}>
         <App />
@@ -232,6 +233,16 @@ describe('Journey A — org admin without a Sign role', () => {
     );
     expect(await screen.findByTestId('state-setup')).toBeInTheDocument();
     expect(await screen.findByTestId(`billing-subscribe-${BUSINESS.key}`)).toBeInTheDocument();
+  });
+
+  it('organization settings authority alone no longer gets the setup page (ROLES-1 PR-2)', async () => {
+    vi.stubGlobal('fetch', app(['tenant:admin:settings', 'tenant:admin:user-manage']));
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByTestId('state-no-access')).toBeInTheDocument();
   });
 
   it('anyone else still gets the no-access page', async () => {

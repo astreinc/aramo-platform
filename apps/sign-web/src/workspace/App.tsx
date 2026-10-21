@@ -71,17 +71,17 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
         Your organization doesn’t have the Aramo Sign subscription. An organization admin can ask to add it.
       </FullState>
     );
-  // Aramo Sign launch (Journey A) — an organization admin of an entitled tenant
-  // who holds no Sign role yet sets the organization up here: subscribing makes
-  // them the Sign owner once the backend has verified the payment.
-  if (ctx.status === 'no_access' && scopes.includes('tenant:admin:settings'))
+  // Aramo Sign launch (Journey A) — the organization owner of an entitled tenant
+  // who holds no Sign access yet sets the organization up here. ROLES-1 PR-2
+  // (§3.4): plan management is sign:billing:manage only (the organization owner).
+  if (ctx.status === 'no_access' && scopes.includes('sign:billing:manage'))
     return (
       <div className="sg sg-center" data-testid="state-setup">
         <div className="sg-state" style={{ maxWidth: 760, textAlign: 'left' }}>
           <div className="sg-state__mark">S</div>
           <h1 className="sg-h1">Set up Aramo Sign for your organization</h1>
           <div className="sg-lede" style={{ marginBottom: 16 }}>
-            Choose a plan to start sending documents for signature. As the organization admin who subscribes, you become the Aramo Sign owner.
+            Choose a plan to start sending documents for signature. As the organization owner, you manage the plan.
           </div>
           <BillingPanel onSending={ctx.retry} />
           <div style={{ marginTop: 16 }}>

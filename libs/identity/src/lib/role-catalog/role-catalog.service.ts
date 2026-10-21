@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { ORG_ROLE_KEYS } from '../dto/role.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 
@@ -24,8 +25,15 @@ import {
 // never cached), so an ATS-only tenant's picker never offers a role its
 // administrators cannot assign (the assignability gate refuses it anyway —
 // IdentityService.assertRoleKeysAssignable — this keeps the two surfaces
-// coherent) and a Sign-only tenant's org_admin can work with Sign roles
-// without any ATS role or UI assumption. The endpoint stays auth-gated
+// coherent) and a Sign-only tenant's organization administrator can work with
+// Sign roles without any ATS role or UI assumption.
+//
+// ROLES-1 PR-2 (§3.5) — the organization roles (ORG_ROLE_KEYS) now hold Sign scopes
+// in their static bundles, so the `sign:` partition rule must NOT hide them: they
+// are projected for every tenant, and for a tenant without `sign` their projected
+// scope list omits the sign:* keys (display mirrors the session filters — the
+// rights are exercised only through a consumer whose product the tenant holds).
+// Inactive roles (the deactivated sign_owner row) are never projected. The endpoint stays auth-gated
 // (tenant:admin:user-manage) so only an operator who manages users/roles reads it.
 
 @Injectable()
@@ -39,6 +47,7 @@ export class RoleCatalogService {
   // callers) → the Sign partition is excluded, exactly the pre-PR-8 projection.
   async getCatalog(args?: { tenant_id?: string }): Promise<RoleCatalogView[]> {
     const roles = await this.prisma.role.findMany({
+      where: { is_active: true },
       include: { role_scopes: { include: { scope: true } } },
     });
     const includeEsign =
@@ -53,9 +62,13 @@ export class RoleCatalogService {
       if (scopeKeys.some((k) => k.startsWith('platform:'))) continue;
       // PX-V1 PX-3 / IC-3 PR-8 — the E-Sign product partition: any esign:* scope
       // marks an esign_* product role, projected only for an esign-entitled tenant.
-      if (!includeEsign && scopeKeys.some((k) => k.startsWith('sign:'))) continue;
+      // ROLES-1 PR-2 (§3.5) — never hides an organization role.
+      const isOrgRole = (ORG_ROLE_KEYS as readonly string[]).includes(role.key);
+      if (!includeEsign && !isOrgRole && scopeKeys.some((k) => k.startsWith('sign:'))) continue;
 
-      const scopes = [...new Set(scopeKeys)].sort();
+      const scopes = [...new Set(scopeKeys)]
+        .filter((k) => includeEsign || !k.startsWith('sign:'))
+        .sort();
       const meta = ROLE_CATALOG_META[role.key];
       const view: RoleCatalogView = {
         key: role.key,

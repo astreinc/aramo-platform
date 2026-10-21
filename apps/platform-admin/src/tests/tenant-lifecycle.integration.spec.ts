@@ -222,6 +222,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           is_active: true,
         },
       });
+      // ROLES-1 PR-2 (§6) — provisioning grants tenant_owner + tenant_admin.
+      await identityPrisma.role.create({
+        data: {
+          id: '01900000-0000-7000-8000-0000000002b0',
+          key: 'tenant_admin',
+          description: 'Tenant Admin',
+          is_active: true,
+        },
+      });
 
       module = await Test.createTestingModule({
         imports: [

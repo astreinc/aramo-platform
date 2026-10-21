@@ -44,12 +44,14 @@ const ROSTER = {
   items: [
     { user_id: 'u-1', email: 'owner@acme.test', display_name: 'Olive Owner', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['tenant_owner'] },
     { user_id: 'u-2', email: 'rec@acme.test', display_name: 'Rae Recruiter', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['recruiter', 'sign_sender'] },
+    { user_id: 'u-3', email: 'am@acme.test', display_name: 'Avi Manager', is_active: true, invite_status: 'ACTIVE', deactivated_at: null, site_id: null, role_keys: ['account_manager'] },
   ],
 };
 const CATALOG = {
   roles: [
     { key: 'tenant_owner', display: 'Tenant Owner', description: '', tier: 'Administration', scopes: ['tenant:admin:user-manage', 'talent:read'] },
     { key: 'recruiter', display: 'Recruiter', description: '', tier: 'Operations', scopes: ['talent:read'] },
+    { key: 'account_manager', display: 'Account Manager', description: '', tier: 'Management', scopes: ['tenant:admin:user-manage', 'talent:read'] },
     { key: 'sign_sender', display: 'Sign Sender', description: '', tier: 'Sign', scopes: ['sign:envelope:send'] },
   ],
 };
@@ -83,8 +85,16 @@ describe('organization routes (/org/*)', () => {
     expect(await screen.findByRole('heading', { name: 'Users & invitations' })).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Olive Owner')).toBeInTheDocument());
     for (const h of ['Person', 'Organization', 'ATS', 'Sign']) expect(screen.getByRole('columnheader', { name: h })).toBeInTheDocument();
+    // ROLES-1 PR-2 — the organization roles show as chips in the Organization column (never
+    // under ATS); a person without one is an "Organization admin" when a role carries an
+    // organization permission, else a "Member".
     await waitFor(() => expect(screen.getByText('Organization admin')).toBeInTheDocument());
     expect(screen.getByText('Member')).toBeInTheDocument();
+    const ownerRow = screen.getByText('Olive Owner').closest('tr');
+    expect(ownerRow).not.toBeNull();
+    const cells = ownerRow === null ? [] : Array.from(ownerRow.querySelectorAll('td'));
+    expect(cells[1]?.textContent).toContain('Tenant Owner');
+    expect(cells[2]?.textContent ?? '').not.toContain('Tenant Owner');
     expect(screen.getByTestId('open-invite')).toBeInTheDocument();
     expect(screen.queryByTestId('edit-roles-u-1')).toBeNull();
   });

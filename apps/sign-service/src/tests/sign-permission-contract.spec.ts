@@ -157,12 +157,21 @@ describe('sender context — permissions reflect the role, BUSINESS-only organiz
     const v = await ctx('PERSONAL').context(roleAuth('sign_owner'), 'r');
     expect(v.permissions).toMatchObject({ read_all: false, manage_all: false, members: false, billing: false });
   });
+  // ROLES-1 PR-2 (§3.4) — billing permission = sign:billing:manage only; organization
+  // settings authority (the former fallback) no longer shows the plan controls.
+  it('organization settings authority alone does not grant the billing permission', async () => {
+    const admin = { ...roleAuth('sign_admin') };
+    const v = await ctx().context({ ...admin, scopes: [...admin.scopes, 'tenant:admin:settings'] }, 'r');
+    expect(v.permissions.billing).toBe(false);
+  });
 });
 
-describe('billing administration — Sign Owner or organization settings authority', () => {
-  it('either authority suffices; neither is refused', () => {
+// ROLES-1 PR-2 (§3.4, F-3) — billing is sign:billing:manage ONLY (the tenant_owner bundle);
+// the tenant:admin:settings fallback is removed.
+describe('billing administration — sign:billing:manage only', () => {
+  it('only sign:billing:manage authorizes; organization settings authority alone is refused', () => {
     expect(canManageBilling([ESIGN_SCOPE.BILLING_MANAGE])).toBe(true);
-    expect(canManageBilling(['tenant:admin:settings'])).toBe(true);
+    expect(canManageBilling(['tenant:admin:settings'])).toBe(false);
     expect(canManageBilling(ESIGN_ROLE_PERMISSIONS.sign_admin)).toBe(false);
     expect(canManageBilling([])).toBe(false);
   });

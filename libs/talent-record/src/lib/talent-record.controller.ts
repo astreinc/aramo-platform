@@ -1371,7 +1371,7 @@ export class TalentRecordController {
     // Contact-anchor edit gate (Talent Admission Invariant + data-correction).
     // email1/phone_cell are identity/dedup anchors — mandatory at create and, by
     // default, immutable afterward. Editing them for DATA CORRECTION is authorized
-    // ONLY for tenant_admin + tenant_owner via the dedicated `talent:edit:contact`
+    // ONLY for tenant_owner + tenant_admin + ats_admin (ROLES-1 PR-2) via the dedicated `talent:edit:contact`
     // scope (never a role-name check); `talent:edit` alone (recruiter+) must not.
     // Editable ≠ nullable: a correction may not blank an anchor (would violate the
     // admission invariant, which the update() repo path does not itself re-assert).
@@ -1379,7 +1379,7 @@ export class TalentRecordController {
       if (!authContext.scopes.includes('talent:edit:contact')) {
         throw new AramoError(
           'INSUFFICIENT_PERMISSIONS',
-          'editing a talent contact anchor (email/phone) requires talent:edit:contact (tenant_admin/tenant_owner)',
+          'editing a talent contact anchor (email/phone) requires talent:edit:contact (tenant_owner/tenant_admin/ats_admin)',
           403,
           {
             requestId,

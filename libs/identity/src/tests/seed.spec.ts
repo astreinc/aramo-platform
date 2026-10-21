@@ -83,8 +83,12 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
     // at the role-assign path; the SEED of the role itself is
     // unconditional (the GATE is keyed at the membership-write boundary,
     // NOT at the role-existence boundary).
+    // ROLES-1 PR-2 (§1) — row 0010 is ats_admin (formerly tenant_admin); row 02b0 is
+    // tenant_admin (formerly org_admin). org_admin no longer exists; sign_owner stays in the
+    // catalog list until ROLES-1 PR-3 (its row is inactive).
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
       'account_manager',
+      'ats_admin',
       'auditor',
       'auditor_with_financials',
       'back_office',
@@ -92,8 +96,6 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'delivery_manager',
       'finance',
       'lead_recruiter',
-      // IC-3 PR-7 — product-neutral organization administrator.
-      'org_admin',
       'recruiter',
       'recruiting_manager',
       // PX-V1 PX-3 — Sign product roles (namespace-separate from ATS tenant roles).

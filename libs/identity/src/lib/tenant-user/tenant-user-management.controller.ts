@@ -413,6 +413,8 @@ export class TenantUserManagementController {
     const result = await this.lifecycle.enableTenantUser({
       tenant_id: authContext.tenant_id,
       user_id: userId,
+      // ROLES-1 PR-2 (§4.2) — re-enabling a disabled tenant_owner needs an owner caller.
+      actor_user_id: authContext.sub,
       request_id: requestId,
     });
     if (result.changed === true) {

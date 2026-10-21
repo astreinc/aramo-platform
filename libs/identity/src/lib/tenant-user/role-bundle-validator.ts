@@ -30,9 +30,13 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // rejection (the S2 per-key-validator precedent). The error details carry the
 // offending role_keys + the colliding scope_keys so the caller can self-correct.
 
+// ROLES-1 PR-2 (§3.3) — `ats_admin` (the renamed ATS-superset row …0010) keeps the
+// see-all compensation bundle, so it joins the tier; `tenant_admin` (now the
+// organization administrator, whose bundle includes the full ATS set) stays.
 export const SEE_ALL_ROLE_KEYS: ReadonlySet<string> = new Set([
   'tenant_admin',
   'tenant_owner',
+  'ats_admin',
   'super_admin',
   // Settings S4 — auditor_with_financials. Holds view:pay alongside every
   // spread BY DESIGN (the see-all-comp grant; the whole point of the

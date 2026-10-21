@@ -606,7 +606,7 @@ export class IdentityService {
     tenant_id: string;
     owner_role_authority?: OwnerRoleAuthority;
     request_id: string;
-    action: 'grant' | 'remove' | 'disable' | 'revoke';
+    action: 'grant' | 'remove' | 'disable' | 'revoke' | 'enable';
   }): Promise<void> {
     const authority = args.owner_role_authority;
     if (authority === 'platform' || authority === 'system') return;
@@ -622,7 +622,7 @@ export class IdentityService {
     }
     throw new AramoError(
       'INSUFFICIENT_PERMISSIONS',
-      'Only an organization owner can grant, remove, disable or revoke the owner role',
+      'Only an organization owner can grant, remove, disable, enable or revoke the owner role',
       403,
       {
         requestId: args.request_id,

@@ -152,12 +152,15 @@ console.log(`examination:create authorized set = read ∩ create (${authorized.l
 // does NOT receive the tenant ATS scope examination:create — PG seed-scrub confirms
 // the +6 grant delta (734→740). back_office + delivery_manager MUST be excluded (they
 // hold examination:read but not submittal:create — no create authority).
+// ROLES-1 PR-2 — the …0010 row's bundle entries name `ats_admin` (formerly tenant_admin);
+// the organization tenant_admin (row …02b0) inherits ats_admin's grants relationally at
+// seed time (ROLES1 step), so it is not an explicit entry of this block.
 const EXAM_CREATE_EXPECTED_EXPLICIT = [
   'account_manager',
+  'ats_admin',
   'lead_recruiter',
   'recruiter',
   'recruiting_manager',
-  'tenant_admin',
   'tenant_owner',
 ].sort();
 const EXAM_CREATE_EXCLUDED = ['back_office', 'delivery_manager'];

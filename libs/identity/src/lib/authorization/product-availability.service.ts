@@ -14,7 +14,11 @@ import { ESIGN_SCOPE_PREFIX, filterScopesForConsumer } from './consumer-scope-po
 //                 read live — never a front-end mirror)?
 //   authorized  — does the USER hold at least one scope in that product's
 //                 namespace, exactly as the product's own consumer would resolve it
-//                 (the same filterScopesForConsumer the resolver applies — IC-0 rule 4)?
+//                 (the same filterScopesForConsumer the resolver applies — IC-0 rule 4),
+//                 AND does the tenant hold the product capability? ROLES-1 PR-2
+//                 (§3.5): the organization roles' static bundles carry ATS and Sign
+//                 scopes in every tenant, so a held scope alone no longer means the
+//                 user can work in the product.
 //   available   — may App Home navigate there now = subscribed AND authorized AND
 //                 the product entry is activated in this deployment (Sign stays
 //                 dark until PX-V1 activation; ATS and Organization are live).
@@ -98,10 +102,8 @@ export class ProductAvailabilityService {
     const atsScopes = filterScopesForConsumer({ consumer: 'recruiter', scopes: held, tenantHasEsign }).filter(
       (s) => !orgSubset.includes(s),
     );
-    // Sign — the esign consumer's view restricted to the esign namespace. Evaluated
-    // against the Sign namespace of the HELD scopes directly so "authorized" is
-    // reported even when the tenant is not (yet) subscribed (subscribed=false,
-    // authorized=true is a meaningful state for the operator).
+    // Sign — the esign consumer's view restricted to the esign namespace (read from
+    // the HELD scopes; the capability half of "authorized" is applied below).
     const signScopes = held.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX));
     // Organization — the org consumer's view minus the baseline session marker.
     const orgScopes = filterScopesForConsumer({ consumer: 'org', scopes: held, tenantHasEsign }).filter(
@@ -110,9 +112,16 @@ export class ProductAvailabilityService {
 
     const signActivated = signEntryActivated();
     const products: ProductAvailability[] = [
-      product('ats', capabilities.has('ats'), atsScopes.length > 0, true, ATS_ENTRY_PATH),
-      product('sign', tenantHasEsign, signScopes.length > 0, signActivated, signActivated ? signEntryUrl() : null),
-      product('org', capabilities.has('core'), orgScopes.length > 0, true, ORG_ENTRY_PATH),
+      // ROLES-1 PR-2 (§3.5) — authorized = scope held AND the tenant holds the capability.
+      product('ats', capabilities.has('ats'), capabilities.has('ats') && atsScopes.length > 0, true, ATS_ENTRY_PATH),
+      product(
+        'sign',
+        tenantHasEsign,
+        tenantHasEsign && signScopes.length > 0,
+        signActivated,
+        signActivated ? signEntryUrl() : null,
+      ),
+      product('org', capabilities.has('core'), capabilities.has('core') && orgScopes.length > 0, true, ORG_ENTRY_PATH),
     ];
     return { tenant_id: args.tenant_id, products };
   }

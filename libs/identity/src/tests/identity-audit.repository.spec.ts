@@ -84,8 +84,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // IC-1 PR-1: +1 invitation.rejected_cross_tenant (41 -> 42).
   // IC-3 PR-7: +1 tenant_user.enabled (42 -> 43).
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
-  it('EVENT_TYPES contains 44 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(44);
+  // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
+  it('EVENT_TYPES contains 46 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(46);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.draft_discarded')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.tenant_user.enabled')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.invitation.rejected_cross_tenant')).toBe(true);
@@ -115,7 +118,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // Settings D4 adds site.created + site.updated + site.deactivated (22 -> 25).
   // Domain-Enforcement P2b adds domain.verification.requested + domain.verified (25 -> 27).
   // IC-3 PR-7 adds tenant_user.enabled (27 -> 28).
-  it('TENANT_SCOPED_EVENT_TYPES contains all 28 tenant-scoped values', () => {
+  it('TENANT_SCOPED_EVENT_TYPES contains all the tenant-scoped values', () => {
     const expected = [
       'identity.tenant.created',
       'identity.membership.created',
@@ -167,8 +170,11 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'tenant.lifecycle_transition_rejected',
       // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1 — template draft discard audit.
       'identity.document_template.draft_discarded',
+      // ROLES-1 PR-2 §5.3 — the reconciliation migration's grant / removal rows.
+      'ROLES1_RECONCILE_GRANT',
+      'ROLES1_RECONCILE_REVOKE',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(39); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(41); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

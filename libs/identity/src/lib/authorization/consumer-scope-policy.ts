@@ -24,7 +24,8 @@
 // Namespaces are the existing documented scope keys (`<namespace>:<action>`);
 // nothing is renamed. "core" is NOT a product: holding `core` grants no ATS or
 // Sign authorization. The org-admin subset for Sign-only owners (IC-0 N-2) is
-// the ORG_ADMIN_SCOPE_KEYS set (IC-3 PR-7 ruling: org_admin).
+// the ORG_ADMIN_SCOPE_KEYS set (IC-3 PR-7; ROLES-1 PR-2: the organization part of the
+// tenant_owner / tenant_admin bundles).
 
 import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
 
@@ -85,7 +86,7 @@ export function filterScopesForConsumer(args: {
     // D-ORG (R2 / §3.C) — the organization credential carries EXACTLY the
     // organization-administration subset the principal holds (ORG_ADMIN_SCOPE_KEYS
     // ∩ held): never an ATS product scope, never esign:*, never platform:*.
-    // Possession of `core` is NOT possession of org_admin — an ordinary member
+    // Possession of `core` is NOT organization administration — an ordinary member
     // resolves only the baseline marker(s) its roles carry (e.g. auth:session:read),
     // which is enough for App Home (/v1/me needs no scope) and nothing else.
     case 'org':

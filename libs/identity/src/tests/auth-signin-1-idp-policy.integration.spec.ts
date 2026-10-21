@@ -21,7 +21,11 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 //     equality; legacy links (no recorded provider) keep today's behaviour.
 
 const ROOT = resolve(__dirname, '../../../..');
-const ORG_ADMIN_ROLE = '01900000-0000-7000-8000-0000000002b0';
+// ROLES-1 PR-2 (§3.4; Conforming Amendment 7) — only the organization owner (tenant_owner)
+// may set the pin; the organization administrator (tenant_admin, the former org_admin row)
+// may not.
+const OWNER_ROLE = '01900000-0000-7000-8000-000000000014';
+const TENANT_ADMIN_ROLE = '01900000-0000-7000-8000-0000000002b0';
 const RECRUITER_ROLE = '01900000-0000-7000-8000-000000000011';
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 provider policy (real Postgres 17)', () => {
@@ -36,7 +40,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
     db = new Client({ connectionString: container.getConnectionUri() });
     await db.connect();
     for (const p of resolveIdentityMigrations(ROOT)) await db.query(readFileSync(p, 'utf8'));
-    await db.query(`INSERT INTO identity."Role" (id, key, description, is_active, updated_at) VALUES ($1, 'org_admin', 'Org admin', true, now()), ($2, 'recruiter', 'Recruiter', true, now())`, [ORG_ADMIN_ROLE, RECRUITER_ROLE]);
+    await db.query(`INSERT INTO identity."Role" (id, key, description, is_active, updated_at) VALUES ($1, 'tenant_owner', 'Owner', true, now()), ($2, 'recruiter', 'Recruiter', true, now()), ($3, 'tenant_admin', 'Tenant admin', true, now())`, [OWNER_ROLE, RECRUITER_ROLE, TENANT_ADMIN_ROLE]);
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     policy = new IdentityProviderPolicyService(prisma);
@@ -67,7 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
 
   it('cohort: the owner\'s first federation pins the provider; later sign-ins must match', async () => {
     const t = await tenant({ enforced: true });
-    const owner = await member(t, ORG_ADMIN_ROLE);
+    const owner = await member(t, OWNER_ROLE);
     expect(await policy.evaluate({ user_id: owner, idp: 'microsoft', linking: true })).toEqual({ ok: true, pinned_now: true });
     expect(await pinOf(t)).toBe('microsoft');
     expect(await policy.evaluate({ user_id: owner, tenant_id: t, idp: 'microsoft', linking: false })).toEqual({ ok: true, pinned_now: false });
@@ -79,7 +83,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
 
   it('cohort: concurrent first federations (Google vs Microsoft) — exactly one pin wins', async () => {
     const t = await tenant({ enforced: true });
-    const owner = await member(t, ORG_ADMIN_ROLE);
+    const owner = await member(t, OWNER_ROLE);
     const [a, b] = await Promise.all([
       policy.evaluate({ user_id: owner, idp: 'google', linking: true }),
       policy.evaluate({ user_id: owner, idp: 'microsoft', linking: true }),
@@ -96,7 +100,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
     const recruiter = await member(t, RECRUITER_ROLE);
     expect(await policy.evaluate({ user_id: recruiter, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_not_permitted_for_tenant' });
     expect(await pinOf(t)).toBeNull();
-    const owner = await member(t, ORG_ADMIN_ROLE);
+    // ROLES-1 PR-2 — the organization administrator is not an owner: no pin.
+    const admin = await member(t, TENANT_ADMIN_ROLE);
+    expect(await policy.evaluate({ user_id: admin, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_not_permitted_for_tenant' });
+    expect(await pinOf(t)).toBeNull();
+    const owner = await member(t, OWNER_ROLE);
     expect(await policy.evaluate({ user_id: owner, idp: 'ambiguous', linking: true })).toEqual({ ok: false, reason: 'idp_not_permitted_for_tenant' });
     expect(await policy.evaluate({ user_id: owner, idp: null, linking: true })).toEqual({ ok: false, reason: 'idp_not_permitted_for_tenant' });
     expect(await pinOf(t)).toBeNull();
@@ -104,10 +112,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
 
   it('existing tenants (no policy row) are never refused — pinned (e.g. Microsoft) or NULL — and never get a pin', async () => {
     const pinned = await tenant({ enforced: false, pin: 'microsoft' });
-    const u1 = await member(pinned, ORG_ADMIN_ROLE);
+    const u1 = await member(pinned, OWNER_ROLE);
     expect(await policy.evaluate({ user_id: u1, idp: 'google', linking: false })).toEqual({ ok: true, pinned_now: false });
     const open = await tenant({ enforced: false });
-    const u2 = await member(open, ORG_ADMIN_ROLE);
+    const u2 = await member(open, OWNER_ROLE);
     expect(await policy.evaluate({ user_id: u2, idp: 'google', linking: true })).toEqual({ ok: true, pinned_now: false });
     expect(await pinOf(open)).toBeNull();
     expect(await pinOf(pinned)).toBe('microsoft');
@@ -115,20 +123,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
 
   it('R2 (all tenants): a second provider is never merged into a user; legacy links keep today\'s behaviour', async () => {
     const t = await tenant({ enforced: false });
-    const u = await member(t, ORG_ADMIN_ROLE);
+    const u = await member(t, OWNER_ROLE);
     const link = await repo.linkExternalIdentity({ user_id: u, provider: 'cognito', provider_subject: `ms-${u}`, email_snapshot: null });
     await policy.recordLinkIdp(link.id, 'microsoft');
     expect(await policy.evaluate({ user_id: u, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
     expect(await policy.evaluate({ user_id: u, idp: 'microsoft', linking: true })).toEqual({ ok: true, pinned_now: false });
     // A legacy link (no recorded provider) does not block — today's behaviour.
-    const legacy = await member(t, ORG_ADMIN_ROLE);
+    const legacy = await member(t, OWNER_ROLE);
     await repo.linkExternalIdentity({ user_id: legacy, provider: 'cognito', provider_subject: `legacy-${legacy}`, email_snapshot: null });
     expect(await policy.evaluate({ user_id: legacy, idp: 'google', linking: true })).toEqual({ ok: true, pinned_now: false });
   });
 
   it('recordLinkIdp is idempotent and rejects unknown providers at the database', async () => {
     const t = await tenant({ enforced: false });
-    const u = await member(t, ORG_ADMIN_ROLE);
+    const u = await member(t, OWNER_ROLE);
     const link = await repo.linkExternalIdentity({ user_id: u, provider: 'cognito', provider_subject: `g-${u}`, email_snapshot: null });
     await policy.recordLinkIdp(link.id, 'google');
     await policy.recordLinkIdp(link.id, 'google');

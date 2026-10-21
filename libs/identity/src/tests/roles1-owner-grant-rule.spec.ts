@@ -72,12 +72,15 @@ function fixture(opts: {
     findActiveInvitationByUserAndTenant: vi.fn().mockResolvedValue(null),
     revokeInvitation: vi.fn().mockResolvedValue({ changed: true }),
     findTenantAllowedDomainById: vi.fn().mockResolvedValue(null),
+    // ROLES-1 PR-2 — the enable path.
+    findTenantAccessStateById: vi.fn().mockResolvedValue({ status: 'ACTIVE', is_active: true }),
+    reEnableMembership: vi.fn().mockResolvedValue({ membership_id: TARGET_M }),
   };
   const audit = { writeGlobalEvent: vi.fn(), writeEvent: vi.fn() } as unknown as IdentityAuditService;
   const roleBundle = { assertUnionNonInvertible: vi.fn().mockResolvedValue(undefined) } as unknown as RoleBundleValidator;
   const entitlements = { getCapabilities: vi.fn(async () => new Set(['core', 'ats'])) } as unknown as TenantEntitlementReader;
   const identity = new IdentityService(repo as unknown as IdentityRepository, audit, roleBundle, entitlements);
-  const cognito = { adminDisableUser: vi.fn().mockResolvedValue(undefined), adminEnableUser: vi.fn() };
+  const cognito = { adminDisableUser: vi.fn().mockResolvedValue(undefined), adminEnableUser: vi.fn().mockResolvedValue(undefined) };
   const lifecycle = new TenantUserLifecycleService(
     identity,
     cognito as unknown as TenantCognitoPort,
@@ -209,5 +212,39 @@ describe('ROLES-1 §4.2 — disable / revoke of a tenant_owner (TenantUserLifecy
     const { lifecycle, repo } = fixture({ actorKeys: ['tenant_owner'], targetKeys: ['tenant_owner'], targetMembership: { invite_status: 'INVITED' } });
     await lifecycle.revokeTenantInvite({ tenant_id: TENANT, user_id: TARGET, actor_user_id: ACTOR, request_id: REQ });
     expect(repo.disableMembership).toHaveBeenCalledWith({ user_id: TARGET, tenant_id: TENANT, request_id: REQ });
+  });
+});
+
+// ROLES-1 PR-2 (§4.2; the PR-1 gap) — POST :user_id/enable re-activates a DISABLED
+// membership; when it holds tenant_owner that restores an owner, so only a tenant_owner
+// caller may do it (same rule as disable / revoke).
+describe('ROLES-1 §4.2 — enable of a disabled tenant_owner (TenantUserLifecycleService)', () => {
+  it('a NON-owner re-enabling a disabled owner → 403; no identity flip, no Cognito call', async () => {
+    const { lifecycle, repo, cognito } = fixture({ actorKeys: ['tenant_admin'], targetKeys: ['tenant_owner'], targetMembership: { is_active: false } });
+    await expect(lifecycle.enableTenantUser({ tenant_id: TENANT, user_id: TARGET, actor_user_id: ACTOR, request_id: REQ })).rejects.toMatchObject({
+      ...OWNER_REFUSAL,
+      context: { details: { action: 'enable' } },
+    });
+    expect(repo.reEnableMembership).not.toHaveBeenCalled();
+    expect(cognito.adminEnableUser).not.toHaveBeenCalled();
+  });
+
+  it('an OWNER re-enabling a disabled owner → proceeds', async () => {
+    const { lifecycle, repo, cognito } = fixture({ actorKeys: ['tenant_owner'], targetKeys: ['tenant_owner'], targetMembership: { is_active: false } });
+    await lifecycle.enableTenantUser({ tenant_id: TENANT, user_id: TARGET, actor_user_id: ACTOR, request_id: REQ });
+    expect(repo.reEnableMembership).toHaveBeenCalledTimes(1);
+    expect(cognito.adminEnableUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('a NON-owner re-enabling a disabled non-owner → proceeds (the rule is narrow)', async () => {
+    const { lifecycle, repo } = fixture({ actorKeys: ['tenant_admin'], targetKeys: ['recruiter'], targetMembership: { is_active: false } });
+    await lifecycle.enableTenantUser({ tenant_id: TENANT, user_id: TARGET, actor_user_id: ACTOR, request_id: REQ });
+    expect(repo.reEnableMembership).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-enabling an ALREADY ACTIVE owner is an idempotent no-op and needs no owner caller', async () => {
+    const { lifecycle, repo } = fixture({ actorKeys: ['tenant_admin'], targetKeys: ['tenant_owner'] });
+    await lifecycle.enableTenantUser({ tenant_id: TENANT, user_id: TARGET, actor_user_id: ACTOR, request_id: REQ });
+    expect(repo.reEnableMembership).toHaveBeenCalledTimes(1);
   });
 });
