@@ -677,11 +677,17 @@
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
       "TEMPLATE_TENANT_LOGO",
+      "TEMPLATE_VARIABLE_DATA_TYPES",
+      "TemplateDraftAlreadyExistsError",
       "TemplateImmutableError",
       "TemplateNotFoundError",
+      "TemplateVariableKeyConflictError",
+      "TemplateVariableNotFoundError",
+      "TemplateVariablesRepository",
       "TemplateVersionNotActiveError",
       "TemplateVersionNotFoundError",
-      "TemplatesRepository"
+      "TemplatesRepository",
+      "templateErrorToHttp"
     ],
     "@aramo/documents-contracts": [
       "ESIGN_S2S_SCHEME",
@@ -2244,6 +2250,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2341,6 +2359,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3281,6 +3305,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-controller-entitlement.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3808,6 +3838,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4982,6 +5024,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/doclib-t1-template-ownership.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t2-platform-repo.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
       },
@@ -6546,6 +6594,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6570,6 +6624,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/fixtures/rtr-seed-catalog.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6589,6 +6649,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },

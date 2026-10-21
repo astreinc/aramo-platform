@@ -3924,6 +3924,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -11222,6 +11228,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/document-signing/signature-availability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/document-templates-platform/platform-document-templates.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
