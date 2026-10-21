@@ -11892,6 +11892,11 @@
       "to": "libs/identity/src/lib/dto/scope.dto.ts"
     },
     {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
+      "to": "libs/pipeline/src/lib/pipeline.controller.ts"
+    },
+    {
       "from": "ci/scripts/verify-portal-refusal.ts",
       "status": "unscoped",
       "to": "doc/03-refusal-layer.md"

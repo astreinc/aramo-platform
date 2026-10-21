@@ -280,8 +280,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'pipeline:change-status',
         // L2-C — CATALOG-ONLY, granted to NO role (system-only COMPLETE capability).
         'pipeline:complete',
-        'pipeline:re-add', // Remediation v1.0 R3 (DEF-15(b))
         'pipeline:read',
+        'pipeline:re-add', // Remediation v1.0 R3 (DEF-15(b)); DB collation orders it after pipeline:read
         'pipeline:resume:set',
         'placement:activate',
         'placement:create',

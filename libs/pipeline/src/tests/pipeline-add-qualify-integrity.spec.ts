@@ -26,10 +26,12 @@ const AUTH = {
   scopes: ['pipeline:add', 'pipeline:change-status', 'pipeline:complete'],
 } as unknown as AuthContextType;
 
-function controller(parts: { talentExists?: boolean; withReader?: boolean } = {}) {
+function controller(parts: { talentExists?: boolean; withReader?: boolean; visible?: ReadonlySet<string> | null; endedBefore?: boolean } = {}) {
   const transition = vi.fn().mockResolvedValue({ id: 'pl-1', status: 'qualifying' });
   const create = vi.fn().mockResolvedValue({ id: 'pl-1', status: 'no_contact' });
-  const pipelineRepository = { transition, create, recordDecision: vi.fn() };
+  // Remediation v1.0 R3 (DEF-15(b)) — whether the Talent had an ended episode on the requisition.
+  const hasEndedEpisode = vi.fn().mockResolvedValue(parts.endedBefore ?? false);
+  const pipelineRepository = { transition, create, recordDecision: vi.fn(), hasEndedEpisode };
   const decide = vi.fn().mockResolvedValue({
     disposition: 'ALLOW',
     reason_code: 'LIFECYCLE_ALLOWED_DEFAULT',
@@ -48,7 +50,9 @@ function controller(parts: { talentExists?: boolean; withReader?: boolean } = {}
     undefined,
     parts.withReader === false ? undefined : ({ existsInTenant } as never),
   );
-  const req = { resolveVisibleRequisitionIds: async () => [REQ] } as never;
+  // The visibility resolver yields a Set (or null = see-all); default: REQ is visible.
+  const visible = parts.visible === undefined ? new Set([REQ]) : parts.visible;
+  const req = { resolveVisibleRequisitionIds: async () => visible } as never;
   return { ctl, req, transition, create, decide, existsInTenant };
 }
 
@@ -72,8 +76,8 @@ describe('DEF-4 — POST /v1/pipelines requires the Talent to exist in the tenan
   const body = { talent_record_id: TALENT, requisition_id: REQ } as never;
 
   it('an absent / cross-tenant talent is 404 NOT_FOUND; no policy call, no write', async () => {
-    const { ctl, create, decide, existsInTenant } = controller({ talentExists: false });
-    await expect(ctl.create(AUTH, body, 'rq-1', KEY)).rejects.toMatchObject({
+    const { ctl, req, create, decide, existsInTenant } = controller({ talentExists: false });
+    await expect(ctl.create(AUTH, body, 'rq-1', KEY, req)).rejects.toMatchObject({
       code: 'NOT_FOUND',
       statusCode: 404,
     });
@@ -83,9 +87,45 @@ describe('DEF-4 — POST /v1/pipelines requires the Talent to exist in the tenan
   });
 
   it('an existing talent proceeds to the policy call and the create', async () => {
-    const { ctl, create, decide } = controller({ talentExists: true });
-    await ctl.create(AUTH, body, 'rq-1', KEY);
+    const { ctl, req, create, decide } = controller({ talentExists: true });
+    await ctl.create(AUTH, body, 'rq-1', KEY, req);
     expect(decide).toHaveBeenCalledTimes(1);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R3 — DEF-9 (visibility) + DEF-15(b) (re-add).
+describe('R3 — POST /v1/pipelines visibility and re-add gates (unit)', () => {
+  const body = { talent_record_id: TALENT, requisition_id: REQ } as never;
+
+  it('DEF-9: a requisition the actor cannot see conceals as 404, before the policy call', async () => {
+    const { ctl, req, create, decide } = controller({ visible: new Set(['some-other-req']) });
+    await expect(ctl.create(AUTH, body, 'rq-1', KEY, req)).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(decide).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('DEF-9: a see-all actor (null visibility) proceeds', async () => {
+    const { ctl, req, create } = controller({ visible: null });
+    await ctl.create(AUTH, body, 'rq-1', KEY, req);
+    expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it('DEF-15(b): re-adding after an ended episode without pipeline:re-add → 403; nothing created', async () => {
+    const { ctl, req, create, decide } = controller({ endedBefore: true });
+    await expect(ctl.create(AUTH, body, 'rq-1', KEY, req)).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'pipeline_re_add_requires_senior_role' } },
+    });
+    expect(decide).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('DEF-15(b): a pipeline:re-add holder may re-add', async () => {
+    const { ctl, req, create } = controller({ endedBefore: true });
+    const senior = { ...AUTH, scopes: [...AUTH.scopes, 'pipeline:re-add'] } as unknown as AuthContextType;
+    await ctl.create(senior, body, 'rq-1', KEY, req);
     expect(create).toHaveBeenCalledTimes(1);
   });
 });
