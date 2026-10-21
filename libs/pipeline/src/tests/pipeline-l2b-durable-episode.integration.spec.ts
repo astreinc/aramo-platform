@@ -341,10 +341,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const terminalActor = randomUUID();
       const midRow = await repo.findById({ tenant_id: tenant, id: created.id });
       const t0 = Date.now();
-      await repo.transition({
+      // Remediation Directive v1.0 R1 (DEF-5) — not_in_consideration only via a governed
+      // disposition (a bare transition is refused), so the flip goes through DISPOSITION.
+      await repo.applyAction({
         tenant_id: tenant,
         id: created.id,
-        to_status: 'not_in_consideration',
+        action: 'DISPOSITION',
+        authority_class: 'RECRUITER',
+        reason: 'not_a_fit',
         changed_by_id: terminalActor,
         requestId: 'ac5-terminal',
         expected_version: midRow!.version,

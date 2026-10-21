@@ -15,3 +15,7 @@ export const ACCEPTING_EVIDENCE_VERIFIER: EvidenceReferenceVerifierPort = {
 export function syntheticEvidenceFor(target: string, id: string): { kind: string; id: string } {
   return { kind: target === 'talent_responded' ? 'recruiter_response_confirmation' : 'communication_interaction', id };
 }
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-5) — not_in_consideration is reached only
+// through a governed disposition; substrate specs that drive a record there pass this one.
+export const TEST_RECRUITER_DISPOSITION = { authority_class: 'RECRUITER', reason: 'not_a_fit' } as const;

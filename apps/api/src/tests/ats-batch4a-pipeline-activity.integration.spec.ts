@@ -674,6 +674,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { status: res.status, body: await res.json() };
     }
 
+    // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-5) — not_in_consideration is reached
+    // only through the governed DISPOSITION action (a reason is required).
+    async function disposition(jwt: string, id: string): Promise<{ status: number; body: unknown }> {
+      const vr = await setupClient.query<{ version: number }>(
+        `SELECT version FROM pipeline."Pipeline" WHERE id = $1::uuid`,
+        [id],
+      );
+      const res = await fetch(`http://127.0.0.1:${port}/v1/pipelines/${id}/actions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'DISPOSITION',
+          authority_class: 'RECRUITER',
+          reason: 'not_a_fit',
+          expected_version: vr.rows[0]?.version ?? 0,
+        }),
+      });
+      return { status: res.status, body: await res.json() };
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -920,11 +940,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Idempotency protects the OPERATION, not the (talent, req) pair: once the
       // first episode reaches a terminal status (live slot released), a create
       // with a genuinely NEW key mints a NEW historical episode.
-      const term = await transition(
-        recruiterJwt_Ats_SiteA,
-        firstBody.id,
-        'not_in_consideration',
-      );
+      // Remediation Directive v1.0 R1 (DEF-5) — a bare /transition to not_in_consideration is
+      // refused (no reason); the governed DISPOSITION action closes the episode.
+      const bare = await transition(recruiterJwt_Ats_SiteA, firstBody.id, 'not_in_consideration');
+      expect(bare.status).toBe(422);
+      expect((bare.body as { error?: { code?: string; details?: { reason?: string } } }).error).toMatchObject({
+        code: 'PIPELINE_DISPOSITION_REASON_INVALID',
+        details: { reason: 'disposition_required' },
+      });
+      const term = await disposition(recruiterJwt_Ats_SiteA, firstBody.id);
       expect(term.status).toBe(200);
 
       const secondKey = randomUUID();

@@ -16,7 +16,8 @@ import { UpcomingMeetings } from '../../microsoft/UpcomingMeetings';
 import { getMicrosoftBindingStatus, type MicrosoftBindingStatus } from '../../microsoft/microsoft-api';
 import { OfferPanelContainer } from '../../offers/OfferPanelContainer';
 import { transitionErrorMessage } from '../../pipeline/error-messages';
-import { listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } from '../../pipeline/pipeline-api';
+import { dispositionPipelineEpisode, listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } from '../../pipeline/pipeline-api';
+import { NotInConsiderationDialog, type NotInConsiderationChoice } from '../../pipeline/NotInConsiderationDialog';
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { getCurrentRtr, remindRtr } from '../../rtr/rtr-api';
@@ -194,6 +195,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const [responseOpen, setResponseOpen] = useState(false);
   const [rtrOpen, setRtrOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
+  // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-6) — Not in consideration (with reason).
+  const [nicOpen, setNicOpen] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState('');
 
@@ -446,6 +449,18 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       })
       .catch(() => toast.show('Could not send the reminder. Try again shortly.'))
       .finally(() => setReminding(false));
+  };
+
+  // R1 (DEF-6) — Not in consideration is offered while the episode is in a recruiting stage.
+  const canMarkNotInConsideration =
+    canAdvance &&
+    pipeline !== null &&
+    ['no_contact', 'contacted', 'talent_responded', 'qualifying', 'qualified'].includes(pipeline.status);
+  const confirmNotInConsideration = async (choice: NotInConsiderationChoice): Promise<void> => {
+    if (pipeline === null) return;
+    await dispositionPipelineEpisode(pipeline.id, { ...choice, expected_version: pipeline.version });
+    toast.show(`${talentName} marked Not in consideration`);
+    setReload((n) => n + 1);
   };
 
   const confirmVoid = async (): Promise<void> => {
@@ -935,6 +950,23 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
                           {talent.is_hot ? 'Remove HOT' : 'Mark as HOT'}
                         </Button>
                       ) : null}
+                      {canMarkNotInConsideration ? (
+                        <>
+                          <span className="tr360-more__div" />
+                          <Button
+                            unstyled
+                            type="button"
+                            role="menuitem"
+                            className="tr360-more__item"
+                            onClick={() => {
+                              setMoreOpen(false);
+                              setNicOpen(true);
+                            }}
+                          >
+                            Not in consideration…
+                          </Button>
+                        </>
+                      ) : null}
                       {voidAction !== undefined ? (
                         <>
                           <span className="tr360-more__div" />
@@ -954,7 +986,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
                           </Button>
                         </>
                       ) : null}
-                      {!canEditTalent && voidAction === undefined ? (
+                      {!canEditTalent && voidAction === undefined && !canMarkNotInConsideration ? (
                         <span className="tr360-more__item">No more actions</span>
                       ) : null}
                     </span>
@@ -1077,6 +1109,15 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
           recipientEmail={talent?.email1 ?? null}
           onClose={() => setRtrOpen(false)}
           onSent={() => setReload((n) => n + 1)}
+        />
+      ) : null}
+      {nicOpen ? (
+        <NotInConsiderationDialog
+          open
+          talentName={talentName}
+          onOpenChange={setNicOpen}
+          onConfirm={confirmNotInConsideration}
+          errorMessage={transitionErrorMessage}
         />
       ) : null}
       {voidOpen ? (

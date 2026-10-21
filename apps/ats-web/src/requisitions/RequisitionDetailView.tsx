@@ -1343,6 +1343,7 @@ function TalentJourney({
           }}
           onCardAction={actions.runCardAction}
           onRequestVoid={actions.requestVoid}
+          onRequestNotInConsideration={actions.requestNotInConsideration}
           onSendRtr={actions.canSendRtr ? actions.requestSendRtr : undefined}
           refreshToken={actions.boardRefresh}
         />

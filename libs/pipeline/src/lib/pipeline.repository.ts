@@ -749,6 +749,22 @@ export class PipelineRepository {
       );
     }
 
+    // Step 3a' — Pipeline & RTR Recon Remediation Directive v1.0 §2 R1 (DEF-5; Lane2-C :87, A1-TE
+    // TE-5): `not_in_consideration` is reached ONLY through a governed disposition (the recruiter
+    // DISPOSITION action with a reason, or the system downstream command). A bare transition —
+    // e.g. POST /transition — carries no reason and is refused on EVERY requisition status.
+    if (args.to_status === 'not_in_consideration' && args.disposition === undefined) {
+      throw new AramoError(
+        'PIPELINE_DISPOSITION_REASON_INVALID',
+        'Not in consideration needs a reason; use the disposition action',
+        422,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, from_status: fromStatus, reason: 'disposition_required' },
+        },
+      );
+    }
+
     // Step 3b — EVIDENCE GATE (Recruiting-Journey §3/§7/§17, I1/I2). A transition
     // INTO an evidence-backed milestone (contacted / talent_responded) must carry
     // grounding evidence provenance. The generic /transition + recruiter /actions

@@ -263,6 +263,31 @@ describe('RequisitionTalentBoard (TB-2)', () => {
     expect(screen.queryByRole('button', { name: 'Remove from requisition' })).not.toBeInTheDocument();
   });
 
+  // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-6) — Not in consideration (with reason).
+  it('offers "Not in consideration…" on a recruiting-stage card for pipeline:change-status and calls the handler', async () => {
+    const onNic = vi.fn();
+    const c = card({ talent_record_id: 't1', pipeline_id: 'pipe-nic', column: 'contacted', owner: 'pipeline', owner_state: 'contacted', next_actions: [] });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [c] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestNotInConsideration={onNic} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Ada Lovelace' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Not in consideration…' }));
+    expect(onNic).toHaveBeenCalledWith('pipe-nic', 'Ada Lovelace');
+  });
+
+  it('does not offer "Not in consideration…" without pipeline:change-status, or on a handoff card', async () => {
+    const live = card({ talent_record_id: 't1', pipeline_id: 'p1', column: 'contacted', owner: 'pipeline', owner_state: 'contacted', next_actions: [] });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [live] }] }));
+    const { unmount } = render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={[]} onSelectCard={vi.fn()} onRequestNotInConsideration={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Ada Lovelace' }));
+    expect(screen.queryByRole('button', { name: 'Not in consideration…' })).not.toBeInTheDocument();
+    unmount();
+    const handoff = card({ talent_record_id: 't1', pipeline_id: 'p2', column: 'submitted', owner: 'submittal', owner_state: 'SUBMITTED', handoff: true, next_actions: [] });
+    mockGet.mockResolvedValue(board({ total_active: 1, columns: [{ key: 'submitted', owner: 'submittal', count: 1, cards: [handoff] }] }));
+    render(<RequisitionTalentBoard requisitionId="r1" talentNames={NAMES} scopes={['pipeline:change-status']} onSelectCard={vi.fn()} onRequestNotInConsideration={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions for Ada Lovelace' }));
+    expect(screen.queryByRole('button', { name: 'Not in consideration…' })).not.toBeInTheDocument();
+  });
+
   // TB-6 — a downstream (handoff) card is presented as tracked read-only, not draggable.
   it('marks a downstream card as Tracked (read-only) with its owner label', async () => {
     const c = card({

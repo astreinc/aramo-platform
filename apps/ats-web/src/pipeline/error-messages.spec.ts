@@ -28,6 +28,11 @@ describe('transitionErrorMessage (v1.2 §2.4)', () => {
     expect(transitionErrorMessage(new ApiError(409, 'x', 'REQUISITION_NOT_ADVANCEABLE'))).toMatch(/isn’t available while the requisition/);
   });
 
+  it('Not in consideration without a reason, and an already-recorded outcome (R1)', () => {
+    expect(transitionErrorMessage(new ApiError(422, 'x', 'PIPELINE_DISPOSITION_REASON_INVALID'))).toMatch(/Choose a reason/);
+    expect(transitionErrorMessage(new ApiError(409, 'x', 'PIPELINE_ALREADY_DISPOSITIONED'))).toMatch(/already has a recorded outcome/);
+  });
+
   it('an unknown error keeps the generic fallback', () => {
     expect(transitionErrorMessage(new Error('boom'))).toBe('The status change failed. Please try again.');
   });

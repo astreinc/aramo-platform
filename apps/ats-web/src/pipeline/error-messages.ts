@@ -28,6 +28,14 @@ export function transitionErrorMessage(error: unknown): string {
     if (error.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
       return 'Something changed at the same moment, so nothing was saved. Try again.';
     }
+    // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-5/DEF-6) — Not in consideration
+    // needs a governed disposition with a reason, and is recorded once.
+    if (error.code === 'PIPELINE_DISPOSITION_REASON_INVALID') {
+      return 'Choose a reason to mark this talent Not in consideration.';
+    }
+    if (error.code === 'PIPELINE_ALREADY_DISPOSITIONED') {
+      return 'This talent already has a recorded outcome on this requisition. Refresh to see it.';
+    }
     if (error.code === 'REQUISITION_NO_OPENINGS') {
       return 'This requisition has no openings remaining. The transition to Placed was rejected.';
     }

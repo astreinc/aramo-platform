@@ -442,6 +442,7 @@ export function WorkspacePanel({
                 }}
                 onCardAction={talentActions.runCardAction}
                 onRequestVoid={talentActions.requestVoid}
+                onRequestNotInConsideration={talentActions.requestNotInConsideration}
                 onSendRtr={talentActions.canSendRtr ? talentActions.requestSendRtr : undefined}
                 refreshToken={talentActions.boardRefresh}
               />
