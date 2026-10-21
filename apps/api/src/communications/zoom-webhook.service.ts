@@ -10,7 +10,6 @@ import {
   verifyZoomWebhookSignature,
 } from '@aramo/communications';
 import { IntegrationConnectionService } from '@aramo/integration';
-import { PipelineRepository } from '@aramo/pipeline';
 
 import { ZoomWebhookSecretResolver } from './zoom-webhook-secret.resolver.js';
 import {
@@ -28,14 +27,11 @@ import {
 // CommunicationProviderEvent inbox and never creates a second event table.
 const ZOOM_RECORDING_TRANSCRIPT_COMPLETED_EVENT = 'phone.recording_transcript_completed';
 
-// Recruiting-Journey §8 — the call-interaction states that constitute a PROVIDER-
-// VERIFIED two-way conversation. On reaching either, the bound Pipeline advances to
-// talent_responded through the CANONICAL response-evidence seam (reconcileForward) —
-// the same path recruiter-attested responses use. No special Pipeline mechanism.
-const ZOOM_TWO_WAY_STATES: ReadonlySet<string> = new Set(['connected', 'completed']);
-
-// A fixed system principal for connector-driven governed commands (audit-stable).
-const ZOOM_WEBHOOK_SYSTEM_ACTOR_ID = '01900000-0000-7000-8000-0000000000c2';
+// Talent Lifecycle R1–R5 Implementation Directive v1.2 §7.1 (S4, A1 AM-4) — evidence ingestion
+// is INDEPENDENT of progression: a call reaching `connected` / `completed` is recorded (the
+// interaction transition below) but NEVER advances the Pipeline. A telecom connection is not,
+// by itself, a substantive Talent response (A1 §5.1); "Talent responded" is recruiter-confirmed
+// only (POST /v1/communications/talent-responses). Earlier automatic advances stay recorded.
 
 // COMM-B6 — apps/api Zoom webhook ingress processing. Implements the LOCKED
 // anti-oracle flow. Tenant is resolved ONLY after cryptographic authenticity is
@@ -79,10 +75,6 @@ export class ZoomWebhookService {
     private readonly providers: VoiceProviderRegistry,
     private readonly repo: CommunicationsRepository,
     private readonly comms: CommunicationsService,
-    // Recruiting-Journey §8 — composition-root read/act into Pipeline for the
-    // two-way → talent_responded convergence (PipelineRepository). apps/api edge only;
-    // NO libs/communications → pipeline dependency.
-    private readonly pipelines: PipelineRepository,
     // CI-B5Z — optional: bound when the Conversation-Intelligence composition
     // module is present. Unbound → transcript events are recorded `ignored`.
     @Optional()
@@ -246,46 +238,12 @@ export class ZoomWebhookService {
       throw err;
     }
 
-    // 9) Recruiting-Journey §8 — a PROVIDER-VERIFIED two-way conversation advances the
-    // bound Pipeline to talent_responded through the CANONICAL response-evidence seam
-    // (reconcileForward), grounded on THIS provider interaction. SAME path as
-    // recruiter-attested responses — no special Pipeline mechanism. Best-effort: the
-    // interaction evidence is already durable, so any Pipeline anomaly (no binding,
-    // CAS conflict, concealment) is logged + swallowed, never failing the webhook.
-    if (ZOOM_TWO_WAY_STATES.has(normalized.target_status)) {
-      await this.maybeAdvanceResponded(connection.tenant_id, interaction.id);
-    }
-
     await this.repo.markProviderEventProcessed(reservation.row.id, {
       status: 'processed',
       interaction_id: interaction.id,
     });
     this.log(connection.tenant_id, envelope.event, 'processed');
     return { status: 204 };
-  }
-
-  // Recruiting-Journey §8 — resolve the bound Pipeline from the interaction's
-  // association and reconcile it FORWARD to talent_responded through the canonical
-  // evidence command (provider-verified provenance). Forward-only + idempotent (a
-  // `completed` after `connected` is a no-op). Never throws.
-  private async maybeAdvanceResponded(tenantId: string, interactionId: string): Promise<void> {
-    try {
-      const pipelineId = await this.repo.findAssociatedPipelineId(tenantId, interactionId);
-      if (pipelineId === null) return;
-      await this.pipelines.reconcileForward({
-        tenant_id: tenantId,
-        id: pipelineId,
-        target: 'talent_responded',
-        changed_by_id: ZOOM_WEBHOOK_SYSTEM_ACTOR_ID,
-        requestId: `zoom-twoway-${interactionId}`,
-        visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: interactionId },
-      });
-    } catch (err) {
-      this.logger.warn(
-        `zoom_webhook.responded_orchestration_skipped tenant=${tenantId} interaction=${interactionId} reason=${err instanceof Error ? err.message : 'unknown'}`,
-      );
-    }
   }
 
   /** Observability without leaking secret/PII/raw payload. */

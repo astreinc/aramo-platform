@@ -6450,13 +6450,33 @@ paths:
         CAS-protected). The Talent and Requisition are resolved server-side FROM the
         pipeline; a non-visible/cross-tenant pipeline is concealed as 404.
 
+        Talent Lifecycle R1–R5 Implementation Directive v1.2 §7.4/§7.5 (S4): only a
+        recruiter USER confirms (never a system, service or connector principal). The
+        recruiter attests a SUBSTANTIVE response (`substantive_response_attested: true`)
+        and grounds it on EITHER a verified source interaction (`source_interaction_id`:
+        same tenant, bound to this Talent and requisition, latest outcome substantive)
+        OR a note. The confirmation is recorded with disposition `response_confirmed`,
+        both the occurred and the recorded time, and the reviewer. On a closed or
+        canceled requisition a response that occurred BEFORE the requisition closed is
+        appended as history and never advances the Pipeline (`advanced: false`).
+
         Refusals:
-          - 400 VALIDATION_ERROR — body invariants, a missing/non-UUID Idempotency-Key,
-            occurred_at in the future, occurred_at before the first grounded outbound
-            contact for this Talent × Requisition, or channel=other with no note.
+          - 400 VALIDATION_ERROR — DTO format (non-UUID ids, bad types).
+          - 403 INSUFFICIENT_PERMISSIONS — the principal is not a recruiter user
+            (details.reason recruiter_user_required), or the scope is missing.
           - 404 NOT_FOUND — the pipeline is absent, cross-tenant, or not visible.
           - 409 PIPELINE_TRANSITION_CONFLICT — the journey changed concurrently
             (stale); refresh and retry.
+          - 409 REQUISITION_NOT_ADVANCEABLE — the requisition's status does not permit
+            a response (lead), or it is closed/canceled and occurred_at is not before
+            the closing time.
+          - 422 VALIDATION_ERROR — a missing Idempotency-Key, the attestation missing
+            (attestation_required), no source and no note (note_required_without_source),
+            channel=other with no note, occurred_at in the future, or occurred_at before
+            the first grounded outbound contact for this Talent × Requisition.
+          - 422 PIPELINE_EVIDENCE_INADMISSIBLE — the source interaction is not found in
+            the tenant, is bound to another Talent or requisition, or is not substantive
+            (source_not_substantive); or the evidence could not be verified.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -6467,7 +6487,7 @@ paths:
           description: |
             UUID idempotency key. A retried recorder (same key) returns the existing
             evidence with no second write and one effective milestone advancement;
-            genuinely separate responses carry distinct keys. Missing/non-UUID → 400.
+            genuinely separate responses carry distinct keys. Missing → 422.
       requestBody:
         required: true
         content:
@@ -12224,7 +12244,20 @@ components:
         note:
           type: string
           maxLength: 500
-          description: Optional recruiter note; REQUIRED when channel is `other`.
+          description: |
+            Recruiter note. REQUIRED when no `source_interaction_id` is given, and when
+            channel is `other` (v1.2 §7.4 — the attestation alone never suffices).
+        substantive_response_attested:
+          type: boolean
+          description: |
+            The recruiter attests the Talent gave a substantive response. Must be `true`
+            (a missing or false value is refused 422 attestation_required).
+        source_interaction_id:
+          type: string
+          format: uuid
+          description: |
+            The interaction this confirmation confirms (e.g. the call the Talent answered).
+            Verified server-side; a non-substantive latest outcome is refused.
     RecordTalentResponseView:
       type: object
       additionalProperties: false
@@ -12234,6 +12267,10 @@ components:
         - deduped
         - pipeline_stage
         - pipeline_version
+        - advanced
+        - occurred_at
+        - recorded_at
+        - recorded_by_id
       properties:
         interaction_id:
           type: string
@@ -12248,6 +12285,23 @@ components:
         pipeline_version:
           type: integer
           description: The optimistic-concurrency version after the advance.
+        advanced:
+          type: boolean
+          description: |
+            Whether the Pipeline milestone advanced. False for a replay, an episode already
+            at/past the target, or a historical record on a closed/canceled requisition.
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the Talent responded (recruiter-supplied).
+        recorded_at:
+          type: string
+          format: date-time
+          description: When the confirmation was recorded (server time).
+        recorded_by_id:
+          type: string
+          format: uuid
+          description: The recruiter who recorded the confirmation (the reviewer).
     InitiateCommunicationCallRequest:
       type: object
       additionalProperties: false

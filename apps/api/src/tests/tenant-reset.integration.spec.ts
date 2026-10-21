@@ -199,8 +199,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Requisition lifecycle event (bare-UUID history — must be exported then deleted).
       await db.query(
         `INSERT INTO requisition."RequisitionLifecycleEvent"
-           (id, tenant_id, requisition_id, previous_status, next_status, actor_id, origin, reason_code, correlation_id)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'open','on_hold','actor-1','ui','MANUAL_HOLD','corr-1')`,
+           (id, tenant_id, requisition_id, previous_status, next_status, actor_id, origin, reason_code, correlation_id,
+            hold_reason, hold_source, hold_effective_at)
+         VALUES ($1::uuid,$2::uuid,$3::uuid,'open','on_hold','actor-1','ui','MANUAL_HOLD','corr-1',
+                 'Client paused','client',now())`,
         [uuidv7(), T, REQ1],
       );
 

@@ -92,6 +92,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         origin: 'ui',
         reason_code: 'RECRUITER_HOLD',
         correlation_id: uuidv7(),
+        // v1.2 §6.1 (S3) — an on_hold transition event carries its hold details (DB CHECK).
+        hold: { reason: 'Client paused', source: 'client', effective_at: new Date(), instructions: null },
       });
       expect(rec.previous_status).toBe('open');
       expect(rec.next_status).toBe('on_hold');

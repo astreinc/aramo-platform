@@ -1,6 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import { AramoError, type VisibilityContextShape } from '@aramo/common';
+import {
+  AramoError,
+  LOCK_TIMEOUT_SQL,
+  LOCKED_TX_OPTIONS,
+  isRetryableTransactionConflict,
+  rethrowTransactionConflict,
+  type VisibilityContextShape,
+} from '@aramo/common';
 import {
   insertPolicyDecisionRecordInTx,
   type InsertPolicyDecisionRecordInput,
@@ -22,6 +29,7 @@ import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import { assertStatusOnlyEditScope } from './status-edit-gate.js';
+import { resolveManualHoldDetails } from './hold-details.js';
 import { assertApprovalAuthorization } from './approval-authorization-gate.js';
 import {
   assertEstablishmentAuthorization,
@@ -30,7 +38,7 @@ import {
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
-import type { RequisitionView } from './dto/requisition.view.js';
+import type { RequisitionHoldView, RequisitionView } from './dto/requisition.view.js';
 import { isGatedRecruitingStatus, type RecruitingStatus } from './dto/requisition-status.js';
 import { ACTION_TARGET_STATUS, governingAction } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
@@ -39,9 +47,10 @@ import {
   type ExternalLifecycleCommandResult,
   type ExternalLifecycleTransitionCommand,
 } from './dto/external-lifecycle-command.js';
-import type {
-  RecordRequisitionLifecycleEventInput,
-  RequisitionLifecycleOrigin,
+import {
+  holdColumns,
+  type RecordRequisitionLifecycleEventInput,
+  type RequisitionLifecycleOrigin,
 } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import {
@@ -540,6 +549,7 @@ function projectView(
     // event history when the current status is pending_approval. The list path
     // leaves it null.
     pending_approval_submitter_id: null,
+    hold: null,
   };
 }
 
@@ -662,6 +672,8 @@ export class RequisitionRepository {
         reason_code: input.reason_code,
         policy_decision_id: input.policy_decision_id ?? null,
         correlation_id: input.correlation_id,
+        // v1.2 §6 (S3) — hold details on an on_hold event only (DB CHECKs enforce it).
+        ...holdColumns(input.hold),
       },
     });
     return id;
@@ -817,6 +829,62 @@ export class RequisitionRepository {
     return ev?.actor_id ?? null;
   }
 
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3) — the hold details of the CURRENT hold:
+  // the newest next_status='on_hold' event (precedent latestApprovalSubmitterActor). A hold event
+  // with no source predates the amendment → recorded:false ("not recorded"). provider_status is
+  // joined through integration.RequisitionExternalTransitionProvenance.lifecycle_event_id
+  // (cross-schema UUID ref, no FK, no nx edge); fail-soft — that row is written after commit.
+  private async latestHoldDetails(
+    tenant_id: string,
+    requisition_id: string,
+  ): Promise<RequisitionHoldView | null> {
+    const ev = await this.prisma.requisitionLifecycleEvent.findFirst({
+      where: { tenant_id, requisition_id, next_status: 'on_hold' },
+      orderBy: { occurred_at: 'desc' },
+      select: {
+        id: true,
+        hold_reason: true,
+        hold_source: true,
+        hold_effective_at: true,
+        hold_instructions: true,
+      },
+    });
+    if (ev === null || ev.hold_source === null) {
+      return {
+        recorded: false,
+        reason: null,
+        reason_provided: false,
+        source: null,
+        effective_at: null,
+        instructions: null,
+        provider_status: null,
+      };
+    }
+    let provider_status: string | null = null;
+    if (ev.hold_source === 'vms') {
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ raw_provider_status: string }>>`
+          SELECT "raw_provider_status"
+            FROM "integration"."RequisitionExternalTransitionProvenance"
+           WHERE "tenant_id" = ${tenant_id}::uuid AND "lifecycle_event_id" = ${ev.id}::uuid
+           LIMIT 1
+        `;
+        provider_status = rows[0]?.raw_provider_status ?? null;
+      } catch (err) {
+        this.logger.warn(`hold provider_status read failed (fail-soft): ${String(err)}`);
+      }
+    }
+    return {
+      recorded: true,
+      reason: ev.hold_reason,
+      reason_provided: ev.hold_reason !== null,
+      source: ev.hold_source as 'client' | 'vms' | 'internal',
+      effective_at: ev.hold_effective_at?.toISOString() ?? null,
+      instructions: ev.hold_instructions,
+      provider_status,
+    };
+  }
+
   // T1-e — persist the §D17a transition provenance with a CALLER-CONTROLLED id
   // so the SAME id lands in RequisitionLifecycleEvent.policy_decision_id (§2.2).
   // This mirrors @aramo/policy-store's insertPolicyDecisionRecordInTx byte-for-
@@ -863,6 +931,19 @@ export class RequisitionRepository {
       select: { status: true },
     });
     return row === null ? null : (row.status as RecruitingStatus);
+  }
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.5 (S4, A1 AM-1 §2.4) — the instant a closed /
+  // canceled requisition closed: the newest lifecycle event INTO closed or canceled (index
+  // (tenant_id, requisition_id, occurred_at)). A historical response may be recorded on a
+  // terminal requisition only if it occurred BEFORE this. Null when no such event exists.
+  async findClosingInstant(args: { tenant_id: string; id: string }): Promise<Date | null> {
+    const ev = await this.prisma.requisitionLifecycleEvent.findFirst({
+      where: { tenant_id: args.tenant_id, requisition_id: args.id, next_status: { in: ['closed', 'canceled'] } },
+      orderBy: { occurred_at: 'desc' },
+      select: { occurred_at: true },
+    });
+    return ev?.occurred_at ?? null;
   }
 
   // CB-D2-R (ADR-0030) — READ-ONLY status + version accessor for the external
@@ -1429,6 +1510,29 @@ export class RequisitionRepository {
         },
       );
     }
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — closed / canceled are
+    // TERMINAL for the ordinary lifecycle: ANY status change FROM them is refused, including
+    // to `lead` / `draft` (which governingAction leaves ungoverned). A client that reopens
+    // hiring gets a NEW requisition identity, never a silent revival.
+    if (statusChanges && isTerminalRequisitionStatusLocal(existing.status)) {
+      throw new AramoError(
+        'REQUISITION_STATUS_TERMINAL',
+        'A closed or canceled requisition cannot change status; create a new requisition instead',
+        409,
+        { requestId: args.requestId, details: { id: args.id, status: existing.status } },
+      );
+    }
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.2 (S3, A1 AM-3) — a PUT_ON_HOLD carries
+    // its reason + source (required); `hold` on any other edge is refused. Validated BEFORE
+    // the policy engine runs and before any write; the details land on the lifecycle event.
+    const holdDetails = resolveManualHoldDetails({
+      is_put_on_hold:
+        statusChanges &&
+        governingAction(existing.status as RecruitingStatus, args.input.status as RecruitingStatus) === 'PUT_ON_HOLD',
+      hold: args.input.hold,
+      now: new Date(),
+      requestId: args.requestId,
+    });
     // T1-e (§2.2 / R8) — route the status change through its GOVERNING action.
     // Every status change is gated here: the four governed targets can be
     // reached ONLY through their action (no direct-set bypass); ungoverned
@@ -1470,6 +1574,23 @@ export class RequisitionRepository {
             requestId: args.requestId,
           })
         : await this.prisma.$transaction(async (tx) => {
+            // v1.2 §5.4 (LR-F A) / T-3 — bounded lock waits; then, for a status change, the
+            // status writer LOCKS the row FOR UPDATE and re-reads it inside the transaction.
+            // It must still be the status gateTransition decided on (T-6), else the change
+            // is refused. The lock conflicts with a client submit's FOR SHARE read, so a
+            // hold can never commit underneath an in-flight submit (and vice versa).
+            await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+            if (statusChanges) {
+              const locked = await lockRequisitionStatusForUpdate(tx, args.tenant_id, args.id);
+              if (locked !== existing.status) {
+                throw new AramoError(
+                  'REQUISITION_VERSION_CONFLICT',
+                  'The requisition was modified by another request; reload and retry',
+                  409,
+                  { requestId: args.requestId, details: { id: args.id } },
+                );
+              }
+            }
             const updated = await this.casUpdate(tx, {
               tenant_id: args.tenant_id,
               id: args.id,
@@ -1504,10 +1625,13 @@ export class RequisitionRepository {
                 // T1-e — the governed decision's id (null for an ungoverned edit).
                 policy_decision_id: transitionGate?.decision_id ?? null,
                 correlation_id: args.requestId,
+                ...(holdDetails === undefined ? {} : { hold: holdDetails }),
               });
             }
             return updated;
-          });
+          }, LOCKED_TX_OPTIONS).catch((err: unknown) =>
+            rethrowTransactionConflict(err, args.requestId, 'requisition.update'),
+          );
     return this.projectViewWithCapacity(args.tenant_id, row as RequisitionRow);
   }
 
@@ -1560,6 +1684,12 @@ export class RequisitionRepository {
     if (current === null) {
       return { outcome: 'REFUSED', reason: 'REQUISITION_NOT_FOUND', current_status: null };
     }
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — an external event can never
+    // move a closed / canceled requisition (e.g. a VMS "reopen"): an illegal-from-state
+    // command, routed to reconciliation with NO mutation (Lane1-D1 precedent).
+    if (isTerminalRequisitionStatusLocal(current)) {
+      return { outcome: 'REFUSED', reason: 'ILLEGAL_FROM_STATE', current_status: current };
+    }
     // External authority governs OPERATIONAL transitions only (CLOSE / REOPEN /
     // PUT_ON_HOLD / CANCEL); the human approval sub-workflow (SUBMIT_FOR_APPROVAL
     // / APPROVE / REJECT) is NEVER reachable from an external event.
@@ -1610,10 +1740,24 @@ export class RequisitionRepository {
     // tx before ANY write -> reconciliation, NO lost update.
     try {
       const eventId = await this.prisma.$transaction(async (tx) => {
+        // v1.2 §5.4 / T-3 / T-6 — bounded lock waits; lock + re-read the row FOR UPDATE; it
+        // must still be the status the decision was made on; and pin that status in the CAS
+        // (expected_version is optional on this seam).
+        await tx.$executeRawUnsafe(LOCK_TIMEOUT_SQL);
+        const locked = await lockRequisitionStatusForUpdate(tx, cmd.tenant_id, cmd.requisition_id);
+        if (locked !== current) {
+          throw new AramoError(
+            'REQUISITION_VERSION_CONFLICT',
+            'The requisition was modified by another request; reload and retry',
+            409,
+            { requestId: correlationId, details: { id: cmd.requisition_id } },
+          );
+        }
         await this.casUpdate(tx, {
           tenant_id: cmd.tenant_id,
           id: cmd.requisition_id,
           expectedVersion: cmd.expected_version,
+          expectedStatus: current,
           data: { status: target },
           requestId: correlationId,
         });
@@ -1632,8 +1776,21 @@ export class RequisitionRepository {
           reason_code: LIFECYCLE_REASON_EXTERNAL,
           policy_decision_id: allowed.decision_id,
           correlation_id: correlationId,
+          // v1.2 §6.3 (C-3) — a VMS halt is never rejected for a missing reason and the reason
+          // is never invented: source 'vms', the provider's reason only when a connector
+          // supplies one (none does today → NULL = "not provided by VMS").
+          ...(target === 'on_hold'
+            ? {
+                hold: {
+                  reason: null,
+                  source: 'vms' as const,
+                  effective_at: new Date(cmd.external_provenance.external_event_at),
+                  instructions: null,
+                },
+              }
+            : {}),
         });
-      });
+      }, LOCKED_TX_OPTIONS);
       return {
         outcome: 'EXECUTED',
         previous_status: current,
@@ -1643,6 +1800,11 @@ export class RequisitionRepository {
       };
     } catch (err) {
       if (err instanceof AramoError && err.code === 'REQUISITION_VERSION_CONFLICT') {
+        return { outcome: 'REFUSED', reason: 'CAS_CONFLICT', current_status: current };
+      }
+      // v1.2 §2.2 T-3 — a lock-wait / deadlock / tx-timeout abort left no effect: a
+      // concurrency refusal routed to reconciliation (never a raw failure, never a retry here).
+      if (isRetryableTransactionConflict(err)) {
         return { outcome: 'REFUSED', reason: 'CAS_CONFLICT', current_status: current };
       }
       throw err;
@@ -1669,12 +1831,16 @@ export class RequisitionRepository {
       expectedVersion: number | undefined;
       data: Record<string, unknown>;
       requestId: string;
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.4 — the from-status the decision was
+      // made on, pinned in the CAS WHERE (the external seam's expected_version is optional).
+      expectedStatus?: RecruitingStatus;
     },
   ): Promise<RequisitionRow> {
     const where: Prisma.RequisitionWhereInput = {
       id: args.id,
       tenant_id: args.tenant_id,
       ...(args.expectedVersion !== undefined ? { version: args.expectedVersion } : {}),
+      ...(args.expectedStatus !== undefined ? { status: args.expectedStatus } : {}),
     };
     let result: Prisma.BatchPayload;
     try {
@@ -2044,6 +2210,9 @@ export class RequisitionRepository {
     // via the EXISTING latestApprovalSubmitterActor lookup (no new query); every
     // other status (and the list path) leaves the field null. Cosmetic only — the
     // authoritative SoD gate stays in-service at gateTransition.
+    if (view !== null && view.status === 'on_hold') {
+      return { ...view, hold: await this.latestHoldDetails(args.tenant_id, args.id) };
+    }
     if (view !== null && view.status === 'pending_approval') {
       return {
         ...view,
@@ -2457,4 +2626,26 @@ export class RequisitionRepository {
       recruiter_id: r.recruiter_id,
     }));
   }
+}
+
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — closed / canceled are terminal.
+// Local to libs/requisition (libs/pipeline depends on this lib, never the reverse).
+function isTerminalRequisitionStatusLocal(status: string): boolean {
+  return status === 'closed' || status === 'canceled';
+}
+
+// v1.2 §5.4 (T-1) — the status WRITER's own read: FOR UPDATE inside its transaction, so it
+// conflicts with a submit / Pipeline FOR SHARE reader and serializes concurrent writers.
+async function lockRequisitionStatusForUpdate(
+  tx: { $queryRawUnsafe<T = unknown>(query: string, ...values: unknown[]): Promise<T> },
+  tenant_id: string,
+  id: string,
+): Promise<string | null> {
+  const rows = await tx.$queryRawUnsafe<Array<{ status: string }>>(
+    `SELECT "status"::text AS status FROM "requisition"."Requisition"
+      WHERE "id" = $1::uuid AND "tenant_id" = $2::uuid FOR UPDATE`,
+    id,
+    tenant_id,
+  );
+  return rows[0]?.status ?? null;
 }

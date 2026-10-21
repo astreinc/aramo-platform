@@ -519,6 +519,11 @@ model RequisitionLifecycleEvent {
 
   occurred_at    DateTime @default(now()) @db.Timestamptz(6)
   correlation_id String
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6 (S3, A1 AM-3) — hold details (on_hold only).
+  hold_reason       String?
+  hold_source       String?
+  hold_effective_at DateTime? @db.Timestamptz(6)
+  hold_instructions String?
 
   // Group one command's records; tenant/requisition-scoped, time-ordered reads.
   @@index([tenant_id, requisition_id, occurred_at], map: "RequisitionLifecycleEvent_tenant_req_occurred_idx")

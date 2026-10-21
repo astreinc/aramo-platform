@@ -9,8 +9,13 @@ import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 // This proves the single authority that the Board projection, the Qualification
 // transition, Submittal readiness, and the actual Submit-to-client validation all reuse
 // (they each call assess/assessMany through this same predicate). `assess` is the public
-// window onto isRtrRequired: not required → {satisfied:true}; required + no executed doc →
-// {satisfied:false, deny:'SUBMITTAL_RTR_NOT_EXECUTED'}.
+// window onto the effective requirement: NOT_REQUIRED → {satisfied:true}; required + no
+// executed doc → {satisfied:false, deny:'SUBMITTAL_RTR_NOT_EXECUTED'}.
+//
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1/§4.8 (A1 AM-6 §7.3): the two former
+// "ungoverned → ungated" cases (no policy layer; a policy without an rtr_present key) are
+// SUPERSEDED — both are UNRESOLVED, which is NEVER satisfied (deny
+// SUBMITTAL_RTR_POLICY_UNRESOLVED).
 
 const INPUT = { tenant_id: 't1', talent_id: 'tal-1', requisition_id: 'req-1' };
 
@@ -22,22 +27,42 @@ function gate(args: {
   const documents = {
     findExecutedByTypeAndAssociations: vi.fn().mockResolvedValue(args.executed ? { id: 'rtr-doc' } : null),
   };
-  const policy = { resolveEffective: vi.fn().mockResolvedValue(args.policy) };
+  const policy = {
+    resolveEffective: vi.fn().mockResolvedValue(args.policy),
+    resolveRequirementSource: vi.fn().mockResolvedValue(resolutionOf(args.policy)),
+  };
   const companyId = { findCompanyId: vi.fn().mockResolvedValue(args.companyId ?? null) };
   const g = new DocumentReadinessGate(documents as never, policy as never, companyId as never);
   return { g, documents, policy, companyId };
 }
+
+// The gate's resolveRequirementSource view of a definition (mirrors the service merge).
+function resolutionOf(policy: unknown | null): unknown {
+  if (policy === null) return { state: 'NO_LAYER' };
+  const req = (policy as { requirements: Array<{ key: string; disposition: string }> }).requirements.find(
+    (r) => r.key === 'rtr_present',
+  );
+  if (req === undefined) return { state: 'NO_KEY', composite_version: 'TENANT:1:x' };
+  return {
+    state: 'RESOLVED',
+    disposition: req.disposition,
+    source: { scope: 'TENANT', scope_ref: null, package_name: 'client-submittal-policy', version: '1', checksum: 'x' },
+    composite_version: 'TENANT:1:x',
+  };
+}
+
+const UNRESOLVED = { satisfied: false, deny: 'SUBMITTAL_RTR_POLICY_UNRESOLVED', missing: ['rtr_policy'] };
 
 const required = { requirements: [{ key: 'rtr_present', disposition: 'REQUIRED' }] };
 const notRequired = { requirements: [{ key: 'rtr_present', disposition: 'NOT_REQUIRED' }] };
 const otherKeyOnly = { requirements: [{ key: 'work_authorization_present', disposition: 'REQUIRED' }] };
 
 describe('DocumentReadinessGate — effective-policy applicability (the one canonical authority)', () => {
-  it('ungoverned tenant (resolveEffective → null) → NOT required → ungated', async () => {
+  it('SUPERSEDED (v1.2 §4.1): no policy layer → UNRESOLVED → refused, never ungated', async () => {
     const { g, documents } = gate({ policy: null });
     const v = await g.assess(INPUT);
-    expect(v).toEqual({ satisfied: true, deny: null });
-    // The executed-doc satisfaction query is never issued when RTR is not required.
+    expect(v).toEqual(UNRESOLVED);
+    // No executed-doc query: an unresolved requirement is refused on configuration alone.
     expect(documents.findExecutedByTypeAndAssociations).not.toHaveBeenCalled();
   });
 
@@ -46,9 +71,9 @@ describe('DocumentReadinessGate — effective-policy applicability (the one cano
     expect(await g.assess(INPUT)).toEqual({ satisfied: true, deny: null });
   });
 
-  it('policy present but has NO rtr_present key → NOT required → ungated', async () => {
+  it('SUPERSEDED (v1.2 §4.1): policy present but NO rtr_present key → UNRESOLVED → refused', async () => {
     const { g } = gate({ policy: otherKeyOnly });
-    expect(await g.assess(INPUT)).toEqual({ satisfied: true, deny: null });
+    expect(await g.assess(INPUT)).toEqual(UNRESOLVED);
   });
 
   it('policy declares rtr_present REQUIRED + no executed RTR → required + denied', async () => {
@@ -67,7 +92,12 @@ describe('DocumentReadinessGate — effective-policy applicability (the one cano
     const { g, policy, companyId } = gate({ policy: required, companyId: 'co-9', executed: false });
     await g.assess(INPUT);
     expect(companyId.findCompanyId).toHaveBeenCalledWith({ tenant_id: 't1', id: 'req-1' });
-    expect(policy.resolveEffective).toHaveBeenCalledWith('t1', { company_id: 'co-9', requisition_id: 'req-1' });
+    expect(policy.resolveRequirementSource).toHaveBeenCalledWith(
+      't1',
+      { company_id: 'co-9', requisition_id: 'req-1' },
+      'rtr_present',
+      expect.any(Date),
+    );
   });
 });
 
@@ -83,6 +113,7 @@ describe('DocumentReadinessGate — INC-1c assessMandatory (unconditional RTR)',
     const { g, policy } = gate({ policy: notRequired, executed: true });
     expect(await g.assessMandatory(INPUT)).toEqual({ satisfied: true, deny: null });
     expect(policy.resolveEffective).not.toHaveBeenCalled();
+    expect(policy.resolveRequirementSource).not.toHaveBeenCalled();
   });
 
   it('no executed RTR → fail-closed deny SUBMITTAL_RTR_NOT_EXECUTED (policy never consulted)', async () => {
@@ -91,13 +122,15 @@ describe('DocumentReadinessGate — INC-1c assessMandatory (unconditional RTR)',
     expect(v.satisfied).toBe(false);
     expect(v.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
     expect(policy.resolveEffective).not.toHaveBeenCalled();
+    expect(policy.resolveRequirementSource).not.toHaveBeenCalled();
     expect(companyId.findCompanyId).not.toHaveBeenCalled();
   });
 
-  it('UNGOVERNED tenant (policy null) + no executed RTR → STILL denied (stricter than assess)', async () => {
+  it('no policy layer + no executed RTR → assess UNRESOLVED; assessMandatory NOT_EXECUTED', async () => {
     const { g } = gate({ policy: null, executed: false });
-    // assess() would return satisfied:true here (ungated); assessMandatory fails closed.
-    expect(await g.assess(INPUT)).toEqual({ satisfied: true, deny: null });
+    // v1.2 §4.1 — assess() refuses the unresolved requirement; assessMandatory fails closed
+    // on the missing executed RTR itself (it never consults the policy).
+    expect(await g.assess(INPUT)).toEqual(UNRESOLVED);
     const v = await g.assessMandatory(INPUT);
     expect(v.satisfied).toBe(false);
     expect(v.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');

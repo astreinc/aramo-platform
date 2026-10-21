@@ -21,6 +21,17 @@ export interface UpdateRequisitionRequestDto {
   // this PR keeps it optional so no existing caller breaks.
   version?: number;
 
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.2 (S3, A1 AM-3) — the hold details, REQUIRED
+  // on a PUT_ON_HOLD (reason + source) and refused on any other edge. A control payload: it is
+  // written to the lifecycle EVENT row, never spread into the requisition update `data`.
+  // `source` is client | internal on this manual path ('vms' is recorded only by the seam).
+  hold?: {
+    reason?: string;
+    source?: string;
+    effective_at?: string;
+    instructions?: string | null;
+  };
+
   title?: string;
   contact_id?: string | null;
   company_department_id?: string | null;

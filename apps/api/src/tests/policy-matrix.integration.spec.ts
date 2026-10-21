@@ -17,6 +17,7 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.p
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { seedTalentRecord } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -99,12 +100,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,$3,$4,$5::"requisition"."RecruitingStatus", (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [id, TENANT, `req-${status}`, uuid(), status]);
       return id;
     }
+    // Add Talent requires the Talent to exist in the caller's tenant (Lane2-DDR §0/§6):
+    // seed a fresh live TalentRecord per POST (a fresh id keeps each a distinct triple).
+    async function seedTalent(tenant: string): Promise<string> {
+      const id = uuid();
+      await seedTalentRecord(db, { id, tenant_id: tenant });
+      return id;
+    }
     function baseUrl(): string {
       const a = app.getHttpServer().address();
       return `http://127.0.0.1:${typeof a === 'object' && a !== null ? a.port : 0}`;
     }
-    async function postPipeline(jwt: string, reqId: string, overrideReason?: string): Promise<Response> {
-      return fetch(`${baseUrl()}/v1/pipelines?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: JSON.stringify({ talent_record_id: uuid(), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });
+    async function postPipeline(jwt: string, reqId: string, overrideReason?: string, tenant: string = TENANT): Promise<Response> {
+      return fetch(`${baseUrl()}/v1/pipelines?site_id=${SITE}`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() }, body: JSON.stringify({ talent_record_id: await seedTalent(tenant), requisition_id: reqId, site_id: SITE, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });
     }
     async function postSourcing(jwt: string, reqId: string, overrideReason?: string): Promise<Response> {
       return fetch(`${baseUrl()}/v1/sourcing/pipeline`, { method: 'POST', headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ref_type: 'SOURCED_TALENT', ref_id: uuid(), requisition_id: reqId, ...(overrideReason === undefined ? {} : { override_reason_code: overrideReason }) }) });
@@ -150,7 +158,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('EVERY cell (24) evaluates per the matrix against the PUBLISHED + RETRIEVED package', async () => {
       const resolved = await store.getActiveVersion(TENANT, PKG_NAME);
-      expect(resolved?.version).toBe('7.0.0');
+      expect(resolved?.version).toBe('8.0.0'); // v1.2 §5.7
       for (const [status, row] of Object.entries(EXPECTED)) {
         for (const [resource, expected] of Object.entries(row)) {
           const d = evaluate(resolved!.definition, contextFor(status, resource));
@@ -194,7 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(`INSERT INTO requisition."Requisition" (id, tenant_id, title, company_id, status, requisition_number) VALUES ($1,$2,'r',$3,'open', (SELECT COALESCE(MAX(rn.requisition_number),999)+1 FROM requisition."Requisition" rn WHERE rn.tenant_id = $2))`, [req, T, uuid()]);
       const jwt = await new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: T, site_id: SITE, authz_version: __authzTestResolver.grant(T, ACTOR, ['pipeline:add'])})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
-      expect((await postPipeline(jwt, req)).status).toBe(201);
+      expect((await postPipeline(jwt, req, undefined, T)).status).toBe(201);
       const first = (await db.query(`SELECT id, policy_version FROM policy_store."PolicyDecisionRecord" WHERE tenant_id=$1 ORDER BY occurred_at DESC LIMIT 1`, [T])).rows[0];
       expect(first.policy_version).toBe('3.0.0');
       // Republish v4.0.0 (later window); the earlier record must STILL name 3.0.0.

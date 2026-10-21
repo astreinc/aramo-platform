@@ -32,6 +32,15 @@ export const NO_POLICY_PUBLISHED_REASON = 'NO_POLICY_PUBLISHED';
 const NO_POLICY_VERSION = '__none__';
 const NO_POLICY_RULE_ID = '__no_policy__';
 
+// FAIL-CLOSED sentinel (Lane2-DDR RP-1 "enforced fail-closed") — a requisition id that
+// does not resolve IN THIS TENANT (absent, or another tenant's) has no declared status, so
+// no matrix cell can match and the package's permissive no-match default would ALLOW an
+// orphan episode. The policy is never evaluated against an unresolved requisition: it is
+// DENIED here, before package retrieval, with its own reason_code (provenance still
+// records the attempt).
+export const REQUISITION_NOT_FOUND_REASON = 'REQUISITION_NOT_FOUND';
+const UNRESOLVED_REQUISITION_RULE_ID = '__requisition_not_found__';
+
 export interface AddTalentPolicyInput {
   readonly tenant_id: string;
   readonly requisition_id: string;
@@ -60,6 +69,12 @@ export interface AddTalentPolicyOutcome {
   readonly required_capabilities: readonly string[];
   /** The §D17a record to persist — carries the REAL verdict + stored version. */
   readonly provenance: InsertPolicyDecisionRecordInput;
+  /**
+   * Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — the requisition status this
+   * decision was made on (null when unresolved). The create transaction re-reads it under
+   * lock and refuses if it changed (a stale decision never creates an episode).
+   */
+  readonly requisition_status: string | null;
 }
 
 @Injectable()
@@ -100,6 +115,24 @@ export class AddTalentPolicyService {
       correlation_id: input.correlation_id,
     };
 
+    if (status === null) {
+      // FAIL CLOSED — unresolved requisition (absent or cross-tenant) = DENY (RP-1).
+      const provenance: InsertPolicyDecisionRecordInput = {
+        ...base,
+        decision: 'DENY' as Decision,
+        policy_version: NO_POLICY_VERSION,
+        rule_id: UNRESOLVED_REQUISITION_RULE_ID,
+        reason_code: REQUISITION_NOT_FOUND_REASON,
+      };
+      return {
+        disposition: 'DENY',
+        reason_code: REQUISITION_NOT_FOUND_REASON,
+        required_capabilities: [],
+        provenance,
+        requisition_status: status,
+      };
+    }
+
     // Retrieve the tenant's active package (checksum-verified inside the store).
     const resolved = await this.policyStore.getActiveVersion(
       input.tenant_id,
@@ -120,6 +153,7 @@ export class AddTalentPolicyService {
         reason_code: NO_POLICY_PUBLISHED_REASON,
         required_capabilities: [],
         provenance,
+        requisition_status: status,
       };
     }
 
@@ -141,6 +175,7 @@ export class AddTalentPolicyService {
       reason_code: decision.reason_code,
       required_capabilities: decision.required_capabilities,
       provenance,
+      requisition_status: status,
     };
   }
 }

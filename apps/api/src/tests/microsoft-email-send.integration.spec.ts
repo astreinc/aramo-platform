@@ -125,6 +125,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let consent: FakeConsent;
     let recipients: FakeRecipients;
     let pipelines: FakePipelines;
+    // v1.2 §5.6 — the requisition status the pre-send CONTACT_SEND gate sees.
+    let requisitionStatus: string | null = 'open';
     let svc: MicrosoftEmailService;
 
     const TENANT = randomUUID();
@@ -182,6 +184,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     beforeEach(() => {
+      requisitionStatus = 'open';
       graph = new FakeGraph();
       consent = new FakeConsent();
       recipients = new FakeRecipients();
@@ -220,6 +223,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         consent,
         recipients,
         pipelines as unknown as ConstructorParameters<typeof MicrosoftEmailService>[6],
+        // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — the requisition status for the
+        // pre-send CONTACT_SEND gate (open unless a test sets it).
+        { findStatusById: async () => requisitionStatus } as unknown as ConstructorParameters<typeof MicrosoftEmailService>[7],
       );
     });
 
@@ -254,6 +260,23 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await expect(svc.sendRecruiterEmail(baseArgs())).rejects.toThrow();
       expect(await countInteractions()).toBe(before);
       expect(graph.sendCount).toBe(1); // attempted, but no evidence persisted
+    });
+
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 (A1 AM-1 §2.2, D-3) — new contact made
+    // THROUGH a closed / canceled requisition is refused BEFORE the Graph send; an email with no
+    // requisition in scope is unaffected.
+    it('S2 — a requisition-scoped email on a closed or canceled requisition is refused before Graph, with no evidence', async () => {
+      for (const terminal of ['closed', 'canceled']) {
+        requisitionStatus = terminal;
+        const before = await countInteractions();
+        const sendsBefore = graph.sendCount;
+        await expect(svc.sendRecruiterEmail(baseArgs())).rejects.toMatchObject({ code: 'REQUISITION_NOT_ADVANCEABLE' });
+        expect(graph.sendCount).toBe(sendsBefore);
+        expect(await countInteractions()).toBe(before);
+      }
+      requisitionStatus = 'closed';
+      await expect(svc.sendRecruiterEmail(baseArgs({ requisition_id: undefined, pipeline_id: undefined }))).resolves.toBeDefined();
+      requisitionStatus = 'open';
     });
 
     it('COMM-C4 — a Talent with no authoritative email fails closed BEFORE Graph and BEFORE evidence', async () => {

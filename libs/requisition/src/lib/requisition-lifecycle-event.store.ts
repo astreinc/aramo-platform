@@ -46,6 +46,19 @@ export interface RecordRequisitionLifecycleEventInput {
   readonly correlation_id: string;
   /** When the transition was applied. Defaults to now. */
   readonly occurred_at?: Date;
+  /**
+   * Talent Lifecycle R1–R5 Impl Directive v1.2 §6 (S3, A1 AM-3) — hold details, ONLY on an
+   * on_hold event. Manual holds carry a reason + source (client | internal); a VMS hold carries
+   * source 'vms' and the provider's reason only when one was supplied (never invented, LR-F C-3).
+   */
+  readonly hold?: RequisitionHoldDetails;
+}
+
+export interface RequisitionHoldDetails {
+  readonly reason: string | null;
+  readonly source: 'client' | 'vms' | 'internal';
+  readonly effective_at: Date;
+  readonly instructions: string | null;
 }
 
 /** A persisted lifecycle event, read back. */
@@ -124,6 +137,7 @@ export class RequisitionLifecycleEventStore {
         ...(input.occurred_at === undefined
           ? {}
           : { occurred_at: input.occurred_at }),
+        ...holdColumns(input.hold),
       },
     })) as EventRow;
     return RequisitionLifecycleEventStore.toEvent(row);
@@ -163,4 +177,20 @@ export class RequisitionLifecycleEventStore {
     })) as EventRow[];
     return rows.map((row) => RequisitionLifecycleEventStore.toEvent(row));
   }
+}
+
+// v1.2 §6.1 — the event-row hold columns (all null when the event is not a hold).
+export function holdColumns(hold: RequisitionHoldDetails | undefined): {
+  hold_reason?: string | null;
+  hold_source?: string;
+  hold_effective_at?: Date;
+  hold_instructions?: string | null;
+} {
+  if (hold === undefined) return {};
+  return {
+    hold_reason: hold.reason,
+    hold_source: hold.source,
+    hold_effective_at: hold.effective_at,
+    hold_instructions: hold.instructions,
+  };
 }

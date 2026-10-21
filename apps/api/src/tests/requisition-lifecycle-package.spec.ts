@@ -58,7 +58,7 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v7.0.0 — RecruitingStatus-keyed matrix
     expect(() => validatePackage(REQUISITION_LIFECYCLE_PACKAGE)).not.toThrow();
     expect(REQUISITION_LIFECYCLE_PACKAGE.name).toBe(REQUISITION_LIFECYCLE_PACKAGE_NAME);
     // FIX 6 — new MAJOR: CLOSE_SUBMITTALS becomes a governed transition action.
-    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('7.0.0');
+    expect(REQUISITION_LIFECYCLE_PACKAGE.version).toBe('8.0.0'); // v1.2 §5.7 (A1 AM-2)
     expect(REQUISITION_LIFECYCLE_PACKAGE.default_disposition.decision).toBe('ALLOW');
   });
 
@@ -120,7 +120,7 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v7.0.0 — RecruitingStatus-keyed matrix
 // and evaluated through the engine against the package DATA.
 const EXPECTED_TRANSITIONS: Readonly<Record<string, Readonly<Record<string, Decision>>>> = {
   CLOSE: { lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', canceled: 'DENY', closed: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
-  REOPEN: { lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'ALLOW', open: 'DENY', canceled: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
+  REOPEN: { lead: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', closed: 'DENY', open: 'DENY', canceled: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
   PUT_ON_HOLD: { lead: 'ALLOW', open: 'ALLOW', submittals_closed: 'ALLOW', on_hold: 'DENY', closed: 'DENY', canceled: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
   CANCEL: { lead: 'ALLOW', open: 'ALLOW', on_hold: 'ALLOW', submittals_closed: 'ALLOW', canceled: 'DENY', closed: 'DENY', draft: 'DENY', pending_approval: 'DENY', archived: 'DENY' },
   // FIX 6 — CLOSE_SUBMITTALS fires from `open` ONLY; every other from-status DENIES.
@@ -155,8 +155,10 @@ describe('REQUISITION_LIFECYCLE_PACKAGE v7.0.0 — governed transition matrices 
     expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('lead', 'REOPEN')).decision).toBe('ALLOW');
   });
 
-  it('a closed requisition may be REOPENed but never re-CLOSEd or CANCELed', () => {
-    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'REOPEN')).decision).toBe('ALLOW');
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2 §3.1, v8.0.0 — supersedes the
+  // former "a closed requisition may be REOPENed"): closed is TERMINAL for the ordinary lifecycle.
+  it('a closed requisition is terminal — never REOPENed, re-CLOSEd or CANCELed', () => {
+    expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'REOPEN')).decision).toBe('DENY');
     expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'CLOSE')).decision).toBe('DENY');
     expect(evaluate(REQUISITION_LIFECYCLE_PACKAGE, transitionContext('closed', 'CANCEL')).decision).toBe('DENY');
   });

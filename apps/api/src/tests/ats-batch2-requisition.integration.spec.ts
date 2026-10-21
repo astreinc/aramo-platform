@@ -29,6 +29,7 @@ import { ensureClientCompany, ensureVendorOnlyCompany } from './seed-client-comp
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
 import { establishOpenRequisition } from './support/establish-open-requisition.js';
+import { TEST_HOLD } from './helpers/hold-fixture.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -138,6 +139,12 @@ const REQUISITION_USER_STATE_MIGRATION = resolve(
 const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
+);
+// Talent Lifecycle R1–R5 v1.2 §6 (S3) — hold-detail columns on the lifecycle event (the
+// regenerated client RETURNs them on every lifecycle write).
+const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261021090000_s3_requisition_hold_details/migration.sql',
 );
 // FIX 5 — next_status nullable so a destructive DELETE audits as a terminal
 // REQUISITION_DELETED event; required here because this spec performs a
@@ -258,7 +265,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
+      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_S3_HOLD_DETAILS_MIGRATION, REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 
@@ -1044,7 +1051,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             'Content-Type': 'application/json',
           },
           // T1-e §2.4 — version mandatory on a status change; fresh req = 0.
-          body: JSON.stringify({ status: 'on_hold', version: 0 }),
+          body: JSON.stringify({ status: 'on_hold', version: 0, hold: TEST_HOLD }),
         },
       );
       expect(patchRes.status).toBe(200);

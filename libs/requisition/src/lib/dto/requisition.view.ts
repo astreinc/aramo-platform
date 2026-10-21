@@ -161,4 +161,22 @@ export interface RequisitionView {
   // status is pending_approval, and ENRICHED only on the single-row DETAIL read
   // (findByIdForActor / GET /v1/requisitions/:id) — the list path leaves it null.
   pending_approval_submitter_id: string | null;
+
+  // ---- Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3, A1 AM-3) — the hold details ----
+  // From the newest next_status='on_hold' lifecycle event, ENRICHED only on the DETAIL read while
+  // the requisition is on_hold (null otherwise, and on the list path). `recorded:false` = a hold
+  // placed before the amendment ("not recorded"). `reason_provided:false` with source 'vms' =
+  // the provider did not supply a reason (never invented). provider_status is the raw VMS state
+  // token when its provenance row exists — the display never depends on it (§13 PE-3).
+  hold: RequisitionHoldView | null;
+}
+
+export interface RequisitionHoldView {
+  recorded: boolean;
+  reason: string | null;
+  reason_provided: boolean;
+  source: 'client' | 'vms' | 'internal' | null;
+  effective_at: string | null;
+  instructions: string | null;
+  provider_status: string | null;
 }

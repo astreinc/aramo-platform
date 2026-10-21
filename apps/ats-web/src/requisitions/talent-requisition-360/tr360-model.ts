@@ -129,6 +129,9 @@ export function rtrPresentation(card: BoardCardView | null): RtrPresentation | n
       return { pill: 'Not sent', tone: 'grey', fact: 'Not sent', done: false };
     case 'NOT_REQUIRED':
       return { pill: 'Not required', tone: 'grey', fact: 'Not required', done: true };
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — requirement not configured.
+    case 'POLICY_UNRESOLVED':
+      return { pill: 'Policy not set', tone: 'amber', fact: 'Policy not set', done: false };
     default:
       return null;
   }

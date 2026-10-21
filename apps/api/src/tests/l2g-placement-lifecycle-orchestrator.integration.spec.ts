@@ -16,6 +16,9 @@ import {
 
 import { PlacementLifecycleOrchestratorService } from '../placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.js';
 
+import { notRequiredQualifiedGuard } from './helpers/rtr-readiness-harness.js';
+import { acceptingEvidenceVerifier } from './helpers/evidence-verifier.js';
+
 // Lane 2 / L2-G (Part 3, R-PROC/R-LINEAGE/R-NOTX) — the Placement→Pipeline lifecycle
 // orchestrator, end-to-end against real Postgres 17. Proves the durable idempotent
 // consumer contract: consume placement.process.state_changed → reserve (the UNIQUE
@@ -55,6 +58,10 @@ const MIGRATIONS = [
   'libs/pipeline/prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   'libs/pipeline/prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
   'libs/placement-pipeline-bridge/prisma/migrations/20260831120000_l2g_init_placement_pipeline_bridge/migration.sql',
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.6 — `qualified` writes its applied RTR
+  // policy to policy_store."PolicyDecisionRecord" in the transition transaction.
+  'libs/policy-store/prisma/migrations/20260730120000_init_policy_store/migration.sql',
+  'libs/policy-store/prisma/migrations/20260730160000_add_policy_decision_record/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (the pipeline append-only + disposition
@@ -142,7 +149,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       bridgePrisma = new PlacementPipelineBridgePrismaService(url);
       await bridgePrisma.$connect();
 
-      repo = new PipelineRepository(pipelinePrisma);
+      // v1.2 §4.5 — the RTR guard is mandatory for `qualified`; the real guard over NOT_REQUIRED.
+      repo = new PipelineRepository(pipelinePrisma, notRequiredQualifiedGuard(), acceptingEvidenceVerifier());
       inbox = new PlacementPipelineInboxRepository(bridgePrisma);
       orchestrator = new PlacementLifecycleOrchestratorService(
         pipelinePrisma as never,
@@ -196,12 +204,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.recordContactEvidence({
         tenant_id: tenant, id: created.id, expected_version: await currentVersion(tenant, created.id),
         changed_by_id: actor, requestId: 'seed-contact', visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       await repo.recordResponseEvidence({
         tenant_id: tenant, id: created.id, expected_version: await currentVersion(tenant, created.id),
         changed_by_id: actor, requestId: 'seed-response', visible_requisition_ids: null,
-        evidence: { kind: 'test_response', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       for (const action of ['START_QUALIFICATION', 'QUALIFY'] as const) {
         await repo.applyAction({

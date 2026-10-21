@@ -5,11 +5,13 @@ import { DocumentReadinessGate } from '../rtr/document-readiness.gate.js';
 // TB-chips — the batched RTR board chip. For a REQUIRED requisition the gate maps the CURRENT RTR
 // document status (same selectCurrent precedence as the drawer's rtr-orchestrator.current(), so
 // chip == drawer) to NOT_SENT / SENT / CONFIRMED. For the non-REQUIRED cases it honours the
-// canonical UNGOVERNED ≠ NOT_REQUIRED distinction: an EXPLICIT rtr_present NOT_REQUIRED yields the
+// canonical UNRESOLVED ≠ NOT_REQUIRED distinction: an EXPLICIT rtr_present NOT_REQUIRED yields the
 // affirmative 'NOT_REQUIRED' chip, while an ungoverned/absent policy yields `null` (render nothing —
 // no affirmative "Not required" claim). CONDITIONAL on policy + bounded (no per-talent loop).
 
-type Disp = 'REQUIRED' | 'NOT_REQUIRED' | 'UNGOVERNED';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — an absent policy is UNRESOLVED and
+// yields the ACTIONABLE 'POLICY_UNRESOLVED' chip (the former null/UNGOVERNED is superseded).
+type Disp = 'REQUIRED' | 'NOT_REQUIRED' | 'UNRESOLVED';
 function gateWith(over: { disposition?: Disp; statusByTalent?: Map<string, string> }) {
   const documents = {
     findCurrentDocStatusBySubjectTalentIds: vi
@@ -18,12 +20,19 @@ function gateWith(over: { disposition?: Disp; statusByTalent?: Map<string, strin
     findExecutedSubjectTalentIds: vi.fn(), // unused by assessManyRtrStatus
   };
   const disposition = over.disposition ?? 'REQUIRED';
-  // resolveEffective → null (ungoverned); else a policy declaring rtr_present at the given disposition.
+  // resolveRequirementSource → NO_LAYER (unresolved); else rtr_present at the given disposition.
   const policy = {
-    resolveEffective: vi
+    resolveRequirementSource: vi
       .fn()
       .mockResolvedValue(
-        disposition === 'UNGOVERNED' ? null : { requirements: [{ key: 'rtr_present', disposition }] },
+        disposition === 'UNRESOLVED'
+          ? { state: 'NO_LAYER' }
+          : {
+              state: 'RESOLVED',
+              disposition,
+              source: { scope: 'TENANT', scope_ref: null, package_name: 'client-submittal-policy', version: '1', checksum: 'x' },
+              composite_version: 'TENANT:1:x',
+            },
       ),
   };
   const companyId = { findCompanyId: vi.fn().mockResolvedValue(null) };
@@ -32,12 +41,12 @@ function gateWith(over: { disposition?: Disp; statusByTalent?: Map<string, strin
 }
 
 describe('DocumentReadinessGate.assessManyRtrStatus — 3-state board chip (drawer parity)', () => {
-  it('UNGOVERNED (no policy) → null for every talent; NO affirmative label; status query never issued', async () => {
-    const { gate, documents, policy } = gateWith({ disposition: 'UNGOVERNED' });
+  it('UNRESOLVED (no policy) → POLICY_UNRESOLVED for every talent (actionable); status query never issued', async () => {
+    const { gate, documents, policy } = gateWith({ disposition: 'UNRESOLVED' });
     const out = await gate.assessManyRtrStatus({ tenant_id: 't', requisition_id: 'r', talent_ids: ['a', 'b'] });
-    expect(out.get('a')).toBeNull();
-    expect(out.get('b')).toBeNull();
-    expect(policy.resolveEffective).toHaveBeenCalled();
+    expect(out.get('a')).toBe('POLICY_UNRESOLVED');
+    expect(out.get('b')).toBe('POLICY_UNRESOLVED');
+    expect(policy.resolveRequirementSource).toHaveBeenCalled();
     expect(documents.findCurrentDocStatusBySubjectTalentIds).not.toHaveBeenCalled();
   });
 
@@ -76,7 +85,7 @@ describe('DocumentReadinessGate.assessManyRtrStatus — 3-state board chip (draw
     const { gate, documents, policy } = gateWith({});
     const out = await gate.assessManyRtrStatus({ tenant_id: 't', requisition_id: 'r', talent_ids: [] });
     expect(out.size).toBe(0);
-    expect(policy.resolveEffective).not.toHaveBeenCalled();
+    expect(policy.resolveRequirementSource).not.toHaveBeenCalled();
     expect(documents.findCurrentDocStatusBySubjectTalentIds).not.toHaveBeenCalled();
   });
 });

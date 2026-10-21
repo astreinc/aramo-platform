@@ -60,6 +60,7 @@ export type {
   ClientSubmittalScopeContext,
   EffectiveLayerRef,
   ResolvedClientSubmittalPolicy,
+  RequirementResolution,
   RequirementSourceRef,
   RequirementProvenance,
   EffectiveRequirementView,

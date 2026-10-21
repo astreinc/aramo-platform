@@ -24,10 +24,16 @@ import {
 // stay excluded — a provider observation can never cross the authority partition.
 
 // Evidence-semantic provider targets → the evidence-backed milestone they ground.
+//
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.1 (S4, A1 AM-4) — RESPONSE_EVIDENCE is RETIRED:
+// "Talent responded" is recruiter-confirmed only; a provider observation never establishes it.
+// It is no longer authorable; a persisted RESPONSE_EVIDENCE mapping takes an explicit retired
+// branch in the orchestrator (pending RESPONSE_EVIDENCE_RETIRED, never advanced). No data
+// migration of mapping rows (RP-3).
 export const PROVIDER_EVIDENCE_TARGETS = {
   CONTACT_EVIDENCE: 'contacted',
-  RESPONSE_EVIDENCE: 'talent_responded',
 } as const satisfies Record<string, PipelineStatus>;
+export const RETIRED_PROVIDER_EVIDENCE_TARGETS: readonly string[] = ['RESPONSE_EVIDENCE'];
 export type ProviderEvidenceTarget = keyof typeof PROVIDER_EVIDENCE_TARGETS;
 
 // Recruiter DECISION edges a provider may drive via applyAction (NOT evidence-backed).

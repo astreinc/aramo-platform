@@ -675,6 +675,17 @@ export class TalentRecordRepository {
     return row === null ? null : projectDetailView(row as TalentRecordRow);
   }
 
+  // Lane2-DDR §0/§6 — narrow, tenant-safe EXISTENCE read for the Pipeline's Add-Talent
+  // precondition (selects only the id — never the PII record). Same posture as findById
+  // (any record_status): an absent or cross-tenant id is false.
+  async existsInTenant(args: { tenant_id: string; id: string }): Promise<boolean> {
+    const row = await this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, id: args.id },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   // COMM-B5 — narrow, tenant-safe read of ONLY the dialable phone slots for
   // outbound call initiation. Deliberately selects the three phone columns (not
   // the full PII record) so the caller resolves a destination without loading

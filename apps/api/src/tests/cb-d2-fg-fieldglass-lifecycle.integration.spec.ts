@@ -360,7 +360,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await pollConn(cancelConn);
       expect((await statusOf(cancelReq)).status).toBe('canceled');
 
-      // Submitted -> REOPEN (closed -> open; REOPEN is ALLOW from closed)
+      // Submitted -> REOPEN on a CLOSED requisition — Talent Lifecycle R1–R5 Impl Directive v1.2
+      // §5.7 (A1 AM-2): closed is TERMINAL; an external reopen is NOT executed, it is routed to
+      // reconciliation (ILLEGAL_FROM_STATE) with NO mutation (Lane1-D1 precedent).
       const reopenReq = await seedReq(TENANT, 'closed');
       const reopenConn = await seedConnection(TENANT);
       await mappings.upsertMapping({ tenant_id: TENANT, connection_id: reopenConn, provider_state: 'submitted', mapped_action: 'REOPEN', authority_mode: 'external_authority' });
@@ -368,7 +370,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await statusOf(reopenReq)).status).toBe('closed'); // BEFORE
       fake.downloadBody = jsonDownload('DL-RO', [{ idValue: 'REQ-RO', status: 'Submitted' }]);
       await pollConn(reopenConn);
-      expect((await statusOf(reopenReq)).status).toBe('open'); // AFTER
+      expect((await statusOf(reopenReq)).status).toBe('closed'); // AFTER — unchanged (terminal)
+      expect((await reconRow(reopenConn, 'DL-RO:REQ-RO'))?.['failure_reason']).toBe('ILLEGAL_FROM_STATE');
     });
 
     it('proof 3 — UNMAPPABLE: a status with no per-connection mapping -> reconciliation, no mutation', async () => {

@@ -116,7 +116,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // Slice 1 (C) — request() derives the CLIENT company from the requisition; the
       // supplied company_id must match it.
-      const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY } as never;
+      // v1.2 §5.6 — the pre-send CONTACT_SEND gate reads the requisition status (open here).
+      const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY, findStatusById: async () => 'open' } as never;
       orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, staticSignatureRouter(fakeSignature)), fakeTalent, resolver, binding, templates, storageStub, fakeRequisitions);
     }, 180_000);
 

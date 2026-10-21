@@ -10,6 +10,8 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 import { projectExternalSourceEventToEntryProvenance, type ExternalSourceEvent } from '../lib/external-source-event.js';
 
+import { ensureOpenRequisition, openRequisition } from './helpers/requisition-fixture.js';
+
 // Lane 2 / L2-I (D2) — the external source-event resolves to an episode ONLY through the
 // GOVERNED create/entry path (PipelineRepository.create with the projected entry_provenance),
 // storing the immutable L2-D provenance (provider origin + connection-scoped source ids). There
@@ -77,6 +79,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         observed_at: new Date('2026-08-31T00:00:00.000Z'), talent_record_id: talent, requisition_id: req,
       };
       // The ONLY bridge: project → governed create (never a raw INSERT into pipeline.Pipeline).
+      await ensureOpenRequisition(setup, TENANT, req);
       const created = await repo.create({
         tenant_id: TENANT,
         input: { talent_record_id: talent, requisition_id: req },

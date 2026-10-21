@@ -318,13 +318,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         external_event_id: eventId, requisition_id: reqId,
         external_event_at: '2026-08-26T10:10:00.000Z', raw_provider_status: 'reopened',
       });
-      expect(result).toEqual({ outcome: 'RECONCILED', reason: 'POLICY_DENIED' });
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — canceled is TERMINAL: the
+      // seam refuses ANY move out of it as ILLEGAL_FROM_STATE before the policy engine runs.
+      expect(result).toEqual({ outcome: 'RECONCILED', reason: 'ILLEGAL_FROM_STATE' });
 
       expect((await rowOf(reqId)).status).toBe('canceled'); // AFTER — unchanged
       expect(await eventsOf(reqId)).toHaveLength(0);
       const recon = await reconOf(connId, eventId);
       expect(recon?.['status']).toBe('pending');
-      expect(recon?.['failure_reason']).toBe('POLICY_DENIED');
+      expect(recon?.['failure_reason']).toBe('ILLEGAL_FROM_STATE'); // v1.2 §5.7 (A1 AM-2)
       expect(recon?.['current_aramo_status']).toBe('canceled');
     });
 

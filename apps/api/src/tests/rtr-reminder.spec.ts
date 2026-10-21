@@ -54,6 +54,8 @@ function makeOrchestrator(opts: {
     prepareDocument: vi.fn(async () => undefined),
     createDocument: vi.fn(),
     ensureRequirement: vi.fn(),
+    // v1.2 §5.6 — send / remind resolve the RTR's REGARDING requisition for the pre-send gate.
+    findRegardingRequisitionId: vi.fn(async () => 'req-1'),
   };
   const talent = {
     findById: async () => ({ email1: 'j@x.test', first_name: 'J', last_name: 'D' }),
@@ -69,6 +71,7 @@ function makeOrchestrator(opts: {
     {} as never, // binding
     {} as never, // templates
     {} as never, // storage
+    { findStatusById: async () => 'open' } as never, // v1.2 §5.6 — requisition status (open)
   );
   return { orch, createEnvelope, sendEnvelope, remindEnvelopeSigner, findEnvelopeForDocument, documents };
 }

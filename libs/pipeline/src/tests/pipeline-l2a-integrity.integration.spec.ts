@@ -9,6 +9,9 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 
+import { ensureOpenRequisition, openRequisition, REQUISITION_FIXTURE_MIGRATIONS } from './helpers/requisition-fixture.js';
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
+
 // Lane 2 / L2-A — Pipeline INTEGRITY proofs (real Postgres 17).
 //
 // Two integrity guarantees, each proven non-vacuously (assert the BEFORE value,
@@ -53,6 +56,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   '../../prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
+  // v1.2 §5.3 — Pipeline writes read the requisition status in-tx.
+  ...REQUISITION_FIXTURE_MIGRATIONS,
 ].map((p) => resolve(__dirname, p));
 
 // Dollar-quote- AND line-comment-aware DDL splitter (an older activity migration
@@ -111,7 +116,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, undefined, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -131,6 +136,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('CAS: a stale expected_version is refused with PIPELINE_TRANSITION_CONFLICT; nothing is written', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
+      await ensureOpenRequisition(setup, tenant, req);
       const created = await repo.create({
         tenant_id: tenant,
         input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
@@ -145,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'cas-1a',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(first.version).toBe(1); // EXACT after
       // Two history rows now: the L2-B birth row + this committed transition.
@@ -160,7 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           requestId: 'cas-1b',
           expected_version: 0,
           visible_requisition_ids: null,
-          evidence: { kind: 'test_response', id: randomUUID() },
+          evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
         }),
       ).rejects.toMatchObject({
         code: 'PIPELINE_TRANSITION_CONFLICT',
@@ -181,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
+        input: { talent_record_id: randomUUID(), requisition_id: await openRequisition(setup, tenant) }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       let v = created.version; // 0
       // contacted + talent_responded are evidence-backed (evidence-bearing commands);
@@ -189,13 +195,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const contacted = await repo.recordContactEvidence({
         tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
         requestId: 'mono-contacted', expected_version: v, visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(contacted.version).toBe(v + 1); v = contacted.version;
       const responded = await repo.recordResponseEvidence({
         tenant_id: tenant, id: created.id, changed_by_id: randomUUID(),
         requestId: 'mono-responded', expected_version: v, visible_requisition_ids: null,
-        evidence: { kind: 'test_response', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(responded.version).toBe(v + 1); v = responded.version;
       const qualifying = await repo.transition({
@@ -227,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() },
+        input: { talent_record_id: randomUUID(), requisition_id: await openRequisition(setup, tenant) },
         entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       expect(created.version).toBe(0); // BEFORE — fresh episode at version 0
@@ -264,7 +270,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             requestId: 'cas-3-stale',
             expected_version: 0,
             visible_requisition_ids: null,
-            evidence: { kind: 'test_response', id: randomUUID() },
+            evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
           }),
         ).rejects.toMatchObject({ code: 'PIPELINE_TRANSITION_CONFLICT', statusCode: 409 });
       } finally {
@@ -287,6 +293,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('VISIBILITY: a transition on a pipeline outside the visible set conceals as 404 and mutates nothing', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
+      await ensureOpenRequisition(setup, tenant, req);
       const created = await repo.create({
         tenant_id: tenant,
         input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
@@ -302,7 +309,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           requestId: 'vis-1',
           expected_version: 0,
           visible_requisition_ids: excludes,
-          evidence: { kind: 'test_contact', id: randomUUID() },
+          evidence: { kind: 'communication_interaction', id: randomUUID() },
         }),
       ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
 
@@ -322,7 +329,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'vis-1-ok',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       expect(ok.status).toBe('contacted');
     });
@@ -339,6 +346,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('VISIBILITY: listHistory of a pipeline outside the visible set conceals as 404', async () => {
       const tenant = randomUUID();
       const req = randomUUID();
+      await ensureOpenRequisition(setup, tenant, req);
       const created = await repo.create({
         tenant_id: tenant,
         input: { talent_record_id: randomUUID(), requisition_id: req }, entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
@@ -350,7 +358,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         requestId: 'vis-3-seed',
         expected_version: 0,
         visible_requisition_ids: null,
-        evidence: { kind: 'test_contact', id: randomUUID() },
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
       });
       const excludes = new Set<string>([randomUUID()]);
 

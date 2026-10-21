@@ -338,6 +338,15 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'LLM_PROVIDER_NOT_CONFIGURED',
       'SCREENING_AI_UNAVAILABLE',
       'MEETING_ARTIFACT_ACCESS_UNAVAILABLE',
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S1).
+      'PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED',
+      'SUBMITTAL_RTR_POLICY_UNRESOLVED',
+      'TRANSACTION_CONFLICT_RETRYABLE',
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 (S2).
+      'REQUISITION_NOT_ADVANCEABLE',
+      'REQUISITION_STATUS_TERMINAL',
+      // v1.2 §7.2 (S4).
+      'PIPELINE_EVIDENCE_INADMISSIBLE',
     ]);
   });
 });

@@ -19,4 +19,9 @@ export class RequisitionExistenceAdapter implements RequisitionExistencePort {
     });
     return status !== null;
   }
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — the status for the CONTACT_SEND gate.
+  async findStatus(tenantId: string, requisitionId: string): Promise<string | null> {
+    return this.requisitions.findStatusById({ tenant_id: tenantId, id: requisitionId });
+  }
 }

@@ -1,4 +1,4 @@
-import { IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import type { CommunicationChannel } from '@aramo/communications';
 
 // Recruiting-Journey §7/§15/§16 — the canonical "Record Talent response" request.
@@ -22,6 +22,17 @@ export class RecordTalentResponseDto {
   // first grounded outbound contact for this Talent × Requisition (service-enforced).
   @IsISO8601() occurred_at!: string;
 
-  // Optional recruiter note (required when channel='other'). 500-char cap (§6).
+  // Recruiter note. 500-char cap (§6). Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) —
+  // REQUIRED when no source_interaction_id is given (and always when channel='other'): the
+  // attestation alone never satisfies the milestone (service-enforced, 422).
   @IsOptional() @IsString() @MaxLength(500) note?: string | null;
+
+  // v1.2 §7.4 (S4) — the recruiter attests the Talent gave a SUBSTANTIVE response. Must be the
+  // literal `true` (service-enforced, 422 — never inferred, never defaulted).
+  @IsOptional() @IsBoolean() substantive_response_attested?: boolean;
+
+  // v1.2 §7.4 (S4) — the interaction this confirmation confirms (e.g. the call or email the
+  // Talent replied on). Verified server-side: same tenant, bound to THIS Talent and THIS
+  // requisition, and not a non-substantive outcome. Optional — absent, a note is required.
+  @IsOptional() @IsUUID() source_interaction_id?: string;
 }

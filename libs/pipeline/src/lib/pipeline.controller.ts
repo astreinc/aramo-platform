@@ -41,6 +41,10 @@ import {
   RESUME_EDITION_READER,
   type ResumeEditionReaderPort,
 } from './resume-edition-reader.port.js';
+import {
+  TALENT_RECORD_EXISTENCE_READER,
+  type TalentRecordExistenceReaderPort,
+} from './talent-record-existence.port.js';
 import type { SetPipelineResumeEditionRequestDto } from './dto/set-pipeline-resume-edition-request.dto.js';
 import {
   orderedAvailableEditions,
@@ -85,6 +89,12 @@ export class PipelineController {
     @Optional()
     @Inject(RESUME_EDITION_READER)
     private readonly editionReader?: ResumeEditionReaderPort,
+    // Lane2-DDR §0/§6 — the Talent-existence reader PORT (scope wall: the concrete
+    // adapter reading talent-record is bound @Global in apps/api). @Optional for the same
+    // hand-wired test sites; the apps/api composition root always binds it.
+    @Optional()
+    @Inject(TALENT_RECORD_EXISTENCE_READER)
+    private readonly talentExistence?: TalentRecordExistenceReaderPort,
   ) {}
 
   @Get()
@@ -329,6 +339,23 @@ export class PipelineController {
       return replay.response_body as PipelineView;
     }
 
+    // Lane2-DDR §0/§6 — an episode is born only for a Talent that exists in the caller's
+    // tenant. An absent or cross-tenant talent_record_id conceals as 404 (no orphan
+    // episode, no policy call, no write). Checked AFTER the replay short-circuit so
+    // an identical retry still returns its first committed response.
+    if (
+      this.talentExistence !== undefined &&
+      !(await this.talentExistence.existsInTenant({
+        tenant_id: authContext.tenant_id,
+        talent_record_id: body.talent_record_id,
+      }))
+    ) {
+      throw new AramoError('NOT_FOUND', 'Talent record not found', 404, {
+        requestId,
+        details: { field: 'talent_record_id' },
+      });
+    }
+
     // ADR-0024 §D10 — the policy call runs AFTER authorization (the guard chain
     // above) and BEFORE the write. It is placed at the CONTROLLER, never the
     // repository: a repository-level call would also gate repointTalentRecordRefs
@@ -400,6 +427,9 @@ export class PipelineController {
         initiated_by_kind: authContext.actor_kind,
         initiated_by_id: authContext.sub,
       },
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.2 T-6 — pin the status the ADD
+      // decision was made on; the create transaction refuses if it changed underneath.
+      expected_requisition_status: outcome.requisition_status,
     });
 
     // L2-B — persist the idempotency record AFTER the mutation commits so a
@@ -456,6 +486,19 @@ export class PipelineController {
         'expected_version is required for a pipeline transition',
         422,
         { requestId, details: { field: 'expected_version' } },
+      );
+    }
+    // Lane 2 / L2-C §5 AC-7(b) + DDR §2 — `completed` is written ONLY by the system
+    // COMPLETE command (pipeline:complete + DOWNSTREAM_OUTCOME disposition with source
+    // provenance). This generic route carries neither, so it can never reach `completed`
+    // — whatever the caller's scopes (the legal `qualified → completed` edge is the
+    // system's, not the recruiter's).
+    if (body.to_status === 'completed') {
+      throw new AramoError(
+        'PIPELINE_COMPLETE_SYSTEM_ONLY',
+        'COMPLETE is a system-only command and is not reachable through a pipeline transition',
+        403,
+        { requestId, details: { pipeline_id: id } },
       );
     }
     // L2-A — write-visibility parity: a transition on a non-visible pipeline

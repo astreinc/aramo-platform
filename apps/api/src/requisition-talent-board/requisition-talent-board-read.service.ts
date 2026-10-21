@@ -455,8 +455,9 @@ export class RequisitionTalentBoardReadService {
       assigned_recruiter_user_id: string | null;
       // TB-chips — the recruiting-stage readiness facts. rtr_status carries the canonical
       // three-way effective requirement: NOT_SENT/SENT/CONFIRMED (REQUIRED signing status) |
-      // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | null (UNGOVERNED → nothing).
-      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
+      // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | 'POLICY_UNRESOLVED' (v1.2
+      // §4.7: requirement not configured — actionable) | null (no verdict computed).
+      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
       email_evidence: boolean;
       voice_evidence: boolean;
       desired_pay: string | null;
@@ -474,7 +475,13 @@ export class RequisitionTalentBoardReadService {
     // NOT_EXECUTED state is surfaced; a satisfied verdict (executed OR RTR-not-required) carries
     // no RTR concern, so it stays null rather than fabricating an EXECUTED value the verdict
     // shape cannot distinguish from ungated.
-    const rtr_state = ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied ? 'NOT_EXECUTED' : null;
+    // v1.2 §4.7 — an UNRESOLVED requirement is its own actionable state, never NOT_EXECUTED.
+    const rtr_state =
+      ctx.rtr_verdict !== null && !ctx.rtr_verdict.satisfied
+        ? ctx.rtr_verdict.deny === 'SUBMITTAL_RTR_POLICY_UNRESOLVED'
+          ? 'POLICY_UNRESOLVED'
+          : 'NOT_EXECUTED'
+        : null;
     // Readiness band (§6) — meaningful only for the Qualified column. TB-4 (remediated): grounded
     // on the REAL `evaluateEligibility` port over ALL applicable submit gates — window (raw policy
     // inputs), client restriction (authoritative batched), engagement (requisition-grain
@@ -511,7 +518,10 @@ export class RequisitionTalentBoardReadService {
       days_in_stage,
       stage_entered_at,
       assigned_recruiter_user_id: ctx.assigned_recruiter_user_id,
-      next_actions: deriveNextActions(winner, row.id, ctx.engaged),
+      // DOC-TEMPLATE-ADMIN-RTR-1 §32 — the SAME conditional RTR verdict the drawer/TR360 and
+      // the write-path qualify gate use (DocumentReadinessGate.assessMany ≡ assess), so the
+      // Board never offers "Mark qualified" the backend would refuse (422).
+      next_actions: deriveNextActions(winner, row.id, ctx.engaged, ctx.rtr_verdict?.satisfied === true),
       handoff: HANDOFF_COLUMNS.has(winner.column),
     };
   }
@@ -530,6 +540,10 @@ function deriveNextActions(
   winner: Extract<CardDecision, { kind: 'active' }>,
   pipelineId: string,
   engaged: boolean,
+  // DOC-TEMPLATE-ADMIN-RTR-1 (§31-32) — whether the RTR precondition for `qualified` is met
+  // (true when no RTR is required OR an EXECUTED RTR exists). Fail-closed: an absent verdict
+  // withholds the action. Mirrors talent-journey-read.deriveRecruitingAvailableActions.
+  rtrReadyForQualify: boolean,
 ): BoardNextAction[] {
   const PIPELINE_ROUTE = `POST /v1/pipelines/${pipelineId}/actions`;
   // Evidence-backed milestones are NOT reached by a naked /actions POST (§17). These
@@ -564,7 +578,9 @@ function deriveNextActions(
         case 'talent_responded':
           return [{ key: 'pipeline.start_qualifying', label: 'Start qualifying', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
         case 'qualifying':
-          return [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }];
+          return rtrReadyForQualify
+            ? [{ key: 'pipeline.mark_qualified', label: 'Mark qualified', owner: 'pipeline', command_route: PIPELINE_ROUTE, required_scope: 'pipeline:change-status' }]
+            : [];
         default:
           // `qualified` (top of the recruiter ladder — submit runs in the drawer wizard) and
           // the `started`/`completed` fallback have no bounded pipeline command here.
@@ -774,6 +790,9 @@ function denyToBlocker(deny: string): string {
       return 'engagement_readiness_unavailable';
     case 'SUBMITTAL_RTR_NOT_EXECUTED':
       return 'rtr_not_executed';
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — RTR requirement not configured.
+    case 'SUBMITTAL_RTR_POLICY_UNRESOLVED':
+      return 'rtr_policy_unresolved';
     default:
       return deny.toLowerCase();
   }

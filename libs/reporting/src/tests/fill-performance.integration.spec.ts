@@ -61,6 +61,8 @@ const REQ_MIGRATIONS = [
   '20260812130000_t8p1_requisition_external_identity_unique',
   // L1-F1 — RequisitionLifecycleEvent append-only triggers + reset escape.
   '20260827120000_requisition_lifecycle_event_append_only',
+  // Talent Lifecycle R1–R5 v1.2 §6 (S3) — hold-detail columns on the lifecycle event.
+  '20261021090000_s3_requisition_hold_details',
   // WL-B1 — additive Requisition.postal_code (the regenerated client SELECTs it).
   '20260907120000_add_requisition_postal_code',
 ].map((d) =>

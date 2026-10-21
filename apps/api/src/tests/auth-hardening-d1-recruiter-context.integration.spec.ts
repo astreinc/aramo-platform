@@ -267,6 +267,12 @@ const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
 );
+// Talent Lifecycle R1–R5 v1.2 §6 (S3) — hold-detail columns on the lifecycle event (the
+// regenerated client RETURNs them on every lifecycle write).
+const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261021090000_s3_requisition_hold_details/migration.sql',
+);
 const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
@@ -709,7 +715,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_PUBLISH_SURFACE_MIGRATION,
         REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION,
-        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
+        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_S3_HOLD_DETAILS_MIGRATION,
         TASK_INIT,
         TASK_WORKSPACE_FIELDS,
         TASK_REQUISITION_CONTEXT,

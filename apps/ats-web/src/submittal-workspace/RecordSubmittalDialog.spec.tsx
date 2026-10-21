@@ -102,4 +102,18 @@ describe('RecordSubmittalDialog', () => {
     await waitFor(() => expect(onRaceConflict).toHaveBeenCalledTimes(1));
     expect(onRecorded).not.toHaveBeenCalled();
   });
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §2.4 / §4.6 (D-5) — an UNRESOLVED RTR policy
+  // refuses the submit; the dialog stays open with specific copy, never a false success.
+  it('an UNRESOLVED RTR policy refusal shows the policy-not-set copy and records nothing', async () => {
+    submitMock.mockRejectedValue(new ApiError(409, 'unresolved', 'SUBMITTAL_RTR_POLICY_UNRESOLVED'));
+    const { onRecorded, onRaceConflict } = renderDialog();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /performed this handoff/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Record submittal' }));
+
+    expect(await screen.findByText(/policy isn’t set for this client/)).toBeInTheDocument();
+    expect(onRecorded).not.toHaveBeenCalled();
+    expect(onRaceConflict).not.toHaveBeenCalled();
+  });
 });

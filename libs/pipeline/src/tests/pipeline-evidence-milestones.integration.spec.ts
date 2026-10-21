@@ -9,6 +9,11 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 
+import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
+import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER } from './helpers/evidence-verifier.stub.js';
+import { ensureOpenRequisition, openRequisition, REQUISITION_FIXTURE_MIGRATIONS } from './helpers/requisition-fixture.js';
+
 // Recruiting-Journey Evidence-Governed Milestones — the EVIDENCE GATE, the
 // evidence-bearing commands, and FORWARD RECONCILIATION proven against real
 // Postgres 17. Each proof asserts the BEFORE value then the EXACT after value.
@@ -44,6 +49,10 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   '../../prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
+  // v1.2 §4.6 — the in-tx RTR policy audit record on `qualified`.
+  ...POLICY_STORE_DECISION_RECORD_MIGRATIONS,
+  // v1.2 §5.3 — Pipeline writes read the requisition status in-tx.
+  ...REQUISITION_FIXTURE_MIGRATIONS,
 ].map((p) => resolve(__dirname, p));
 
 function splitDdl(sql: string): string[] {
@@ -100,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -124,7 +133,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     async function seed(tenant: string): Promise<string> {
       const created = await repo.create({
         tenant_id: tenant,
-        input: { talent_record_id: randomUUID(), requisition_id: randomUUID() },
+        input: { talent_record_id: randomUUID(), requisition_id: await openRequisition(setup, tenant) },
         entry_provenance: { origin_type: 'MANUAL_RECRUITER', initiated_by_kind: 'user' },
       });
       expect(created.status).toBe('no_contact');
@@ -209,7 +218,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const r = await repo.recordResponseEvidence({
         tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 'ev-2b',
         expected_version: c.version, visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(r.status).toBe('talent_responded');
       expect(r.version).toBe(2);
@@ -227,7 +236,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.recordResponseEvidence({
         tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 'dec-r',
         expected_version: 1, visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       // No evidence_provenance — a naked decision transition is ALLOWED for these edges.
       const q = await repo.transition({
@@ -255,7 +264,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         changed_by_id: randomUUID(),
         requestId: 'rec-1',
         visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(res.status).toBe('talent_responded'); // EXACT after
       expect(res.version).toBe(2); // two hops, +1 each
@@ -277,7 +286,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.reconcileForward({
         tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
         requestId: 'rec-2a', visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       const hc = await historyCount(id);
       const ec = (await outboxPayloads(id)).length;
@@ -286,7 +295,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await repo.reconcileForward({
         tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
         requestId: 'rec-2b', visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(res.status).toBe('talent_responded');
       expect(await historyCount(id)).toBe(hc); // NO new history
@@ -305,7 +314,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.recordResponseEvidence({
         tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 'rec-3r',
         expected_version: 1, visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       const q = await repo.transition({
         tenant_id: tenant, id, to_status: 'qualifying', changed_by_id: randomUUID(),
@@ -318,10 +327,115 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await repo.reconcileForward({
         tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
         requestId: 'rec-3rec', visible_requisition_ids: null,
-        evidence: { kind: 'communication_interaction', id: randomUUID() },
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
       });
       expect(res.status).toBe('qualifying'); // unchanged — no backward move
       expect(await historyCount(id)).toBe(hcBefore);
+    });
+
+    // ---- S4 — Talent Lifecycle R1–R5 v1.2 §7.2/§7.3: the allowlist, the verifier, atomic multi-hop ----
+    it('S4 ALLOWLIST: talent_responded rests on a recruiter response confirmation ONLY (a communication interaction is refused)', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      await repo.recordContactEvidence({
+        tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 's4-a1',
+        expected_version: 0, visible_requisition_ids: null,
+        evidence: { kind: 'communication_interaction', id: randomUUID() },
+      });
+      for (const kind of ['communication_interaction', 'provider_observation', 'inbound_application', 'test_response']) {
+        await expect(
+          repo.recordResponseEvidence({
+            tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: `s4-a2-${kind}`,
+            expected_version: 1, visible_requisition_ids: null,
+            evidence: { kind, id: randomUUID() },
+          }),
+        ).rejects.toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', statusCode: 422, context: { details: { reason: 'kind_not_admissible' } } });
+      }
+      expect((await repo.findById({ tenant_id: tenant, id }))?.status).toBe('contacted');
+    });
+
+    it('S4 ALLOWLIST: an unlisted kind cannot establish contacted', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      await expect(
+        repo.recordContactEvidence({
+          tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 's4-a3',
+          expected_version: 0, visible_requisition_ids: null,
+          evidence: { kind: 'zoom_call', id: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE' });
+      expect(await historyCount(id)).toBe(1);
+    });
+
+    it('S4 VERIFIER: an unbound verifier refuses the evidence-backed milestone (verifier_unbound)', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      const unbound = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD);
+      await expect(
+        unbound.recordContactEvidence({
+          tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 's4-v1',
+          expected_version: 0, visible_requisition_ids: null,
+          evidence: { kind: 'communication_interaction', id: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', context: { details: { reason: 'verifier_unbound' } } });
+      expect((await repo.findById({ tenant_id: tenant, id }))?.status).toBe('no_contact');
+    });
+
+    it('S4 VERIFIER: a reference the verifier rejects is refused with its reason; nothing persists', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      const rejecting = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, {
+        verifyInTx: async () => ({ verified: false, reason: 'talent_mismatch' }),
+      });
+      await expect(
+        rejecting.recordContactEvidence({
+          tenant_id: tenant, id, changed_by_id: randomUUID(), requestId: 's4-v2',
+          expected_version: 0, visible_requisition_ids: null,
+          evidence: { kind: 'communication_interaction', id: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', context: { details: { reason: 'talent_mismatch' } } });
+      expect(await historyCount(id)).toBe(1);
+      expect((await outboxPayloads(id)).filter((e) => e['to_status'] !== undefined)).toHaveLength(0);
+    });
+
+    it('S4 ATOMIC MULTI-HOP (§7.3): a refusal on the second hop rolls back the first — no partial advance', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      // Verifies the contacted hop, refuses the talent_responded hop.
+      let calls = 0;
+      const secondHopRefuses = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, {
+        verifyInTx: async () => (++calls === 1 ? { verified: true } : { verified: false, reason: 'reference_not_found' }),
+      });
+      await expect(
+        secondHopRefuses.reconcileForward({
+          tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
+          requestId: 's4-m1', visible_requisition_ids: null,
+          evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
+        }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE' });
+      expect(calls).toBe(2);
+      const after = await repo.findById({ tenant_id: tenant, id });
+      expect(after?.status).toBe('no_contact'); // the contacted hop did NOT commit
+      expect(after?.version).toBe(0);
+      expect(await historyCount(id)).toBe(1);
+      expect((await outboxPayloads(id)).filter((e) => e['to_status'] !== undefined)).toHaveLength(0);
+    });
+
+    it('S4 MULTI-HOP: each committed hop records its own history row and evidence reference', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      const evId = randomUUID();
+      await repo.reconcileForward({
+        tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
+        requestId: 's4-m2', visible_requisition_ids: null,
+        evidence: { kind: 'recruiter_response_confirmation', id: evId },
+      });
+      const transitions = (await outboxPayloads(id)).filter((e) => e['to_status'] !== undefined && e['to_status'] !== null);
+      expect(transitions.map((e) => [e['to_status'], e['evidence_kind'], e['evidence_id']])).toEqual([
+        ['contacted', 'recruiter_response_confirmation', evId],
+        ['talent_responded', 'recruiter_response_confirmation', evId],
+      ]);
+      expect(await historyCount(id)).toBe(3);
     });
   },
 );

@@ -24,7 +24,7 @@ import {
 } from './requisition-talent-board-api';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
 import { talentRequisition360Path } from './talent-requisition-360/route';
-import { rtrAffordanceKind, type RtrAffordanceKind } from './rtr-affordance';
+import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, type RtrAffordanceKind } from './rtr-affordance';
 import type { TalentView } from './useTalentViewPreference';
 import type { RequisitionView } from './types';
 import type { AttentionItem, TabId } from './RequisitionDetailView';
@@ -814,6 +814,13 @@ function RtrCell({
   }
   // none / due / (send without initiate capability) → muted status. Only an EXPLICIT
   // NOT_REQUIRED ('none') renders "Not required".
+  if (kind === 'policy_unresolved') {
+    return (
+      <span className="rc-tip__val rc-tip__val--warn" title={RTR_POLICY_UNRESOLVED_DETAIL}>
+        Policy not set
+      </span>
+    );
+  }
   const text = kind === 'none' ? 'Not required' : kind === 'due' ? 'Due before qualifying' : 'Not sent';
   return <span className="rc-tip__val rc-tip__val--mute">{text}</span>;
 }

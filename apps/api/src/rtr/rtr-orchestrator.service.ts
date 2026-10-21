@@ -14,6 +14,7 @@ import { type LetterheadModel, type RenderBlock } from '@aramo/documents-renderi
 import type { SignatureActor } from '@aramo/documents-contracts';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
+import { assertRequisitionPermitsContactSend } from '../requisition-lifecycle/requisition-contact.gate.js';
 
 import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
@@ -127,6 +128,13 @@ export class RtrOrchestratorService {
   // template into a FROZEN revision. After this the document is ready to preview
   // and ready to send; status stays REQUESTED (DRAFT) until send.
   async request(input: RtrRequestInput): Promise<{ document_id: string }> {
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 (A1 AM-1 §2.2) — an RTR request is new
+    // contact THROUGH the requisition: refused on closed / canceled before any persistence.
+    await assertRequisitionPermitsContactSend(this.requisitions, {
+      tenant_id: input.tenant_id,
+      requisition_id: input.requisition_id,
+      requestId: input.requestId,
+    });
     // 1. Resolve the tenant's ACTIVE RTR template and PIN its exact version.
     //    Throws RTR_TEMPLATE_NOT_CONFIGURED / _CONFIGURATION_INVALID — no fallback.
     const template = await this.resolver.resolveActive({
@@ -215,6 +223,8 @@ export class RtrOrchestratorService {
     requestId: string;
     actor?: SignatureActor;
   }): Promise<RtrSendResult> {
+    // v1.2 §5.6 — the pre-send CONTACT_SEND gate on the RTR's REGARDING requisition (T-4).
+    await this.assertRegardingRequisitionPermitsSend(input.tenant_id, input.document_id, input.requestId);
     // RTR owns the signer resolution (the Talent on this RTR). The common send mechanics —
     // consume the frozen revision (no re-render, INV-3), duplicate-envelope guard, DRAFT→PREPARED,
     // create + send — are delegated to the shared governed-signing capability.
@@ -272,7 +282,25 @@ export class RtrOrchestratorService {
     if (doc.document_type_id !== RIGHT_TO_REPRESENT_TYPE_ID) {
       throw new AramoError('DOCUMENT_NOT_FOUND', `document ${input.document_id} is not an RTR`, 404, { requestId: input.requestId });
     }
+    // v1.2 §5.6 — a reminder is new contact through the requisition: gated like a send.
+    await this.assertRegardingRequisitionPermitsSend(input.tenant_id, input.document_id, input.requestId);
     return this.signing.remind({ tenant_id: input.tenant_id, document_id: input.document_id, requestId: input.requestId, ...(input.actor !== undefined ? { actor: input.actor } : {}) });
+  }
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — resolve the RTR's REGARDING requisition
+  // (send / remind carry no requisition id) and apply the CONTACT_SEND gate. An RTR with no
+  // requisition association in this tenant is refused (fail-closed, §2.6).
+  private async assertRegardingRequisitionPermitsSend(tenant_id: string, document_id: string, requestId: string): Promise<void> {
+    const requisition_id = await this.documents.findRegardingRequisitionId(tenant_id, document_id);
+    if (requisition_id === null) {
+      throw new AramoError(
+        'REQUISITION_NOT_ADVANCEABLE',
+        'This Right to Represent is not associated with a requisition in this tenant',
+        409,
+        { requestId, details: { document_id, status: null, activity: 'CONTACT_SEND' } },
+      );
+    }
+    await assertRequisitionPermitsContactSend(this.requisitions, { tenant_id, requisition_id, requestId });
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).

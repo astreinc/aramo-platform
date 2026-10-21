@@ -10,6 +10,11 @@
 export interface RequisitionExistencePort {
   /** True iff a requisition with `requisitionId` exists within `tenantId`. */
   exists(tenantId: string, requisitionId: string): Promise<boolean>;
+  /**
+   * Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — the requisition's current status
+   * (null when it does not resolve in `tenantId`), for the pre-send CONTACT_SEND gate.
+   */
+  findStatus(tenantId: string, requisitionId: string): Promise<string | null>;
 }
 
 /** DI token for the port; the concrete reader is bound at the composition root. */

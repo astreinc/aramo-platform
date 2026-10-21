@@ -67,7 +67,9 @@ export interface BoardCardView {
   // label (policy EXPLICITLY relaxed it); null is UNGOVERNED/unspecified → chip hidden (no affirmative
   // claim). email/voice_evidence are grounded per-channel facts; desired_pay is the talent's desired
   // rate (talent:read-gated server-side; null when absent or not permitted).
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | null;
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — 'POLICY_UNRESOLVED': the client's RTR
+  // requirement is not configured; Qualify is withheld until an admin sets it.
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;

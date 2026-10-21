@@ -47,8 +47,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const id = uuidv7();
       await db.query(
         `INSERT INTO requisition."RequisitionLifecycleEvent"
-           (id, tenant_id, requisition_id, previous_status, next_status, actor_id, origin, reason_code, correlation_id)
-         VALUES ($1, $2, $3, ${previousNull ? 'NULL' : `'open'`}, 'on_hold', 'actor-1', 'ui', 'SEED', $4)`,
+           (id, tenant_id, requisition_id, previous_status, next_status, actor_id, origin, reason_code, correlation_id,
+            hold_reason, hold_source, hold_effective_at)
+         VALUES ($1, $2, $3, ${previousNull ? 'NULL' : `'open'`}, 'on_hold', 'actor-1', 'ui', 'SEED', $4,
+                 'Seed hold', 'client', now())`,
         [id, TENANT, uuidv7(), uuidv7()],
       );
       return id;

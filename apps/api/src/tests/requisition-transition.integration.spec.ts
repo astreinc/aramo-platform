@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { exportSPKI, generateKeyPair, SignJWT, type CryptoKey, type KeyObject } from 'jose';
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
 import { EFFECTIVE_AUTHORIZATION_RESOLVER } from '@aramo/auth';
+import { RequisitionRepository } from '@aramo/requisition';
 
 import { AppModule } from '../app.module.js';
 import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.package.js';
@@ -17,6 +18,7 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.p
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { TEST_HOLD } from './helpers/hold-fixture.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -169,6 +171,94 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [k, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     }, 60_000);
 
+    // ---- Talent Lifecycle R1–R5 Impl Directive v1.2 §5.4 / §5.7 (A1 AM-2) -----------------------
+    describe('S2 — closed / canceled are terminal; status writers lock FOR UPDATE (v1.2 §5.4/§5.7)', () => {
+      const pending = Symbol('pending');
+      const settledWithin = async (p: Promise<unknown>, ms: number): Promise<boolean> =>
+        (await Promise.race([p.then(() => 'done', () => 'done'), new Promise((r) => setTimeout(() => r(pending), ms))])) !== pending;
+
+      for (const [from, to] of [['closed', 'open'], ['closed', 'lead'], ['closed', 'draft'], ['canceled', 'lead'], ['canceled', 'draft']] as const) {
+        it(`${from} → ${to} is refused 409 REQUISITION_STATUS_TERMINAL; no mutation, no event`, async () => {
+          const id = await seedReq(from);
+          const before = await rowOf(id);
+          const res = await patchStatus(await jwt(), id, { status: to, version: before.version });
+          expect(res.status).toBe(409);
+          expect(((await res.json()) as { error?: { code?: string } }).error?.code).toBe('REQUISITION_STATUS_TERMINAL');
+          expect(await rowOf(id)).toEqual(before);
+          expect(await eventsOf(id)).toHaveLength(0);
+        });
+      }
+
+      it('on_hold → open (REOPEN) stays allowed (A1 AM-2 §3.2)', async () => {
+        const id = await seedReq('on_hold');
+        const res = await patchStatus(await jwt(), id, { status: 'open', version: (await rowOf(id)).version });
+        expect(res.status).toBe(200);
+        expect((await rowOf(id)).status).toBe('open');
+      });
+
+      it('the external seam never reopens a closed requisition: REFUSED ILLEGAL_FROM_STATE, no mutation', async () => {
+        const id = await seedReq('closed');
+        const repo = app.get(RequisitionRepository, { strict: false });
+        const out = await repo.executeExternalLifecycleCommand({
+          tenant_id: TENANT,
+          requisition_id: id,
+          action: 'REOPEN',
+          actor_id: uuid(),
+          origin: 'integration',
+          external_provenance: {
+            connection_id: uuid(), external_event_id: uuid(), external_event_at: new Date().toISOString(),
+            raw_provider_status: 'Submitted', normalized_status: 'submitted', mapping_version: 1, mapped_action: 'REOPEN',
+          },
+        });
+        expect(out).toMatchObject({ outcome: 'REFUSED', reason: 'ILLEGAL_FROM_STATE' });
+        expect((await rowOf(id)).status).toBe('closed');
+      });
+
+      it('the PATCH status writer BLOCKS while a reader (client submit) holds the requisition FOR SHARE', async () => {
+        const id = await seedReq('open');
+        const reader = new Client({ connectionString: container.getConnectionUri() });
+        await reader.connect();
+        try {
+          await reader.query('BEGIN');
+          await reader.query(`SELECT status FROM requisition."Requisition" WHERE id=$1 FOR SHARE`, [id]);
+          const hold = patchStatus(await jwt(), id, { status: 'on_hold', version: (await rowOf(id)).version, hold: TEST_HOLD });
+          expect(await settledWithin(hold, 1_000)).toBe(false); // waits on the row lock
+          await reader.query('COMMIT');
+          expect((await hold).status).toBe(200);
+          expect((await rowOf(id)).status).toBe('on_hold');
+        } finally {
+          await reader.end();
+        }
+      });
+
+      it('the external-seam status writer BLOCKS while a reader holds the requisition FOR SHARE', async () => {
+        const id = await seedReq('open');
+        const repo = app.get(RequisitionRepository, { strict: false });
+        const reader = new Client({ connectionString: container.getConnectionUri() });
+        await reader.connect();
+        try {
+          await reader.query('BEGIN');
+          await reader.query(`SELECT status FROM requisition."Requisition" WHERE id=$1 FOR SHARE`, [id]);
+          const hold = repo.executeExternalLifecycleCommand({
+            tenant_id: TENANT,
+            requisition_id: id,
+            action: 'PUT_ON_HOLD',
+            actor_id: uuid(),
+            origin: 'integration',
+            external_provenance: {
+              connection_id: uuid(), external_event_id: uuid(), external_event_at: new Date().toISOString(),
+              raw_provider_status: 'Halted', normalized_status: 'halted', mapping_version: 1, mapped_action: 'PUT_ON_HOLD',
+            },
+          });
+          expect(await settledWithin(hold, 1_000)).toBe(false);
+          await reader.query('COMMIT');
+          expect(await hold).toMatchObject({ outcome: 'EXECUTED', next_status: 'on_hold' });
+        } finally {
+          await reader.end();
+        }
+      });
+    });
+
     it('CLOSE (open → closed) — policy evaluated, provenance recorded, ONE event carrying the decision id, version incremented', async () => {
       const token = await jwt();
       const id = await seedReq('open');
@@ -187,7 +277,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decisions = await decisionsByCorr(corr, 'CLOSE');
       expect(decisions).toHaveLength(1);
       expect(decisions[0]?.decision).toBe('ALLOW');
-      expect(decisions[0]?.policy_version).toBe('7.0.0');
+      expect(decisions[0]?.policy_version).toBe('8.0.0'); // v1.2 §5.7 (A1 AM-2) — v8.0.0
       // §2.2 — the lifecycle event names the very decision the engine recorded.
       expect(events[0]?.policy_decision_id).toBe(decisions[0]?.id);
     });
@@ -197,15 +287,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [status, expectAction] of [['on_hold', 'PUT_ON_HOLD'], ['canceled', 'CANCEL']] as const) {
         const id = await seedReq('open');
         const corr = uuid();
-        const res = await patchStatus(token, id, { status, version: 0 }, corr);
+        const res = await patchStatus(token, id, { status, version: 0, ...(status === 'on_hold' ? { hold: TEST_HOLD } : {}) }, corr);
         expect(res.status, `open → ${status}`).toBe(200);
         expect((await rowOf(id)).version).toBe(1);
         expect((await decisionsByCorr(corr, expectAction))[0]?.decision).toBe('ALLOW');
       }
-      // REOPEN from a closed requisition.
-      const closed = await seedReq('closed');
+      // REOPEN from an on_hold requisition (Talent Lifecycle R1–R5 v1.2 §5.7, A1 AM-2: REOPEN
+      // from `closed` is no longer possible — closed is terminal; see the S2 block below).
+      const held = await seedReq('on_hold');
       const corr = uuid();
-      expect((await patchStatus(token, closed, { status: 'open', version: 0 }, corr)).status).toBe(200);
+      expect((await patchStatus(token, held, { status: 'open', version: 0 }, corr)).status).toBe(200);
       expect((await decisionsByCorr(corr, 'REOPEN'))[0]?.decision).toBe('ALLOW');
     });
 
@@ -253,16 +344,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await eventsOf(id)).toHaveLength(0); // no status change → no event
     });
 
-    it('R8 — a DENY transition (CLOSE from canceled) is refused (403 POLICY_DENIED); no bypass, no event, DENY recorded', async () => {
+    it('R8 — a DENY transition (CLOSE from draft) is refused (403 POLICY_DENIED); no bypass, no event, DENY recorded', async () => {
       const token = await jwt();
-      const id = await seedReq('canceled');
+      // v1.2 §5.7 — a transition FROM canceled is now refused EARLIER as terminal (409
+      // REQUISITION_STATUS_TERMINAL, before the policy engine): proven in the S2 block. The
+      // policy-DENY path is exercised on a non-terminal DENY edge (CLOSE from draft).
+      const id = await seedReq('draft');
       const corr = uuid();
       const res = await patchStatus(token, id, { status: 'closed', version: 0 }, corr);
       expect(res.status).toBe(403);
       const body = (await res.json()) as { error?: { code?: string } };
       expect(body.error?.code).toBe('POLICY_DENIED');
       // The status could NOT be reached by picking a different path — unchanged.
-      expect((await rowOf(id)).status).toBe('canceled');
+      expect((await rowOf(id)).status).toBe('draft');
       expect(await eventsOf(id)).toHaveLength(0);
       const denied = await decisionsByCorr(corr, 'CLOSE');
       expect(denied).toHaveLength(1);
@@ -301,7 +395,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const decisions = await decisionsByCorr(corr, 'CLOSE_SUBMITTALS');
       expect(decisions).toHaveLength(1);
       expect(decisions[0]?.decision).toBe('ALLOW');
-      expect(decisions[0]?.policy_version).toBe('7.0.0');
+      expect(decisions[0]?.policy_version).toBe('8.0.0'); // v1.2 §5.7 (A1 AM-2) — v8.0.0
       expect(events[0]?.policy_decision_id).toBe(decisions[0]?.id);
       expect(await decisionCountByCorr(corr)).toBe(1);
     });

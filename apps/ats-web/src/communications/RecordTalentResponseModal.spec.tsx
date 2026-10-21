@@ -22,7 +22,7 @@ vi.mock('../pipeline/pipeline-api', () => ({
   }),
 }));
 
-function renderModal(over: { onRecorded?: () => void; onClose?: () => void } = {}) {
+function renderModal(over: { onRecorded?: () => void; onClose?: () => void; sourceInteractionId?: string } = {}) {
   const onRecorded = over.onRecorded ?? vi.fn();
   const onClose = over.onClose ?? vi.fn();
   render(
@@ -33,6 +33,7 @@ function renderModal(over: { onRecorded?: () => void; onClose?: () => void } = {
         talentName="Ravi Shankar"
         reqCode="REQ-1001"
         contactNote="contacted Oct 5 by email"
+        {...(over.sourceInteractionId === undefined ? {} : { sourceInteractionId: over.sourceInteractionId })}
         onRecorded={onRecorded}
         onClose={onClose}
       />
@@ -42,11 +43,29 @@ function renderModal(over: { onRecorded?: () => void; onClose?: () => void } = {
 }
 
 const recordBtn = () => screen.getByRole('button', { name: /Record response|Recording…|Try again/ });
+// v1.2 §7.6 (S4) — a valid entry: the attestation checked + a note (no source interaction).
+const attest = () => fireEvent.click(screen.getByRole('checkbox'));
+const addNote = (text = 'Interested, available after Oct 20') =>
+  fireEvent.change(screen.getByPlaceholderText(/What did they say|How did they respond/), { target: { value: text } });
+const fillValid = (channel: string) => {
+  fireEvent.click(screen.getByRole('radio', { name: channel }));
+  addNote();
+  attest();
+};
 
 describe('RecordTalentResponseModal', () => {
   beforeEach(() => {
     recordMock.mockReset();
-    recordMock.mockResolvedValue({ interaction_id: 'i1', deduped: false, pipeline_stage: 'talent_responded', pipeline_version: 2 });
+    recordMock.mockResolvedValue({
+      interaction_id: 'i1',
+      deduped: false,
+      pipeline_stage: 'talent_responded',
+      pipeline_version: 2,
+      advanced: true,
+      occurred_at: '2026-10-20T10:00:00.000Z',
+      recorded_at: '2026-10-20T10:05:00.000Z',
+      recorded_by_id: 'u1',
+    });
   });
 
   it('renders the modal with channel tiles, date/time, and the attested-account copy', () => {
@@ -55,7 +74,8 @@ describe('RecordTalentResponseModal', () => {
     expect(screen.getByRole('radio', { name: 'Phone call' })).toBeTruthy();
     expect(screen.getByRole('radio', { name: 'Email' })).toBeTruthy();
     expect(screen.getByLabelText('Response date')).toBeTruthy();
-    expect(screen.getByText(/attested account of the response/i)).toBeTruthy();
+    expect(screen.getByText(/Saved as your confirmation of the response/i)).toBeTruthy();
+    expect(screen.getByRole('checkbox')).toBeTruthy();
   });
 
   it('channel is required — submitting with no channel shows an error and calls NO API', async () => {
@@ -75,10 +95,16 @@ describe('RecordTalentResponseModal', () => {
 
   it('success → calls the response-evidence API (phone→voice), fires onRecorded, and NEVER a generic transition', async () => {
     const { onRecorded } = renderModal();
-    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    fillValid('Phone call');
     fireEvent.click(recordBtn());
     await waitFor(() => expect(recordMock).toHaveBeenCalledTimes(1));
-    expect(recordMock.mock.calls[0]![0]).toMatchObject({ pipeline_id: 'pipe-1', channel: 'phone' });
+    expect(recordMock.mock.calls[0]![0]).toMatchObject({
+      pipeline_id: 'pipe-1',
+      channel: 'phone',
+      substantive_response_attested: true,
+      note: 'Interested, available after Oct 20',
+    });
+    expect(recordMock.mock.calls[0]![0]).not.toHaveProperty('source_interaction_id');
     await waitFor(() => expect(onRecorded).toHaveBeenCalledTimes(1));
     // The modal imports ONLY the response-evidence client — no generic transition path exists.
   });
@@ -86,7 +112,7 @@ describe('RecordTalentResponseModal', () => {
   it('5xx failure → values preserved, onRecorded NOT called, retry allowed (same idempotency key)', async () => {
     const { onRecorded } = renderModal();
     recordMock.mockRejectedValueOnce(new Error('network'));
-    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    fillValid('Phone call');
     fireEvent.click(recordBtn());
     expect(await screen.findByText(/Couldn’t record the response/i)).toBeTruthy();
     expect(onRecorded).not.toHaveBeenCalled();
@@ -103,7 +129,7 @@ describe('RecordTalentResponseModal', () => {
   it('409 stale journey → shows the "journey changed" banner (stage unchanged; close to refetch)', async () => {
     const { onRecorded } = renderModal();
     recordMock.mockRejectedValueOnce(new ApiError(409, 'conflict', 'PIPELINE_TRANSITION_CONFLICT'));
-    fireEvent.click(screen.getByRole('radio', { name: 'Email' }));
+    fillValid('Email');
     fireEvent.click(recordBtn());
     expect(await screen.findByText(/journey changed while you were recording/i)).toBeTruthy();
     expect(onRecorded).not.toHaveBeenCalled();
@@ -118,12 +144,79 @@ describe('RecordTalentResponseModal', () => {
         'VALIDATION_ERROR',
       ),
     );
-    fireEvent.click(screen.getByRole('radio', { name: 'Email' }));
+    fillValid('Email');
     fireEvent.click(recordBtn());
     // The specific server reason is shown so the recruiter can correct the time…
     expect(await screen.findByText(/cannot precede the first recorded contact/i)).toBeTruthy();
     // …and the generic "couldn’t record" banner is NOT shown.
     expect(screen.queryByText(/Couldn’t record the response/i)).toBeNull();
     expect(onRecorded).not.toHaveBeenCalled();
+  });
+
+  // ---- Talent Lifecycle R1–R5 v1.2 §7.6 (S4) ----
+  it('the attestation is required — unchecked shows an error and calls NO API', async () => {
+    renderModal();
+    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    addNote();
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText('Confirm the Talent gave a real response.')).toBeTruthy();
+    expect(recordMock).not.toHaveBeenCalled();
+  });
+
+  it('with no source interaction, a note is required (the attestation alone never suffices)', async () => {
+    renderModal();
+    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    attest();
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText(/Add a short note/i)).toBeTruthy();
+    expect(recordMock).not.toHaveBeenCalled();
+  });
+
+  it('opened from an interaction: sends source_interaction_id and the note is optional', async () => {
+    const { onRecorded } = renderModal({ sourceInteractionId: 'int-9' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    attest();
+    fireEvent.click(recordBtn());
+    await waitFor(() => expect(recordMock).toHaveBeenCalledTimes(1));
+    expect(recordMock.mock.calls[0]![0]).toMatchObject({ source_interaction_id: 'int-9', substantive_response_attested: true });
+    expect(recordMock.mock.calls[0]![0]).not.toHaveProperty('note');
+    await waitFor(() => expect(onRecorded).toHaveBeenCalledTimes(1));
+  });
+
+  it('shows the reviewer and the recorded time on success; a historical record says the journey does not move', async () => {
+    recordMock.mockResolvedValueOnce({
+      interaction_id: 'i2',
+      deduped: false,
+      pipeline_stage: 'no_contact',
+      pipeline_version: 0,
+      advanced: false,
+      occurred_at: '2026-10-19T10:00:00.000Z',
+      recorded_at: '2026-10-20T10:05:00.000Z',
+      recorded_by_id: 'u1',
+    });
+    renderModal();
+    fillValid('Email');
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText(/Response recorded by you · .* kept as history/)).toBeTruthy();
+  });
+
+  it('a non-substantive source refusal shows specific copy (not the stale-journey banner)', async () => {
+    recordMock.mockRejectedValueOnce(
+      new ApiError(422, 'x', 'PIPELINE_EVIDENCE_INADMISSIBLE', { reason: 'source_not_substantive' }),
+    );
+    renderModal({ sourceInteractionId: 'int-9' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Phone call' }));
+    attest();
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText(/wasn’t a real response/)).toBeTruthy();
+  });
+
+  it('a closed-requisition refusal (409 REQUISITION_NOT_ADVANCEABLE) shows specific copy, not the stale banner', async () => {
+    recordMock.mockRejectedValueOnce(new ApiError(409, 'x', 'REQUISITION_NOT_ADVANCEABLE'));
+    renderModal();
+    fillValid('Email');
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText(/happened before the requisition closed/)).toBeTruthy();
+    expect(screen.queryByText(/journey changed while you were recording/i)).toBeNull();
   });
 });

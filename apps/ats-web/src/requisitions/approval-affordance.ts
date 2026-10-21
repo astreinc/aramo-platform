@@ -87,7 +87,9 @@ const STATUS_ACTIONS: Readonly<Record<RecruitingStatus, readonly LifecycleAction
   open: ['CLOSE_SUBMITTALS', 'PUT_ON_HOLD', 'CLOSE', 'CANCEL'],
   on_hold: ['REOPEN', 'CLOSE', 'CANCEL'],
   submittals_closed: ['REOPEN', 'PUT_ON_HOLD', 'CLOSE', 'CANCEL'],
-  closed: ['REOPEN'],
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — closed is TERMINAL: no
+  // REOPEN (a reopened hiring need is a new requisition). Mirrors package v8.0.0.
+  closed: [],
   canceled: [],
   archived: [],
 };

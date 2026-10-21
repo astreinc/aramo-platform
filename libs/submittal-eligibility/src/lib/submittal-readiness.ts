@@ -394,12 +394,22 @@ export function evaluateSubmittalReadiness(args: {
     key: 'rtr',
     label: 'Right to Represent executed',
     required: true,
-    satisfied: deny !== 'SUBMITTAL_RTR_NOT_EXECUTED',
+    satisfied: deny !== 'SUBMITTAL_RTR_NOT_EXECUTED' && deny !== 'SUBMITTAL_RTR_POLICY_UNRESOLVED',
     severity: 'blocking',
     source: 'documents',
-    reason: deny === 'SUBMITTAL_RTR_NOT_EXECUTED' ? 'A Right to Represent is required but not executed' : null,
-    remediation: deny === 'SUBMITTAL_RTR_NOT_EXECUTED' ? 'Obtain an executed Right to Represent for this requisition' : null,
-    deny_code: 'SUBMITTAL_RTR_NOT_EXECUTED',
+    reason:
+      deny === 'SUBMITTAL_RTR_NOT_EXECUTED'
+        ? 'A Right to Represent is required but not executed'
+        : deny === 'SUBMITTAL_RTR_POLICY_UNRESOLVED'
+          ? 'The Right to Represent policy is not set for this client'
+          : null,
+    remediation:
+      deny === 'SUBMITTAL_RTR_NOT_EXECUTED'
+        ? 'Obtain an executed Right to Represent for this requisition'
+        : deny === 'SUBMITTAL_RTR_POLICY_UNRESOLVED'
+          ? 'Ask an admin to set the Right to Represent requirement in the client submittal policy'
+          : null,
+    deny_code: deny === 'SUBMITTAL_RTR_POLICY_UNRESOLVED' ? 'SUBMITTAL_RTR_POLICY_UNRESOLVED' : 'SUBMITTAL_RTR_NOT_EXECUTED',
   });
 
   // 6 — client-submittal policy (the configurable per-client layer). Pre-resolved

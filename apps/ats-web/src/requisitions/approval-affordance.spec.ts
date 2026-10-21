@@ -87,8 +87,9 @@ describe('lifecycleActionsFor — the four original transitions (canEditStatus)'
     expect(ids('submittals_closed', EDIT)).toEqual(['REOPEN', 'PUT_ON_HOLD', 'CLOSE', 'CANCEL']);
   });
 
-  it('closed → Reopen ONLY (a canceled requisition is dead → nothing)', () => {
-    expect(ids('closed', EDIT)).toEqual(['REOPEN']);
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.7 (A1 AM-2) — closed is TERMINAL like canceled.
+  it('closed and canceled are terminal → nothing (a reopened hiring need is a new requisition)', () => {
+    expect(ids('closed', EDIT)).toEqual([]);
     expect(ids('canceled', EDIT)).toEqual([]);
   });
 

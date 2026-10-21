@@ -10,6 +10,10 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PipelineRepository } from '../lib/pipeline.repository.js';
 import type { PipelineStatus } from '../lib/pipeline-state.js';
 
+import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
+import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER, syntheticEvidenceFor } from './helpers/evidence-verifier.stub.js';
+
 // L1 (pre-E6 coverage) — libs/pipeline's FIRST lib-local integration spec.
 //
 // PURPOSE: give the pipeline write surface a lane that CI actually runs, so the
@@ -64,6 +68,8 @@ const MIGRATIONS = [
   '../../prisma/migrations/20260831120000_pipeline_canonicalize_status_enum/migration.sql',
   '../../prisma/migrations/20260925120000_pipeline_void_add_enum_value/migration.sql',
   '../../prisma/migrations/20260925120100_pipeline_void_live_index_recreate/migration.sql',
+  // v1.2 §4.6 — the in-tx RTR policy audit record on `qualified`.
+  ...POLICY_STORE_DECISION_RECORD_MIGRATIONS,
 ].map((p) => resolve(__dirname, p));
 
 // The legal recruiter chain no_contact -> ... -> qualified. Every hop is a legal
@@ -133,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       prisma = new PrismaService(url);
       await prisma.$connect();
-      repo = new PipelineRepository(prisma);
+      repo = new PipelineRepository(prisma, NOT_REQUIRED_QUALIFIED_GUARD, ACCEPTING_EVIDENCE_VERIFIER);
     }, 120_000);
 
     afterAll(async () => {
@@ -186,7 +192,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // through them with synthetic evidence (the gate itself is proven in the
         // evidence-milestones spec — here we assert history/events/projections/capacity).
         ...(to === 'contacted' || to === 'talent_responded'
-          ? { evidence_provenance: { kind: 'communication_interaction', id: randomUUID() } }
+          ? { evidence_provenance: syntheticEvidenceFor(to, randomUUID()) }
           : {}),
       });
     }

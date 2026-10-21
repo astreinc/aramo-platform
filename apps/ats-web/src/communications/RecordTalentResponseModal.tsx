@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { ApiError, Button, Dialog, InlineAlert, Input, TextArea, useToast } from '@aramo/fe-foundation';
 
+import { AttestCheckbox } from '../ui/AttestCheckbox';
+
 import {
   recordTalentResponse,
   type RecordTalentResponseResult,
@@ -36,6 +38,10 @@ export interface RecordTalentResponseModalProps {
   // round-trip for a better message when the instant is known client-side.
   readonly firstContactAtIso?: string;
   readonly firstContactLabel?: string;
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.6 (S4) — set when the modal is opened FROM a
+  // specific interaction (e.g. the call the Talent answered): it is sent as the confirmation's
+  // source, verified server-side, and the note becomes optional. Absent → a note is required.
+  readonly sourceInteractionId?: string;
   // Called after the backend recorded evidence + advanced the milestone. The caller
   // closes the surface and refetches the journey from authoritative state.
   readonly onRecorded: (result: RecordTalentResponseResult) => void;
@@ -54,6 +60,7 @@ export function RecordTalentResponseModal({
   contactNote,
   firstContactAtIso,
   firstContactLabel,
+  sourceInteractionId,
   onRecorded,
   onClose,
 }: RecordTalentResponseModalProps) {
@@ -62,10 +69,14 @@ export function RecordTalentResponseModal({
   const [date, setDate] = useState(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`);
   const [time, setTime] = useState(`${pad(now.getHours())}:${pad(now.getMinutes())}`);
   const [note, setNote] = useState('');
+  // v1.2 §7.4 — the recruiter's attestation that the Talent gave a substantive response.
+  const [attested, setAttested] = useState(false);
   const [tried, setTried] = useState(false);
   const [saving, setSaving] = useState(false);
-  // Exactly one of: null | 'failed' (generic/5xx) | 'stale' (409 journey moved).
+  // Exactly one of: null | 'failed' (generic/5xx) | 'stale' (409 journey moved) | a typed refusal.
   const [banner, setBanner] = useState<null | 'failed' | 'stale'>(null);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const noteRequired = sourceInteractionId === undefined || channel === 'other';
   const [serverDateErr, setServerDateErr] = useState<string | null>(null);
   // One idempotency key per modal instance — reused across retries so "Try again"
   // after a transient failure dedupes rather than double-records (§8 / watch-item #3).
@@ -74,14 +85,15 @@ export function RecordTalentResponseModal({
 
   const occurredAtLocal = `${date}T${time}`;
 
-  const clientErrors = (): { channel?: boolean; date?: string; note?: boolean } => {
-    const e: { channel?: boolean; date?: string; note?: boolean } = {};
+  const clientErrors = (): { channel?: boolean; date?: string; note?: boolean; attest?: boolean } => {
+    const e: { channel?: boolean; date?: string; note?: boolean; attest?: boolean } = {};
     if (channel === null) e.channel = true;
     if (date === '' || time === '') e.date = 'Enter the date and time they responded.';
     else if (new Date(occurredAtLocal).getTime() > Date.now()) e.date = 'Response time can’t be in the future.';
     else if (firstContactAtIso !== undefined && new Date(occurredAtLocal).getTime() < new Date(firstContactAtIso).getTime())
       e.date = `Must be after first contact${firstContactLabel === undefined ? '' : ` (${firstContactLabel})`}.`;
-    if (channel === 'other' && note.trim() === '') e.note = true;
+    if (noteRequired && note.trim() === '') e.note = true;
+    if (!attested) e.attest = true;
     return e;
   };
 
@@ -96,6 +108,7 @@ export function RecordTalentResponseModal({
     if (channel === null) return; // narrowed — clientErrors() already requires it
     setSaving(true);
     setBanner(null);
+    setRefusal(null);
     setServerDateErr(null);
     try {
       const result = await recordTalentResponse(
@@ -103,14 +116,25 @@ export function RecordTalentResponseModal({
           pipeline_id: pipelineId,
           channel,
           occurred_at: new Date(occurredAtLocal).toISOString(),
+          substantive_response_attested: true,
+          ...(sourceInteractionId === undefined ? {} : { source_interaction_id: sourceInteractionId }),
           ...(note.trim() === '' ? {} : { note: note.trim() }),
         },
         idempotencyKey.current,
       );
-      toast.show(`Response recorded · ${talentName} is now Talent responded`);
+      // v1.2 §7.6 — show the reviewer and the time on the recorded response.
+      const recordedAt = new Date(result.recorded_at).toLocaleString();
+      toast.show(
+        result.advanced
+          ? `Response recorded by you · ${recordedAt} · ${talentName} is now Talent responded`
+          : `Response recorded by you · ${recordedAt} · kept as history — the requisition is closed, so the journey doesn’t move`,
+      );
       onRecorded(result);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
+      const typed = err instanceof ApiError ? talentResponseRefusalMessage(err) : null;
+      if (typed !== null) {
+        setRefusal(typed);
+      } else if (err instanceof ApiError && err.status === 409) {
         // §10 — the journey changed while recording. Closing refetches the latest.
         setBanner('stale');
       } else if (err instanceof ApiError && (err.status === 400 || err.status === 422)) {
@@ -148,6 +172,7 @@ export function RecordTalentResponseModal({
             <b>Couldn’t record the response.</b> Nothing was changed. Your entries are kept — try again.
           </InlineAlert>
         ) : null}
+        {refusal !== null ? <InlineAlert variant="error">{refusal}</InlineAlert> : null}
         {banner === 'stale' ? (
           <InlineAlert variant="error">
             {talentName}’s journey changed while you were recording. Close to see the latest.
@@ -232,7 +257,9 @@ export function RecordTalentResponseModal({
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 12, fontWeight: 600, marginBottom: 7 }}>
             Note{' '}
-            <span style={{ fontWeight: 500, color: '#93A0A8' }}>{channel === 'other' ? '· required for Other' : '· optional'}</span>
+            <span style={{ fontWeight: 500, color: '#93A0A8' }}>
+              {channel === 'other' ? '· required for Other' : noteRequired ? '· required' : '· optional'}
+            </span>
             <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 500, color: '#93A0A8' }}>{note.length} / {NOTE_MAX}</span>
           </div>
           <TextArea
@@ -251,10 +278,26 @@ export function RecordTalentResponseModal({
           ) : null}
         </div>
 
+        <div>
+          <AttestCheckbox
+            checked={attested}
+            disabled={saving}
+            onChange={(v) => {
+              setAttested(v);
+              setRefusal(null);
+            }}
+          >
+            I confirm the Talent gave a real response about this role (not a voicemail, missed call or a request to call back).
+          </AttestCheckbox>
+          {errs.attest ? (
+            <div style={{ fontSize: 11.5, color: '#B3402A', fontWeight: 600, marginTop: 4 }}>Confirm the Talent gave a real response.</div>
+          ) : null}
+        </div>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 11.5, color: '#5C6770', lineHeight: 1.5, borderTop: '1px solid #F2F4F6', paddingTop: 11 }}>
           <span>
-            Saved as your attested account of the response, recorded by you and logged to the audit trail. The journey moves to
-            Talent responded once it’s saved.
+            Saved as your confirmation of the response, recorded by you with the time it happened and the time you recorded it,
+            and logged to the audit trail. The journey moves to Talent responded once it’s saved.
           </span>
         </div>
 
@@ -269,4 +312,26 @@ export function RecordTalentResponseModal({
       </div>
     </Dialog>
   );
+}
+
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4/§7.5 (S4) — the typed refusals get specific copy
+// (never the generic "journey changed" banner). Null = not a typed refusal.
+export function talentResponseRefusalMessage(err: ApiError): string | null {
+  const reason = (err.details as { reason?: unknown } | undefined)?.reason;
+  if (err.code === 'PIPELINE_EVIDENCE_INADMISSIBLE') {
+    if (reason === 'source_not_substantive') {
+      return 'That call or message wasn’t a real response (for example a voicemail or a request to call back), so it can’t be confirmed as one.';
+    }
+    return 'This response can’t be confirmed from that record. Add a note describing how the Talent responded.';
+  }
+  if (err.code === 'REQUISITION_NOT_ADVANCEABLE') {
+    return 'This requisition is closed or not yet open for responses. A response can only be recorded if it happened before the requisition closed.';
+  }
+  if (err.code === 'INSUFFICIENT_PERMISSIONS' && reason === 'recruiter_user_required') {
+    return 'Only a recruiter can confirm a Talent response.';
+  }
+  if (err.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
+    return 'Something changed at the same moment, so nothing was saved. Try again.';
+  }
+  return null;
 }

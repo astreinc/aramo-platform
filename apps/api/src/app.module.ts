@@ -78,6 +78,9 @@ import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-int
 import { RtrModule } from './rtr/rtr.module.js';
 import { TemplateCapabilitiesModule } from './rtr/rtr-template-capabilities.module.js';
 import { RtrQualifiedTransitionGuardModule } from './rtr/rtr-qualified-transition-guard.module.js';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2 (S4) — the evidence-reference verifier.
+import { EvidenceReferenceVerifierModule } from './pipeline-evidence/evidence-reference-verifier.module.js';
+import { TalentRecordExistenceReaderModule } from './pipeline-talent-existence/talent-record-existence-reader.module.js';
 import { OfferDocumentModule } from './offer-document/offer-document.module.js';
 import { ResumeAttachmentResolverModule } from './resume-extraction/resume-attachment-resolver.module.js';
 import { RecruiterCreateConsentDefaultModule } from './talent-consent-default/recruiter-create-consent-default.module.js';
@@ -611,6 +614,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // validation + sample preview) behind the generic TEMPLATE_CAPABILITIES token.
     TemplateCapabilitiesModule,
     RtrQualifiedTransitionGuardModule,
+    EvidenceReferenceVerifierModule,
+    // Lane2-DDR §0/§6 — @Global TALENT_RECORD_EXISTENCE_READER for the Pipeline Add-Talent
+    // precondition (an episode is born only for a Talent that exists in the tenant).
+    TalentRecordExistenceReaderModule,
     OfferDocumentModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
     // Indeed apply webhook can write the channel dedup-memory arrival. The

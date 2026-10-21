@@ -20,7 +20,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { governedDropTargets, resolveGovernedMove } from './board-governed-move';
-import { rtrAffordanceKind } from './rtr-affordance';
+import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, RTR_POLICY_UNRESOLVED_LABEL } from './rtr-affordance';
 
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
@@ -357,12 +357,17 @@ function BoardCard({
                 RTR · Signed
               </Button>
             ) : (
-              <span className="rc-tboard__pill rc-tboard__pill--mute">
+              <span
+                className={`rc-tboard__pill rc-tboard__pill--${rtrKind === 'policy_unresolved' ? 'warn' : 'mute'}`}
+                title={rtrKind === 'policy_unresolved' ? RTR_POLICY_UNRESOLVED_DETAIL : undefined}
+              >
                 {rtrKind === 'none'
                   ? 'RTR · Not required'
-                  : rtrKind === 'due'
-                    ? 'RTR · Due before qualifying'
-                    : 'RTR · Not sent'}
+                  : rtrKind === 'policy_unresolved'
+                    ? RTR_POLICY_UNRESOLVED_LABEL
+                    : rtrKind === 'due'
+                      ? 'RTR · Due before qualifying'
+                      : 'RTR · Not sent'}
               </span>
             )}
             <span className={`rc-tboard__pill rc-tboard__pill--${card.email_evidence ? 'ok' : 'mute'}`}>

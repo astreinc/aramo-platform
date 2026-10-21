@@ -22,6 +22,7 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.p
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { applyTalentRecordMigrations, seedTalentRecord } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -82,6 +83,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return id;
     }
+    // Add Talent requires the Talent to exist in the caller's tenant (Lane2-DDR §0/§6):
+    // seed a fresh live TalentRecord per POST (a fresh id keeps each a distinct triple).
+    async function seedTalent(tenant: string): Promise<string> {
+      const id = uuid();
+      await seedTalentRecord(db, { id, tenant_id: tenant });
+      return id;
+    }
     function baseUrl(): string {
       const a = app.getHttpServer().address();
       return `http://127.0.0.1:${typeof a === 'object' && a !== null ? a.port : 0}`;
@@ -91,7 +99,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         method: 'POST',
         // L2-B — POST /v1/pipelines now requires a UUID Idempotency-Key.
         headers: { Authorization: `Bearer ${await signJwt(tenant)}`, 'Content-Type': 'application/json', 'Idempotency-Key': uuid() },
-        body: JSON.stringify({ talent_record_id: uuid(), requisition_id: requisitionId, site_id: SITE }),
+        body: JSON.stringify({ talent_record_id: await seedTalent(tenant), requisition_id: requisitionId, site_id: SITE }),
       });
     }
     async function latestRecord(tenant: string): Promise<{ id: string; policy_version: string; decision: string }> {
@@ -109,6 +117,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: dbUrl });
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
+      // Add Talent requires the Talent to exist in the tenant (Lane2-DDR §0/§6).
+      await applyTalentRecordMigrations(db);
       for (const t of [TENANT_A, TENANT_B]) {
         await ensureWriteFreezeTenant((s) => db.query(s), t);
         await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [t]);

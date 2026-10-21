@@ -218,6 +218,20 @@ export interface RequisitionView {
   // Used purely to suppress the submitter's own Approve affordance (SoD is
   // authoritative on the BE). ---
   readonly pending_approval_submitter_id: string | null;
+
+  // --- Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3) — hold details. Hand-mirrored
+  // from libs/requisition/src/lib/dto/requisition.view.ts; DETAIL read only, while on_hold. ---
+  readonly hold?: RequisitionHold | null;
+}
+
+export interface RequisitionHold {
+  readonly recorded: boolean;
+  readonly reason: string | null;
+  readonly reason_provided: boolean;
+  readonly source: 'client' | 'vms' | 'internal' | null;
+  readonly effective_at: string | null;
+  readonly instructions: string | null;
+  readonly provider_status: string | null;
 }
 
 // Hand-mirrored from libs/requisition/src/lib/dto/rate-type.ts (RATE_TYPE_
@@ -412,4 +426,12 @@ export interface UpdateRequisitionRequest {
   readonly max_bill_rate?: string | null;
   readonly min_pay_rate?: string | null;
   readonly max_pay_rate?: string | null;
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.2 (S3) — REQUIRED with a PUT_ON_HOLD
+  // (reason + source), refused on any other edge.
+  readonly hold?: {
+    readonly reason: string;
+    readonly source: 'client' | 'internal';
+    readonly effective_at?: string;
+    readonly instructions?: string | null;
+  };
 }

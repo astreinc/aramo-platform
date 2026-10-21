@@ -29,6 +29,7 @@ import { SECRETS_MANAGER_PORT, SECRETS_MANAGER_WRITER } from '@aramo/integration
 // a default-ALLOW package suffices (the interactions assert the view, not the
 // provenance record) — the six-state matrix is the apps/api seed DATA.
 import { PolicyStore, PrismaService as PolicyStorePrismaService } from '@aramo/policy-store';
+import { checksumDefinition } from '@aramo/client-submittal-policy';
 // PC-6 — resume mock-infra: overrideProvider(Class) needs the concrete class
 // (Gate-5 eslint amendment). Backends only; controllers stay live-verified.
 import { ObjectStorageService } from '@aramo/object-storage';
@@ -371,6 +372,17 @@ const COMMUNICATIONS_RECONCILIATION_MIGRATION = resolve(
 const COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION = resolve(
   ROOT,
   'libs/communications/prisma/migrations/20261016140000_inc3_a1_screening_meetings/migration.sql',
+);
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.7 (S4) — the 2 additive communications
+// migrations: the response_confirmed disposition value (its own migration — an enum value cannot
+// be used in the transaction that adds it) and the nullable source_interaction_id column.
+const COMMUNICATIONS_S4_RESPONSE_CONFIRMED_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261021100000_s4_disposition_response_confirmed/migration.sql',
+);
+const COMMUNICATIONS_S4_SOURCE_INTERACTION_MIGRATION = resolve(
+  ROOT,
+  'libs/communications/prisma/migrations/20261021100100_s4_interaction_source_interaction_id/migration.sql',
 );
 // PR-A1c §4 sweep — metering schema applied because every selection +
 // submittal state-transition write method (the methods the pact provider
@@ -1433,6 +1445,12 @@ const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
 );
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §6.5 (S3) — additive hold-detail columns on the
+// lifecycle event (needs the RequisitionLifecycleEvent table + nullable next_status).
+const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261021090000_s3_requisition_hold_details/migration.sql',
+);
 
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
@@ -2463,6 +2481,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_PIPE_OFFERED_ID = '00000000-0000-7000-8000-71be00000002';
     const ATSW_PIPE_TALENT_ID = '00000000-0000-7000-8000-7a1e00000001';
     const ATSW_PIPE_REQ_ID = '00000000-0000-7000-8000-4e9100000001';
+    // The sourcing consumer's promote-to-pipeline requisition (sourcing.consumer.test.ts
+    // REQ_ID). Add Talent fails closed on an unresolved requisition (Lane2-DDR RP-1), so the
+    // promote-to-pipeline states seed it (defaults to `open`, an ADD-ALLOW lifecycle state).
+    const ATSW_SOURCING_REQ_ID = '00000000-0000-7000-8000-4e9300000001';
+    async function seedAtsWebSourcingRequisition(c: Client): Promise<void> {
+      await seedAtsWebRequisition(c, {
+        id: ATSW_SOURCING_REQ_ID,
+        title: 'Sourcing Requisition',
+        companyId: '00000000-0000-7000-8000-c0a000000001',
+      });
+    }
     const ATSW_PIPE_FULL_REQ_ID = '00000000-0000-7000-8000-4e9100000002';
     const ATSW_PIPE_HISTORY_ID = '00000000-0000-7000-8000-415700000001';
     // Recruiting-Journey §5/§27 (email→CONTACT) — the deterministic microsoft_graph
@@ -2496,6 +2525,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         status?: string;
       },
     ): Promise<void> {
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.3 / §2.6 — Pipeline activity reads the
+      // requisition's status (FOR SHARE) and refuses one that does not resolve. Every pipeline
+      // fixture therefore carries its (open, by default) requisition — ON CONFLICT DO NOTHING,
+      // so a state that seeds the requisition itself keeps its own status/company.
+      await seedAtsWebRequisition(c, {
+        id: params.requisitionId,
+        title: 'Pact requisition',
+        companyId: '00000000-0000-7000-8000-c0a000000001',
+      });
       if (params.status === undefined) {
         await c.query(
           `INSERT INTO pipeline."Pipeline" (id, tenant_id, talent_record_id, requisition_id)
@@ -3825,6 +3863,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         COMMUNICATIONS_MUTATION_FENCE_MIGRATION,
         COMMUNICATIONS_RECONCILIATION_MIGRATION,
         COMMUNICATIONS_INC3_A1_SCREENING_MEETINGS_MIGRATION,
+        // v1.2 §7.7 (S4) — additive response_confirmed + source_interaction_id.
+        COMMUNICATIONS_S4_RESPONSE_CONFIRMED_MIGRATION,
+        COMMUNICATIONS_S4_SOURCE_INTERACTION_MIGRATION,
         // PR-A1c §4 — metering schema (in-tx UsageEvent INSERT in every
         // selection + submittal state-transition write method).
         METERING_INIT_MIGRATION,
@@ -4019,6 +4060,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_EXTERNAL_IDENTITY_MIGRATION,
         // WL-B1 — canonical postal_code column (additive, applied last).
         REQUISITION_POSTAL_CODE_MIGRATION,
+        // v1.2 §6.5 (S3) — hold-detail columns on the lifecycle event (additive).
+        REQUISITION_S3_HOLD_DETAILS_MIGRATION,
         // SKILL-TAX-1D — derived RequisitionSkillRequirement table (needs the base
         // requisition schema above; the review-queue state handler seeds an
         // UNRESOLVED requirement surface here).
@@ -4084,6 +4127,28 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         }
       } finally {
         await policyPrisma.onModuleDestroy();
+      }
+
+      // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — an absent client-submittal
+      // policy is UNRESOLVED and refuses Qualified + client submit. The verifier tenant
+      // gets an EXPLICIT TENANT-scope `rtr_present: NOT_REQUIRED` so the happy-path
+      // submit-to-client / qualify replays resolve (the pacts assert their own outcomes,
+      // not RTR). Seeded once with a valid checksum (decode is checksum fail-closed).
+      {
+        const cspDefinition = {
+          requirements: [
+            { key: 'rtr_present', disposition: 'NOT_REQUIRED', override_class: 'HARD_DENY', override_policy: 'DEFAULT' },
+          ],
+        };
+        await withClient((c) =>
+          c.query(
+            `INSERT INTO "policy_store"."StoredPolicyVersion"
+               ("id","tenant_id","package_name","version","definition","checksum","effective_from","effective_to","published_by","published_at")
+             VALUES (gen_random_uuid(),$1::uuid,'client-submittal-policy','1.0.0',$2::jsonb,$3,'2020-01-01T00:00:00Z',NULL,$4::uuid,NOW())
+             ON CONFLICT DO NOTHING`,
+            [TENANT_ID, JSON.stringify(cspDefinition), checksumDefinition(cspDefinition as never), '00000000-0000-0000-0000-000000000000'],
+          ),
+        );
       }
 
       // Inline JWT signing per Amendment §2.2 — production issuer
@@ -7872,7 +7937,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // -- create: no pre-existing pipeline (the endpoint mints it at
       // no_contact). talent_record_id/requisition_id are logical refs.
       'an ats-web recruiter can create pipelines': async () => {
-        await withClient((c) => resetAllRows(c));
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          // Add Talent fails closed on an unresolved requisition (Lane2-DDR RP-1) and on
+          // a Talent absent from the tenant (DDR §0/§6) — seed both so the create verifies
+          // (the requisition defaults to `open`, an ADD-ALLOW lifecycle state).
+          await seedAtsWebRequisition(c, {
+            id: ATSW_PIPE_REQ_ID,
+            title: 'Senior Engineer',
+            companyId: '00000000-0000-7000-8000-c0a000000001',
+          });
+          await seedAtsWebTalentRecord(c, {
+            id: ATSW_PIPE_TALENT_ID,
+            firstName: 'Dana',
+            lastName: 'Rivera',
+          });
+        });
       },
 
       // TI-1D-D — a pipeline whose talent owns ONE active resume edition (the
@@ -8571,6 +8651,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedAtsWebResolutionSubject(c, { id: ATSW_MINT_SUBJECT_ID });
+          await seedAtsWebSourcingRequisition(c);
           await seedAtsWebResolutionSubjectRef(c, {
             id: '00000000-0000-7000-8000-50c000000002',
             subjectId: ATSW_MINT_SUBJECT_ID,
@@ -8613,6 +8694,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_PROMOTED_SUBJECT_ID });
+            await seedAtsWebSourcingRequisition(c);
             await seedAtsWebResolutionSubjectRef(c, {
               id: '00000000-0000-7000-8000-50c000000003',
               subjectId: ATSW_PROMOTED_SUBJECT_ID,
@@ -8640,6 +8722,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           await withClient(async (c) => {
             await resetAllRows(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_ID });
+            await seedAtsWebSourcingRequisition(c);
             await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_B_ID });
             await seedAtsWebResolutionSubjectRef(c, {
               id: '00000000-0000-7000-8000-50c000000005',

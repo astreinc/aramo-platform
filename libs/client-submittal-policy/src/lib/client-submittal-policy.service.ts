@@ -41,6 +41,21 @@ export interface EffectiveLayerRef {
   readonly checksum: string;
 }
 
+/**
+ * Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1 — one requirement key's effective
+ * resolution. NO_LAYER and NO_KEY are the two UNRESOLVED shapes (A1 AM-6 §7.3); RESOLVED
+ * carries the disposition and the source layer that set it (scope/version/checksum).
+ */
+export type RequirementResolution =
+  | { readonly state: 'NO_LAYER' }
+  | { readonly state: 'NO_KEY'; readonly composite_version: string }
+  | {
+      readonly state: 'RESOLVED';
+      readonly disposition: Disposition;
+      readonly source: RequirementSourceRef;
+      readonly composite_version: string;
+    };
+
 export interface ResolvedClientSubmittalPolicy {
   readonly requirements: readonly ClientSubmittalRequirement[];
   readonly layers: readonly EffectiveLayerRef[];
@@ -287,6 +302,33 @@ export class ClientSubmittalPolicyService {
   }
 
   /**
+   * Talent Lifecycle R1–R5 Impl Directive v1.2 §4.1/§4.2 — the effective resolution of
+   * ONE requirement key WITH its source layer, through the same authoritative merge
+   * (TENANT -> CLIENT -> REQUISITION, FLOOR fail-closed). Distinguishes the two
+   * UNRESOLVED shapes (A1 AM-6 §7.3): NO_LAYER (no active layer at all) vs NO_KEY (a
+   * policy is active but no layer declares the key). `at` is the caller's linearization
+   * instant (database clock, read under the shared advisory lock — §4.4(d)).
+   */
+  async resolveRequirementSource(
+    tenantId: string,
+    ctx: ClientSubmittalScopeContext,
+    key: string,
+    at: Date,
+  ): Promise<RequirementResolution> {
+    const merged = await this.mergeLayers(tenantId, ctx, at);
+    if (merged === null) return { state: 'NO_LAYER' };
+    const composite_version = compositeVersion(merged.layers);
+    const entry = merged.entries.find((e) => e.req.key === key);
+    if (entry === undefined) return { state: 'NO_KEY', composite_version };
+    return {
+      state: 'RESOLVED',
+      disposition: entry.req.disposition,
+      source: entry.view.source,
+      composite_version,
+    };
+  }
+
+  /**
    * The raw per-layer read (§8): each scope's OWN active definition (unmerged) plus the
    * merged effective view. Powers the editor's inherit/override toggles and the
    * "Tenant: X -> Client: Y" delta without the FE reconstructing policy semantics.
@@ -402,8 +444,19 @@ export class ClientSubmittalPolicyService {
     readonly version: string;
     readonly definition: unknown;
     readonly published_by: string;
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(c) — PO ruling C-1 (immediate
+    // effect, 2026-10-20): a caller-supplied effective_from (future- or back-dated) is
+    // REFUSED; the version takes effect at its database-clock publication instant.
     readonly effective_from?: Date;
   }): Promise<StoredPolicyVersionRow> {
+    if (input.effective_from !== undefined) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'effective_from is not supported: a client-submittal policy takes effect immediately on publication',
+        422,
+        { requestId: '', details: { field: 'effective_from', reason: 'effective_from_not_supported' } },
+      );
+    }
     if (!isClientSubmittalPolicyDefinition(input.definition)) {
       throw this.invalid('client-submittal-policy definition is malformed', { reason: 'MALFORMED_DEFINITION' });
     }
@@ -430,7 +483,6 @@ export class ClientSubmittalPolicyService {
       version: input.version,
       definition,
       checksum: checksumDefinition(definition),
-      effective_from: input.effective_from ?? new Date(),
       published_by: input.published_by,
     });
   }

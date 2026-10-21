@@ -148,6 +148,9 @@ enum CommunicationDispositionOutcome {
   callback_requested
   follow_up_required
   do_not_contact
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — a recruiter-confirmed substantive
+  // Talent response (the disposition of a recruiter response confirmation).
+  response_confirmed
 
   @@schema("communications")
 }
@@ -216,6 +219,10 @@ model CommunicationInteraction {
   // resolve the existing interaction (a PARTIAL unique index on
   // (tenant_id, idempotency_key) enforces non-duplication at the DB).
   idempotency_key String?
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.4 (S4) — on a recruiter response confirmation,
+  // the interaction it confirms (UUID-only self-reference, no FK). Null otherwise.
+  source_interaction_id String? @db.Uuid
 
   // COMM-C2B — provider-neutral join reference/URL for a meeting-channel
   // interaction (e.g. a Teams join URL). Never a token or provider secret.

@@ -1,5 +1,11 @@
 export { PipelineModule } from './lib/pipeline.module.js';
 export { PipelineController } from './lib/pipeline.controller.js';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §5.1 — A1 AM-1 §2.2 as a pure code rule.
+export {
+  requisitionPermits,
+  isTerminalRequisitionStatus,
+  type RequisitionPipelineActivity,
+} from './lib/requisition-activity-rule.js';
 export {
   PipelineRepository,
   type CurrentStage,
@@ -8,12 +14,32 @@ export {
 export {
   QUALIFIED_TRANSITION_GUARD,
   type QualifiedTransitionGuardPort,
+  type QualifiedGuardTx,
+  type QualifiedRtrDecision,
 } from './lib/qualified-transition-guard.port.js';
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2 (S4) — the evidence allowlist + verifier port.
+export {
+  ADMISSIBLE_EVIDENCE_BY_STAGE,
+  PIPELINE_EVIDENCE_KINDS,
+  isEvidenceAdmissible,
+  type PipelineEvidenceKind,
+} from './lib/evidence-admissibility.js';
+export {
+  EVIDENCE_REFERENCE_VERIFIER,
+  type EvidenceReferenceVerifierPort,
+  type EvidenceReferenceInput,
+  type EvidenceVerification,
+  type EvidenceVerifierTx,
+} from './lib/evidence-reference-verifier.port.js';
 export {
   RESUME_EDITION_READER,
   type ResumeEditionReaderPort,
   type ResumeEditionSummary,
 } from './lib/resume-edition-reader.port.js';
+export {
+  TALENT_RECORD_EXISTENCE_READER,
+  type TalentRecordExistenceReaderPort,
+} from './lib/talent-record-existence.port.js';
 export {
   resumeSelectionEligibility,
   type ResumeSelectionEligibility,
@@ -91,6 +117,7 @@ export {
   AddTalentPolicyService,
   REQUISITION_LIFECYCLE_PACKAGE_NAME,
   NO_POLICY_PUBLISHED_REASON,
+  REQUISITION_NOT_FOUND_REASON,
   type AddTalentPolicyInput,
   type AddTalentPolicyOutcome,
 } from './lib/policy/add-talent-policy.service.js';

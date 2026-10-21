@@ -1588,6 +1588,17 @@
   font-size: .8rem; line-height: 1.3; color: var(--ink-2, var(--ink)); opacity: .8;
 }
 
+/* Talent Lifecycle R1–R5 v1.2 §6.4 (S3) — the On hold banner (detail header + above the Board). */
+.rc-hold-banner {
+  margin: 12px 0; padding: 10px 14px; border-radius: 8px;
+  background: var(--warn-tint); color: var(--warn);
+}
+.rc-hold-banner p { margin: 0; }
+.rc-hold-banner__meta,
+.rc-hold-banner__instructions,
+.rc-hold-banner__note { font-size: .85rem; margin-top: 4px; }
+.rc-hold-banner__note { opacity: .85; }
+
 /* header dropdown (Columns / Sort) */
 
 .rc-hmenu { position: relative; }

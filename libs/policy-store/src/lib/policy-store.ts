@@ -10,6 +10,11 @@ import { isEffectiveAt, selectEffectiveAt } from './window.js';
 import { PolicyStoreError } from './errors.js';
 import type { PublishPolicyVersionInput, ResolvedPolicyVersion } from './types.js';
 
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(g) — the client-submittal-policy package
+// family (TENANT 'client-submittal-policy'; CLIENT/REQUISITION 'client-submittal-policy:…').
+// Mirrors libs/client-submittal-policy CLIENT_SUBMITTAL_PACKAGE_BASE (no new nx edge).
+export const CLIENT_SUBMITTAL_POLICY_PACKAGE_PREFIX = 'client-submittal-policy';
+
 // The policy-store surface (ADR-0024 §D7 / §D17b): definition storage,
 // versioning, publication, tenant retrieval, caching. It never evaluates a
 // policy — it never inspects a rule or produces a decision; the stored
@@ -124,6 +129,17 @@ export class PolicyStore {
     }
 
     const packageName = pkg.name;
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.4(g) — LOCK COVERAGE. Client-submittal
+    // policy versions are written ONLY by the client-submittal-policy gateway, under the
+    // per-tenant exclusive advisory lock that linearizes publication against Qualified /
+    // client submit. This generic publisher takes no such lock, so it must never write a
+    // client-submittal-policy package (a bypassing writer would void the guarantee).
+    if (packageName === CLIENT_SUBMITTAL_POLICY_PACKAGE_PREFIX || packageName.startsWith(`${CLIENT_SUBMITTAL_POLICY_PACKAGE_PREFIX}:`)) {
+      throw new PolicyStoreError(
+        'INVALID_PACKAGE',
+        `Package "${packageName}" is a client-submittal policy; publish it through the client-submittal-policy service`,
+      );
+    }
     const effectiveFrom = input.effective_from ?? new Date();
     const checksum = computeChecksum(pkg);
 

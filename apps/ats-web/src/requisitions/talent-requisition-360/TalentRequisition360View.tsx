@@ -15,6 +15,7 @@ import { ScheduleMeetingDialog } from '../../microsoft/ScheduleMeetingDialog';
 import { UpcomingMeetings } from '../../microsoft/UpcomingMeetings';
 import { getMicrosoftBindingStatus, type MicrosoftBindingStatus } from '../../microsoft/microsoft-api';
 import { OfferPanelContainer } from '../../offers/OfferPanelContainer';
+import { transitionErrorMessage } from '../../pipeline/error-messages';
 import { listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } from '../../pipeline/pipeline-api';
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
@@ -65,6 +66,7 @@ import {
   type TabKey,
   type ViewKey,
 } from './tr360-model';
+
 import './tr360.css';
 
 // Talent × Requisition 360 — ONE talent on ONE requisition, full page. Replaces the
@@ -391,7 +393,9 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
         toast.show(to === 'qualified' ? 'Qualified · recorded as your decision' : 'Qualifying started');
         setReload((n) => n + 1);
       })
-      .catch(() => setActionError('Could not advance — the backend rejected this action.'))
+      // v1.2 §2.4 — typed refusals (RTR required / RTR policy unresolved / retryable
+      // conflict) surface their specific copy instead of a generic rejection.
+      .catch((err: unknown) => setActionError(transitionErrorMessage(err)))
       .finally(() => setBusy(false));
   };
 
@@ -470,6 +474,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       sub:
         card?.rtr_status === 'NOT_REQUIRED'
           ? `Not required by ${clientLabel}`
+          : card?.rtr_status === 'POLICY_UNRESOLVED'
+            ? `${clientLabel} has no Right to Represent policy — ask an admin to set it before qualifying`
           : `Required by ${clientLabel}${signedOn !== null ? ` · signed ${signedOn}` : ''}${card?.rtr_status === 'NOT_SENT' && rtrBlocked !== null ? ` · ${RTR_UNAVAILABLE[rtrBlocked].label}` : ''}`,
       done: rtr.done,
       glyph: rtr.done ? '✓' : '1',
