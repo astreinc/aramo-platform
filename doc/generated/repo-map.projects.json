@@ -8555,6 +8555,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/helpers/evidence-verifier.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
