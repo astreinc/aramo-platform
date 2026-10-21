@@ -4,7 +4,9 @@ import { useNavigate } from 'react-router-dom';
 
 import { RecordTalentResponseModal } from '../communications/RecordTalentResponseModal';
 import { RequisitionContactEmailComposer } from '../microsoft/RequisitionContactEmailComposer';
-import { voidPipelineEpisode } from '../pipeline/pipeline-api';
+import { dispositionPipelineEpisode, voidPipelineEpisode } from '../pipeline/pipeline-api';
+import { transitionErrorMessage } from '../pipeline/error-messages';
+import { NotInConsiderationDialog, type NotInConsiderationChoice } from '../pipeline/NotInConsiderationDialog';
 import type { PipelineView } from '../pipeline/types';
 import type { PlacementView } from '../placement/types';
 import { getPreStartRequirements } from '../pre-start/pre-start-api';
@@ -41,6 +43,9 @@ export interface RequisitionTalentActions {
   readonly runCardAction: (card: BoardCardView, talentName: string) => void;
   // Open the governed "Remove from requisition" (VOID) confirmation.
   readonly requestVoid: (pipelineId: string, talentName: string) => void;
+  // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-6) — open the Not in consideration
+  // dialog (reason required; governed DISPOSITION action).
+  readonly requestNotInConsideration: (pipelineId: string, talentName: string) => void;
   // Open the compose-driven Send RTR panel (SEAM 4) for a not-yet-requested RTR.
   readonly requestSendRtr: (talentId: string, talentName: string) => void;
   // True when the actor can initiate the RTR lifecycle (document:create). Surfaces
@@ -126,6 +131,7 @@ export function useRequisitionTalentActions({
   const [voidError, setVoidError] = useState('');
   const [boardRefresh, setBoardRefresh] = useState(0);
   const [voidEligibleIds, setVoidEligibleIds] = useState<ReadonlySet<string>>(new Set());
+  const [nicTarget, setNicTarget] = useState<{ pipelineId: string; talentName: string } | null>(null);
   // SEAM 4 — the compose-driven Send RTR panel target (null when closed).
   const [sendRtrTarget, setSendRtrTarget] = useState<{ talentId: string; talentName: string } | null>(null);
 
@@ -250,6 +256,23 @@ export function useRequisitionTalentActions({
     setVoidTarget({ pipelineId, talentName });
   }, []);
 
+  const requestNotInConsideration = useCallback((pipelineId: string, talentName: string) => {
+    setNicTarget({ pipelineId, talentName });
+  }, []);
+
+  // R1 (DEF-6) — record Not in consideration with its reason. The CAS token is the loaded
+  // episode's version; the server is authoritative and its typed refusal is shown in the dialog.
+  const confirmNotInConsideration = useCallback(
+    async (choice: NotInConsiderationChoice) => {
+      if (nicTarget === null) return;
+      const episode = pipelines.find((p) => p.id === nicTarget.pipelineId);
+      if (episode === undefined) return;
+      await dispositionPipelineEpisode(episode.id, { ...choice, expected_version: episode.version });
+      setBoardRefresh((n) => n + 1);
+    },
+    [nicTarget, pipelines],
+  );
+
   const requestSendRtr = useCallback((talentId: string, talentName: string) => {
     setSendRtrTarget({ talentId, talentName });
   }, []);
@@ -318,6 +341,17 @@ export function useRequisitionTalentActions({
           onConfirm={() => void confirmVoid()}
         />
       ) : null}
+      {nicTarget !== null ? (
+        <NotInConsiderationDialog
+          open
+          talentName={nicTarget.talentName}
+          onOpenChange={(open) => {
+            if (!open) setNicTarget(null);
+          }}
+          onConfirm={confirmNotInConsideration}
+          errorMessage={transitionErrorMessage}
+        />
+      ) : null}
       {sendRtrTarget !== null ? (
         <SendRtrLauncher
           talentId={sendRtrTarget.talentId}
@@ -338,6 +372,7 @@ export function useRequisitionTalentActions({
     openTalent,
     runCardAction,
     requestVoid,
+    requestNotInConsideration,
     requestSendRtr,
     canSendRtr,
     voidEligibleIds,

@@ -354,6 +354,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'REQUISITION_STATUS_TERMINAL',
       // v1.2 §7.2 (S4).
       'PIPELINE_EVIDENCE_INADMISSIBLE',
+      // Remediation Directive v1.0 R2.
+      'RTR_STAGE_NOT_ELIGIBLE',
     ]);
   });
 });

@@ -2,12 +2,14 @@ import { Module } from '@nestjs/common';
 import {
   DocumentExecutedWriteBackService,
   DocumentIdempotencyService,
+  DocumentsRepository,
   DOCUMENT_STORAGE_PORT,
   type DocumentStoragePort,
   PrismaService as DocumentsPrismaService,
   RevisionSourceService,
 } from '@aramo/documents';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
+import { SignatureRoutingStoreModule } from '@aramo/signature-routing';
 
 import { SignApiClient } from '../sign/sign-api.client.js';
 import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
@@ -20,6 +22,7 @@ import {
   EsignWriteBackOrchestrator,
 } from './esign-writeback.js';
 import { DocumentsEsignController } from './documents-esign.controller.js';
+import { EsignSigningEndedRecorder } from './esign-signing-ended.js';
 
 // DOC-4 (R-4-7) — the apps/api executed-artifact seam module. SELF-CONTAINED: it
 // builds its own documents Prisma + storage adapter via factories (mirroring the
@@ -28,7 +31,7 @@ import { DocumentsEsignController } from './documents-esign.controller.js';
 const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
 
 @Module({
-  imports: [ObjectStorageModule],
+  imports: [ObjectStorageModule, SignatureRoutingStoreModule],
   controllers: [DocumentsEsignController, EsignEventsController],
   providers: [
     { provide: DOCUMENTS_ESIGN_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
@@ -56,6 +59,15 @@ const DOCUMENTS_ESIGN_STORAGE = 'DOCUMENTS_ESIGN_STORAGE';
       inject: [DOCUMENTS_ESIGN_PRISMA, DOCUMENTS_ESIGN_STORAGE],
     },
     EsignWriteBackOrchestrator,
+    // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / expired / voided
+    // envelopes recorded on their governed Document.
+    {
+      provide: DocumentsRepository,
+      useFactory: (prisma: DocumentsPrismaService): DocumentsRepository =>
+        new DocumentsRepository(prisma, new DocumentIdempotencyService(prisma)),
+      inject: [DOCUMENTS_ESIGN_PRISMA],
+    },
+    EsignSigningEndedRecorder,
     // ES-2 — authenticates sign-service requests on the source route.
     EsignServiceRequestGuard,
   ],

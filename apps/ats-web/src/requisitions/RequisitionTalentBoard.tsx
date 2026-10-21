@@ -20,7 +20,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { governedDropTargets, resolveGovernedMove } from './board-governed-move';
-import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, RTR_POLICY_UNRESOLVED_LABEL } from './rtr-affordance';
+import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, RTR_POLICY_UNRESOLVED_LABEL, rtrEndedLabel } from './rtr-affordance';
 
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
@@ -130,6 +130,9 @@ export interface RequisitionTalentBoardProps {
    *  The action is projected by the server (pipeline.void in next_actions); this only opens
    *  the confirmation. */
   readonly onRequestVoid?: (pipelineId: string, talentName: string) => void;
+  /** Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-6) — open the Not in consideration
+   *  (reason required) dialog for a recruiting-stage card. The server is authoritative. */
+  readonly onRequestNotInConsideration?: (pipelineId: string, talentName: string) => void;
   /** Open the compose-driven Send RTR panel (SEAM 4). Provided only when the actor can
    *  initiate the RTR lifecycle; its ABSENCE degrades the actionable chip to a muted status
    *  (least-visibility). The governed request→send stays the mutation authority. */
@@ -184,6 +187,7 @@ function BoardCard({
   onDragStart,
   onDragEnd,
   onRequestVoid,
+  onRequestNotInConsideration,
 }: {
   card: BoardCardView;
   name: string;
@@ -198,6 +202,7 @@ function BoardCard({
   onDragStart: () => void;
   onDragEnd: () => void;
   onRequestVoid?: (pipelineId: string, talentName: string) => void;
+  onRequestNotInConsideration?: (pipelineId: string, talentName: string) => void;
 }): JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reminding, setReminding] = useState(false);
@@ -213,6 +218,13 @@ function BoardCard({
     (a) => a.key === 'pipeline.void' && scopes.includes(a.required_scope),
   );
   const primary = performable[0];
+  // R1 (DEF-6) — Not in consideration is offered on a recruiting-stage card (before the client
+  // handoff) to an actor holding pipeline:change-status. Presentation only; the server re-checks.
+  const canMarkNotInConsideration =
+    onRequestNotInConsideration !== undefined &&
+    scopes.includes('pipeline:change-status') &&
+    !card.handoff &&
+    (card.column === 'pipeline' || card.column === 'contacted' || card.column === 'qualified');
 
   // Footer waiting text when the actor has no primary action (GAP — composed FE-side; the board
   // emits no waiting string): a downstream handoff card is TRACKED read-only; a card with actions
@@ -241,6 +253,7 @@ function BoardCard({
   // RTR affordance (shared mapping) — actionable only when the actor can initiate (onSendRtr
   // present). The governed request→send stays the mutation authority.
   const rtrKind = rtrAffordanceKind(card);
+  const rtrEnded = rtrEndedLabel(card); // R2 (DEF-12)
   // Same-envelope RTR reminder (COMM-RECRUITER-W1 W1-C3) — the List view's RtrPanel gate
   // (document:execute). Resolves the authoritative current RTR, then re-notifies it.
   const signSubscribed = useSignSubscribed();
@@ -316,6 +329,7 @@ function BoardCard({
         </span>
         {isRecruiting ? (
           <span className="rc-tboard__facts">
+            {rtrEnded !== null ? <span className="rc-tboard__pill rc-tboard__pill--warn">{rtrEnded}</span> : null}
             {rtrKind === 'hidden' ? null : rtrKind === 'send' && onSendRtr !== undefined ? (
               <Button
                 unstyled
@@ -469,6 +483,19 @@ function BoardCard({
                 >
                   View talent
                 </Link>
+                {canMarkNotInConsideration && (
+                  <>
+                    <span className="rc-tboard__menu-div" />
+                    <Button
+                      unstyled
+                      type="button"
+                      className="rc-tboard__menu-item"
+                      onClick={() => { setMenuOpen(false); onRequestNotInConsideration?.(card.pipeline_id, name); }}
+                    >
+                      Not in consideration…
+                    </Button>
+                  </>
+                )}
                 {voidAction !== undefined && onRequestVoid !== undefined && (
                   <>
                     <span className="rc-tboard__menu-div" />
@@ -509,6 +536,7 @@ function BoardColumn({
   onDragEndCard,
   onDropCard,
   onRequestVoid,
+  onRequestNotInConsideration,
 }: {
   column: BoardColumnView;
   talentNames: RequisitionTalentBoardProps['talentNames'];
@@ -525,6 +553,7 @@ function BoardColumn({
   onDragEndCard: () => void;
   onDropCard: (targetColumn: BoardColumnKey) => void;
   onRequestVoid?: (pipelineId: string, talentName: string) => void;
+  onRequestNotInConsideration?: (pipelineId: string, talentName: string) => void;
 }): JSX.Element {
   // The Qualified column splits into its two readiness bands (§6); every other column is flat.
   const isQualified = column.key === 'qualified';
@@ -548,6 +577,7 @@ function BoardColumn({
       onDragStart={() => onDragStartCard(c)}
       onDragEnd={onDragEndCard}
       onRequestVoid={onRequestVoid}
+      onRequestNotInConsideration={onRequestNotInConsideration}
     />
     );
   };
@@ -595,7 +625,7 @@ function BoardColumn({
   );
 }
 
-export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, onCardAction, scopes = [], onRequestVoid, onSendRtr, reqCode, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
+export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubtitles, recruiterNames, onSelectCard, onCardAction, scopes = [], onRequestVoid, onRequestNotInConsideration, onSendRtr, reqCode, refreshToken }: RequisitionTalentBoardProps): JSX.Element {
   const [board, setBoard] = useState<RequisitionTalentBoardView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>('');
@@ -660,6 +690,7 @@ export function RequisitionTalentBoard({ requisitionId, talentNames, talentSubti
             onDragEndCard={() => setDragging(null)}
             onDropCard={onDropCard}
             onRequestVoid={onRequestVoid}
+            onRequestNotInConsideration={onRequestNotInConsideration}
           />
         ))}
         <aside className="rc-tboard__closed" aria-label="Closed">

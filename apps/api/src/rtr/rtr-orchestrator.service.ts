@@ -9,6 +9,7 @@ import {
 } from '@aramo/documents';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
+import { PipelineRepository } from '@aramo/pipeline';
 import { type LetterheadModel, type RenderBlock } from '@aramo/documents-rendering';
 import type { SignatureActor } from '@aramo/documents-contracts';
 
@@ -122,12 +123,37 @@ export class RtrOrchestratorService {
     // requisition rather than supplied by the caller. The binding service already
     // reads it for request(); the orchestrator reads only the id here.
     private readonly requisitions: RequisitionRepository,
+    // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-7) — the Talent's live episode on the
+    // requisition (RTR starts at Talent responded, RTR-1 AC-21). apps/api already depends on
+    // @aramo/pipeline; no new nx edge.
+    private readonly pipelines: PipelineRepository,
     // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the tenant-profile logo seam (TEMPLATE_TENANT_LOGO),
     // used ONLY when the resolved template is an Aramo (PLATFORM) default: the tenant's
     // logo is captured at render into a per-render tenant TemplateAsset. Absent ⇒ an Aramo
     // default renders without a letterhead (its content is unchanged).
     private readonly tenantLogo?: TemplateTenantLogoPort,
   ) {}
+
+  // R2 (DEF-7; RTR-1 AC-21 / §23 / §29) — an RTR is requested and sent only for a Talent whose
+  // live episode on this requisition is at Talent responded, Qualifying or Qualified. No episode →
+  // 404 (the Talent is not on the requisition); an earlier stage → 409 RTR_STAGE_NOT_ELIGIBLE.
+  private async assertRtrStage(tenant_id: string, talent_id: string, requisition_id: string, requestId: string): Promise<void> {
+    const episode = await this.pipelines.findLiveEpisode({ tenant_id, talent_record_id: talent_id, requisition_id });
+    if (episode === null) {
+      throw new AramoError('NOT_FOUND', 'This talent is not on the requisition', 404, {
+        requestId,
+        details: { talent_id, requisition_id, reason: 'no_live_episode' },
+      });
+    }
+    if (!RTR_ELIGIBLE_STAGES.has(episode.status)) {
+      throw new AramoError(
+        'RTR_STAGE_NOT_ELIGIBLE',
+        'A Right to Represent can be sent once the talent has responded',
+        409,
+        { requestId, details: { talent_id, requisition_id, stage: episode.status } },
+      );
+    }
+  }
 
   // request → the PREPARE boundary (RTR-TEMPLATE-1 §11). Resolve the governed
   // template + bindings FIRST (fail closed before any persistence), then create
@@ -142,6 +168,9 @@ export class RtrOrchestratorService {
       requisition_id: input.requisition_id,
       requestId: input.requestId,
     });
+    // Remediation Directive v1.0 R2 (DEF-7) — the Talent must be on the requisition, at Talent
+    // responded or later, before any persistence.
+    await this.assertRtrStage(input.tenant_id, input.talent_id, input.requisition_id, input.requestId);
     // 1. Resolve the tenant's RTR template and PIN its exact version. DOC-TEMPLATE-LIB-1
     //    T-3: selection (tenant, RTR, the requisition's CLIENT company) → selection
     //    (tenant, RTR, tenant-wide) → the Aramo RTR default. Throws
@@ -215,6 +244,8 @@ export class RtrOrchestratorService {
       ],
       render,
       template_version_id: template.template_version_id,
+      // R2 (DEF-8; RTR-1 §24) — a requested-but-unsent RTR is reused, never duplicated.
+      reuse_live_draft: true,
     });
 
     // 4. Declare the requisition's RTR requirement (idempotent) so the readiness gate engages
@@ -244,7 +275,9 @@ export class RtrOrchestratorService {
     actor?: SignatureActor;
   }): Promise<RtrSendResult> {
     // v1.2 §5.6 — the pre-send CONTACT_SEND gate on the RTR's REGARDING requisition (T-4).
-    await this.assertRegardingRequisitionPermitsSend(input.tenant_id, input.document_id, input.requestId);
+    const requisition_id = await this.assertRegardingRequisitionPermitsSend(input.tenant_id, input.document_id, input.requestId);
+    // Remediation Directive v1.0 R2 (DEF-7) — the send is refused before Talent responded too.
+    await this.assertRtrStage(input.tenant_id, input.talent_id, requisition_id, input.requestId);
     // RTR owns the signer resolution (the Talent on this RTR). The common send mechanics —
     // consume the frozen revision (no re-render, INV-3), duplicate-envelope guard, DRAFT→PREPARED,
     // create + send — are delegated to the shared governed-signing capability.
@@ -310,7 +343,7 @@ export class RtrOrchestratorService {
   // Talent Lifecycle R1–R5 Impl Directive v1.2 §5.6 — resolve the RTR's REGARDING requisition
   // (send / remind carry no requisition id) and apply the CONTACT_SEND gate. An RTR with no
   // requisition association in this tenant is refused (fail-closed, §2.6).
-  private async assertRegardingRequisitionPermitsSend(tenant_id: string, document_id: string, requestId: string): Promise<void> {
+  private async assertRegardingRequisitionPermitsSend(tenant_id: string, document_id: string, requestId: string): Promise<string> {
     const requisition_id = await this.documents.findRegardingRequisitionId(tenant_id, document_id);
     if (requisition_id === null) {
       throw new AramoError(
@@ -321,6 +354,7 @@ export class RtrOrchestratorService {
       );
     }
     await assertRequisitionPermitsContactSend(this.requisitions, { tenant_id, requisition_id, requestId });
+    return requisition_id;
   }
 
   // DOC-5 (R-5-12, PL-3) — DERIVED status only (no second stored authority).
@@ -511,7 +545,8 @@ export class RtrOrchestratorService {
   // §15 current-selection precedence: a live (non-terminal) RTR wins; else the
   // most recent EXECUTED; else the most recent. `docs` is created_at desc.
   private selectCurrent<T extends { status: string }>(docs: readonly T[]): T {
-    const live = docs.find((d) => d.status !== 'EXECUTED' && d.status !== 'VOIDED');
+    // R2 (DEF-12) — a declined / expired RTR ended without execution: never the live one.
+    const live = docs.find((d) => d.status !== 'EXECUTED' && d.status !== 'VOIDED' && d.status !== 'DECLINED' && d.status !== 'EXPIRED');
     if (live !== undefined) return live;
     const executed = docs.find((d) => d.status === 'EXECUTED');
     if (executed !== undefined) return executed;
@@ -533,6 +568,9 @@ export class RtrOrchestratorService {
     return { name: template.name, version_number: version.version_number };
   }
 }
+
+// R2 (DEF-7) — the stages from which an RTR may be requested or sent (RTR-1 AC-21).
+const RTR_ELIGIBLE_STAGES: ReadonlySet<string> = new Set(['talent_responded', 'qualifying', 'qualified']);
 
 function rtrTitleOrFallback(title: string | null | undefined): string {
   const t = (title ?? '').trim();

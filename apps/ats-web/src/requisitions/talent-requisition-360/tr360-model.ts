@@ -127,6 +127,11 @@ export function rtrPresentation(card: BoardCardView | null): RtrPresentation | n
       return { pill: 'Awaiting signature', tone: 'amber', fact: 'Awaiting signature', done: false };
     case 'NOT_SENT':
       return { pill: 'Not sent', tone: 'grey', fact: 'Not sent', done: false };
+    // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — ended unsigned; send a new RTR.
+    case 'DECLINED':
+      return { pill: 'Declined', tone: 'amber', fact: 'Declined by the talent — send a new RTR', done: false };
+    case 'EXPIRED':
+      return { pill: 'Expired', tone: 'amber', fact: 'Expired unsigned — send a new RTR', done: false };
     case 'NOT_REQUIRED':
       return { pill: 'Not required', tone: 'grey', fact: 'Not required', done: true };
     // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — requirement not configured.

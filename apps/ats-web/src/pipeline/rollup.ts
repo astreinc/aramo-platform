@@ -34,6 +34,10 @@ export function collapseToCurrentEpisode(
 ): PipelineView[] {
   const best = new Map<string, PipelineView>();
   for (const p of pipelines) {
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-10; Accidental-Add §11/§16) — a
+    // voided (removed-by-mistake) episode never counts: not active, not Closed, not in any funnel
+    // cell. The server list already omits it by default; this is defence in depth.
+    if (p.status === 'voided') continue;
     const key = `${p.talent_record_id} ${p.requisition_id}`;
     const cur = best.get(key);
     if (cur === undefined || preferEpisode(p, cur)) best.set(key, p);

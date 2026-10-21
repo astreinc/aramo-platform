@@ -94,6 +94,48 @@ describe('sign-service → POST /v1/integrations/sign/events', () => {
         expect(res.status).toBe(200);
       });
   });
+
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — Sign publishes envelopes that
+  // ENDED without execution; aramo-core acknowledges each (an envelope not routed for a governed
+  // document in the tenant is acknowledged and ignored — no existence oracle).
+  for (const ended of ['declined', 'expired', 'voided'] as const) {
+    it(`acknowledges a valid, signed sign.envelope.${ended}.v1 event`, async () => {
+      const event = { ...EVENT, event_id: `0b0c0000-0000-7000-8000-00000000000${ended.length}`, event_type: `sign.envelope.${ended}.v1` };
+      await provider
+        .addInteraction()
+        .given('aramo-core can receive an E-Sign lifecycle webhook')
+        .uponReceiving(`a signed sign.envelope.${ended}.v1 event from the platform delivery worker`)
+        .withRequest('POST', '/v1/integrations/sign/events', (b) => {
+          b.headers({
+            'x-aramo-sign-timestamp': like('1790000000'),
+            'x-aramo-sign-signature': like('c2lnbmF0dXJl'),
+          }).jsonBody({
+            event_id: like(event.event_id),
+            event_type: event.event_type,
+            event_version: like(1),
+            occurred_at: like(EVENT.occurred_at),
+            tenant_id: like(TENANT_ID),
+            envelope_id: like(ENVELOPE_ID),
+            correlation_id: like(EVENT.correlation_id),
+            artifact_refs: like({ executed_document_ids: [], has_certificate: false }),
+          });
+        })
+        .willRespondWith(200, (b) => {
+          b.jsonBody({ received: like(true) });
+        })
+        .executeTest(async (mock) => {
+          const rawBody = JSON.stringify(event);
+          const ts = String(Math.floor(Date.now() / 1000));
+          const sig = createHmac('sha256', PACT_ESIGN_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest('base64');
+          const res = await fetch(`${mock.url}/v1/integrations/sign/events`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'x-aramo-sign-timestamp': ts, 'x-aramo-sign-signature': sig },
+            body: rawBody,
+          });
+          expect(res.status).toBe(200);
+        });
+    });
+  }
 });
 
 beforeAll(() => undefined);

@@ -405,6 +405,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let recruiterJwt_Ats_WrongSite: string;
     let unscopedJwt_Ats_SiteA: string;
     let tenantAdminJwt_Ats_SiteA: string;
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — a senior-role token (the
+    // recruiter scope set + pipeline:re-add) that may re-add a Talent after an ended episode.
+    let reAddJwt_Ats_SiteA: string;
     let enrichJwt_WithTalent: string;
     let enrichJwt_NoTalent: string;
 
@@ -674,6 +677,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { status: res.status, body: await res.json() };
     }
 
+    // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-5) — not_in_consideration is reached
+    // only through the governed DISPOSITION action (a reason is required).
+    async function disposition(jwt: string, id: string): Promise<{ status: number; body: unknown }> {
+      const vr = await setupClient.query<{ version: number }>(
+        `SELECT version FROM pipeline."Pipeline" WHERE id = $1::uuid`,
+        [id],
+      );
+      const res = await fetch(`http://127.0.0.1:${port}/v1/pipelines/${id}/actions?site_id=${SITE_A}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'DISPOSITION',
+          authority_class: 'RECRUITER',
+          reason: 'not_a_fit',
+          expected_version: vr.rows[0]?.version ?? 0,
+        }),
+      });
+      return { status: res.status, body: await res.json() };
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -732,6 +755,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         tenant_id: TENANT_ATS,
         site_id: SITE_A,
         scopes: RECRUITER_SCOPES,
+      });
+      reAddJwt_Ats_SiteA = await signJwt(privateKey, {
+        sub: RECRUITER,
+        tenant_id: TENANT_ATS,
+        site_id: SITE_A,
+        scopes: [...RECRUITER_SCOPES, 'pipeline:re-add'],
       });
       recruiterJwt_NotAts_SiteA = await signJwt(privateKey, {
         sub: RECRUITER,
@@ -920,16 +949,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Idempotency protects the OPERATION, not the (talent, req) pair: once the
       // first episode reaches a terminal status (live slot released), a create
       // with a genuinely NEW key mints a NEW historical episode.
-      const term = await transition(
-        recruiterJwt_Ats_SiteA,
-        firstBody.id,
-        'not_in_consideration',
-      );
+      // Remediation Directive v1.0 R1 (DEF-5) — a bare /transition to not_in_consideration is
+      // refused (no reason); the governed DISPOSITION action closes the episode.
+      const bare = await transition(recruiterJwt_Ats_SiteA, firstBody.id, 'not_in_consideration');
+      expect(bare.status).toBe(422);
+      expect((bare.body as { error?: { code?: string; details?: { reason?: string } } }).error).toMatchObject({
+        code: 'PIPELINE_DISPOSITION_REASON_INVALID',
+        details: { reason: 'disposition_required' },
+      });
+      const term = await disposition(recruiterJwt_Ats_SiteA, firstBody.id);
       expect(term.status).toBe(200);
 
+      // Remediation Directive v1.0 R3 (DEF-15(b)) — re-adding after an ENDED episode is refused
+      // for a plain recruiter (no pipeline:re-add), and permitted to a senior-role holder.
+      const refused = await postPipeline(recruiterJwt_Ats_SiteA, randomUUID(), talentId);
+      expect(refused.status).toBe(403);
+      expect(((await refused.json()) as { error?: { details?: { reason?: string } } }).error?.details?.reason).toBe(
+        'pipeline_re_add_requires_senior_role',
+      );
       const secondKey = randomUUID();
       const second = await postPipeline(
-        recruiterJwt_Ats_SiteA,
+        reAddJwt_Ats_SiteA,
         secondKey,
         talentId,
       );

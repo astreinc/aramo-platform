@@ -457,7 +457,7 @@ export class RequisitionTalentBoardReadService {
       // three-way effective requirement: NOT_SENT/SENT/CONFIRMED (REQUIRED signing status) |
       // 'NOT_REQUIRED' (explicit relaxation → affirmative label) | 'POLICY_UNRESOLVED' (v1.2
       // §4.7: requirement not configured — actionable) | null (no verdict computed).
-      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
+      rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'DECLINED' | 'EXPIRED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
       email_evidence: boolean;
       voice_evidence: boolean;
       desired_pay: string | null;

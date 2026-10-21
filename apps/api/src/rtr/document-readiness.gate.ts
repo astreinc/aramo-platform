@@ -295,7 +295,9 @@ const UNRESOLVED_VERDICT: DocumentEligibilityInput = {
 };
 
 // The RTR signing-status 3-state (REQUIRED requisitions only).
-export type RtrChipState = 'NOT_SENT' | 'SENT' | 'CONFIRMED';
+// Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — DECLINED / EXPIRED: the signing
+// ended without execution (a new RTR is needed); never shown as SENT ("Awaiting signature").
+export type RtrChipState = 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'DECLINED' | 'EXPIRED';
 
 // The board chip value. 'NOT_REQUIRED' is the affirmative "RTR · Not required" label
 // (explicit policy relaxation); 'POLICY_UNRESOLVED' is the actionable not-configured state.
@@ -308,5 +310,8 @@ export type RtrBoardChip = RtrChipState | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED';
 function toRtrChipState(docStatus: string | undefined): RtrChipState {
   if (docStatus === 'EXECUTED') return 'CONFIRMED';
   if (docStatus === 'PREPARED' || docStatus === 'EXECUTION_PENDING') return 'SENT';
+  // R2 (DEF-12) — the Talent declined, or the signing window passed.
+  if (docStatus === 'DECLINED') return 'DECLINED';
+  if (docStatus === 'EXPIRED') return 'EXPIRED';
   return 'NOT_SENT';
 }

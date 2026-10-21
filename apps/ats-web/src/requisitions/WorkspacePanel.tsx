@@ -24,7 +24,7 @@ import {
 } from './requisition-talent-board-api';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
 import { talentRequisition360Path } from './talent-requisition-360/route';
-import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, type RtrAffordanceKind } from './rtr-affordance';
+import { rtrAffordanceKind, rtrEndedLabel, RTR_POLICY_UNRESOLVED_DETAIL, type RtrAffordanceKind } from './rtr-affordance';
 import type { TalentView } from './useTalentViewPreference';
 import type { RequisitionView } from './types';
 import type { AttentionItem, TabId } from './RequisitionDetailView';
@@ -68,6 +68,10 @@ interface WorkspacePanelProps {
   readonly attentionItems: readonly AttentionItem[];
   readonly scopes: readonly string[];
   readonly existingTalentIds: readonly string[];
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — previously-ended talent and
+  // whether the actor may re-add them (pipeline:re-add).
+  readonly endedTalentIds?: readonly string[];
+  readonly canReAdd?: boolean;
   readonly canAddTalent: boolean;
   readonly canSource: boolean;
   // Talent-in-play embedded Board (the SAME board + drawer + VOID context as the
@@ -124,6 +128,8 @@ export function WorkspacePanel({
   attentionItems,
   scopes,
   existingTalentIds,
+  endedTalentIds,
+  canReAdd,
   canAddTalent,
   canSource,
   pipelines,
@@ -353,6 +359,8 @@ export function WorkspacePanel({
                         <AddTalentDialog
                           requisitionId={req.id}
                           existingTalentIds={existingTalentIds}
+                          endedTalentIds={endedTalentIds}
+                          canReAdd={canReAdd}
                           onAdded={() => {
                             setFindOpen(false);
                             onRefresh();
@@ -442,6 +450,7 @@ export function WorkspacePanel({
                 }}
                 onCardAction={talentActions.runCardAction}
                 onRequestVoid={talentActions.requestVoid}
+                onRequestNotInConsideration={talentActions.requestNotInConsideration}
                 onSendRtr={talentActions.canSendRtr ? talentActions.requestSendRtr : undefined}
                 refreshToken={talentActions.boardRefresh}
               />
@@ -454,6 +463,8 @@ export function WorkspacePanel({
                   <AddTalentDialog
                     requisitionId={req.id}
                     existingTalentIds={existingTalentIds}
+                    endedTalentIds={endedTalentIds}
+                    canReAdd={canReAdd}
                     onAdded={onRefresh}
                   />
                 </div>
@@ -727,6 +738,8 @@ function TalentInPlayRow({
       {cells.map((c) =>
         c.label === 'RTR' ? (
           <span key={c.label} className="rc-tip__cell rc-tip__rtrcell">
+            {/* R2 (DEF-12) — an RTR that ended unsigned states its outcome next to Send RTR. */}
+            {rtrEndedLabel(card) !== null ? <span className="rc-tip__val rc-tip__val--warn">{rtrEndedLabel(card)}</span> : null}
             <RtrCell kind={rtrKind} blocked={rtrBlocked} onSendRtr={onSendRtr !== undefined ? stop(onSendRtr) : undefined} onOpen={stop(onOpen)} />
           </span>
         ) : (

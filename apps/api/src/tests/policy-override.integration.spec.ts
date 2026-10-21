@@ -200,8 +200,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }, 60_000);
 
     describe('POST /v1/pipelines', () => {
-      const base = ['pipeline:add'];
-      const withCap = ['pipeline:add', OVERRIDE_CAP];
+      // Remediation v1.0 R3 (DEF-9) — visibility-neutral actor (requisition:read:all).
+      const base = ['pipeline:add', 'requisition:read:all'];
+      const withCap = ['pipeline:add', 'requisition:read:all', OVERRIDE_CAP];
 
       it('ALLOW path unchanged — active status still 201, row created (regression)', async () => {
         const req = await seedRequisition('open');

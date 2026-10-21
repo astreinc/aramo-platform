@@ -69,7 +69,7 @@ export interface BoardCardView {
   // rate (talent:read-gated server-side; null when absent or not permitted).
   // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — 'POLICY_UNRESOLVED': the client's RTR
   // requirement is not configured; Qualify is withheld until an admin sets it.
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'DECLINED' | 'EXPIRED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;

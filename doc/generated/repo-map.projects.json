@@ -4275,6 +4275,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/requisition-bookmarks.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6820,6 +6826,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-compose-for-pair.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6925,6 +6937,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7005,6 +7023,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8856,6 +8880,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/helpers/rtr-stage-fixture.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/l2g-placement-lifecycle-orchestrator.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10250,6 +10280,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/pipeline-talent-enrichment.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

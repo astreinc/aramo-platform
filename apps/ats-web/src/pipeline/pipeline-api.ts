@@ -90,6 +90,26 @@ export async function transitionPipeline(
 // recruiter-attested response command, or the provider connector). The recruiter
 // DECISION edges (qualifying / qualified) ride transitionPipeline directly.
 
+// Pipeline & RTR Recon Remediation Directive v1.0 §2 R1 (DEF-6) — Not in consideration WITH a
+// reason: the governed DISPOSITION action (POST /actions). The only FE route to
+// not_in_consideration — a bare /transition to it is refused by the backend (DEF-5). Only the
+// DISPOSITION action is exposed; the generic named-action client stays removed. CAS via
+// expected_version; refusals arrive as typed ApiErrors.
+export async function dispositionPipelineEpisode(
+  pipelineId: string,
+  body: {
+    authority_class: 'RECRUITER' | 'TALENT' | 'ENGAGEMENT';
+    reason: string;
+    note?: string;
+    expected_version: number;
+  },
+): Promise<PipelineView> {
+  return apiClient.post<PipelineView>(`/v1/pipelines/${pipelineId}/actions`, {
+    action: 'DISPOSITION',
+    ...body,
+  });
+}
+
 // Accidental-Add Correction — "Remove from requisition" (VOID). A governed
 // correction, NOT a recruiting disposition and NOT a delete. The backend is
 // authoritative: it re-checks no_contact + no engagement + no downstream and

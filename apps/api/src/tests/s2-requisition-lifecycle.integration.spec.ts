@@ -185,7 +185,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           const { tenant, req } = await seedReq('open');
           const p = await seedPipeline(tenant, req, 'contacted');
           await setReqStatus(req, terminal);
-          expect(await err(move(tenant, p, 'not_in_consideration'))).toMatchObject({ activity: 'FINAL_DISPOSITION_WITHOUT_REASON' });
+          // Remediation Directive v1.0 R1 (DEF-5): a reasonless move is refused on EVERY status, first.
+          expect(await err(move(tenant, p, 'not_in_consideration'))).toMatchObject({ code: 'PIPELINE_DISPOSITION_REASON_INVALID' });
           await repo.applyAction({
             ...base(tenant, p),
             action: 'DISPOSITION',
@@ -213,6 +214,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     }
 
     // ---- Lead (D-2 provisional) -------------------------------------------------------------
+    // ---- Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-5) ---------------------------
+    for (const status of ['open', 'on_hold', 'lead'] as const) {
+      it(`R1 (DEF-5): on a ${status} requisition a reasonless move to not_in_consideration is refused; DISPOSITION with a reason closes it`, async () => {
+        const { tenant, req } = await seedReq(status);
+        const p = await seedPipeline(tenant, req, 'contacted');
+        const before = await versionOf(p);
+        const r = await err(move(tenant, p, 'not_in_consideration'));
+        expect(r.code).toBe('PIPELINE_DISPOSITION_REASON_INVALID');
+        expect(await statusOf(p)).toBe('contacted');
+        expect(await versionOf(p)).toBe(before);
+        await repo.applyAction({
+          ...base(tenant, p),
+          action: 'DISPOSITION',
+          expected_version: await versionOf(p),
+          authority_class: 'TALENT',
+          reason: 'talent_declined',
+        });
+        expect(await statusOf(p)).toBe('not_in_consideration');
+        const d = await prisma.$queryRawUnsafe<Array<{ reason: string; authority_class: string }>>(
+          `SELECT reason, authority_class FROM pipeline."PipelineDisposition" WHERE pipeline_id = $1::uuid`,
+          p,
+        );
+        expect(d).toEqual([{ reason: 'talent_declined', authority_class: 'TALENT' }]);
+      });
+    }
+
+    it('R1 (DEF-5): a recruiter DISPOSITION cannot use a system DOWNSTREAM_OUTCOME reason', async () => {
+      const { tenant, req } = await seedReq('open');
+      const p = await seedPipeline(tenant, req, 'contacted');
+      const r = await err(
+        repo.applyAction({
+          ...base(tenant, p),
+          action: 'DISPOSITION',
+          expected_version: await versionOf(p),
+          authority_class: 'DOWNSTREAM_OUTCOME' as never,
+          reason: 'placement_fell_through',
+        }),
+      );
+      expect(r.code).toBe('PIPELINE_DISPOSITION_REASON_INVALID');
+      expect(await statusOf(p)).toBe('contacted');
+    });
+
     it('Lead (D-2 provisional): Add and Contacted allowed; Talent responded / Qualifying refused', async () => {
       const { tenant, req } = await seedReq('lead');
       const created = await add(tenant, req, 'lead');

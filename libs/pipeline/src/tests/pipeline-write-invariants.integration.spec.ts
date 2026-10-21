@@ -12,7 +12,7 @@ import type { PipelineStatus } from '../lib/pipeline-state.js';
 
 import { POLICY_STORE_DECISION_RECORD_MIGRATIONS } from './helpers/policy-store-migrations.js';
 import { NOT_REQUIRED_QUALIFIED_GUARD } from './helpers/qualified-guard.stub.js';
-import { ACCEPTING_EVIDENCE_VERIFIER, syntheticEvidenceFor } from './helpers/evidence-verifier.stub.js';
+import { ACCEPTING_EVIDENCE_VERIFIER, TEST_RECRUITER_DISPOSITION, syntheticEvidenceFor } from './helpers/evidence-verifier.stub.js';
 
 // L1 (pre-E6 coverage) — libs/pipeline's FIRST lib-local integration spec.
 //
@@ -194,6 +194,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...(to === 'contacted' || to === 'talent_responded'
           ? { evidence_provenance: syntheticEvidenceFor(to, randomUUID()) }
           : {}),
+        // Remediation Directive v1.0 R1 (DEF-5) — not_in_consideration needs a governed disposition.
+        ...(to === 'not_in_consideration' ? { disposition: TEST_RECRUITER_DISPOSITION } : {}),
       });
     }
 

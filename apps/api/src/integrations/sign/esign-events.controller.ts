@@ -4,6 +4,7 @@ import { RequestId } from '@aramo/common';
 import { ExecutedArtifactHashMismatchError } from '@aramo/documents';
 
 import { EsignWriteBackOrchestrator } from '../../documents/esign-writeback.js';
+import { EsignSigningEndedRecorder, signingEndedStatusFor } from '../../documents/esign-signing-ended.js';
 
 import {
   ESIGN_WEBHOOK_SIGNATURE_HEADER,
@@ -35,7 +36,11 @@ import { verifyEsignWebhookSignature } from './esign-webhook-signature.js';
 // delivered twice yields the same final local result.
 @Controller('v1/integrations/sign')
 export class EsignEventsController {
-  constructor(private readonly orchestrator: EsignWriteBackOrchestrator) {}
+  constructor(
+    private readonly orchestrator: EsignWriteBackOrchestrator,
+    // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / expired / voided.
+    private readonly signingEnded: EsignSigningEndedRecorder,
+  ) {}
 
   @Post('events')
   async events(
@@ -77,6 +82,28 @@ export class EsignEventsController {
     ) {
       res.status(400);
       return undefined;
+    }
+
+    // R2 (DEF-12) — an envelope that ENDED without execution (declined / expired / voided) is
+    // recorded on its governed Document. Idempotent; never overwrites EXECUTED; an envelope not
+    // routed for this tenant is acknowledged and ignored.
+    const ended = signingEndedStatusFor(event.event_type);
+    if (ended !== null) {
+      try {
+        const outcome = await this.signingEnded.record({
+          tenant_id: event.tenant_id,
+          envelope_id: event.envelope_id,
+          status: ended,
+          ...(typeof event.correlation_id === 'string' ? { correlation_id: event.correlation_id } : {}),
+          requestId,
+        });
+        res.status(200);
+        return { received: true, event_id: event.event_id, ...(outcome === 'unrouted' ? { ignored: true } : {}) };
+      } catch {
+        // Transient (DB) failure — Sign owns redelivery from its durable outbox.
+        res.status(502);
+        return undefined;
+      }
     }
 
     // Only completion facts drive write-back; other generic lifecycle facts are

@@ -749,6 +749,22 @@ export class PipelineRepository {
       );
     }
 
+    // Step 3a' — Pipeline & RTR Recon Remediation Directive v1.0 §2 R1 (DEF-5; Lane2-C :87, A1-TE
+    // TE-5): `not_in_consideration` is reached ONLY through a governed disposition (the recruiter
+    // DISPOSITION action with a reason, or the system downstream command). A bare transition —
+    // e.g. POST /transition — carries no reason and is refused on EVERY requisition status.
+    if (args.to_status === 'not_in_consideration' && args.disposition === undefined) {
+      throw new AramoError(
+        'PIPELINE_DISPOSITION_REASON_INVALID',
+        'Not in consideration needs a reason; use the disposition action',
+        422,
+        {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, from_status: fromStatus, reason: 'disposition_required' },
+        },
+      );
+    }
+
     // Step 3b — EVIDENCE GATE (Recruiting-Journey §3/§7/§17, I1/I2). A transition
     // INTO an evidence-backed milestone (contacted / talent_responded) must carry
     // grounding evidence provenance. The generic /transition + recruiter /actions
@@ -756,9 +772,39 @@ export class PipelineRepository {
     // here in the canonical domain authority (not via FE hiding). The evidence-
     // bearing commands recordContactEvidence / recordResponseEvidence are the only
     // producers; the recruiter DECISION edges (qualifying / qualified) are exempt.
+    // Pipeline & RTR Recon Remediation Directive v1.0 R4 (DEF-15(f); D-2 Option A; A1-TE TE-1) — a
+    // BACKWARD correction into an evidence-backed stage (talent_responded → contacted, qualifying →
+    // talent_responded) is allowed WITHOUT new evidence when this episode already reached that
+    // stage (its history proves the evidence was recorded then). A correction note is REQUIRED.
+    const backwardIntoEvidenceStage =
+      isEvidenceBackedStage(args.to_status) &&
+      args.evidence_provenance === undefined &&
+      activeStageOrdinal(args.to_status) >= 0 &&
+      activeStageOrdinal(fromStatus) > activeStageOrdinal(args.to_status);
+    if (backwardIntoEvidenceStage) {
+      if (args.note === undefined || args.note.trim().length === 0) {
+        throw new AramoError('VALIDATION_ERROR', 'A note is required to move a talent back a stage', 422, {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, field: 'note', reason: 'correction_note_required' },
+        });
+      }
+      const reachedBefore = await tx.pipelineStatusHistory.findFirst({
+        where: { tenant_id: args.tenant_id, pipeline_id: args.id, status_to: args.to_status },
+        select: { id: true },
+      });
+      if (reachedBefore === null) {
+        throw new AramoError(
+          'PIPELINE_STAGE_REQUIRES_EVIDENCE',
+          `This episode never reached ${args.to_status}; it can only be established from recorded evidence`,
+          422,
+          { requestId: args.requestId, details: { pipeline_id: args.id, from_status: fromStatus, to_status: args.to_status } },
+        );
+      }
+    }
     if (
       isEvidenceBackedStage(args.to_status) &&
-      args.evidence_provenance === undefined
+      args.evidence_provenance === undefined &&
+      !backwardIntoEvidenceStage
     ) {
       this.logger.log({
         event: 'pipeline_transition_refused',
@@ -1605,6 +1651,22 @@ export class PipelineRepository {
   // This is the authoritative Pipeline-domain reader the apps/api create-submittal
   // orchestration composes to derive the submittal's pipeline_id server-side; the
   // HTTP caller never supplies a pipeline_id.
+  // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-15(b)) — whether this Talent already
+  // had an episode on this requisition that ENDED (voided / not_in_consideration / completed). A
+  // re-add after an ended episode is restricted to holders of pipeline:re-add (senior roles).
+  async hasEndedEpisode(args: { tenant_id: string; talent_record_id: string; requisition_id: string }): Promise<boolean> {
+    const row = await this.prisma.pipeline.findFirst({
+      where: {
+        tenant_id: args.tenant_id,
+        talent_record_id: args.talent_record_id,
+        requisition_id: args.requisition_id,
+        status: { in: [...TERMINAL_STATUSES] },
+      },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async findLiveEpisode(args: {
     tenant_id: string;
     talent_record_id: string;
@@ -1651,9 +1713,14 @@ export class PipelineRepository {
     requisition_id?: string;
     talent_record_id?: string;
     limit?: number;
+    // Pipeline & RTR Recon Remediation Directive v1.0 R3 (DEF-10; Accidental-Add §11 "Do not fix
+    // only the UI") — omit voided (removed-by-mistake) episodes. Opt-in per caller so existing
+    // history readers keep seeing corrections.
+    exclude_voided?: boolean;
   }): Promise<PipelineView[]> {
     const limit = Math.min(args.limit ?? 50, 200);
     const where: Record<string, unknown> = { tenant_id: args.tenant_id };
+    if (args.exclude_voided === true) where['status'] = { not: 'voided' };
     if (args.visible_requisition_ids !== null) {
       where['requisition_id'] = {
         in: Array.from(args.visible_requisition_ids),

@@ -143,7 +143,8 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     expect([...ats].some((k) => k.startsWith('sign:'))).toBe(false);
     // Today's 146 minus the six, minus document_template:manage (DOC-TEMPLATE-LIB-1 T-4
     // §6.3: template administration moved to the organization roles) → 139.
-    expect(ats.size).toBe(139);
+    // Remediation v1.0 R3 (DEF-15(b)) +1 pipeline:re-add → 140.
+    expect(ats.size).toBe(140);
     expect(ats.has('document_template:manage')).toBe(false);
     expect(ats.has('document_template:read')).toBe(true);
   });
@@ -165,12 +166,13 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // (sign_admin, sign_sender × document_template:read) → 942. tenant_owner/tenant_admin
     // already held both template scopes (sizes unchanged). ROLES-1 PR-3: −13 (the retired
     // sign_owner's 3 sender + 10 contract grants are no longer seeded) = 929.
-    expect(bundles.get('tenant_owner')?.size).toBe(157);
-    expect(bundles.get('tenant_admin')?.size).toBe(156);
-    expect(bundles.get('ats_admin')?.size).toBe(139);
+    expect(bundles.get('tenant_owner')?.size).toBe(158); // Remediation v1.0 R3 +1 pipeline:re-add → 158.
+    expect(bundles.get('tenant_admin')?.size).toBe(157); // Remediation v1.0 R3 +1 pipeline:re-add (derived from ats_admin) → 157.
+    expect(bundles.get('ats_admin')?.size).toBe(140); // Remediation v1.0 R3 +1 pipeline:re-add → 140.
     // DOC-TEMPLATE-LIB-1 T-5: −3 (sign_admin × sign:template:{use,manage}, sign_sender ×
-    // sign:template:use) → 926.
-    expect(pairs).toBe(926);
+    // sign:template:use) → 926. Remediation v1.0 R3: +5 pipeline:re-add (ats_admin, lead_recruiter,
+    // recruiting_manager, tenant_owner + tenant_admin derived) → 931.
+    expect(pairs).toBe(931);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

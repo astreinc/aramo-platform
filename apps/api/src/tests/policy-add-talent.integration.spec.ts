@@ -42,7 +42,9 @@ const ALG = 'RS256';
 const TENANT = '01900000-0000-7000-8000-0000000000c3';
 const SITE = '33333333-3333-7333-8333-3333333333cc';
 const ACTOR = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaac3';
-const ADD_SCOPES = ['pipeline:add'];
+// Remediation v1.0 R3 (DEF-9) — Add Talent now enforces requisition visibility; these specs are
+// about the add POLICY, so the actor sees every requisition (requisition:read:all).
+const ADD_SCOPES = ['pipeline:add', 'requisition:read:all'];
 
 const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
@@ -306,15 +308,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       // DEF-2 (Lane2-DDR RP-1 "enforced fail-closed") — an unresolved requisition (absent, or
       // another tenant's) is DENIED, never the package's permissive no-match default.
-      it('DEF-2: an absent requisition, or one from another tenant, is 403 POLICY_DENIED REQUISITION_NOT_FOUND; no pipeline row', async () => {
+      // Remediation v1.0 R3 C-1 (PO-approved) — DEF-2's refusal is now the SAME 404 as a hidden
+      // requisition (no existence oracle); the DENY reason stays in the decision record only.
+      it('DEF-2 / C-1: an absent requisition, or one from another tenant, is 404 NOT_FOUND; no pipeline row', async () => {
         const jwt = await signJwt(ADD_SCOPES);
 
         const absentReq = uuid();
         const absent = await postAdd(app, jwt, absentReq);
-        expect(absent.status).toBe(403);
+        expect(absent.status).toBe(404);
         const absentBody = (await absent.json()) as { error?: { code?: string; details?: { reason_code?: string } } };
-        expect(absentBody.error?.code).toBe('POLICY_DENIED');
-        expect(absentBody.error?.details?.reason_code).toBe('REQUISITION_NOT_FOUND');
+        expect(absentBody.error?.code).toBe('NOT_FOUND');
+        expect(absentBody.error?.details?.reason_code).toBeUndefined();
         expect(await pipelineCount(absentReq)).toBe(0);
 
         const foreignReq = uuid();
@@ -324,7 +328,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [foreignReq, uuid(), uuid()],
         );
         const crossTenant = await postAdd(app, jwt, foreignReq);
-        expect(crossTenant.status).toBe(403);
+        expect(crossTenant.status).toBe(404);
         expect(await pipelineCount(foreignReq)).toBe(0);
       });
 

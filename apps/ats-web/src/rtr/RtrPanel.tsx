@@ -28,7 +28,16 @@ const STATUS_LABEL: Record<string, string> = {
   REQUESTED: 'Requested',
   AWAITING_SIGNATURE: 'Awaiting signature',
   EXECUTED: 'Executed',
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — ended unsigned.
+  DECLINED: 'Declined by the talent',
+  EXPIRED: 'Expired unsigned',
+  VOIDED: 'Withdrawn',
 };
+
+// R2 (DEF-7; RTR-1 AC-21) — an RTR may be requested from Talent responded onward.
+const RTR_ELIGIBLE_STAGES: ReadonlySet<string> = new Set(['talent_responded', 'qualifying', 'qualified']);
+// R2 (DEF-12) — the last RTR ended without a signature; a new one can be requested.
+const ENDED_STATUSES: ReadonlySet<string> = new Set(['DECLINED', 'EXPIRED', 'VOIDED']);
 
 function messageOf(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -71,6 +80,12 @@ export interface RtrPanelProps {
   clientName?: string | null;
   requisitionTitle?: string | null;
   recipientEmail?: string | null;
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 — the Talent's Pipeline stage on this
+  // requisition (DEF-7: Request RTR only from Talent responded; the backend refuses earlier) and
+  // whether the effective policy REQUIRES an RTR (DEF-15(a): the "required before qualifying"
+  // sentence is shown only when it is true). Optional: an absent value makes no claim.
+  stage?: string;
+  rtrRequired?: boolean;
 }
 
 export function RtrPanel({
@@ -85,7 +100,10 @@ export function RtrPanel({
   clientName = null,
   requisitionTitle = null,
   recipientEmail = null,
+  stage,
+  rtrRequired,
 }: RtrPanelProps): JSX.Element {
+  const stageEligible = stage === undefined || RTR_ELIGIBLE_STAGES.has(stage);
   const [current, setCurrent] = useState<RtrCurrentResponse | null>(null);
   const [viewOpen, setViewOpen] = useState(false);
   const [loading, setLoading] = useState(canRead);
@@ -212,18 +230,22 @@ export function RtrPanel({
   } else if (loading) {
     body = <span className="rc-tj__rtr-muted">Loading…</span>;
   } else if (current === null) {
-    body = canRequest ? (
-      <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => void onRequest()} disabled={busy !== ''}>
-        {busy === 'requesting' ? 'Requesting…' : 'Request RTR'}
-      </Button>
-    ) : (
-      <span className="rc-tj__rtr-muted">—</span>
-    );
+    body =
+      canRequest && !stageEligible ? (
+        <span className="rc-tj__rtr-muted">Available once the talent responds</span>
+      ) : canRequest ? (
+        <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => void onRequest()} disabled={busy !== ''}>
+          {busy === 'requesting' ? 'Requesting…' : 'Request RTR'}
+        </Button>
+      ) : (
+        <span className="rc-tj__rtr-muted">—</span>
+      );
   } else {
     const label = STATUS_LABEL[current.status] ?? current.status;
     const executed = current.status === 'EXECUTED';
     const awaiting = current.status === 'AWAITING_SIGNATURE';
     const requested = current.status === 'REQUESTED';
+    const ended = ENDED_STATUSES.has(current.status);
     body = (
       <div className="rc-tj__rtr-stack">
         <span className={`rc-tj__rtr-status rc-tj__rtr-status--${current.status.toLowerCase()}`}>{label}</span>
@@ -256,6 +278,12 @@ export function RtrPanel({
               {busy === 'reminding' ? 'Sending reminder…' : 'Send Reminder'}
             </Button>
           ) : null}
+          {/* R2 (DEF-12) — the last RTR ended unsigned: request a new one (stage permitting). */}
+          {ended && canRequest && stageEligible ? (
+            <Button unstyled type="button" className="rc-tj__rtrbtn" onClick={() => void onRequest()} disabled={busy !== ''}>
+              {busy === 'requesting' ? 'Requesting…' : 'Request a new RTR'}
+            </Button>
+          ) : null}
           {(requested || awaiting) ? (
             <Button unstyled type="button" className="rc-tj__rtrlink" onClick={() => void onRefresh()} disabled={busy !== ''}>
               Refresh status
@@ -285,10 +313,12 @@ export function RtrPanel({
 
   const templateLine =
     current?.template != null ? `${current.template.name} · v${current.template.version_number}` : null;
+  // R2 (DEF-15(a)) — the requirement is policy-derived: state it only when the policy requires it.
+  const requirementLine = rtrRequired === true ? ' A signed RTR is required before qualifying.' : '';
   const footNote =
     current?.template != null
-      ? `The document is frozen from v${current.template.version_number} when sent. A signed RTR is required before qualifying.`
-      : 'The document is frozen when sent. A signed RTR is required before qualifying.';
+      ? `The document is frozen from v${current.template.version_number} when sent.${requirementLine}`
+      : `The document is frozen when sent.${requirementLine}`;
 
   return (
     <section className="rc-tj__rtr-panel" aria-label="Right to Represent">

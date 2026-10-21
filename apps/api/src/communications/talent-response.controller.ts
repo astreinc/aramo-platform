@@ -2,7 +2,7 @@ import { Body, Controller, Headers, HttpCode, HttpStatus, Post, Req, UseGuards }
 import type { Request } from 'express';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { AramoError, RequestId } from '@aramo/common';
-import { RequireScopes, RolesGuard } from '@aramo/authorization';
+import { RequireScopes, RequireSiteMatch, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 
 import { TalentResponseService } from './talent-response.service.js';
@@ -36,6 +36,9 @@ export class TalentResponseController {
   @Post('talent-responses')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('pipeline:change-status')
+  // Pipeline & RTR Recon Remediation Directive v1.0 R4 (DEF-15(d)) — the site axis, like the
+  // other 32 site-scoped routes (a recruiter scoped to one site cannot record on another's).
+  @RequireSiteMatch()
   async record(
     @Body() dto: RecordTalentResponseDto,
     @Headers('Idempotency-Key') idempotencyKey: string | undefined,

@@ -11,6 +11,8 @@ import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // Amendment A1 — rtr-html-v1 through the RTR request path: the resolver accepts exactly
 // rtr-generated-v1 + rtr-html-v1, the binding service binds field nodes from the closed
 // catalog (same fail-closed rules), the orchestrator reads the FROZEN logo asset (sha
@@ -92,6 +94,7 @@ describe('A1 — rtr-html-v1 request path', () => {
       templates,
       storage as never,
       requisitions,
+      episodeReaderAt(), // Remediation v1.0 R2 (DEF-7) — the Talent has responded
     );
   });
 

@@ -27,6 +27,8 @@ import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.j
 import { RtrTemplateTenantLogoService } from '../rtr/rtr-template-tenant-logo.service.js';
 import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // DOC-TEMPLATE-LIB-1 T-3 (§4.2, §4.3, §5) — the RTR request path against the Aramo RTR
 // default on real Postgres 17. Skipped unless ARAMO_RUN_INTEGRATION=1.
 //
@@ -224,6 +226,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         templates,
         storage,
         fakeRequisitions,
+        episodeReaderAt(), // Remediation v1.0 R2 (DEF-7) — the Talent has responded
         logo,
       );
     }, 300_000);

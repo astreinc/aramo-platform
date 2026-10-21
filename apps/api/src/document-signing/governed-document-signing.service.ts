@@ -80,7 +80,46 @@ export class GovernedDocumentSigningService {
     // Durable provenance (INV-2) — the pinned template version, when the domain rendered from a
     // governed template (RTR). Omitted for inline-model documents (offer letter).
     template_version_id?: string;
-  }): Promise<{ document_id: string; revision_id: string }> {
+    // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-8) — reuse the live DRAFT for the same
+    // type + associations instead of creating a duplicate (race-safe). Opt-in (RTR); offer letters
+    // keep creating a fresh document.
+    reuse_live_draft?: boolean;
+  }): Promise<{ document_id: string; revision_id: string; reused?: boolean }> {
+    if (input.reuse_live_draft === true) {
+      const { document, reused } = await this.documents.createDocumentReusingDraft({
+        tenant_id: input.tenant_id,
+        document_type_id: input.document_type_id,
+        title: input.title,
+        execution_mode: input.execution_mode,
+        source_kind: input.source_kind,
+        created_by: input.created_by,
+        associations: input.associations.map((a) => ({ ...a })),
+        request_id: input.requestId,
+      });
+      if (reused) {
+        // A reused draft keeps its frozen revision (no re-render, INV-3). Only a draft whose
+        // freeze never completed gets one now.
+        const current = await this.documents.getCurrentRevision(input.tenant_id, document.id);
+        if (current !== null) return { document_id: document.id, revision_id: current.id, reused: true };
+      }
+      try {
+        const frozen = await this.render.generateRevision({
+          tenant_id: input.tenant_id,
+          document_id: document.id,
+          actor_id: input.created_by,
+          requestId: input.requestId,
+          template_version_id: input.template_version_id,
+          model: input.render,
+        });
+        return { document_id: document.id, revision_id: frozen.revision_id, reused };
+      } catch (e) {
+        // A concurrent request reused this draft and froze it first (unique revision number):
+        // the draft now has its one frozen revision — return it, never a second.
+        const winner = reused ? await this.documents.getCurrentRevision(input.tenant_id, document.id) : null;
+        if (winner !== null) return { document_id: document.id, revision_id: winner.id, reused: true };
+        throw e;
+      }
+    }
     const doc = await this.documents.createDocument({
       tenant_id: input.tenant_id,
       document_type_id: input.document_type_id,

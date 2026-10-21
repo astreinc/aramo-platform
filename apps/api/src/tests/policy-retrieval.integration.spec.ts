@@ -72,7 +72,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     async function signJwt(tenant: string): Promise<string> {
-      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, site_id: SITE, authz_version: __authzTestResolver.grant(tenant, ACTOR, ['pipeline:add'])})
+      // Remediation v1.0 R3 (DEF-9) — Add Talent enforces requisition visibility; this spec is about
+      // policy retrieval, so the actor sees every requisition (requisition:read:all).
+      return new SignJWT({ sub: ACTOR, consumer_type: 'recruiter', actor_kind: 'user', tenant_id: tenant, site_id: SITE, authz_version: __authzTestResolver.grant(tenant, ACTOR, ['pipeline:add', 'requisition:read:all'])})
         .setProtectedHeader({ alg: ALG }).setIssuedAt().setIssuer(ISSUER).setAudience(AUDIENCE).setExpirationTime('1h').sign(signingKey);
     }
     async function seedRequisition(tenant: string): Promise<string> {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_LABEL } from './rtr-affordance';
+import { rtrEndedLabel, rtrAffordanceKind, RTR_POLICY_UNRESOLVED_LABEL } from './rtr-affordance';
 import { rtrPresentation } from './talent-requisition-360/tr360-model';
 import type { BoardCardView } from './requisition-talent-board-api';
 
@@ -53,3 +53,19 @@ describe('rtrPresentation — Talent × Requisition 360 row (v1.2 §4.7)', () =>
     expect(rtrPresentation(card('NOT_REQUIRED') as BoardCardView)?.fact).toBe('Not required');
   });
 });
+
+// Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — an RTR that ended unsigned.
+describe('rtrEndedLabel / DECLINED + EXPIRED (R2, DEF-12)', () => {
+  it('names the outcome; other statuses carry no ended label', () => {
+    expect(rtrEndedLabel({ rtr_status: 'DECLINED' })).toBe('RTR · Declined by the talent');
+    expect(rtrEndedLabel({ rtr_status: 'EXPIRED' })).toBe('RTR · Expired unsigned');
+    expect(rtrEndedLabel({ rtr_status: 'SENT' })).toBeNull();
+    expect(rtrEndedLabel({ rtr_status: 'NOT_SENT' })).toBeNull();
+  });
+
+  it('a declined / expired RTR is never "awaiting"; it follows the due / send rule', () => {
+    expect(rtrAffordanceKind({ rtr_status: 'DECLINED', owner: 'pipeline', owner_state: 'qualifying' } as never)).toBe('send');
+    expect(rtrAffordanceKind({ rtr_status: 'EXPIRED', owner: 'pipeline', owner_state: 'contacted' } as never)).toBe('due');
+  });
+});
+

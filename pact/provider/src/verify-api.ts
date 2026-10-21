@@ -543,6 +543,22 @@ const DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql',
 );
+// Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — the Document status CHECK gains
+// DECLINED (a returned status value) → registered; after the DOC-TEMPLATE-LIB-1 documents migrations (re-sequenced to 20261021170000 on merge).
+const DOCUMENTS_R2_DECLINED_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261021170000_r2_document_status_declined/migration.sql',
+);
+// R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
+// reads to resolve an ended envelope's Document; without it the receiver cannot answer.
+const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
+  ROOT,
+  'libs/signature-routing/prisma/migrations/20261018130000_init_signature_routing/migration.sql',
+);
+const SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION = resolve(
+  ROOT,
+  'libs/signature-routing/prisma/migrations/20261018140500_provider_oauth_state/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3792,6 +3808,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION,
         DOCUMENTS_DOCLIB_T1_MIGRATION,
         DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION,
+        // R2 (DEF-12) — DECLINED status + the signature-routing store.
+        DOCUMENTS_R2_DECLINED_MIGRATION,
+        SIGNATURE_ROUTING_INIT_MIGRATION,
+        SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

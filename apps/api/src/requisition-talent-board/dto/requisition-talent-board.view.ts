@@ -99,7 +99,7 @@ export interface BoardCardView {
   // lacks talent:read or the talent has no desired pay).
   // Talent Lifecycle R1–R5 Impl Directive v1.2 §4.7 — 'POLICY_UNRESOLVED': the RTR
   // requirement is not configured (no policy layer / no rtr_present key); Qualify withheld.
-  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
+  readonly rtr_status: 'NOT_SENT' | 'SENT' | 'CONFIRMED' | 'DECLINED' | 'EXPIRED' | 'NOT_REQUIRED' | 'POLICY_UNRESOLVED' | null;
   readonly email_evidence: boolean;
   readonly voice_evidence: boolean;
   readonly desired_pay: string | null;
