@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -25,6 +25,7 @@
     "@aramo/contact": "./libs/contact/src/index.ts",
     "@aramo/conversation-intelligence": "./libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
+    "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -651,6 +652,49 @@
       "validateNormalizedTranscript",
       "verifyExternalCaptureSignature"
     ],
+    "@aramo/document-templates-web": [
+      "CheckIcon",
+      "DOC_TEMPLATE_MANAGE_SCOPE",
+      "DOC_TEMPLATE_READ_SCOPE",
+      "DocIcon",
+      "DocIconSmall",
+      "DocTemplateRoutesProvider",
+      "EyeIcon",
+      "Letterhead",
+      "LockIcon",
+      "ORG_DOC_TEMPLATE_ROUTES",
+      "PlusIcon",
+      "PreviewModal",
+      "PreviewPaper",
+      "RIGHT_TO_REPRESENT_TYPE_ID",
+      "RTR_GENERATED_SCHEMA_V1",
+      "RTR_HTML_SCHEMA_V1",
+      "RtrDraftEditor",
+      "RtrTemplateDetail",
+      "SafeDoc",
+      "SampleValues",
+      "activateTemplateVersion",
+      "bindingMapFrom",
+      "clearTemplateSelection",
+      "contentFromVersion",
+      "createOwnTemplate",
+      "emptyBindingMap",
+      "fetchTemplateCatalog",
+      "fetchTemplateLibrary",
+      "fmtDate",
+      "getDocumentTemplate",
+      "getTemplateVersion",
+      "htmlOf",
+      "listDocumentTemplates",
+      "listTemplateSelections",
+      "listTemplateVersions",
+      "previewContentFrom",
+      "previewTemplateDefault",
+      "previewTemplateVersion",
+      "resolveUserNames",
+      "setTemplateSelection",
+      "useDocTemplateRoutes"
+    ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_STORAGE_PORT",
@@ -664,6 +708,7 @@
       "DocumentRequirementNotFoundError",
       "DocumentRequirementsController",
       "DocumentStorageNotSupportedError",
+      "DocumentTemplateLibraryController",
       "DocumentTemplatesController",
       "DocumentTypesController",
       "DocumentsController",
@@ -928,6 +973,7 @@
       "ORG_ADMIN_SCOPE_KEYS",
       "ORG_ENTRY_PATH",
       "ORG_ROLE_KEYS",
+      "ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
@@ -943,6 +989,7 @@
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
@@ -1208,6 +1255,7 @@
     ],
     "@aramo/org-admin-web": [
       "AuditLogView",
+      "DOC_TEMPLATE_READ_SCOPE",
       "ME_PATH",
       "ORG_ADMIN_SCOPE_PREFIX",
       "ORG_DENIED_NOTICE",
@@ -1215,9 +1263,12 @@
       "OrgAdminRoutes",
       "OrgAdminShell",
       "RolesMatrixView",
+      "canEnterOrg",
       "fetchMe",
       "hasOrgAdminScope",
+      "hasOrgTemplateScope",
       "orgSectionLabel",
+      "orgSectionsFor",
       "useMe"
     ],
     "@aramo/outbox-publisher": [
@@ -2260,6 +2311,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3870,6 +3927,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5194,6 +5257,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a.controller.read.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -6624,6 +6693,16 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/document-templates-web": [
+      { "project": "aramo-ats-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      { "project": "org-admin-web", "status": "production" }
+    ],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
@@ -7654,24 +7733,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/DocumentTemplates.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/RtrDraftEditor.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/RtrDraftEditorHtml.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/sections/AtsRolesSection.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7880,6 +7941,31 @@
       { "project": "aramo-sign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/DocumentTemplates.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/RtrDraftEditor.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/RtrDraftEditorHtml.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      { "project": "document-templates-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
@@ -7969,6 +8055,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-tenant-branding.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10629,6 +10721,13 @@
       "root": "libs/conversation-transcript",
       "sourceRoot": "libs/conversation-transcript/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "document-templates-web",
+      "root": "libs/document-templates-web",
+      "sourceRoot": "libs/document-templates-web/src",
+      "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },
     {
