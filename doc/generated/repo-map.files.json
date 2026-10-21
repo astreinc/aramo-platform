@@ -1777,6 +1777,7 @@
     "apps/sign-service/src/tests/sign-api.integration.spec.ts",
     "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
     "apps/sign-service/src/tests/sign-integrations.spec.ts",
+    "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
     "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
     "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
     "apps/sign-service/src/tests/sign-webhooks.spec.ts",

@@ -980,6 +980,7 @@
       "PRODUCT_KEYS",
       "PrismaService",
       "ProductAvailabilityService",
+      "RETIRED_ROLE_KEYS",
       "RedisScopeCache",
       "RoleBundleValidator",
       "RoleRepository",
@@ -989,6 +990,8 @@
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_ORGANIZATION_ROLE_DISPLAY",
+      "SIGN_ORGANIZATION_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
@@ -6055,6 +6058,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8280,6 +8295,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
