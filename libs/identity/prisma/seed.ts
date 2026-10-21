@@ -38,10 +38,12 @@
 // the kept roles' bundles stay byte-identical (DDR D7 additive discipline
 // where applicable — no Recruiter bundle change, etc).
 
+import { createHash } from 'node:crypto';
+
 import { PrismaPg } from '@prisma/adapter-pg';
 
-import { ORG_ADMIN_SCOPE_KEYS } from '../src/lib/dto/role.dto.js';
-import { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS } from '../src/lib/dto/esign-permissions.js';
+import { ORG_ADMIN_SCOPE_KEYS, RETIRED_ROLE_KEYS } from '../src/lib/dto/role.dto.js';
+import { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '../src/lib/dto/esign-permissions.js';
 
 import { PrismaClient } from './generated/client/client.js';
 
@@ -72,7 +74,12 @@ export const SEED_IDS = {
     // role (super_admin). Retired keys' UUIDs are reused for the 4 new
     // staffing roles to keep the address space compact; 0012 (was viewer)
     // is left unused as a gap marker.
-    tenant_admin: '01900000-0000-7000-8000-000000000010',
+    // ROLES-1 PR-2 (Directive v1.0 LOCKED §1/§6) — SEED_IDS meaning swap. Row …0010
+    // (formerly key `tenant_admin`, the ATS superset) is `ats_admin`; row …02b0
+    // (formerly `org_admin`) is `tenant_admin`, the organization administrator.
+    // Every ATS bundle below that granted the old `tenant_admin` (row …0010) now
+    // names `ats_admin` — same row, same RoleScope ids.
+    ats_admin: '01900000-0000-7000-8000-000000000010',
     recruiter: '01900000-0000-7000-8000-000000000011',
     candidate: '01900000-0000-7000-8000-000000000013', // PR-A1a Ruling 3
     tenant_owner: '01900000-0000-7000-8000-000000000014',
@@ -97,9 +104,9 @@ export const SEED_IDS = {
     sign_admin: '01900000-0000-7000-8000-0000000002a1',
     sign_sender: '01900000-0000-7000-8000-0000000002a2',
     sign_viewer: '01900000-0000-7000-8000-0000000002a3',
-    // IC-3 PR-7 — org_admin, the product-neutral organization administrator
-    // (dedicated 0x2b0 id; a TENANT role, visible in the tenant catalog).
-    org_admin: '01900000-0000-7000-8000-0000000002b0',
+    // IC-3 PR-7 — the 0x2b0 row (was org_admin). ROLES-1 PR-2: `tenant_admin`, the
+    // organization administrator (a TENANT role, assignable in any tenant).
+    tenant_admin: '01900000-0000-7000-8000-0000000002b0',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -200,6 +207,10 @@ export const SEED_IDS = {
     // SKILL-TAX-1F-A — platform taxonomy-governance scopes (super_admin only).
     'platform:skill:read': '01900000-0000-7000-8000-000000000320',
     'platform:skill:manage': '01900000-0000-7000-8000-000000000321',
+    // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring
+    // (Aramo defaults + the variable catalog). super_admin only.
+    'platform:document_template:read': '01900000-0000-7000-8000-000000000322',
+    'platform:document_template:manage': '01900000-0000-7000-8000-000000000323',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -462,8 +473,8 @@ export const SEED_IDS = {
     'sign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
     'sign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
     'sign:contact:read': '01900000-0000-7000-8000-00000000140c',
-    'sign:template:use': '01900000-0000-7000-8000-00000000140d',
-    'sign:template:manage': '01900000-0000-7000-8000-00000000140e',
+    // 0x140d / 0x140e were sign:template:use / sign:template:manage — RETIRED by
+    // DOC-TEMPLATE-LIB-1 T-5 (never reused; the identity migration deletes the rows).
     'sign:report:read': '01900000-0000-7000-8000-00000000140f',
     'sign:member:manage': '01900000-0000-7000-8000-000000001410',
     'sign:settings:manage': '01900000-0000-7000-8000-000000001411',
@@ -574,6 +585,10 @@ export const SEED_IDS = {
     // scopes (0x303..0x3ff platform range is free per the note above).
     super_admin_platform_skill_read: '01900000-0000-7000-8000-000000000310',
     super_admin_platform_skill_manage: '01900000-0000-7000-8000-000000000311',
+    // DOC-TEMPLATE-LIB-1 T-2 — super_admin RoleScope rows for the 2 platform
+    // document-template scopes (0x303..0x3ff platform range).
+    super_admin_platform_document_template_read: '01900000-0000-7000-8000-000000000312',
+    super_admin_platform_document_template_manage: '01900000-0000-7000-8000-000000000313',
     // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
     // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
     // since they live in AUTHZ1_BUNDLES).
@@ -583,6 +598,8 @@ export const SEED_IDS = {
     tenant_admin_company_read_all: '01900000-0000-7000-8000-000000000306',
   },
   membership_role_admin: '01900000-0000-7000-8000-000000000040',
+  // ROLES-1 PR-2 (§6) — the dev admin's tenant_admin (row …02b0) assignment.
+  membership_role_admin_org: '01900000-0000-7000-8000-000000000041',
   audit_events: {
     tenant_created: '01900000-0000-7000-8000-000000000050',
     user_created: '01900000-0000-7000-8000-000000000051',
@@ -717,7 +734,8 @@ export const CONNECTOR_SERVICE_ACCOUNT_DESCRIPTION =
 
 // Per-role scope assignments (directive §6 + §9 test 17, locked).
 export const ROLE_SCOPE_ASSIGNMENTS = {
-  tenant_admin: [
+  // ROLES-1 PR-2 — row …0010, renamed ats_admin (formerly tenant_admin).
+  ats_admin: [
     'consent:read',
     'consent:write',
     'consent:decision-log:read',
@@ -740,7 +758,9 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     'calendar:event-create', 'calendar:event-edit', 'calendar:event-delete',
     'activity:read', 'examination:read',
     'requisition:create', 'requisition:edit', 'requisition:delete',
-    'tenant:admin:user-manage', 'tenant:admin:settings',
+    // ROLES-1 PR-2 (§3.2, D-2) — tenant:admin:user-manage and tenant:admin:settings
+    // are organization-wide administration: removed from ats_admin (their fixed
+    // RoleScope ids 0x125/0x126 are retired, not reused).
     // HK-IDENT-SCOPES — tenant_admin gets all 6 deferred ATS scopes
     // (recruiter+ includes tenant_admin).
     'requisition:assign',
@@ -819,17 +839,20 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     // SKILL-TAX-1F-A — taxonomy governance (read + manage).
     'platform:skill:read',
     'platform:skill:manage',
+    // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog.
+    'platform:document_template:read',
+    'platform:document_template:manage',
   ],
 } as const;
 
 const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
-  'tenant_admin:consent:read': SEED_IDS.role_scopes.tenant_admin_consent_read,
-  'tenant_admin:consent:write': SEED_IDS.role_scopes.tenant_admin_consent_write,
-  'tenant_admin:consent:decision-log:read':
+  'ats_admin:consent:read': SEED_IDS.role_scopes.tenant_admin_consent_read,
+  'ats_admin:consent:write': SEED_IDS.role_scopes.tenant_admin_consent_write,
+  'ats_admin:consent:decision-log:read':
     SEED_IDS.role_scopes.tenant_admin_consent_decision_log_read,
-  'tenant_admin:auth:session:read': SEED_IDS.role_scopes.tenant_admin_auth_session_read,
-  'tenant_admin:identity:user:read': SEED_IDS.role_scopes.tenant_admin_identity_user_read,
-  'tenant_admin:identity:tenant:read':
+  'ats_admin:auth:session:read': SEED_IDS.role_scopes.tenant_admin_auth_session_read,
+  'ats_admin:identity:user:read': SEED_IDS.role_scopes.tenant_admin_identity_user_read,
+  'ats_admin:identity:tenant:read':
     SEED_IDS.role_scopes.tenant_admin_identity_tenant_read,
   'recruiter:consent:read': SEED_IDS.role_scopes.recruiter_consent_read,
   'recruiter:consent:write': SEED_IDS.role_scopes.recruiter_consent_write,
@@ -838,10 +861,10 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'recruiter:auth:session:read': SEED_IDS.role_scopes.recruiter_auth_session_read,
   // AUTHZ-1b: viewer:* entries removed (role retired).
   // PR-A1a — RoleScope mapping rows for the kept pre-A1a roles + candidate.
-  'tenant_admin:requisition:read': SEED_IDS.role_scopes.tenant_admin_requisition_read,
-  'tenant_admin:requisition:read:all': SEED_IDS.role_scopes.tenant_admin_requisition_read_all,
-  'tenant_admin:submittal:create': SEED_IDS.role_scopes.tenant_admin_submittal_create,
-  'tenant_admin:submittal:approve': SEED_IDS.role_scopes.tenant_admin_submittal_approve,
+  'ats_admin:requisition:read': SEED_IDS.role_scopes.tenant_admin_requisition_read,
+  'ats_admin:requisition:read:all': SEED_IDS.role_scopes.tenant_admin_requisition_read_all,
+  'ats_admin:submittal:create': SEED_IDS.role_scopes.tenant_admin_submittal_create,
+  'ats_admin:submittal:approve': SEED_IDS.role_scopes.tenant_admin_submittal_approve,
   'recruiter:requisition:read': SEED_IDS.role_scopes.recruiter_requisition_read,
   'recruiter:submittal:create': SEED_IDS.role_scopes.recruiter_submittal_create,
   'recruiter:submittal:approve': SEED_IDS.role_scopes.recruiter_submittal_approve,
@@ -854,31 +877,29 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   'candidate:portal:dispute:write': SEED_IDS.role_scopes.candidate_portal_dispute_write,
   // PR-A1a-2 — 52 new role_scope rows.
   // tenant_admin: 27 (full catalog)
-  'tenant_admin:talent:read': SEED_IDS.role_scopes.tenant_admin_talent_read,
-  'tenant_admin:talent:create': SEED_IDS.role_scopes.tenant_admin_talent_create,
-  'tenant_admin:talent:edit': SEED_IDS.role_scopes.tenant_admin_talent_edit,
-  'tenant_admin:talent:delete': SEED_IDS.role_scopes.tenant_admin_talent_delete,
-  'tenant_admin:talent:search': SEED_IDS.role_scopes.tenant_admin_talent_search,
-  'tenant_admin:company:read': SEED_IDS.role_scopes.tenant_admin_company_read,
-  'tenant_admin:company:create': SEED_IDS.role_scopes.tenant_admin_company_create,
-  'tenant_admin:company:edit': SEED_IDS.role_scopes.tenant_admin_company_edit,
-  'tenant_admin:company:delete': SEED_IDS.role_scopes.tenant_admin_company_delete,
-  'tenant_admin:contact:read': SEED_IDS.role_scopes.tenant_admin_contact_read,
-  'tenant_admin:contact:create': SEED_IDS.role_scopes.tenant_admin_contact_create,
-  'tenant_admin:contact:edit': SEED_IDS.role_scopes.tenant_admin_contact_edit,
-  'tenant_admin:contact:delete': SEED_IDS.role_scopes.tenant_admin_contact_delete,
-  'tenant_admin:pipeline:add': SEED_IDS.role_scopes.tenant_admin_pipeline_add,
-  'tenant_admin:pipeline:change-status': SEED_IDS.role_scopes.tenant_admin_pipeline_change_status,
-  'tenant_admin:calendar:event-create': SEED_IDS.role_scopes.tenant_admin_calendar_event_create,
-  'tenant_admin:calendar:event-edit': SEED_IDS.role_scopes.tenant_admin_calendar_event_edit,
-  'tenant_admin:calendar:event-delete': SEED_IDS.role_scopes.tenant_admin_calendar_event_delete,
-  'tenant_admin:activity:read': SEED_IDS.role_scopes.tenant_admin_activity_read,
-  'tenant_admin:examination:read': SEED_IDS.role_scopes.tenant_admin_examination_read,
-  'tenant_admin:requisition:create': SEED_IDS.role_scopes.tenant_admin_requisition_create,
-  'tenant_admin:requisition:edit': SEED_IDS.role_scopes.tenant_admin_requisition_edit,
-  'tenant_admin:requisition:delete': SEED_IDS.role_scopes.tenant_admin_requisition_delete,
-  'tenant_admin:tenant:admin:user-manage': SEED_IDS.role_scopes.tenant_admin_tenant_admin_user_manage,
-  'tenant_admin:tenant:admin:settings': SEED_IDS.role_scopes.tenant_admin_tenant_admin_settings,
+  'ats_admin:talent:read': SEED_IDS.role_scopes.tenant_admin_talent_read,
+  'ats_admin:talent:create': SEED_IDS.role_scopes.tenant_admin_talent_create,
+  'ats_admin:talent:edit': SEED_IDS.role_scopes.tenant_admin_talent_edit,
+  'ats_admin:talent:delete': SEED_IDS.role_scopes.tenant_admin_talent_delete,
+  'ats_admin:talent:search': SEED_IDS.role_scopes.tenant_admin_talent_search,
+  'ats_admin:company:read': SEED_IDS.role_scopes.tenant_admin_company_read,
+  'ats_admin:company:create': SEED_IDS.role_scopes.tenant_admin_company_create,
+  'ats_admin:company:edit': SEED_IDS.role_scopes.tenant_admin_company_edit,
+  'ats_admin:company:delete': SEED_IDS.role_scopes.tenant_admin_company_delete,
+  'ats_admin:contact:read': SEED_IDS.role_scopes.tenant_admin_contact_read,
+  'ats_admin:contact:create': SEED_IDS.role_scopes.tenant_admin_contact_create,
+  'ats_admin:contact:edit': SEED_IDS.role_scopes.tenant_admin_contact_edit,
+  'ats_admin:contact:delete': SEED_IDS.role_scopes.tenant_admin_contact_delete,
+  'ats_admin:pipeline:add': SEED_IDS.role_scopes.tenant_admin_pipeline_add,
+  'ats_admin:pipeline:change-status': SEED_IDS.role_scopes.tenant_admin_pipeline_change_status,
+  'ats_admin:calendar:event-create': SEED_IDS.role_scopes.tenant_admin_calendar_event_create,
+  'ats_admin:calendar:event-edit': SEED_IDS.role_scopes.tenant_admin_calendar_event_edit,
+  'ats_admin:calendar:event-delete': SEED_IDS.role_scopes.tenant_admin_calendar_event_delete,
+  'ats_admin:activity:read': SEED_IDS.role_scopes.tenant_admin_activity_read,
+  'ats_admin:examination:read': SEED_IDS.role_scopes.tenant_admin_examination_read,
+  'ats_admin:requisition:create': SEED_IDS.role_scopes.tenant_admin_requisition_create,
+  'ats_admin:requisition:edit': SEED_IDS.role_scopes.tenant_admin_requisition_edit,
+  'ats_admin:requisition:delete': SEED_IDS.role_scopes.tenant_admin_requisition_delete,
   // recruiter: 18 (NO :delete, NO :read:all)
   'recruiter:talent:read': SEED_IDS.role_scopes.recruiter_talent_read,
   'recruiter:talent:create': SEED_IDS.role_scopes.recruiter_talent_create,
@@ -903,12 +924,12 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   // is removed here so the seed no longer creates the grant on a fresh DB.
   // AUTHZ-1b: viewer:* PR-A1a-2 entries removed (role retired).
   // HK-IDENT-SCOPES — 11 new role_scope rows (6 tenant_admin + 5 recruiter).
-  'tenant_admin:requisition:assign': SEED_IDS.role_scopes.tenant_admin_requisition_assign,
-  'tenant_admin:attachment:read': SEED_IDS.role_scopes.tenant_admin_attachment_read,
-  'tenant_admin:attachment:create': SEED_IDS.role_scopes.tenant_admin_attachment_create,
-  'tenant_admin:attachment:delete': SEED_IDS.role_scopes.tenant_admin_attachment_delete,
-  'tenant_admin:pipeline:read': SEED_IDS.role_scopes.tenant_admin_pipeline_read,
-  'tenant_admin:activity:create': SEED_IDS.role_scopes.tenant_admin_activity_create,
+  'ats_admin:requisition:assign': SEED_IDS.role_scopes.tenant_admin_requisition_assign,
+  'ats_admin:attachment:read': SEED_IDS.role_scopes.tenant_admin_attachment_read,
+  'ats_admin:attachment:create': SEED_IDS.role_scopes.tenant_admin_attachment_create,
+  'ats_admin:attachment:delete': SEED_IDS.role_scopes.tenant_admin_attachment_delete,
+  'ats_admin:pipeline:read': SEED_IDS.role_scopes.tenant_admin_pipeline_read,
+  'ats_admin:activity:create': SEED_IDS.role_scopes.tenant_admin_activity_create,
   'recruiter:attachment:read': SEED_IDS.role_scopes.recruiter_attachment_read,
   'recruiter:attachment:create': SEED_IDS.role_scopes.recruiter_attachment_create,
   'recruiter:attachment:delete': SEED_IDS.role_scopes.recruiter_attachment_delete,
@@ -928,11 +949,16 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_skill_read,
   'super_admin:platform:skill:manage':
     SEED_IDS.role_scopes.super_admin_platform_skill_manage,
+  // DOC-TEMPLATE-LIB-1 T-2 — super_admin grants for the 2 document-template scopes.
+  'super_admin:platform:document_template:read':
+    SEED_IDS.role_scopes.super_admin_platform_document_template_read,
+  'super_admin:platform:document_template:manage':
+    SEED_IDS.role_scopes.super_admin_platform_document_template_manage,
   // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
-  'tenant_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
-  'tenant_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
-  'tenant_admin:team:manage': SEED_IDS.role_scopes.tenant_admin_team_manage,
-  'tenant_admin:company:read:all': SEED_IDS.role_scopes.tenant_admin_company_read_all,
+  'ats_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
+  'ats_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
+  'ats_admin:team:manage': SEED_IDS.role_scopes.tenant_admin_team_manage,
+  'ats_admin:company:read:all': SEED_IDS.role_scopes.tenant_admin_company_read_all,
   // WL-B2 (R6/R14) — address:lookup grants for the two base ROLE_SCOPE_ASSIGNMENTS
   // roles. Explicit literal ids from a FRESH contiguous 0x1100 block (append-
   // don't-renumber; above the current max generated range — CLIENT_SELECTION_
@@ -940,7 +966,7 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
   // hold the scope (tenant_owner/account_manager/recruiting_manager/lead_recruiter)
   // take 0x1102..0x1105 via ADDRESS_LOOKUP_SEED_BUNDLES (they cannot be added to
   // the frozen AUTHZ1_BUNDLES scope arrays without renumbering the 0x400 counter).
-  'tenant_admin:address:lookup': '01900000-0000-7000-8000-000000001100',
+  'ats_admin:address:lookup': '01900000-0000-7000-8000-000000001100',
   'recruiter:address:lookup': '01900000-0000-7000-8000-000000001101',
 };
 
@@ -1211,7 +1237,7 @@ export const D5_COMPENSATION_BUNDLES: ReadonlyArray<readonly [string, readonly s
   // see-all tier (TA + TO) — every comp scope. Mirrors the requisition:read:all
   // pattern at D4b: top-tier roles see everything; operational tiers get the
   // narrower per-side cuts below.
-  ['tenant_admin', [
+  ['ats_admin', [
     'compensation:view:pay',
     'compensation:view:bill',
     'compensation:view:revenue',
@@ -1367,7 +1393,7 @@ const D5_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // SEES once through the gate — the seed grants ACCESS, not visibility.
 const REPORTING_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['dashboard:read', 'report:read']],
-  ['tenant_admin', ['dashboard:read', 'report:read']],
+  ['ats_admin', ['dashboard:read', 'report:read']],
   ['account_manager', ['dashboard:read', 'report:read']],
   ['recruiting_manager', ['dashboard:read', 'report:read']],
   ['recruiter', ['dashboard:read', 'report:read']],
@@ -1417,7 +1443,7 @@ const REPORTING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //     drive it nor send outreach.
 const SELECTION_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['selection:read', 'selection:write', 'selection:outreach']],
-  ['tenant_admin', ['selection:read', 'selection:write', 'selection:outreach']],
+  ['ats_admin', ['selection:read', 'selection:write', 'selection:outreach']],
   ['account_manager', ['selection:read', 'selection:write', 'selection:outreach']],
   ['recruiting_manager', ['selection:read', 'selection:write', 'selection:outreach']],
   ['recruiter', ['selection:read', 'selection:write', 'selection:outreach']],
@@ -1475,7 +1501,7 @@ const SELECTION_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // REORDER without bumping the offset to a fresh range.
 const SEARCH_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['company:search', 'requisition:search', 'contact:search']],
-  ['tenant_admin', ['company:search', 'requisition:search', 'contact:search']],
+  ['ats_admin', ['company:search', 'requisition:search', 'contact:search']],
   ['account_manager', ['company:search', 'requisition:search', 'contact:search']],
   ['recruiting_manager', ['company:search', 'requisition:search', 'contact:search']],
   ['recruiter', ['company:search', 'requisition:search', 'contact:search']],
@@ -1512,7 +1538,7 @@ const SEARCH_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // super_admin hold neither. 9 roles × 2 scopes = 18 rows.
 const TASK_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['task:read', 'task:write']],
-  ['tenant_admin', ['task:read', 'task:write']],
+  ['ats_admin', ['task:read', 'task:write']],
   ['account_manager', ['task:read', 'task:write']],
   ['recruiting_manager', ['task:read', 'task:write']],
   ['recruiter', ['task:read', 'task:write']],
@@ -1547,7 +1573,7 @@ const TASK_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // visibility there would be scope creep (the seed.spec grant-table proof
 // asserts the 3 present + those absent).
 const COMMERCIAL_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['tenant_admin', ['company:read_commercial']],
+  ['ats_admin', ['company:read_commercial']],
   ['tenant_owner', ['company:read_commercial']],
   ['account_manager', ['company:read_commercial']],
 ];
@@ -1576,7 +1602,7 @@ const COMMERCIAL_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // absent). Each role gets BOTH the view (read-mask) and edit (write-gate)
 // financial scope.
 export const FINANCIALS_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['tenant_admin', ['requisition:view:financials', 'requisition:edit:financials']],
+  ['ats_admin', ['requisition:view:financials', 'requisition:edit:financials']],
   ['tenant_owner', ['requisition:view:financials', 'requisition:edit:financials']],
   ['account_manager', ['requisition:view:financials', 'requisition:edit:financials']],
 ];
@@ -1620,7 +1646,7 @@ const FINANCIALS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //     (Amendment v1.1: pay + DM's existing spread scopes would break the D5
 //     invariant) and does NOT get requisition:edit / :edit:financials.
 export const REQ_GATING_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['tenant_admin', ['requisition:profile:generate', 'requisition:profile:edit']],
+  ['ats_admin', ['requisition:profile:generate', 'requisition:profile:edit']],
   ['tenant_owner', ['requisition:profile:generate', 'requisition:profile:edit']],
   ['account_manager', ['requisition:profile:generate', 'requisition:profile:edit']],
   ['recruiting_manager', ['compensation:view:bill', 'requisition:profile:generate', 'requisition:profile:edit']],
@@ -1676,7 +1702,7 @@ const REQ_GATING_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // 10 RoleScope rows: import:read × 8 + export:read × 2.
 export const IMPORT_EXPORT_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['import:read', 'export:read']],
-  ['tenant_admin', ['import:read', 'export:read']],
+  ['ats_admin', ['import:read', 'export:read']],
   ['account_manager', ['import:read']],
   ['recruiting_manager', ['import:read']],
   ['recruiter', ['import:read']],
@@ -1708,7 +1734,8 @@ const IMPORT_EXPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // recruiter does not read the tenant audit log). 2 RoleScope rows.
 export const AUDIT_READ_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['audit:read']],
-  ['tenant_admin', ['audit:read']],
+  // ROLES-1 PR-2 (§3.2, D-2) — ats_admin (row …0010) no longer holds audit:read;
+  // the organization roles hold it (tenant_admin via ORG_ADMIN_SEED_BUNDLES).
 ];
 
 // Deterministic RoleScope row ids for the 2 audit:read grants. Disjoint range
@@ -1732,7 +1759,8 @@ const AUDIT_READ_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // same tier as settings/audit; NOT recruiters). 2 RoleScope rows.
 export const PROFILE_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['tenant:admin:profile']],
-  ['tenant_admin', ['tenant:admin:profile']],
+  // ROLES-1 PR-2 (§3.2, D-2) — ats_admin (row …0010) no longer holds tenant:admin:profile;
+  // the organization roles hold it (tenant_admin via ORG_ADMIN_SEED_BUNDLES).
 ];
 
 // Deterministic RoleScope row ids for the 2 tenant:admin:profile grants.
@@ -1756,7 +1784,8 @@ const PROFILE_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // same admin tier as settings/audit/profile; NOT recruiters). 2 RoleScope rows.
 export const SITES_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['tenant:admin:sites']],
-  ['tenant_admin', ['tenant:admin:sites']],
+  // ROLES-1 PR-2 (§3.2, D-2) — ats_admin (row …0010) no longer holds tenant:admin:sites;
+  // the organization roles hold it (tenant_admin via ORG_ADMIN_SEED_BUNDLES).
 ];
 
 // Deterministic RoleScope row ids for the 2 tenant:admin:sites grants.
@@ -1785,7 +1814,7 @@ const SITES_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // non-assigning) + candidate + super_admin are excluded. 9 roles × 1 = 9 rows.
 export const ASSIGNABLE_USERS_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['tenant:user:read:assignable']],
-  ['tenant_admin', ['tenant:user:read:assignable']],
+  ['ats_admin', ['tenant:user:read:assignable']],
   ['account_manager', ['tenant:user:read:assignable']],
   ['recruiting_manager', ['tenant:user:read:assignable']],
   ['recruiter', ['tenant:user:read:assignable']],
@@ -1820,7 +1849,7 @@ const ASSIGNABLE_USERS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => 
 // auditor/candidate/super_admin do not see the name-rendering lists. 10 × 1 = 10.
 export const DIRECTORY_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['tenant:user:read:directory']],
-  ['tenant_admin', ['tenant:user:read:directory']],
+  ['ats_admin', ['tenant:user:read:directory']],
   ['account_manager', ['tenant:user:read:directory']],
   ['recruiting_manager', ['tenant:user:read:directory']],
   ['recruiter', ['tenant:user:read:directory']],
@@ -1852,7 +1881,8 @@ const DIRECTORY_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // settings/audit/profile/sites; NOT recruiters). 2 RoleScope rows.
 export const DOMAIN_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['tenant:admin:domain']],
-  ['tenant_admin', ['tenant:admin:domain']],
+  // ROLES-1 PR-2 (§3.2, D-2) — ats_admin (row …0010) no longer holds tenant:admin:domain;
+  // the organization roles hold it (tenant_admin via ORG_ADMIN_SEED_BUNDLES).
 ];
 
 // Deterministic RoleScope row ids for the 2 tenant:admin:domain grants. Disjoint
@@ -1877,7 +1907,7 @@ const DOMAIN_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // tenant:admin:domain bundle exactly.
 export const IDENTITY_RESOLVE_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['tenant_owner', ['identity:resolve']],
-  ['tenant_admin', ['identity:resolve']],
+  ['ats_admin', ['identity:resolve']],
   // Promotion-Trigger slice B-api (PO-ruled) — the sourcer sees AND resolves
   // merge advisories from the sourcing surface, so identity:resolve joins the
   // sourcer bundle. Appended (→ row id 0x972) so tenant_owner/tenant_admin ids
@@ -1909,7 +1939,7 @@ export const ACTIVITY_REDACT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['tenant_owner', ['activity:redact']],
-  ['tenant_admin', ['activity:redact']],
+  ['ats_admin', ['activity:redact']],
   ['recruiting_manager', ['activity:redact']],
   ['lead_recruiter', ['activity:redact']],
 ];
@@ -1943,7 +1973,7 @@ export const PRE_START_REQUIREMENT_SEED_BUNDLES: ReadonlyArray<
   ['account_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
   ['recruiting_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
   ['delivery_manager', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:waive_advisory']],
-  ['tenant_admin', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:configure', 'pre_start_requirement:publish']],
+  ['ats_admin', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:configure', 'pre_start_requirement:publish']],
   ['tenant_owner', ['pre_start_requirement:read', 'pre_start_requirement:act', 'pre_start_requirement:configure', 'pre_start_requirement:publish']],
 ];
 
@@ -1985,7 +2015,7 @@ export const PLACEMENT_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['placement:read', 'placement:create', 'placement:transition']],
   ['account_manager', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
-  ['tenant_admin', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
+  ['ats_admin', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
   ['tenant_owner', ['placement:read', 'placement:create', 'placement:transition', 'placement:activate', 'placement:terminate', 'placement:replace']],
 ];
 
@@ -2020,7 +2050,7 @@ export const PERMANENT_PLACEMENT_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['placement:permanent:read']],
   ['account_manager', ['placement:permanent:read', 'placement:permanent:transition']],
-  ['tenant_admin', ['placement:permanent:read', 'placement:permanent:transition']],
+  ['ats_admin', ['placement:permanent:read', 'placement:permanent:transition']],
   ['tenant_owner', ['placement:permanent:read', 'placement:permanent:transition']],
 ];
 
@@ -2047,7 +2077,7 @@ export const PERMANENT_REMEDY_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['account_manager', ['placement:remedy:resolve']],
-  ['tenant_admin', ['placement:remedy:resolve']],
+  ['ats_admin', ['placement:remedy:resolve']],
   ['tenant_owner', ['placement:remedy:resolve']],
 ];
 
@@ -2074,7 +2104,7 @@ export const PERMANENT_TERMS_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['account_manager', ['placement:permanent:terms:write']],
-  ['tenant_admin', ['placement:permanent:terms:write']],
+  ['ats_admin', ['placement:permanent:terms:write']],
   ['tenant_owner', ['placement:permanent:terms:write']],
 ];
 
@@ -2116,15 +2146,15 @@ const ASSIGNMENT_REMOVED_SCOPES: ReadonlySet<string> = new Set([
 const ASSIGNMENT_ID_ANCHOR: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['recruiter', ['assignment:read']],
   ['account_manager', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
-  ['tenant_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
+  ['ats_admin', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
   ['tenant_owner', ['assignment:read', 'assignment:create', 'assignment:update', 'assignment:end', 'assignment:commercials:read', 'assignment:commercials:write']],
   // Slice #3 — assignment:extend appended LAST (append-don't-renumber).
   ['account_manager', ['assignment:extend']],
-  ['tenant_admin', ['assignment:extend']],
+  ['ats_admin', ['assignment:extend']],
   ['tenant_owner', ['assignment:extend']],
   // Slice #4 — assignment:commercials:approve appended LAST (append-don't-renumber).
   ['account_manager', ['assignment:commercials:approve']],
-  ['tenant_admin', ['assignment:commercials:approve']],
+  ['ats_admin', ['assignment:commercials:approve']],
   ['tenant_owner', ['assignment:commercials:approve']],
 ];
 
@@ -2161,7 +2191,7 @@ export const REQUISITION_IMPORT_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['requisition:import:read']],
   ['account_manager', ['requisition:import:read', 'requisition:import:write']],
-  ['tenant_admin', ['requisition:import:read', 'requisition:import:write']],
+  ['ats_admin', ['requisition:import:read', 'requisition:import:write']],
   ['tenant_owner', ['requisition:import:read', 'requisition:import:write']],
 ];
 
@@ -2189,7 +2219,7 @@ const REQUISITION_IMPORT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() =
 export const INTEGRATION_MANAGEMENT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['integration:read', 'integration:write']],
+  ['ats_admin', ['integration:read', 'integration:write']],
   ['tenant_owner', ['integration:read', 'integration:write']],
 ];
 
@@ -2217,7 +2247,7 @@ const INTEGRATION_MANAGEMENT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (
 export const PIPELINE_MAPPING_ADMIN_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['integration:pipeline-mapping:write']],
+  ['ats_admin', ['integration:pipeline-mapping:write']],
   ['tenant_owner', ['integration:pipeline-mapping:write']],
 ];
 const PIPELINE_MAPPING_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2240,7 +2270,7 @@ const PIPELINE_MAPPING_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (
 export const ENGAGEMENT_POLICY_ADMIN_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['engagement:policy:read', 'engagement:policy:write']],
+  ['ats_admin', ['engagement:policy:read', 'engagement:policy:write']],
   ['tenant_owner', ['engagement:policy:read', 'engagement:policy:write']],
 ];
 const ENGAGEMENT_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2266,7 +2296,7 @@ export const COMMUNICATION_C2B_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['communication:email:send', 'communication:meeting:create']],
   ['account_manager', ['communication:email:send', 'communication:meeting:create']],
-  ['tenant_admin', ['communication:email:send', 'communication:meeting:create']],
+  ['ats_admin', ['communication:email:send', 'communication:meeting:create']],
   ['tenant_owner', ['communication:email:send', 'communication:meeting:create']],
 ];
 const COMMUNICATION_C2B_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2293,7 +2323,7 @@ export const COMMUNICATION_A1_MEETING_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
   ['account_manager', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
-  ['tenant_admin', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
+  ['ats_admin', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
   ['tenant_owner', ['communication:meeting:read', 'communication:meeting:edit', 'communication:meeting:cancel']],
 ];
 const COMMUNICATION_A1_MEETING_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2318,7 +2348,7 @@ export const EMAIL_TEMPLATE_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['communication:template:read']],
   ['account_manager', ['communication:template:read']],
-  ['tenant_admin', ['communication:template:read', 'communication:template:manage']],
+  ['ats_admin', ['communication:template:read', 'communication:template:manage']],
   ['tenant_owner', ['communication:template:read', 'communication:template:manage']],
 ];
 const EMAIL_TEMPLATE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2343,7 +2373,7 @@ export const SAVED_LIST_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['tenant_owner', ['saved-list:read', 'saved-list:create', 'saved-list:edit', 'saved-list:delete']],
-  ['tenant_admin', ['saved-list:read', 'saved-list:create', 'saved-list:edit', 'saved-list:delete']],
+  ['ats_admin', ['saved-list:read', 'saved-list:create', 'saved-list:edit', 'saved-list:delete']],
   ['account_manager', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
   ['recruiting_manager', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
   ['recruiter', ['saved-list:read', 'saved-list:create', 'saved-list:edit']],
@@ -2381,7 +2411,7 @@ export const EXAMINATION_CREATE_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['tenant_owner', ['examination:create']],
-  ['tenant_admin', ['examination:create']],
+  ['ats_admin', ['examination:create']],
   ['account_manager', ['examination:create']],
   ['recruiting_manager', ['examination:create']],
   ['recruiter', ['examination:create']],
@@ -2466,10 +2496,13 @@ const SCREENING_TRANSCRIPT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (()
 // episode on the requisition ended (voided / not in consideration / completed). A recruiter,
 // sourcer or any other role may not. 4 grants, dedicated range 0x1740..0x1743 (next clear range
 // after the Sign S-1 role-contract grants at 0x1720+; append-don't-renumber).
+// ROLES-1 reconciliation (merge of main 1346b858): the PO's "Tenant Admin" was row …0010, which
+// ROLES-1 PR-2 renamed `ats_admin`. It is granted here; the ORGANIZATION `tenant_admin` (row …02b0)
+// inherits it through ROLES1_ATS_GRANT_SOURCES (it holds every scope granted to ats_admin).
 export const PIPELINE_RE_ADD_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['lead_recruiter', ['pipeline:re-add']],
   ['recruiting_manager', ['pipeline:re-add']],
-  ['tenant_admin', ['pipeline:re-add']],
+  ['ats_admin', ['pipeline:re-add']],
   ['tenant_owner', ['pipeline:re-add']],
 ];
 
@@ -2494,7 +2527,7 @@ const PIPELINE_RE_ADD_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const ENGAGEMENT_OVERRIDE_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['engagement:policy:override']],
+  ['ats_admin', ['engagement:policy:override']],
   ['tenant_owner', ['engagement:policy:override']],
 ];
 const ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2517,7 +2550,7 @@ const ENGAGEMENT_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() 
 export const CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['client-submittal-policy:read', 'client-submittal-policy:write']],
+  ['ats_admin', ['client-submittal-policy:read', 'client-submittal-policy:write']],
   ['tenant_owner', ['client-submittal-policy:read', 'client-submittal-policy:write']],
 ];
 const CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2538,7 +2571,7 @@ const CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, stri
 export const CLIENT_SUBMITTAL_OVERRIDE_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['client-submittal-policy:override']],
+  ['ats_admin', ['client-submittal-policy:override']],
   ['tenant_owner', ['client-submittal-policy:override']],
 ];
 const CLIENT_SUBMITTAL_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2560,7 +2593,7 @@ const CLIENT_SUBMITTAL_OVERRIDE_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> 
 export const TALENT_CONTACT_EDIT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['talent:edit:contact']],
+  ['ats_admin', ['talent:edit:contact']],
   ['tenant_owner', ['talent:edit:contact']],
 ];
 const TALENT_CONTACT_EDIT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
@@ -2584,7 +2617,7 @@ export const APPROVAL_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
   ['account_manager', ['requisition:approve']],
-  ['tenant_admin', ['requisition:approve']],
+  ['ats_admin', ['requisition:approve']],
   ['tenant_owner', ['requisition:approve']],
 ];
 
@@ -2617,7 +2650,7 @@ export const OFFER_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
   ['account_manager', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
-  ['tenant_admin', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
+  ['ats_admin', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
   ['tenant_owner', ['offer:create', 'offer:transition', 'offer:read', 'offer:read:financial']],
 ];
 
@@ -2665,7 +2698,7 @@ export const COMMUNICATION_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
   ['account_manager', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
-  ['tenant_admin', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
+  ['ats_admin', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
   ['tenant_owner', ['communication:read', 'communication:voice:call', 'communication:disposition:write', 'communication:notes:write']],
 ];
 
@@ -2697,7 +2730,7 @@ export const CLIENT_SELECTION_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
   ['account_manager', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
-  ['tenant_admin', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
+  ['ats_admin', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
   ['tenant_owner', ['client-selection:create', 'client-selection:read', 'client-selection:transition']],
 ];
 
@@ -2726,7 +2759,7 @@ export const CLIENT_SELECTION_INTERVIEW_SEED_BUNDLES: ReadonlyArray<
 > = [
   ['recruiter', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
   ['account_manager', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
-  ['tenant_admin', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
+  ['ats_admin', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
   ['tenant_owner', ['client-selection:interview:schedule', 'client-selection:interview:transition']],
 ];
 
@@ -2799,7 +2832,7 @@ const ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const RESUME_SELECT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['pipeline:resume:set']],
+  ['ats_admin', ['pipeline:resume:set']],
   ['tenant_owner', ['pipeline:resume:set']],
   ['recruiter', ['pipeline:resume:set']],
   ['account_manager', ['pipeline:resume:set']],
@@ -2831,7 +2864,7 @@ const RESUME_SELECT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const DOCUMENTS_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['document:read', 'document:create', 'document:manage']],
+  ['ats_admin', ['document:read', 'document:create', 'document:manage']],
   ['tenant_owner', ['document:read', 'document:create', 'document:manage']],
   ['recruiter', ['document:read', 'document:create']],
   ['account_manager', ['document:read', 'document:create']],
@@ -2856,22 +2889,37 @@ const DOCUMENTS_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // DOC-2 — Templates + Requirements grants. Dedicated bundle at 0x1310+
 // (append-don't-renumber; the DOC-1a 0x1300 range is frozen). Templates/requirements
 // READ → the ATS delivery matrix; MANAGE (incl. requirement waiver) → admins.
-// 12 grants total.
-export const DOCUMENTS_DOC2_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
-  ['tenant_admin', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
+// 12 grants originally; 11 since DOC-TEMPLATE-LIB-1 T-4 (see below).
+//
+// DOCUMENTS_DOC2_ID_LAYOUT is the FROZEN original bundle: it only pins the RoleScope row
+// ids (iteration order), so retiring a pair never shifts the id of a later pair.
+const DOCUMENTS_DOC2_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['ats_admin', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
   ['tenant_owner', ['document_template:read', 'document_template:manage', 'document_requirement:read', 'document_requirement:manage']],
   ['recruiter', ['document_template:read', 'document_requirement:read']],
   ['account_manager', ['document_template:read', 'document_requirement:read']],
 ];
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.3; ADR-0034 D11) — template
+// administration moves to the organization: document_template:manage is removed from
+// ats_admin (row …0010; its fixed RoleScope id is retired, not reused). The organization
+// roles hold it (tenant_owner here; tenant_admin via ROLES1_SIGN_SEED_BUNDLES).
+export const DOCLIB_T4_RETIRED_GRANTS: ReadonlyArray<readonly [string, string]> = [
+  ['ats_admin', 'document_template:manage'],
+];
+export const DOCUMENTS_DOC2_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = DOCUMENTS_DOC2_ID_LAYOUT.map(
+  ([role, scopes]) =>
+    [role, scopes.filter((scope) => !DOCLIB_T4_RETIRED_GRANTS.some(([r, k]) => r === role && k === scope))] as const,
+);
 
-// Deterministic RoleScope row ids for the 12 DOC-2 grants. Fresh contiguous range
-// 0x1310+ (DOC-1a's 0x1300 range untouched). Iteration order pins the assignment.
+// Deterministic RoleScope row ids for the DOC-2 grants. Fresh contiguous range
+// 0x1310+ (DOC-1a's 0x1300 range untouched). Iteration order of the FROZEN layout pins
+// the assignment.
 const DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1310;
-  for (const [role, scopes] of DOCUMENTS_DOC2_SEED_BUNDLES) {
+  for (const [role, scopes] of DOCUMENTS_DOC2_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -2887,7 +2935,7 @@ const DOCUMENTS_DOC2_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 export const DOCUMENTS_DOC3_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
-  ['tenant_admin', ['document:execute']],
+  ['ats_admin', ['document:execute']],
   ['tenant_owner', ['document:execute']],
   ['recruiter', ['document:execute']],
   ['account_manager', ['document:execute']],
@@ -2910,30 +2958,58 @@ const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // PX-V1 PX-3 — E-Sign SENDER product grant. Dedicated bundle at 0x1350+ (0x1330/
 // 0x1340 frozen by CSP PR-2). esign_* roles hold ONLY esign:* scopes — never an
 // ATS scope, never document:execute. 10 grants total.
-export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
+// ROLES-1 PR-3 — the FROZEN id layout of this range, sign_owner included: the retired
+// role's rows keep their slots (0x1350..0x1352) so no later id is renumbered
+// (append-don't-renumber). The seed GRANTS only ESIGN_SENDER_SEED_BUNDLES (no retired role).
+const ESIGN_SENDER_SEED_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['sign_owner', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_admin', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_sender', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_viewer', ['sign:envelope:read']],
 ];
+export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = ESIGN_SENDER_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k));
 
 // Sign Unified Product S-1 — the Sign permission contract grants that complete
 // each esign_* role to ESIGN_ROLE_PERMISSIONS (esign-permissions.ts): the rows
 // ESIGN_SENDER_SEED_BUNDLES does not already hold. Range 0x1720+ (append-don't-
 // renumber; 0x1710..0x1712 is the last prior range). 23 grants. Additive only:
 // no existing grant is removed, so no holder loses a scope it had.
+// ROLES-1 PR-3 — FROZEN id layout: the retired sign_owner keeps its 10 slots at the head
+// of the range (its former contract = sign_admin's + sign:billing:manage) so the
+// sign_admin / sign_sender / sign_viewer row ids are unchanged; it is never granted.
+// DOC-TEMPLATE-LIB-1 T-5 — the layout is the S-1 contract AS SEEDED (sign:template:use /
+// :manage included in their original positions) so no id moves; the retired template
+// scopes are filtered out of the GRANTS below (their slots 0x1723/0x1724 [sign_owner],
+// 0x172d/0x172e [sign_admin], 0x1734 [sign_sender] are retired, never reused).
+export const RETIRED_SIGN_TEMPLATE_SCOPES: readonly string[] = ['sign:template:use', 'sign:template:manage'];
+const ESIGN_S1_ADMIN_LAYOUT: readonly string[] = [
+  ESIGN_SCOPE.ENVELOPE_READ, ESIGN_SCOPE.ENVELOPE_READ_ALL, ESIGN_SCOPE.ENVELOPE_CREATE, ESIGN_SCOPE.ENVELOPE_SEND, ESIGN_SCOPE.ENVELOPE_MANAGE_ALL,
+  ESIGN_SCOPE.CONTACT_READ, 'sign:template:use', 'sign:template:manage', ESIGN_SCOPE.REPORT_READ,
+  ESIGN_SCOPE.MEMBER_MANAGE, ESIGN_SCOPE.SETTINGS_MANAGE, ESIGN_SCOPE.INTEGRATION_MANAGE,
+];
+const ESIGN_S1_PERMISSION_LAYOUT: Readonly<Record<string, readonly string[]>> = {
+  sign_admin: ESIGN_S1_ADMIN_LAYOUT,
+  sign_sender: [ESIGN_SCOPE.ENVELOPE_READ, ESIGN_SCOPE.ENVELOPE_CREATE, ESIGN_SCOPE.ENVELOPE_SEND, ESIGN_SCOPE.CONTACT_READ, 'sign:template:use'],
+  sign_viewer: ESIGN_ROLE_PERMISSIONS.sign_viewer,
+};
+const ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['sign_owner', [...ESIGN_S1_ADMIN_LAYOUT, ESIGN_SCOPE.BILLING_MANAGE]] as const,
+  ...ESIGN_ROLE_KEYS.map((role) => [role, ESIGN_S1_PERMISSION_LAYOUT[role] ?? ESIGN_ROLE_PERMISSIONS[role]] as const),
+].map(([role, perms]) => {
+  const prior = new Set(ESIGN_SENDER_SEED_ID_LAYOUT.find(([k]) => k === role)?.[1] ?? []);
+  return [role, perms.filter((s) => !prior.has(s))] as const;
+});
 export const ESIGN_ROLE_CONTRACT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
-> = ESIGN_ROLE_KEYS.map((role) => {
-  const prior = new Set(ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === role)?.[1] ?? []);
-  return [role, ESIGN_ROLE_PERMISSIONS[role].filter((s) => !prior.has(s))] as const;
-});
+> = ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k)).map(
+  ([role, scopes]) => [role, scopes.filter((s) => !RETIRED_SIGN_TEMPLATE_SCOPES.includes(s))] as const,
+);
 const ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1720;
-  for (const [role, scopes] of ESIGN_ROLE_CONTRACT_SEED_BUNDLES) {
+  for (const [role, scopes] of ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
       i++;
@@ -2945,7 +3021,8 @@ const ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() 
 // IC-3 PR-7 — org_admin grant: the ORG_ADMIN_SCOPE_KEYS bundle (8 grants),
 // dedicated range 0x1600+ (append-don't-renumber; 0x1500+ is the last prior range).
 export const ORG_ADMIN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['org_admin', ORG_ADMIN_SCOPE_KEYS],
+  // ROLES-1 PR-2 — the 0x2b0 row is tenant_admin (formerly org_admin); same ids.
+  ['tenant_admin', ORG_ADMIN_SCOPE_KEYS],
 ];
 const ORG_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
@@ -2959,11 +3036,147 @@ const ORG_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   return map;
 })();
 
+// ROLES-1 PR-2 (Directive v1.0 LOCKED §3.2; ADR-0035 R1) — the organization role
+// bundles beyond ORG_ADMIN_SCOPE_KEYS. Option A (§3.1): static RoleScope rows; the
+// session filters scope each product to its consumer.
+//   tenant_owner += sign_owner's Sign scopes except sign:template:* (11, incl.
+//                   sign:billing:manage — billing is owner-only, D-3).
+//   tenant_admin += sign_admin's Sign scopes except sign:template:* (10, no billing)
+//                   + EVERY scope the seed grants ats_admin (derived from the bundle
+//                   sources below; the migration does the same relationally on the
+//                   live rows — never an assumed count).
+// The sign:template:* pair is excluded (DOC-TEMPLATE-LIB-1 removes it).
+export const ROLES1_EXCLUDED_SIGN_SCOPES: readonly string[] = RETIRED_SIGN_TEMPLATE_SCOPES;
+export const ROLES1_OWNER_SIGN_SCOPES: readonly string[] = [
+  ...ESIGN_ROLE_PERMISSIONS.sign_admin,
+  ESIGN_SCOPE.BILLING_MANAGE,
+].filter((k) => !ROLES1_EXCLUDED_SIGN_SCOPES.includes(k));
+export const ROLES1_ADMIN_SIGN_SCOPES: readonly string[] = ESIGN_ROLE_PERMISSIONS.sign_admin.filter(
+  (k) => !ROLES1_EXCLUDED_SIGN_SCOPES.includes(k) && k !== ESIGN_SCOPE.BILLING_MANAGE,
+);
+// Every ATS bundle source the seed grants from (all except the organization / Sign
+// bundles). The ats_admin half of tenant_admin is derived from these STATICALLY, so the
+// bundle is the same on every database; seed.spec pins that every scope the seed grants
+// ats_admin is also granted to tenant_admin (a new bundle source must be listed here).
+const ROLES1_ATS_GRANT_SOURCES: ReadonlyArray<ReadonlyArray<readonly [string, readonly string[]]>> = [
+  Object.entries(ROLE_SCOPE_ASSIGNMENTS) as ReadonlyArray<readonly [string, readonly string[]]>,
+  AUTHZ1_BUNDLES,
+  D5_COMPENSATION_BUNDLES,
+  REPORTING_SEED_BUNDLES,
+  SELECTION_SEED_BUNDLES,
+  SEARCH_SEED_BUNDLES,
+  TASK_SEED_BUNDLES,
+  COMMERCIAL_SEED_BUNDLES,
+  FINANCIALS_SEED_BUNDLES,
+  REQ_GATING_SEED_BUNDLES,
+  IMPORT_EXPORT_SEED_BUNDLES,
+  AUDIT_READ_SEED_BUNDLES,
+  PROFILE_ADMIN_SEED_BUNDLES,
+  SITES_ADMIN_SEED_BUNDLES,
+  ASSIGNABLE_USERS_SEED_BUNDLES,
+  DIRECTORY_SEED_BUNDLES,
+  DOMAIN_ADMIN_SEED_BUNDLES,
+  IDENTITY_RESOLVE_SEED_BUNDLES,
+  ACTIVITY_REDACT_SEED_BUNDLES,
+  PRE_START_REQUIREMENT_SEED_BUNDLES,
+  PLACEMENT_SEED_BUNDLES,
+  PERMANENT_PLACEMENT_SEED_BUNDLES,
+  PERMANENT_REMEDY_SEED_BUNDLES,
+  PERMANENT_TERMS_SEED_BUNDLES,
+  ASSIGNMENT_SEED_BUNDLES,
+  REQUISITION_IMPORT_SEED_BUNDLES,
+  INTEGRATION_MANAGEMENT_SEED_BUNDLES,
+  PIPELINE_MAPPING_ADMIN_SEED_BUNDLES,
+  EMAIL_TEMPLATE_SEED_BUNDLES,
+  SAVED_LIST_SEED_BUNDLES,
+  EXAMINATION_CREATE_SEED_BUNDLES,
+  SCREENING_SEED_BUNDLES,
+  SCREENING_TRANSCRIPT_SEED_BUNDLES,
+  // Remediation v1.0 R3 (DEF-15(b)) — pipeline:re-add (ats_admin holds it ⇒ tenant_admin derives it).
+  PIPELINE_RE_ADD_SEED_BUNDLES,
+  ENGAGEMENT_POLICY_ADMIN_SEED_BUNDLES,
+  COMMUNICATION_C2B_SEED_BUNDLES,
+  COMMUNICATION_A1_MEETING_SEED_BUNDLES,
+  ENGAGEMENT_OVERRIDE_SEED_BUNDLES,
+  CLIENT_SUBMITTAL_POLICY_ADMIN_SEED_BUNDLES,
+  CLIENT_SUBMITTAL_OVERRIDE_SEED_BUNDLES,
+  TALENT_CONTACT_EDIT_SEED_BUNDLES,
+  APPROVAL_SEED_BUNDLES,
+  OFFER_SEED_BUNDLES,
+  COMMUNICATION_SEED_BUNDLES,
+  CLIENT_SELECTION_SEED_BUNDLES,
+  CLIENT_SELECTION_INTERVIEW_SEED_BUNDLES,
+  ADDRESS_LOOKUP_SEED_BUNDLES,
+  RESUME_SELECT_SEED_BUNDLES,
+  DOCUMENTS_SEED_BUNDLES,
+  DOCUMENTS_DOC2_SEED_BUNDLES,
+  DOCUMENTS_DOC3_SEED_BUNDLES,
+];
+export const ROLES1_ATS_ADMIN_SCOPES: readonly string[] = [
+  ...new Set(
+    ROLES1_ATS_GRANT_SOURCES.flatMap((bundles) =>
+      bundles.filter(([role]) => role === 'ats_admin').flatMap(([, scopes]) => [...scopes]),
+    ),
+  ),
+];
+// DOC-TEMPLATE-LIB-1 T-4 (§6.3) — the organization template-administration pair. ats_admin
+// no longer holds document_template:manage, so tenant_admin names it explicitly (same
+// roles1RoleScopeId as the ROLES-1 PR-2 migration wrote for it: no id change on a live DB).
+export const DOCLIB_T4_ORG_TEMPLATE_SCOPES: readonly string[] = ['document_template:read', 'document_template:manage'];
+export const ROLES1_SIGN_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ROLES1_OWNER_SIGN_SCOPES],
+  // The org set itself is ORG_ADMIN_SEED_BUNDLES' (row 02b0's original grants).
+  [
+    'tenant_admin',
+    [
+      ...new Set([
+        ...ROLES1_ATS_ADMIN_SCOPES.filter((k) => !(ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(k)),
+        ...DOCLIB_T4_ORG_TEMPLATE_SCOPES,
+      ]),
+      ...ROLES1_ADMIN_SIGN_SCOPES,
+    ],
+  ],
+];
+
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.3; ADR-0034 O-3 "Sign senders get
+// document_template:read") — the Sign roles that start envelopes from templates. 2 grants.
+// Ids: doclibT4RoleScopeId (identical to the 20261021150000 migration's for the same pair).
+export const DOCLIB_T4_SIGN_TEMPLATE_READ_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['sign_admin', ['document_template:read']],
+  ['sign_sender', ['document_template:read']],
+];
+
+// The display names (leading phrase) — written by the seed on a fresh database and
+// by the 20261021130000_roles1_role_model migration on an existing one (byte-equal).
+export const ROLES1_ROLE_DESCRIPTIONS = {
+  tenant_owner:
+    'Tenant Owner — organization owner: administers the organization and every entitled product, sends Sign envelopes, and holds the owner-only acts (Sign billing, owner grants, sign-in provider pin)',
+  tenant_admin:
+    'Tenant Admin — organization administrator: administers the organization and every entitled product and sends Sign envelopes, with no billing and no owner-only acts',
+  ats_admin:
+    'ATS Admin — administers the ATS product (full ATS scope set), with no organization-wide administration',
+} as const;
+
+// Deterministic id of a RoleScope row written by ROLES-1 (the migration and this seed
+// derive the SAME id for the same pair): md5('roles1:' || role_id || ':' || scope_id)
+// as a uuid — the SQL `md5(...)::uuid` cast. Disjoint from the 01900000-… seed ranges.
+export function roles1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`roles1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// DOC-TEMPLATE-LIB-1 T-4 — md5('doclib-t4:' || role_id || ':' || scope_id) as a uuid,
+// the SQL `md5(...)::uuid` cast in 20261021150000_doclib_t4_document_template_grants.
+export function doclibT4RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`doclib-t4:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 // Deterministic RoleScope row ids for the 10 E-Sign grants. Fresh range 0x1350+.
 const ESIGN_SENDER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1350;
-  for (const [role, scopes] of ESIGN_SENDER_SEED_BUNDLES) {
+  for (const [role, scopes] of ESIGN_SENDER_SEED_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -3104,11 +3317,14 @@ export async function runIdentitySeed(
   // (key, scope-bundle) pair, verified by test 17. The display-name re-map
   // is observed on fresh dev/test DBs (every integration spec starts a
   // fresh Postgres container).
-  await upsertRole(prisma, SEED_IDS.roles.tenant_admin, 'tenant_admin', 'Tenant Admin — administrative operator of the tenant (users, roles, settings; full scope set)');
+  // ROLES-1 PR-2 — row …0010 is ats_admin (formerly tenant_admin). Descriptions here
+  // must equal ROLES1_ROLE_DESCRIPTIONS (the migration writes the same text to
+  // existing databases, since upsertRole never updates an existing row).
+  await upsertRole(prisma, SEED_IDS.roles.ats_admin, 'ats_admin', ROLES1_ROLE_DESCRIPTIONS.ats_admin);
   await upsertRole(prisma, SEED_IDS.roles.recruiter, 'recruiter', 'Recruiter — core operator (assigned requisitions/talents; no destructive scopes, no see-all)');
   await upsertRole(prisma, SEED_IDS.roles.candidate, 'candidate', 'Candidate — portal-user role for talent subjects authenticating via the portal');
   // AUTHZ-1 / AUTHZ-1b — 9 staffing-tenant roles.
-  await upsertRole(prisma, SEED_IDS.roles.tenant_owner, 'tenant_owner', 'Tenant Owner — singular top authority within a tenant (same scope set as Tenant Admin; org-position distinction)');
+  await upsertRole(prisma, SEED_IDS.roles.tenant_owner, 'tenant_owner', ROLES1_ROLE_DESCRIPTIONS.tenant_owner);
   await upsertRole(prisma, SEED_IDS.roles.account_manager, 'account_manager', 'Account Manager — client-ownership anchor (D4a Axis-2 pods); Recruiter operational set + tenant:admin:user-manage + requisition:assign');
   await upsertRole(prisma, SEED_IDS.roles.sourcer, 'sourcer', 'Sourcer — intake-focused; adds talents and manages the pipeline-sourcing surface');
   await upsertRole(prisma, SEED_IDS.roles.finance, 'finance', 'Finance — offer-approval surface (compensation visibility is D5)');
@@ -3126,11 +3342,15 @@ export async function runIdentitySeed(
   // PX-V1 PX-3 — E-Sign sender product roles. Namespace-separate from the ATS
   // tenant roles (like super_admin): they hold ONLY esign:* scopes and are excluded
   // from the tenant ATS RolePicker. Shared Aramo identity; independent E-Sign product.
-  // IC-3 PR-7 (IC-0 N-2) — org_admin: product-neutral organization administrator;
-  // EXACTLY the ORG_ADMIN_SCOPE_KEYS bundle (no ATS/Sign/platform scope). The
-  // owner role of a tenant provisioned without the ats capability.
-  await upsertRole(prisma, SEED_IDS.roles.org_admin, 'org_admin', 'Organization Admin — product-neutral organization administrator (profile, domain, sites, users and roles, settings, audit trail); no ATS, Sign or platform authority');
-  await upsertRole(prisma, SEED_IDS.roles.sign_owner, 'sign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).');
+  // IC-3 PR-7 row 0x2b0 — ROLES-1 PR-2: tenant_admin, the ORGANIZATION administrator
+  // (formerly org_admin): ORG_ADMIN_SCOPE_KEYS + the ats_admin set + sign_admin's
+  // Sign scopes (no billing). Assignable in any tenant (ORG_ROLE_KEYS).
+  await upsertRole(prisma, SEED_IDS.roles.tenant_admin, 'tenant_admin', ROLES1_ROLE_DESCRIPTIONS.tenant_admin);
+  // ROLES-1 PR-2 (§1, §5.2 step 5) — sign_owner is retired: created INACTIVE on a fresh
+  // database (the migration deactivates it on an existing one). ROLES-1 PR-3: the row is
+  // kept for history only — no bundle, no assignment (RETIRED_ROLE_KEYS); an inactive
+  // role resolves no scopes and is never assignable.
+  await upsertRole(prisma, SEED_IDS.roles.sign_owner, 'sign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).', false);
   await upsertRole(prisma, SEED_IDS.roles.sign_admin, 'sign_admin', 'Sign Admin — administrative operator of a Sign organization; full envelope authority (create/send/read).');
   await upsertRole(prisma, SEED_IDS.roles.sign_sender, 'sign_sender', 'Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');
   await upsertRole(prisma, SEED_IDS.roles.sign_viewer, 'sign_viewer', 'Sign Viewer — read-only access to envelopes + signing history (read).');
@@ -3224,6 +3444,9 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:read'], 'platform:skill:read', 'Platform-tier: read canonical Skills taxonomy + unresolved review queue (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:manage'], 'platform:skill:manage', 'Platform-tier: mutate canonical Skills taxonomy — create/update/deactivate/merge, alias/version/relationship, override, ratify AI proposals (super_admin only)');
+  // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring.
+  await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:read'], 'platform:document_template:read', 'Platform-tier: read Aramo default document templates + the template variable catalog (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:manage'], 'platform:document_template:manage', 'Platform-tier: author, preview and publish Aramo default document templates + maintain the template variable catalog (super_admin only)');
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
@@ -3399,8 +3622,6 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:read:all'], 'sign:envelope:read:all', 'Sign S-1 — read every envelope in the organization (not only own). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:manage:all'], 'sign:envelope:manage:all', 'Sign S-1 — edit drafts and remind/void any envelope in the organization. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:contact:read'], 'sign:contact:read', 'Sign S-1 — read the organization Sign contacts (past recipients). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['sign:template:use'], 'sign:template:use', 'Sign S-1 — use Sign templates. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['sign:template:manage'], 'sign:template:manage', 'Sign S-1 — create and maintain Sign templates. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:report:read'], 'sign:report:read', 'Sign S-1 — read Sign reports. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:member:manage'], 'sign:member:manage', 'Sign S-1 — assign and remove Sign roles for organization members. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:settings:manage'], 'sign:settings:manage', 'Sign S-1 — manage Sign settings. NO scope.created (scope-seed precedent).');
@@ -4456,6 +4677,35 @@ export async function runIdentitySeed(
     }
   }
 
+  // ROLES-1 PR-2 (§3.2) — the organization role bundles (tenant_owner: + the Sign owner
+  // set, tenant_admin: + every ats_admin scope + the Sign admin set). Ids:
+  // roles1RoleScopeId (identical to the migration's for the same pair).
+  for (const [roleKey, scopeKeys] of ROLES1_SIGN_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: roles1RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-4 (§6.3) — document_template:read for the Sign roles. Ids:
+  // doclibT4RoleScopeId (identical to the migration's for the same pair).
+  for (const [roleKey, scopeKeys] of DOCLIB_T4_SIGN_TEMPLATE_READ_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: doclibT4RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+
   // 3 + 8 + 4 + the four creation-audit rows below are ALL DEV-FIXTURE —
   // they describe the admin@aramo.dev user's membership, role, external
   // identity, and the audit trail of the Aramo-Dev-Tenant/admin creation.
@@ -4479,7 +4729,23 @@ export async function runIdentitySeed(
       },
     });
 
-    // 8. UserTenantMembershipRole — assign tenant_admin to the seed membership.
+    // 8. UserTenantMembershipRole — ROLES-1 PR-2 (§6): the dev admin holds ats_admin
+    // (row …0010, the original assignment row) + tenant_admin (row …02b0, the D-1
+    // organization grant).
+    await prisma.userTenantMembershipRole.upsert({
+      where: {
+        membership_id_role_id: {
+          membership_id: SEED_IDS.membership_admin,
+          role_id: SEED_IDS.roles.ats_admin,
+        },
+      },
+      update: {},
+      create: {
+        id: SEED_IDS.membership_role_admin,
+        membership_id: SEED_IDS.membership_admin,
+        role_id: SEED_IDS.roles.ats_admin,
+      },
+    });
     await prisma.userTenantMembershipRole.upsert({
       where: {
         membership_id_role_id: {
@@ -4489,7 +4755,7 @@ export async function runIdentitySeed(
       },
       update: {},
       create: {
-        id: SEED_IDS.membership_role_admin,
+        id: SEED_IDS.membership_role_admin_org,
         membership_id: SEED_IDS.membership_admin,
         role_id: SEED_IDS.roles.tenant_admin,
       },
@@ -4560,8 +4826,9 @@ export async function runIdentitySeed(
     id: SEED_IDS.audit_events.role_tenant_admin_created,
     tenant_id: null,
     event_type: 'identity.role.created',
-    subject_id: SEED_IDS.roles.tenant_admin,
-    payload: { role_id: SEED_IDS.roles.tenant_admin, key: 'tenant_admin' },
+    // ROLES-1 PR-2 — the …0010 row (role.created describes the row; its key is ats_admin).
+    subject_id: SEED_IDS.roles.ats_admin,
+    payload: { role_id: SEED_IDS.roles.ats_admin, key: 'ats_admin' },
   });
   await upsertAudit(prisma, {
     id: SEED_IDS.audit_events.role_recruiter_created,
@@ -4850,11 +5117,12 @@ async function upsertRole(
   id: string,
   key: string,
   description: string,
+  is_active = true,
 ): Promise<void> {
   await prisma.role.upsert({
     where: { id },
     update: {},
-    create: { id, key, description, is_active: true },
+    create: { id, key, description, is_active },
   });
 }
 

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+// ROLES-1 PR-2 — the bundle grants of row 0010 name ats_admin (formerly tenant_admin); same
+// RoleScope ids. The organization tenant_admin (row 02b0) inherits them via ROLES1_SIGN_SEED_BUNDLES.
 import { RESUME_SELECT_SEED_BUNDLES } from '../../prisma/seed.js';
 import { SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 
@@ -23,7 +25,7 @@ import { SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 // lead_recruiter / delivery_manager / back_office / finance / auditor / …)
 // receive NOTHING — no prose-hierarchy inheritance, fail-closed.
 
-const RESUME_SELECT_FOUR = ['account_manager', 'recruiter', 'tenant_admin', 'tenant_owner'];
+const RESUME_SELECT_FOUR = ['account_manager', 'ats_admin', 'recruiter', 'tenant_owner'];
 
 function resumeSelectScopesFor(role: string): string[] {
   return RESUME_SELECT_SEED_BUNDLES.filter(([r]) => r === role)
@@ -48,9 +50,9 @@ describe('pipeline:resume:set role matrix — grant table (unit)', () => {
     }
   });
 
-  it('tenant_owner mirrors tenant_admin (Owner = Admin scope set)', () => {
+  it('tenant_owner mirrors ats_admin (Owner = Admin scope set)', () => {
     expect(resumeSelectScopesFor('tenant_owner')).toEqual(
-      resumeSelectScopesFor('tenant_admin'),
+      resumeSelectScopesFor('ats_admin'),
     );
   });
 

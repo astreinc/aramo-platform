@@ -33,6 +33,18 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   }
   // SKILL-TAX-1F-C1/C2 — the skills governance section (Registry / Review queue /
   // Proposals) hangs off Dashboard, mirroring the tenants crumb trail.
+  // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + the variable catalog.
+  if (pathname.startsWith('/document-templates')) {
+    const crumbs: BreadcrumbItem[] = [
+      { label: 'Dashboard', href: '/' },
+      { label: 'Document templates', href: '/document-templates' },
+    ];
+    if (/^\/document-templates\/[^/]+/.exec(pathname)) crumbs.push({ label: 'Detail' });
+    return crumbs;
+  }
+  if (pathname.startsWith('/template-variables')) {
+    return [{ label: 'Dashboard', href: '/' }, { label: 'Template variables' }];
+  }
   if (pathname.startsWith('/skills')) {
     const crumbs: BreadcrumbItem[] = [
       { label: 'Dashboard', href: '/' },
@@ -72,6 +84,10 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
   const canReadSkills =
     sessionState.status === 'authenticated' &&
     hasScope(sessionState.session, 'platform:skill:read');
+  // DOC-TEMPLATE-LIB-1 T-2 — gate the Documents nav on platform:document_template:read.
+  const canReadDocTemplates =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'platform:document_template:read');
   const handleSignOut = (): void => {
     void logout();
   };
@@ -93,6 +109,12 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
           <RailNavItem to="/skills" end label="Registry" icon={<Icons.IconTag />} />
           <RailNavItem to="/skills/review-queue" label="Review queue" icon={<Icons.IconList />} />
           <RailNavItem to="/skills/proposals" label="Proposals" icon={<Icons.IconBolt />} />
+        </RailNavSection>
+      ) : null}
+      {canReadDocTemplates ? (
+        <RailNavSection label="Documents">
+          <RailNavItem to="/document-templates" label="Document templates" icon={<Icons.IconFile />} />
+          <RailNavItem to="/template-variables" label="Template variables" icon={<Icons.IconList />} />
         </RailNavSection>
       ) : null}
     </Rail>

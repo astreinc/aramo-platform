@@ -10,9 +10,9 @@
 //            rejection does not apply — P1 Amendment P1-A1), holds ONLY the
 //            product capabilities a personal subscriber may hold
 //            (PERSONAL_TENANT_CAPABILITIES — never ats/portal/sourcing through
-//            provisioning), and whose owner receives the product-neutral
-//            org_admin role (IC-0 N-2; the Sign SENDER role is a separate,
-//            governed grant — IC-3 PR-8 assignability, never assumed here).
+//            provisioning), and whose owner receives the organization roles
+//            tenant_owner + tenant_admin (ROLES-1 PR-2 §6 / ADR-0035 R4; formerly
+//            the product-neutral org_admin, IC-0 N-2).
 //
 // String vocabulary enforced in application code (the repo convention for
 // status / domain_verification_status / invite_status), NOT a Prisma enum.
@@ -36,7 +36,8 @@ export const PERSONAL_TENANT_CAPABILITIES: readonly string[] = ['core', 'sign'];
 // IC-0 J-9 (Platform-Console Inc-2 PR-1 Amendment Inc-2-PR-1-A1) — the owner
 // role keys whose FIRST successful session activates a PROVISIONED tenant
 // (Pattern-A owners have no Invitation row, so the acceptance-time hook never
-// fires for them): the ATS owner (tenant_owner) or the product-neutral
-// organization administrator (org_admin — the owner of a Sign-only or PERSONAL
-// tenant, IC-0 N-2 / IC-3 PR-7).
-export const TENANT_ACTIVATING_OWNER_ROLE_KEYS: readonly string[] = ['tenant_owner', 'org_admin'];
+// fires for them). ROLES-1 PR-2 (§3.4; Conforming Amendment 8): the organization
+// owner `tenant_owner` ONLY. The former N-2 owner role (org_admin, now tenant_admin)
+// no longer activates; its provisioned owners receive tenant_owner from the ROLES-1
+// §5.2 step 4 reconciliation.
+export const TENANT_ACTIVATING_OWNER_ROLE_KEYS: readonly string[] = ['tenant_owner'];

@@ -62,6 +62,17 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog (apps/api).
+      '/platform/document-templates': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/platform/template-variables': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/platform': {
         target: 'http://127.0.0.1:3002', // apps/platform-admin (IPv4 pin)
         changeOrigin: true,

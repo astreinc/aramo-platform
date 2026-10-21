@@ -25,6 +25,8 @@ export default defineConfig({
     alias: {
       '@aramo/fe-foundation': resolve(root, '../../libs/fe-foundation/src/index.ts'),
       '@aramo/org-admin-web': resolve(root, '../../libs/org-admin-web/src/index.ts'),
+      // DOC-TEMPLATE-LIB-1 T-4 — the shared document-template UI.
+      '@aramo/document-templates-web': resolve(root, '../../libs/document-templates-web/src/index.ts'),
     },
   },
   server: {

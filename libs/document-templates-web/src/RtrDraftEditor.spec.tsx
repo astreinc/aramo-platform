@@ -86,10 +86,10 @@ function harness(overrides: Partial<Parameters<typeof RtrDraftEditor>[0]> = {}, 
   };
   render(
     <ToastProvider>
-      <MemoryRouter initialEntries={['/admin/settings/document-templates/rtr/draft']}>
+      <MemoryRouter initialEntries={['/org/document-templates/tpl-rtr/draft']}>
         <Routes>
-          <Route path="/admin/settings/document-templates/rtr/draft" element={<RtrDraftEditor {...props} />} />
-          <Route path="/admin/settings/document-templates/rtr" element={<div data-testid="rtr-detail-landing" />} />
+          <Route path="/org/document-templates/tpl-rtr/draft" element={<RtrDraftEditor {...props} />} />
+          <Route path="/org/document-templates/tpl-rtr" element={<div data-testid="rtr-detail-landing" />} />
         </Routes>
       </MemoryRouter>
     </ToastProvider>,

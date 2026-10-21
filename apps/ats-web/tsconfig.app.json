@@ -12,7 +12,8 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@aramo/fe-foundation": ["../../dist/libs/fe-foundation/src/index.d.ts"],
-      "@aramo/org-admin-web": ["../../dist/libs/org-admin-web/src/index.d.ts"]
+      "@aramo/org-admin-web": ["../../dist/libs/org-admin-web/src/index.d.ts"],
+      "@aramo/document-templates-web": ["../../dist/libs/document-templates-web/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],

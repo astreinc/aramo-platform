@@ -35,7 +35,8 @@ import {
 //              exists for an unverified address (no squatting).
 //   complete → the link proves the address. CAS-claim the request, then create
 //              the BUSINESS tenant ([core, sign]), enroll it in the enforced
-//              provider-pin cohort, and create the org_admin owner WITHOUT a
+//              provider-pin cohort, and create the owner (tenant_owner +
+//              tenant_admin — ROLES-1 PR-2 §6) WITHOUT a
 //              Cognito user or ExternalIdentity (membership ACTIVE). No temporary
 //              password: the owner continues with Google or Microsoft; the first
 //              federation pins the tenant's provider and links the owner
@@ -48,6 +49,8 @@ import {
 
 export const SIGN_SIGNUP_SYSTEM_ACTOR_ID = '01900000-0000-7000-8000-00000000519e';
 export const SIGN_SIGNUP_AUDIT_SOURCE = 'sign.self_service_signup';
+// ROLES-1 PR-2 (§6) — the organization roles the signup owner receives.
+export const SIGN_SIGNUP_OWNER_ROLE_KEYS = ['tenant_owner', 'tenant_admin'] as const;
 const SIGN_CAPABILITIES = ['core', 'sign'] as const;
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -281,7 +284,8 @@ export class SignSignupService {
   /**
    * Cognito-free provisioning of a Sign Business tenant and its owner. Order:
    * tenant → enforced-pin enrollment (so the tenant never exists without its
-   * pin rule) → capabilities → owner (org_admin, ACTIVE, no ExternalIdentity).
+   * pin rule) → capabilities → owner (tenant_owner + tenant_admin — ROLES-1 PR-2 §6;
+   * formerly org_admin — ACTIVE, no ExternalIdentity).
    * A failure after the tenant exists soft-disables it (inert), as the
    * platform saga does; the request is marked FAILED and can be retried.
    */
@@ -293,7 +297,9 @@ export class SignSignupService {
     if ((await this.identity.findUserByEmail(normalizeEmail(args.owner_email))) !== null) {
       throw new AramoError('EMAIL_UNAVAILABLE', 'This email address is not available', 409, { requestId: args.request_id, details: {} });
     }
-    const role_ids = await this.identity.resolveRoleIdsByKeys(['org_admin']);
+    // ROLES-1 PR-2 (Directive v1.0 LOCKED §6; Conforming Amendment 5) — the signup
+    // owner receives the organization roles tenant_owner + tenant_admin.
+    const role_ids = await this.identity.resolveRoleIdsByKeys([...SIGN_SIGNUP_OWNER_ROLE_KEYS]);
     const tenant = await this.tenantSvc.provisionTenant({
       name: args.name,
       owner_email: args.owner_email,
@@ -315,10 +321,12 @@ export class SignSignupService {
         email: args.owner_email,
         display_name: args.owner_display_name,
         tenant_id: tenant.id,
-        role_keys: ['org_admin'],
+        role_keys: [...SIGN_SIGNUP_OWNER_ROLE_KEYS],
         role_ids,
         actor_user_id: SIGN_SIGNUP_SYSTEM_ACTOR_ID,
         request_id: args.request_id,
+        // ROLES-1 PR-1/PR-2 (§4.2) — a system provisioning path may grant tenant_owner.
+        owner_role_authority: 'system',
       });
       return { tenant_id: tenant.id, owner_user_id: owner.user.id };
     } catch (err) {
@@ -372,9 +380,11 @@ export class SignSignupService {
     const tenantIds = await this.identityRepo.findMembershipTenantIdsForUser(user.id);
     if (tenantIds.length !== 1) return null;
     const tenant_id = tenantIds[0]!;
-    // The saga's Sign-only owner role (org_admin), on this address's membership.
+    // The saga's owner role (tenant_owner — ROLES-1 PR-2; a pre-ROLES-1 org_admin owner
+    // was renamed tenant_admin and granted tenant_owner by the §5.2 step 4
+    // reconciliation), on this address's membership.
     const membership = await this.identityRepo.findMembership({ user_id: user.id, tenant_id });
-    if (membership === null || !(await this.identity.findRoleKeysForMembership(membership.id)).includes('org_admin')) return null;
+    if (membership === null || !(await this.identity.findRoleKeysForMembership(membership.id)).includes('tenant_owner')) return null;
     const tenant = await this.tenants.findById(tenant_id);
     if (tenant === null || tenant.name.toLowerCase() !== organization_name.toLowerCase() || new Date(tenant.created_at).getTime() < row.created_at.getTime()) return null;
     return { tenant_id: tenant.id, user_id: user.id };

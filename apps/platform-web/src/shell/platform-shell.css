@@ -164,3 +164,29 @@
 .pw-proposal-badge[data-status='ACCEPTED'] { color: #067647; border-color: #abefc6; background: #ecfdf3; }
 .pw-proposal-badge[data-status='REJECTED'] { color: #b42318; border-color: #fecdca; background: #fef3f2; }
 .pw-proposal-badge[data-status='PENDING'] { color: #b54708; border-color: #fedf89; background: #fffaeb; }
+
+/* DOC-TEMPLATE-LIB-1 T-2 — template content (variables as chips, preview samples
+   highlighted). Minimal until T-4 extracts libs/document-templates-web. */
+.pw-dt-doc {
+  border: 1px solid var(--rc-border, #d0d5dd);
+  border-radius: 8px;
+  padding: 16px 20px;
+  background: var(--rc-surface, #ffffff);
+  line-height: 1.5;
+}
+.pw-dt-chip {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  border: 1px solid var(--rc-border, #d0d5dd);
+  background: var(--rc-surface-2, #f2f4f7);
+}
+.pw-dt-sample {
+  background: var(--rc-surface-2, #f2f4f7);
+  border-bottom: 1px dashed var(--rc-border, #d0d5dd);
+}
+.pw-dt-source {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}

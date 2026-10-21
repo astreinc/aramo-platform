@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+// ROLES-1 PR-2 — the bundle grants of row 0010 name ats_admin (formerly tenant_admin); same
+// RoleScope ids. The organization tenant_admin (row 02b0) inherits them via ROLES1_SIGN_SEED_BUNDLES.
 import { AUTHZ1_BUNDLES, PLACEMENT_SEED_BUNDLES } from '../../prisma/seed.js';
 
 // Track 3 / E1-b — THE PLACEMENT ROLE-MATRIX GATE (unit tier).
@@ -42,7 +44,7 @@ describe('Placement role matrix — grant table (unit)', () => {
   it('grants placement scopes to EXACTLY four roles', () => {
     const roles = [...new Set(PLACEMENT_SEED_BUNDLES.map(([r]) => r))].sort();
     expect(roles).toEqual(
-      ['account_manager', 'recruiter', 'tenant_admin', 'tenant_owner'].sort(),
+      ['account_manager', 'recruiter', 'ats_admin', 'tenant_owner'].sort(),
     );
   });
 
@@ -65,13 +67,13 @@ describe('Placement role matrix — grant table (unit)', () => {
     expect(placementScopesFor('account_manager')).toContain('placement:replace');
   });
 
-  it('tenant_admin → the full six', () => {
-    expect(placementScopesFor('tenant_admin')).toEqual(FULL_SIX);
+  it('ats_admin → the full six', () => {
+    expect(placementScopesFor('ats_admin')).toEqual(FULL_SIX);
   });
 
-  it('tenant_owner → the full six AND mirrors tenant_admin (Owner = Admin scope set)', () => {
+  it('tenant_owner → the full six AND mirrors ats_admin (Owner = Admin scope set)', () => {
     expect(placementScopesFor('tenant_owner')).toEqual(FULL_SIX);
-    expect(placementScopesFor('tenant_owner')).toEqual(placementScopesFor('tenant_admin'));
+    expect(placementScopesFor('tenant_owner')).toEqual(placementScopesFor('ats_admin'));
   });
 
   it('the platform / SaaS-operator role (super_admin) receives NO placement scopes', () => {

@@ -36,10 +36,11 @@ interface RoleMeta {
 }
 
 export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
+  // ROLES-1 PR-2 — the organization roles (owner, administrator) and the ATS-only
+  // administrator (the renamed …0010 row). org_admin no longer exists.
   tenant_owner: { tier: 'Administration', tierRank: 0 },
   tenant_admin: { tier: 'Administration', tierRank: 0 },
-  // IC-3 PR-7 — product-neutral organization administrator.
-  org_admin: { tier: 'Administration', tierRank: 0 },
+  ats_admin: { tier: 'Administration', tierRank: 0 },
   delivery_manager: { tier: 'Management', tierRank: 1 },
   account_manager: { tier: 'Management', tierRank: 1 },
   recruiting_manager: { tier: 'Management', tierRank: 1 },
@@ -62,7 +63,6 @@ export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
   // IC-3 PR-8 — the Sign PRODUCT tier (PX-V1 PX-3 roles). Projected ONLY for
   // a tenant that holds the `sign` capability (RoleCatalogService); ranked
   // after every ATS tier so an ATS + Sign tenant's picker keeps its order.
-  sign_owner: { tier: 'Sign', tierRank: 5 },
   sign_admin: { tier: 'Sign', tierRank: 5 },
   sign_sender: { tier: 'Sign', tierRank: 5 },
   sign_viewer: { tier: 'Sign', tierRank: 5 },

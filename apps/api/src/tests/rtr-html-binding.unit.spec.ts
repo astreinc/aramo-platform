@@ -57,8 +57,16 @@ describe('A1 — rtr-html-v1 request path', () => {
     const templateId = randomUUID();
     const versionId = randomUUID();
     const templates = {
-      findActiveTenantTemplateForType: async () => ({ id: templateId, current_version_id: versionId, name: 'Exclusive RTR' }),
-      findVersionById: async () => ({ id: versionId, template_id: templateId, status: 'ACTIVE', render_schema_version: renderSchema, version_number: 2, field_schema: versionContent }),
+      // DOC-TEMPLATE-LIB-1 T-3 — selection-based resolution (tenant-wide selection → the
+      // tenant's own TENANT template).
+      findSelection: async (_t: string, _type: string, client: string | null) => (client === null ? { template_id: templateId } : null),
+      findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
+      findTemplateByIdOwnerAware: async () => ({
+        id: templateId, current_version_id: versionId, name: 'Exclusive RTR', document_type_id: 'd0c50005-0000-7000-8000-000000000001',
+        owner_scope: 'TENANT', status: 'ACTIVE', withdraw_effective_at: null,
+      }),
+      findVersionByIdOwnerAware: async () => ({ id: versionId, template_id: templateId, status: 'ACTIVE', render_schema_version: renderSchema, version_number: 2, field_schema: versionContent }),
       findAssetById: vi.fn(async () => assetRow),
     } as unknown as TemplatesRepository;
     const requisitions = {

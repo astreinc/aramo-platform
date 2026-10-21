@@ -19,6 +19,25 @@ export interface TemplateDraftDiscardedAudit {
   readonly requestId: string;
 }
 
+// DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — an Aramo (PLATFORM) default withdrawal
+// was published or cancelled by a platform operator. A PLATFORM template belongs to no
+// tenant, so the event is GLOBAL (no tenant_id). Written BEFORE the state change and
+// MUST throw on failure, so a withdrawal never happens without its audit record.
+export interface TemplatePlatformWithdrawalAudit {
+  readonly action: 'published' | 'cancelled';
+  readonly actor_id: string;
+  readonly template_id: string;
+  readonly document_type_id: string;
+  // ISO-8601. For 'published': the new notice/effective dates. For 'cancelled': the
+  // dates being cleared.
+  readonly withdraw_notice_at: string | null;
+  readonly withdraw_effective_at: string | null;
+  readonly notice_days?: number;
+  readonly reason?: string | null;
+  readonly requestId: string;
+}
+
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
+  recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
 }

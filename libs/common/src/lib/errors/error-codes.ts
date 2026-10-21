@@ -394,6 +394,16 @@ export const ERROR_CODES = [
   'TEMPLATE_DRAFT_ALREADY_EXISTS',
   'TEMPLATE_PREVIEW_REQUIRED',
   'TEMPLATE_BINDING_UNSUPPORTED',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default for this document type
+  // has been withdrawn (effective date passed) and the tenant has no approved template of
+  // its own to fall back to: the tenant admin/owner must choose a template (409). Never a
+  // silent wording swap.
+  'TEMPLATE_SELECTION_REQUIRED',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9) — an Aramo default lifecycle write refused by state
+  // (withdraw an unpublished/already-withdrawn default, cancel a withdrawal that is not
+  // pending or already effective, publish/cancel while another live default exists for
+  // the type). details.reason names the case (409).
+  'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
   'DOCUMENT_REQUIREMENT_NOT_FOUND',
   'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
   'DOCUMENT_RENDER_FAILED',
@@ -412,10 +422,14 @@ export const ERROR_CODES = [
   'ESIGN_STORAGE_QUOTA_EXCEEDED',
   // Sign Unified Product S-1 — removing/demoting the organization's last Sign Owner (409).
   'ESIGN_LAST_OWNER',
+  // ROLES-1 PR-1 (§4.1) — the write would leave an ACTIVE/PROVISIONED tenant with no active tenant_owner (409; DB-enforced).
+  'TENANT_LAST_OWNER',
   // Sign Unified Product S-4 — an action on a revoked Sign installation (409).
   'ESIGN_INSTALLATION_REVOKED',
   // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
   'ESIGN_WEBHOOKS_UNAVAILABLE',
+  // DOC-TEMPLATE-LIB-1 T-5 — the plan capability is not launched (libs/subscription feature availability) (403).
+  'ESIGN_FEATURE_NOT_AVAILABLE',
   'SIGNER_NOT_FOUND',
   // Multi-Signer Amendment §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   'SIGNER_NOT_YET_ELIGIBLE',

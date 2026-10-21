@@ -85,7 +85,7 @@ describe('EsignBillingController', () => {
 
   it('checkout builds the return URLs server-side and refuses a PERSONAL tenant', async () => {
     const { controller, lifecycle, ctx } = setup();
-    await controller.checkout(auth(['tenant:admin:settings']), 'r', { plan_key: 'aramo-sign-business-v1' });
+    await controller.checkout(auth(['sign:billing:manage']), 'r', { plan_key: 'aramo-sign-business-v1' });
     expect(lifecycle.startCheckout).toHaveBeenCalledWith({
       tenant_id: 't-1',
       user_id: 'u-owner',
@@ -96,22 +96,39 @@ describe('EsignBillingController', () => {
       accept_terms: false,
     });
     (ctx.assertCanAuthor as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new AramoError('INSUFFICIENT_PERMISSIONS', 'personal', 403, { requestId: 'r' }));
-    await expect(controller.checkout(auth(['tenant:admin:settings']), 'r', { plan_key: 'aramo-sign-business-v1' })).rejects.toMatchObject({ statusCode: 403 });
-    await expect(controller.checkout(auth(['tenant:admin:settings']), 'r', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+    await expect(controller.checkout(auth(['sign:billing:manage']), 'r', { plan_key: 'aramo-sign-business-v1' })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(controller.checkout(auth(['sign:billing:manage']), 'r', {})).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 
-  it('account needs Sign read or organization settings authority, and reports who may manage billing', async () => {
+  // ROLES-1 PR-2 (§3.4, F-3; D-3) — billing is sign:billing:manage ONLY (tenant_owner).
+  it('checkout / portal refuse organization settings authority alone (the fallback is removed)', async () => {
+    const { controller, lifecycle } = setup();
+    await expect(controller.checkout(auth(['tenant:admin:settings']), 'r', { plan_key: 'aramo-sign-business-v1' })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      statusCode: 403,
+      context: { details: { reason: 'billing_manage_scope_missing', missing_scopes: ['sign:billing:manage'] } },
+    });
+    // The organization administrator (tenant_admin: every Sign admin scope, no billing).
+    await expect(
+      controller.checkout(auth(['tenant:admin:settings', 'sign:envelope:read', 'sign:envelope:send', 'sign:member:manage']), 'r', { plan_key: 'aramo-sign-business-v1' }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(lifecycle.startCheckout).not.toHaveBeenCalled();
+  });
+
+  it('account needs Sign read or billing authority, and reports who may manage billing (ROLES-1 PR-2: owner only)', async () => {
     const { controller } = setup();
     await expect(controller.account(auth([]), 'r')).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
+    await expect(controller.account(auth(['tenant:admin:settings']), 'r')).rejects.toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS' });
     expect(await controller.account(auth(['sign:envelope:read']), 'r')).toMatchObject({ can_manage_billing: false, self_service_eligible: true });
-    expect(await controller.account(auth(['tenant:admin:settings']), 'r')).toMatchObject({ can_manage_billing: true });
+    expect(await controller.account(auth(['sign:envelope:read', 'tenant:admin:settings']), 'r')).toMatchObject({ can_manage_billing: false });
+    expect(await controller.account(auth(['sign:billing:manage']), 'r')).toMatchObject({ can_manage_billing: true });
   });
 
   it('heals a missed owner grant on the subscribing owner’s own read only', async () => {
     const { controller, owners } = setup({ sendingOwner: vi.fn(async () => 'u-owner') });
-    await controller.account(auth(['tenant:admin:settings'], 'someone-else'), 'r');
+    await controller.account(auth(['sign:billing:manage'], 'someone-else'), 'r');
     expect(owners.activate).not.toHaveBeenCalled();
-    await controller.account(auth(['tenant:admin:settings'], 'u-owner'), 'r');
+    await controller.account(auth(['sign:billing:manage'], 'u-owner'), 'r');
     expect(owners.activate).toHaveBeenCalledWith('t-1', 'u-owner', 'r');
   });
 
@@ -135,7 +152,7 @@ describe('EsignOwnerActivationService', () => {
       findUserById: vi.fn(async () => ({ id: 'u', is_active: o.userActive !== false })),
     } as unknown as IdentityRepository;
     const identity = {
-      findRoleKeysForMembership: vi.fn(async () => o.keys ?? ['org_admin']),
+      findRoleKeysForMembership: vi.fn(async () => o.keys ?? ['tenant_admin']),
       resolveRoleIdsByKeys: vi.fn(async (k: string[]) => k.map((x) => `id-${x}`)),
       replaceMembershipRoles: vi.fn(async () => {
         if (o.fail) throw new Error('esign_role_not_entitled');
@@ -145,15 +162,27 @@ describe('EsignOwnerActivationService', () => {
     return { svc: new EsignOwnerActivationService(repo, identity), identity };
   };
 
-  it('grants sign_owner to an org_admin / tenant_owner member, keeping their other roles', async () => {
-    const { svc, identity } = build({ keys: ['org_admin'] });
+  // ROLES-1 PR-2 (§3.4; Conforming Amendment 9) — the subscribing owner is the tenant's
+  // tenant_owner; no product-level owner role (sign_owner) is granted any more.
+  it('the subscribing owner is tenant_owner: a tenant_admin member receives it (system authority), keeping their other roles', async () => {
+    const { svc, identity } = build({ keys: ['tenant_admin'] });
     expect(await svc.activate('t', 'u', 'r')).toBe('GRANTED');
-    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', tenant_id: 't', role_keys: ['org_admin', 'sign_owner'], role_ids: ['id-org_admin', 'id-sign_owner'], request_id: 'r' });
-    expect(await build({ keys: ['tenant_owner'] }).svc.activate('t', 'u', 'r')).toBe('GRANTED');
+    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith({
+      membership_id: 'm-1',
+      tenant_id: 't',
+      role_keys: ['tenant_admin', 'tenant_owner'],
+      role_ids: ['id-tenant_admin', 'id-tenant_owner'],
+      request_id: 'r',
+      owner_role_authority: 'system',
+    });
   });
 
-  it('never widens anyone else, and is idempotent', async () => {
-    expect(await build({ keys: ['org_admin', 'sign_owner'] }).svc.activate('t', 'u', 'r')).toBe('ALREADY');
+  it('never widens anyone else, never grants sign_owner, and is idempotent', async () => {
+    expect(await build({ keys: ['tenant_owner'] }).svc.activate('t', 'u', 'r')).toBe('ALREADY');
+    expect(await build({ keys: ['tenant_owner', 'tenant_admin'] }).svc.activate('t', 'u', 'r')).toBe('ALREADY');
+    // ats_admin / sign_admin are product roles, not organization authority.
+    expect(await build({ keys: ['ats_admin'] }).svc.activate('t', 'u', 'r')).toBe('NOT_ORG_AUTHORITY');
+    expect(await build({ keys: ['sign_admin'] }).svc.activate('t', 'u', 'r')).toBe('NOT_ORG_AUTHORITY');
     expect(await build({ keys: ['recruiter'] }).svc.activate('t', 'u', 'r')).toBe('NOT_ORG_AUTHORITY');
     expect(await build({ member: false }).svc.activate('t', 'u', 'r')).toBe('NOT_MEMBER');
     expect(await build({ active: false }).svc.activate('t', 'u', 'r')).toBe('NOT_MEMBER');

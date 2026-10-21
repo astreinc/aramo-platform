@@ -56,9 +56,7 @@ import {
   IntegrationsSection,
   PortalSection,
 } from './settings/sections/SeamSections';
-import { DocumentTemplatesSection } from './settings/documents/DocumentTemplatesSection';
-import { RtrTemplateDetail } from './settings/documents/RtrTemplateDetail';
-import { RtrDraftEditor } from './settings/documents/RtrDraftEditor';
+import { DocumentTemplatesMovedSection } from './settings/sections/DocumentTemplatesMovedSection';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
@@ -697,22 +695,14 @@ export function App() {
                                   (Settings → Recruiting). Non-enforcing until a
                                   policy is published; edit/publish self-gate on
                                   engagement:policy:write. */}
-                              {/* DOC-TEMPLATE-ADMIN-RTR-1 (§5-7) — tenant document-
-                                  template governance: the catalog, the RTR detail
-                                  (version history), and the RTR draft editor. Inside
-                                  the tenant:admin:* AdminGate; document_template:*
-                                  scopes are the real boundary (server-enforced). */}
+                              {/* DOC-TEMPLATE-LIB-1 T-4 (§8.4) — the ATS document-
+                                  templates section is retired: template administration
+                                  lives in Org Home (/org/document-templates). The old
+                                  paths (incl. the RTR detail / draft deep links) show
+                                  one "Manage templates in Org Home" link. */}
                               <Route
-                                path="settings/document-templates"
-                                element={<DocumentTemplatesSection />}
-                              />
-                              <Route
-                                path="settings/document-templates/rtr"
-                                element={<RtrTemplateDetail />}
-                              />
-                              <Route
-                                path="settings/document-templates/rtr/draft"
-                                element={<RtrDraftEditor />}
+                                path="settings/document-templates/*"
+                                element={<DocumentTemplatesMovedSection />}
                               />
                               <Route
                                 path="settings/engagement-policy"

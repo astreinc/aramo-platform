@@ -23,6 +23,8 @@ export {
   filterScopesForConsumer,
   ESIGN_SCOPE_PREFIX,
   PLATFORM_SCOPE_PREFIX,
+  ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
+  SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
   type ConsumerCapabilityRequirement,
   type ProductConsumer,
 } from './lib/authorization/consumer-scope-policy.js';
@@ -50,8 +52,11 @@ export {
   ESIGN_ROLE_PERMISSIONS,
   ESIGN_ROLE_DISPLAY,
   isEsignRoleKey,
+  SIGN_ORGANIZATION_ROLE_KEYS,
+  SIGN_ORGANIZATION_ROLE_DISPLAY,
   type EsignScope,
   type EsignRoleKey,
+  type SignOrganizationRoleKey,
 } from './lib/dto/esign-permissions.js';
 export {
   EsignSenderBoundary,
@@ -152,6 +157,8 @@ export {
   ESIGN_PRODUCT_ROLE_KEYS,
   ESIGN_SENDER_SCOPE_KEY,
   ATS_PRODUCT_ROLE_KEYS,
+  ORG_ROLE_KEYS,
+  RETIRED_ROLE_KEYS,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';
@@ -225,6 +232,14 @@ export type { DirectoryUserView } from './lib/identity.repository.js';
 // Aramo-Identity-Me-Endpoint — the self-read display shape for GET /v1/me,
 // consumed by apps/api's MeController.
 export type { MeView } from './lib/identity.service.js';
+// ROLES-1 PR-1 (§4) — owner-only grant authority + the last-owner invariant marker/mapper.
+export type { OwnerRoleAuthority } from './lib/identity.service.js';
+export {
+  TENANT_OWNER_ROLE_KEY,
+  TENANT_LAST_OWNER_DB_MARKER,
+  isTenantLastOwnerViolation,
+  rethrowTenantLastOwner,
+} from './lib/util/tenant-last-owner.js';
 export {
   TENANT_COGNITO_PORT,
   StubTenantCognitoAdapter,

@@ -103,6 +103,8 @@ function makeFakeIdentityService(): {
     }),
     disableMembership,
     reEnableMembership: vi.fn(),
+    // ROLES-1 PR-1 (§4.2) — the owner-target read (the target is not an owner here).
+    findMembership: vi.fn().mockResolvedValue(null),
   } as unknown as IdentityService;
   return { fake, disableMembership };
 }
@@ -181,9 +183,8 @@ describe('Cognito-Binding — TENANT_COGNITO_PORT through real DI (parity backfi
     // StubTenantCognitoAdapter's throw (which the pre-fix dead-wire did).
     expect(adapter.disableCalls).toEqual([{ email: EMAIL }]);
     expect(result.changed).toBe(true);
-    expect(disableMembership).toHaveBeenCalledWith({
-      user_id: USER,
-      tenant_id: TENANT,
-    });
+    expect(disableMembership).toHaveBeenCalledWith(
+      expect.objectContaining({ user_id: USER, tenant_id: TENANT }),
+    );
   });
 });

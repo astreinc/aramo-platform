@@ -1,10 +1,8 @@
-import type { ReactElement } from 'react';
 import { ToastProvider, type Session } from '@aramo/fe-foundation';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import { DocumentTemplatesSection } from './DocumentTemplatesSection';
 import { RtrTemplateDetail } from './RtrTemplateDetail';
 import {
   RIGHT_TO_REPRESENT_TYPE_ID,
@@ -13,11 +11,12 @@ import {
   type TemplateVersionView,
 } from './document-templates-api';
 
-// DOC-TEMPLATE-ADMIN-RTR-1 (§6/§7/§59) — the tenant document-template admin FE, styled
-// to the approved prototype. Proves: the list is a single table with RTR the ONLY
-// configurable type (others honest "Not configurable yet"); RBAC mirrors the server; the
-// RTR detail renders the version history with Draft/Active/Retired vocabulary (never
-// "Approved" as a status) and the one-draft action.
+// DOC-TEMPLATE-ADMIN-RTR-1 (§7/§59) — the tenant document-template detail, styled to the
+// approved prototype. Proves: RBAC mirrors the server; the detail renders the version
+// history with Draft/Active/Retired vocabulary (never "Approved" as a status) and the
+// one-draft action. DOC-TEMPLATE-LIB-1 T-4: moved from apps/ats-web with the screen; the
+// retired ATS catalog table (DocumentTemplatesSection) is replaced by the Org Home gallery
+// (libs/org-admin-web), whose own specs cover it.
 
 function makeSession(scopes: readonly string[]): Session {
   return { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't1', scopes: [...scopes], iat: 0, exp: 0 };
@@ -44,49 +43,6 @@ function version(id: string, n: number, status: TemplateVersionView['status']): 
     activated_by: status === 'DRAFT' ? null : 'u1', retired_at: null, content_fingerprint: 'fp', previewed_fingerprint: 'fp',
   };
 }
-
-function renderList(node: ReactElement) {
-  return render(
-    <ToastProvider>
-      <MemoryRouter initialEntries={['/admin/settings/document-templates']}>
-        <Routes>
-          <Route path="/admin/settings/document-templates" element={node} />
-          <Route path="/admin/settings/document-templates/rtr" element={<div data-testid="rtr-detail-landing" />} />
-        </Routes>
-      </MemoryRouter>
-    </ToastProvider>,
-  );
-}
-
-describe('DocumentTemplatesSection — list table (§6)', () => {
-  it('lists RTR as the only configurable type; others are "Not configurable yet" with no action', () => {
-    renderList(<DocumentTemplatesSection sessionOverride={MANAGER} />);
-    const manage = screen.getByTestId('doc-template-manage-RIGHT_TO_REPRESENT');
-    expect(manage).toHaveTextContent('Manage');
-    expect(screen.queryByTestId('doc-template-manage-OFFER_LETTER')).toBeNull();
-    // 4 non-configurable rows each show the muted "Not configurable yet" pill.
-    expect(screen.getAllByText('Not configurable yet').length).toBe(4);
-    // No "Configurable" pill exists in the design.
-    expect(screen.queryByText('Configurable')).toBeNull();
-  });
-
-  it('a non-reader sees the Tenant-Admin-managed notice, not the table', () => {
-    renderList(<DocumentTemplatesSection sessionOverride={makeSession(['talent:read'])} />);
-    expect(screen.getByText(/managed by your Tenant Admins/i)).toBeInTheDocument();
-    expect(screen.queryByTestId('doc-template-manage-RIGHT_TO_REPRESENT')).toBeNull();
-  });
-
-  it('uses the Settings section gutter (.set-content)', () => {
-    renderList(<DocumentTemplatesSection sessionOverride={MANAGER} />);
-    expect(screen.getByTestId('doc-templates-page')).toHaveClass('set-content');
-  });
-
-  it('Manage navigates to the RTR detail', async () => {
-    renderList(<DocumentTemplatesSection sessionOverride={MANAGER} />);
-    fireEvent.click(screen.getByTestId('doc-template-manage-RIGHT_TO_REPRESENT'));
-    expect(await screen.findByTestId('rtr-detail-landing')).toBeInTheDocument();
-  });
-});
 
 describe('RtrTemplateDetail — version history (§7)', () => {
   const base = {
@@ -138,10 +94,10 @@ describe('RtrTemplateDetail — version history (§7)', () => {
     const createDraftFn = vi.fn().mockResolvedValue(version('v3', 3, 'DRAFT'));
     render(
       <ToastProvider>
-        <MemoryRouter initialEntries={['/admin/settings/document-templates/rtr']}>
+        <MemoryRouter initialEntries={['/org/document-templates/tpl-rtr']}>
           <Routes>
-            <Route path="/admin/settings/document-templates/rtr" element={<RtrTemplateDetail sessionOverride={MANAGER} {...base} listVersionsFn={() => Promise.resolve([version('v2', 2, 'ACTIVE')])} createDraftFn={createDraftFn} />} />
-            <Route path="/admin/settings/document-templates/rtr/draft" element={<div data-testid="rtr-draft-landing" />} />
+            <Route path="/org/document-templates/tpl-rtr" element={<RtrTemplateDetail sessionOverride={MANAGER} {...base} listVersionsFn={() => Promise.resolve([version('v2', 2, 'ACTIVE')])} createDraftFn={createDraftFn} />} />
+            <Route path="/org/document-templates/tpl-rtr/draft" element={<div data-testid="rtr-draft-landing" />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>,

@@ -317,27 +317,5 @@ function Kpi({ label, value, sub, color }: { label: string; value: string; sub: 
   );
 }
 
-// ── Templates (FUTURE capability — PX-V1 §15) ────────────────────────────────
-export function TemplatesPage() {
-  return (
-    <div className="sg-page sg-page--wide">
-      <div className="sg-pagehead">
-        <h1 className="sg-h1">Templates</h1>
-        <span className="sg-tag sg-tag--grey">Future capability</span>
-        <div className="sg-pagehead__end">
-          <Btn variant="primary" disabled title="Templates are a future capability">
-            + Create template
-          </Btn>
-        </div>
-      </div>
-      <section className="sg-card">
-        <div className="sg-empty" style={{ padding: '48px 20px' }}>
-          <div className="sg-empty__t">Reusable templates are coming later</div>
-          Templates will let you save documents, signer roles and field placements, then start a new envelope from them. Until then, create each
-          envelope from your PDF.
-        </div>
-      </section>
-    </div>
-  );
-}
+// DOC-TEMPLATE-LIB-1 T-5 — the Templates page moved to ./Templates.tsx (no longer a future capability).
 

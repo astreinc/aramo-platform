@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, hasScope, Input, TextArea, useSession, useToast, type Session } from '@aramo/fe-foundation';
-
-import { resolveUserNames } from '../../users/users-api';
-import { safeErrorMessage } from '../../ui';
+import { Button, hasScope, Input, safeErrorMessage, TextArea, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
   activateTemplateVersion,
@@ -14,6 +11,7 @@ import {
   listDocumentTemplates,
   listTemplateVersions,
   previewTemplateVersion,
+  resolveUserNames,
   removeVersionLogo,
   updateDocumentTemplate,
   updateDraftVersion,
@@ -58,6 +56,7 @@ import {
 import { BlockBox, HTML_CODEC, insertAtRange, makeFieldChip, TEXT_TOKEN_CODEC, type BlockCodec } from './dt-block-editor';
 import { activeMarks, blocksToHtml, htmlToBlocks, toggleMark, type BlockKind } from './dt-html';
 import { Letterhead, type LetterheadInfo } from './dt-html-render';
+import { useDocTemplateRoutes } from './dt-routes';
 import {
   contentFromVersion,
   htmlOf,
@@ -83,8 +82,6 @@ import './document-templates.css';
 // draft still opens and saves as v1 through TEXT_TOKEN_CODEC, where only the Heading
 // toggle can persist — so only that control is rendered for it (no dead controls).
 
-const DETAIL_ROUTE = '/admin/settings/document-templates/rtr';
-const LIST_ROUTE = '/admin/settings/document-templates';
 
 type Tab = 'builder' | 'preview' | 'versions' | 'settings';
 interface NewBlock { readonly kind: BlockKind; readonly value: string }
@@ -225,6 +222,7 @@ function Menu({ open, onClose, className, children, label }: {
 }
 
 export function RtrDraftEditor({
+  templateId,
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
@@ -239,6 +237,9 @@ export function RtrDraftEditor({
   activateFn = activateTemplateVersion,
   discardFn = deleteDraftVersion,
 }: {
+  // DOC-TEMPLATE-LIB-1 T-4 — the tenant template whose open draft is edited (Org Home
+  // routes by id). Absent: the tenant's Right to Represent template.
+  readonly templateId?: string;
   readonly sessionOverride?: Session;
   readonly listTemplatesFn?: typeof listDocumentTemplates;
   readonly listVersionsFn?: typeof listTemplateVersions;
@@ -254,6 +255,7 @@ export function RtrDraftEditor({
   readonly activateFn?: typeof activateTemplateVersion;
   readonly discardFn?: typeof deleteDraftVersion;
 } = {}) {
+  const routes = useDocTemplateRoutes();
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const canManage = session != null && hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
@@ -294,7 +296,7 @@ export function RtrDraftEditor({
     setLoad({ status: 'loading' });
     try {
       const templates = await listTemplatesFn();
-      const rtr = templates.find((t) => t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
+      const rtr = templates.find((t) => (templateId != null ? t.id === templateId : t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID)) ?? null;
       if (rtr == null) { setLoad({ status: 'nodraft' }); return; }
       const loadCatalog = catalogFn ?? (listBindingsFn != null
         ? (id: string) => listBindingsFn(id).then((b): TemplateCatalog => ({ bindings: b, tenantLogo: null }))
@@ -331,7 +333,7 @@ export function RtrDraftEditor({
     } catch (err) {
       setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the draft.') });
     }
-  }, [listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
+  }, [templateId, listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
 
   useEffect(() => { if (canManage) void refetch(); }, [canManage, refetch]);
 
@@ -615,7 +617,7 @@ export function RtrDraftEditor({
       if (!(await saveName(draft))) { setBusy(false); return; }
       await activateFn(draft.versionId);
       setApproveOpen(false);
-      navigate(`${DETAIL_ROUTE}?activated=1`);
+      navigate(`${routes.detail(draft.templateId)}?activated=1`);
     } catch (err) {
       toast.show(safeErrorMessage(err, 'Could not approve this version.'));
       setBusy(false);
@@ -628,7 +630,7 @@ export function RtrDraftEditor({
       await discardFn(draft.versionId);
       setDiscardOpen(false);
       toast.show(`Draft v${draft.n} discarded. The active version is unchanged.`);
-      navigate(DETAIL_ROUTE);
+      navigate(routes.detail(draft.templateId));
     } catch (err) {
       toast.show(safeErrorMessage(err, 'Could not discard this draft.'));
       setBusy(false);
@@ -648,10 +650,11 @@ export function RtrDraftEditor({
     );
   }
 
+  const detailHref = draft != null ? routes.detail(draft.templateId) : templateId != null ? routes.detail(templateId) : routes.list;
   const crumb = (n: number | string) => (
     <div className="dt-crumb">
-      <a onClick={() => navigate(LIST_ROUTE)}>Document templates</a><span>/</span>
-      <a onClick={() => navigate(DETAIL_ROUTE)} data-testid="rtr-editor-back">Right to Represent</a><span>/</span>
+      <a onClick={() => navigate(routes.list)}>Document templates</a><span>/</span>
+      <a onClick={() => navigate(detailHref)} data-testid="rtr-editor-back">Right to Represent</a><span>/</span>
       <span className="dt-crumb__cur">v{n}</span>
     </div>
   );
@@ -778,13 +781,13 @@ export function RtrDraftEditor({
                     View active v{load.active.version_number} (read-only)
                   </Button>
                 ) : null}
-                <Button unstyled role="menuitem" className="dt-menu__item" onClick={() => navigate(DETAIL_ROUTE)}>Back to Right to Represent</Button>
+                <Button unstyled role="menuitem" className="dt-menu__item" onClick={() => navigate(detailHref)}>Back to Right to Represent</Button>
                 <Button unstyled role="menuitem" className="dt-menu__item dt-menu__item--danger" onClick={() => { setMoreOpen(false); setDiscardOpen(true); }}>Discard draft</Button>
               </Menu>
             </span>
           </div>
           <div className="dt-ed2based">
-            Based on <b>{activeN != null ? `v${activeN}` : 'the current version'}</b> · not used by any workflow until approved
+            Based on <b>{activeN != null ? `v${activeN}` : 'a blank document'}</b> · not used by any workflow until approved
           </div>
 
           <div className="dt-ed2grid">

@@ -59,6 +59,10 @@ import { SignApiGuard } from './integrations/sign-api.guard.js';
 import { SignApiService } from './integrations/sign-api.service.js';
 import { SignTokenService } from './integrations/sign-token.service.js';
 import { SignWebhookDeliveryService } from './integrations/webhook-delivery.service.js';
+import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './document-templates-http.adapter.js';
+import { SignFeatureGate } from './sign-feature.gate.js';
+import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
+import { SenderTemplatesService } from './sender/sender-templates.service.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -136,7 +140,8 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
   // subscribing-owner activation and the provider reconciliation sweep.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController],
+  // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -152,6 +157,10 @@ import { SignWebhookDeliveryService } from './integrations/webhook-delivery.serv
     IntegrationAdminService,
     // Sign Unified Product S-7 — the recipient inbox.
     RecipientInboxService,
+    // DOC-TEMPLATE-LIB-1 T-5 — start an envelope from a Documents template.
+    SignFeatureGate,
+    { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
+    SenderTemplatesService,
   ],
 })
 export class AppModule implements NestModule {

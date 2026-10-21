@@ -171,8 +171,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
     }
   });
 
-  it('#1 Sign-only tenant ([core, esign], no ats) + sign_sender + esign consumer → 200 (eligible); sign_owner and sign_admin likewise', async () => {
-    for (const [label, roleId] of [['sender', SEED_IDS.roles.sign_sender], ['owner', SEED_IDS.roles.sign_owner], ['admin', SEED_IDS.roles.sign_admin]] as const) {
+  it('#1 Sign-only tenant ([core, esign], no ats) + sign_sender + esign consumer → 200 (eligible); the organization roles and sign_admin likewise (sign_owner retired)', async () => {
+    // ROLES-1 PR-2 — sign_owner is retired (inactive row); the organization roles send
+    // (Conforming Amendment 2) alongside sign_admin / sign_sender.
+    for (const [label, roleId] of [['sender', SEED_IDS.roles.sign_sender], ['owner', SEED_IDS.roles.tenant_owner], ['admin', SEED_IDS.roles.sign_admin], ['org-admin', SEED_IDS.roles.tenant_admin]] as const) {
       const { userId } = await userWithRoles(`so-${label}`, SIGN_ONLY_TENANT, [roleId]);
       const res = await send(await token({ sub: userId, tenant: SIGN_ONLY_TENANT, consumer: 'sign' }));
       expect(res, label).toEqual({ status: 200, body: { sent: true } });
@@ -186,13 +188,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
     expect(res.body.error).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', details: { missing_scopes: ['sign:envelope:send'] } });
   });
 
-  it('#3 org_admin ALONE (the Sign-only owner role) does not send → 403 INSUFFICIENT_PERMISSIONS; org_admin + sign_sender → 200', async () => {
-    const alone = await userWithRoles('so-orgadmin', SIGN_ONLY_TENANT, [SEED_IDS.roles.org_admin]);
-    const r1 = await send(await token({ sub: alone.userId, tenant: SIGN_ONLY_TENANT, consumer: 'sign' }));
+  // ROLES-1 PR-2 (Conforming Amendment 2) — "send authority derives from the sign capability
+  // + an org role": the organization tenant_admin sends; the ATS-only administrator
+  // (ats_admin) never holds sign:envelope:send.
+  it('#3 the ATS-only administrator (ats_admin) does not send → 403 INSUFFICIENT_PERMISSIONS; ats_admin + sign_sender → 200', async () => {
+    const alone = await userWithRoles('so-atsadmin', BOTH_TENANT, [SEED_IDS.roles.ats_admin]);
+    const r1 = await send(await token({ sub: alone.userId, tenant: BOTH_TENANT, consumer: 'sign' }));
     expect(r1.status).toBe(403);
     expect(r1.body.error).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', details: { missing_scopes: ['sign:envelope:send'] } });
-    const both = await userWithRoles('so-orgadmin-sender', SIGN_ONLY_TENANT, [SEED_IDS.roles.org_admin, SEED_IDS.roles.sign_sender]);
-    expect((await send(await token({ sub: both.userId, tenant: SIGN_ONLY_TENANT, consumer: 'sign' }))).status).toBe(200);
+    const both = await userWithRoles('so-atsadmin-sender', BOTH_TENANT, [SEED_IDS.roles.ats_admin, SEED_IDS.roles.sign_sender]);
+    expect((await send(await token({ sub: both.userId, tenant: BOTH_TENANT, consumer: 'sign' }))).status).toBe(200);
   });
 
   it('#4 ATS-only tenant → 403 TENANT_CAPABILITY_NOT_ENTITLED (missing esign) even for a principal holding sign_sender', async () => {
@@ -226,8 +231,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
     if (esign.status === 'ok' && recruiter.status === 'ok') {
       // esign consumer: the three Sign scopes + ONLY the product-neutral
       // organization subset (IC-3 PR-7 rule) — never an ATS product scope.
-      expect(esign.scopes.filter((s) => s.startsWith('sign:')).sort()).toEqual(['sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
-      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s))).toBe(true);
+      expect(esign.scopes.filter((s) => s.startsWith('sign:')).sort()).toEqual(['sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send']);
+      // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the sign session also carries document_template:read.
+      expect(esign.scopes.every((s) => s.startsWith('sign:') || (ORG_ADMIN_SCOPE_KEYS as readonly string[]).includes(s) || s === 'document_template:read')).toBe(true);
       expect(esign.scopes).not.toContain('talent:read');
       // recruiter consumer: the ATS scopes, never a Sign scope.
       expect(recruiter.scopes.some((s) => s.startsWith('sign:'))).toBe(false);

@@ -149,8 +149,9 @@ export class EnvelopeNotificationService {
     env: EnvelopeFull,
     n: Pick<SigningNotification, 'kind' | 'reason' | 'signer_name' | 'signed_count' | 'signer_count' | 'next_signer_name'>,
   ): Promise<void> {
-    // Sender notifications are a Sign-console feature (OWNED documents only).
-    if (!env.documents.some((d) => d.source_mode === 'OWNED')) return;
+    // Sender notifications are a Sign-console feature (OWNED documents, or — DOC-TEMPLATE-
+    // LIB-1 T-5 — a console envelope started from a template, whose document is CORE_REF).
+    if (!env.documents.some((d) => d.source_mode === 'OWNED') && env.source_application !== 'aramo-sign') return;
     if (this.senders === undefined) return;
     const sender = await this.senders.findSender(env.tenant_id, env.created_by);
     if (sender === null) return;

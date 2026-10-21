@@ -65,9 +65,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Aramo Sign launch
   const savedEnv = { ...process.env };
 
   // A SENT envelope; OWNED = authored in the Sign console, CORE_REF = from ATS.
-  async function sendEnvelope(opts: { signers: number; owned: boolean }) {
+  async function sendEnvelope(opts: { signers: number; owned: boolean; consoleTemplate?: boolean }) {
+    // CORE_REF envelopes come from the ATS ('aramo-ats', as the native provider records);
+    // DOC-TEMPLATE-LIB-1 T-5 — a console CORE_REF envelope ('aramo-sign') notifies the sender.
     const env = await repo.createEnvelope({
       tenant_id: TENANT, subject: 'Master Services Agreement', execution_mode: opts.signers > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE', created_by: SENDER_USER,
+      ...(opts.owned || opts.consoleTemplate === true ? {} : { source_application: 'aramo-ats' }),
     });
     const doc = opts.owned
       ? await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, source_mode: 'OWNED', source_object_key: `k/${env.id}`, content_type: 'application/pdf', byte_size: 10, title: 'msa.pdf', source_sha256: 'abc', ordinal: 1 })
@@ -215,6 +218,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Aramo Sign launch
       await signAll(e);
       expect(notifier.sent.filter((n) => n.audience === 'SENDER')).toHaveLength(0);
       expect(notifier.sent.filter((n) => n.kind === 'SIGNATURE_COMPLETED')).toHaveLength(1);
+    });
+
+    // DOC-TEMPLATE-LIB-1 T-5 — a console envelope started from a template holds a CORE_REF
+    // document but is Sign-authored ('aramo-sign'): its sender is told like any console sender.
+    it('a console envelope started from a template (CORE_REF, aramo-sign) emails its sender', async () => {
+      const e = await sendEnvelope({ signers: 1, owned: false, consoleTemplate: true });
+      await signAll(e);
+      expect(notifier.sent.filter((n) => n.audience === 'SENDER' && n.kind === 'SIGNATURE_COMPLETED').map((n) => n.to_email)).toEqual(['sender@acme.test']);
     });
 
     it('decline: the sender gets the reason, other open signers are told, the decliner is not', async () => {

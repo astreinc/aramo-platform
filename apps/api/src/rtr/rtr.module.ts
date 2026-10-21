@@ -3,9 +3,11 @@ import {
   DocumentIdempotencyService,
   DocumentsRepository,
   RenderService,
+  TEMPLATE_TENANT_LOGO,
   TemplatesRepository,
   PrismaService as DocumentsPrismaService,
   type DocumentStoragePort,
+  type TemplateTenantLogoPort,
 } from '@aramo/documents';
 import {
   PdfLibDocumentRenderingAdapter,
@@ -122,8 +124,9 @@ const RTR_SIGNING = 'RTR_SIGNING';
         storage: DocumentStoragePort,
         requisitions: RequisitionRepository,
         pipelines: PipelineRepository,
+        tenantLogo: TemplateTenantLogoPort | undefined,
       ): RtrOrchestratorService =>
-        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage, requisitions, pipelines),
+        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage, requisitions, pipelines, tenantLogo ?? undefined),
       inject: [
         RTR_DOCS_REPO,
         RTR_SIGNING,
@@ -135,6 +138,10 @@ const RTR_SIGNING = 'RTR_SIGNING';
         RequisitionRepository,
         // Remediation Directive v1.0 R2 (DEF-7) — the RTR stage check reads the live episode.
         PipelineRepository,
+        // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the @Global TemplateCapabilitiesModule's tenant-logo
+        // seam, for branding an Aramo default at render. Optional: a composition without
+        // that module renders Aramo defaults without a letterhead.
+        { token: TEMPLATE_TENANT_LOGO, optional: true },
       ],
     },
   ],

@@ -1,18 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import type {
-  TemplateBindingDescriptor,
-  TemplateCapabilitiesPort,
-  TemplateLogoRef,
-  TemplateSamplePreview,
+import {
+  TemplateVariablesRepository,
+  type TemplateBindingDescriptor,
+  type TemplateCapabilitiesPort,
+  type TemplateLogoRef,
+  type TemplateSamplePreview,
+  type TemplateVariableCatalogReader,
+  type TemplateVariableRow,
 } from '@aramo/documents';
 
 import {
-  RTR_BINDING_CATALOG,
-  RTR_BINDING_SAMPLE_VALUES,
+  RTR_BINDING_KEYS,
   RTR_GENERATED_SCHEMA_V1,
   isRtrBindingKey,
-  type RtrBindingKey,
   type RtrContentBlock,
   type RtrTemplateContentV1,
 } from './rtr-template-content.js';
@@ -32,11 +33,23 @@ import {
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 — the RTR implementation of the generic template-content
-// capability port (§14/§15/§17), extended by Amendment A1 for `rtr-html-v1`. PURE: the
-// closed RTR binding catalog + fixed sample values + the allowlist sanitiser; no
-// repositories, no renderer, no storage — admin preview uses SAMPLE data and never
-// touches authoritative facts or creates a business Document. RTR is the only
-// configurable document type; every other type is a no-op / empty.
+// capability port (§14/§15/§17), extended by Amendment A1 for `rtr-html-v1`. No
+// renderer, no storage — admin preview uses SAMPLE data and never touches
+// authoritative facts or creates a business Document. RTR is the only configurable
+// document type; every other type is a no-op / empty.
+//
+// DOC-TEMPLATE-LIB-1 T-2 (§2 F-7; ADR-0034 D7; conforming amendment row 5) — the
+// allowed bindings (keys, labels, groups, preview samples) are READ from the
+// Aramo-maintained TemplateVariable catalog, not the code list. RTR is an ATS document
+// type, so a catalog row is offered only when it is ACTIVE and carries an
+// ats_binding_key. The binding VALUE resolvers stay in apps/api
+// (rtr-template-binding.service), so the catalog is intersected with the resolver key
+// set (RTR_BINDING_KEYS) — fail closed: a catalog key without a resolver is never
+// offered and a template using one is rejected (TEMPLATE_BINDING_UNSUPPORTED,
+// details.reason no_resolver). The binding service resolves by token key, so a row is
+// resolvable only when ats_binding_key === key (aliasing is not supported yet).
+// For the 8 seeded keys (A2 talent.desired_pay_rate included) behaviour is identical
+// to the former code catalog: same keys, order, labels, groups and samples.
 //
 // Recognised content versions: EXACTLY 'rtr-generated-v1' and 'rtr-html-v1' (A1 §2.1).
 // Anything else fails closed.
@@ -50,52 +63,122 @@ function htmlInvalid(requestId: string, reason: string, keys?: string[]): AramoE
   });
 }
 
+// One allowed binding resolved from the catalog (descriptor + safe preview sample).
+interface CatalogBinding {
+  readonly key: string;
+  readonly label: string;
+  readonly group: string;
+  readonly sample: string;
+}
+
+// The resolver order (RTR_BINDING_KEYS) is the menu order — identical to the former
+// code catalog for the 8 seeded keys.
+function resolverIndex(key: string): number {
+  return (RTR_BINDING_KEYS as readonly string[]).indexOf(key);
+}
+
+// A catalog row is resolvable for an ATS document type iff it carries an
+// ats_binding_key that names an apps/api resolver AND equals the token key (the
+// binding service resolves by token key).
+export function hasAtsResolver(row: Pick<TemplateVariableRow, 'key' | 'ats_binding_key'>): boolean {
+  return row.ats_binding_key !== null && row.ats_binding_key === row.key && isRtrBindingKey(row.ats_binding_key);
+}
+
+function unsupportedBinding(requestId: string, key: string, reason?: 'no_resolver'): AramoError {
+  return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', `template content references an unsupported binding: {{${key}}}`, 422, {
+    requestId,
+    details: { binding_key: key, ...(reason !== undefined ? { reason } : {}) },
+  });
+}
+
 @Injectable()
 export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
+  constructor(@Inject(TemplateVariablesRepository) private readonly catalog: TemplateVariableCatalogReader) {}
+
   isConfigurable(documentTypeId: string): boolean {
     return documentTypeId === RIGHT_TO_REPRESENT_TYPE_ID;
   }
 
-  listAllowedBindings(documentTypeId: string): readonly TemplateBindingDescriptor[] {
-    if (!this.isConfigurable(documentTypeId)) return [];
-    return RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, group: d.group }));
+  // Active ATS catalog rows (ats_binding_key set), split into the resolvable allowed set
+  // (resolver order) and the keys that exist in the catalog but have no resolver.
+  private async atsCatalog(): Promise<{ allowed: CatalogBinding[]; unresolvable: Set<string> }> {
+    const rows = (await this.catalog.listActive()).filter((r) => r.ats_binding_key !== null);
+    const allowed: CatalogBinding[] = [];
+    const unresolvable = new Set<string>();
+    for (const r of rows) {
+      if (hasAtsResolver(r)) allowed.push({ key: r.key, label: r.label, group: r.group_label, sample: r.sample_value ?? '' });
+      else unresolvable.add(r.key);
+    }
+    allowed.sort((a, b) => resolverIndex(a.key) - resolverIndex(b.key));
+    return { allowed, unresolvable };
   }
 
-  validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): void {
+  async listAllowedBindings(documentTypeId: string): Promise<readonly TemplateBindingDescriptor[]> {
+    if (!this.isConfigurable(documentTypeId)) return [];
+    const { allowed } = await this.atsCatalog();
+    return allowed.map((d) => ({ key: d.key, label: d.label, group: d.group }));
+  }
+
+  async validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void> {
     if (!this.isConfigurable(input.document_type_id)) return; // non-configurable → nothing to validate
+    await this.validateAgainst(await this.atsCatalog(), input);
+  }
+
+  // Structure + closed-binding validation against an already-loaded catalog (one catalog
+  // read per request). Returns the parsed content for the preview.
+  private async validateAgainst(
+    cat: { allowed: CatalogBinding[]; unresolvable: Set<string> },
+    input: { field_schema: unknown; render_schema_version: string; requestId: string },
+  ): Promise<{ html: { content: RtrTemplateContentHtmlV1; nodes: HtmlNode[] } } | { v1: RtrTemplateContentV1 }> {
+    const allowedKeys = new Set(cat.allowed.map((d) => d.key));
     if (input.render_schema_version === RTR_HTML_SCHEMA_V1) {
-      this.validateHtml(input);
-      return;
+      return { html: this.validateHtml(input, allowedKeys, cat.unresolvable) };
     }
     const content = this.parse(input);
     if (content.title.trim() === '' || content.blocks.length === 0) {
       throw new AramoError('VALIDATION_ERROR', 'template content must have a title and at least one block', 400, { requestId: input.requestId });
     }
     for (const key of this.collectTokens(content)) {
-      if (!isRtrBindingKey(key)) {
-        throw new AramoError('TEMPLATE_BINDING_UNSUPPORTED', `template content references an unsupported binding: {{${key}}}`, 422, { requestId: input.requestId, details: { binding_key: key } });
+      if (!allowedKeys.has(key)) {
+        throw unsupportedBinding(input.requestId, key, cat.unresolvable.has(key) ? 'no_resolver' : undefined);
       }
     }
+    return { v1: content };
   }
 
-  renderSamplePreview(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): TemplateSamplePreview {
-    this.validateDraftContent(input); // validate structure + bindings first (fail closed)
-    const sub = (text: string): string =>
-      text.replace(TOKEN_RE, (_whole, key: string) => (isRtrBindingKey(key) ? RTR_BINDING_SAMPLE_VALUES[key as RtrBindingKey] : `{{${key}}}`));
-    const sample_values = RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, value: d.sample }));
-    const signature_block = { printed_name: RTR_BINDING_SAMPLE_VALUES['talent.full_name'] };
-    if (input.render_schema_version === RTR_HTML_SCHEMA_V1) {
-      const { content, nodes } = this.validateHtml(input);
+  async renderSamplePreview(input: {
+    document_type_id: string;
+    field_schema: unknown;
+    render_schema_version: string;
+    requestId: string;
+    sample_overrides?: Readonly<Record<string, string>>;
+  }): Promise<TemplateSamplePreview> {
+    if (!this.isConfigurable(input.document_type_id)) {
+      throw new AramoError('VALIDATION_ERROR', 'this document type is not configurable', 400, { requestId: input.requestId });
+    }
+    const cat = await this.atsCatalog();
+    const parsed = await this.validateAgainst(cat, input); // validate structure + bindings first (fail closed)
+    // DOC-TEMPLATE-LIB-1 T-4 — a tenant-branded preview replaces the sample of an allowed
+    // key with the tenant's own value (organization.*); unknown keys are ignored.
+    const overrides = input.sample_overrides ?? {};
+    const valueOf = (d: CatalogBinding): string =>
+      Object.prototype.hasOwnProperty.call(overrides, d.key) ? (overrides[d.key] as string) : d.sample;
+    const samples = new Map(cat.allowed.map((d) => [d.key, valueOf(d)]));
+    const sub = (text: string): string => text.replace(TOKEN_RE, (_whole, key: string) => samples.get(key) ?? `{{${key}}}`);
+    const sample_values = cat.allowed.map((d) => ({ key: d.key, label: d.label, value: valueOf(d) }));
+    const signature_block = { printed_name: samples.get('talent.full_name') ?? null };
+    if ('html' in parsed) {
+      const { content, nodes } = parsed.html;
       return {
         title: sub(content.title),
         blocks: [],
-        html: htmlWithSamples(nodes, (key) => RTR_BINDING_SAMPLE_VALUES[key as RtrBindingKey]),
+        html: htmlWithSamples(nodes, (key) => samples.get(key) ?? ''),
         logo: content.logo ? { asset_id: content.logo.asset_id } : null,
         sample_values,
         signature_block,
       };
     }
-    const content = this.parse(input);
+    const content = parsed.v1;
     return {
       title: sub(content.title),
       blocks: content.blocks.map((b) => ({ type: b.type, text: sub(b.text) })),
@@ -105,20 +188,22 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     };
   }
 
-  // A1 §2.2 — PATCH-time authoritative sanitisation (rtr-html-v1 only).
-  normalizeDraftContent(input: {
+  // A1 §2.2 — PATCH-time authoritative sanitisation (rtr-html-v1 only). T-2: the
+  // unknown-field check reads the catalog (active, resolvable keys).
+  async normalizeDraftContent(input: {
     document_type_id: string;
     render_schema_version: string;
     field_schema: unknown;
     existing_field_schema: unknown;
     requestId: string;
-  }): unknown {
+  }): Promise<unknown> {
     if (!this.isConfigurable(input.document_type_id) || input.render_schema_version !== RTR_HTML_SCHEMA_V1) return input.field_schema;
     const fs = input.field_schema;
     if (fs === null || typeof fs !== 'object' || Array.isArray(fs)) throw htmlInvalid(input.requestId, 'content_invalid');
     const o = fs as Record<string, unknown>;
     if (typeof o.title !== 'string' || typeof o.html !== 'string') throw htmlInvalid(input.requestId, 'content_invalid');
-    const res = sanitizeRtrHtml(o.html);
+    const allowedKeys = new Set((await this.atsCatalog()).allowed.map((d) => d.key));
+    const res = sanitizeRtrHtml(o.html, (k) => allowedKeys.has(k));
     if ('issue' in res) throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);
     // The logo reference is SERVER-OWNED: carried over from the existing content only.
     const existingLogo = parseLogoRef((input.existing_field_schema as Record<string, unknown> | null)?.['logo']);
@@ -163,15 +248,21 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
 
   // rtr-html-v1 structural + allowlist validation (activation / preview). The stored html
   // was sanitised at PATCH; re-checking here keeps activation authoritative.
-  private validateHtml(input: { field_schema: unknown; requestId: string }): { content: RtrTemplateContentHtmlV1; nodes: HtmlNode[] } {
+  private validateHtml(
+    input: { field_schema: unknown; requestId: string },
+    allowedKeys: ReadonlySet<string>,
+    unresolvable: ReadonlySet<string>,
+  ): { content: RtrTemplateContentHtmlV1; nodes: HtmlNode[] } {
     const content = parseHtmlContent(input.field_schema);
     if (content === null) throw new AramoError('VALIDATION_ERROR', 'RTR html content is empty or invalid', 400, { requestId: input.requestId });
-    const res = sanitizeRtrHtml(content.html);
+    const res = sanitizeRtrHtml(content.html, (k) => allowedKeys.has(k));
     if ('issue' in res) {
       if (res.issue.reason === 'unknown_field') {
-        throw new AramoError('TEMPLATE_BINDING_UNSUPPORTED', `template content references an unsupported binding: ${(res.issue.keys ?? []).join(', ')}`, 422, {
+        const keys = res.issue.keys ?? [];
+        const noResolver = keys.length > 0 && keys.every((k) => unresolvable.has(k));
+        throw new AramoError('TEMPLATE_BINDING_UNSUPPORTED', `template content references an unsupported binding: ${keys.join(', ')}`, 422, {
           requestId: input.requestId,
-          details: { reason: 'unknown_field', keys: res.issue.keys },
+          details: { reason: noResolver ? 'no_resolver' : 'unknown_field', keys: res.issue.keys },
         });
       }
       throw htmlInvalid(input.requestId, res.issue.reason, res.issue.keys);

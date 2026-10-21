@@ -35,6 +35,12 @@ export const RTR_GENERATED_SCHEMA_V1 = 'rtr-generated-v1';
 //   - agreed_pay_rate.* is DELIBERATELY EXCLUDED (§13): no authoritative
 //     Talent × Requisition agreed-pay fact exists (confirmed PRODUCT/DATA GAP). It is
 //     NOT substituted from desired pay / requisition range / bill rate / offer / placement.
+// DOC-TEMPLATE-LIB-1 T-2 (§2 F-7) — the RUNTIME allowed-binding catalog is now the
+// Aramo-maintained documents.TemplateVariable table (seeded from exactly this list by
+// migration 20261021120000_doclib_t1_template_ownership_foundation). This list stays as
+// the seed source of record and the parity reference the catalog tests compare against;
+// RTR_BINDING_KEYS below is the RESOLVER key set (a catalog key without a resolver is
+// fail-closed). Adding a key = a catalog row + a resolver branch + a test.
 export interface RtrBindingDescriptor {
   readonly key: string; // canonical token
   readonly label: string; // human-readable chip label (Insert field + reading mode)
@@ -60,6 +66,19 @@ export const RTR_BINDING_CATALOG: readonly RtrBindingDescriptor[] = [
   },
   { key: 'recruiting_company.name', label: 'Recruiting company', group: 'Recruiting organization', sample: 'Astre Consulting' },
   { key: 'recruiter.display_name', label: 'Recruiter name', group: 'Recruiter', sample: 'Deepika Rao' },
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization (tenant profile) variables, so an Aramo
+  // default can carry the tenant's own name + address. Seeded as TemplateVariable rows
+  // (migration 20261021140000_doclib_t3_organization_template_variables, products ATS+SIGN).
+  // organization.name = display_name → legal_name → workspace name; the address keys read
+  // the Tenant profile columns verbatim (organization.region = state_province,
+  // organization.country = country_code). Blank ⇒ MISSING (fail closed) like every binding.
+  { key: 'organization.name', label: 'Organization name', group: 'Organization', sample: 'Astre Consulting' },
+  { key: 'organization.address_line1', label: 'Address line 1', group: 'Organization', sample: '100 Wood Avenue South' },
+  { key: 'organization.address_line2', label: 'Address line 2', group: 'Organization', sample: 'Suite 200' },
+  { key: 'organization.city', label: 'City', group: 'Organization', sample: 'Iselin' },
+  { key: 'organization.region', label: 'State / province', group: 'Organization', sample: 'NJ' },
+  { key: 'organization.postal_code', label: 'Postal code', group: 'Organization', sample: '08830' },
+  { key: 'organization.country', label: 'Country', group: 'Organization', sample: 'US' },
 ] as const;
 
 export const RTR_BINDING_KEYS = [
@@ -71,6 +90,13 @@ export const RTR_BINDING_KEYS = [
   'requisition.description',
   'recruiting_company.name',
   'recruiter.display_name',
+  'organization.name',
+  'organization.address_line1',
+  'organization.address_line2',
+  'organization.city',
+  'organization.region',
+  'organization.postal_code',
+  'organization.country',
 ] as const;
 export type RtrBindingKey = (typeof RTR_BINDING_KEYS)[number];
 
@@ -78,8 +104,8 @@ export function isRtrBindingKey(value: string): value is RtrBindingKey {
   return (RTR_BINDING_KEYS as readonly string[]).includes(value);
 }
 
-// Admin preview (§17) — the fixed SAFE sample value for each binding. Keyed lookup
-// derived from the single catalog so sample data can never drift from the keys.
+// Admin preview (§17) — the fixed SAFE sample value for each binding (seed reference;
+// T-2 previews read sample_value from the catalog).
 export const RTR_BINDING_SAMPLE_VALUES: Readonly<Record<RtrBindingKey, string>> =
   Object.fromEntries(RTR_BINDING_CATALOG.map((d) => [d.key, d.sample])) as Record<RtrBindingKey, string>;
 

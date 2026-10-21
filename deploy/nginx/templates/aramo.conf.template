@@ -160,6 +160,17 @@ server {
   location /platform/skill-proposals {
     proxy_pass http://api:3000;
   }
+  # DOC-TEMPLATE-LIB-1 T-2 (§6.1) — the platform-tier Aramo default document templates
+  # and the template variable catalog are owned by apps/api (they share the Documents
+  # domain + the template capability port with the tenant template routes). Same
+  # edge-owned provider map as the skills blocks: exactly these two governed prefixes
+  # go to api:3000; every other /platform/* still falls to platform-admin.
+  location /platform/document-templates {
+    proxy_pass http://api:3000;
+  }
+  location /platform/template-variables {
+    proxy_pass http://api:3000;
+  }
   location /platform/ {
     proxy_pass http://platform-admin:3002;
   }
@@ -168,7 +179,9 @@ server {
   }
 
   # NO `/v1` location of any kind — DELIBERATE (R14 negative control). The platform
-  # host reaches api:3000 ONLY for the governed /platform/skill* namespace above; the
+  # host reaches api:3000 ONLY for the governed /platform/skill* namespace and the
+  # DOC-TEMPLATE-LIB-1 /platform/document-templates + /platform/template-variables
+  # prefixes above; the
   # TENANT `/v1/*` surface remains unreachable from this host by construction (no
   # /v1 proxy_pass here), so a stray /v1/* request falls through to the SPA fallback
   # (index.html), never to tenant data.

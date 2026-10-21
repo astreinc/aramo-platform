@@ -22,8 +22,9 @@ import { PrismaService } from './prisma/prisma.service.js';
 
 export const FEDERATED_IDPS = ['google', 'microsoft'] as const;
 export type FederatedIdp = (typeof FEDERATED_IDPS)[number];
-// Owner roles that may establish a cohort tenant's first pin.
-const PIN_OWNER_ROLE_KEYS = new Set(['org_admin', 'tenant_owner']);
+// Owner roles that may establish a cohort tenant's first pin. ROLES-1 PR-2 (§3.4;
+// Conforming Amendment 7): only the organization owner, tenant_owner.
+const PIN_OWNER_ROLE_KEYS = new Set(['tenant_owner']);
 
 export type IdpDecision =
   | { ok: true; pinned_now: boolean }

@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, hasScope, useSession, useToast, type Session } from '@aramo/fe-foundation';
-
-import { resolveUserNames } from '../../users/users-api';
-import { safeErrorMessage } from '../../ui';
+import { Button, hasScope, safeErrorMessage, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
   createDraftFromActive,
@@ -13,6 +10,7 @@ import {
   listDocumentTemplates,
   listTemplateVersions,
   previewTemplateVersion,
+  resolveUserNames,
   DOC_TEMPLATE_MANAGE_SCOPE,
   DOC_TEMPLATE_READ_SCOPE,
   RIGHT_TO_REPRESENT_TYPE_ID,
@@ -37,6 +35,7 @@ import {
 } from './dt-ui';
 import { contentFromVersion, htmlOf, previewContentFrom, DiscardModal, PreviewModal, type PreviewContent } from './dt-modals';
 import { SafeDoc, type LetterheadInfo } from './dt-html-render';
+import { useDocTemplateRoutes } from './dt-routes';
 import './document-templates.css';
 
 // DOC-TEMPLATE-ADMIN-RTR-1 (§7) — the Right-to-Represent detail, styled to the approved
@@ -45,8 +44,6 @@ import './document-templates.css';
 // Draft / Active / Retired — never "Approved" as a status. Historical versions are
 // pinned; approved versions are read-only (edits go to a new draft).
 
-const DRAFT_ROUTE = '/admin/settings/document-templates/rtr/draft';
-const LIST_ROUTE = '/admin/settings/document-templates';
 
 type LoadState =
   | { status: 'loading' }
@@ -71,6 +68,7 @@ function pillLabel(status: string): string {
 }
 
 export function RtrTemplateDetail({
+  templateId,
   sessionOverride,
   listTemplatesFn = listDocumentTemplates,
   listVersionsFn = listTemplateVersions,
@@ -81,6 +79,9 @@ export function RtrTemplateDetail({
   previewFn = previewTemplateVersion,
   discardFn = deleteDraftVersion,
 }: {
+  // DOC-TEMPLATE-LIB-1 T-4 — the tenant template to show (Org Home routes by id). Absent:
+  // the tenant's Right to Represent template (the original single-type behaviour).
+  readonly templateId?: string;
   readonly sessionOverride?: Session;
   readonly listTemplatesFn?: typeof listDocumentTemplates;
   readonly listVersionsFn?: typeof listTemplateVersions;
@@ -91,6 +92,7 @@ export function RtrTemplateDetail({
   readonly previewFn?: typeof previewTemplateVersion;
   readonly discardFn?: typeof deleteDraftVersion;
 } = {}) {
+  const routes = useDocTemplateRoutes();
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
   const canRead = session != null && hasScope(session, DOC_TEMPLATE_READ_SCOPE);
@@ -110,7 +112,7 @@ export function RtrTemplateDetail({
     setLoad({ status: 'loading' });
     try {
       const templates = await listTemplatesFn();
-      const rtr = templates.find((t) => t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID) ?? null;
+      const rtr = templates.find((t) => (templateId != null ? t.id === templateId : t.document_type_id === RIGHT_TO_REPRESENT_TYPE_ID)) ?? null;
       if (rtr == null) { setLoad({ status: 'empty' }); return; }
       const loadCatalog = catalogFn ?? (listBindingsFn != null
         ? (id: string) => listBindingsFn(id).then((b): TemplateCatalog => ({ bindings: b, tenantLogo: null }))
@@ -124,7 +126,7 @@ export function RtrTemplateDetail({
     } catch (err) {
       setLoad({ status: 'error', message: safeErrorMessage(err, 'Failed to load the RTR template.') });
     }
-  }, [listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
+  }, [templateId, listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
 
   useEffect(() => { if (canRead) void refetch(); }, [canRead, refetch]);
 
@@ -146,18 +148,18 @@ export function RtrTemplateDetail({
 
   const crumb = (
     <div className="dt-crumb">
-      <a onClick={() => navigate(LIST_ROUTE)} data-testid="rtr-detail-back">Document templates</a>
+      <a onClick={() => navigate(routes.list)} data-testid="rtr-detail-back">Document templates</a>
       <span>/</span>
       <span className="dt-crumb__cur">Right to Represent</span>
     </div>
   );
 
   async function startDraft(template: DocumentTemplateView, draft: TemplateVersionView | undefined) {
-    if (draft != null) { navigate(DRAFT_ROUTE); return; }
+    if (draft != null) { navigate(routes.draft(template.id)); return; }
     setBusy(true);
     try {
       await createDraftFn(template.id);
-      navigate(DRAFT_ROUTE);
+      navigate(routes.draft(template.id));
     } catch (err) {
       toast.show(safeErrorMessage(err, 'Could not start a new draft.'));
       setBusy(false);
@@ -300,7 +302,7 @@ export function RtrTemplateDetail({
                           <span className="dt-ver__when">{whenOf(v)}</span>
                           <span className="dt-ver__acts">
                             {v.status === 'DRAFT' ? (
-                              <Button unstyled className="dt-link" onClick={() => navigate(DRAFT_ROUTE)}>Continue editing</Button>
+                              <Button unstyled className="dt-link" onClick={() => navigate(routes.draft(template.id))}>Continue editing</Button>
                             ) : (
                               <Button unstyled className="dt-link" onClick={() => void openPreview(v)}>View</Button>
                             )}

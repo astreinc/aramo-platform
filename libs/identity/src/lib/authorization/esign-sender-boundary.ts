@@ -43,7 +43,7 @@ import { ESIGN_SENDER_SCOPE_KEY } from '../dto/role.dto.js';
 //      very next request because the read is live).
 //   4. RolesGuard — the principal's EFFECTIVE scopes (resolved server-side by
 //      authz_version, never from the token) must include sign:envelope:send:
-//      sign_viewer, org_admin alone, every ATS role → 403 INSUFFICIENT_PERMISSIONS.
+//      sign_viewer, ats_admin, every other ATS role → 403 INSUFFICIENT_PERMISSIONS.
 //      A role revocation bumps the principal's authz_version inside the same
 //      transaction (identity.repository replaceMembershipRoles), so a cached
 //      scope snapshot or an already-issued token cannot restore the authority.

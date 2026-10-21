@@ -10,6 +10,7 @@ import type { InvitationDto } from './dto/invitation.dto.js';
 import type { MembershipDto } from './dto/membership.dto.js';
 import type { UserDto } from './dto/user.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { rethrowTenantLastOwner } from './util/tenant-last-owner.js';
 
 // Repository for User / ExternalIdentity reads + (AUTHZ-2) the FIRST
 // runtime User-write path.
@@ -756,9 +757,14 @@ export class IdentityRepository {
   // tenant_id, so a tenant_admin in tenant A cannot disable a user's
   // membership in tenant B even if the user_id were leaked (which it
   // can't be — the controller derives tenant_id from the session).
+  //
+  // ROLES-1 PR-1 (§4.1) — the DB last-owner trigger refuses disabling the tenant's last
+  // active tenant_owner; that refusal (whole transaction rolled back) surfaces as the
+  // governed 409 TENANT_LAST_OWNER instead of a raw 500.
   async disableMembership(args: {
     user_id: string;
     tenant_id: string;
+    request_id?: string;
   }): Promise<
     | { changed: true; membership_id: string; previously_active: true }
     | { changed: false; membership_id: string; previously_active: false }
@@ -777,9 +783,9 @@ export class IdentityRepository {
       if (existing === null) return null;
       if (existing.is_active !== true) {
         return {
-          changed: false,
+          changed: false as const,
           membership_id: existing.id,
-          previously_active: false,
+          previously_active: false as const,
         };
       }
       await tx.userTenantMembership.update({
@@ -793,11 +799,17 @@ export class IdentityRepository {
         principal_id: args.user_id,
       });
       return {
-        changed: true,
+        changed: true as const,
         membership_id: existing.id,
-        previously_active: true,
+        previously_active: true as const,
       };
-    });
+    }).catch((err: unknown) =>
+      rethrowTenantLastOwner(err, {
+        request_id: args.request_id,
+        tenant_id: args.tenant_id,
+        operation: 'membership.disable',
+      }),
+    );
   }
 
   // Settings S3a — re-enable a tenant membership. Called as the
@@ -834,9 +846,13 @@ export class IdentityRepository {
 
   // AUTHZ-2: same-tenant role replacement (Lead ruling 8 case 2). The
   // membership row is preserved; the role-junction rows are diffed.
+  //
+  // ROLES-1 PR-1 (§4.1) — removing the tenant's last active tenant_owner is refused by the
+  // DB trigger; mapped to 409 TENANT_LAST_OWNER (the transaction rolled back, no effect).
   async replaceMembershipRoles(args: {
     membership_id: string;
     role_ids: readonly string[];
+    request_id?: string;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.userTenantMembershipRole.findMany({
@@ -881,7 +897,12 @@ export class IdentityRepository {
         }
       }
       return { added_role_ids, removed_role_ids };
-    });
+    }).catch((err: unknown) =>
+      rethrowTenantLastOwner(err, {
+        request_id: args.request_id,
+        operation: 'membership.roles.replace',
+      }),
+    );
   }
 }
 

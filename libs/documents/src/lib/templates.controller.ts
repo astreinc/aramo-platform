@@ -37,12 +37,16 @@ import {
   TemplateDraftAlreadyExistsError,
   TemplateImmutableError,
   TemplateNotFoundError,
+  TemplatePlatformDefaultConflictError,
   TemplatePreviewRequiredError,
   TemplateVersionNotActiveError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
 
 const TEMPLATE_KINDS = new Set(['GENERATED', 'UPLOADED_PDF', 'HYBRID']);
+// DOC-TEMPLATE-LIB-1 T-6 [TD] — a withdrawal notice stays listed this long after its
+// effective date, so the Org Home banner can still explain the change.
+const WITHDRAWAL_NOTICE_GRACE_DAYS = 30;
 const FIELD_TYPES = new Set([
   'TEXT',
   'MULTILINE_TEXT',
@@ -78,6 +82,12 @@ function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof TemplateDraftAlreadyExistsError) return new AramoError('TEMPLATE_DRAFT_ALREADY_EXISTS', e.message, 409, { requestId });
   if (e instanceof TemplatePreviewRequiredError) return new AramoError('TEMPLATE_PREVIEW_REQUIRED', e.message, 409, { requestId });
   if (e instanceof TemplateBindingUnsupportedError) return new AramoError('TEMPLATE_BINDING_UNSUPPORTED', e.message, 422, { requestId });
+  if (e instanceof TemplatePlatformDefaultConflictError) {
+    return new AramoError('TEMPLATE_PLATFORM_DEFAULT_CONFLICT', e.message, 409, {
+      requestId,
+      details: { template_id: e.templateId, reason: e.reason, ...e.details },
+    });
+  }
   if (e instanceof DocumentRequirementNotFoundError) return new AramoError('DOCUMENT_REQUIREMENT_NOT_FOUND', e.message, 404, { requestId });
   if (e instanceof DocumentRequirementAlreadySatisfiedError) return new AramoError('DOCUMENT_REQUIREMENT_ALREADY_SATISFIED', e.message, 409, { requestId });
   if (e instanceof DocumentNotFoundError) return new AramoError('DOCUMENT_NOT_FOUND', e.message, 404, { requestId });
@@ -85,6 +95,10 @@ function toHttp(e: unknown, requestId: string): AramoError {
     ? e
     : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
+
+// DOC-TEMPLATE-LIB-1 T-2 — the same domain→HTTP mapping for the platform-tier template
+// routes (apps/api), so both surfaces return identical error codes.
+export const templateErrorToHttp = toHttp;
 
 function validate(condition: boolean, message: string, requestId: string): void {
   if (!condition) throw new AramoError('VALIDATION_ERROR', message, 400, { requestId });
@@ -187,6 +201,35 @@ export class DocumentTemplatesController {
   @RequireScopes('document_template:read')
   async list(@AuthContext() auth: AuthContextType) {
     return this.repo.listTemplates(auth.tenant_id);
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — the Aramo default withdrawal notices
+  // that affect THIS tenant (a selection names the default, or the tenant falls back to
+  // it): pending ones and ones that took effect within the last 30 days [TD grace]. Feeds
+  // the Org Home banner (T-4). Product tags are informational — no filtering (D9).
+  // Declared before ':id' so the literal segment wins.
+  @Get('notices')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('document_template:read')
+  async notices(@AuthContext() auth: AuthContextType) {
+    const rows = await this.repo.listWithdrawalNoticesForTenant({
+      tenant_id: auth.tenant_id,
+      grace_days: WITHDRAWAL_NOTICE_GRACE_DAYS,
+    });
+    return {
+      notices: rows.map((r) => ({
+        template_id: r.template_id,
+        name: r.name,
+        document_type_id: r.document_type_id,
+        products: r.products,
+        withdraw_notice_at: r.withdraw_notice_at.toISOString(),
+        withdraw_effective_at: r.withdraw_effective_at.toISOString(),
+        status: r.in_effect ? 'IN_EFFECT' : 'PENDING',
+        selected_for_client_ids: r.selected_for_client_ids,
+        relies_on_default: r.relies_on_default,
+        has_own_template: r.has_own_template,
+      })),
+    };
   }
 
   @Get(':id')
@@ -326,7 +369,7 @@ export class DocumentTemplatesController {
         if (existing.status !== 'DRAFT') throw new TemplateImmutableError(versionId);
         const t = await this.repo.getTemplate(auth.tenant_id, existing.template_id);
         if (this.caps.isConfigurable(t.document_type_id)) {
-          field_schema = this.caps.normalizeDraftContent({
+          field_schema = await this.caps.normalizeDraftContent({
             document_type_id: t.document_type_id,
             render_schema_version: body.render_schema_version ?? existing.render_schema_version,
             field_schema: body.field_schema,
@@ -390,7 +433,7 @@ export class DocumentTemplatesController {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
       validate(this.caps !== undefined && this.caps.isConfigurable(ctx.document_type_id), 'this document type is not configurable', requestId);
-      const preview = this.caps!.renderSamplePreview({ ...ctx, requestId });
+      const preview = await this.caps!.renderSamplePreview({ ...ctx, requestId });
       await this.repo.recordPreview({ tenant_id: auth.tenant_id, version_id: versionId });
       return preview;
     } catch (e) {
@@ -411,7 +454,7 @@ export class DocumentTemplatesController {
       // letterhead shows beside it).
       const tenant_logo =
         configurable && this.tenantLogo !== undefined ? await this.tenantLogo.info(auth.tenant_id) : { available: false, tenant_name: null };
-      return { bindings: this.caps?.listAllowedBindings(t.document_type_id) ?? [], tenant_logo };
+      return { bindings: (await this.caps?.listAllowedBindings(t.document_type_id)) ?? [], tenant_logo };
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -503,7 +546,7 @@ export class DocumentTemplatesController {
       // gate + §21 actor + the DRAFT->ACTIVE transition.
       if (this.caps !== undefined) {
         const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
-        this.caps.validateDraftContent({ ...ctx, requestId });
+        await this.caps.validateDraftContent({ ...ctx, requestId });
       }
       return await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
     } catch (e) {

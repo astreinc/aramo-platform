@@ -26,6 +26,10 @@ import {
   INVITATION_TTL_MS,
 } from './tenant-user/invitation-token.js';
 import { normalizeEmail } from './util/email-domain.js';
+import { TENANT_OWNER_ROLE_KEY } from './util/tenant-last-owner.js';
+
+// ROLES-1 PR-3 — the organization administrator role key (ORG_ROLE_KEYS[1]).
+const TENANT_ADMIN_ROLE_KEY = 'tenant_admin';
 
 // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — who owns an invite
 // email, classified BEFORE any side effect (Cognito call or DB write).
@@ -123,6 +127,19 @@ export interface MeView {
 // bind a second membership for an existing User. Until the IC-1 PR-2/PR-3
 // DB constraints land, these application guards are necessary but are not
 // the final structural guarantee.
+// ROLES-1 PR-1 (Directive v1.0 LOCKED §4.2) — who is granting or removing roles, for the
+// owner-only rule "only a caller holding tenant_owner may grant or remove tenant_owner".
+//   - { actor_user_id }: a tenant-user caller (the tenant-user management surface). The
+//     actor's OWN active membership in the target tenant must hold tenant_owner.
+//   - 'platform': the platform tier (apps/platform-admin provisioning / platform invite,
+//     super_admin-gated at its own controller). Not a tenant-user caller.
+//   - 'system': a system provisioning path with no human tenant caller.
+// ABSENT = no authority: a role change that grants or removes tenant_owner is refused
+// (safe-by-default, the IC-2 PR-5 allow_platform_roles precedent). Callers that never touch
+// tenant_owner (e.g. Sign member administration, which keeps every non-Sign role) are
+// unaffected.
+export type OwnerRoleAuthority = 'platform' | 'system' | { actor_user_id: string };
+
 @Injectable()
 export class IdentityService {
   private readonly logger = new Logger(IdentityService.name);
@@ -498,13 +515,48 @@ export class IdentityService {
   // about to grant and the gate evaluates against THAT set — the same product rule,
   // evaluated on the tenant's declared subscription instead of a not-yet-written row.
   // Only the provisioning path sets it; every other caller reads live.
+  //
+  // ROLES-1 PR-1 (§4.2) — owner-only grants: when the change grants or removes
+  // tenant_owner (before_role_keys -> role_keys; before is empty on a create), the caller
+  // must hold tenant_owner (see OwnerRoleAuthority). Fires FIRST, before any other gate
+  // and before any write.
+  //
+  // ROLES-1 PR-3 (routine safeguard, TD) — organization-admin grants: when the change
+  // grants or removes tenant_admin (the ORGANIZATION administrator — organization-wide,
+  // incl. every entitled product's admin rights after PR-2), the caller must hold
+  // tenant_owner or tenant_admin (see assertOrgAdminRoleAuthority). A tenant:admin:
+  // user-manage holder without an organization role (account_manager,
+  // recruiting_manager) can no longer hand out organization administration. Fires right
+  // after the owner rule, before any other gate and before any write.
   private async assertRoleKeysAssignable(args: {
     role_keys: readonly string[];
     tenant_id: string;
     allow_platform_roles?: boolean;
     provisioning_capabilities?: readonly string[];
     request_id: string;
+    owner_role_authority?: OwnerRoleAuthority;
+    before_role_keys?: readonly string[];
   }): Promise<void> {
+    const ownerBefore = (args.before_role_keys ?? []).includes(TENANT_OWNER_ROLE_KEY);
+    const ownerAfter = args.role_keys.includes(TENANT_OWNER_ROLE_KEY);
+    if (ownerBefore !== ownerAfter) {
+      await this.assertOwnerRoleAuthority({
+        tenant_id: args.tenant_id,
+        owner_role_authority: args.owner_role_authority,
+        request_id: args.request_id,
+        action: ownerAfter ? 'grant' : 'remove',
+      });
+    }
+    const orgAdminBefore = (args.before_role_keys ?? []).includes(TENANT_ADMIN_ROLE_KEY);
+    const orgAdminAfter = args.role_keys.includes(TENANT_ADMIN_ROLE_KEY);
+    if (orgAdminBefore !== orgAdminAfter) {
+      await this.assertOrgAdminRoleAuthority({
+        tenant_id: args.tenant_id,
+        owner_role_authority: args.owner_role_authority,
+        request_id: args.request_id,
+        action: orgAdminAfter ? 'grant' : 'remove',
+      });
+    }
     if (args.allow_platform_roles === true) return;
     const platformKeys = args.role_keys.filter((k) =>
       (PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
@@ -565,6 +617,84 @@ export class IdentityService {
     }
   }
 
+  // ROLES-1 PR-1 (§4.2) — the owner-only rule. Passes for the platform tier and system
+  // provisioning; a tenant-user caller passes only while their own ACTIVE membership in
+  // THIS tenant holds tenant_owner (read live, never from the token). Anything else,
+  // including an absent authority, is 403 INSUFFICIENT_PERMISSIONS with
+  // details.reason='owner_role_requires_owner'. Also used by the tenant-user disable and
+  // revoke paths when their target holds tenant_owner.
+  async assertOwnerRoleAuthority(args: {
+    tenant_id: string;
+    owner_role_authority?: OwnerRoleAuthority;
+    request_id: string;
+    action: 'grant' | 'remove' | 'disable' | 'revoke' | 'enable';
+  }): Promise<void> {
+    const authority = args.owner_role_authority;
+    if (authority === 'platform' || authority === 'system') return;
+    if (authority !== undefined) {
+      const membership = await this.identityRepo.findMembership({
+        user_id: authority.actor_user_id,
+        tenant_id: args.tenant_id,
+      });
+      if (membership !== null && membership.is_active) {
+        const keys = await this.identityRepo.findRoleKeysForMembership(membership.id);
+        if (keys.includes(TENANT_OWNER_ROLE_KEY)) return;
+      }
+    }
+    throw new AramoError(
+      'INSUFFICIENT_PERMISSIONS',
+      'Only an organization owner can grant, remove, disable, enable or revoke the owner role',
+      403,
+      {
+        requestId: args.request_id,
+        details: {
+          reason: 'owner_role_requires_owner',
+          role_key: TENANT_OWNER_ROLE_KEY,
+          action: args.action,
+        },
+      },
+    );
+  }
+
+  // ROLES-1 PR-3 (routine safeguard, TD) — the organization-admin rule: granting or
+  // removing tenant_admin. Passes for the platform tier and system provisioning; a
+  // tenant-user caller passes only while their own ACTIVE membership in THIS tenant holds
+  // tenant_owner or tenant_admin (read live, never from the token). Anything else,
+  // including an absent authority, is 403 INSUFFICIENT_PERMISSIONS with
+  // details.reason='org_role_requires_org_admin'.
+  async assertOrgAdminRoleAuthority(args: {
+    tenant_id: string;
+    owner_role_authority?: OwnerRoleAuthority;
+    request_id: string;
+    action: 'grant' | 'remove';
+  }): Promise<void> {
+    const authority = args.owner_role_authority;
+    if (authority === 'platform' || authority === 'system') return;
+    if (authority !== undefined) {
+      const membership = await this.identityRepo.findMembership({
+        user_id: authority.actor_user_id,
+        tenant_id: args.tenant_id,
+      });
+      if (membership !== null && membership.is_active) {
+        const keys = await this.identityRepo.findRoleKeysForMembership(membership.id);
+        if (keys.includes(TENANT_OWNER_ROLE_KEY) || keys.includes(TENANT_ADMIN_ROLE_KEY)) return;
+      }
+    }
+    throw new AramoError(
+      'INSUFFICIENT_PERMISSIONS',
+      'Only an organization owner or administrator can grant or remove the organization administrator role',
+      403,
+      {
+        requestId: args.request_id,
+        details: {
+          reason: 'org_role_requires_org_admin',
+          role_key: TENANT_ADMIN_ROLE_KEY,
+          action: args.action,
+        },
+      },
+    );
+  }
+
   async createUserFromInvitation(args: {
     email: string;
     display_name: string | null;
@@ -580,6 +710,8 @@ export class IdentityService {
     // D-ORG — provisioning only: the capability set the saga grants right after
     // this write (the product-role gate evaluates against it, not a live read).
     provisioning_capabilities?: readonly string[];
+    // ROLES-1 PR-1 (§4.2) — required to grant tenant_owner.
+    owner_role_authority?: OwnerRoleAuthority;
   }): Promise<{ user: UserDto; membership_id: string }> {
     await this.assertRoleKeysAssignable(args);
     // D5 integrity gate — in-service. No-ops at length<2; rejects an
@@ -700,6 +832,8 @@ export class IdentityService {
     role_ids: readonly string[];
     actor_user_id: string;
     request_id: string;
+    // ROLES-1 PR-1 (§4.2) — required to grant tenant_owner.
+    owner_role_authority?: OwnerRoleAuthority;
   }): Promise<{ user: UserDto; membership_id: string }> {
     await this.assertRoleKeysAssignable(args);
     await this.roleBundle.assertUnionNonInvertible({ role_keys: args.role_keys, request_id: args.request_id });
@@ -739,6 +873,8 @@ export class IdentityService {
     role_ids: readonly string[];
     actor_user_id: string;
     request_id: string;
+    // ROLES-1 PR-1 (§4.2) — required to invite someone as tenant_owner.
+    owner_role_authority?: OwnerRoleAuthority;
   }): Promise<{
     user: UserDto;
     membership_id: string;
@@ -1036,16 +1172,29 @@ export class IdentityService {
     request_id: string;
     // IC-2 PR-5 — only the platform-admin flow (sentinel tenant) sets this.
     allow_platform_roles?: boolean;
+    // ROLES-1 PR-1 (§4.2) — required when the change grants or removes tenant_owner.
+    owner_role_authority?: OwnerRoleAuthority;
   }): Promise<{ added_role_ids: string[]; removed_role_ids: string[] }> {
-    await this.assertRoleKeysAssignable(args);
+    // ROLES-1 PR-1 (§4.2) — the membership's CURRENT keys decide whether this change
+    // grants or removes tenant_owner (read live). The platform tier and system paths are
+    // authorized either way, so they skip the read (before = target: no owner delta).
+    const privileged =
+      args.owner_role_authority === 'platform' || args.owner_role_authority === 'system';
+    const before_role_keys = privileged
+      ? args.role_keys
+      : await this.identityRepo.findRoleKeysForMembership(args.membership_id);
+    await this.assertRoleKeysAssignable({ ...args, before_role_keys });
     await this.roleBundle.assertUnionNonInvertible({
       role_keys: args.role_keys,
       request_id: args.request_id,
     });
 
+    // §4.1 — the DB last-owner trigger is the backstop; the repository maps its refusal
+    // to 409 TENANT_LAST_OWNER.
     return this.identityRepo.replaceMembershipRoles({
       membership_id: args.membership_id,
       role_ids: args.role_ids,
+      request_id: args.request_id,
     });
   }
 
@@ -1086,14 +1235,18 @@ export class IdentityService {
   async disableMembership(args: {
     user_id: string;
     tenant_id: string;
+    request_id?: string;
   }): Promise<
     | { changed: true; membership_id: string }
     | { changed: false; membership_id: string; already_disabled: true }
     | null
   > {
+    // ROLES-1 PR-1 (§4.1) — disabling the last active tenant_owner is refused by the DB
+    // trigger (409 TENANT_LAST_OWNER via the repository).
     const result = await this.identityRepo.disableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
+      ...(args.request_id === undefined ? {} : { request_id: args.request_id }),
     });
     if (result === null) return null;
     if (result.changed === true) {

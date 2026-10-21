@@ -223,7 +223,7 @@ export function SignupVerifyPage() {
           <strong>{done.organization_name}</strong> is set up. Use the work account for <strong>{done.email}</strong>. The provider you sign in
           with first becomes your organization’s sign-in provider.
         </div>
-        <p className="sg-help">After you sign in, choose a plan to start sending documents. You’ll be the organization’s Aramo Sign owner.</p>
+        <p className="sg-help">After you sign in, choose a plan to start sending documents. You’ll be the organization’s owner.</p>
         {done.sign_in !== undefined ? (
           <div className="sg-grid" style={{ gap: 8 }}>
             <a className="sg-btn sg-btn--primary" href={done.sign_in.microsoft} data-testid="signup-signin-microsoft">

@@ -53,7 +53,10 @@ function describeError(e: unknown): { text: string; retryable: boolean } {
   const template = rtrTemplateErrorMessage(e);
   if (template !== null) {
     // An unapproved/invalid template needs an admin; a missing fact can be fixed and retried.
-    return { text: template, retryable: !(code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') };
+    return {
+      text: template,
+      retryable: !(code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID' || code === 'TEMPLATE_SELECTION_REQUIRED'),
+    };
   }
   return { text: messageOf(e), retryable: true };
 }

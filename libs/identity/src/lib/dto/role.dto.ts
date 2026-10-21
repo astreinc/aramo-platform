@@ -37,9 +37,22 @@
 // `audit.financials_enabled` KNOWN_SETTING is true (the GATE precondition
 // fires at the role-assign path; the seed grant of the role is not gated
 // — the GATE is keyed at the membership-write boundary).
+//
+// ROLES-1 PR-2 (Directive v1.0 LOCKED §1/§3; ADR-0035 R1–R3) — the organization and
+// product role model. Row ids are kept, keys are renamed by the
+// 20261021130000_roles1_role_model migration:
+//   - `ats_admin` (row …0010, formerly `tenant_admin`): ATS administration only —
+//     today's ATS superset minus the six organization-wide administration scopes.
+//   - `tenant_admin` (row …02b0, formerly `org_admin`): the ORGANIZATION
+//     administrator — the org set + the admin scopes of every entitled product
+//     (ATS, Sign) except billing and the owner-only acts.
+//   - `tenant_owner` (row …0014, key unchanged): the ORGANIZATION owner —
+//     tenant_admin + Sign billing + the owner-only acts.
+//   - `org_admin` no longer exists. `sign_owner` (row …02a0) is deactivated by the
+//     migration; ROLES-1 PR-3 retires its key from code (RETIRED_ROLE_KEYS below).
 export const SEED_ROLE_KEYS = [
-  // Pre-AUTHZ-1 tenant roles preserved across AUTHZ-1b (keys identical).
-  'tenant_admin',
+  // ROLES-1 PR-2 — ats_admin: the renamed pre-AUTHZ-1 `tenant_admin` row (…0010).
+  'ats_admin',
   'recruiter',
   'candidate',
   // AUTHZ-1 / AUTHZ-1b — 9 staffing-tenant roles.
@@ -55,24 +68,39 @@ export const SEED_ROLE_KEYS = [
   // Settings S4 — auditor_with_financials (compliance + see-all-comp,
   // gated by audit.financials_enabled).
   'auditor_with_financials',
-  // IC-3 PR-7 (IC-0 N-2) — org_admin: the PRODUCT-NEUTRAL organization
-  // administrator. Holds exactly ORG_ADMIN_SCOPE_KEYS (the scopes the
-  // core-gated /v1/tenant/* organization routes demand) — no ATS, no Sign, no
-  // platform scope. The owner role of a tenant provisioned WITHOUT the `ats`
-  // capability (Sign-only); ATS tenants keep tenant_owner (a superset).
-  'org_admin',
+  // ROLES-1 PR-2 (§1, §3.2) — tenant_admin: the ORGANIZATION administrator (the
+  // renamed IC-3 PR-7 `org_admin` row …02b0). Holds ORG_ADMIN_SCOPE_KEYS + the full
+  // ATS set of ats_admin + sign_admin's Sign scopes (no billing). Assignable in any
+  // tenant (ORG_ROLE_KEYS); the session filters scope each product to its consumer.
+  'tenant_admin',
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
   // PX-V1 PX-3 — E-Sign SENDER product roles (esign.aramo.ai). Namespace-separate
   // from the ATS tenant roles (like super_admin): they hold ONLY esign:* scopes and
   // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `sign:`
   // prefix). Shared Aramo identity substrate; independent E-Sign product.
-  'sign_owner',
+  // ROLES-1 PR-3 — `sign_owner` is retired (RETIRED_ROLE_KEYS); not a catalog key.
   'sign_admin',
   'sign_sender',
   'sign_viewer',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
+
+// ROLES-1 PR-3 (Directive v1.0 LOCKED §1, §5.2 step 5, §8; Conforming Amendments 4 and
+// 6) — role keys whose rows are kept in the database for history only. The row stays
+// (`is_active=false`; the seed creates it inactive on a fresh database) but the key is
+// in NO catalog constant, partition or allow-list: it is never assignable (the role-id
+// resolution reads active rows only), never granted a bundle by the seed and never
+// projected by the role catalog. Sign ownership and billing belong to tenant_owner.
+export const RETIRED_ROLE_KEYS = ['sign_owner'] as const;
+export type RetiredRoleKey = (typeof RETIRED_ROLE_KEYS)[number];
+
+// ROLES-1 PR-2 (§3.3) — the ORGANIZATION roles (ADR-0035 R1): owner and administrator
+// of the whole tenant. Assignable in ANY tenant (no product capability gate): they are
+// in neither product partition below. Product rights ride their static bundles and are
+// exercised only through a consumer whose product the tenant holds (§3.1, IC-2 PR-6).
+export const ORG_ROLE_KEYS = ['tenant_owner', 'tenant_admin'] as const;
+export type OrgRoleKey = (typeof ORG_ROLE_KEYS)[number];
 
 // IC-3 PR-7 — the organization-management scope set: EXACTLY the scopes the
 // `@RequireCapability('core')` organization routes demand at the baseline
@@ -81,8 +109,9 @@ export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
 // session marker every tenant role carries. Derived from the live route
 // decorators, never widened: no `identity:resolve` (talent-identity
 // dispositions), no `org:manage`/`team:manage` (ATS-gated D4a), no product
-// scope. This set is BOTH the org_admin role bundle (seed) and the
-// organization subset an `sign` consumer may carry (IC-0 §F.2 rule 4 / N-2).
+// scope. This set is BOTH the organization part of the tenant_admin / tenant_owner
+// bundles (ROLES-1 PR-2; formerly the whole org_admin bundle) and the organization
+// subset an `sign` consumer may carry (IC-0 §F.2 rule 4 / N-2).
 export const ORG_ADMIN_SCOPE_KEYS = [
   'tenant:admin:profile',
   'tenant:admin:domain',
@@ -107,7 +136,9 @@ export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEY
 );
 
 // IC-3 PR-8 (IC-0 §F.2 rule 2 / L10; PX-V1 §10–§11) — the E-SIGN PRODUCT
-// partition of the catalog: the four Sign roles (PX-V1 PX-3). They hold ONLY
+// partition of the catalog: the Sign roles (PX-V1 PX-3). ROLES-1 PR-2 (§3.3) / PR-3:
+// exactly sign_admin / sign_sender / sign_viewer — the retired `sign_owner` is not a
+// SEED_ROLE_KEYS entry, so the prefix derivation cannot pick it up. They hold ONLY
 // esign:* scopes and are assignable ONLY in a tenant that holds the `sign`
 // capability; every tenant-side assignment path (tenant invite, PATCH roles,
 // platform-tier invite INTO a tenant) refuses them for an unentitled tenant
@@ -121,21 +152,23 @@ export const ESIGN_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.fi
 
 // IC-3 PR-8 — the SINGLE scope that authorizes the Sign SEND action
 // (PX-V1 §11 rule 5: send authority derives from the `sign` capability + an
-// org role, never bare authentication). Granted by the seed to sign_owner,
-// sign_admin and sign_sender only (ESIGN_SENDER_SEED_BUNDLES); sign_viewer,
-// org_admin, every ATS role and super_admin never hold it.
+// org role, never bare authentication). Granted by the seed to sign_admin,
+// sign_sender and — ROLES-1 PR-2 (Conforming Amendment 2) — the organization roles
+// tenant_owner and tenant_admin; sign_viewer, ats_admin, every other ATS role and
+// super_admin never hold it.
 export const ESIGN_SENDER_SCOPE_KEY = 'sign:envelope:send' as const;
 
 // D-ORG (§3.F) — the ATS PRODUCT partition of the catalog: every tenant role that
-// carries ATS product scopes (the 13 AUTHZ-1/1b staffing roles INCLUDING
-// tenant_owner / tenant_admin, whose bundles are ATS supersets). Assignable ONLY
-// in a tenant that holds the `ats` capability — the symmetric twin of
-// ESIGN_PRODUCT_ROLE_KEYS (IC-3 PR-8): VALIDATION_ERROR `ats_role_not_entitled`.
-// NOT in this partition: org_admin (product-neutral), super_admin (platform),
-// the Sign roles (esign partition) and the portal-user role (portal axis).
+// carries ATS product scopes and administers or works in ATS only (the AUTHZ-1/1b
+// staffing roles and, ROLES-1 PR-2 §3.3, ats_admin). Assignable ONLY in a tenant
+// that holds the `ats` capability — the symmetric twin of ESIGN_PRODUCT_ROLE_KEYS
+// (IC-3 PR-8): VALIDATION_ERROR `ats_role_not_entitled`.
+// NOT in this partition: the organization roles (ORG_ROLE_KEYS — tenant_owner and
+// tenant_admin, assignable in any tenant; Conforming Amendment 3), super_admin
+// (platform), the Sign roles (esign partition) and the portal-user role (portal axis).
 export const ATS_PRODUCT_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter(
   (k) =>
-    k !== 'org_admin' &&
+    !(ORG_ROLE_KEYS as readonly string[]).includes(k) &&
     k !== 'candidate' &&
     !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k) &&
     !k.startsWith('sign_'),

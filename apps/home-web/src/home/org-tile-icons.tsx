@@ -1,5 +1,6 @@
 import {
   IconBuilding,
+  IconFile,
   IconGlobe,
   IconHistory,
   IconPin,
@@ -24,6 +25,9 @@ export function OrgTileIcon({ section }: { readonly section: string }) {
       return <IconGlobe />;
     case 'settings':
       return <IconSliders />;
+    // DOC-TEMPLATE-LIB-1 T-4 — Org Home "Document templates".
+    case 'document-templates':
+      return <IconFile />;
     default:
       return <IconHistory />;
   }

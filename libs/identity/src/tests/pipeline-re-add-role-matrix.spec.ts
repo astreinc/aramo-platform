@@ -12,7 +12,10 @@ import { SEED_SCOPE_KEYS } from '../lib/dto/index.js';
 //      so a grant leaking through ANY other bundle fails here.
 
 const SCOPE = 'pipeline:re-add';
-const HOLDERS = ['lead_recruiter', 'recruiting_manager', 'tenant_admin', 'tenant_owner'];
+// ROLES-1 reconciliation: the PO's "Tenant Admin" (row …0010) is now `ats_admin`; the
+// ORGANIZATION `tenant_admin` (row …02b0) inherits every ats_admin scope (ROLES1_ATS_GRANT_SOURCES).
+const BUNDLE_ROLES = ['ats_admin', 'lead_recruiter', 'recruiting_manager', 'tenant_owner'];
+const HOLDERS = ['ats_admin', 'lead_recruiter', 'recruiting_manager', 'tenant_admin', 'tenant_owner'];
 
 type SeedPrisma = Parameters<typeof runIdentitySeed>[0];
 
@@ -70,11 +73,11 @@ describe('pipeline:re-add role matrix (Remediation v1.0 R3, DEF-15(b))', () => {
   });
 
   it('the dedicated grant table names EXACTLY the 4 senior roles (4 grants)', () => {
-    expect([...new Set(PIPELINE_RE_ADD_SEED_BUNDLES.map(([r]) => r))].sort()).toEqual(HOLDERS);
+    expect([...new Set(PIPELINE_RE_ADD_SEED_BUNDLES.map(([r]) => r))].sort()).toEqual(BUNDLE_ROLES);
     expect(PIPELINE_RE_ADD_SEED_BUNDLES.flatMap(([, s]) => s)).toEqual([SCOPE, SCOPE, SCOPE, SCOPE]);
   });
 
-  it('the REAL seed grants pipeline:re-add to exactly those 4 roles — never a recruiter or sourcer', async () => {
+  it('the REAL seed grants pipeline:re-add to the senior roles (+ the organization tenant_admin, derived) — never a recruiter or sourcer', async () => {
     const { rows, byRole } = await effectiveGrants();
     const holders = [...byRole.entries()].filter(([, scopes]) => scopes.has(SCOPE)).map(([role]) => role).sort();
     expect(holders).toEqual(HOLDERS);

@@ -11,6 +11,8 @@ import { RtrTemplateCapabilities } from '../rtr/rtr-template-capabilities.servic
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
+import { fakeCatalog } from './fixtures/rtr-seed-catalog.js';
+
 // DOC-TEMPLATE-ADMIN-RTR-1 Amendment A1 — the rtr-html-v1 content contract: the
 // authoritative allowlist sanitiser (A1 §2.2), v1 → html draft conversion (§2.1), the
 // rich render model, and the capability's PATCH normalisation / preview / logo handling.
@@ -117,11 +119,13 @@ describe('A1 §2.3 — rich render model', () => {
 });
 
 describe('RtrTemplateCapabilities — rtr-html-v1', () => {
-  const caps = new RtrTemplateCapabilities();
+  // DOC-TEMPLATE-LIB-1 T-2 — the allowed bindings come from the variable catalog (the 8
+  // seeded rows, in memory); the port's catalog-reading methods are async.
+  const caps = new RtrTemplateCapabilities(fakeCatalog());
   const LOGO = { asset_id: 'a-1', sha256: 'f'.repeat(64), mime: 'image/png' as const };
 
-  it('normalizeDraftContent sanitises html and carries the SERVER-OWNED logo from existing content (client value ignored)', () => {
-    const out = caps.normalizeDraftContent({
+  it('normalizeDraftContent sanitises html and carries the SERVER-OWNED logo from existing content (client value ignored)', async () => {
+    const out = await caps.normalizeDraftContent({
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
       render_schema_version: RTR_HTML_SCHEMA_V1,
       field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: ' RTR ', html: '<p onclick="x">Hi</p>', logo: { asset_id: 'forged', sha256: 'x', mime: 'image/png' } },
@@ -131,7 +135,7 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
     expect(out).toEqual({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'RTR', html: '<p>Hi</p>', logo: LOGO });
   });
 
-  it('normalizeDraftContent: unknown field → 422 VALIDATION_ERROR reason=unknown_field (+keys); logo misplaced → logo_position', () => {
+  it('normalizeDraftContent: unknown field → 422 VALIDATION_ERROR reason=unknown_field (+keys); logo misplaced → logo_position', async () => {
     const run = (html: string) =>
       caps.normalizeDraftContent({
         document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
@@ -140,17 +144,17 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
         existing_field_schema: null,
         requestId: 'r',
       });
-    expect(() => run('<p><span data-field="agreed_pay_rate.amount"></span></p>')).toThrow(
+    await expect(run('<p><span data-field="agreed_pay_rate.amount"></span></p>')).rejects.toThrow(
       expect.objectContaining({ code: 'VALIDATION_ERROR', statusCode: 422, context: expect.objectContaining({ details: { reason: 'unknown_field', keys: ['agreed_pay_rate.amount'] } }) }),
     );
-    expect(() => run('<p>x</p><div data-asset="tenant.logo"></div>')).toThrow(
+    await expect(run('<p>x</p><div data-asset="tenant.logo"></div>')).rejects.toThrow(
       expect.objectContaining({ statusCode: 422, context: expect.objectContaining({ details: { reason: 'logo_position' } }) }),
     );
   });
 
-  it('normalizeDraftContent leaves rtr-generated-v1 content untouched (v1 drafts stay v1)', () => {
+  it('normalizeDraftContent leaves rtr-generated-v1 content untouched (v1 drafts stay v1)', async () => {
     expect(
-      caps.normalizeDraftContent({
+      await caps.normalizeDraftContent({
         document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
         render_schema_version: RTR_GENERATED_SCHEMA_V1,
         field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1,
@@ -173,8 +177,8 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
     });
   });
 
-  it('preview (html): sample_values for every binding, html with data-sample spans (escaped), logo ref, signature block', () => {
-    const p = caps.renderSamplePreview({
+  it('preview (html): sample_values for every binding, html with data-sample spans (escaped), logo ref, signature block', async () => {
+    const p = await caps.renderSamplePreview({
       document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
       render_schema_version: RTR_HTML_SCHEMA_V1,
       field_schema: {
@@ -198,28 +202,36 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
       'Analyze business requirements for multi-family housing programs.\n\nPartner with stakeholders to define scope and acceptance criteria.',
       'Astre Consulting',
       'Deepika Rao',
+      // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization.* catalog variables.
+      'Astre Consulting',
+      '100 Wood Avenue South',
+      'Suite 200',
+      'Iselin',
+      'NJ',
+      '08830',
+      'US',
     ]);
     expect(p.sample_values?.find((s) => s.key === 'recruiting_company.name')?.label).toBe('Recruiting company');
   });
 
-  it('preview (v1) also carries sample_values', () => {
-    const p = caps.renderSamplePreview({ document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, render_schema_version: RTR_GENERATED_SCHEMA_V1, field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1, requestId: 'r' });
-    expect(p.sample_values).toHaveLength(8);
+  it('preview (v1) also carries sample_values', async () => {
+    const p = await caps.renderSamplePreview({ document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, render_schema_version: RTR_GENERATED_SCHEMA_V1, field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1, requestId: 'r' });
+    expect(p.sample_values).toHaveLength(15); // 8 RTR + 7 organization.* (DOC-TEMPLATE-LIB-1 T-3)
     expect(p.html).toBeUndefined();
   });
 
-  it('activation validation: a logo node without a captured logo (or vice versa) fails closed; unknown version fails closed', () => {
-    const v = (field_schema: unknown, render_schema_version = RTR_HTML_SCHEMA_V1) => () =>
+  it('activation validation: a logo node without a captured logo (or vice versa) fails closed; unknown version fails closed', async () => {
+    const v = (field_schema: unknown, render_schema_version = RTR_HTML_SCHEMA_V1) =>
       caps.validateDraftContent({ document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, field_schema, render_schema_version, requestId: 'r' });
-    expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<div data-asset="tenant.logo"></div><p>x</p>' })).toThrow(
+    await expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<div data-asset="tenant.logo"></div><p>x</p>' })).rejects.toThrow(
       expect.objectContaining({ context: expect.objectContaining({ details: { reason: 'logo_asset_mismatch' } }) }),
     );
-    expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p>x</p>', logo: LOGO })).toThrow(
+    await expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p>x</p>', logo: LOGO })).rejects.toThrow(
       expect.objectContaining({ context: expect.objectContaining({ details: { reason: 'logo_asset_mismatch' } }) }),
     );
-    expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p> </p>' })).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
-    expect(v({}, 'rtr-html-v2')).toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
-    expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p>ok <span data-field="client.name"></span></p>' })).not.toThrow();
+    await expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p> </p>' })).rejects.toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+    await expect(v({}, 'rtr-html-v2')).rejects.toThrow(expect.objectContaining({ code: 'VALIDATION_ERROR' }));
+    await expect(v({ render_schema_version: RTR_HTML_SCHEMA_V1, title: 'T', html: '<p>ok <span data-field="client.name"></span></p>' })).resolves.toBeUndefined();
   });
 
   it('withLogo attaches (logo node becomes the first child) and detaches (reference + node removed)', () => {

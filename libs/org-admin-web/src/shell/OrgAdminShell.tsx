@@ -9,7 +9,7 @@ import {
   type ReturnContext,
 } from '@aramo/fe-foundation';
 
-import { ORG_SECTIONS, orgSectionLabel } from '../sections';
+import { ORG_SECTIONS, orgSectionLabel, type OrgSection } from '../sections';
 
 // Organization administration — the single shared tenant-management surface
 // (accepted App Home handoff §7; frozen prototype 2026-10-18). Page header =
@@ -22,7 +22,8 @@ import { ORG_SECTIONS, orgSectionLabel } from '../sections';
 // this browser session and shows "Back to ATS Settings" / "Back to Sign
 // Settings" on every Organization page until used. The value is validated on
 // every read and is never authorization.
-export function OrgAdminShell() {
+// DOC-TEMPLATE-LIB-1 T-4 — `sections`: the tabs this session can open (default: all).
+export function OrgAdminShell({ sections = ORG_SECTIONS }: { readonly sections?: readonly OrgSection[] } = {}) {
   const location = useLocation();
   const [back, setBack] = useState<ReturnContext | null>(() => readRememberedReturnContext());
 
@@ -49,7 +50,7 @@ export function OrgAdminShell() {
         <p>Organization · shared by every Aramo app</p>
       </header>
       <nav className="org-tabs" aria-label="Organization sections">
-        {ORG_SECTIONS.map((s) => (
+        {sections.map((s) => (
           <NavLink
             key={s.key}
             to={`/org/${s.key}`}

@@ -40,29 +40,28 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 // Aramo Sign launch — self-service billing on esign.aramo.ai (v1/sign/billing).
 //
 //   GET  plans            sellable plans (esign consumer + `sign` capability)
-//   GET  account          plan, status, period, usage (+ Sign read OR org settings)
-//   POST checkout         start a provider checkout       (org settings authority)
-//   POST portal           open the provider billing portal (org settings authority)
+//   GET  account          plan, status, period, usage (Sign read OR billing authority)
+//   POST checkout         start a provider checkout       (billing authority)
+//   POST portal           open the provider billing portal (billing authority)
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only.
 // tenant_id and the acting user come only from the verified auth context. The
 // success / cancel / return URLs are server-built (never taken from the body):
 // no open redirect, and the browser never asserts a payment.
 
-export const BILLING_MANAGE_SCOPE = 'tenant:admin:settings';
+// ROLES-1 PR-2 (Directive v1.0 LOCKED §3.4, F-3; ADR-0035 D-3) — billing management
+// is `sign:billing:manage` ONLY, which only the organization owner (tenant_owner)
+// holds. The former `tenant:admin:settings` fallback is removed: organization
+// settings authority alone no longer manages the plan.
+export const BILLING_MANAGE_SCOPE = ESIGN_SCOPE.BILLING_MANAGE;
 
-// Sign Unified Product S-1 (directive §4.3.3) — billing administration is a Sign
-// permission (sign:billing:manage, Sign Owner). Organization settings authority
-// (tenant:admin:settings) stays an accepted authority so an organization can
-// subscribe before anyone holds a Sign role (the subscribing owner then receives
-// sign_owner). Either one suffices — never neither.
 export function canManageBilling(scopes: readonly string[]): boolean {
-  return scopes.includes(ESIGN_SCOPE.BILLING_MANAGE) || scopes.includes(BILLING_MANAGE_SCOPE);
+  return scopes.includes(BILLING_MANAGE_SCOPE);
 }
 
 function assertCanManageBilling(auth: AuthContextType, requestId: string): void {
   if (!canManageBilling(auth.scopes)) {
-    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Managing the plan needs Sign billing or organization settings authority', 403, {
+    throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Managing the plan needs the organization owner', 403, {
       requestId,
       details: { reason: 'billing_manage_scope_missing', missing_scopes: [ESIGN_SCOPE.BILLING_MANAGE] },
     });
@@ -164,7 +163,7 @@ export class EsignBillingController {
       const scopes = new Set(auth.scopes);
       const can_manage = canManageBilling(auth.scopes);
       if (!can_manage && !scopes.has(ESIGN_READ_SCOPE)) {
-        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing the plan needs Sign access or organization settings authority', 403, {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing the plan needs Sign access or billing authority', 403, {
           requestId,
           details: { reason: 'billing_read_scope_missing' },
         });

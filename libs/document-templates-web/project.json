@@ -1,0 +1,31 @@
+{
+  "name": "document-templates-web",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/document-templates-web/src",
+  "projectType": "library",
+  "tags": ["scope:shared"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/document-templates-web",
+        "main": "libs/document-templates-web/src/index.ts",
+        "tsConfig": "libs/document-templates-web/tsconfig.lib.json",
+        "assets": [{ "input": "libs/document-templates-web/src", "glob": "**/*.css", "output": "src" }]
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["libs/document-templates-web/**/*.{ts,tsx}"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/document-templates-web"
+      }
+    }
+  }
+}

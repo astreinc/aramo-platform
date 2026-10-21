@@ -10,6 +10,7 @@ import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
+import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 
 import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
 
@@ -94,8 +95,27 @@ describe('SEAM 4 — RtrOrchestratorService.composeForPair (read-only Send RTR p
     reqById = new Map();
     talentById = new Map();
 
+    // DOC-TEMPLATE-LIB-1 T-3 — resolution is selection-based: a seeded template is the
+    // tenant's tenant-wide selection (the selection-backfill shape); no Aramo default here.
+    const asTemplateRow = (t: { id: string; current_version_id: string | null; name: string }) => ({
+      ...t,
+      document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+      owner_scope: 'TENANT',
+      status: 'ACTIVE',
+      withdraw_effective_at: null,
+    });
     const templatesFake = {
-      findActiveTenantTemplateForType: async (tenant: string) => templateByTenant.get(tenant) ?? null,
+      findSelection: async (tenant: string, _type: string, client: string | null) => {
+        const t = client === null ? templateByTenant.get(tenant) : undefined;
+        return t === undefined ? null : { template_id: t.id };
+      },
+      findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
+      findTemplateByIdOwnerAware: async (_tenant: string, id: string) => {
+        const t = [...templateByTenant.values()].find((x) => x.id === id);
+        return t === undefined ? null : asTemplateRow(t);
+      },
+      findVersionByIdOwnerAware: async (_tenant: string, id: string) => versionById.get(id) ?? null,
       findVersionById: async (_tenant: string, id: string) => versionById.get(id) ?? null,
       findTemplateById: async (_tenant: string, id: string) =>
         [...templateByTenant.values()].find((t) => t.id === id) ?? null,

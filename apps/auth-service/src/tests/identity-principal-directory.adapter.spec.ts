@@ -517,8 +517,10 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
 // idempotent; never for the platform consumer, a non-owner, an ACTIVE tenant
 // or a refresh; never changes the minted session.
 describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
-  it('PROVISIONED tenant + org_admin membership (Sign-only / PERSONAL owner) → resolved AND transitionTenantStatus(→ACTIVE, system actor, owner_first_session)', async () => {
-    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'sign'] });
+  // ROLES-1 PR-2 (§3.4; Conforming Amendment 8) — activation is keyed to tenant_owner ONLY.
+  // Every new tenant's first owner holds tenant_owner + tenant_admin (§6).
+  it('PROVISIONED tenant + tenant_owner + tenant_admin membership (Sign-only / PERSONAL owner) → resolved AND transitionTenantStatus(→ACTIVE, system actor, owner_first_session)', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner', 'tenant_admin'], capabilities: ['core', 'sign'] });
     const r = await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'sign' });
     expect(r.kind).toBe('resolved');
     expect(d.findMembership).toHaveBeenCalledWith({ user_id: USER_ID, tenant_id: TENANT_ID });
@@ -534,13 +536,18 @@ describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
     expect(r).toMatchObject({ kind: 'resolved', principal_id: USER_ID, context_id: TENANT_ID, scopes: ['auth:session:read'] });
     expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
   });
+  it('PROVISIONED tenant + tenant_admin WITHOUT tenant_owner (the former org_admin N-2 role) → resolved, NO transition (ROLES-1 PR-2)', async () => {
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_admin'], capabilities: ['core', 'sign'] });
+    expect((await adapter(d).resolveSession({ ...SESSION_INPUT, consumer: 'sign' })).kind).toBe('resolved');
+    expect(d.transitionTenantStatus).not.toHaveBeenCalled();
+  });
   it('PROVISIONED tenant + NON-owner membership (recruiter) → resolved, NO transition', async () => {
     const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['recruiter'] });
     expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
     expect(d.transitionTenantStatus).not.toHaveBeenCalled();
   });
   it('ACTIVE tenant → no membership/role lookup, NO transition (idempotent fast path)', async () => {
-    const d = makeDeps({ status: 'ACTIVE', roleKeys: ['org_admin'] });
+    const d = makeDeps({ status: 'ACTIVE', roleKeys: ['tenant_owner', 'tenant_admin'] });
     expect((await adapter(d).resolveSession(SESSION_INPUT)).kind).toBe('resolved');
     expect(d.findMembership).not.toHaveBeenCalled();
     expect(d.transitionTenantStatus).not.toHaveBeenCalled();
@@ -551,21 +558,21 @@ describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
     expect(d.transitionTenantStatus).not.toHaveBeenCalled();
   });
   it('a failing activation write NEVER fails the sign-in (best-effort; tenant stays PROVISIONED, mint-gate allows it)', async () => {
-    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], transition: 'throws' });
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner', 'tenant_admin'], transition: 'throws' });
     const r = await adapter(d).resolveSession(SESSION_INPUT);
     expect(r.kind).toBe('resolved');
     expect(d.transitionTenantStatus).toHaveBeenCalledTimes(1);
   });
   it('the hook runs AFTER the gates: a denied session (not entitled / suspended / mismatched host under enforce) never activates', async () => {
-    const d1 = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'], capabilities: ['core', 'sign'] });
+    const d1 = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner', 'tenant_admin'], capabilities: ['core', 'sign'] });
     expect(await adapter(d1).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
     expect(d1.transitionTenantStatus).not.toHaveBeenCalled();
-    const d2 = makeDeps({ status: 'SUSPENDED', roleKeys: ['org_admin'] });
+    const d2 = makeDeps({ status: 'SUSPENDED', roleKeys: ['tenant_owner', 'tenant_admin'] });
     expect((await adapter(d2).resolveSession(SESSION_INPUT)).kind).toBe('denied');
     expect(d2.transitionTenantStatus).not.toHaveBeenCalled();
   });
   it('refresh (resolveScopes) never activates', async () => {
-    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'] });
+    const d = makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner', 'tenant_admin'] });
     expect((await adapter(d).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'recruiter' })).kind).toBe('resolved');
     expect(d.transitionTenantStatus).not.toHaveBeenCalled();
   });
@@ -577,7 +584,7 @@ describe('IC-4 PR-9 — owner first-session activation (J-9)', () => {
 // tenant creation, product entitlement and Sign sender eligibility stay separate.
 describe('IC-4 PR-9 — personal Sign tenant never mints an ATS credential', () => {
   it('recruiter consumer → denied consumer_not_entitled (no scopes read); esign consumer → resolved; refresh of a recruiter token → denied', async () => {
-    const personal = { capabilities: ['core', 'sign'], roleKeys: ['org_admin'] };
+    const personal = { capabilities: ['core', 'sign'], roleKeys: ['tenant_owner', 'tenant_admin'] };
     const d = makeDeps(personal);
     expect(await adapter(d).resolveSession(SESSION_INPUT)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
     expect(d.getScopesByUserAndTenant).not.toHaveBeenCalled();
@@ -611,7 +618,7 @@ describe('D-ORG — org consumer mint and refresh', () => {
   it('status gate and host binding apply to org exactly as to any tenant consumer', async () => {
     expect(await adapter(makeDeps({ status: 'SUSPENDED' })).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
     expect(await adapter(makeDeps({ status: 'CLOSED' })).resolveSession(ORG)).toEqual({ kind: 'denied', reason: 'tenant_closed' });
-    expect((await adapter(makeDeps({ status: 'PROVISIONED', roleKeys: ['org_admin'] })).resolveSession(ORG)).kind).toBe('resolved');
+    expect((await adapter(makeDeps({ status: 'PROVISIONED', roleKeys: ['tenant_owner', 'tenant_admin'] })).resolveSession(ORG)).kind).toBe('resolved');
   });
   it('refresh re-proves core for org; an org token never refreshes as another consumer', async () => {
     const ok = await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveScopes({ principal_id: USER_ID, context_id: TENANT_ID, consumer: 'org' });

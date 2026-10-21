@@ -27,6 +27,10 @@ const GENERIC =
 const TEMPLATE_NOT_READY =
   'Your workspace has not approved a Right to Represent template yet. Ask an admin to approve one in Settings → Documents.';
 
+// DOC-TEMPLATE-LIB-1 T-6 (§9) — the Aramo default was withdrawn and no own template exists.
+const TEMPLATE_SELECTION_REQUIRED =
+  'The Aramo Right to Represent template your workspace used has been withdrawn. Ask an admin to choose a template for your organization.';
+
 interface ErrLike {
   readonly code?: string;
   readonly details?: Record<string, unknown>;
@@ -37,6 +41,7 @@ export function rtrTemplateErrorMessage(e: unknown): string | null {
   const err = (e ?? {}) as ErrLike;
   const code = err.code;
   if (code === 'RTR_TEMPLATE_NOT_CONFIGURED' || code === 'RTR_TEMPLATE_CONFIGURATION_INVALID') return TEMPLATE_NOT_READY;
+  if (code === 'TEMPLATE_SELECTION_REQUIRED') return TEMPLATE_SELECTION_REQUIRED;
   if (code === 'RTR_TEMPLATE_BINDING_MISSING' || code === 'TEMPLATE_BINDING_UNSUPPORTED') {
     const key = typeof err.details?.['binding_key'] === 'string' ? (err.details['binding_key'] as string) : null;
     if (err.details?.['reason'] === 'binding_resolver_missing' || err.details?.['reason'] === 'unknown_binding') return GENERIC;

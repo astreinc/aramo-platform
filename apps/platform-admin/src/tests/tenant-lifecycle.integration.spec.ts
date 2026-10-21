@@ -32,7 +32,6 @@ import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.servi
 import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
-import { TenantDocumentTemplateProvisioningService } from '../app/platform/tenant-document-template-provisioning.service.js';
 
 import { ConfigurableAuthzResolver } from './support/configurable-authz-resolver.js';
 import { generateTestKeyPair } from './test-keys.js';
@@ -223,6 +222,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           is_active: true,
         },
       });
+      // ROLES-1 PR-2 (§6) — provisioning grants tenant_owner + tenant_admin.
+      await identityPrisma.role.create({
+        data: {
+          id: '01900000-0000-7000-8000-0000000002b0',
+          key: 'tenant_admin',
+          description: 'Tenant Admin',
+          is_active: true,
+        },
+      });
 
       module = await Test.createTestingModule({
         imports: [
@@ -240,11 +248,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             provide: TenantPolicyProvisioningService,
             useValue: { publishDefaultLifecyclePackage: async () => undefined },
-          },
-          // RTR-TEMPLATE-1 — stub the step-5 RTR template-copy dep (no provisioning here).
-          {
-            provide: TenantDocumentTemplateProvisioningService,
-            useValue: { publishDefaultRtrTemplate: async () => undefined },
           },
           CognitoAdminService,
           // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.

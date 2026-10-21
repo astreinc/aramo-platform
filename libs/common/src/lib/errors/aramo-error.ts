@@ -105,6 +105,9 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TEMPLATE_DRAFT_ALREADY_EXISTS: 409,
   TEMPLATE_PREVIEW_REQUIRED: 409,
   TEMPLATE_BINDING_UNSUPPORTED: 422,
+  // DOC-TEMPLATE-LIB-1 T-6 (§9) — withdrawn Aramo default with no tenant fallback / lifecycle conflict.
+  TEMPLATE_SELECTION_REQUIRED: 409,
+  TEMPLATE_PLATFORM_DEFAULT_CONFLICT: 409,
   DOCUMENT_REQUIREMENT_NOT_FOUND: 404,
   DOCUMENT_REQUIREMENT_ALREADY_SATISFIED: 409,
   DOCUMENT_RENDER_FAILED: 422,
@@ -128,10 +131,14 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_STORAGE_QUOTA_EXCEEDED: 409,
   // Sign Unified Product S-1 — the organization must keep at least one Sign Owner.
   ESIGN_LAST_OWNER: 409,
+  // ROLES-1 PR-1 (§4.1) — the tenant must keep at least one active tenant_owner.
+  TENANT_LAST_OWNER: 409,
   // Sign Unified Product S-4 — the installation was revoked by a Sign admin.
   ESIGN_INSTALLATION_REVOKED: 409,
   // Sign Unified Product S-5 — SIGN_WEBHOOK_SECRET_KEY is not configured.
   ESIGN_WEBHOOKS_UNAVAILABLE: 503,
+  // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (sign.templates).
+  ESIGN_FEATURE_NOT_AVAILABLE: 403,
   SIGNER_NOT_FOUND: 404,
   SIGNER_NOT_YET_ELIGIBLE: 409,
   SIGNING_SESSION_INVALID: 401,
