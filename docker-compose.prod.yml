@@ -510,6 +510,11 @@ services:
       # A1: signup terms come from the versioned legal registry in code (nothing
       # approved yet ⇒ no terms are offered); there is no env override.
       - SIGN_PUBLIC_SIGNUP_ENABLED
+      # Sign Signup Amendment A1 §2.3 — address autocomplete on the organization-
+      # details step (Geoapify, proxied server-side; the key never reaches the
+      # browser). Unset ⇒ manual address entry only.
+      - SIGN_ADDRESS_PROVIDER
+      - SIGN_ADDRESS_PROVIDER_KEY
       - ARAMO_SIGN_BASE_URL
       - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER

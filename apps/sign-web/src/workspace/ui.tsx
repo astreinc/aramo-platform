@@ -48,7 +48,10 @@ export function Check(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'type'>
   return <Checkbox unstyled {...props} />;
 }
 
-export function Field({ label, help, children, htmlFor }: { label: string; help?: ReactNode; children: ReactNode; htmlFor?: string }) {
+/** Id of a Field's inline error message, for the control's aria-describedby. */
+export const fieldErrorId = (htmlFor: string) => `${htmlFor}-error`;
+
+export function Field({ label, help, children, htmlFor, error }: { label: string; help?: ReactNode; children: ReactNode; htmlFor?: string; error?: string | undefined }) {
   return (
     <div className="sg-field">
       <label className="sg-label" htmlFor={htmlFor}>
@@ -56,6 +59,11 @@ export function Field({ label, help, children, htmlFor }: { label: string; help?
       </label>
       {children}
       {help !== undefined ? <div className="sg-help">{help}</div> : null}
+      {error !== undefined ? (
+        <div className="sg-field-error" id={htmlFor !== undefined ? fieldErrorId(htmlFor) : undefined}>
+          {error}
+        </div>
+      ) : null}
     </div>
   );
 }

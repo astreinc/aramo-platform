@@ -7,12 +7,15 @@ import {
   IdentityProviderPolicyService,
   IdentityRepository,
   IdentityService,
+  OrganizationRegionService,
   SignupRequestRepository,
   TenantRepository,
   TenantService,
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   normalizeEmail,
+  validateUsOrganizationDetails,
+  type UsOrganizationDetails,
 } from '@aramo/identity';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import {
@@ -143,6 +146,9 @@ export class SignSignupService {
     private readonly tenantSvc: TenantService,
     private readonly entitlements: EntitlementRepository,
     private readonly idpPolicy: IdentityProviderPolicyService,
+    // Sign Signup Amendment A1 (LOCKED) — the US billing-region lock and the
+    // signer's authority attestation, written in the provisioning saga.
+    private readonly region: OrganizationRegionService,
     @Inject(MAILER_PORT) private readonly mailer: MailerPort,
     private readonly budget: SignupBudget,
     // A1 — signup terms evidence (versioned registry; nothing approved yet).
@@ -213,12 +219,18 @@ export class SignSignupService {
   }
 
   /** What the verify page shows before the owner confirms (no state change). */
-  async preview(token: unknown, requestId: string, now: Date = new Date()): Promise<{ email: string; organization_name: string; status: string }> {
+  async preview(token: unknown, requestId: string, now: Date = new Date()): Promise<{ email: string; organization_name: string; display_name: string | null; status: string }> {
     const row = await this.lookup(token, requestId, now);
-    return { email: row.email, organization_name: row.organization_name, status: row.status === 'PROVISIONED' ? 'PROVISIONED' : 'READY' };
+    return { email: row.email, organization_name: row.organization_name, display_name: row.display_name, status: row.status === 'PROVISIONED' ? 'PROVISIONED' : 'READY' };
   }
 
-  async complete(input: { token?: unknown; organization_name?: unknown; ip: string; request_id: string; now?: Date }): Promise<CompleteResult> {
+  /** A1 §2.3 — the verify page may only use address search with a live, unprovisioned link. */
+  async assertLiveLink(token: unknown, requestId: string, now: Date = new Date()): Promise<void> {
+    const row = await this.lookup(token, requestId, now);
+    if (row.status === 'PROVISIONED') throw invalidLink(requestId);
+  }
+
+  async complete(input: { token?: unknown; organization_name?: unknown; organization?: unknown; ip: string; request_id: string; now?: Date }): Promise<CompleteResult> {
     const now = input.now ?? new Date();
     if (!this.budget.allow(`ip:${input.ip}`, now.getTime())) throw invalidLink(input.request_id);
     const row = await this.lookup(input.token, input.request_id, now);
@@ -226,6 +238,16 @@ export class SignSignupService {
     const sign_in = federatedSignInLinks();
     if (row.status === 'PROVISIONED') {
       return { status: 'PROVISIONED', email: row.email, organization_name: row.organization_name, sign_in_url: signInUrl, sign_in };
+    }
+    // Sign Signup Amendment A1 (LOCKED) §2 — the organization details and the
+    // signer's authority attestation are required, and validated (US only:
+    // 50 states + DC), BEFORE anything is claimed or created.
+    const organization = validateUsOrganizationDetails(input.organization, input.request_id);
+    if ((input.organization as { authority_attested?: unknown }).authority_attested !== true) {
+      throw new AramoError('VALIDATION_ERROR', 'Confirm that you are authorized to act for the organization', 400, {
+        requestId: input.request_id,
+        details: { reason: 'authority_attestation_required', field: 'authority_attested' },
+      });
     }
     const rename = input.organization_name === undefined ? null : cleanText(input.organization_name, 100);
     if (input.organization_name !== undefined && (rename === null || rename.length < 2)) {
@@ -242,6 +264,10 @@ export class SignSignupService {
         owner_email: row.email,
         owner_display_name: row.display_name,
         request_id: input.request_id,
+        organization,
+        signup_request_id: row.id,
+        ip: input.ip,
+        at: now,
       });
       await this.requests.markProvisioned(row.id, res.tenant_id, res.owner_user_id, new Date());
       await this.recordSignupTerms(row, res.tenant_id, res.owner_user_id);
@@ -257,6 +283,10 @@ export class SignSignupService {
         // owned by this address as its only membership).
         const adopted = await this.adopt(row, organization_name);
         if (adopted !== null) {
+          // The crashed attempt wrote the profile in the tenant insert; make sure
+          // its lock and attestation exist too (both idempotent).
+          await this.region.lockUs(adopted.tenant_id);
+          await this.region.recordAttestation(this.attestationFor(adopted.tenant_id, row.id, row.email, organization, input.ip, now));
           await this.requests.markProvisioned(row.id, adopted.tenant_id, adopted.user_id, new Date());
           await this.recordSignupTerms(row, adopted.tenant_id, adopted.user_id);
           return { status: 'PROVISIONED', email: row.email, organization_name, sign_in_url: signInUrl, sign_in };
@@ -289,7 +319,16 @@ export class SignSignupService {
    * A failure after the tenant exists soft-disables it (inert), as the
    * platform saga does; the request is marked FAILED and can be retried.
    */
-  private async provisionFederatedOwner(args: { name: string; owner_email: string; owner_display_name: string | null; request_id: string }): Promise<{ tenant_id: string; owner_user_id: string }> {
+  private async provisionFederatedOwner(args: {
+    name: string;
+    owner_email: string;
+    owner_display_name: string | null;
+    request_id: string;
+    organization: UsOrganizationDetails;
+    signup_request_id: string;
+    ip: string;
+    at: Date;
+  }): Promise<{ tenant_id: string; owner_user_id: string }> {
     // Pre-checks before any write (same refusals as the platform saga).
     if ((await this.tenantSvc.findByNameCaseInsensitive(args.name)) !== null) {
       throw new AramoError('TENANT_ALREADY_EXISTS', 'A tenant with this name already exists', 409, { requestId: args.request_id });
@@ -308,6 +347,8 @@ export class SignSignupService {
       kind: 'BUSINESS',
       audit_source: SIGN_SIGNUP_AUDIT_SOURCE,
       actor_type: 'system',
+      // A1 §2.2 — the organization profile, in the same insert as the tenant.
+      profile: profileFields(args.organization),
     });
     const disable = async (reason: string) => {
       await this.tenantSvc
@@ -328,11 +369,27 @@ export class SignSignupService {
         // ROLES-1 PR-1/PR-2 (§4.2) — a system provisioning path may grant tenant_owner.
         owner_role_authority: 'system',
       });
+      // A1 §2.4/§2.5 — hold the profile to the US; record the signer's attestation.
+      await this.region.lockUs(tenant.id);
+      await this.region.recordAttestation(this.attestationFor(tenant.id, args.signup_request_id, args.owner_email, args.organization, args.ip, args.at));
       return { tenant_id: tenant.id, owner_user_id: owner.user.id };
     } catch (err) {
       await disable('sign_signup_provisioning_failed');
       throw err;
     }
+  }
+
+  private attestationFor(tenant_id: string, signup_request_id: string, email: string, o: UsOrganizationDetails, ip: string, at: Date) {
+    return {
+      tenant_id,
+      signup_request_id,
+      signer_email: email,
+      signer_name: o.primary_contact_name,
+      signer_title: o.signer_title,
+      organization_legal_name: o.legal_name,
+      ip: ip === 'unknown' ? null : ip,
+      attested_at: at,
+    };
   }
 
   private async sendReady(to: string, organization_name: string, links: { microsoft: string; google: string }): Promise<void> {
@@ -405,4 +462,22 @@ export class SignSignupService {
       this.log.error(`signup email failed: ${(err as Error).message}`);
     }
   }
+}
+
+/** A1 §2.2 — the validated details as tenant profile columns. */
+export function profileFields(o: UsOrganizationDetails): Record<string, string | null> {
+  return {
+    legal_name: o.legal_name,
+    address_line1: o.address_line1,
+    address_line2: o.address_line2,
+    city: o.city,
+    state_province: o.state_province,
+    postal_code: o.postal_code,
+    country_code: o.country_code,
+    primary_contact_name: o.primary_contact_name,
+    primary_contact_email: o.primary_contact_email,
+    primary_contact_phone: o.primary_contact_phone,
+    tax_id: o.tax_id,
+    registration_number: o.registration_number,
+  };
 }

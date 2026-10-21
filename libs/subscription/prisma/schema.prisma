@@ -188,6 +188,38 @@ model BillingEvent {
   @@schema("subscription")
 }
 
+// Sign Signup Amendment A1 §2.6 — the provider billing account Aramo created from
+// the organization profile (one per tenant). CHECK provider: STRIPE.
+model TenantBillingAccount {
+  tenant_id   String   @id @db.Uuid
+  provider    String
+  account_ref String
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([provider, account_ref])
+  @@schema("subscription")
+}
+
+// Sign Signup Amendment A1 §2.6 — activation guard: a subscription whose provider
+// billing country is not US is held here for reconciliation. One OPEN flag per
+// (provider, subscription_ref, reason) — a partial unique index in the migration.
+// CHECK reason: billing_country_not_supported.
+model BillingReconciliationFlag {
+  id               String    @id @db.Uuid
+  tenant_id        String    @db.Uuid
+  provider         String
+  subscription_ref String
+  intent_id        String?   @db.Uuid
+  reason           String
+  account_country  String?
+  detected_at      DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at      DateTime? @db.Timestamptz(6)
+
+  @@index([tenant_id])
+  @@schema("subscription")
+}
+
 // A1 — non-periodic plan limits (storage bytes, template count).
 model PlanCapacity {
   plan_id        String  @db.Uuid

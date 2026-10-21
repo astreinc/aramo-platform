@@ -106,6 +106,14 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
     if (e.reason === 'TERMS_NOT_APPROVED') {
       return new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: e.reason } });
     }
+    if (e.reason === 'ORGANIZATION_PROFILE_REQUIRED') {
+      // Sign Signup A1 §2.6 — checkout needs an eligible (US) organization profile.
+      const reason = e.message === 'organization_country_not_supported' ? 'organization_country_not_supported' : 'organization_profile_incomplete';
+      return new AramoError('ESIGN_BILLING_CONFLICT', 'Complete your organization’s legal name and US address in Settings before subscribing', 409, {
+        requestId,
+        details: { reason },
+      });
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }

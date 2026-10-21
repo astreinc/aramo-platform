@@ -14,6 +14,8 @@ import { BillingRefusedError, SubscriptionLifecycleService } from '../lib/billin
 import { AramoSignStandardBusinessPlanKey, openDevelopmentSubscription } from '../lib/development-subscription.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { FakeOrganizationBillingProfile, US_PROFILE } from './fixtures/organization-billing-profile.fake.js';
+
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
 // owner-attributed activation, replacement of an operator subscription, status +
 // grace, ended-never-reopens, tenant-mismatch refusal, event idempotency, failed
@@ -26,6 +28,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
   '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
+  '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'sign.envelopes';
@@ -43,8 +46,14 @@ class FakeBilling implements BillingProviderPort {
   subs = new Map<string, ProviderSubscriptionState>();
   checkouts: { intent_id: string; tenant_id: string; account_ref: string | null }[] = [];
   failRetrieve = false;
+  accounts: { account_ref: string | null; details: unknown; result: string }[] = [];
   isConfigured() {
     return this.configured;
+  }
+  async upsertBillingAccount(account_ref: string | null, details: { tenant_id: string }) {
+    const result = account_ref ?? `cus_${details.tenant_id}`;
+    this.accounts.push({ account_ref, details, result });
+    return result;
   }
   async createCheckoutSession(req: { intent_id: string; tenant_id: string; account_ref: string | null }) {
     this.checkouts.push(req);
@@ -68,7 +77,7 @@ class FakeBilling implements BillingProviderPort {
     const s: ProviderSubscriptionState = {
       provider: 'STRIPE',
       subscription_ref: `sub_${c.intent_id}`,
-      account_ref: `cus_${c.tenant_id}`,
+      account_ref: c.account_ref ?? `cus_${c.tenant_id}`,
       provider_status: status,
       current_period_start: new Date('2026-10-18T00:00:00Z'),
       current_period_end: new Date('2026-11-18T00:00:00Z'),
@@ -76,6 +85,7 @@ class FakeBilling implements BillingProviderPort {
       price_ref: 'price_business',
       tenant_id: c.tenant_id,
       intent_id: c.intent_id,
+      account_country: 'US',
       ...overrides,
     };
     this.subs.set(s.subscription_ref, s);
@@ -90,6 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   let billing: FakeBilling;
   let svc: SubscriptionLifecycleService;
   let allowance: AllowanceService;
+  let orgProfile: FakeOrganizationBillingProfile;
   const env = { ...process.env };
 
   beforeAll(async () => {
@@ -115,7 +126,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     t = tenant();
     billing = new FakeBilling();
     allowance = new AllowanceService(prisma);
-    svc = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
+    orgProfile = new FakeOrganizationBillingProfile();
+    svc = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, undefined, orgProfile);
   });
 
   const checkout = (tenant_id = t, user_id = 'owner-1') =>
@@ -266,5 +278,129 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     billing.failRetrieve = true;
     const down = await svc.reconcile(AT);
     expect(down.failed).toBe(down.checked);
+  });
+  // ── Sign Signup Amendment A1 (Organization Details, US only) §2.6 ──────────
+  const reasonOf = async (p: Promise<unknown>) => p.then(() => 'OK', (e: BillingRefusedError) => `${e.reason}:${e.message}`);
+  const flags = async (tenant_id: string) =>
+    (await pg.query('SELECT subscription_ref, reason, account_country, intent_id, resolved_at FROM subscription."BillingReconciliationFlag" WHERE tenant_id = $1 ORDER BY detected_at', [tenant_id])).rows;
+  const subRows = async (tenant_id: string) =>
+    (await pg.query('SELECT status, ended_at FROM subscription."TenantSubscription" WHERE tenant_id = $1', [tenant_id])).rows;
+
+  it('A1: checkout is refused without an eligible organization profile (both reasons; unbound port fails closed)', async () => {
+    orgProfile.refused = 'organization_country_not_supported';
+    expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_country_not_supported');
+    orgProfile.refused = 'organization_profile_incomplete';
+    expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete');
+    const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
+    expect(await reasonOf(unbound.startCheckout({ tenant_id: t, user_id: 'o', user_email: 'e', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'x', cancel_url: 'y' }))).toBe(
+      'ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete',
+    );
+    // Nothing was started, locked or created.
+    expect(billing.checkouts).toHaveLength(0);
+    expect(billing.accounts).toHaveLength(0);
+    expect(orgProfile.locked).toEqual([]);
+    expect((await pg.query('SELECT count(*)::int AS n FROM subscription."CheckoutIntent" WHERE tenant_id = $1', [t])).rows[0].n).toBe(0);
+    expect((await pg.query('SELECT count(*)::int AS n FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t])).rows[0].n).toBe(0);
+  });
+
+  it('A1: checkout locks the region, creates the billing account from the profile, persists the mapping and runs on it', async () => {
+    await checkout();
+    expect(orgProfile.locked).toEqual([t]);
+    expect(billing.accounts).toEqual([{ account_ref: null, details: { tenant_id: t, legal_name: US_PROFILE.legal_name, billing_email: US_PROFILE.billing_email, address: US_PROFILE.address }, result: `cus_${t}` }]);
+    expect(billing.checkouts[0]!.account_ref).toBe(`cus_${t}`);
+    const map = await pg.query('SELECT provider, account_ref FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t]);
+    expect(map.rows).toEqual([{ provider: 'STRIPE', account_ref: `cus_${t}` }]);
+  });
+
+  it('A1: a second checkout reuses the mapped billing account and updates its details', async () => {
+    await checkout();
+    orgProfile.profile = { ...US_PROFILE, legal_name: 'Acme Renamed LLC', address: { ...US_PROFILE.address, line2: 'Suite 9' } };
+    await checkout();
+    expect(billing.accounts[1]).toMatchObject({ account_ref: `cus_${t}`, details: { legal_name: 'Acme Renamed LLC', address: { line2: 'Suite 9' } } });
+    expect(billing.checkouts[1]!.account_ref).toBe(`cus_${t}`);
+    expect((await pg.query('SELECT count(*)::int AS n FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t])).rows[0].n).toBe(1);
+  });
+
+  it('A1: a pre-A1 subscription account is reused when no mapping exists yet', async () => {
+    await checkout();
+    await svc.syncSubscription(billing.complete('active').subscription_ref, AT);
+    await pg.query('DELETE FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t]);
+    // The provider subscription ends; a resubscription starts a new checkout.
+    await svc.syncSubscription(billing.complete('canceled').subscription_ref, AT);
+    await checkout();
+    expect(billing.accounts[1]!.account_ref).toBe(`cus_${t}`);
+  });
+
+  it('A1 guard: a non-US billing country opens nothing; the event is IGNORED evidence; one flag across repeated syncs', async () => {
+    await checkout();
+    const sub = billing.complete('active', { account_country: 'CA' });
+    const res = await svc.handleEvent(event('evt_g1', sub.subscription_ref), AT);
+    expect(res).toEqual({ outcome: 'IGNORED', detail: 'billing_country_not_supported: held for reconciliation', tenant_id: t });
+    expect('activated_owner_user_id' in res).toBe(false);
+    await svc.handleEvent(event('evt_g2', sub.subscription_ref), AT);
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toEqual([]);
+    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    const ev = await pg.query('SELECT outcome, detail FROM subscription."BillingEvent" WHERE tenant_id = $1 ORDER BY received_at', [t]);
+    expect(ev.rows).toEqual([
+      { outcome: 'IGNORED', detail: 'billing_country_not_supported: held for reconciliation' },
+      { outcome: 'IGNORED', detail: 'billing_country_not_supported: held for reconciliation' },
+    ]);
+    const f = await flags(t);
+    expect(f).toHaveLength(1);
+    expect(f[0]).toMatchObject({ subscription_ref: sub.subscription_ref, reason: 'billing_country_not_supported', account_country: 'CA', intent_id: billing.checkouts[0]!.intent_id, resolved_at: null });
+  });
+
+  it('A1 guard: a missing billing country fails closed', async () => {
+    await checkout();
+    const sub = billing.complete('active', { account_country: null });
+    expect((await svc.syncSubscription(sub.subscription_ref, AT)).outcome).toBe('IGNORED');
+    expect(await subRows(t)).toEqual([]);
+    expect(await flags(t)).toMatchObject([{ account_country: null, resolved_at: null }]);
+  });
+
+  it('A1 guard: a later US sync opens the subscription, activates the owner and resolves the flag', async () => {
+    await checkout();
+    const sub = billing.complete('active', { account_country: 'GB' });
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'us' });
+    const res = await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(res).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
+    expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
+    const f = await flags(t);
+    expect(f).toHaveLength(1);
+    expect(f[0].resolved_at).toEqual(AT);
+  });
+
+  it('A1 guard: an existing subscription is never (re)activated while non-US; cancellation still applies', async () => {
+    await checkout();
+    // Opened INCOMPLETE under a US country (no sending), then the country changes.
+    const sub = billing.complete('incomplete');
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE' }]);
+    billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active', account_country: 'MX' });
+    const held = await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(held).toMatchObject({ outcome: 'IGNORED', detail: expect.stringContaining('billing_country_not_supported: held for reconciliation') });
+    expect('activated_owner_user_id' in held).toBe(false);
+    expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE', ended_at: null }]);
+    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await flags(t)).toHaveLength(1);
+    billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled', account_country: 'MX' });
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect(await subRows(t)).toMatchObject([{ status: 'CANCELED', ended_at: AT }]);
+  });
+
+  it('A1 guard: an active subscription whose country turns non-US is kept as is and flagged; US again resolves', async () => {
+    await checkout();
+    const sub = billing.complete('active');
+    await svc.syncSubscription(sub.subscription_ref, AT);
+    billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'CA' });
+    expect((await svc.syncSubscription(sub.subscription_ref, AT)).outcome).toBe('IGNORED');
+    expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
+    expect(await flags(t)).toMatchObject([{ resolved_at: null }]);
+    billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'US' });
+    expect((await svc.syncSubscription(sub.subscription_ref, AT))).toMatchObject({ outcome: 'APPLIED', detail: 'ACTIVE -> ACTIVE' });
+    expect((await flags(t))[0].resolved_at).toEqual(AT);
   });
 });

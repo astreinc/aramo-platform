@@ -21,7 +21,7 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { PLAN_ELIGIBILITY_PORT, SubscriptionModule } from '@aramo/subscription';
+import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, SubscriptionModule } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -50,6 +50,7 @@ import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.w
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
+import { OrganizationBillingProfileAdapter } from './billing/organization-billing-profile.adapter.js';
 import { IntegrationAdminController } from './integrations/integration-admin.controller.js';
 import { RecipientInboxController } from './inbox/recipient-inbox.controller.js';
 import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
@@ -78,7 +79,11 @@ import { SenderTemplatesService } from './sender/sender-templates.service.js';
     // A1 — Standard Professional eligibility reads the live ATS entitlement.
     SubscriptionModule.forRoot({
       imports: [EntitlementModule, IdentityCoreModule],
-      providers: [{ provide: PLAN_ELIGIBILITY_PORT, useClass: AtsPlanEligibilityAdapter }],
+      // Sign Signup A1 §2.6 — checkout reads the (US) organization billing profile.
+      providers: [
+        { provide: PLAN_ELIGIBILITY_PORT, useClass: AtsPlanEligibilityAdapter },
+        { provide: ORGANIZATION_BILLING_PROFILE_PORT, useClass: OrganizationBillingProfileAdapter },
+      ],
     }),
     // PX-V1 §8 (D-2) — the authenticated sender zone (v1/sign/sender/*). The
     // shared JwtAuthGuard resolves effective scopes SERVER-SIDE through the

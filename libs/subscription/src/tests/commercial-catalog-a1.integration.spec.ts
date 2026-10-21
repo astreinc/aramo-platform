@@ -16,6 +16,8 @@ import { openDevelopmentSubscription } from '../lib/development-subscription.js'
 import { LEGAL_DOCUMENTS, type LegalDocumentVersion } from '../lib/legal/legal-documents.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
+
 // Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1 — on real Postgres 17:
 // the canonical catalog exactly as approved; unlimited signing is explicit and
 // still metered; Standard Professional is ATS-eligibility-bound and a lapse is
@@ -29,6 +31,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
   '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
+  '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'sign.envelopes';
@@ -50,6 +53,9 @@ class FakeBilling implements BillingProviderPort {
   }
   mode(): 'test' | 'live' {
     return this.live ? 'live' : 'test';
+  }
+  async upsertBillingAccount(account_ref: string | null, details: { tenant_id: string }) {
+    return account_ref ?? `acct_${details.tenant_id}`;
   }
   async createCheckoutSession(req: { intent_id: string; tenant_id: string }) {
     this.last = req;
@@ -79,6 +85,7 @@ class FakeBilling implements BillingProviderPort {
       price_ref,
       tenant_id: c.tenant_id,
       intent_id: c.intent_id,
+      account_country: 'US',
       ...over,
     };
     this.subs.set(s.subscription_ref, s);
@@ -96,7 +103,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   const atsTenants = new Set<string>();
   const eligibility: PlanEligibilityPort = { isEligible: async (t) => atsTenants.has(t) };
   const env = { ...process.env };
-  const svc = (legal?: readonly LegalDocumentVersion[]) => new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, legal);
+  const orgProfile = new FakeOrganizationBillingProfile();
+  const svc = (legal?: readonly LegalDocumentVersion[]) => new SubscriptionLifecycleService(prisma, allowance, billing, capacity, eligibility, legal, orgProfile);
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();

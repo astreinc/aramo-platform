@@ -36,6 +36,7 @@ const billing: BillingProviderPort = {
   provider: 'STRIPE',
   isConfigured: () => true,
   mode: () => 'test',
+  upsertBillingAccount: async () => 'acct',
   createCheckoutSession: async () => ({ session_ref: 'cs', url: 'https://x' }),
   createPortalSession: async () => ({ url: 'https://x' }),
   retrieveSubscription: async () => {

@@ -437,6 +437,35 @@ model SignupRequest {
 // provider pin (Tenant.identity_provider) is ENFORCED at sign-in. Only new Sign
 // Business signup tenants have one; the first authorized owner federation sets
 // the pin once. Existing tenants: no row (fail-open hint, Subdomain-Identity-B).
+// Sign Signup Amendment A1 — the signer's authority ATTESTATION (not verified
+// authority, not a legal acceptance). Append-only; one per signup request.
+model OrganizationAuthorityAttestation {
+  id                      String   @id @db.Uuid
+  tenant_id               String   @db.Uuid
+  signup_request_id       String?  @unique @db.Uuid
+  signer_email            String
+  signer_name             String
+  signer_title            String
+  organization_legal_name String
+  statement_version       String
+  statement_sha256        String
+  ip                      String?
+  attested_at             DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id])
+  @@schema("identity")
+}
+
+// Sign Signup Amendment A1 — the tenant's profile is held to this region (V1:
+// 'US') for self-service Sign billing.
+model TenantBillingRegionPolicy {
+  tenant_id  String   @id @db.Uuid
+  region     String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("identity")
+}
+
 model TenantIdentityProviderPolicy {
   tenant_id         String    @id @db.Uuid
   created_at        DateTime  @default(now()) @db.Timestamptz(6)

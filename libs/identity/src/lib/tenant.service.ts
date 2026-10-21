@@ -16,6 +16,7 @@ import {
   TENANT_STATUSES,
   type TenantStatus,
 } from './util/tenant-lifecycle.js';
+import { PROFILE_FIELDS, type ProfileField } from './tenant-profile/tenant-profile.view.js';
 
 // TenantService — at AUTHZ-1, this surface was read-only
 // (getTenantsByUser) with the auth-service SessionOrchestrator the only
@@ -229,6 +230,9 @@ export class TenantService {
     // existing caller's payload byte-identical.
     audit_source?: string;
     actor_type?: 'user' | 'system';
+    // Sign Signup Amendment A1 — organization profile values (PROFILE_FIELDS keys
+    // only) written in the same insert as the tenant. Omitted → unchanged path.
+    profile?: Readonly<Partial<Record<ProfileField, string | null>>>;
   }): Promise<TenantDto> {
     const kindInput: string = args.kind ?? DEFAULT_TENANT_KIND;
     if (!isTenantKind(kindInput)) {
@@ -285,12 +289,19 @@ export class TenantService {
         : deriveSlugOrThrow(args.slug, 'provision');
 
     const tenant_id = uuidv7();
+    const profile =
+      args.profile === undefined
+        ? undefined
+        : Object.fromEntries(
+            Object.entries(args.profile).filter(([k]) => (PROFILE_FIELDS as readonly string[]).includes(k)),
+          ) as Record<string, string | null>;
     const tenant = await this.tenantRepo.createTenant({
       id: tenant_id,
       name: args.name,
       allowed_domain,
       slug,
       kind,
+      ...(profile === undefined ? {} : { profile }),
     });
     await this.audit.writeEvent({
       event_type: 'identity.tenant.created',

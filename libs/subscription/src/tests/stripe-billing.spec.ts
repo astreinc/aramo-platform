@@ -89,7 +89,7 @@ describe('StripeBillingProvider (local stand-in)', () => {
         res.setHeader('content-type', 'application/json');
         if (req.url === '/v1/checkout/sessions') return res.end(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/cs_1' }));
         if (req.url === '/v1/billing_portal/sessions') return res.end(JSON.stringify({ url: 'https://billing.stripe.test/p' }));
-        if (req.url === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', status: 'past_due', current_period_start: 1, current_period_end: 2, items: { data: [] } }));
+        if (req.url?.split('?')[0] === '/v1/subscriptions/sub_1') return res.end(JSON.stringify({ id: 'sub_1', status: 'past_due', current_period_start: 1, current_period_end: 2, items: { data: [] } }));
         res.statusCode = 404;
         res.end(JSON.stringify({ error: { message: 'No such subscription' } }));
       });

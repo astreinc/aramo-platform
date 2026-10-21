@@ -563,6 +563,67 @@ body {
   font-size: 12px;
   color: var(--faint);
 }
+.sg-field-error {
+  font-size: 12px;
+  color: var(--bad);
+}
+.sg-input[aria-invalid='true'],
+.sg-select[aria-invalid='true'] {
+  border-color: var(--bad);
+}
+.sg-row2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.sg-notice {
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.sg-combo {
+  position: relative;
+}
+.sg-combo__pop {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+.sg-combo__pop[hidden] {
+  display: none;
+}
+.sg-combo__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.sg-combo__opt {
+  padding: 8px 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sg-combo__opt--active,
+.sg-combo__opt:hover {
+  background: var(--accent-soft);
+}
+.sg-combo__attr {
+  font-size: 11px;
+  padding: 6px 11px;
+  border-top: 1px solid var(--line);
+  color: var(--faint);
+}
 .sg-error {
   font-size: 13px;
   color: var(--bad);

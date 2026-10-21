@@ -171,15 +171,92 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [email, organization_name, status]
+                required: [email, organization_name, display_name, status]
                 properties:
                   email:
                     type: string
                   organization_name:
                     type: string
+                  display_name:
+                    type: [string, 'null']
+                    description: The name given at start (prefills the signer's name; Sign Signup A1).
                   status:
                     type: string
                     enum: [READY, PROVISIONED]
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/address/suggest:
+    post:
+      operationId: suggestSignSignupAddress
+      tags: [Sign Self-Service Signup]
+      summary: Search United States addresses for the organization-details step.
+      description: |
+        Sign Signup Amendment A1 §2.3. Proxied to the configured address provider
+        (Geoapify); the provider key never reaches the browser. Requires a live,
+        unprovisioned signup link (404 otherwise, and while signup is off). Fails
+        open: an unconfigured, slow, rate-limited or failing provider answers
+        `available: false` and the page keeps working as plain fields. Results are
+        limited to the 50 states + DC; a suggestion is not proof of an address —
+        `complete` validates everything again.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, text]
+              properties:
+                token:
+                  type: string
+                text:
+                  type: string
+                  maxLength: 200
+      responses:
+        '200':
+          description: Suggestions (possibly none).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [available, suggestions, attribution]
+                properties:
+                  available:
+                    type: boolean
+                  suggestions:
+                    type: array
+                    maxItems: 5
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [label, address_line1, address_line2, city, state_province, postal_code]
+                      properties:
+                        label:
+                          type: string
+                        address_line1:
+                          type: string
+                        address_line2:
+                          type: [string, 'null']
+                        city:
+                          type: string
+                        state_province:
+                          type: string
+                          description: USPS code (50 states + DC).
+                        postal_code:
+                          type: string
+                          description: 5-digit ZIP or ZIP+4; empty when the provider had none.
+                  attribution:
+                    oneOf:
+                      - type: 'null'
+                      - type: object
+                        required: [label, url]
+                        properties:
+                          label:
+                            type: string
+                          url:
+                            type: string
+                            format: uri
         '404':
           $ref: '#/components/responses/SignupNotFound'
   /v1/signup/sign/complete:
@@ -191,6 +268,13 @@ paths:
         Idempotent per link: a repeat answers the same; a concurrent repeat
         answers PROVISIONING. A taken organization name is a 409 the owner
         resolves by sending another organization_name with the same link.
+
+        Sign Signup Amendment A1 (LOCKED): `organization` (the legal entity, its
+        United States registered address — 50 states + DC — the billing contact,
+        and the signer's authority attestation) is required before anything is
+        created; it is not needed for an already-provisioned link. The
+        attestation is the signer's own statement, not verified authority, and
+        is never recorded as acceptance of a legal document.
       security: []
       requestBody:
         required: true
@@ -206,6 +290,8 @@ paths:
                   type: string
                   minLength: 2
                   maxLength: 100
+                organization:
+                  $ref: '#/components/schemas/SignSignupOrganization'
       responses:
         '200':
           description: Provisioned (or provisioning in a concurrent request).
@@ -241,7 +327,10 @@ paths:
                         type: string
                         format: uri
         '400':
-          description: '`VALIDATION_ERROR` — an empty organization_name.'
+          description: |
+            `VALIDATION_ERROR` — an empty organization_name; details.reason
+            `organization_details_invalid` (details.field), `organization_country_not_supported`
+            (outside the 50 states + DC) or `authority_attestation_required`.
           content:
             application/json:
               schema:
@@ -2264,6 +2353,55 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
   schemas:
+    SignSignupOrganization:
+      type: object
+      description: Sign Signup Amendment A1 (LOCKED) — the organization details collected after email confirmation (United States only).
+      required: [legal_name, address_line1, city, state_province, postal_code, primary_contact_email, primary_contact_name, signer_title, authority_attested]
+      properties:
+        legal_name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        address_line1:
+          type: string
+          maxLength: 200
+        address_line2:
+          type: [string, 'null']
+          maxLength: 200
+        city:
+          type: string
+          maxLength: 100
+        state_province:
+          type: string
+          description: USPS code — one of the 50 states or DC (territories and military addresses are refused).
+        postal_code:
+          type: string
+          pattern: '^\d{5}(-\d{4})?$'
+        country_code:
+          type: string
+          enum: [US]
+          description: Optional; anything other than US is refused.
+        primary_contact_email:
+          type: string
+          format: email
+        primary_contact_name:
+          type: string
+          maxLength: 100
+        signer_title:
+          type: string
+          maxLength: 100
+        primary_contact_phone:
+          type: [string, 'null']
+          description: Optional US phone; stored as E.164.
+        tax_id:
+          type: [string, 'null']
+          description: Optional EIN (12-3456789).
+        registration_number:
+          type: [string, 'null']
+          maxLength: 50
+        authority_attested:
+          type: boolean
+          description: Must be true — the signer's own attestation that they may act for the organization (not verified authority, not acceptance of terms).
     TenantStatus:
       type: string
       description: The tenant lifecycle status (enforced in app code, not a DB enum).
