@@ -137,6 +137,22 @@ describe('RoleCatalogService', () => {
     expect(where).toEqual({ is_active: true });
   });
 
+  // ROLES-1 PR-3 — the catalog omits the retired sign_owner by key as well (an
+  // environment where the row were somehow still active never offers it).
+  it('omits the retired sign_owner key even if its row were active; the Sign tier is Admin / Sender / Viewer', async () => {
+    const out = await makeService(
+      [
+        roleRow('sign_owner', 'Sign Owner — retired', ['sign:billing:manage', 'sign:member:manage']),
+        roleRow('sign_admin', 'Sign Admin — sign', ['sign:member:manage']),
+        roleRow('sign_viewer', 'Sign Viewer — read', ['sign:envelope:read']),
+      ],
+      ['core', 'sign'],
+    ).getCatalog({ tenant_id: TENANT });
+    expect(out.map((r) => r.key).sort()).toEqual(['sign_admin', 'sign_viewer']);
+    expect(ROLE_CATALOG_META['sign_owner']).toBeUndefined();
+    expect([...ESIGN_PRODUCT_ROLE_KEYS].sort()).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
+  });
+
   it('orders by presentation tier then display', async () => {
     const svc = makeService([
       roleRow('recruiter', 'Recruiter — op', ['talent:read']),

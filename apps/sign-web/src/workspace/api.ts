@@ -278,7 +278,11 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
-export type SignRoleKey = 'sign_owner' | 'sign_admin' | 'sign_sender' | 'sign_viewer';
+// ROLES-1 PR-3 — the Sign roles (the Sign Owner role is retired; ownership and billing
+// belong to the organization owner, tenant_owner).
+export type SignRoleKey = 'sign_admin' | 'sign_sender' | 'sign_viewer';
+// The organization roles a member list shows next to the Sign role (read-only here).
+export type SignOrganizationRoleKey = 'tenant_owner' | 'tenant_admin';
 
 export interface SignMember {
   user_id: string;
@@ -287,6 +291,8 @@ export interface SignMember {
   active: boolean;
   sign_role: SignRoleKey | null;
   sign_role_display: string | null;
+  organization_role?: SignOrganizationRoleKey | null;
+  organization_role_display?: string | null;
 }
 
 export const senderApi = {

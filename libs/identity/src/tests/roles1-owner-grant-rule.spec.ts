@@ -248,3 +248,93 @@ describe('ROLES-1 §4.2 — enable of a disabled tenant_owner (TenantUserLifecyc
     expect(repo.reEnableMembership).toHaveBeenCalledTimes(1);
   });
 });
+
+// ROLES-1 PR-3 (routine safeguard, TD) — granting or removing tenant_admin (the
+// ORGANIZATION administrator, organization-wide after PR-2) requires the caller to hold
+// tenant_owner or tenant_admin; the platform tier and system provisioning keep working.
+// Error: 403 INSUFFICIENT_PERMISSIONS, reason org_role_requires_org_admin. tenant_owner
+// stays owner-only (above).
+const ORG_ADMIN_REFUSAL = {
+  code: 'INSUFFICIENT_PERMISSIONS',
+  statusCode: 403,
+  context: { requestId: REQ, details: { reason: 'org_role_requires_org_admin', role_key: 'tenant_admin' } },
+};
+
+describe('ROLES-1 PR-3 — granting / removing tenant_admin (organization administrator)', () => {
+  it('an account_manager / recruiting_manager (tenant:admin:user-manage, no organization role) cannot grant tenant_admin → 403; no write', async () => {
+    for (const k of ['account_manager', 'recruiting_manager']) {
+      const { identity, repo } = fixture({ actorKeys: [k], targetKeys: ['recruiter'] });
+      await expect(identity.replaceMembershipRoles(replaceArgs(['recruiter', 'tenant_admin'], { actor_user_id: ACTOR }))).rejects.toMatchObject({
+        ...ORG_ADMIN_REFUSAL,
+        context: { ...ORG_ADMIN_REFUSAL.context, details: { ...ORG_ADMIN_REFUSAL.context.details, action: 'grant' } },
+      });
+      expect(repo.replaceMembershipRoles).not.toHaveBeenCalled();
+    }
+  });
+
+  it('an account_manager cannot remove tenant_admin → 403 (action remove)', async () => {
+    const { identity, repo } = fixture({ actorKeys: ['account_manager'], targetKeys: ['tenant_admin', 'recruiter'] });
+    await expect(identity.replaceMembershipRoles(replaceArgs(['recruiter'], { actor_user_id: ACTOR }))).rejects.toMatchObject({
+      context: { details: { reason: 'org_role_requires_org_admin', action: 'remove' } },
+    });
+    expect(repo.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('a tenant_admin may grant and remove tenant_admin; a tenant_owner may too', async () => {
+    for (const actorKeys of [['tenant_admin'], ['tenant_owner']]) {
+      const grant = fixture({ actorKeys, targetKeys: ['recruiter'] });
+      await grant.identity.replaceMembershipRoles(replaceArgs(['recruiter', 'tenant_admin'], { actor_user_id: ACTOR }));
+      expect(grant.repo.replaceMembershipRoles).toHaveBeenCalledTimes(1);
+      const remove = fixture({ actorKeys, targetKeys: ['tenant_admin', 'recruiter'] });
+      await remove.identity.replaceMembershipRoles(replaceArgs(['recruiter'], { actor_user_id: ACTOR }));
+      expect(remove.repo.replaceMembershipRoles).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('a tenant_admin still cannot grant tenant_owner (owner-only, PR-1)', async () => {
+    const { identity, repo } = fixture({ actorKeys: ['tenant_admin'], targetKeys: ['recruiter'] });
+    await expect(identity.replaceMembershipRoles(replaceArgs(['tenant_owner', 'tenant_admin'], { actor_user_id: ACTOR }))).rejects.toMatchObject(OWNER_REFUSAL);
+    expect(repo.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('a change that leaves tenant_admin untouched needs no organization-role caller', async () => {
+    const { identity, repo } = fixture({ actorKeys: ['account_manager'], targetKeys: ['tenant_admin', 'recruiter'] });
+    await identity.replaceMembershipRoles(replaceArgs(['tenant_admin', 'sourcer'], { actor_user_id: ACTOR }));
+    expect(repo.replaceMembershipRoles).toHaveBeenCalledTimes(1);
+  });
+
+  it('an INACTIVE organization-admin membership or an ABSENT authority does not authorize', async () => {
+    const inactive = fixture({ actorKeys: ['tenant_admin'], targetKeys: [], actorActive: false });
+    await expect(inactive.identity.replaceMembershipRoles(replaceArgs(['tenant_admin'], { actor_user_id: ACTOR }))).rejects.toMatchObject(ORG_ADMIN_REFUSAL);
+    const absent = fixture({ actorKeys: ['tenant_admin'], targetKeys: [] });
+    await expect(absent.identity.replaceMembershipRoles(replaceArgs(['tenant_admin']))).rejects.toMatchObject(ORG_ADMIN_REFUSAL);
+    expect(absent.repo.replaceMembershipRoles).not.toHaveBeenCalled();
+  });
+
+  it('the platform tier and system provisioning keep working', async () => {
+    for (const authority of ['platform', 'system'] as const) {
+      const { identity, repo } = fixture({ actorKeys: [], targetKeys: [] });
+      await identity.replaceMembershipRoles(replaceArgs(['tenant_owner', 'tenant_admin'], authority));
+      expect(repo.replaceMembershipRoles).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('PATCH roles (assignTenantUserRoles) and invite by an account_manager naming tenant_admin → 403 before any write', async () => {
+    const patch = fixture({ actorKeys: ['account_manager'], targetKeys: ['recruiter'] });
+    await expect(
+      patch.lifecycle.assignTenantUserRoles({ tenant_id: TENANT, user_id: TARGET, role_keys: ['recruiter', 'tenant_admin'], actor_user_id: ACTOR, request_id: REQ }),
+    ).rejects.toMatchObject(ORG_ADMIN_REFUSAL);
+    expect(patch.repo.replaceMembershipRoles).not.toHaveBeenCalled();
+    const invite = fixture({ actorKeys: ['recruiting_manager'], targetKeys: [] });
+    await expect(
+      invite.lifecycle.inviteTenantUser({ tenant_id: TENANT, email: 'new@acme.test', display_name: null, role_keys: ['tenant_admin'], actor_user_id: ACTOR, request_id: REQ }),
+    ).rejects.toMatchObject(ORG_ADMIN_REFUSAL);
+    expect(invite.repo.createUserWithMembership).not.toHaveBeenCalled();
+  });
+
+  it('the retired sign_owner key does not resolve (inactive row) — never assignable', async () => {
+    const { identity, repo } = fixture({ actorKeys: ['tenant_owner'], targetKeys: [] });
+    repo.findRoleIdsByKeys.mockImplementation(async (keys: readonly string[]) => new Map(keys.filter((k) => k !== 'sign_owner').map((k) => [k, `rid-${k}`])));
+    await expect(identity.resolveRoleIdsByKeys(['sign_owner'])).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { missing_role_keys: ['sign_owner'] } } });
+  });
+});

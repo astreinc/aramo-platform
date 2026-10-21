@@ -314,7 +314,10 @@ function AuditSection() {
 // members with their Sign role; a holder of sign:member:manage assigns or removes
 // it. Ownership of the organization (and its plan) belongs to the organization
 // owner (ROLES-1 PR-2) — the backend enforces every rule and its message is shown
-// as is.
+// as is. ROLES-1 PR-3 (§3.5): the Sign Owner role is retired; each member's
+// organization role (Tenant Owner / Tenant Admin — the Sign Owner / Admin
+// equivalents) is shown read-only next to the Sign role, and a member holding one
+// already has that Sign access whatever their Sign role.
 function MembersSection() {
   const { ctx, toast } = useWorkspace();
   const [rows, setRows] = useState<SignMember[] | null>(null);
@@ -343,7 +346,14 @@ function MembersSection() {
       const next = value === '' ? null : (value as SignRoleKey);
       const updated = await senderApi.setMemberRole(m.user_id, next);
       setRows((cur) => (cur ?? []).map((r) => (r.user_id === updated.user_id ? updated : r)));
-      toast(next === null ? `Removed Sign access for ${m.display_name ?? m.email}` : `${m.display_name ?? m.email} is now ${updated.sign_role_display ?? 'updated'}`);
+      const who = m.display_name ?? m.email;
+      toast(
+        next === null
+          ? updated.organization_role_display
+            ? `Removed the Sign role of ${who} (full Sign access stays with ${updated.organization_role_display})`
+            : `Removed Sign access for ${who}`
+          : `${who} is now ${updated.sign_role_display ?? 'updated'}`,
+      );
     } catch (e) {
       toast(errorMessage(e));
     } finally {
@@ -357,7 +367,8 @@ function MembersSection() {
       <div className="sg-card__body">
         <p className="sg-help" style={{ marginBottom: 12 }}>
           Sign roles decide what each person can do in Aramo Sign. Senders work with their own envelopes; Viewers see every envelope in the organization; Admins
-          manage members and every envelope. The organization owner manages the plan.
+          manage members and every envelope. Tenant Owners and Tenant Admins have full Sign access through their organization role, and only a Tenant Owner
+          manages the plan.
         </p>
         {error !== null ? <div className="sg-note">{error}</div> : null}
         {rows === null && error === null ? <div className="sg-muted">Loading…</div> : null}
@@ -367,6 +378,7 @@ function MembersSection() {
               <tr>
                 <th>Name</th>
                 <th>Email</th>
+                <th>Organization role</th>
                 <th>Sign role</th>
               </tr>
             </thead>
@@ -379,6 +391,7 @@ function MembersSection() {
                     {!m.active ? <span className="sg-tag sg-tag--warn" style={{ marginLeft: 6 }}>Inactive</span> : null}
                   </td>
                   <td>{m.email}</td>
+                  <td data-testid={`member-org-role-${m.user_id}`}>{m.organization_role_display ?? '—'}</td>
                   <td>
                     <Sel
                       aria-label={`Sign role for ${m.display_name ?? m.email}`}
@@ -386,7 +399,7 @@ function MembersSection() {
                       disabled={busy !== null || !m.active}
                       onChange={(e) => void change(m, e.target.value)}
                     >
-                      <option value="">No Sign access</option>
+                      <option value="">{m.organization_role_display ? `Included with ${m.organization_role_display}` : 'No Sign access'}</option>
                       {roles.map((r) => (
                         <option key={r.key} value={r.key}>
                           {r.display}

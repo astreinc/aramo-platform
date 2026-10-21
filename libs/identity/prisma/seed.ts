@@ -42,7 +42,7 @@ import { createHash } from 'node:crypto';
 
 import { PrismaPg } from '@prisma/adapter-pg';
 
-import { ORG_ADMIN_SCOPE_KEYS } from '../src/lib/dto/role.dto.js';
+import { ORG_ADMIN_SCOPE_KEYS, RETIRED_ROLE_KEYS } from '../src/lib/dto/role.dto.js';
 import { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '../src/lib/dto/esign-permissions.js';
 
 import { PrismaClient } from './generated/client/client.js';
@@ -2927,30 +2927,41 @@ const DOCUMENTS_DOC3_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // PX-V1 PX-3 — E-Sign SENDER product grant. Dedicated bundle at 0x1350+ (0x1330/
 // 0x1340 frozen by CSP PR-2). esign_* roles hold ONLY esign:* scopes — never an
 // ATS scope, never document:execute. 10 grants total.
-export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
-  readonly [string, readonly string[]]
-> = [
+// ROLES-1 PR-3 — the FROZEN id layout of this range, sign_owner included: the retired
+// role's rows keep their slots (0x1350..0x1352) so no later id is renumbered
+// (append-don't-renumber). The seed GRANTS only ESIGN_SENDER_SEED_BUNDLES (no retired role).
+const ESIGN_SENDER_SEED_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['sign_owner', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_admin', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_sender', ['sign:envelope:create', 'sign:envelope:send', 'sign:envelope:read']],
   ['sign_viewer', ['sign:envelope:read']],
 ];
+export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
+  readonly [string, readonly string[]]
+> = ESIGN_SENDER_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k));
 
 // Sign Unified Product S-1 — the Sign permission contract grants that complete
 // each esign_* role to ESIGN_ROLE_PERMISSIONS (esign-permissions.ts): the rows
 // ESIGN_SENDER_SEED_BUNDLES does not already hold. Range 0x1720+ (append-don't-
 // renumber; 0x1710..0x1712 is the last prior range). 23 grants. Additive only:
 // no existing grant is removed, so no holder loses a scope it had.
+// ROLES-1 PR-3 — FROZEN id layout: the retired sign_owner keeps its 10 slots at the head
+// of the range (its former contract = sign_admin's + sign:billing:manage) so the
+// sign_admin / sign_sender / sign_viewer row ids are unchanged; it is never granted.
+const ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['sign_owner', [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE]] as const,
+  ...ESIGN_ROLE_KEYS.map((role) => [role, ESIGN_ROLE_PERMISSIONS[role]] as const),
+].map(([role, perms]) => {
+  const prior = new Set(ESIGN_SENDER_SEED_ID_LAYOUT.find(([k]) => k === role)?.[1] ?? []);
+  return [role, perms.filter((s) => !prior.has(s))] as const;
+});
 export const ESIGN_ROLE_CONTRACT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
-> = ESIGN_ROLE_KEYS.map((role) => {
-  const prior = new Set(ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === role)?.[1] ?? []);
-  return [role, ESIGN_ROLE_PERMISSIONS[role].filter((s) => !prior.has(s))] as const;
-});
+> = ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k));
 const ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1720;
-  for (const [role, scopes] of ESIGN_ROLE_CONTRACT_SEED_BUNDLES) {
+  for (const [role, scopes] of ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] = `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
       i++;
@@ -3118,7 +3129,7 @@ export function doclibT4RoleScopeId(role_id: string, scope_id: string): string {
 const ESIGN_SENDER_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1350;
-  for (const [role, scopes] of ESIGN_SENDER_SEED_BUNDLES) {
+  for (const [role, scopes] of ESIGN_SENDER_SEED_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -3289,8 +3300,9 @@ export async function runIdentitySeed(
   // Sign scopes (no billing). Assignable in any tenant (ORG_ROLE_KEYS).
   await upsertRole(prisma, SEED_IDS.roles.tenant_admin, 'tenant_admin', ROLES1_ROLE_DESCRIPTIONS.tenant_admin);
   // ROLES-1 PR-2 (§1, §5.2 step 5) — sign_owner is retired: created INACTIVE on a fresh
-  // database (the migration deactivates it on an existing one). Its key leaves code in
-  // ROLES-1 PR-3; an inactive role resolves no scopes and is never assignable.
+  // database (the migration deactivates it on an existing one). ROLES-1 PR-3: the row is
+  // kept for history only — no bundle, no assignment (RETIRED_ROLE_KEYS); an inactive
+  // role resolves no scopes and is never assignable.
   await upsertRole(prisma, SEED_IDS.roles.sign_owner, 'sign_owner', 'Sign Owner — top authority of a Sign organization; full envelope authority (create/send/read).', false);
   await upsertRole(prisma, SEED_IDS.roles.sign_admin, 'sign_admin', 'Sign Admin — administrative operator of a Sign organization; full envelope authority (create/send/read).');
   await upsertRole(prisma, SEED_IDS.roles.sign_sender, 'sign_sender', 'Sign Sender — creates and dispatches envelopes for signature (create/send/read). No org administration.');

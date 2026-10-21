@@ -52,8 +52,11 @@ export {
   ESIGN_ROLE_PERMISSIONS,
   ESIGN_ROLE_DISPLAY,
   isEsignRoleKey,
+  SIGN_ORGANIZATION_ROLE_KEYS,
+  SIGN_ORGANIZATION_ROLE_DISPLAY,
   type EsignScope,
   type EsignRoleKey,
+  type SignOrganizationRoleKey,
 } from './lib/dto/esign-permissions.js';
 export {
   EsignSenderBoundary,
@@ -155,6 +158,7 @@ export {
   ESIGN_SENDER_SCOPE_KEY,
   ATS_PRODUCT_ROLE_KEYS,
   ORG_ROLE_KEYS,
+  RETIRED_ROLE_KEYS,
   SEED_SCOPE_KEYS,
   SCOPE_KEY_FORMAT,
 } from './lib/dto/index.js';

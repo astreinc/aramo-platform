@@ -1151,7 +1151,7 @@ paths:
       operationId: listSenderContacts
       summary: Past recipients (derived; no contact store).
       description: >
-        Requires sign:contact:read (Sign Sender, Admin, Owner).
+        Requires sign:contact:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner).
       tags: [sender]
       security:
         - senderSession: []
@@ -1174,7 +1174,7 @@ paths:
       operationId: listSignMembers
       summary: Organization members and their Sign role.
       description: >
-        Requires sign:member:manage (Sign Admin, Owner). BUSINESS tenants only (PERSONAL → 403 personal_account). Lists every member of the caller's organization with the Sign role they hold (or null), plus the assignable Sign roles.
+        Requires sign:member:manage (Sign Admin, Tenant Admin, Tenant Owner). BUSINESS tenants only (PERSONAL → 403 personal_account). Lists every member of the caller's organization with the Sign role they hold (or null) and their organization role (tenant_owner over tenant_admin, or null — ROLES-1 PR-3: the Sign Owner role is retired; organization-role holders hold the Sign authority of that role), plus the assignable Sign roles.
       tags: [sender]
       security:
         - senderSession: []
@@ -1195,7 +1195,7 @@ paths:
       operationId: setSignMemberRole
       summary: Assign, change or remove a member's Sign role.
       description: >
-        Requires sign:member:manage. Changes ONLY the member's Sign role; every other role is kept. Only a Sign Owner may grant or remove the Sign Owner role (403 owner_role_requires_owner). The last Sign Owner cannot be removed or demoted (409 ESIGN_LAST_OWNER). A user outside the caller's organization → 404.
+        Requires sign:member:manage. Changes ONLY the member's Sign role (sign_admin, sign_sender, sign_viewer, or null); every other role is kept — organization roles (tenant_owner, tenant_admin) are never granted or removed here, so an organization owner cannot be demoted through this operation (ROLES-1 PR-3; the Sign Owner role is retired and sign_owner is refused with 400). The last organization owner cannot be removed or demoted (409 ESIGN_LAST_OWNER — the database last-owner invariant is the backstop). The identity owner-only and organization-admin rules apply unchanged (403 owner_role_requires_owner / org_role_requires_org_admin). A user outside the caller's organization → 404.
       tags: [sender]
       security:
         - senderSession: []
@@ -1217,7 +1217,7 @@ paths:
               properties:
                 sign_role:
                   type: [string, 'null']
-                  enum: [sign_owner, sign_admin, sign_sender, sign_viewer, null]
+                  enum: [sign_admin, sign_sender, sign_viewer, null]
       responses:
         '200':
           description: The member after the change.
@@ -1509,7 +1509,7 @@ paths:
     get:
       operationId: listSignIntegrations
       summary: Applications available and this organization’s installations (credentials listed without secrets).
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1531,7 +1531,7 @@ paths:
     post:
       operationId: installSignApplication
       summary: Approve an installation with a bounded grant set (or re-install a revoked one).
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1559,7 +1559,7 @@ paths:
     patch:
       operationId: updateSignInstallation
       summary: Change an installation’s grants, modes, integration role or role assertion.
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1589,7 +1589,7 @@ paths:
     post:
       operationId: revokeSignInstallation
       summary: Revoke the installation, its credentials and every live token.
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1613,7 +1613,7 @@ paths:
     post:
       operationId: createSignCredential
       summary: Issue a client credential for a third-party installation; the secret is returned once.
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1637,7 +1637,7 @@ paths:
     post:
       operationId: revokeSignCredential
       summary: Revoke one credential and the tokens it issued.
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -1667,7 +1667,7 @@ paths:
     put:
       operationId: setSignRoleMappings
       summary: Replace the external-role → Sign-role mappings (narrowing only; roles the application declares).
-      description: Requires sign:integration:manage (Sign Admin / Owner). BUSINESS tenants only.
+      description: Requires sign:integration:manage (Sign Admin, Tenant Admin or Tenant Owner). BUSINESS tenants only.
       tags: [integrations]
       security:
         - senderSession: []
@@ -2623,8 +2623,14 @@ components:
           type: boolean
         sign_role:
           type: [string, 'null']
-          enum: [sign_owner, sign_admin, sign_sender, sign_viewer, null]
+          enum: [sign_admin, sign_sender, sign_viewer, null]
         sign_role_display:
+          type: [string, 'null']
+        organization_role:
+          type: [string, 'null']
+          enum: [tenant_owner, tenant_admin, null]
+          description: ROLES-1 PR-3 — the member's organization role (tenant_owner over tenant_admin), or null. Read-only here; its holder holds the Sign authority of that role (tenant_owner incl. billing).
+        organization_role_display:
           type: [string, 'null']
     SignMemberList:
       type: object

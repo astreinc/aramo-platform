@@ -116,7 +116,7 @@ export const SEED_SCOPE_KEYS = [
   'sign:report:read',          // sign_viewer/admin/owner
   'sign:member:manage',        // sign_admin/owner (assign Sign roles)
   'sign:settings:manage',      // sign_admin/owner
-  'sign:billing:manage',       // sign_owner only
+  'sign:billing:manage',       // tenant_owner only (ROLES-1 §3.4)
   'sign:integration:manage',   // sign_admin/owner (applications + installations, S-4)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context resume selection (PUT

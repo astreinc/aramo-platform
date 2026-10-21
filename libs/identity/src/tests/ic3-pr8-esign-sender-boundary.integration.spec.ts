@@ -171,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('IC-3 PR-8 — Sig
     }
   });
 
-  it('#1 Sign-only tenant ([core, esign], no ats) + sign_sender + esign consumer → 200 (eligible); sign_owner and sign_admin likewise', async () => {
+  it('#1 Sign-only tenant ([core, esign], no ats) + sign_sender + esign consumer → 200 (eligible); the organization roles and sign_admin likewise (sign_owner retired)', async () => {
     // ROLES-1 PR-2 — sign_owner is retired (inactive row); the organization roles send
     // (Conforming Amendment 2) alongside sign_admin / sign_sender.
     for (const [label, roleId] of [['sender', SEED_IDS.roles.sign_sender], ['owner', SEED_IDS.roles.tenant_owner], ['admin', SEED_IDS.roles.sign_admin], ['org-admin', SEED_IDS.roles.tenant_admin]] as const) {

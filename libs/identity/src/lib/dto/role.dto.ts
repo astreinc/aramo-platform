@@ -49,7 +49,7 @@
 //   - `tenant_owner` (row …0014, key unchanged): the ORGANIZATION owner —
 //     tenant_admin + Sign billing + the owner-only acts.
 //   - `org_admin` no longer exists. `sign_owner` (row …02a0) is deactivated by the
-//     migration; its key is retired from code in ROLES-1 PR-3.
+//     migration; ROLES-1 PR-3 retires its key from code (RETIRED_ROLE_KEYS below).
 export const SEED_ROLE_KEYS = [
   // ROLES-1 PR-2 — ats_admin: the renamed pre-AUTHZ-1 `tenant_admin` row (…0010).
   'ats_admin',
@@ -79,12 +79,21 @@ export const SEED_ROLE_KEYS = [
   // from the ATS tenant roles (like super_admin): they hold ONLY esign:* scopes and
   // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `sign:`
   // prefix). Shared Aramo identity substrate; independent E-Sign product.
-  'sign_owner',
+  // ROLES-1 PR-3 — `sign_owner` is retired (RETIRED_ROLE_KEYS); not a catalog key.
   'sign_admin',
   'sign_sender',
   'sign_viewer',
 ] as const;
 export type SeedRoleKey = (typeof SEED_ROLE_KEYS)[number];
+
+// ROLES-1 PR-3 (Directive v1.0 LOCKED §1, §5.2 step 5, §8; Conforming Amendments 4 and
+// 6) — role keys whose rows are kept in the database for history only. The row stays
+// (`is_active=false`; the seed creates it inactive on a fresh database) but the key is
+// in NO catalog constant, partition or allow-list: it is never assignable (the role-id
+// resolution reads active rows only), never granted a bundle by the seed and never
+// projected by the role catalog. Sign ownership and billing belong to tenant_owner.
+export const RETIRED_ROLE_KEYS = ['sign_owner'] as const;
+export type RetiredRoleKey = (typeof RETIRED_ROLE_KEYS)[number];
 
 // ROLES-1 PR-2 (§3.3) — the ORGANIZATION roles (ADR-0035 R1): owner and administrator
 // of the whole tenant. Assignable in ANY tenant (no product capability gate): they are
@@ -127,10 +136,9 @@ export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEY
 );
 
 // IC-3 PR-8 (IC-0 §F.2 rule 2 / L10; PX-V1 §10–§11) — the E-SIGN PRODUCT
-// partition of the catalog: the Sign roles (PX-V1 PX-3). ROLES-1 PR-2 (§3.3): the
-// target set is sign_admin / sign_sender / sign_viewer; `sign_owner` stays in the
-// prefix-derived set until ROLES-1 PR-3 retires the key from code (its row is
-// deactivated by the PR-2 migration, so it is unresolvable and never assignable). They hold ONLY
+// partition of the catalog: the Sign roles (PX-V1 PX-3). ROLES-1 PR-2 (§3.3) / PR-3:
+// exactly sign_admin / sign_sender / sign_viewer — the retired `sign_owner` is not a
+// SEED_ROLE_KEYS entry, so the prefix derivation cannot pick it up. They hold ONLY
 // esign:* scopes and are assignable ONLY in a tenant that holds the `sign`
 // capability; every tenant-side assignment path (tenant invite, PATCH roles,
 // platform-tier invite INTO a tenant) refuses them for an unentitled tenant

@@ -63,7 +63,6 @@ export const ROLE_CATALOG_META: Record<string, RoleMeta> = {
   // IC-3 PR-8 — the Sign PRODUCT tier (PX-V1 PX-3 roles). Projected ONLY for
   // a tenant that holds the `sign` capability (RoleCatalogService); ranked
   // after every ATS tier so an ATS + Sign tenant's picker keeps its order.
-  sign_owner: { tier: 'Sign', tierRank: 5 },
   sign_admin: { tier: 'Sign', tierRank: 5 },
   sign_sender: { tier: 'Sign', tierRank: 5 },
   sign_viewer: { tier: 'Sign', tierRank: 5 },

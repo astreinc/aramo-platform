@@ -115,6 +115,44 @@ describe('Sign workspace App', () => {
     expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument();
   });
 
+  // ROLES-1 PR-3 (§3.5) — the Sign Owner role is retired: organization-role holders are
+  // shown with their organization role; the Sign role picker offers Admin / Sender / Viewer.
+  it('Members shows the organization role of each member and offers only the three Sign roles', async () => {
+    const base = stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true } }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/v1/sign/sender/members')) {
+          return json({
+            items: [
+              { user_id: 'u1', email: 'priya@northwind.test', display_name: 'Priya Nair', active: true, sign_role: null, sign_role_display: null, organization_role: 'tenant_owner', organization_role_display: 'Tenant Owner' },
+              { user_id: 'u2', email: 'sam@northwind.test', display_name: 'Sam Lee', active: true, sign_role: 'sign_sender', sign_role_display: 'Sign Sender', organization_role: null, organization_role_display: null },
+            ],
+            roles: [
+              { key: 'sign_admin', display: 'Sign Admin' },
+              { key: 'sign_sender', display: 'Sign Sender' },
+              { key: 'sign_viewer', display: 'Sign Viewer' },
+            ],
+          });
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/settings/members');
+    expect(await screen.findByTestId('member-org-role-u1')).toHaveTextContent('Tenant Owner');
+    expect(screen.getByTestId('member-org-role-u2')).toHaveTextContent('—');
+    const ownerPicker = screen.getByLabelText('Sign role for Priya Nair');
+    expect(ownerPicker).toHaveValue('');
+    expect(Array.from((ownerPicker as HTMLSelectElement).options).map((o) => o.textContent)).toEqual([
+      'Included with Tenant Owner',
+      'Sign Admin',
+      'Sign Sender',
+      'Sign Viewer',
+    ]);
+    expect(screen.queryByText('Sign Owner')).not.toBeInTheDocument();
+    expect(Array.from((screen.getByLabelText('Sign role for Sam Lee') as HTMLSelectElement).options)[0]?.textContent).toBe('No Sign access');
+  });
+
   // Sign Unified Product S-3 — ATS envelopes are listed with their origin.
   it('an envelope sent by the ATS is marked "From Aramo ATS" in the list', async () => {
     const base = stubFetch(ctx());

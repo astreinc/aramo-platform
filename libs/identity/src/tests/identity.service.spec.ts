@@ -855,9 +855,10 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
     await identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['super_admin'], role_ids: ['s'], request_id: REQUEST_ID, allow_platform_roles: true });
     expect(entitlementSpies.getCapabilities).not.toHaveBeenCalled();
   });
-  it('the E-Sign partition is exactly the four PX-3 roles and the send scope key is the single sender authority', async () => {
+  it('the E-Sign partition is exactly the three Sign roles (ROLES-1 PR-3: sign_owner retired) and the send scope key is the single sender authority', async () => {
     const { ESIGN_PRODUCT_ROLE_KEYS, ESIGN_SENDER_SCOPE_KEY, TENANT_ASSIGNABLE_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
-    expect([...ESIGN_PRODUCT_ROLE_KEYS].sort()).toEqual(['sign_admin', 'sign_owner', 'sign_sender', 'sign_viewer']);
+    expect([...ESIGN_PRODUCT_ROLE_KEYS].sort()).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
+    expect(TENANT_ASSIGNABLE_ROLE_KEYS as readonly string[]).not.toContain('sign_owner');
     expect(ESIGN_SENDER_SCOPE_KEY).toBe('sign:envelope:send');
     // Still in the tenant-assignable DTO allow-list (the ENTITLEMENT decides, not the DTO).
     for (const k of ESIGN_PRODUCT_ROLE_KEYS) expect(TENANT_ASSIGNABLE_ROLE_KEYS).toContain(k);
@@ -924,10 +925,11 @@ describe('IdentityService — ATS roles assignable only in an ats-entitled tenan
     expect(ATS_PRODUCT_ROLE_KEYS).toContain('ats_admin');
     expect(ORG_ROLE_KEYS).toEqual(['tenant_owner', 'tenant_admin']);
     for (const k of [...ORG_ROLE_KEYS, 'org_admin', ...PLATFORM_ROLE_KEYS, ...ESIGN_PRODUCT_ROLE_KEYS]) expect(ATS_PRODUCT_ROLE_KEYS).not.toContain(k);
-    // The complement is exactly: the 2 organization roles + the platform role + the 4 Sign
-    // roles (sign_owner stays in the prefix-derived set until ROLES-1 PR-3) + the portal-user role = 8.
+    // The complement is exactly: the 2 organization roles + the platform role + the 3 Sign
+    // roles (ROLES-1 PR-3: sign_owner retired) + the portal-user role = 7.
     const { SEED_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
-    expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(8);
+    expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(7);
+    expect(SEED_ROLE_KEYS as readonly string[]).not.toContain('sign_owner');
     expect(SEED_ROLE_KEYS).not.toContain('org_admin');
   });
 });

@@ -163,11 +163,12 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // the 2 baseline scopes already in its org set) = 941.
     // DOC-TEMPLATE-LIB-1 T-4 (§6.3): −1 (ats_admin × document_template:manage) +2
     // (sign_admin, sign_sender × document_template:read) → 942. tenant_owner/tenant_admin
-    // already held both template scopes (sizes unchanged).
+    // already held both template scopes (sizes unchanged). ROLES-1 PR-3: −13 (the retired
+    // sign_owner's 3 sender + 10 contract grants are no longer seeded) = 929.
     expect(bundles.get('tenant_owner')?.size).toBe(157);
     expect(bundles.get('tenant_admin')?.size).toBe(156);
     expect(bundles.get('ats_admin')?.size).toBe(139);
-    expect(pairs).toBe(942);
+    expect(pairs).toBe(929);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {
@@ -196,6 +197,23 @@ describe('ROLES-1 PR-2 §1/§6 — seeded roles and the dev admin', () => {
     expect(String(ROLES1_ROLE_DESCRIPTIONS.tenant_owner)).toMatch(/^Tenant Owner — /);
     expect(byId.get(SEED_IDS.roles.sign_owner)?.['is_active']).toBe(false);
     expect(roles.some((r) => r['key'] === 'org_admin')).toBe(false);
+  });
+
+  // ROLES-1 PR-3 (§1, §8) — sign_owner is retired: its row is still seeded (inactive,
+  // history) but it gets no RoleScope row; the frozen id layouts keep every other Sign
+  // grant's deterministic id where it was before PR-3 (append-don't-renumber).
+  it('PR-3: the retired sign_owner gets no bundle; the Sign grants keep their pre-PR-3 RoleScope ids', async () => {
+    const { roles, roleScopes, bundles } = await seeded();
+    expect(roles.some((r) => r['key'] === 'sign_owner' && r['is_active'] === false)).toBe(true);
+    expect(roleScopes.some((r) => r.role_id === SEED_IDS.roles.sign_owner)).toBe(false);
+    expect(bundles.has('sign_owner')).toBe(false);
+    const idOf = (role: keyof typeof SEED_IDS.roles, scope: keyof typeof SEED_IDS.scopes) =>
+      roleScopes.find((r) => r.role_id === SEED_IDS.roles[role] && r.scope_id === SEED_IDS.scopes[scope])?.id;
+    // 0x1350..0x1352 stay reserved for the retired sign_owner; sign_admin keeps 0x1353+.
+    expect(idOf('sign_admin', 'sign:envelope:create')).toBe('01900000-0000-7000-8000-000000001353');
+    expect(idOf('sign_viewer', 'sign:envelope:read')).toBe('01900000-0000-7000-8000-000000001359');
+    // 0x1720..0x1729 stay reserved for sign_owner's former contract; sign_admin starts at 0x172a.
+    expect(idOf('sign_admin', 'sign:envelope:read:all')).toBe('01900000-0000-7000-8000-00000000172a');
   });
 
   it('the dev admin holds ats_admin + tenant_admin (§6)', async () => {

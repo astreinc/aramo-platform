@@ -139,6 +139,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
     await run(`UPDATE identity."Role" SET key = 'org_admin', description = 'Organization Admin — pre', updated_at = now() WHERE id = $1`, [R.org]);
     await run(`UPDATE identity."Role" SET key = 'tenant_admin', description = 'Tenant Admin — pre', updated_at = now() WHERE id = $1`, [R.ats]);
     await run(`UPDATE identity."Role" SET is_active = true, updated_at = now() WHERE id = $1`, [R.sown]);
+    // ROLES-1 PR-3 — the seed no longer grants the retired sign_owner anything, so its
+    // pre-ROLES-1 bundle (= sign_admin's Sign set + sign:billing:manage, which production
+    // still carries) is restored here.
+    await run(
+      `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+         SELECT gen_random_uuid(), $1::uuid, scope_id FROM identity."RoleScope" WHERE role_id = $2::uuid
+         UNION ALL SELECT gen_random_uuid(), $1::uuid, id FROM identity."Scope" WHERE key = 'sign:billing:manage'
+       ON CONFLICT (role_id, scope_id) DO NOTHING`,
+      [R.sown, R.sadm],
+    );
     await run(
       `DELETE FROM identity."RoleScope" WHERE role_id = $1 AND scope_id NOT IN (SELECT id FROM identity."Scope" WHERE key = ANY($2::text[]))`,
       [R.org, [...ORG_ADMIN_SCOPE_KEYS]],

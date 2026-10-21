@@ -349,8 +349,9 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
     // and never any compensation field, so they correctly see no comp fields.
     // IC-3 PR-7 — org_admin (product-neutral organization administrator) held
     // no compensation scope either → 9 absent roles. ROLES-1 PR-2: org_admin is now
-    // tenant_admin (see-all via the ROLES-1 bundle) → 8 absent roles.
-    expect(absentRoles.length).toBe(8);
+    // tenant_admin (see-all via the ROLES-1 bundle) → 8 absent roles. ROLES-1 PR-3:
+    // sign_owner is retired (not a catalog key) → 7 absent roles.
+    expect(absentRoles.length).toBe(7);
     for (const role of absentRoles) {
       expect(maskedKeys(role).size, `${role} (absent role) leaked comp fields`).toBe(0);
     }

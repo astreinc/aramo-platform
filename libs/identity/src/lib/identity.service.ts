@@ -28,6 +28,9 @@ import {
 import { normalizeEmail } from './util/email-domain.js';
 import { TENANT_OWNER_ROLE_KEY } from './util/tenant-last-owner.js';
 
+// ROLES-1 PR-3 — the organization administrator role key (ORG_ROLE_KEYS[1]).
+const TENANT_ADMIN_ROLE_KEY = 'tenant_admin';
+
 // IC-1 PR-1 (D-AUTHZ-PLATFORM-INVITE-1 Amendment A1 §4) — who owns an invite
 // email, classified BEFORE any side effect (Cognito call or DB write).
 export type InviteEmailOwnership =
@@ -517,6 +520,14 @@ export class IdentityService {
   // tenant_owner (before_role_keys -> role_keys; before is empty on a create), the caller
   // must hold tenant_owner (see OwnerRoleAuthority). Fires FIRST, before any other gate
   // and before any write.
+  //
+  // ROLES-1 PR-3 (routine safeguard, TD) — organization-admin grants: when the change
+  // grants or removes tenant_admin (the ORGANIZATION administrator — organization-wide,
+  // incl. every entitled product's admin rights after PR-2), the caller must hold
+  // tenant_owner or tenant_admin (see assertOrgAdminRoleAuthority). A tenant:admin:
+  // user-manage holder without an organization role (account_manager,
+  // recruiting_manager) can no longer hand out organization administration. Fires right
+  // after the owner rule, before any other gate and before any write.
   private async assertRoleKeysAssignable(args: {
     role_keys: readonly string[];
     tenant_id: string;
@@ -534,6 +545,16 @@ export class IdentityService {
         owner_role_authority: args.owner_role_authority,
         request_id: args.request_id,
         action: ownerAfter ? 'grant' : 'remove',
+      });
+    }
+    const orgAdminBefore = (args.before_role_keys ?? []).includes(TENANT_ADMIN_ROLE_KEY);
+    const orgAdminAfter = args.role_keys.includes(TENANT_ADMIN_ROLE_KEY);
+    if (orgAdminBefore !== orgAdminAfter) {
+      await this.assertOrgAdminRoleAuthority({
+        tenant_id: args.tenant_id,
+        owner_role_authority: args.owner_role_authority,
+        request_id: args.request_id,
+        action: orgAdminAfter ? 'grant' : 'remove',
       });
     }
     if (args.allow_platform_roles === true) return;
@@ -629,6 +650,45 @@ export class IdentityService {
         details: {
           reason: 'owner_role_requires_owner',
           role_key: TENANT_OWNER_ROLE_KEY,
+          action: args.action,
+        },
+      },
+    );
+  }
+
+  // ROLES-1 PR-3 (routine safeguard, TD) — the organization-admin rule: granting or
+  // removing tenant_admin. Passes for the platform tier and system provisioning; a
+  // tenant-user caller passes only while their own ACTIVE membership in THIS tenant holds
+  // tenant_owner or tenant_admin (read live, never from the token). Anything else,
+  // including an absent authority, is 403 INSUFFICIENT_PERMISSIONS with
+  // details.reason='org_role_requires_org_admin'.
+  async assertOrgAdminRoleAuthority(args: {
+    tenant_id: string;
+    owner_role_authority?: OwnerRoleAuthority;
+    request_id: string;
+    action: 'grant' | 'remove';
+  }): Promise<void> {
+    const authority = args.owner_role_authority;
+    if (authority === 'platform' || authority === 'system') return;
+    if (authority !== undefined) {
+      const membership = await this.identityRepo.findMembership({
+        user_id: authority.actor_user_id,
+        tenant_id: args.tenant_id,
+      });
+      if (membership !== null && membership.is_active) {
+        const keys = await this.identityRepo.findRoleKeysForMembership(membership.id);
+        if (keys.includes(TENANT_OWNER_ROLE_KEY) || keys.includes(TENANT_ADMIN_ROLE_KEY)) return;
+      }
+    }
+    throw new AramoError(
+      'INSUFFICIENT_PERMISSIONS',
+      'Only an organization owner or administrator can grant or remove the organization administrator role',
+      403,
+      {
+        requestId: args.request_id,
+        details: {
+          reason: 'org_role_requires_org_admin',
+          role_key: TENANT_ADMIN_ROLE_KEY,
           action: args.action,
         },
       },

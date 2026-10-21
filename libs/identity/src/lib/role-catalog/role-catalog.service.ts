@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { ORG_ROLE_KEYS } from '../dto/role.dto.js';
+import { ORG_ROLE_KEYS, RETIRED_ROLE_KEYS } from '../dto/role.dto.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 
@@ -33,7 +33,8 @@ import {
 // are projected for every tenant, and for a tenant without `sign` their projected
 // scope list omits the sign:* keys (display mirrors the session filters — the
 // rights are exercised only through a consumer whose product the tenant holds).
-// Inactive roles (the deactivated sign_owner row) are never projected. The endpoint stays auth-gated
+// Inactive roles (the deactivated sign_owner row) are never projected; ROLES-1 PR-3 also
+// skips every RETIRED_ROLE_KEYS key by name (defence in depth). The endpoint stays auth-gated
 // (tenant:admin:user-manage) so only an operator who manages users/roles reads it.
 
 @Injectable()
@@ -56,6 +57,7 @@ export class RoleCatalogService {
 
     const views: RoleCatalogView[] = [];
     for (const role of roles) {
+      if ((RETIRED_ROLE_KEYS as readonly string[]).includes(role.key)) continue;
       const scopeKeys = role.role_scopes.map((rs) => rs.scope.key);
       // Exclude the platform tier (super_admin) — any platform:* scope marks a
       // non-tenant role; the tenant catalog never includes it.
