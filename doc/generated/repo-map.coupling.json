@@ -12639,6 +12639,61 @@
       "to": "doc/directives/Aramo-CI-Conversation-Intelligence-Directive-v1_2-LOCKED.md"
     },
     {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "apps/ats-web/src/settings/documents/DocumentTemplatesSection.tsx"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/document-source-http.adapter.ts"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/template-capabilities.port.ts"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/adr/0034-shared-document-template-library.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/adr/0035-organization-and-product-role-model.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-members.service.ts"
+    },
+    {
+      "from": "doc/adr/0035-organization-and-product-role-model.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/esign-permissions.ts"
+    },
+    {
+      "from": "doc/adr/0035-organization-and-product-role-model.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/adr/0035-organization-and-product-role-model.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/identity.integration.spec.ts"
+    },
+    {
       "from": "doc/adr/Aramo-ADR-0007-Talent-RTBF-Anonymization-v1_0-LOCKED.md",
       "status": "unscoped",
       "to": "doc/runbooks/talent-rtbf-erasure.md"
