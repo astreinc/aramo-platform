@@ -1486,6 +1486,305 @@ paths:
   # downstream record; the backend (not the caller/UI) is authoritative. CAS on
   # expected_version. The episode becomes the terminal `voided` state, releasing the
   # live slot; TalentRecord + history are preserved.
+  # Pipeline & RTR Recon Remediation Directive v1.0 LOCKED §2 R5 (DEF-15(e); PO 2026-10-21) — the
+  # live Pipeline and Talent Journey routes, previously undocumented. Every route requires the
+  # `ats` capability; a pipeline on a requisition the caller cannot see is concealed as 404.
+  /v1/pipelines:
+    get:
+      operationId: listPipelines
+      summary: List Pipeline episodes visible to the caller.
+      description: |
+        Requires `pipeline:read`. Optionally narrowed to one requisition and/or one Talent.
+        Removed-by-mistake (voided) episodes are omitted by default so they never inflate
+        requisition counts (Remediation v1.0 R3, DEF-10); `include_voided=true` returns them.
+      parameters:
+        - { name: requisition_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: talent_record_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: include_voided, in: query, required: false, schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200':
+          description: The visible episodes (newest first).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PipelineEpisodeView' }
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
+    post:
+      operationId: addTalentToPipeline
+      summary: Add a Talent to a requisition (create a Pipeline episode at no_contact).
+      description: |
+        Requires `pipeline:add` and an Idempotency-Key (UUID). The requisition lifecycle policy
+        decides; the episode is created at `no_contact`.
+        Refusals:
+          - 400 VALIDATION_ERROR — missing / non-UUID Idempotency-Key.
+          - 403 POLICY_DENIED — the requisition's status does not allow adding (reason_code).
+          - 403 INSUFFICIENT_PERMISSIONS (pipeline_re_add_requires_senior_role) — the Talent's
+            earlier episode on this requisition ended; only `pipeline:re-add` holders may re-add.
+          - 404 NOT_FOUND — the Talent or the requisition does not exist in the tenant, or the
+            requisition is not visible to the caller (indistinguishable by design, C-1).
+          - 409 PIPELINE_EPISODE_ALREADY_LIVE — the Talent already has a live episode here.
+          - 409 REQUISITION_NOT_ADVANCEABLE / TRANSACTION_CONFLICT_RETRYABLE.
+          - 422 OVERRIDE_INVALID — override reason missing or unrecognised.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [talent_record_id, requisition_id]
+              properties:
+                talent_record_id: { type: string, format: uuid }
+                requisition_id: { type: string, format: uuid }
+                site_id: { type: string, format: uuid }
+                override_reason_code: { type: string }
+      responses:
+        '201':
+          description: The episode was created (or an identical retry replayed).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineEpisodeView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Already live on this requisition, the requisition status does not permit it, or a retryable conflict.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Override reason missing or unrecognised.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/pipelines/{id}:
+    get:
+      operationId: getPipeline
+      summary: Read one Pipeline episode.
+      description: Requires `pipeline:read`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The episode.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineEpisodeView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/pipelines/{id}/history:
+    get:
+      operationId: getPipelineHistory
+      summary: The episode's status history (append-only).
+      description: Requires `pipeline:read`. The first row is the episode birth (status_from null).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The history rows, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PipelineStatusHistoryView' }
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+  /v1/pipelines/{id}/transition:
+    post:
+      operationId: transitionPipeline
+      summary: Legacy status transition (decision edges and corrections only).
+      description: |
+        LEGACY — Lane2-C deferred its retirement; still live. Requires `pipeline:change-status`.
+        It never establishes an evidence-backed stage going FORWARD and never reaches a terminal:
+          - `contacted` / `talent_responded` forward → 422 PIPELINE_STAGE_REQUIRES_EVIDENCE (use the
+            email / call / Record Talent response commands).
+          - a BACKWARD correction into `contacted` / `talent_responded` is allowed when the episode
+            already reached that stage, with a required `note` (422 VALIDATION_ERROR
+            correction_note_required; never reached → PIPELINE_STAGE_REQUIRES_EVIDENCE).
+          - `not_in_consideration` → 422 PIPELINE_DISPOSITION_REASON_INVALID (disposition_required);
+            use the DISPOSITION action.
+          - `completed` → 403 PIPELINE_COMPLETE_SYSTEM_ONLY.
+          - `qualified` → 422 PIPELINE_QUALIFY_REQUIRES_RTR / PIPELINE_QUALIFY_RTR_POLICY_UNRESOLVED.
+          - 409 PIPELINE_TRANSITION_CONFLICT (stale expected_version), REQUISITION_NOT_ADVANCEABLE,
+            TRANSACTION_CONFLICT_RETRYABLE; 422 INVALID_PIPELINE_TRANSITION (illegal edge).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [to_status, expected_version]
+              properties:
+                to_status: { type: string, enum: [no_contact, contacted, talent_responded, qualifying, qualified, not_in_consideration, completed] }
+                expected_version: { type: integer }
+                note: { type: string }
+      responses:
+        '200':
+          description: The episode after the transition (or unchanged on a same-status no-op).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineEpisodeView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Stale expected_version, the requisition status does not permit it, or a retryable conflict.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Illegal edge, evidence required, disposition required, or the RTR precondition.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/pipelines/{id}/actions:
+    post:
+      operationId: applyPipelineAction
+      summary: A recruiter named action (START_QUALIFICATION, QUALIFY, DISPOSITION).
+      description: |
+        Requires `pipeline:change-status`. DISPOSITION records Not in consideration with a reason
+        from the recruiter vocabulary (authority RECRUITER / TALENT / ENGAGEMENT; system
+        DOWNSTREAM_OUTCOME reasons are refused). COMPLETE is system-only (422).
+        Refusals: 422 VALIDATION_ERROR (missing expected_version, unknown action), 422
+        PIPELINE_DISPOSITION_REASON_INVALID, 409 PIPELINE_ALREADY_DISPOSITIONED, plus the
+        transition refusals (see /transition).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [action, expected_version]
+              properties:
+                action: { type: string, enum: [START_QUALIFICATION, QUALIFY, DISPOSITION] }
+                expected_version: { type: integer }
+                reason: { type: string, description: 'DISPOSITION only — a reason code of authority_class.' }
+                authority_class: { type: string, enum: [RECRUITER, TALENT, ENGAGEMENT] }
+                note: { type: string }
+      responses:
+        '200':
+          description: The episode after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PipelineEpisodeView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          description: Already dispositioned, stale expected_version, or the requisition status does not permit it.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '422':
+          description: Invalid action, disposition reason, or transition.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
+  /v1/pipelines/{id}/journey:
+    get:
+      operationId: getTalentRequisitionJourney
+      summary: The composed Talent × Requisition journey for a Pipeline episode (read only).
+      description: |
+        Requires `pipeline:read`. A composed READ across the owning domains (Pipeline, submittal,
+        client selection, offer, placement); it is never the authority for any of them.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The journey.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentRequisitionJourneyView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   /v1/pipelines/{id}/void:
     post:
       operationId: voidPipelineEpisode
@@ -11041,6 +11340,20 @@ components:
         version: { type: integer }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    # Remediation v1.0 R5 (DEF-15(e)) — a Pipeline status-history row (GET /v1/pipelines/{id}/history).
+    PipelineStatusHistoryView:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, pipeline_id, status_from, status_to, changed_by_id, changed_at, note]
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        pipeline_id: { type: string, format: uuid }
+        status_from: { type: [string, 'null'], description: 'null on the birth row.' }
+        status_to: { type: string }
+        changed_by_id: { type: [string, 'null'] }
+        changed_at: { type: string, format: date-time }
+        note: { type: [string, 'null'] }
     # ── Requisition Talent Board (TB-1..TB-7) ──
     BoardNextAction:
       type: object
