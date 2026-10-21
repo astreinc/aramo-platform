@@ -681,6 +681,8 @@
       "TemplateDraftAlreadyExistsError",
       "TemplateImmutableError",
       "TemplateNotFoundError",
+      "TemplateResolutionService",
+      "TemplateSelectionInvalidError",
       "TemplateVariableKeyConflictError",
       "TemplateVariableNotFoundError",
       "TemplateVariablesRepository",
@@ -2873,12 +2875,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3850,6 +3846,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-organization-bindings.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5035,6 +5043,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t3-rtr-conversion-migration.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t3-template-resolution.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/documents-core.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -5543,12 +5563,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6600,6 +6614,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6724,19 +6744,18 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      { "project": "platform-admin", "status": "production" }
+      { "project": "api", "status": "production" }
     ],
     "@aramo/documents-contracts": [
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6826,6 +6845,12 @@
       }
     ],
     "@aramo/documents-rendering": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
@@ -10001,6 +10026,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

@@ -11001,12 +11001,6 @@
     },
     {
       "excludedBy": "src/tests/**/*",
-      "from": "apps/platform-admin/src/tests/rtr-template-type-id-drift.spec.ts",
-      "status": "excluded",
-      "to": "libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -20429,6 +20423,11 @@
       "to": "apps/api/src/rtr/rtr-template-content.ts"
     },
     {
+      "from": "libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
       "from": "libs/documents/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -22936,6 +22935,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
