@@ -5,10 +5,7 @@ import { errorMessage, senderApi, type EnvelopeRow, type Summary } from '../api'
 import { ErrorBox, Loading, StatusPill, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
-function greeting(now: Date): string {
-  const h = now.getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
-}
+import { DashboardBanner } from './DashboardBanner';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export function monthLabel(ym: string): string {
@@ -29,18 +26,13 @@ export function Dashboard() {
       })
       .catch((e: unknown) => setError(errorMessage(e)));
   }, []);
-  const first = (ctx.user.display_name ?? '').split(' ')[0] ?? '';
   const personal = ctx.workspace === 'personal';
 
   return (
     <div className="sg-page sg-page--wide">
-      <h1 className="sg-h1">
-        {greeting(new Date())}
-        {first !== '' ? `, ${first}` : ''}.
-      </h1>
-      <p className="sg-lede">{personal ? 'Here’s what’s happening with your documents.' : 'Here’s what’s happening with your agreements.'}</p>
+      <DashboardBanner />
       {personal ? (
-        <div className="sg-note" style={{ marginTop: 14 }} data-testid="personal-note">
+        <div className="sg-note" style={{ marginBottom: 14 }} data-testid="personal-note">
           <span className="sg-tag sg-tag--grey">Personal</span>
           Sending from a personal account isn’t enabled yet. You can see envelopes you’re part of here.
         </div>
@@ -49,7 +41,7 @@ export function Dashboard() {
       {summary === null && error === '' ? <Loading /> : null}
       {summary !== null ? (
         <>
-          <div className="sg-grid sg-grid--4" style={{ marginTop: 22 }}>
+          <div className="sg-grid sg-grid--4">
             <Stat label="Awaiting signatures" n={summary.awaiting_signatures} sub="envelopes in progress" color="var(--ink)" />
             <Stat label="Requires your action" n={summary.counts.draft} sub="drafts to finish" color="var(--accent)" />
             <Stat label="Completed this month" n={summary.completed_this_month} sub="fully executed" color="var(--ok)" />
@@ -85,20 +77,6 @@ export function Dashboard() {
               <section className="sg-card">
                 <div className="sg-card__head">Quick actions</div>
                 <div className="sg-card__body sg-grid sg-grid--2">
-                  {ctx.can_send ? (
-                    <Link className="sg-btn" style={{ justifyContent: 'flex-start' }} to={`${base}/envelopes/new`}>
-                      Upload document
-                    </Link>
-                  ) : (
-                    <span className="sg-btn" aria-disabled="true" style={{ justifyContent: 'flex-start', opacity: 0.5 }}>
-                      Upload document
-                    </span>
-                  )}
-                  {personal ? null : (
-                    <Link className="sg-btn" style={{ justifyContent: 'flex-start' }} to={`${base}/templates`}>
-                      Use template
-                    </Link>
-                  )}
                   <Link className="sg-btn" style={{ justifyContent: 'flex-start' }} to={`${base}/envelopes?tab=waiting`}>
                     Awaiting signatures
                   </Link>
