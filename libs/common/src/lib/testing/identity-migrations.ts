@@ -88,7 +88,7 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // ROLES-1 PR-1 (§4.1) — last-owner invariant: plpgsql AFTER ROW triggers on
   // UserTenantMembershipRole / UserTenantMembership / User (no column, no shape
   // change). Applied LAST: it reads Tenant.status (lifecycle) and the init tables only.
-  'libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql',
+  'libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

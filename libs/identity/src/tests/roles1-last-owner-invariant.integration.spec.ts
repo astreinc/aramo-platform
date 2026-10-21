@@ -27,7 +27,7 @@ const ROOT = resolve(__dirname, '../../../..');
 const OWNER_ROLE = '01900000-0000-7000-8000-000000000014';
 const RECRUITER_ROLE = '01900000-0000-7000-8000-000000000011';
 const SENTINEL = '01900000-0000-7000-8000-000000000100';
-const MIGRATION = 'libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql';
+const MIGRATION = 'libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql';
 
 type Member = { user_id: string; membership_id: string; assignment_id: string };
 

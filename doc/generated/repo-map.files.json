@@ -3159,7 +3159,7 @@
     "libs/identity/prisma/migrations/20261020100000_sign_role_display_names/migration.sql",
     "libs/identity/prisma/migrations/20261020130100_sign_naming_role_scope_keys/migration.sql",
     "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql",
-    "libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql",
+    "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql",
     "libs/identity/prisma/migrations/migration_lock.toml",
     "libs/identity/prisma/schema.prisma",
     "libs/identity/prisma/seed-astre.ts",

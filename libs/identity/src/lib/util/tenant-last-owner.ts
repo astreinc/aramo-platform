@@ -6,7 +6,7 @@ import { AramoError } from '@aramo/common';
 export const TENANT_OWNER_ROLE_KEY = 'tenant_owner';
 
 // §4.1 — the marker the DB trigger `identity.roles1_assert_tenant_keeps_owner` raises
-// (migration 20261021120000_roles1_last_owner_invariant). The trigger is the authority; this
+// (migration 20261021120100_roles1_last_owner_invariant). The trigger is the authority; this
 // module only translates its refusal into the governed 409 so the API never returns a raw 500.
 export const TENANT_LAST_OWNER_DB_MARKER = 'tenant_last_owner';
 

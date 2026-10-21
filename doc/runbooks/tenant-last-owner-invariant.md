@@ -2,7 +2,7 @@
 
 **Status:** operator procedure. **Owner:** platform on-call.
 **Governing text:** `Aramo-ROLES-1-Organization-and-Product-Role-Model-Implementation-Directive-v1_0-LOCKED` §4 (safeguards 2 and S-1), under `Aramo-ADR-0035-Organization-and-Product-Role-Model-v1_0-LOCKED`.
-**Migration:** `libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql`.
+**Migration:** `libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql`.
 
 ## What it enforces
 
@@ -91,7 +91,7 @@ the armed state:
 ```bash
 cd /opt/aramo
 sudo docker exec -i aramo-prod-postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 --single-transaction -q' \
-  < libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql
+  < libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql
 ```
 
 Do **not** re-arm with a plain `ALTER TABLE … ENABLE TRIGGER`. That restores the default
