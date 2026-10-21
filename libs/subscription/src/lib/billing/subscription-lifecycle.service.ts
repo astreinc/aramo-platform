@@ -15,6 +15,7 @@ import {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
+import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
 
 // Aramo Sign launch — the subscription lifecycle (Final Implementation
@@ -42,6 +43,15 @@ import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRu
 // monthly invoice period (a cancellation inside it is flagged, never treated as
 // month-to-month); eligibility lapses are surfaced, never auto-downgraded;
 // checkout records accepted terms, and LIVE-mode checkout needs APPROVED terms.
+//
+// Sign Signup Amendment A1 (Organization Details, US only) §2.6 — checkout needs
+// an ELIGIBLE organization profile (OrganizationBillingProfilePort; unbound →
+// refused) and locks the tenant's profile to the US; Aramo creates / updates the
+// provider billing account from that profile (TenantBillingAccount) and Checkout
+// runs on it. Activation guard: every sync re-reads the provider's billing
+// country; anything but US never opens or (re)activates a subscription — the
+// event is kept as IGNORED evidence and a BillingReconciliationFlag is raised
+// (resolved by a later US sync).
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -53,7 +63,18 @@ export type BillingRefusal =
   | 'TERMS_NOT_APPROVED'
   | 'PORTAL_NOT_CONFIGURED'
   | 'ALREADY_SUBSCRIBED'
-  | 'NO_BILLING_ACCOUNT';
+  | 'NO_BILLING_ACCOUNT'
+  | 'ORGANIZATION_PROFILE_REQUIRED';
+
+/** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
+export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
+const BILLING_COUNTRY_HELD = `${BILLING_COUNTRY_NOT_SUPPORTED}: held for reconciliation`;
+const BILLING_COUNTRY_ALLOWED = 'US';
+
+/** Fail closed: only an explicit US billing country may activate. */
+export function billingCountrySupported(account_country: string | null): boolean {
+  return account_country?.trim().toUpperCase() === BILLING_COUNTRY_ALLOWED;
+}
 
 export const STORAGE_CAPACITY_KEY = 'sign.storage_bytes';
 const OPERATOR_DISPLAY_ORDER_FLOOR = 900;
@@ -198,6 +219,7 @@ export class SubscriptionLifecycleService {
     private readonly capacity: CapacityService,
     @Optional() @Inject(PLAN_ELIGIBILITY_PORT) private readonly eligibility?: PlanEligibilityPort,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
+    @Optional() @Inject(ORGANIZATION_BILLING_PROFILE_PORT) private readonly orgProfile?: OrganizationBillingProfilePort,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -362,10 +384,9 @@ export class SubscriptionLifecycleService {
     if (open !== null && open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') {
       throw new BillingRefusedError('ALREADY_SUBSCRIBED');
     }
-    const prior = await this.prisma.tenantSubscription.findFirst({
-      where: { tenant_id: input.tenant_id, billing_account_ref: { not: null } },
-      orderBy: { started_at: 'desc' },
-    });
+    // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
+    const profile = await this.lockedBillingProfile(input.tenant_id);
+    const account_ref = await this.ensureBillingAccount(input.tenant_id, profile);
     const intent_id = uuidv7();
     await this.prisma.$transaction(async (tx) => {
       await tx.checkoutIntent.create({
@@ -402,12 +423,51 @@ export class SubscriptionLifecycleService {
       user_id: input.user_id,
       user_email: input.user_email,
       price_ref: price,
-      account_ref: prior?.billing_account_ref ?? null,
+      account_ref,
       success_url: input.success_url,
       cancel_url: input.cancel_url,
     });
     await this.prisma.checkoutIntent.update({ where: { id: intent_id }, data: { provider_session_ref: session.session_ref } });
     return { url: session.url };
+  }
+
+  /** The eligible (US) organization billing profile; the tenant is then held to the US (§2.5). */
+  private async lockedBillingProfile(tenant_id: string): Promise<OrganizationBillingProfile> {
+    if (this.orgProfile === undefined) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_profile_incomplete');
+    const r = await this.orgProfile.eligibleProfile(tenant_id);
+    if ('refused' in r) throw new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', r.refused);
+    await this.orgProfile.lockRegion(tenant_id);
+    return r.profile;
+  }
+
+  /**
+   * A1 §2.6 — the tenant's provider billing account, created from (or updated to)
+   * the organization profile. Reuses the mapped account, else the latest
+   * subscription's account; the mapping is persisted in TenantBillingAccount.
+   */
+  private async ensureBillingAccount(tenant_id: string, profile: OrganizationBillingProfile): Promise<string> {
+    const provider = this.billing.provider;
+    const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id } });
+    let existing: string | null = mapped !== null && mapped.provider === provider ? mapped.account_ref : null;
+    if (existing === null) {
+      const prior = await this.prisma.tenantSubscription.findFirst({
+        where: { tenant_id, billing_provider: provider, billing_account_ref: { not: null } },
+        orderBy: { started_at: 'desc' },
+      });
+      existing = prior?.billing_account_ref ?? null;
+    }
+    const account_ref = await this.billing.upsertBillingAccount(existing, {
+      tenant_id,
+      legal_name: profile.legal_name,
+      billing_email: profile.billing_email,
+      address: profile.address,
+    });
+    await this.prisma.tenantBillingAccount.upsert({
+      where: { tenant_id },
+      create: { tenant_id, provider, account_ref },
+      update: { provider, account_ref },
+    });
+    return account_ref;
   }
 
   async portal(tenant_id: string, return_url: string): Promise<{ url: string }> {
@@ -491,9 +551,36 @@ export class SubscriptionLifecycleService {
       const row = await tx.tenantSubscription.findFirst({
         where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref },
       });
-      if (row !== null) return this.updateRow(tx, row, state, mapped, at);
+      // A1 §2.6 — activation guard (fail closed: a missing country is not US).
+      const countryOk = billingCountrySupported(state.account_country);
+      if (!countryOk) await this.raiseCountryFlag(tx, tenant_id, state, intent?.id ?? null);
+      else await this.resolveCountryFlags(tx, state, at);
+      if (row !== null) return this.updateRow(tx, row, state, mapped, at, countryOk);
       if (intent === null) return { outcome: 'IGNORED', detail: 'unknown subscription without a checkout intent', tenant_id } as ApplyResult;
+      if (!countryOk) {
+        this.log.warn(`billing country not supported (${state.account_country ?? 'none'}) for ${state.subscription_ref}; held for reconciliation`);
+        return { outcome: 'IGNORED', detail: BILLING_COUNTRY_HELD, tenant_id } as ApplyResult;
+      }
       return this.openRow(tx, tenant_id, intent, state, mapped, at);
+    });
+  }
+
+  /** Raise (or keep) the open activation-guard flag for this provider subscription. */
+  private async raiseCountryFlag(tx: Tx, tenant_id: string, state: ProviderSubscriptionState, intent_id: string | null): Promise<void> {
+    // The partial unique index (provider, subscription_ref, reason) WHERE
+    // resolved_at IS NULL makes a repeated sync a no-op.
+    await tx.$executeRaw`
+      INSERT INTO "subscription"."BillingReconciliationFlag"
+        ("id", "tenant_id", "provider", "subscription_ref", "intent_id", "reason", "account_country")
+      VALUES (${uuidv7()}::uuid, ${tenant_id}::uuid, ${state.provider}, ${state.subscription_ref},
+              ${intent_id}::uuid, ${BILLING_COUNTRY_NOT_SUPPORTED}, ${state.account_country})
+      ON CONFLICT ("provider", "subscription_ref", "reason") WHERE "resolved_at" IS NULL DO NOTHING`;
+  }
+
+  private async resolveCountryFlags(tx: Tx, state: ProviderSubscriptionState, at: Date): Promise<void> {
+    await tx.billingReconciliationFlag.updateMany({
+      where: { provider: state.provider, subscription_ref: state.subscription_ref, reason: BILLING_COUNTRY_NOT_SUPPORTED, resolved_at: null },
+      data: { resolved_at: at },
     });
   }
 
@@ -510,18 +597,27 @@ export class SubscriptionLifecycleService {
       commitment_end: Date | null;
     },
     state: ProviderSubscriptionState,
-    mapped: ReturnType<typeof mapProviderStatus>,
+    provider: ReturnType<typeof mapProviderStatus>,
     at: Date,
+    countryOk = true,
   ): Promise<ApplyResult> {
     if (row.ended_at !== null) {
       // An ended subscription is never reopened; a resubscription is a new checkout.
       return { outcome: 'IGNORED', detail: 'subscription already ended', tenant_id: row.tenant_id, subscription_id: row.id };
     }
-    const grace_until = mapped.grace
-      ? row.status === 'PAST_DUE' && row.grace_until !== null
-        ? row.grace_until
-        : new Date(at.getTime() + graceDays() * 86_400_000)
-      : null;
+    // A1 §2.6 — a non-US billing country never moves a non-sending subscription
+    // to a sending status (no activation / reactivation). Every other change
+    // (cancellation, past-due, period, plan) still applies.
+    // "Sending" is the effective state (a PAST_DUE row past its grace does not send).
+    const held = !countryOk && !subscriptionSends(row, at) && SENDING.has(provider.status);
+    const mapped = held ? { status: row.status, grace: false, ends: false } : provider;
+    const grace_until = held
+      ? row.grace_until
+      : mapped.grace
+        ? row.status === 'PAST_DUE' && row.grace_until !== null
+          ? row.grace_until
+          : new Date(at.getTime() + graceDays() * 86_400_000)
+        : null;
     // A plan change made in the provider (its price maps to another catalog plan).
     const plan_id = (await this.planForPrice(tx, state.price_ref)) ?? row.plan_id;
     // A1 — a cancellation that would end the subscription before the commitment
@@ -544,6 +640,14 @@ export class SubscriptionLifecycleService {
       },
     });
     const reactivated = !SENDING.has(row.status) && SENDING.has(mapped.status);
+    if (!countryOk) {
+      return {
+        outcome: 'IGNORED',
+        detail: `${BILLING_COUNTRY_HELD} (${row.status} -> ${mapped.status}${held ? `, ${provider.status} withheld` : ''})`,
+        tenant_id: row.tenant_id,
+        subscription_id: row.id,
+      };
+    }
     return {
       outcome: 'APPLIED',
       detail: `${row.status} -> ${mapped.status}`,

@@ -1,8 +1,9 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
 import {
+  type BillingAccountDetails,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
@@ -10,7 +11,16 @@ import {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
-import { isWireSubscriptionEvent, wireAccountRef, wireCheckoutAccountParams, wirePortalAccountParams } from './stripe-wire.js';
+import {
+  isWireSubscriptionEvent,
+  wireAccountCountry,
+  wireAccountParams,
+  wireAccountPath,
+  wireAccountRef,
+  wireCheckoutAccountParams,
+  wirePortalAccountParams,
+  wireSubscriptionQuery,
+} from './stripe-wire.js';
 
 // Aramo Sign launch — Stripe over its REST API (no SDK dependency).
 //
@@ -59,6 +69,7 @@ export function stripeSubscriptionState(obj: Record<string, unknown>): ProviderS
     price_ref: asString(items[0]?.price?.id),
     tenant_id: asString(metadata['tenant_id']),
     intent_id: asString(metadata['intent_id']),
+    account_country: wireAccountCountry(obj),
   };
 }
 
@@ -149,6 +160,18 @@ export class StripeBillingProvider implements BillingProviderPort {
     return json;
   }
 
+  async upsertBillingAccount(account_ref: string | null, details: BillingAccountDetails): Promise<string> {
+    // A create is idempotently keyed per tenant + content, so a retried checkout
+    // never makes a second account for the same details.
+    const body = form(wireAccountParams(details));
+    const key =
+      account_ref === null ? `aramo-billing-account-${details.tenant_id}-${createHash('sha256').update(body).digest('hex').slice(0, 16)}` : undefined;
+    const a = await this.call('POST', wireAccountPath(account_ref), body, key);
+    const id = asString(a['id']);
+    if (id === null) throw new BillingProviderUnavailableError('billing account without id');
+    return id;
+  }
+
   async createCheckoutSession(req: CheckoutSessionRequest): Promise<{ session_ref: string; url: string }> {
     const body = form({
       mode: 'subscription',
@@ -158,6 +181,9 @@ export class StripeBillingProvider implements BillingProviderPort {
       cancel_url: req.cancel_url,
       client_reference_id: req.intent_id,
       ...wireCheckoutAccountParams(req.account_ref, req.user_email),
+      // A1 §2.6 — on Aramo's billing account the registered address is used (not
+      // re-collected or editable in Checkout).
+      billing_address_collection: req.account_ref !== null ? 'auto' : undefined,
       'metadata[tenant_id]': req.tenant_id,
       'metadata[user_id]': req.user_id,
       'metadata[intent_id]': req.intent_id,
@@ -180,7 +206,8 @@ export class StripeBillingProvider implements BillingProviderPort {
   }
 
   async retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState> {
-    const s = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(subscription_ref)}`);
+    // A1 §2.6 — the billing account is expanded so its country is re-verified.
+    const s = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(subscription_ref)}?${wireSubscriptionQuery()}`);
     return stripeSubscriptionState(s);
   }
 

@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 
-import { Btn, Check, ErrorBox, Field, Loading, TextIn } from '../ui';
+import { Btn, Check, ErrorBox, Field, fieldErrorId, Loading, Sel, TextIn } from '../ui';
+
+import { AddressAutocomplete, type AddressSuggestion } from './AddressAutocomplete';
+import { toOrganizationPayload, US_STATES, validateOrgDetails, type FieldErrors, type OrgDetailsValues } from './organization-details';
 
 // Aramo Sign launch (Journey B) — public self-service BUSINESS signup on
 // esign.aramo.ai. Session-less: these pages talk only to /v1/signup/sign/*.
@@ -24,15 +27,17 @@ interface SignupError {
   code?: string;
   message: string;
   reason?: string;
+  field?: string;
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${API}/${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  const json = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { reason?: string } } } & T;
+  const json = (await res.json().catch(() => ({}))) as { error?: { code?: string; message?: string; details?: { reason?: string; field?: string } } } & T;
   if (!res.ok) {
     const err: SignupError = { status: res.status, message: json.error?.message ?? 'Something went wrong. Try again.' };
     if (json.error?.code !== undefined) err.code = json.error.code;
     if (json.error?.details?.reason !== undefined) err.reason = json.error.details.reason;
+    if (json.error?.details?.field !== undefined) err.field = json.error.details.field;
     throw err;
   }
   return json;
@@ -162,12 +167,81 @@ export function tokenFromHash(hash: string = window.location.hash): string | nul
   return t !== null && t.length >= 20 ? t : null;
 }
 
+// Amendment A1 §2.2 — the page states the US-only scope before any data entry.
+const CONTACT_SALES_URL = 'https://aramo.ai/company/contact.html?route=Aramo%20Sign';
+
+interface Preview {
+  email: string;
+  organization_name: string;
+  display_name?: string | null;
+  status: string;
+}
+
+type FieldKey = keyof FieldErrors;
+const FORM_FIELDS: ReadonlySet<string> = new Set<FieldKey>([
+  'organization_name',
+  'legal_name',
+  'address_line1',
+  'address_line2',
+  'city',
+  'state_province',
+  'postal_code',
+  'primary_contact_email',
+  'primary_contact_name',
+  'signer_title',
+  'primary_contact_phone',
+  'tax_id',
+  'registration_number',
+  'authority_attested',
+]);
+
+const FIELD_INPUT_ID: Record<FieldKey, string> = {
+  organization_name: 'sv-org',
+  legal_name: 'sv-legal',
+  address_line1: 'sv-line1',
+  address_line2: 'sv-line2',
+  city: 'sv-city',
+  state_province: 'sv-state',
+  postal_code: 'sv-zip',
+  primary_contact_email: 'sv-email',
+  primary_contact_name: 'sv-name',
+  signer_title: 'sv-title',
+  primary_contact_phone: 'sv-phone',
+  tax_id: 'sv-ein',
+  registration_number: 'sv-reg',
+  authority_attested: 'sv-authority',
+};
+
+function serverField(field: string | undefined): FieldKey | null {
+  if (field === undefined) return null;
+  const f = field.replace(/^organization\./, '');
+  return FORM_FIELDS.has(f) ? (f as FieldKey) : null;
+}
+
+const EMPTY: OrgDetailsValues = {
+  legal_name: '',
+  address_line1: '',
+  address_line2: '',
+  city: '',
+  state_province: '',
+  postal_code: '',
+  primary_contact_email: '',
+  primary_contact_name: '',
+  signer_title: '',
+  primary_contact_phone: '',
+  tax_id: '',
+  registration_number: '',
+};
+
 export function SignupVerifyPage() {
   const [token] = useState(() => tokenFromHash());
-  const [preview, setPreview] = useState<{ email: string; organization_name: string; status: string } | null>(null);
+  const [preview, setPreview] = useState<Preview | null>(null);
   const [invalid, setInvalid] = useState(false);
   const [org, setOrg] = useState('');
   const [nameTaken, setNameTaken] = useState(false);
+  const [values, setValues] = useState<OrgDetailsValues>(EMPTY);
+  const [attested, setAttested] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<CompleteResponse | null>(null);
@@ -179,31 +253,91 @@ export function SignupVerifyPage() {
       setInvalid(true);
       return;
     }
-    post<{ email: string; organization_name: string; status: string }>('preview', { token })
+    post<Preview>('preview', { token })
       .then((p) => {
         setPreview(p);
         setOrg(p.organization_name);
+        // Defaults: billing contact = the confirmed email; signer = the step-1 name.
+        setValues((v) => ({ ...v, primary_contact_email: p.email, primary_contact_name: p.display_name ?? '' }));
       })
       .catch(() => setInvalid(true));
   }, [token]);
 
-  const complete = () => {
+  const set = (k: keyof OrgDetailsValues) => (v: string) => {
+    setValues((prev) => ({ ...prev, [k]: v }));
+    setFieldErrors((prev) => {
+      if (prev[k] === undefined) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
+  };
+
+  const fillAddress = (a: AddressSuggestion) => {
+    setValues((prev) => ({
+      ...prev,
+      address_line1: a.address_line1,
+      address_line2: a.address_line2 ?? '',
+      city: a.city,
+      state_province: US_STATES.some(([c]) => c === a.state_province) ? a.state_province : prev.state_province,
+      postal_code: a.postal_code,
+    }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.address_line1;
+      delete next.address_line2;
+      delete next.city;
+      delete next.state_province;
+      delete next.postal_code;
+      return next;
+    });
+  };
+
+  const focusField = (k: FieldKey) => {
+    // Defer until the inline message is rendered.
+    setTimeout(() => document.getElementById(FIELD_INPUT_ID[k])?.focus(), 0);
+  };
+
+  const onFailure = (err: SignupError) => {
+    if (err.status === 404) return setInvalid(true);
+    if (err.reason === 'organization_name_taken') {
+      setNameTaken(true);
+      setFieldErrors((p) => ({ ...p, organization_name: err.message }));
+      return focusField('organization_name');
+    }
+    if (err.reason === 'organization_country_not_supported') return setError(err.message);
+    const field = serverField(err.field) ?? (err.reason === 'authority_attestation_required' ? 'authority_attested' : null);
+    if (field !== null) {
+      setFieldErrors((p) => ({ ...p, [field]: err.message }));
+      return focusField(field);
+    }
+    setError(err.message);
+  };
+
+  const finish = (body: Record<string, unknown>) => {
     if (token === null) return;
     setBusy(true);
     setError(null);
-    post<CompleteResponse>('complete', { token, ...(nameTaken ? { organization_name: org.trim() } : {}) })
+    post<CompleteResponse>('complete', { token, ...body })
       .then((r) => {
         if (r.status === 'PROVISIONED') setDone(r);
         else setError('Your organization is still being created. Try again in a moment.');
       })
-      .catch((err: SignupError) => {
-        if (err.status === 404) setInvalid(true);
-        else if (err.reason === 'organization_name_taken') {
-          setNameTaken(true);
-          setError(err.message);
-        } else setError(err.message);
-      })
+      .catch(onFailure)
       .finally(() => setBusy(false));
+  };
+
+  const submitDetails = (e: FormEvent) => {
+    e.preventDefault();
+    const errs: FieldErrors = validateOrgDetails(values, attested);
+    if (nameTaken && (org.trim().length < 2 || org.trim().length > 100)) errs.organization_name = 'Enter an organization name (2–100 characters).';
+    setFieldErrors(errs);
+    const first = (Object.keys(FIELD_INPUT_ID) as FieldKey[]).find((k) => errs[k] !== undefined);
+    if (first !== undefined) {
+      setError(null);
+      return focusField(first);
+    }
+    finish({ ...(nameTaken ? { organization_name: org.trim() } : {}), organization: toOrganizationPayload(values) });
   };
 
   if (invalid) {
@@ -241,28 +375,144 @@ export function SignupVerifyPage() {
       </Frame>
     );
   }
-  if (preview === null) return <Loading label="Checking your link…" />;
+  if (preview === null || token === null) return <Loading label="Checking your link…" />;
+
+  if (preview.status !== 'READY') {
+    // Already created (e.g. the link was opened again): no details to collect —
+    // completing again only returns the sign-in links.
+    return (
+      <Frame title="Your organization is already set up" testId="signup-confirm">
+        <div className="sg-lede" style={{ marginBottom: 16 }}>
+          Your email <strong>{preview.email}</strong> is confirmed.
+        </div>
+        <div className="sg-grid" style={{ gap: 12 }}>
+          {error !== null ? <ErrorBox>{error}</ErrorBox> : null}
+          <Btn variant="primary" disabled={busy} onClick={() => finish({})} data-testid="signup-create">
+            {busy ? 'Opening…' : 'Continue'}
+          </Btn>
+        </div>
+      </Frame>
+    );
+  }
+
+  const fe = fieldErrors;
+  const aria = (k: FieldKey) =>
+    fe[k] !== undefined ? { 'aria-invalid': true as const, 'aria-describedby': fieldErrorId(FIELD_INPUT_ID[k]) } : {};
+  const who = values.legal_name.trim() !== '' ? values.legal_name.trim() : 'this organization';
 
   return (
-    <Frame title="Create your organization" testId="signup-confirm">
-      <div className="sg-lede" style={{ marginBottom: 16 }}>
-        Your email <strong>{preview.email}</strong> is confirmed.
+    <Frame title="Organization details" testId="signup-confirm">
+      <p className="sg-notice" data-testid="signup-us-notice">
+        Aramo Sign is currently available to organizations registered in the United States. Outside the US?{' '}
+        <a href={CONTACT_SALES_URL} target="_blank" rel="noopener noreferrer">
+          Contact sales
+        </a>
+        .
+      </p>
+      <div className="sg-lede" style={{ margin: '12px 0 16px' }}>
+        Your email <strong>{preview.email}</strong> is confirmed. Tell us about your organization — nothing is created until you finish.
       </div>
-      <div className="sg-grid" style={{ gap: 12 }}>
+      <form className="sg-grid" style={{ gap: 12 }} onSubmit={submitDetails} noValidate data-testid="signup-details">
         {nameTaken ? (
-          <Field label="Organization name" htmlFor="sv-org">
-            <TextIn id="sv-org" value={org} minLength={2} maxLength={100} onChange={(e) => setOrg(e.target.value)} />
+          <Field label="Organization name" htmlFor="sv-org" error={fe.organization_name}>
+            <TextIn id="sv-org" value={org} minLength={2} maxLength={100} onChange={(e) => setOrg(e.target.value)} {...aria('organization_name')} />
           </Field>
         ) : (
           <div>
-            Organization: <strong>{preview.organization_name}</strong>
+            Organization name: <strong>{preview.organization_name}</strong>
           </div>
         )}
+        <Field label="Legal name" htmlFor="sv-legal" help="As registered with your state" error={fe.legal_name}>
+          <TextIn id="sv-legal" required maxLength={200} autoComplete="organization" value={values.legal_name} onChange={(e) => set('legal_name')(e.target.value)} {...aria('legal_name')} />
+        </Field>
+        <Field label="Street address" htmlFor="sv-line1" error={fe.address_line1}>
+          <AddressAutocomplete
+            id="sv-line1"
+            token={token}
+            value={values.address_line1}
+            onChange={set('address_line1')}
+            onSelect={fillAddress}
+            invalid={fe.address_line1 !== undefined}
+            {...(fe.address_line1 !== undefined ? { describedBy: fieldErrorId('sv-line1') } : {})}
+          />
+        </Field>
+        <Field label="Address line 2 (optional)" htmlFor="sv-line2" error={fe.address_line2}>
+          <TextIn id="sv-line2" maxLength={200} autoComplete="address-line2" value={values.address_line2} onChange={(e) => set('address_line2')(e.target.value)} {...aria('address_line2')} />
+        </Field>
+        <div className="sg-row2">
+          <Field label="City" htmlFor="sv-city" error={fe.city}>
+            <TextIn id="sv-city" required maxLength={100} autoComplete="address-level2" value={values.city} onChange={(e) => set('city')(e.target.value)} {...aria('city')} />
+          </Field>
+          <Field label="State" htmlFor="sv-state" error={fe.state_province}>
+            <Sel id="sv-state" required autoComplete="address-level1" value={values.state_province} onChange={(e) => set('state_province')(e.target.value)} {...aria('state_province')}>
+              <option value="">Choose…</option>
+              {US_STATES.map(([code, name]) => (
+                <option key={code} value={code}>
+                  {name}
+                </option>
+              ))}
+            </Sel>
+          </Field>
+          <Field label="ZIP code" htmlFor="sv-zip" error={fe.postal_code}>
+            <TextIn id="sv-zip" required inputMode="numeric" maxLength={10} autoComplete="postal-code" value={values.postal_code} onChange={(e) => set('postal_code')(e.target.value)} {...aria('postal_code')} />
+          </Field>
+        </div>
+        <Field label="Country" htmlFor="sv-country">
+          <TextIn id="sv-country" value="United States" readOnly disabled />
+        </Field>
+        <Field label="Billing contact email" htmlFor="sv-email" error={fe.primary_contact_email}>
+          <TextIn id="sv-email" type="email" required autoComplete="email" value={values.primary_contact_email} onChange={(e) => set('primary_contact_email')(e.target.value)} {...aria('primary_contact_email')} />
+        </Field>
+        <div className="sg-row2">
+          <Field label="Your full name" htmlFor="sv-name" error={fe.primary_contact_name}>
+            <TextIn id="sv-name" required maxLength={100} autoComplete="name" value={values.primary_contact_name} onChange={(e) => set('primary_contact_name')(e.target.value)} {...aria('primary_contact_name')} />
+          </Field>
+          <Field label="Your title" htmlFor="sv-title" error={fe.signer_title}>
+            <TextIn id="sv-title" required maxLength={100} autoComplete="organization-title" value={values.signer_title} onChange={(e) => set('signer_title')(e.target.value)} {...aria('signer_title')} />
+          </Field>
+        </div>
+        <Field label="Phone (optional)" htmlFor="sv-phone" error={fe.primary_contact_phone}>
+          <TextIn id="sv-phone" type="tel" autoComplete="tel" value={values.primary_contact_phone} onChange={(e) => set('primary_contact_phone')(e.target.value)} {...aria('primary_contact_phone')} />
+        </Field>
+        <div className="sg-row2">
+          <Field label="EIN (optional)" htmlFor="sv-ein" help="12-3456789" error={fe.tax_id}>
+            <TextIn id="sv-ein" maxLength={10} value={values.tax_id} onChange={(e) => set('tax_id')(e.target.value)} {...aria('tax_id')} />
+          </Field>
+          <Field label="State registration number (optional)" htmlFor="sv-reg" error={fe.registration_number}>
+            <TextIn id="sv-reg" maxLength={50} value={values.registration_number} onChange={(e) => set('registration_number')(e.target.value)} {...aria('registration_number')} />
+          </Field>
+        </div>
+        <div className="sg-field">
+          {/* A1 Refinement A — the signer's own attestation, never presented as verified authority. */}
+          <label className="sg-settings-row" htmlFor="sv-authority">
+            <Check
+              id="sv-authority"
+              checked={attested}
+              onChange={(e) => {
+                setAttested(e.target.checked);
+                if (e.target.checked)
+                  setFieldErrors((p) => {
+                    const next = { ...p };
+                    delete next.authority_attested;
+                    return next;
+                  });
+              }}
+              data-testid="signup-authority"
+              {...aria('authority_attested')}
+            />
+            <span>I am authorized to act for {who} and to accept the Aramo terms on its behalf.</span>
+          </label>
+          {fe.authority_attested !== undefined ? (
+            <div className="sg-field-error" id={fieldErrorId('sv-authority')}>
+              {fe.authority_attested}
+            </div>
+          ) : null}
+        </div>
         {error !== null ? <ErrorBox>{error}</ErrorBox> : null}
-        <Btn variant="primary" disabled={busy || (nameTaken && org.trim().length < 2)} onClick={complete} data-testid="signup-create">
+        <Btn variant="primary" type="submit" disabled={busy} data-testid="signup-create">
           {busy ? 'Creating…' : 'Create organization'}
         </Btn>
-      </div>
+      </form>
     </Frame>
   );
 }

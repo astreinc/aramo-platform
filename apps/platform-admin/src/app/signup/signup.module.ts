@@ -5,6 +5,7 @@ import { MailerModule } from '@aramo/mailer';
 import { PlatformModule } from '../platform/platform.module.js';
 
 import { SignSignupController } from './sign-signup.controller.js';
+import { AddressSuggestService } from './address-suggest.service.js';
 import { SignupBudget, SignSignupService } from './sign-signup.service.js';
 
 // Aramo Sign launch — public self-service signup. Cognito-free owner
@@ -14,6 +15,6 @@ import { SignupBudget, SignSignupService } from './sign-signup.service.js';
 @Module({
   imports: [PlatformModule, EntitlementModule, MailerModule],
   controllers: [SignSignupController],
-  providers: [SignSignupService, SignupBudget],
+  providers: [SignSignupService, SignupBudget, AddressSuggestService],
 })
 export class SignupModule {}

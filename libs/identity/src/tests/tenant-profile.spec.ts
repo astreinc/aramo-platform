@@ -110,3 +110,57 @@ describe('TenantProfileService', () => {
     expect(updateProfile).not.toHaveBeenCalled();
   });
 });
+
+// Sign Signup Amendment A1 (LOCKED) §2.5 — a tenant held to the US region keeps a
+// complete US organization profile; tenants without a lock are unchanged.
+describe('TenantProfileService — US billing-region lock', () => {
+  const usRow = () =>
+    row({
+      legal_name: 'Acme LLC',
+      address_line1: '1 Main St',
+      city: 'Austin',
+      state_province: 'TX',
+      postal_code: '78701',
+      country_code: 'US',
+      primary_contact_email: 'billing@acme.test',
+    });
+  function locked(region: string | null, current = usRow()) {
+    const findProfileById = vi.fn(async () => current);
+    const updateProfile = vi.fn(async (_id: string, patch: Record<string, string | null>) => row({ ...current, ...patch }));
+    const regionSvc = { regionOf: vi.fn(async () => region) };
+    const svc = new TenantProfileService({ findProfileById, updateProfile } as never, regionSvc as never);
+    return { svc, updateProfile };
+  }
+  const reason = async (p: Promise<unknown>) => {
+    try {
+      await p;
+    } catch (e) {
+      return (e as AramoError).context.details?.['reason'];
+    }
+    return 'resolved';
+  };
+
+  it('refuses moving a locked tenant outside the US (incl. territories)', async () => {
+    const { svc, updateProfile } = locked('US');
+    expect(await reason(svc.updateProfile({ tenantId: 't1', body: { country_code: 'IN' }, requestId: RID }))).toBe('organization_country_not_supported');
+    expect(await reason(svc.updateProfile({ tenantId: 't1', body: { state_province: 'PR' }, requestId: RID }))).toBe('organization_country_not_supported');
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('refuses clearing a required field on a locked tenant', async () => {
+    const { svc } = locked('US');
+    expect(await reason(svc.updateProfile({ tenantId: 't1', body: { city: null }, requestId: RID }))).toBe('organization_profile_incomplete');
+  });
+
+  it('allows ordinary edits on a locked tenant', async () => {
+    const { svc, updateProfile } = locked('US');
+    await svc.updateProfile({ tenantId: 't1', body: { city: 'Dallas', postal_code: '75201' }, requestId: RID });
+    expect(updateProfile).toHaveBeenCalledWith('t1', { city: 'Dallas', postal_code: '75201' });
+  });
+
+  it('a tenant without a lock (e.g. Astre) is unrestricted', async () => {
+    const { svc, updateProfile } = locked(null);
+    await svc.updateProfile({ tenantId: 't1', body: { country_code: 'IN' }, requestId: RID });
+    expect(updateProfile).toHaveBeenCalledWith('t1', { country_code: 'IN' });
+  });
+});

@@ -103,6 +103,9 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // fixed ids 0x140d/0x140e + their grants on the Sign role rows). One guarded DO block (a
   // no-op when the rows are absent). No returned-shape change.
   'libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql',
+  // Sign Signup Amendment A1 (LOCKED) — OrganizationAuthorityAttestation + TenantBillingRegionPolicy.
+  // Two new tables (FK to Tenant). No returned-shape change.
+  'libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

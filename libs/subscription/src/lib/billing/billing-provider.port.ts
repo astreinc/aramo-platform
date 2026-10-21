@@ -4,7 +4,19 @@
 
 export const BILLING_PROVIDER_PORT = 'BILLING_PROVIDER_PORT';
 
+import type { OrganizationBillingAddress } from './organization-billing-profile.port.js';
+
 export type BillingProviderKey = 'STRIPE';
+
+// A1 §2.6 — what Aramo writes onto the provider billing account (from the US
+// organization profile). The provider's copy is the tax-relevant billing location
+// and is re-verified on every sync (`ProviderSubscriptionState.account_country`).
+export interface BillingAccountDetails {
+  tenant_id: string;
+  legal_name: string;
+  billing_email: string;
+  address: OrganizationBillingAddress;
+}
 
 export interface CheckoutSessionRequest {
   intent_id: string;
@@ -33,6 +45,9 @@ export interface ProviderSubscriptionState {
   // Aramo identifiers stamped into provider metadata at checkout.
   tenant_id: string | null;
   intent_id: string | null;
+  // A1 §2.6 — the billing account's country as the provider holds it now (ISO
+  // alpha-2), or null when absent. Only 'US' may activate (fail closed).
+  account_country: string | null;
 }
 
 export interface VerifiedBillingEvent {
@@ -64,6 +79,12 @@ export interface BillingProviderPort {
   isConfigured(): boolean;
   // A1 — 'live' only for live credentials (live charging is separately authorized).
   mode(): 'test' | 'live';
+  /**
+   * A1 §2.6 — create (account_ref null) or update the provider billing account
+   * with the organization's legal name, billing email and registered address.
+   * Returns the account_ref.
+   */
+  upsertBillingAccount(account_ref: string | null, details: BillingAccountDetails): Promise<string>;
   createCheckoutSession(req: CheckoutSessionRequest): Promise<{ session_ref: string; url: string }>;
   // `configuration` — a provider portal configuration (A1 review: commitment
   // plans use one whose cancellation terms match the approved contract).

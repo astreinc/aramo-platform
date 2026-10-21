@@ -288,3 +288,20 @@ export {
   type FederatedIdp,
   type IdpDecision,
 } from './lib/identity-provider-policy.service.js';
+
+// Sign Signup Amendment A1 (LOCKED) — organization details at signup, US only.
+export { OrganizationRegionService } from './lib/organization-region.service.js';
+export {
+  US_STATE_CODES,
+  BILLING_REGION_US,
+  ORGANIZATION_COUNTRY_NOT_SUPPORTED,
+  ORGANIZATION_DETAILS_INVALID,
+  ORGANIZATION_PROFILE_INCOMPLETE,
+  AUTHORITY_STATEMENT_VERSION,
+  authorityStatement,
+  normalizeUsPhone,
+  usProfileIneligibility,
+  validateUsOrganizationDetails,
+  type ProfileAddressFields,
+  type UsOrganizationDetails,
+} from './lib/util/us-organization.js';

@@ -13,6 +13,7 @@ export {
 // Aramo Sign launch — subscription lifecycle + billing provider.
 export {
   BILLING_PROVIDER_PORT,
+  type BillingAccountDetails,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type BillingProviderPort,
@@ -24,6 +25,8 @@ export { StripeBillingProvider, STRIPE_API_VERSION, stripeEventSubscriptionRef, 
 export {
   SubscriptionLifecycleService,
   BillingRefusedError,
+  BILLING_COUNTRY_NOT_SUPPORTED,
+  billingCountrySupported,
   PAST_DUE_GRACE_DAYS_DEFAULT,
   mapProviderStatus,
   parsePlanPrices,
@@ -56,3 +59,11 @@ export {
 } from './lib/legal/legal-documents.js';
 export { LegalAcceptanceService } from './lib/legal/legal-acceptance.service.js';
 export { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } from './lib/feature-availability.js';
+// Sign Signup Amendment A1 (Organization Details, US only) §2.6 — the organization billing profile port.
+export {
+  ORGANIZATION_BILLING_PROFILE_PORT,
+  type OrganizationBillingAddress,
+  type OrganizationBillingProfile,
+  type OrganizationBillingProfilePort,
+  type OrganizationProfileRefusal,
+} from './lib/billing/organization-billing-profile.port.js';

@@ -31,6 +31,7 @@ import {
 import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.service.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
+import { AddressSuggestService } from '../app/signup/address-suggest.service.js';
 import { SignSignupController } from '../app/signup/sign-signup.controller.js';
 import { SIGN_SIGNUP_AUDIT_SOURCE, SignupBudget, SignSignupService } from '../app/signup/sign-signup.service.js';
 
@@ -128,6 +129,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
       providers: [
         SignSignupService,
         SignupBudget,
+        AddressSuggestService,
         LegalAcceptanceService,
         SubscriptionPrismaService,
         { provide: LEGAL_DOCUMENT_REGISTRY, useValue: registryDocs },
@@ -159,6 +161,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     module.get(SignupBudget).reset();
     process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '1';
   });
+
+  // Sign Signup Amendment A1 (LOCKED) â€” the organization details every
+  // completion now carries (US; EIN optional and omitted here).
+  const ORG = {
+    legal_name: 'Acme Holdings LLC',
+    address_line1: '500 Congress Ave',
+    city: 'Austin',
+    state_province: 'TX',
+    postal_code: '78701',
+    country_code: 'US',
+    primary_contact_email: 'billing@acme.test',
+    primary_contact_name: 'Pat Owner',
+    signer_title: 'Managing Director',
+    authority_attested: true,
+  } as const;
 
   let n = 0;
   const company = () => {
@@ -206,9 +223,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   // ROLES-1 PR-2 (Â§6; Conforming Amendment 5) â€” the signup owner receives tenant_owner + tenant_admin.
   it('complete provisions a BUSINESS tenant with exactly [core, sign] and a tenant_owner + tenant_admin owner â€” no Cognito user, no temporary password (federated owner)', async () => {
     const c = await started();
-    expect((await http().post('/v1/signup/sign/preview').send({ token: c.token })).body).toEqual({ email: c.email, organization_name: c.organization_name, status: 'READY' });
+    expect((await http().post('/v1/signup/sign/preview').send({ token: c.token })).body).toEqual({ email: c.email, organization_name: c.organization_name, display_name: c.display_name, status: 'READY' });
     const cognitoCallsBefore = cognitoMock.adminCreateUser.mock.calls.length;
-    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       status: 'PROVISIONED',
@@ -249,9 +266,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
 
   it('the same link again answers the same and provisions nothing new', async () => {
     const c = await started();
-    await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     const calls = cognitoMock.adminCreateUser.mock.calls.length;
-    const again = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const again = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     expect(again.body.status).toBe('PROVISIONED');
     expect(cognitoMock.adminCreateUser.mock.calls.length).toBe(calls);
     expect(await db.tenant.count({ where: { name: c.organization_name } })).toBe(1);
@@ -260,8 +277,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   it('two concurrent completions provision exactly once', async () => {
     const c = await started();
     const [a, b] = await Promise.all([
-      http().post('/v1/signup/sign/complete').send({ token: c.token }),
-      http().post('/v1/signup/sign/complete').send({ token: c.token }),
+      http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG }),
+      http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG }),
     ]);
     expect([a.status, b.status]).toEqual([200, 200]);
     expect([a.body.status, b.body.status].sort()).toEqual(['PROVISIONED', 'PROVISIONING']);
@@ -271,13 +288,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
   it('every bad link gets the same 404', async () => {
     const msgs = new Set<string>();
     for (const token of ['x'.repeat(43), 'short', '']) {
-      const r = await http().post('/v1/signup/sign/complete').send({ token });
+      const r = await http().post('/v1/signup/sign/complete').send({ token, organization: ORG });
       expect(r.status).toBe(404);
       msgs.add(r.body.error.message);
     }
     const c = await started();
     await db.signupRequest.updateMany({ where: { email: c.email }, data: { expires_at: new Date(Date.now() - 1000) } });
-    const expired = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const expired = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     expect(expired.status).toBe(404);
     msgs.add(expired.body.error.message);
     expect(msgs.size).toBe(1);
@@ -285,7 +302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
 
   it('an address that already has an account gets a sign-in email, the same 202, and no request', async () => {
     const c = await started();
-    await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     await db.signupRequest.updateMany({ where: { email: c.email }, data: { created_at: new Date(Date.now() - 120_000) } });
     const res = await http().post('/v1/signup/sign/start').send({ ...c, organization_name: 'Another Org' });
     expect(res.status).toBe(202);
@@ -301,28 +318,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     await db.signupRequest.updateMany({ where: { email: c.email }, data: { created_at: new Date(Date.now() - 120_000) } });
     const second = await started(c);
     expect(second.token).not.toBe(c.token);
-    expect((await http().post('/v1/signup/sign/complete').send({ token: c.token })).status).toBe(404);
-    expect((await http().post('/v1/signup/sign/complete').send({ token: second.token })).body.status).toBe('PROVISIONED');
+    expect((await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG })).status).toBe(404);
+    expect((await http().post('/v1/signup/sign/complete').send({ token: second.token, organization: ORG })).body.status).toBe('PROVISIONED');
   });
 
   it('a taken organization name is a 409 the owner fixes with another name on the same link', async () => {
     const first = await started();
-    await http().post('/v1/signup/sign/complete').send({ token: first.token });
+    await http().post('/v1/signup/sign/complete').send({ token: first.token, organization: ORG });
     const c = await started({ ...company(), organization_name: first.organization_name.toUpperCase() });
-    const taken = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const taken = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     expect(taken.status).toBe(409);
     expect(taken.body.error.details.reason).toBe('organization_name_taken');
     expect(cognito.has(c.email)).toBe(false);
-    const ok = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization_name: `${c.organization_name} Two` });
+    const ok = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization_name: `${c.organization_name} Two`, organization: ORG });
     expect(ok.body).toMatchObject({ status: 'PROVISIONED', organization_name: `${c.organization_name} Two` });
   });
 
   it('recovers when provisioning finished but the outcome was never recorded', async () => {
     const c = await started();
-    await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     // Simulate a crash between the saga and the final write.
     await db.signupRequest.updateMany({ where: { email: c.email }, data: { status: 'FAILED', tenant_id: null, owner_user_id: null } });
-    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     expect(res.body.status).toBe('PROVISIONED');
     const row = await db.signupRequest.findFirstOrThrow({ where: { email: c.email } });
     const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
@@ -334,13 +351,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const c = company();
     expect((await http().post('/v1/signup/sign/start').send(c)).status).toBe(202);
     expect(mail.some((m) => m.to === c.email)).toBe(false);
-    expect((await http().post('/v1/signup/sign/complete').send({ token: 'y'.repeat(43) })).status).toBe(404);
+    expect((await http().post('/v1/signup/sign/complete').send({ token: 'y'.repeat(43), organization: ORG })).status).toBe(404);
   });
 
   it('terms: none approved â‡’ no terms offered and none recorded', async () => {
     expect((await http().get('/v1/signup/sign/terms')).body).toEqual({ terms: null });
     const c = await started();
-    await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
     const sql = new (await import('pg')).Client({ connectionString: container.getConnectionUri() });
     await sql.connect();
     expect((await sql.query(`SELECT count(*)::int AS n FROM subscription."LegalAcceptance" WHERE subject_email = $1`, [c.email])).rows[0].n).toBe(0);
@@ -356,7 +373,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     expect(refused.body.error.details.reason).toBe('terms_not_accepted');
     expect((await http().post('/v1/signup/sign/start').send({ ...c, accept_terms: true })).status).toBe(202);
     const token = tokenFrom(c.email);
-    expect((await http().post('/v1/signup/sign/complete').send({ token })).body.status).toBe('PROVISIONED');
+    expect((await http().post('/v1/signup/sign/complete').send({ token, organization: ORG })).body.status).toBe('PROVISIONED');
     const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
     const sql = new (await import('pg')).Client({ connectionString: container.getConnectionUri() });
     await sql.connect();
@@ -364,4 +381,169 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     await sql.end();
     expect(rows.rows).toEqual([{ tenant_id: tenant.id, document_key: 'sign.terms_of_service', version: '1.0.0', sha256: APPROVED_TERMS.sha256, context: 'SIGNUP' }]);
   });
+
+  // â”€â”€ Sign Signup Amendment A1 (LOCKED) â€” organization details, US only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  async function nothingCreated(c: { email: string; organization_name: string }) {
+    expect(await db.tenant.count({ where: { name: c.organization_name } })).toBe(0);
+    expect(await db.user.count({ where: { email: c.email } })).toBe(0);
+    expect((await db.signupRequest.findFirstOrThrow({ where: { email: c.email } })).status).toBe('PENDING');
+  }
+
+  it('A1: complete without organization details is a 400 and creates nothing', async () => {
+    const c = await started();
+    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toMatchObject({ reason: 'organization_details_invalid', field: 'organization' });
+    const missing = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: { ...ORG, city: '' } });
+    expect(missing.body.error.details).toMatchObject({ reason: 'organization_details_invalid', field: 'city' });
+    await nothingCreated(c);
+  });
+
+  it.each([
+    ['a non-US country', { country_code: 'IN' }, 'country_code'],
+    ['a US territory', { state_province: 'PR' }, 'state_province'],
+    ['a military address', { state_province: 'AE' }, 'state_province'],
+  ])('A1: %s is refused server-side (organization_country_not_supported) and creates nothing', async (_l, patch, field) => {
+    const c = await started();
+    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: { ...ORG, ...patch } });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual({ reason: 'organization_country_not_supported', field });
+    await nothingCreated(c);
+  });
+
+  it('A1: the authority attestation is required', async () => {
+    const c = await started();
+    const res = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: { ...ORG, authority_attested: false } });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details.reason).toBe('authority_attestation_required');
+    await nothingCreated(c);
+  });
+
+  it('A1: the profile is written with the tenant, the tenant is held to the US, and the attestation identifies the signer and legal entity (not a legal acceptance)', async () => {
+    const c = await started();
+    const res = await http().post('/v1/signup/sign/complete').send({
+      token: c.token,
+      organization: { ...ORG, legal_name: 'Acme Profile LLC', tax_id: '123456789', primary_contact_phone: '(512) 555-0147' },
+    });
+    expect(res.body.status).toBe('PROVISIONED');
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    expect(tenant).toMatchObject({
+      legal_name: 'Acme Profile LLC',
+      address_line1: '500 Congress Ave',
+      address_line2: null,
+      city: 'Austin',
+      state_province: 'TX',
+      postal_code: '78701',
+      country_code: 'US',
+      primary_contact_email: 'billing@acme.test',
+      primary_contact_name: 'Pat Owner',
+      primary_contact_phone: '+15125550147',
+      tax_id: '12-3456789',
+      registration_number: null,
+    });
+    expect(await db.tenantBillingRegionPolicy.findUnique({ where: { tenant_id: tenant.id } })).toMatchObject({ region: 'US' });
+    const request = await db.signupRequest.findFirstOrThrow({ where: { email: c.email } });
+    const att = await db.organizationAuthorityAttestation.findMany({ where: { tenant_id: tenant.id } });
+    expect(att).toHaveLength(1);
+    expect(att[0]).toMatchObject({
+      signup_request_id: request.id,
+      signer_email: c.email,
+      signer_name: 'Pat Owner',
+      signer_title: 'Managing Director',
+      organization_legal_name: 'Acme Profile LLC',
+      statement_version: 'v1',
+    });
+    expect(att[0]!.statement_sha256).toMatch(/^[0-9a-f]{64}$/);
+    // No terms are approved: the attestation is NOT recorded as a legal acceptance.
+    const sql = new (await import('pg')).Client({ connectionString: container.getConnectionUri() });
+    await sql.connect();
+    expect((await sql.query(`SELECT count(*)::int AS n FROM subscription."LegalAcceptance" WHERE tenant_id = $1`, [tenant.id])).rows[0].n).toBe(0);
+    await sql.end();
+  });
+
+  it('A1: recovery after a crash keeps a single attestation and the US lock', async () => {
+    const c = await started();
+    await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    await db.signupRequest.updateMany({ where: { email: c.email }, data: { status: 'PENDING', tenant_id: null, owner_user_id: null } });
+    const again = await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+    expect(again.body.status).toBe('PROVISIONED');
+    const tenant = await db.tenant.findFirstOrThrow({ where: { name: c.organization_name } });
+    expect(await db.organizationAuthorityAttestation.count({ where: { tenant_id: tenant.id } })).toBe(1);
+    expect(await db.tenantBillingRegionPolicy.count({ where: { tenant_id: tenant.id } })).toBe(1);
+  });
+
+  describe('A1 Â§2.3 â€” address search (Geoapify, proxied)', () => {
+    let stand: import('node:http').Server;
+    let calls: string[] = [];
+    beforeAll(async () => {
+      const { createServer } = await import('node:http');
+      stand = createServer((req, res) => {
+        calls.push(req.url ?? '');
+        res.setHeader('content-type', 'application/json');
+        res.end(
+          JSON.stringify({
+            results: [
+              { country_code: 'us', state_code: 'TX', housenumber: '500', street: 'Congress Avenue', city: 'Austin', postcode: '78701', formatted: '500 Congress Avenue, Austin, TX 78701, United States of America' },
+              { country_code: 'us', state_code: 'PR', housenumber: '1', street: 'Calle Sol', city: 'San Juan', postcode: '00901', formatted: 'San Juan, PR' },
+              { country_code: 'ca', state_code: 'ON', housenumber: '1', street: 'King St', city: 'Toronto', postcode: 'M5H', formatted: 'Toronto' },
+            ],
+          }),
+        );
+      });
+      await new Promise<void>((r) => stand.listen(0, '127.0.0.1', () => r()));
+    });
+    afterAll(async () => {
+      await new Promise<void>((r) => stand.close(() => r()));
+      delete process.env['SIGN_ADDRESS_PROVIDER'];
+      delete process.env['SIGN_ADDRESS_PROVIDER_KEY'];
+      delete process.env['SIGN_ADDRESS_PROVIDER_BASE_URL'];
+    });
+    beforeEach(() => {
+      calls = [];
+      module.get(AddressSuggestService).reset();
+      const addr = stand.address() as { port: number };
+      Object.assign(process.env, {
+        SIGN_ADDRESS_PROVIDER: 'geoapify',
+        SIGN_ADDRESS_PROVIDER_KEY: 'test-geoapify-key',
+        SIGN_ADDRESS_PROVIDER_BASE_URL: `http://127.0.0.1:${addr.port}`,
+      });
+    });
+
+    it('requires a live signup link (404 otherwise) and is dark with signup off', async () => {
+      expect((await http().post('/v1/signup/sign/address/suggest').send({ token: 'z'.repeat(43), text: '500 Congress' })).status).toBe(404);
+      const c = await started();
+      process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '0';
+      expect((await http().post('/v1/signup/sign/address/suggest').send({ token: c.token, text: '500 Congress' })).status).toBe(404);
+      process.env['SIGN_PUBLIC_SIGNUP_ENABLED'] = '1';
+      await http().post('/v1/signup/sign/complete').send({ token: c.token, organization: ORG });
+      expect((await http().post('/v1/signup/sign/address/suggest').send({ token: c.token, text: '500 Congress' })).status).toBe(404);
+      expect(calls).toHaveLength(0);
+    });
+
+    it('returns US (50 states + DC) suggestions with the Geoapify attribution; the key never reaches the response', async () => {
+      const c = await started();
+      const res = await http().post('/v1/signup/sign/address/suggest').send({ token: c.token, text: '500 Congress' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        available: true,
+        suggestions: [
+          { label: '500 Congress Avenue, Austin, TX 78701, United States of America', address_line1: '500 Congress Avenue', address_line2: null, city: 'Austin', state_province: 'TX', postal_code: '78701' },
+        ],
+        attribution: { label: 'Powered by Geoapify', url: 'https://www.geoapify.com/' },
+      });
+      expect(JSON.stringify(res.body)).not.toContain('test-geoapify-key');
+      expect(calls[0]).toContain('filter=countrycode%3Aus');
+    });
+
+    it('fails open: provider unset or failing â†’ available false', async () => {
+      const c = await started();
+      delete process.env['SIGN_ADDRESS_PROVIDER'];
+      expect((await http().post('/v1/signup/sign/address/suggest').send({ token: c.token, text: '500 Congress' })).body).toEqual({ available: false, suggestions: [], attribution: null });
+      process.env['SIGN_ADDRESS_PROVIDER'] = 'geoapify';
+      process.env['SIGN_ADDRESS_PROVIDER_BASE_URL'] = 'http://127.0.0.1:9';
+      expect((await http().post('/v1/signup/sign/address/suggest').send({ token: c.token, text: '500 Congress' })).body.available).toBe(false);
+    });
+  });
 });
+

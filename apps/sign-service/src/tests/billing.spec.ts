@@ -143,6 +143,22 @@ describe('EsignBillingController', () => {
     expect(billingHttpError(new BillingRefusedError('NO_BILLING_ACCOUNT'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', context: { details: { reason: 'NO_BILLING_ACCOUNT' } } });
     expect(billingHttpError(new Error('secret detail'), 'r')).toMatchObject({ code: 'INTERNAL_ERROR', message: 'Billing request failed' });
   });
+
+  it('maps ORGANIZATION_PROFILE_REQUIRED to a 409 carrying the specific profile reason (Sign Signup A1 §2.6)', () => {
+    const msg = 'Complete your organization’s legal name and US address in Settings before subscribing';
+    expect(billingHttpError(new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_country_not_supported'), 'r')).toMatchObject({
+      code: 'ESIGN_BILLING_CONFLICT',
+      statusCode: 409,
+      message: msg,
+      context: { details: { reason: 'organization_country_not_supported' } },
+    });
+    expect(billingHttpError(new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED', 'organization_profile_incomplete'), 'r')).toMatchObject({
+      code: 'ESIGN_BILLING_CONFLICT',
+      statusCode: 409,
+      context: { details: { reason: 'organization_profile_incomplete' } },
+    });
+    expect(billingHttpError(new BillingRefusedError('ORGANIZATION_PROFILE_REQUIRED'), 'r')).toMatchObject({ context: { details: { reason: 'organization_profile_incomplete' } } });
+  });
 });
 
 describe('EsignOwnerActivationService', () => {

@@ -84,6 +84,9 @@ export class TenantRepository {
     // that do not supply it leave it NULL (no subdomain; the ask-endpoint 404s
     // for that tenant until a slug is set).
     slug?: string | null;
+    // Sign Signup Amendment A1 — the organization profile written in the SAME
+    // insert that creates the tenant (atomic tenant/profile provisioning).
+    profile?: Readonly<Record<string, string | null>>;
   }): Promise<TenantDto> {
     const row = await this.prisma.tenant.create({
       data: {
@@ -92,6 +95,7 @@ export class TenantRepository {
         allowed_domain: args.allowed_domain ?? null,
         slug: args.slug ?? null,
         ...(args.kind === undefined ? {} : { kind: args.kind }),
+        ...(args.profile ?? {}),
       },
     });
     return toTenantDto(row);

@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseFilters } fr
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import type { Request } from 'express';
 
+import { AddressSuggestService, type AddressSuggestResult } from './address-suggest.service.js';
 import { SignSignupService, signupEnabled } from './sign-signup.service.js';
 
 // Aramo Sign launch — the PUBLIC (session-less) self-service signup surface,
@@ -14,7 +15,10 @@ import { SignSignupService, signupEnabled } from './sign-signup.service.js';
 @Controller('v1/signup/sign')
 @UseFilters(AramoExceptionFilter)
 export class SignSignupController {
-  constructor(private readonly signup: SignSignupService) {}
+  constructor(
+    private readonly signup: SignSignupService,
+    private readonly addresses: AddressSuggestService,
+  ) {}
 
   private gate(requestId: string): void {
     if (!signupEnabled()) throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId });
@@ -48,8 +52,23 @@ export class SignSignupController {
 
   @Post('complete')
   @HttpCode(HttpStatus.OK)
-  complete(@Req() req: Request, @RequestId() requestId: string, @Body() body: { token?: unknown; organization_name?: unknown }) {
+  complete(@Req() req: Request, @RequestId() requestId: string, @Body() body: { token?: unknown; organization_name?: unknown; organization?: unknown }) {
     this.gate(requestId);
     return this.signup.complete({ ...(body ?? {}), ip: req.ip ?? 'unknown', request_id: requestId });
+  }
+
+  // Sign Signup Amendment A1 (LOCKED) §2.3 — address search for the
+  // organization-details step. Only with a live, unprovisioned signup link
+  // (404 otherwise, like every other route); fails open to manual entry.
+  @Post('address/suggest')
+  @HttpCode(HttpStatus.OK)
+  async suggestAddress(
+    @Req() req: Request,
+    @RequestId() requestId: string,
+    @Body() body: { token?: unknown; text?: unknown },
+  ): Promise<AddressSuggestResult> {
+    this.gate(requestId);
+    await this.signup.assertLiveLink(body?.token, requestId);
+    return this.addresses.suggest({ text: body?.text, token: body!.token as string, ip: req.ip ?? 'unknown' });
   }
 }

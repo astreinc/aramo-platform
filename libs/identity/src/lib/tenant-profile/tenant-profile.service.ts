@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 
 import {
   TenantRepository,
   type TenantProfileRow,
 } from '../tenant.repository.js';
+import { OrganizationRegionService } from '../organization-region.service.js';
+import {
+  ORGANIZATION_COUNTRY_NOT_SUPPORTED,
+  usProfileIneligibility,
+} from '../util/us-organization.js';
 
 import {
   PROFILE_FIELDS,
@@ -23,7 +28,11 @@ import {
 
 @Injectable()
 export class TenantProfileService {
-  constructor(private readonly tenants: TenantRepository) {}
+  constructor(
+    private readonly tenants: TenantRepository,
+    // Sign Signup Amendment A1 §2.5 — a region-locked tenant's profile stays US.
+    @Optional() private readonly region?: OrganizationRegionService,
+  ) {}
 
   async getProfile(tenantId: string, requestId: string): Promise<TenantProfileView> {
     const row = await this.tenants.findProfileById(tenantId);
@@ -63,8 +72,27 @@ export class TenantProfileService {
 
     const applied: Record<string, string | null> = {};
     for (const f of changedFields) applied[f] = patch[f] ?? null;
+    await this.assertRegion(args.tenantId, { ...current, ...applied }, args.requestId);
     const updated = await this.tenants.updateProfile(args.tenantId, applied);
     return { view: toView(updated), changedFields };
+  }
+
+  // A1 §2.5 — for a tenant held to the US (self-service signup or a self-service
+  // checkout), the resulting profile must stay a complete US organization
+  // profile. Tenants without a lock (Astre, console-provisioned) are unchanged.
+  private async assertRegion(tenantId: string, next: TenantProfileRow, requestId: string): Promise<void> {
+    if (this.region === undefined) return;
+    if ((await this.region.regionOf(tenantId)) === null) return;
+    const reason = usProfileIneligibility(next);
+    if (reason === null) return;
+    throw new AramoError(
+      'VALIDATION_ERROR',
+      reason === ORGANIZATION_COUNTRY_NOT_SUPPORTED
+        ? 'Aramo Sign is currently available to organizations registered in the United States.'
+        : 'Your organization’s legal name, US address and billing email are required.',
+      400,
+      { requestId, details: { reason } },
+    );
   }
 }
 
