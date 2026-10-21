@@ -20093,6 +20093,11 @@
       "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
