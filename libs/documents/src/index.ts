@@ -55,6 +55,12 @@ export {
   type UpdateTemplateVariableInput,
 } from './lib/template-variables.repository.js';
 export {
+  TemplateResolutionService,
+  type TemplateResolution,
+  type TemplateResolutionSource,
+  type ResolveTemplateInput,
+} from './lib/template-resolution.service.js';
+export {
   RequirementsRepository,
   type CreateRequirementInput,
   type RequirementVerdict,
@@ -88,6 +94,7 @@ export {
   TemplateDraftAlreadyExistsError,
   TemplateVariableNotFoundError,
   TemplateVariableKeyConflictError,
+  TemplateSelectionInvalidError,
   DocumentRequirementNotFoundError,
   DocumentRequirementAlreadySatisfiedError,
 } from './lib/domain/errors.js';

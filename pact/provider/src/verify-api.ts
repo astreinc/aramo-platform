@@ -532,6 +532,17 @@ const DOCUMENTS_DOCLIB_T1_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql',
 );
+// DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization.* TemplateVariable catalog rows
+// (additive data, products ATS+SIGN). Registered so the provider DB carries the same
+// variable catalog the platform catalog routes return; after T-1 (needs TemplateVariable).
+// (The T-3 RTR conversion 20261021140100_doclib_t3_rtr_platform_default is a DATA-only
+// migration with no shape change that depends on the unregistered DOC-5 RTR DocumentType
+// seed and the identity sentinel — it is intentionally NOT registered, the same rule as
+// the 20261004120000 RTR backfill above.)
+const DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3780,6 +3791,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION,
         DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION,
         DOCUMENTS_DOCLIB_T1_MIGRATION,
+        DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,

@@ -202,13 +202,21 @@ describe('RtrTemplateCapabilities — rtr-html-v1', () => {
       'Analyze business requirements for multi-family housing programs.\n\nPartner with stakeholders to define scope and acceptance criteria.',
       'Astre Consulting',
       'Deepika Rao',
+      // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization.* catalog variables.
+      'Astre Consulting',
+      '100 Wood Avenue South',
+      'Suite 200',
+      'Iselin',
+      'NJ',
+      '08830',
+      'US',
     ]);
     expect(p.sample_values?.find((s) => s.key === 'recruiting_company.name')?.label).toBe('Recruiting company');
   });
 
   it('preview (v1) also carries sample_values', async () => {
     const p = await caps.renderSamplePreview({ document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, render_schema_version: RTR_GENERATED_SCHEMA_V1, field_schema: DEFAULT_RTR_TEMPLATE_CONTENT_V1, requestId: 'r' });
-    expect(p.sample_values).toHaveLength(8);
+    expect(p.sample_values).toHaveLength(15); // 8 RTR + 7 organization.* (DOC-TEMPLATE-LIB-1 T-3)
     expect(p.html).toBeUndefined();
   });
 

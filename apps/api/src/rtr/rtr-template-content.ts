@@ -66,6 +66,19 @@ export const RTR_BINDING_CATALOG: readonly RtrBindingDescriptor[] = [
   },
   { key: 'recruiting_company.name', label: 'Recruiting company', group: 'Recruiting organization', sample: 'Astre Consulting' },
   { key: 'recruiter.display_name', label: 'Recruiter name', group: 'Recruiter', sample: 'Deepika Rao' },
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization (tenant profile) variables, so an Aramo
+  // default can carry the tenant's own name + address. Seeded as TemplateVariable rows
+  // (migration 20261021140000_doclib_t3_organization_template_variables, products ATS+SIGN).
+  // organization.name = display_name → legal_name → workspace name; the address keys read
+  // the Tenant profile columns verbatim (organization.region = state_province,
+  // organization.country = country_code). Blank ⇒ MISSING (fail closed) like every binding.
+  { key: 'organization.name', label: 'Organization name', group: 'Organization', sample: 'Astre Consulting' },
+  { key: 'organization.address_line1', label: 'Address line 1', group: 'Organization', sample: '100 Wood Avenue South' },
+  { key: 'organization.address_line2', label: 'Address line 2', group: 'Organization', sample: 'Suite 200' },
+  { key: 'organization.city', label: 'City', group: 'Organization', sample: 'Iselin' },
+  { key: 'organization.region', label: 'State / province', group: 'Organization', sample: 'NJ' },
+  { key: 'organization.postal_code', label: 'Postal code', group: 'Organization', sample: '08830' },
+  { key: 'organization.country', label: 'Country', group: 'Organization', sample: 'US' },
 ] as const;
 
 export const RTR_BINDING_KEYS = [
@@ -77,6 +90,13 @@ export const RTR_BINDING_KEYS = [
   'requisition.description',
   'recruiting_company.name',
   'recruiter.display_name',
+  'organization.name',
+  'organization.address_line1',
+  'organization.address_line2',
+  'organization.city',
+  'organization.region',
+  'organization.postal_code',
+  'organization.country',
 ] as const;
 export type RtrBindingKey = (typeof RTR_BINDING_KEYS)[number];
 

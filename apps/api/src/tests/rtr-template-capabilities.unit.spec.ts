@@ -53,6 +53,14 @@ describe('RtrTemplateCapabilities (T1 port)', () => {
       'requisition.description',
       'recruiting_company.name',
       'recruiter.display_name',
+      // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization (tenant profile) variables.
+      'organization.name',
+      'organization.address_line1',
+      'organization.address_line2',
+      'organization.city',
+      'organization.region',
+      'organization.postal_code',
+      'organization.country',
     ]);
     expect(b.every((x) => x.label.length > 0 && x.group.length > 0)).toBe(true);
     expect(b.find((x) => x.key === 'talent.desired_pay_rate')).toEqual({ key: 'talent.desired_pay_rate', label: 'Desired pay rate', group: 'Talent' });
@@ -122,33 +130,35 @@ describe('DOC-TEMPLATE-LIB-1 T-2 — catalog-driven allowed bindings', () => {
   });
 
   it('a catalog key WITHOUT an apps/api resolver fails closed (not offered; rejected reason no_resolver)', async () => {
+    // DOC-TEMPLATE-LIB-1 T-3 gives organization.address_* resolvers, so the example key
+    // is one with none.
     const at = new Date();
     const rows = [
       ...seededRtrCatalogRows(),
       {
         id: '00000000-0000-4000-8000-0000000000aa',
-        key: 'organization.address_line1',
-        label: 'Address line 1',
+        key: 'organization.tax_id',
+        label: 'Tax ID',
         group_label: 'Organization',
         data_type: 'TEXT',
         products: ['ATS'],
-        ats_binding_key: 'organization.address_line1',
-        sample_value: '1 Main St',
+        ats_binding_key: 'organization.tax_id',
+        sample_value: '12-3456789',
         active: true,
         created_at: at,
         updated_at: at,
       },
     ];
     const c = new RtrTemplateCapabilities(fakeCatalog(rows));
-    expect((await c.listAllowedBindings(RTR)).map((x) => x.key)).not.toContain('organization.address_line1');
+    expect((await c.listAllowedBindings(RTR)).map((x) => x.key)).not.toContain('organization.tax_id');
     let err: { code?: string; context?: { details?: Record<string, unknown> } } | undefined;
     try {
-      await c.validateDraftContent(input([{ type: 'TEXT', text: '{{organization.address_line1}}' }]));
+      await c.validateDraftContent(input([{ type: 'TEXT', text: '{{organization.tax_id}}' }]));
     } catch (e) {
       err = e as typeof err;
     }
     expect(err?.code).toBe('TEMPLATE_BINDING_UNSUPPORTED');
-    expect(err?.context?.details).toEqual({ binding_key: 'organization.address_line1', reason: 'no_resolver' });
+    expect(err?.context?.details).toEqual({ binding_key: 'organization.tax_id', reason: 'no_resolver' });
   });
 
   it('a row without an ats_binding_key is not an ATS binding (RTR is an ATS document type)', async () => {

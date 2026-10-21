@@ -236,19 +236,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect((await platform.allowedBindings(platformTplId, SUPER, RID)).bindings.find((b) => b.key === 'client.name')?.label).toBe('Client company');
       await platform.updateVariable(client.id, { label: 'Client name' }, SUPER, RID);
 
+      // DOC-TEMPLATE-LIB-1 T-3 seeds organization.address_* WITH resolvers, so the
+      // no-resolver example uses a key that has none.
       await platform.createVariable(
-        { key: 'organization.address_line1', label: 'Address line 1', group_label: 'Organization', data_type: 'TEXT', products: ['ATS', 'SIGN'], ats_binding_key: 'organization.address_line1', sample_value: '1 Main St' },
+        { key: 'organization.tax_id', label: 'Tax ID', group_label: 'Organization', data_type: 'TEXT', products: ['ATS', 'SIGN'], ats_binding_key: 'organization.tax_id', sample_value: '12-3456789' },
         SUPER,
         RID,
       );
-      expect((await platform.allowedBindings(platformTplId, SUPER, RID)).bindings.map((b) => b.key)).not.toContain('organization.address_line1');
+      expect((await platform.allowedBindings(platformTplId, SUPER, RID)).bindings.map((b) => b.key)).not.toContain('organization.tax_id');
       const draft = (await platform.getVersion(
         (await db.query(`SELECT id FROM "documents"."TemplateVersion" WHERE template_id = $1 AND status = 'DRAFT'`, [platformTplId])).rows[0].id,
         SUPER,
         RID,
       )) as { id: string };
       const rejected = await errorOf(
-        platform.updateDraft(draft.id, { field_schema: html('T', '<p><span data-field="organization.address_line1"></span></p>') }, SUPER, RID),
+        platform.updateDraft(draft.id, { field_schema: html('T', '<p><span data-field="organization.tax_id"></span></p>') }, SUPER, RID),
       );
       expect(rejected).toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 422 });
       expect(rejected.context?.details?.['reason']).toBe('unknown_field');

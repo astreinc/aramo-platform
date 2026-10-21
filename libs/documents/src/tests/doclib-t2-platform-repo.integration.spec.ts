@@ -116,13 +116,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(u).toMatchObject({ products: ['ATS', 'SIGN'], description: 'd', status: 'DRAFT', current_version_id: null });
     });
 
-    it('variable catalog: 8 seeded active rows; create / update / duplicate / not found', async () => {
+    // DOC-TEMPLATE-LIB-1 T-3 seeds 7 organization.* rows (migration 20261021140000) on top
+    // of the 8 RTR rows, so the "new variable" example uses a key outside the seed.
+    it('variable catalog: 15 seeded active rows; create / update / duplicate / not found', async () => {
       const seeded = await variables.listActive();
-      expect(seeded).toHaveLength(8);
+      expect(seeded).toHaveLength(15);
       expect(seeded.every((r) => r.ats_binding_key === r.key && r.products.includes('ATS'))).toBe(true);
       const created = await variables.create({
-        key: 'organization.name',
-        label: 'Organization name',
+        key: 'organization.tax_id',
+        label: 'Tax ID',
         group_label: 'Organization',
         data_type: 'TEXT',
         products: ['ATS', 'SIGN'],
@@ -131,12 +133,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         active: true,
       });
       await expect(
-        variables.create({ ...created, key: 'organization.name', ats_binding_key: null, sample_value: null, data_type: 'TEXT' }),
+        variables.create({ ...created, key: 'organization.tax_id', ats_binding_key: null, sample_value: null, data_type: 'TEXT' }),
       ).rejects.toBeInstanceOf(TemplateVariableKeyConflictError);
       const off = await variables.update(created.id, { active: false, label: 'Org name' });
-      expect(off).toMatchObject({ key: 'organization.name', active: false, label: 'Org name' });
-      expect((await variables.listActive()).map((r) => r.key)).not.toContain('organization.name');
-      expect((await variables.listAll()).map((r) => r.key)).toContain('organization.name');
+      expect(off).toMatchObject({ key: 'organization.tax_id', active: false, label: 'Org name' });
+      expect((await variables.listActive()).map((r) => r.key)).not.toContain('organization.tax_id');
+      expect((await variables.listAll()).map((r) => r.key)).toContain('organization.tax_id');
       await expect(variables.update(randomUUID(), { label: 'x' })).rejects.toBeInstanceOf(TemplateVariableNotFoundError);
     });
   },

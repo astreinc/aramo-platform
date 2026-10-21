@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { TemplatesRepository } from '@aramo/documents';
+import { TemplateResolutionService, TemplatesRepository, type TemplateResolutionSource } from '@aramo/documents';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-constants.js';
 import {
@@ -12,8 +12,9 @@ import { RTR_HTML_SCHEMA_V1, parseHtmlContent, sanitizeRtrHtml, type RtrTemplate
 
 // RTR-TEMPLATE-1 (§6, §10, §27) — the server-authoritative RTR template resolver.
 //
-// Resolves the ONE tenant-wide ACTIVE RIGHT_TO_REPRESENT template and PINS the
-// exact current TemplateVersion. Selection is backend-authoritative (INV-1): the
+// Resolves the tenant's RIGHT_TO_REPRESENT template through explicit selection
+// (DOC-TEMPLATE-LIB-1 T-3: client → tenant → Aramo default) and PINS the exact
+// current TemplateVersion. Selection is backend-authoritative (INV-1): the
 // FE never names a template/version. current_version_id is the authority (§27) —
 // never "first ACTIVE row" or "latest created." Every precondition fails CLOSED
 // with a typed configuration refusal; there is NO inline-content fallback (INV-12).
@@ -31,18 +32,33 @@ export interface ResolvedRtrTemplate {
   render_schema_version: string;
   // A1 §2.1 — exactly rtr-generated-v1 or rtr-html-v1.
   content: RtrTemplateContent;
+  // DOC-TEMPLATE-LIB-1 T-3 — who owns the resolved template. A PLATFORM (Aramo default)
+  // version carries no tenant asset; the orchestrator binds the tenant's branding at
+  // render (§4.3). `source` records which step of the resolution order matched.
+  owner_scope: 'PLATFORM' | 'TENANT';
+  source: TemplateResolutionSource;
 }
 
 @Injectable()
 export class RtrTemplateResolverService {
-  constructor(private readonly templates: TemplatesRepository) {}
+  private readonly resolution: TemplateResolutionService;
 
-  async resolveActive(input: { tenant_id: string; requestId: string }): Promise<ResolvedRtrTemplate> {
-    const template = await this.templates.findActiveTenantTemplateForType(
-      input.tenant_id,
-      RIGHT_TO_REPRESENT_TYPE_ID,
-    );
-    if (template === null) {
+  constructor(templates: TemplatesRepository, resolution?: TemplateResolutionService) {
+    this.resolution = resolution ?? new TemplateResolutionService(templates);
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.2) — delegates to the generic TemplateResolutionService:
+  // selection (tenant, RTR, client) → selection (tenant, RTR, tenant-wide) → the Aramo
+  // RTR default (ACTIVE, not past withdraw_effective_at). The fail-closed RTR codes are
+  // unchanged: nothing resolvable ⇒ RTR_TEMPLATE_NOT_CONFIGURED; a broken selection /
+  // template / version ⇒ RTR_TEMPLATE_CONFIGURATION_INVALID.
+  async resolveActive(input: { tenant_id: string; client_id?: string | null; requestId: string }): Promise<ResolvedRtrTemplate> {
+    const r = await this.resolution.resolve({
+      tenant_id: input.tenant_id,
+      document_type_id: RIGHT_TO_REPRESENT_TYPE_ID,
+      client_id: input.client_id ?? null,
+    });
+    if (r.outcome === 'NOT_CONFIGURED') {
       throw new AramoError(
         'RTR_TEMPLATE_NOT_CONFIGURED',
         'No active Right to Represent template is configured for this tenant',
@@ -53,22 +69,11 @@ export class RtrTemplateResolverService {
         },
       );
     }
+    if (r.outcome === 'INVALID') {
+      throw this.invalid(input.requestId, r.template_id, r.reason, r.details);
+    }
+    const { template, version } = r;
 
-    // current_version_id is authoritative (§27). Absent ⇒ misconfigured, not "pick one".
-    if (template.current_version_id === null) {
-      throw this.invalid(input.requestId, template.id, 'current_version_id_null');
-    }
-
-    const version = await this.templates.findVersionById(input.tenant_id, template.current_version_id);
-    if (version === null) {
-      throw this.invalid(input.requestId, template.id, 'current_version_missing');
-    }
-    if (version.template_id !== template.id) {
-      throw this.invalid(input.requestId, template.id, 'current_version_foreign');
-    }
-    if (version.status !== 'ACTIVE') {
-      throw this.invalid(input.requestId, template.id, 'current_version_not_active', { status: version.status });
-    }
     // Unrecognised content-contract version ⇒ fail closed (§8): never interpret.
     if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1 && version.render_schema_version !== RTR_HTML_SCHEMA_V1) {
       throw this.invalid(input.requestId, template.id, 'unrecognised_render_schema_version', {
@@ -91,12 +96,14 @@ export class RtrTemplateResolverService {
       version_number: version.version_number,
       render_schema_version: version.render_schema_version,
       content,
+      owner_scope: r.owner_scope,
+      source: r.source,
     };
   }
 
   private invalid(
     requestId: string,
-    template_id: string,
+    template_id: string | null,
     reason: string,
     extra?: Record<string, unknown>,
   ): AramoError {

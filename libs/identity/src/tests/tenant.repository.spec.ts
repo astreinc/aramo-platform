@@ -62,3 +62,41 @@ describe('TenantRepository.findActiveTenantsForUser', () => {
     expect(result).toEqual([]);
   });
 });
+
+// DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the branding read also selects the tenant-profile address
+// columns (the organization.address_* template variables), read-only, by id.
+describe('TenantRepository.findBrandingById', () => {
+  it('selects names + logo + the address columns by id', async () => {
+    const row = {
+      name: 'acme-ws',
+      display_name: 'Acme',
+      legal_name: 'Acme LLC',
+      logo_url: null,
+      address_line1: '1 Main St',
+      address_line2: null,
+      city: 'Iselin',
+      state_province: 'NJ',
+      postal_code: '08830',
+      country_code: 'US',
+    };
+    const findUnique = vi.fn().mockResolvedValue(row);
+    const repo = new TenantRepository({ tenant: { findUnique } } as unknown as PrismaService);
+
+    expect(await repo.findBrandingById(TENANT_A)).toEqual(row);
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { id: TENANT_A },
+      select: {
+        name: true,
+        display_name: true,
+        legal_name: true,
+        logo_url: true,
+        address_line1: true,
+        address_line2: true,
+        city: true,
+        state_province: true,
+        postal_code: true,
+        country_code: true,
+      },
+    });
+  });
+});

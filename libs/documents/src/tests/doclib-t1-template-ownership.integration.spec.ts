@@ -306,7 +306,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('seeds TemplateVariable with the 8 RTR binding keys (products ATS), no tenant_id column', async () => {
       const r = await db.query(
         `SELECT key, label, group_label, data_type, products, ats_binding_key, sample_value, active
-           FROM "documents"."TemplateVariable" ORDER BY key`,
+           FROM "documents"."TemplateVariable"
+          -- DOC-TEMPLATE-LIB-1 T-3 adds the organization.* rows (asserted in the T-3 spec).
+          WHERE key NOT LIKE 'organization.%' ORDER BY key`,
       );
       expect(r.rows).toHaveLength(8);
       expect(r.rows.map((x) => x.key)).toEqual([

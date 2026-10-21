@@ -256,15 +256,34 @@ export class TenantRepository {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §2.4 — the tenant-profile branding read for template
   // letterheads: the stored logo URL + the names (workspace / branding / legal). Null when
   // the tenant is unknown. Read-only; callers choose the name precedence.
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — extended with the tenant-profile ADDRESS columns, the
+  // source of the organization.address_* template variables.
   async findBrandingById(id: string): Promise<{
     name: string;
     display_name: string | null;
     legal_name: string | null;
     logo_url: string | null;
+    address_line1: string | null;
+    address_line2: string | null;
+    city: string | null;
+    state_province: string | null;
+    postal_code: string | null;
+    country_code: string | null;
   } | null> {
     return this.prisma.tenant.findUnique({
       where: { id },
-      select: { name: true, display_name: true, legal_name: true, logo_url: true },
+      select: {
+        name: true,
+        display_name: true,
+        legal_name: true,
+        logo_url: true,
+        address_line1: true,
+        address_line2: true,
+        city: true,
+        state_province: true,
+        postal_code: true,
+        country_code: true,
+      },
     });
   }
 

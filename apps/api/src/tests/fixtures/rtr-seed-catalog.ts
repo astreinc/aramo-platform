@@ -4,7 +4,8 @@ import { RTR_BINDING_CATALOG } from '../../rtr/rtr-template-content.js';
 
 // DOC-TEMPLATE-LIB-1 T-2 — an in-memory TemplateVariable catalog for unit tests: the 8
 // RTR rows exactly as migration 20261021120000 seeds them (key = ats_binding_key, ATS
-// product, the safe sample). The real-DB parity is proven by the gated integration spec.
+// product, the safe sample), plus the 7 organization.* rows of T-3 migration
+// 20261021140000 (seeded with products ATS+SIGN; ATS here is enough for the ATS editor). The real-DB parity is proven by the gated integration spec.
 export function seededRtrCatalogRows(): TemplateVariableRow[] {
   const at = new Date('2026-10-21T12:00:00.000Z');
   return RTR_BINDING_CATALOG.map((d, i) => ({

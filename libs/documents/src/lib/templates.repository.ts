@@ -9,6 +9,7 @@ import {
   TemplateImmutableError,
   TemplateNotFoundError,
   TemplatePreviewRequiredError,
+  TemplateSelectionInvalidError,
   TemplateVersionNotFoundError,
 } from './domain/errors.js';
 
@@ -222,6 +223,106 @@ export class TemplatesRepository {
       },
       orderBy: { created_at: 'desc' },
     });
+  }
+
+  // ── DOC-TEMPLATE-LIB-1 T-3 — explicit selection (§4.2) ──────────────────────
+  // TenantTemplateSelection is the tenant's active choice per (document type, optional
+  // client). `client_id` null is the tenant-wide row; the DB unique index is NULLS NOT
+  // DISTINCT so there is at most one tenant-wide row per type. The DB trigger
+  // tenant_template_selection_target is the backstop for the target rule (PLATFORM or
+  // same-tenant TENANT, same type); the app-level checks below give typed errors first.
+
+  // Exact-key read: (tenant, type, client) with client null meaning the tenant-wide row.
+  async findSelection(tenant_id: string, document_type_id: string, client_id: string | null) {
+    return this.prisma.tenantTemplateSelection.findFirst({
+      where: { tenant_id, document_type_id, client_id },
+    });
+  }
+
+  async listSelections(tenant_id: string, document_type_id?: string) {
+    return this.prisma.tenantTemplateSelection.findMany({
+      where: { tenant_id, ...(document_type_id !== undefined ? { document_type_id } : {}) },
+      orderBy: [{ document_type_id: 'asc' }, { selected_at: 'desc' }],
+    });
+  }
+
+  // Set (insert or replace) the active choice for (tenant, type, client). The template
+  // must be visible to the tenant (own row or PLATFORM; else TemplateNotFoundError — 404
+  // concealment) and usable (else TemplateSelectionInvalidError). Atomic on the unique
+  // index via ON CONFLICT, so a concurrent set never produces two rows.
+  async upsertSelection(input: {
+    tenant_id: string;
+    document_type_id: string;
+    client_id: string | null;
+    template_id: string;
+    selected_by: string;
+  }) {
+    const t = await this.findTemplateByIdOwnerAware(input.tenant_id, input.template_id);
+    if (t === null || t.document_type_id !== input.document_type_id) throw new TemplateNotFoundError(input.template_id);
+    if (t.status !== 'ACTIVE' || t.current_version_id === null) {
+      throw new TemplateSelectionInvalidError(input.template_id, 'template_not_active');
+    }
+    if (t.owner_scope === 'PLATFORM' && t.withdraw_effective_at !== null && t.withdraw_effective_at <= new Date()) {
+      throw new TemplateSelectionInvalidError(input.template_id, 'template_withdrawn');
+    }
+    if (t.owner_scope === 'TENANT' && t.client_id !== null && t.client_id !== input.client_id) {
+      throw new TemplateSelectionInvalidError(input.template_id, 'template_client_mismatch');
+    }
+    return this.upsertSelectionRow(this.prisma, input);
+  }
+
+  // Remove the active choice for (tenant, type, client). Returns whether a row existed.
+  // Removing the tenant-wide row means the type falls back to the Aramo default.
+  async deleteSelection(tenant_id: string, document_type_id: string, client_id: string | null): Promise<boolean> {
+    const r = await this.prisma.tenantTemplateSelection.deleteMany({
+      where: { tenant_id, document_type_id, client_id },
+    });
+    return r.count > 0;
+  }
+
+  // The Aramo (PLATFORM) defaults for a type that a tenant may resolve right now: ACTIVE
+  // and not past withdraw_effective_at (ADR-0034 D10 — a default whose withdrawal has
+  // taken effect is never resolved). The caller validates current_version_id.
+  async findResolvablePlatformDefaults(document_type_id: string, now: Date) {
+    return this.prisma.documentTemplate.findMany({
+      where: {
+        owner_scope: 'PLATFORM',
+        tenant_id: null,
+        document_type_id,
+        status: 'ACTIVE',
+        OR: [{ withdraw_effective_at: null }, { withdraw_effective_at: { gt: now } }],
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  private async upsertSelectionRow(
+    db: { $queryRaw: PrismaService['$queryRaw'] },
+    input: { tenant_id: string; document_type_id: string; client_id: string | null; template_id: string; selected_by: string },
+  ) {
+    const rows = await db.$queryRaw<
+      Array<{
+        id: string;
+        tenant_id: string;
+        document_type_id: string;
+        client_id: string | null;
+        template_id: string;
+        selected_by: string;
+        selected_at: Date;
+      }>
+    >`
+      INSERT INTO "documents"."TenantTemplateSelection"
+        ("id", "tenant_id", "document_type_id", "client_id", "template_id", "selected_by", "selected_at", "created_at", "updated_at")
+      VALUES (${randomUUID()}::uuid, ${input.tenant_id}::uuid, ${input.document_type_id}::uuid, ${input.client_id}::uuid,
+              ${input.template_id}::uuid, ${input.selected_by}::uuid, now(), now(), now())
+      ON CONFLICT ("tenant_id", "document_type_id", "client_id")
+      DO UPDATE SET "template_id" = EXCLUDED."template_id", "selected_by" = EXCLUDED."selected_by",
+                    "selected_at" = now(), "updated_at" = now()
+      RETURNING "id"::text, "tenant_id"::text, "document_type_id"::text, "client_id"::text, "template_id"::text,
+                "selected_by"::text, "selected_at"`;
+    const row = rows[0];
+    if (row === undefined) throw new Error('TenantTemplateSelection upsert returned no row');
+    return row;
   }
 
   // ── Versions ─────────────────────────────────────────────────────────────
@@ -469,10 +570,23 @@ export class TemplatesRepository {
         where: { id: input.version_id },
         data: { status: 'ACTIVE', activated_at: new Date(), activated_by: input.actor_id },
       });
-      await tx.documentTemplate.update({
+      const tpl = await tx.documentTemplate.update({
         where: { id: v.template_id },
         data: { status: 'ACTIVE', current_version_id: input.version_id },
       });
+      // DOC-TEMPLATE-LIB-1 T-3 (ADR-0034 D6 "approval switches it") — approving a TENANT
+      // template makes it the tenant's active choice for its type (and its client, when
+      // the template is client-scoped). Same transaction, so an approved version is never
+      // left unselected. Re-approving the already-selected template is a no-op in effect.
+      if (tpl.owner_scope === 'TENANT' && tpl.tenant_id !== null) {
+        await this.upsertSelectionRow(tx, {
+          tenant_id: tpl.tenant_id,
+          document_type_id: tpl.document_type_id,
+          client_id: tpl.client_id,
+          template_id: tpl.id,
+          selected_by: input.actor_id,
+        });
+      }
       return tx.templateVersion.findFirstOrThrow({ where: { id: input.version_id } });
     });
   }

@@ -65,6 +65,10 @@ export class RtrTemplateBindingService {
     // is always resolved (fail closed when missing, like any other binding).
     used.add('talent.full_name');
     const values = await this.resolveValues(used, input);
+    // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — an Aramo default rendered for this tenant may carry
+    // the tenant's letterhead (logo captured at render by the orchestrator). A tenant's
+    // own rtr-generated-v1 content never receives one, so its output is byte-identical.
+    const letterhead = input.letterhead !== undefined ? await this.namedLetterhead(input.tenant_id, input.letterhead) : undefined;
     return {
       template_version_id: input.template_version_id,
       // The RENDERER's schema (flat resolved blocks) — distinct from the template
@@ -72,8 +76,16 @@ export class RtrTemplateBindingService {
       render_schema_version: 'v1',
       title: this.substitute(content.title, values, input.requestId),
       blocks: content.blocks.map((b) => ({ type: b.type, text: this.substitute(b.text, values, input.requestId) })),
+      ...(letterhead !== undefined ? { letterhead } : {}),
       signature_block: { printed_name: values.get('talent.full_name') as string },
     };
+  }
+
+  // A1 §2.4 / DOC-TEMPLATE-LIB-1 §4.3 — the organisation name beside the letterhead logo:
+  // the tenant's branding label (display_name), else its legal name, else the workspace name.
+  private async namedLetterhead(tenant_id: string, letterhead: LetterheadModel): Promise<LetterheadModel> {
+    const name = organizationName(await this.tenants.findBrandingById(tenant_id));
+    return { ...letterhead, name };
   }
 
   // A1 §2.3 — rtr-html-v1: keys come from the data-field nodes (same closed catalog, same
@@ -105,12 +117,7 @@ export class RtrTemplateBindingService {
     const values = await this.resolveValues(used, input);
     // A1 §2.4 — the organisation name beside the letterhead logo: the tenant's branding
     // label (display_name), else its legal name, else the workspace name.
-    let letterhead = input.letterhead;
-    if (letterhead !== undefined) {
-      const b = await this.tenants.findBrandingById(input.tenant_id);
-      const name = (b?.display_name ?? '').trim() || (b?.legal_name ?? '').trim() || (b?.name ?? '').trim();
-      letterhead = { ...letterhead, name: name.length > 0 ? name : null };
-    }
+    const letterhead = input.letterhead !== undefined ? await this.namedLetterhead(input.tenant_id, input.letterhead) : undefined;
     const value = (key: string): string => {
       const v = values.get(key);
       if (v === undefined) throw this.missing(key, input.requestId);
@@ -172,6 +179,19 @@ export class RtrTemplateBindingService {
           );
       }
       return reqPromise;
+    };
+    // DOC-TEMPLATE-LIB-1 T-3 — memoize the tenant-profile read (organization.* keys).
+    type Branding = Awaited<ReturnType<TenantRepository['findBrandingById']>>;
+    let brandingPromise: Promise<Branding> | undefined;
+    const getBranding = (): Promise<Branding> => {
+      if (brandingPromise === undefined) brandingPromise = this.tenants.findBrandingById(input.tenant_id);
+      return brandingPromise;
+    };
+    const setOrganization = async (key: RtrBindingKey, pick: (b: NonNullable<Branding>) => string | null): Promise<void> => {
+      const b = await getBranding();
+      const v = (b === null ? '' : (pick(b) ?? '')).trim();
+      if (v.length === 0) throw this.missing(key, input.requestId);
+      values.set(key, v);
     };
     // Memoize the talent read — full_name + desired_pay_rate both derive from it.
     let talentPromise: ReturnType<TalentRecordRepository['findById']> | undefined;
@@ -247,6 +267,31 @@ export class RtrTemplateBindingService {
           values.set(key, name);
           break;
         }
+        // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — organization (tenant profile) variables.
+        case 'organization.name': {
+          const name = organizationName(await getBranding());
+          if (name === null) throw this.missing(key, input.requestId);
+          values.set(key, name);
+          break;
+        }
+        case 'organization.address_line1':
+          await setOrganization(key, (b) => b.address_line1);
+          break;
+        case 'organization.address_line2':
+          await setOrganization(key, (b) => b.address_line2);
+          break;
+        case 'organization.city':
+          await setOrganization(key, (b) => b.city);
+          break;
+        case 'organization.region':
+          await setOrganization(key, (b) => b.state_province);
+          break;
+        case 'organization.postal_code':
+          await setOrganization(key, (b) => b.postal_code);
+          break;
+        case 'organization.country':
+          await setOrganization(key, (b) => b.country_code);
+          break;
         default: {
           // Defense: a catalog key added without a resolver branch fails closed (never a
           // raw token / empty value in the PDF). Unreachable while the catalog + switch agree.
@@ -280,6 +325,15 @@ export class RtrTemplateBindingService {
       { requestId, details: { binding_key: key } },
     );
   }
+}
+
+// The tenant's organisation name: branding label (display_name), else legal name, else the
+// workspace name. Null when none is on record (unknown tenant).
+export function organizationName(
+  b: { name: string; display_name: string | null; legal_name: string | null } | null,
+): string | null {
+  const name = (b?.display_name ?? '').trim() || (b?.legal_name ?? '').trim() || (b?.name ?? '').trim();
+  return name.length > 0 ? name : null;
 }
 
 // Slice 1 B3 — flatten a (possibly HTML / rich-text) description to plain text for the

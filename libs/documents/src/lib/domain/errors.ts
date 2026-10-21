@@ -107,6 +107,17 @@ export class TemplateBindingUnsupportedError extends Error {
   }
 }
 
+// DOC-TEMPLATE-LIB-1 T-3 (§4.2) — a TenantTemplateSelection may only name a template the
+// resolver can actually use: ACTIVE with a current version, not a withdrawn (past
+// effective) Aramo default, and — for a TENANT template — tenant-wide or scoped to the
+// selection's own client. The tenant selection routes (T-4) map this to a typed 409/422.
+export class TemplateSelectionInvalidError extends Error {
+  constructor(public readonly templateId: string, public readonly reason: string) {
+    super(`DocumentTemplate ${templateId} cannot be selected (${reason})`);
+    this.name = 'TemplateSelectionInvalidError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);

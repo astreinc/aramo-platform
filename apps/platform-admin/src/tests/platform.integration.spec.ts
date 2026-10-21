@@ -41,7 +41,6 @@ import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.servi
 import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
-import { TenantDocumentTemplateProvisioningService } from '../app/platform/tenant-document-template-provisioning.service.js';
 
 import { ConfigurableAuthzResolver } from './support/configurable-authz-resolver.js';
 import { generateTestKeyPair } from './test-keys.js';
@@ -159,7 +158,6 @@ const __authzResolver = new ConfigurableAuthzResolver();
 
 // IC-3 PR-7 — ATS projection spies (see the providers block).
 const policyPublishSpy = vi.fn(async (_tenantId: string) => undefined);
-const rtrPublishSpy = vi.fn(async (_tenantId: string) => undefined);
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -433,11 +431,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             provide: TenantPolicyProvisioningService,
             useValue: { publishDefaultLifecyclePackage: policyPublishSpy },
-          },
-          // RTR-TEMPLATE-1 — stub the step-5 RTR template-copy dep (no provisioning here).
-          {
-            provide: TenantDocumentTemplateProvisioningService,
-            useValue: { publishDefaultRtrTemplate: rtrPublishSpy },
           },
           CognitoAdminService,
           // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.
@@ -720,7 +713,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // projection for a tenant without ats, authorization baseline present.
     it('IC-3 PR-7 — Sign-only provisioning ([esign]): tenant + org_admin owner + [core, esign]; NO ATS projection; authz baseline exists', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
@@ -745,7 +737,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(baseline).not.toBeNull();
       // NO ATS projection ran
       expect(policyPublishSpy).not.toHaveBeenCalled();
-      expect(rtrPublishSpy).not.toHaveBeenCalled();
       const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
       expect(tenant?.status).toBe('PROVISIONED');
       expect(tenant?.is_active).toBe(true);
@@ -754,7 +745,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // IC-4 PR-9 — PERSONAL tenancy through the REAL console graph.
     it('IC-4 PR-9 #1/#7/#10 — POST /platform/tenants kind PERSONAL + gmail owner → 201: Tenant PERSONAL, allowed_domain NULL, [core, esign], org_admin owner, ONE membership, authz baseline, NO ATS projection, PROVISIONED', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       cognitoMock.adminCreateUser.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
@@ -784,7 +774,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(memRoles.map((r) => r.role.key)).toEqual(['org_admin']);
       expect(await identityPrisma.authorizationVersion.findFirst({ where: { tenant_id: tenantId, principal_id: owner!.id } })).not.toBeNull();
       expect(policyPublishSpy).not.toHaveBeenCalled();
-      expect(rtrPublishSpy).not.toHaveBeenCalled();
       // The list row and the detail read surface the kind.
       const list = await request(app.getHttpServer()).get('/platform/tenants').set('Authorization', `Bearer ${await platformJwt()}`);
       expect(list.status).toBe(200);
@@ -851,7 +840,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('IC-3 PR-7 — ATS + Sign provisioning: ONE tenant, ONE owner (tenant_owner), all four entitlements, ATS projections run; ATS-only (proof 2) unchanged', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
@@ -868,7 +856,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(memRoles.map((r) => r.role.key)).toEqual(['tenant_owner']);
       expect(policyPublishSpy).toHaveBeenCalledWith(tenantId);
-      expect(rtrPublishSpy).toHaveBeenCalledWith(tenantId);
+      // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — no RTR template copy any more: the new tenant has
+      // no documents rows and resolves to the Aramo RTR default.
       // cross-tenant email collision still refused for the Sign-only owner's email
       const dup = await request(app.getHttpServer())
         .post('/platform/tenants')
