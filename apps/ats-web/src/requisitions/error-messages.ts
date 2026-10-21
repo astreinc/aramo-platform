@@ -102,6 +102,13 @@ export function lifecycleActionErrorMessage(error: unknown): string {
     if (error.code === 'REQUISITION_STATUS_TERMINAL') {
       return 'A closed or canceled requisition can’t be reopened or changed. If the client is hiring again, create a new requisition.';
     }
+    // v1.2 §6.2 (S3) — a hold needs its reason and who placed it.
+    if (error.code === 'VALIDATION_ERROR' && reasonFromError(error) === 'hold_details_required') {
+      return 'Add a reason and who placed the hold before putting the requisition on hold.';
+    }
+    if (error.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
+      return 'Something changed at the same moment, so nothing was saved. Try again.';
+    }
     if (error.status === 409 || error.code === 'REQUISITION_VERSION_CONFLICT') {
       return 'This requisition changed since you loaded it. Reload and try the action again.';
     }

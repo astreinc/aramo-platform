@@ -185,6 +185,12 @@ const REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260827120000_requisition_lifecycle_event_append_only/migration.sql',
 );
+// Talent Lifecycle R1–R5 v1.2 §6 (S3) — hold-detail columns on the lifecycle event (the
+// regenerated client RETURNs them on every lifecycle write).
+const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261021090000_s3_requisition_hold_details/migration.sql',
+);
 // FIX 5 — next_status nullable so a destructive DELETE audits as a terminal
 // REQUISITION_DELETED event; required here because P5 performs a SUCCESSFUL
 // requisition DELETE (visible req → 204), which now writes that event.
@@ -477,7 +483,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         REQUISITION_NUMBER_MIGRATION,
         REQUISITION_LIFECYCLE_NULLABLE_MIGRATION,
         REQUISITION_USER_STATE_MIGRATION,
-        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION,
+        REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_S3_HOLD_DETAILS_MIGRATION,
         REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE,
         resolve(
           ROOT,

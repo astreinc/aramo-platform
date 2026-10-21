@@ -29,6 +29,7 @@ import { assertCompensationEditScopes } from './compensation-edit-gate.js';
 import { computeDerivedViews } from './compensation-views.js';
 import { assertFinancialEditScopes } from './field-group-edit-gate.js';
 import { assertStatusOnlyEditScope } from './status-edit-gate.js';
+import { resolveManualHoldDetails } from './hold-details.js';
 import { assertApprovalAuthorization } from './approval-authorization-gate.js';
 import {
   assertEstablishmentAuthorization,
@@ -37,7 +38,7 @@ import {
 import type { CreateRequisitionRequestDto } from './dto/create-requisition-request.dto.js';
 import type { RatePeriod } from './dto/rate-period.js';
 import type { RequisitionCompensationModel } from './dto/requisition-compensation-model.js';
-import type { RequisitionView } from './dto/requisition.view.js';
+import type { RequisitionHoldView, RequisitionView } from './dto/requisition.view.js';
 import { isGatedRecruitingStatus, type RecruitingStatus } from './dto/requisition-status.js';
 import { ACTION_TARGET_STATUS, governingAction } from './dto/requisition-transitions.js';
 import type { UpdateRequisitionRequestDto } from './dto/update-requisition-request.dto.js';
@@ -46,9 +47,10 @@ import {
   type ExternalLifecycleCommandResult,
   type ExternalLifecycleTransitionCommand,
 } from './dto/external-lifecycle-command.js';
-import type {
-  RecordRequisitionLifecycleEventInput,
-  RequisitionLifecycleOrigin,
+import {
+  holdColumns,
+  type RecordRequisitionLifecycleEventInput,
+  type RequisitionLifecycleOrigin,
 } from './requisition-lifecycle-event.store.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import {
@@ -547,6 +549,7 @@ function projectView(
     // event history when the current status is pending_approval. The list path
     // leaves it null.
     pending_approval_submitter_id: null,
+    hold: null,
   };
 }
 
@@ -669,6 +672,8 @@ export class RequisitionRepository {
         reason_code: input.reason_code,
         policy_decision_id: input.policy_decision_id ?? null,
         correlation_id: input.correlation_id,
+        // v1.2 §6 (S3) — hold details on an on_hold event only (DB CHECKs enforce it).
+        ...holdColumns(input.hold),
       },
     });
     return id;
@@ -822,6 +827,62 @@ export class RequisitionRepository {
       select: { actor_id: true },
     });
     return ev?.actor_id ?? null;
+  }
+
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3) — the hold details of the CURRENT hold:
+  // the newest next_status='on_hold' event (precedent latestApprovalSubmitterActor). A hold event
+  // with no source predates the amendment → recorded:false ("not recorded"). provider_status is
+  // joined through integration.RequisitionExternalTransitionProvenance.lifecycle_event_id
+  // (cross-schema UUID ref, no FK, no nx edge); fail-soft — that row is written after commit.
+  private async latestHoldDetails(
+    tenant_id: string,
+    requisition_id: string,
+  ): Promise<RequisitionHoldView | null> {
+    const ev = await this.prisma.requisitionLifecycleEvent.findFirst({
+      where: { tenant_id, requisition_id, next_status: 'on_hold' },
+      orderBy: { occurred_at: 'desc' },
+      select: {
+        id: true,
+        hold_reason: true,
+        hold_source: true,
+        hold_effective_at: true,
+        hold_instructions: true,
+      },
+    });
+    if (ev === null || ev.hold_source === null) {
+      return {
+        recorded: false,
+        reason: null,
+        reason_provided: false,
+        source: null,
+        effective_at: null,
+        instructions: null,
+        provider_status: null,
+      };
+    }
+    let provider_status: string | null = null;
+    if (ev.hold_source === 'vms') {
+      try {
+        const rows = await this.prisma.$queryRaw<Array<{ raw_provider_status: string }>>`
+          SELECT "raw_provider_status"
+            FROM "integration"."RequisitionExternalTransitionProvenance"
+           WHERE "tenant_id" = ${tenant_id}::uuid AND "lifecycle_event_id" = ${ev.id}::uuid
+           LIMIT 1
+        `;
+        provider_status = rows[0]?.raw_provider_status ?? null;
+      } catch (err) {
+        this.logger.warn(`hold provider_status read failed (fail-soft): ${String(err)}`);
+      }
+    }
+    return {
+      recorded: true,
+      reason: ev.hold_reason,
+      reason_provided: ev.hold_reason !== null,
+      source: ev.hold_source as 'client' | 'vms' | 'internal',
+      effective_at: ev.hold_effective_at?.toISOString() ?? null,
+      instructions: ev.hold_instructions,
+      provider_status,
+    };
   }
 
   // T1-e — persist the §D17a transition provenance with a CALLER-CONTROLLED id
@@ -1448,6 +1509,17 @@ export class RequisitionRepository {
         { requestId: args.requestId, details: { id: args.id, status: existing.status } },
       );
     }
+    // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.2 (S3, A1 AM-3) — a PUT_ON_HOLD carries
+    // its reason + source (required); `hold` on any other edge is refused. Validated BEFORE
+    // the policy engine runs and before any write; the details land on the lifecycle event.
+    const holdDetails = resolveManualHoldDetails({
+      is_put_on_hold:
+        statusChanges &&
+        governingAction(existing.status as RecruitingStatus, args.input.status as RecruitingStatus) === 'PUT_ON_HOLD',
+      hold: args.input.hold,
+      now: new Date(),
+      requestId: args.requestId,
+    });
     // T1-e (§2.2 / R8) — route the status change through its GOVERNING action.
     // Every status change is gated here: the four governed targets can be
     // reached ONLY through their action (no direct-set bypass); ungoverned
@@ -1540,6 +1612,7 @@ export class RequisitionRepository {
                 // T1-e — the governed decision's id (null for an ungoverned edit).
                 policy_decision_id: transitionGate?.decision_id ?? null,
                 correlation_id: args.requestId,
+                ...(holdDetails === undefined ? {} : { hold: holdDetails }),
               });
             }
             return updated;
@@ -1690,6 +1763,19 @@ export class RequisitionRepository {
           reason_code: LIFECYCLE_REASON_EXTERNAL,
           policy_decision_id: allowed.decision_id,
           correlation_id: correlationId,
+          // v1.2 §6.3 (C-3) — a VMS halt is never rejected for a missing reason and the reason
+          // is never invented: source 'vms', the provider's reason only when a connector
+          // supplies one (none does today → NULL = "not provided by VMS").
+          ...(target === 'on_hold'
+            ? {
+                hold: {
+                  reason: null,
+                  source: 'vms' as const,
+                  effective_at: new Date(cmd.external_provenance.external_event_at),
+                  instructions: null,
+                },
+              }
+            : {}),
         });
       }, LOCKED_TX_OPTIONS);
       return {
@@ -2111,6 +2197,9 @@ export class RequisitionRepository {
     // via the EXISTING latestApprovalSubmitterActor lookup (no new query); every
     // other status (and the list path) leaves the field null. Cosmetic only — the
     // authoritative SoD gate stays in-service at gateTransition.
+    if (view !== null && view.status === 'on_hold') {
+      return { ...view, hold: await this.latestHoldDetails(args.tenant_id, args.id) };
+    }
     if (view !== null && view.status === 'pending_approval') {
       return {
         ...view,

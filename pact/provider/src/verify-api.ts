@@ -1434,6 +1434,12 @@ const REQUISITION_POSTAL_CODE_MIGRATION = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260907120000_add_requisition_postal_code/migration.sql',
 );
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §6.5 (S3) — additive hold-detail columns on the
+// lifecycle event (needs the RequisitionLifecycleEvent table + nullable next_status).
+const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
+  ROOT,
+  'libs/requisition/prisma/migrations/20261021090000_s3_requisition_hold_details/migration.sql',
+);
 
 // Constants used by the consent-read given-states (and formerly the retired
 // thin consumer). The talent uuid matches the value the consumer tests
@@ -4040,6 +4046,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         REQUISITION_EXTERNAL_IDENTITY_MIGRATION,
         // WL-B1 — canonical postal_code column (additive, applied last).
         REQUISITION_POSTAL_CODE_MIGRATION,
+        // v1.2 §6.5 (S3) — hold-detail columns on the lifecycle event (additive).
+        REQUISITION_S3_HOLD_DETAILS_MIGRATION,
         // SKILL-TAX-1D — derived RequisitionSkillRequirement table (needs the base
         // requisition schema above; the review-queue state handler seeds an
         // UNRESOLVED requirement surface here).

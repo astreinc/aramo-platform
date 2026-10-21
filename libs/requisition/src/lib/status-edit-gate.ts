@@ -42,7 +42,9 @@ const REQUISITION_EDIT_STATUS = 'requisition:edit:status' as const;
 // exactly the right thing, so the concurrency token is transparent to this
 // subset-restrict gate (allowing it does NOT widen what content they can
 // mutate — version never lands in the update `data`).
-export const STATUS_ONLY_ALLOWED_FIELDS = ['status', 'version'] as const;
+// Talent Lifecycle R1–R5 Impl Directive v1.2 §6.2 — `hold` (the PUT_ON_HOLD details) rides with
+// the status change, so a status-only editor can put a requisition on hold.
+export const STATUS_ONLY_ALLOWED_FIELDS = ['status', 'version', 'hold'] as const;
 
 export function assertStatusOnlyEditScope(args: {
   input: Record<string, unknown>;

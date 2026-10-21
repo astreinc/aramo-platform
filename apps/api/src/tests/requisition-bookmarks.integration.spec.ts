@@ -87,6 +87,8 @@ const MIGRATIONS = [
   // terminal REQUISITION_DELETED event; required here because the cascade test
   // performs a SUCCESSFUL requisition DELETE, which now writes that event.
   mig('20261001120000_lifecycle_next_status_nullable'),
+  // Talent Lifecycle R1–R5 v1.2 §6 (S3) — hold-detail columns on the lifecycle event.
+  mig('20261021090000_s3_requisition_hold_details'),
   // WL-B1 — additive Requisition.postal_code (the regenerated client SELECTs it).
   mig('20260907120000_add_requisition_postal_code'),
   // Track 4 T4-B2 — requisition read DERIVES openings_available from the

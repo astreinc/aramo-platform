@@ -20,6 +20,7 @@ import { deriveCapacity } from '@aramo/placement';
 
 import { SEE_ALL_VISIBILITY } from './support/see-all-visibility.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
+import { TEST_HOLD } from './helpers/hold-fixture.js';
 
 // Track 1 T1-c — the lifecycle-event WIRING against real Postgres. PR-0c shipped
 // the append-only store with no producer; this asserts every path that changes
@@ -244,7 +245,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold', version: 0 } as never,
+        input: { status: 'on_hold', version: 0, hold: TEST_HOLD } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId,
@@ -371,7 +372,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold', version: 0 } as never,
+        input: { status: 'on_hold', version: 0, hold: TEST_HOLD } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: r2,
@@ -392,7 +393,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         visibility: SEE_ALL_VISIBILITY,
         tenant_id: TENANT_A,
         id: created.id,
-        input: { status: 'on_hold', version: 0 } as never,
+        input: { status: 'on_hold', version: 0, hold: TEST_HOLD } as never,
         scopes: ['requisition:edit'],
         actor_id: ACTOR_2,
         requestId: uuidv7(),

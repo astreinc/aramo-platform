@@ -79,7 +79,8 @@ describe('PR-A1 status-only edit gate', () => {
     expect(e.context.details?.['reason']).toBe('status_only_edit_field_violation');
     // Track 1 T1-b — `version` joined `status` as a permitted key (the
     // concurrency token is not a content field); the allowed set reflects both.
-    expect(e.context.details?.['allowed_fields']).toEqual(['status', 'version']);
+    // Talent Lifecycle R1–R5 v1.2 §6.2 (S3) — `hold` (the PUT_ON_HOLD details) joined them.
+    expect(e.context.details?.['allowed_fields']).toEqual(['status', 'version', 'hold']);
     expect(e.context.details?.['attempted_fields']).toEqual(['title']);
   });
 

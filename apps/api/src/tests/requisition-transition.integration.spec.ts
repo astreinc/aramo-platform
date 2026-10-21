@@ -18,6 +18,7 @@ import { REQUISITION_LIFECYCLE_PACKAGE } from '../policy/requisition-lifecycle.p
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { TEST_HOLD } from './helpers/hold-fixture.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -220,7 +221,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         try {
           await reader.query('BEGIN');
           await reader.query(`SELECT status FROM requisition."Requisition" WHERE id=$1 FOR SHARE`, [id]);
-          const hold = patchStatus(await jwt(), id, { status: 'on_hold', version: (await rowOf(id)).version });
+          const hold = patchStatus(await jwt(), id, { status: 'on_hold', version: (await rowOf(id)).version, hold: TEST_HOLD });
           expect(await settledWithin(hold, 1_000)).toBe(false); // waits on the row lock
           await reader.query('COMMIT');
           expect((await hold).status).toBe(200);
@@ -286,7 +287,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const [status, expectAction] of [['on_hold', 'PUT_ON_HOLD'], ['canceled', 'CANCEL']] as const) {
         const id = await seedReq('open');
         const corr = uuid();
-        const res = await patchStatus(token, id, { status, version: 0 }, corr);
+        const res = await patchStatus(token, id, { status, version: 0, ...(status === 'on_hold' ? { hold: TEST_HOLD } : {}) }, corr);
         expect(res.status, `open → ${status}`).toBe(200);
         expect((await rowOf(id)).version).toBe(1);
         expect((await decisionsByCorr(corr, expectAction))[0]?.decision).toBe('ALLOW');

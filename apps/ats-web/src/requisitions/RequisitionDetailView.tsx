@@ -60,6 +60,8 @@ import {
 import { selectOfferStartCards } from './offer-start-rows';
 import { AddTalentDialog } from './AddTalentDialog';
 import { WorkspacePanel } from './WorkspacePanel';
+import { PutOnHoldDialog, type PutOnHoldDetails } from './PutOnHoldDialog';
+import { RequisitionHoldBanner } from './hold-details';
 import { useTalentViewPreference } from './useTalentViewPreference';
 import {
   saveOriginSnapshot,
@@ -457,7 +459,24 @@ export function RequisitionDetailView({
   // typed refusal is surfaced honestly via the toast, never swallowed, never an
   // unhandled rejection. On success saveField refreshes `req` (new version), so
   // the affordance set recomputes for the next transition.
+  // Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3) — PUT_ON_HOLD opens the hold dialog
+  // (reason + source are REQUIRED by the server); every other action PATCHes directly.
+  const [holdDialogOpen, setHoldDialogOpen] = useState(false);
+  const putOnHold = async (details: PutOnHoldDetails): Promise<void> => {
+    if (req === null) return;
+    setReq(
+      await updateRequisition(req.id, {
+        status: 'on_hold',
+        version: req.version,
+        hold: details,
+      } as unknown as UpdateRequisitionRequest),
+    );
+  };
   const runLifecycleAction = async (aff: LifecycleAction): Promise<void> => {
+    if (aff.action === 'PUT_ON_HOLD') {
+      setHoldDialogOpen(true);
+      return;
+    }
     try {
       await saveField('status', aff.toStatus);
     } catch (err) {
@@ -864,6 +883,15 @@ export function RequisitionDetailView({
           ) : null}
         </div>
       </div>
+
+      {/* Talent Lifecycle R1–R5 Impl Directive v1.2 §6.4 (S3, A1 AM-3 §4) — the hold details. */}
+      {req.status === 'on_hold' ? <RequisitionHoldBanner hold={req.hold} /> : null}
+      <PutOnHoldDialog
+        open={holdDialogOpen}
+        onOpenChange={setHoldDialogOpen}
+        onConfirm={putOnHold}
+        errorMessage={lifecycleActionErrorMessage}
+      />
 
       {/* Snapshot strip (eager, grounded cards) then the attention rail — both
           above the tabs, matching the prototype. */}
@@ -1299,6 +1327,8 @@ function TalentJourney({
       <div className="rc-tj__toolbar">
         <TalentViewToggle value={talentView} onChange={onTalentView} />
       </div>
+      {/* v1.2 §6.4 (S3) — the hold banner above the Board too (recruiting continues on hold). */}
+      {req.status === 'on_hold' ? <RequisitionHoldBanner hold={req.hold} /> : null}
       {talentView === 'board' ? (
         <RequisitionTalentBoard
           requisitionId={req.id}
