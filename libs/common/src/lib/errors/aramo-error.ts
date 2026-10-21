@@ -128,6 +128,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_STORAGE_QUOTA_EXCEEDED: 409,
   // Sign Unified Product S-1 — the organization must keep at least one Sign Owner.
   ESIGN_LAST_OWNER: 409,
+  // ROLES-1 PR-1 (§4.1) — the tenant must keep at least one active tenant_owner.
+  TENANT_LAST_OWNER: 409,
   // Sign Unified Product S-4 — the installation was revoked by a Sign admin.
   ESIGN_INSTALLATION_REVOKED: 409,
   // Sign Unified Product S-5 — SIGN_WEBHOOK_SECRET_KEY is not configured.

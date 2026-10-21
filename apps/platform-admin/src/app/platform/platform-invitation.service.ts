@@ -318,6 +318,8 @@ export class PlatformInvitationService {
       // exempted by the validator's bypass) so the bundle math is trivially
       // safe — but the threading is uniform across all callers.
       const created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email: args.owner_email,
         display_name: args.owner_display_name ?? null,
         provider: 'cognito',
@@ -573,6 +575,8 @@ export class PlatformInvitationService {
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
       await this.identitySvc.replaceMembershipRoles({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         membership_id: membership.id,
         tenant_id: args.tenant_id,
         role_keys: args.role_keys,
@@ -605,6 +609,8 @@ export class PlatformInvitationService {
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
       const created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
@@ -661,6 +667,8 @@ export class PlatformInvitationService {
       // createUserFromInvitation as the governed 409 (EMAIL_UNAVAILABLE /
       // INVITATION_ALREADY_EXISTS) — the same rollback applies.
       created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email,
         display_name: args.display_name ?? null,
         provider: 'cognito',

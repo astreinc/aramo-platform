@@ -204,6 +204,8 @@ interface InServiceFixture {
     createInvitation: ReturnType<typeof vi.fn>;
     replaceMembershipRoles: ReturnType<typeof vi.fn>;
     findMembership: ReturnType<typeof vi.fn>;
+    // ROLES-1 PR-1 — the target's current keys (owner delta) + the actor's keys.
+    findRoleKeysForMembership: ReturnType<typeof vi.fn>;
     // IC-1 PR-1 — the ownership reads behind the one-User-one-tenant guard.
     findUserByEmail: ReturnType<typeof vi.fn>;
     findMembershipTenantIdsForUser: ReturnType<typeof vi.fn>;
@@ -251,6 +253,9 @@ function buildInServiceFixture(
     createInvitation: vi.fn(),
     replaceMembershipRoles: vi.fn(),
     findMembership: vi.fn(),
+    // ROLES-1 PR-1 — default: the target holds no role (no tenant_owner delta unless the
+    // requested set adds it).
+    findRoleKeysForMembership: vi.fn().mockResolvedValue([]),
     // Defaults: the email is unregistered (the pre-IC-1 proofs proceed to
     // the write exactly as before); guard tests override per case.
     findUserByEmail: vi.fn().mockResolvedValue(null),
@@ -717,6 +722,7 @@ describe('IdentityService.replaceMembershipRoles — D5 in-service safe-by-const
     expect(repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({
       membership_id: '01900000-0000-7000-8000-000000000003',
       role_ids: ['role-recruiter', 'role-back_office'],
+      request_id: REQUEST_ID,
     });
   });
 });
@@ -760,7 +766,7 @@ describe('IdentityService — platform-tier roles not assignable tenant-side (IC
     ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable' } } });
     const allowed = buildInServiceFixture(SAFE_MULTI_ROLES);
     await allowed.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['super_admin'], role_ids: ['role-super_admin'], request_id: REQUEST_ID, allow_platform_roles: true });
-    expect(allowed.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-super_admin'] });
+    expect(allowed.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-super_admin'], request_id: REQUEST_ID });
   });
   it('the tenant-assignable partition excludes exactly the platform keys', async () => {
     const { PLATFORM_ROLE_KEYS, SEED_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
@@ -832,7 +838,7 @@ describe('IdentityService — E-Sign product roles assignable only in an esign-e
     const entitled = buildInServiceFixture(SIGN_ROLES, ['core', 'ats', 'sign']);
     entitled.repoSpies.replaceMembershipRoles.mockResolvedValue({ added_role_ids: ['role-sign_sender'], removed_role_ids: [] });
     await entitled.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: ['org_admin', 'sign_sender'], role_ids: ['role-org_admin', 'role-sign_sender'], request_id: REQUEST_ID });
-    expect(entitled.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-org_admin', 'role-sign_sender'] });
+    expect(entitled.repoSpies.replaceMembershipRoles).toHaveBeenCalledWith({ membership_id: 'm-1', role_ids: ['role-org_admin', 'role-sign_sender'], request_id: REQUEST_ID });
   });
   it('a role set WITHOUT a Sign role never reads the entitlement (the gate is narrow)', async () => {
     const { identitySvc, repoSpies, entitlementSpies } = buildInServiceFixture(SIGN_ROLES, ['core']);
@@ -903,7 +909,8 @@ describe('IdentityService — ATS roles assignable only in an ats-entitled tenan
   });
   it('tenant_owner (an ATS superset bundle) is ATS-partitioned: refused in a Sign-only tenant; org_admin is NOT ATS-partitioned (assignable with core alone)', async () => {
     const signOnly = buildInServiceFixture(ROLES, ['core', 'sign']);
-    await expect(signOnly.identitySvc.createInvitedUserNoSub({ email: 'o@sign.io', display_name: null, tenant_id: TENANT, role_keys: ['tenant_owner'], role_ids: ['t'], actor_user_id: 'a', request_id: REQUEST_ID })).rejects.toMatchObject(REFUSAL);
+    // ROLES-1 PR-1 — 'platform' authority isolates the ATS-partition gate from the owner-only rule.
+    await expect(signOnly.identitySvc.createInvitedUserNoSub({ email: 'o@sign.io', display_name: null, tenant_id: TENANT, role_keys: ['tenant_owner'], role_ids: ['t'], actor_user_id: 'a', request_id: REQUEST_ID, owner_role_authority: 'platform' })).rejects.toMatchObject(REFUSAL);
     const coreOnly = buildInServiceFixture(ROLES, ['core']);
     coreOnly.repoSpies.createUserWithMembership.mockResolvedValue({ user: { id: 'u', email: 'o@sign.io', display_name: null, is_active: true, deactivated_at: null, created_at: 'x', updated_at: 'x' }, membership_id: 'm' });
     coreOnly.repoSpies.createInvitation.mockResolvedValue({ invitation_id: 'i', expires_at: '2099-01-01T00:00:00.000Z' });

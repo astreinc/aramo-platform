@@ -108,8 +108,11 @@ function makeMocks(): Mocks {
     reEnableMembership: vi.fn(),
     // IC-3 PR-7 — tenant access state for the enable leg (default: ACTIVE).
     getTenantAccessState: vi.fn().mockResolvedValue({ status: 'ACTIVE', is_active: true }),
-    findMembership: vi.fn(),
-    findRoleKeysForMembership: vi.fn(),
+    // ROLES-1 PR-1 — default: no membership / no roles (the owner-target check passes);
+    // per-case overrides as before.
+    findMembership: vi.fn().mockResolvedValue(null),
+    findRoleKeysForMembership: vi.fn().mockResolvedValue([]),
+    assertOwnerRoleAuthority: vi.fn().mockResolvedValue(undefined),
     replaceMembershipRoles: vi.fn(),
     findActiveInvitation: vi.fn(),
     revokeInvitation: vi.fn().mockResolvedValue({ changed: true }),
@@ -598,7 +601,9 @@ describe('TenantUserLifecycleService.disableTenantUser', () => {
       const fn = surface[k];
       return fn !== undefined && fn.mock.calls.length > 0;
     });
-    expect(calledMethods.sort()).toEqual(['disableMembership', 'findUserById']);
+    // ROLES-1 PR-1 (§4.2) — findMembership is the owner-target read (a non-owner target
+    // needs no owner caller); still no assignment / edge / team surface.
+    expect(calledMethods.sort()).toEqual(['disableMembership', 'findMembership', 'findUserById']);
   });
 });
 
@@ -768,6 +773,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles', () => {
       role_keys: ['account_manager', 'recruiter'],
       role_ids: ['rid-am', 'rid-rc'],
       request_id: REQUEST_ID,
+      owner_role_authority: { actor_user_id: ACTOR_ID },
     });
   });
 
@@ -896,6 +902,7 @@ describe('TenantUserLifecycleService.assignTenantUserRoles — Settings S4 GATE 
       role_keys: ['auditor_with_financials'],
       role_ids: ['rid-awf'],
       request_id: REQUEST_ID,
+      owner_role_authority: { actor_user_id: ACTOR_ID },
     });
   });
 
@@ -1140,6 +1147,7 @@ describe('TenantUserLifecycleService.revokeTenantInvite (§4.2)', () => {
     expect(identitySvc.disableMembership).toHaveBeenCalledWith({
       user_id: USER_ID,
       tenant_id: TENANT_ID,
+      request_id: REQUEST_ID,
     });
     // The revoke path NEVER touches Cognito (pending invitee has no sub).
     expect(cognito.adminDisableUser).not.toHaveBeenCalled();

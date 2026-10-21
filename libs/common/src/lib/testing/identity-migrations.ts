@@ -85,6 +85,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // AUTH-SIGNIN-1 / Sign federated owner signup — the narrow provider-pin cohort
   // and per-link provider (two additive tables; no existing read changes).
   'libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql',
+  // ROLES-1 PR-1 (§4.1) — last-owner invariant: plpgsql AFTER ROW triggers on
+  // UserTenantMembershipRole / UserTenantMembership / User (no column, no shape
+  // change). Applied LAST: it reads Tenant.status (lifecycle) and the init tables only.
+  'libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

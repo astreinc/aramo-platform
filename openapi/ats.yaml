@@ -9444,7 +9444,16 @@ paths:
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
-          $ref: 'common.yaml#/components/responses/Forbidden'
+          description: |
+            `INSUFFICIENT_PERMISSIONS` — the caller lacks `tenant:admin:user-manage`;
+            or `role_keys` contains `tenant_owner` and the caller does not hold
+            `tenant_owner` in this tenant (`details.reason`
+            `owner_role_requires_owner`, ROLES-1 §4.2 — only an owner may grant
+            the owner role).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
         '409':
           description: |
             `INVITATION_ALREADY_EXISTS` — the email is already a member of this

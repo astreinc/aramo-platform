@@ -449,6 +449,8 @@ export class TenantUserManagementController {
     return this.lifecycle.revokeTenantInvite({
       tenant_id: authContext.tenant_id,
       user_id: userId,
+      // ROLES-1 PR-1 (§4.2) — revoking a pending tenant_owner needs an owner caller.
+      actor_user_id: authContext.sub,
       request_id: requestId,
     });
   }

@@ -8,6 +8,7 @@ import {
   extractEmailDomain,
   normalizeEmail,
 } from '../util/email-domain.js';
+import { TENANT_OWNER_ROLE_KEY } from '../util/tenant-last-owner.js';
 
 import {
   TENANT_COGNITO_PORT,
@@ -218,6 +219,8 @@ export class TenantUserLifecycleService {
       role_ids,
       actor_user_id: args.actor_user_id,
       request_id: args.request_id,
+      // ROLES-1 PR-1 (§4.2) — inviting someone as tenant_owner needs an owner caller.
+      owner_role_authority: { actor_user_id: args.actor_user_id },
     });
 
     // Step 3 — send the invite email (S1 mailer). BEST-EFFORT: the user +
@@ -288,10 +291,16 @@ export class TenantUserLifecycleService {
       );
     }
 
-    // Step 1 — identity flip.
+    // ROLES-1 PR-1 (§4.2) — disabling an ACTIVE user who holds tenant_owner removes an
+    // owner: only a tenant_owner caller may do it (403 owner_role_requires_owner).
+    await this.assertOwnerTargetAuthority({ ...args, action: 'disable' });
+
+    // Step 1 — identity flip. ROLES-1 PR-1 (§4.1): the DB refuses disabling the tenant's
+    // last active tenant_owner (409 TENANT_LAST_OWNER).
     const result = await this.identitySvc.disableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
+      request_id: args.request_id,
     });
 
     if (result === null) {
@@ -498,6 +507,8 @@ export class TenantUserLifecycleService {
       role_keys: args.role_keys,
       role_ids,
       request_id: args.request_id,
+      // ROLES-1 PR-1 (§4.2) — granting or removing tenant_owner needs an owner caller.
+      owner_role_authority: { actor_user_id: args.actor_user_id },
     });
 
     // Step 5 — compute key-set delta. We compute from keys rather than
@@ -652,11 +663,15 @@ export class TenantUserLifecycleService {
   async revokeTenantInvite(args: {
     tenant_id: string;
     user_id: string;
+    // ROLES-1 PR-1 (§4.2) — the caller (revoking a pending tenant_owner invite needs an
+    // owner caller).
+    actor_user_id: string;
     request_id: string;
   }): Promise<{ revoked: boolean; displayed_status: 'INACTIVE' }> {
     // Asserts a pending displayed state (INVITED/ACCEPTED/FAILED); ACTIVE /
     // INACTIVE → 4xx no_pending_invite.
     await this.requirePendingMembership({ ...args, action: 'revoke' });
+    await this.assertOwnerTargetAuthority({ ...args, action: 'revoke' });
     const invitation = await this.identitySvc.findActiveInvitation({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
@@ -676,6 +691,7 @@ export class TenantUserLifecycleService {
     await this.identitySvc.disableMembership({
       user_id: args.user_id,
       tenant_id: args.tenant_id,
+      request_id: args.request_id,
     });
     return { revoked, displayed_status: 'INACTIVE' };
   }
@@ -804,6 +820,31 @@ export class TenantUserLifecycleService {
   }
 
   // ── shared helpers ────────────────────────────────────────────────────
+
+  // ROLES-1 PR-1 (§4.2) — disable / revoke of a target whose ACTIVE membership holds
+  // tenant_owner removes an owner, so the caller must hold tenant_owner. A target that is
+  // not an active owner (or has no membership: the caller's own 404 handles it) passes.
+  private async assertOwnerTargetAuthority(args: {
+    tenant_id: string;
+    user_id: string;
+    actor_user_id: string;
+    request_id: string;
+    action: 'disable' | 'revoke';
+  }): Promise<void> {
+    const target = await this.identitySvc.findMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (target === null || !target.is_active) return;
+    const keys = await this.identitySvc.findRoleKeysForMembership(target.id);
+    if (!keys.includes(TENANT_OWNER_ROLE_KEY)) return;
+    await this.identitySvc.assertOwnerRoleAuthority({
+      tenant_id: args.tenant_id,
+      owner_role_authority: { actor_user_id: args.actor_user_id },
+      request_id: args.request_id,
+      action: args.action,
+    });
+  }
 
   private async findMembershipOr404(args: {
     tenant_id: string;

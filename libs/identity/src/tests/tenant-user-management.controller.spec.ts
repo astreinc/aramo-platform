@@ -709,6 +709,8 @@ describe('TenantUserManagementController.revoke (§4.2)', () => {
     expect(lifecycle.revokeTenantInvite).toHaveBeenCalledWith({
       tenant_id: OTHER_TENANT_ID,
       user_id: USER_ID,
+      // ROLES-1 PR-1 (§4.2) — the caller, for the owner-only rule.
+      actor_user_id: ACTOR_ID,
       request_id: REQUEST_ID,
     });
   });

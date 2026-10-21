@@ -808,6 +808,8 @@ describe('PlatformInvitationService — inviteUserIntoTenant idempotency (proof 
       request_id: TEST_REQUEST_ID,
       // IC-2 PR-5 — a tenant-pool invite never asserts the platform tier.
       allow_platform_roles: false,
+      // ROLES-1 PR-1 (§4.2) — the platform tier may grant/remove tenant_owner.
+      owner_role_authority: 'platform',
     });
     expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
     expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();

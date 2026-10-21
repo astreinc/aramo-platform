@@ -150,6 +150,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_STORAGE_QUOTA_EXCEEDED',
       // Sign Unified Product S-1 — removing/demoting the organization's last Sign Owner (409).
       'ESIGN_LAST_OWNER',
+      // ROLES-1 PR-1 (§4.1) — removing a tenant's last active tenant_owner (409).
+      'TENANT_LAST_OWNER',
       // Sign Unified Product S-4 — an action on a revoked Sign installation (409).
       'ESIGN_INSTALLATION_REVOKED',
       // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).

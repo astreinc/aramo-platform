@@ -225,6 +225,14 @@ export type { DirectoryUserView } from './lib/identity.repository.js';
 // Aramo-Identity-Me-Endpoint — the self-read display shape for GET /v1/me,
 // consumed by apps/api's MeController.
 export type { MeView } from './lib/identity.service.js';
+// ROLES-1 PR-1 (§4) — owner-only grant authority + the last-owner invariant marker/mapper.
+export type { OwnerRoleAuthority } from './lib/identity.service.js';
+export {
+  TENANT_OWNER_ROLE_KEY,
+  TENANT_LAST_OWNER_DB_MARKER,
+  isTenantLastOwnerViolation,
+  rethrowTenantLastOwner,
+} from './lib/util/tenant-last-owner.js';
 export {
   TENANT_COGNITO_PORT,
   StubTenantCognitoAdapter,
