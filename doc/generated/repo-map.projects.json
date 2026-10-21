@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -25,6 +25,7 @@
     "@aramo/contact": "./libs/contact/src/index.ts",
     "@aramo/conversation-intelligence": "./libs/conversation-intelligence/src/index.ts",
     "@aramo/conversation-transcript": "./libs/conversation-transcript/src/index.ts",
+    "@aramo/document-templates-web": "./libs/document-templates-web/src/index.ts",
     "@aramo/documents": "./libs/documents/src/index.ts",
     "@aramo/documents-contracts": "./libs/documents-contracts/src/index.ts",
     "@aramo/documents-rendering": "./libs/documents-rendering/src/index.ts",
@@ -651,6 +652,49 @@
       "validateNormalizedTranscript",
       "verifyExternalCaptureSignature"
     ],
+    "@aramo/document-templates-web": [
+      "CheckIcon",
+      "DOC_TEMPLATE_MANAGE_SCOPE",
+      "DOC_TEMPLATE_READ_SCOPE",
+      "DocIcon",
+      "DocIconSmall",
+      "DocTemplateRoutesProvider",
+      "EyeIcon",
+      "Letterhead",
+      "LockIcon",
+      "ORG_DOC_TEMPLATE_ROUTES",
+      "PlusIcon",
+      "PreviewModal",
+      "PreviewPaper",
+      "RIGHT_TO_REPRESENT_TYPE_ID",
+      "RTR_GENERATED_SCHEMA_V1",
+      "RTR_HTML_SCHEMA_V1",
+      "RtrDraftEditor",
+      "RtrTemplateDetail",
+      "SafeDoc",
+      "SampleValues",
+      "activateTemplateVersion",
+      "bindingMapFrom",
+      "clearTemplateSelection",
+      "contentFromVersion",
+      "createOwnTemplate",
+      "emptyBindingMap",
+      "fetchTemplateCatalog",
+      "fetchTemplateLibrary",
+      "fmtDate",
+      "getDocumentTemplate",
+      "getTemplateVersion",
+      "htmlOf",
+      "listDocumentTemplates",
+      "listTemplateSelections",
+      "listTemplateVersions",
+      "previewContentFrom",
+      "previewTemplateDefault",
+      "previewTemplateVersion",
+      "resolveUserNames",
+      "setTemplateSelection",
+      "useDocTemplateRoutes"
+    ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
       "DOCUMENT_STORAGE_PORT",
@@ -664,6 +708,7 @@
       "DocumentRequirementNotFoundError",
       "DocumentRequirementsController",
       "DocumentStorageNotSupportedError",
+      "DocumentTemplateLibraryController",
       "DocumentTemplatesController",
       "DocumentTypesController",
       "DocumentsController",
@@ -677,11 +722,19 @@
       "TEMPLATE_AUDIT",
       "TEMPLATE_CAPABILITIES",
       "TEMPLATE_TENANT_LOGO",
+      "TEMPLATE_VARIABLE_DATA_TYPES",
+      "TemplateDraftAlreadyExistsError",
       "TemplateImmutableError",
       "TemplateNotFoundError",
+      "TemplateResolutionService",
+      "TemplateSelectionInvalidError",
+      "TemplateVariableKeyConflictError",
+      "TemplateVariableNotFoundError",
+      "TemplateVariablesRepository",
       "TemplateVersionNotActiveError",
       "TemplateVersionNotFoundError",
-      "TemplatesRepository"
+      "TemplatesRepository",
+      "templateErrorToHttp"
     ],
     "@aramo/documents-contracts": [
       "ESIGN_S2S_SCHEME",
@@ -689,10 +742,13 @@
       "ESIGN_S2S_TIMESTAMP_HEADER",
       "ESIGN_S2S_TIMESTAMP_TOLERANCE_SEC",
       "SIGNATURE_PROVIDER_PORT",
+      "SIGN_TEMPLATE_BODY_DIGEST_PARAM",
+      "SIGN_TEMPLATE_LIBRARY_PATH",
       "canonicalEsignS2sRequest",
       "computeEsignS2sSignature",
       "normalizeEsignS2sQuery",
       "signEsignServiceRequest",
+      "signTemplateBodyDigest",
       "signatureActor",
       "verifyEsignServiceRequest"
     ],
@@ -919,12 +975,15 @@
       "NodeDnsAdapter",
       "ORG_ADMIN_SCOPE_KEYS",
       "ORG_ENTRY_PATH",
+      "ORG_ROLE_KEYS",
+      "ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRODUCT_KEYS",
       "PrismaService",
       "ProductAvailabilityService",
+      "RETIRED_ROLE_KEYS",
       "RedisScopeCache",
       "RoleBundleValidator",
       "RoleRepository",
@@ -934,6 +993,9 @@
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_ORGANIZATION_ROLE_DISPLAY",
+      "SIGN_ORGANIZATION_ROLE_KEYS",
+      "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
@@ -942,6 +1004,8 @@
       "TENANT_ASSIGNABLE_ROLE_KEYS",
       "TENANT_COGNITO_PORT",
       "TENANT_KINDS",
+      "TENANT_LAST_OWNER_DB_MARKER",
+      "TENANT_OWNER_ROLE_KEY",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
@@ -968,11 +1032,13 @@
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
       "isTenantKind",
+      "isTenantLastOwnerViolation",
       "isTenantStatus",
       "normalizeEmail",
       "normalizeIdp",
       "normalizeSlug",
       "requiredCapabilityForConsumer",
+      "rethrowTenantLastOwner",
       "signEntryActivated",
       "signEntryUrl"
     ],
@@ -1195,6 +1261,7 @@
     ],
     "@aramo/org-admin-web": [
       "AuditLogView",
+      "DOC_TEMPLATE_READ_SCOPE",
       "ME_PATH",
       "ORG_ADMIN_SCOPE_PREFIX",
       "ORG_DENIED_NOTICE",
@@ -1202,9 +1269,12 @@
       "OrgAdminRoutes",
       "OrgAdminShell",
       "RolesMatrixView",
+      "canEnterOrg",
       "fetchMe",
       "hasOrgAdminScope",
+      "hasOrgTemplateScope",
       "orgSectionLabel",
+      "orgSectionsFor",
       "useMe"
     ],
     "@aramo/outbox-publisher": [
@@ -2240,6 +2310,30 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/documents-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2337,6 +2431,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-read-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2845,12 +2945,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/tenant-lifecycle.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -2894,6 +2988,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -3272,6 +3372,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3804,6 +3910,48 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-organization-bindings.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4977,6 +5125,36 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t1-template-ownership.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t2-platform-repo.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t3-rtr-conversion-migration.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t3-template-resolution.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/doclib-t6-withdrawal.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/documents-core.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -5102,6 +5280,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/domain-verification-state-machine.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -5169,6 +5359,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/px3-esign-sender-authz.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -5479,12 +5681,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -5878,6 +6074,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -6521,10 +6729,32 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/document-templates-web": [
+      { "project": "aramo-ats-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      { "project": "org-admin-web", "status": "production" }
+    ],
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t2-platform-templates.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6554,6 +6784,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/fixtures/rtr-seed-catalog.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/governed-signing-allowance.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6573,6 +6809,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/oc6-rtr-webhook-e2e.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/platform-document-templates.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6642,19 +6884,24 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/platform-admin/src/tests/tenant-document-template-provisioning.integration.spec.ts",
-        "project": "platform-admin",
-        "status": "excluded"
-      },
-      { "project": "platform-admin", "status": "production" }
+      { "project": "api", "status": "production" }
     ],
     "@aramo/documents-contracts": [
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6736,14 +6983,31 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "from": "pact/consumers/sign-source-consumer/src/source-pull.consumer.test.ts",
         "project": "sign-source-consumer-pact",
         "status": "unscoped"
+      },
+      {
+        "from": "pact/consumers/sign-source-consumer/src/template-library.consumer.test.ts",
+        "project": "sign-source-consumer-pact",
+        "status": "unscoped"
       }
     ],
     "@aramo/documents-rendering": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/rtr-reconciliation-preview.integration.spec.ts",
@@ -7522,24 +7786,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/DocumentTemplates.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/RtrDraftEditor.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/settings/documents/RtrDraftEditorHtml.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/sections/AtsRolesSection.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7748,6 +7994,31 @@
       { "project": "aramo-sign-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/DocumentTemplates.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/RtrDraftEditor.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/document-templates-web/src/RtrDraftEditorHtml.spec.tsx",
+        "project": "document-templates-web",
+        "status": "excluded"
+      },
+      { "project": "document-templates-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
@@ -7837,6 +8108,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t4-tenant-branding.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8056,6 +8333,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8356,6 +8639,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-owner-grant-rule.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/tenant-user-lifecycle.service.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -8459,6 +8748,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9918,6 +10213,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t3-rtr-platform-default.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/enterprise-search-semantic.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10485,6 +10786,13 @@
       "root": "libs/conversation-transcript",
       "sourceRoot": "libs/conversation-transcript/src",
       "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "document-templates-web",
+      "root": "libs/document-templates-web",
+      "sourceRoot": "libs/document-templates-web/src",
+      "tags": ["scope:shared"],
       "targets": ["build", "lint", "test"]
     },
     {

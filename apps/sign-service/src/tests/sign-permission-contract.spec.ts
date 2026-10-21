@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import type { AuthContextType } from '@aramo/auth';
+import { AramoError } from '@aramo/common';
 import { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE } from '@aramo/identity';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +21,11 @@ function auth(scopes: readonly string[], sub = ME): AuthContextType {
   return { sub, consumer_type: 'sign', actor_kind: 'user', tenant_id: TENANT, scopes: [...scopes], iat: 0, exp: 0 };
 }
 const roleAuth = (role: (typeof ESIGN_ROLE_KEYS)[number], sub = ME): AuthContextType => auth(ESIGN_ROLE_PERMISSIONS[role], sub);
+// ROLES-1 PR-3 — the Sign Owner role is retired; the organization owner (tenant_owner)
+// carries every Sign permission incl. billing (= Sign Admin + sign:billing:manage) on a
+// sign session (ADR-0035 R1; Conforming Amendment 6).
+const ORG_OWNER_SIGN_SCOPES: readonly string[] = [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE];
+const orgOwnerAuth = (sub = ME): AuthContextType => auth(ORG_OWNER_SIGN_SCOPES, sub);
 
 function ctx(kind = 'BUSINESS') {
   const tenants = {
@@ -50,15 +56,16 @@ function envelopeSvc(owner: string, kind = 'BUSINESS', status = 'DRAFT', source_
   return { svc, repo, provider };
 }
 
-describe('Sign role contract — four distinct built-in roles', () => {
+describe('Sign role contract — three distinct built-in roles (ROLES-1 PR-3: Sign Owner retired)', () => {
   const set = (r: (typeof ESIGN_ROLE_KEYS)[number]) => new Set(ESIGN_ROLE_PERMISSIONS[r]);
-  it('Owner, Admin, Sender and Viewer are pairwise distinct', () => {
+  it('the Sign roles are exactly Admin, Sender and Viewer, pairwise distinct; sign_owner is not one', () => {
+    expect([...ESIGN_ROLE_KEYS]).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
+    expect(Object.keys(ESIGN_ROLE_PERMISSIONS).sort()).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
     const sigs = ESIGN_ROLE_KEYS.map((r) => [...set(r)].sort().join(','));
-    expect(new Set(sigs).size).toBe(4);
+    expect(new Set(sigs).size).toBe(3);
   });
-  it('Owner = Admin + billing; only Owner holds billing', () => {
-    expect([...set('sign_owner')].filter((s) => !set('sign_admin').has(s))).toEqual([ESIGN_SCOPE.BILLING_MANAGE]);
-    for (const r of ['sign_admin', 'sign_sender', 'sign_viewer'] as const) expect(set(r).has(ESIGN_SCOPE.BILLING_MANAGE)).toBe(false);
+  it('no Sign role holds billing (billing belongs to the organization owner)', () => {
+    for (const r of ESIGN_ROLE_KEYS) expect(set(r).has(ESIGN_SCOPE.BILLING_MANAGE)).toBe(false);
   });
   it('Sender: own envelopes only — no organization read, no organization changes, no administration', () => {
     for (const s of [ESIGN_SCOPE.ENVELOPE_READ_ALL, ESIGN_SCOPE.ENVELOPE_MANAGE_ALL, ESIGN_SCOPE.MEMBER_MANAGE, ESIGN_SCOPE.INTEGRATION_MANAGE, ESIGN_SCOPE.SETTINGS_MANAGE]) {
@@ -79,16 +86,21 @@ describe('visibility — own vs organization (sign:envelope:read:all)', () => {
     ['sign_sender', ME],
     ['sign_viewer', undefined],
     ['sign_admin', undefined],
-    ['sign_owner', undefined],
   ] as const)('%s lists with owner filter %s', async (role, expected) => {
     const { svc, repo } = envelopeSvc(ME);
     await svc.list(roleAuth(role), {}, 'r');
     expect(repo.listEnvelopes).toHaveBeenCalledWith(expect.objectContaining({ created_by: expected }));
   });
 
+  it('the organization owner lists every organization envelope', async () => {
+    const { svc, repo } = envelopeSvc(ME);
+    await svc.list(orgOwnerAuth(), {}, 'r');
+    expect(repo.listEnvelopes).toHaveBeenCalledWith(expect.objectContaining({ created_by: undefined }));
+  });
+
   it('a PERSONAL account reads only its own, even holding read:all', async () => {
     const { svc, repo } = envelopeSvc(ME, 'PERSONAL');
-    await svc.list(roleAuth('sign_owner'), {}, 'r');
+    await svc.list(orgOwnerAuth(), {}, 'r');
     expect(repo.listEnvelopes).toHaveBeenCalledWith(expect.objectContaining({ created_by: ME }));
   });
 
@@ -125,10 +137,10 @@ describe('ownership — changing an envelope needs ownership or sign:envelope:ma
     expect(repo.updateDraft).not.toHaveBeenCalled();
   });
 
-  it("Admin and Owner may void another member's envelope", async () => {
-    for (const role of ['sign_admin', 'sign_owner'] as const) {
+  it("Admin and the organization owner may void another member's envelope", async () => {
+    for (const a of [roleAuth('sign_admin'), orgOwnerAuth()]) {
       const { svc, provider } = envelopeSvc(OTHER, 'BUSINESS', 'SENT');
-      await svc.void(roleAuth(role), 'e1', VOID, 'r');
+      await svc.void(a, 'e1', VOID, 'r');
       expect(provider.voidEnvelope).toHaveBeenCalledTimes(1);
     }
   });
@@ -145,62 +157,73 @@ describe('ownership — changing an envelope needs ownership or sign:envelope:ma
 });
 
 describe('sender context — permissions reflect the role, BUSINESS-only organization powers', () => {
-  it('Owner in a BUSINESS tenant', async () => {
-    const v = await ctx().context(roleAuth('sign_owner'), 'r');
-    expect(v.permissions).toEqual({ read: true, read_all: true, create: true, send: true, manage_all: true, contacts: true, members: true, billing: true });
+  it('the organization owner in a BUSINESS tenant', async () => {
+    const v = await ctx().context(orgOwnerAuth(), 'r');
+    expect(v.permissions).toEqual({ read: true, read_all: true, create: true, send: true, manage_all: true, contacts: true, members: true, billing: true, templates: false });
   });
   it('Sender', async () => {
     const v = await ctx().context(roleAuth('sign_sender'), 'r');
-    expect(v.permissions).toEqual({ read: true, read_all: false, create: true, send: true, manage_all: false, contacts: true, members: false, billing: false });
+    expect(v.permissions).toEqual({ read: true, read_all: false, create: true, send: true, manage_all: false, contacts: true, members: false, billing: false, templates: false });
   });
   it('PERSONAL never gets organization powers', async () => {
-    const v = await ctx('PERSONAL').context(roleAuth('sign_owner'), 'r');
+    const v = await ctx('PERSONAL').context(orgOwnerAuth(), 'r');
     expect(v.permissions).toMatchObject({ read_all: false, manage_all: false, members: false, billing: false });
+  });
+  // ROLES-1 PR-2 (§3.4) — billing permission = sign:billing:manage only; organization
+  // settings authority (the former fallback) no longer shows the plan controls.
+  it('organization settings authority alone does not grant the billing permission', async () => {
+    const admin = { ...roleAuth('sign_admin') };
+    const v = await ctx().context({ ...admin, scopes: [...admin.scopes, 'tenant:admin:settings'] }, 'r');
+    expect(v.permissions.billing).toBe(false);
   });
 });
 
-describe('billing administration — Sign Owner or organization settings authority', () => {
-  it('either authority suffices; neither is refused', () => {
+// ROLES-1 PR-2 (§3.4, F-3) — billing is sign:billing:manage ONLY (the tenant_owner bundle);
+// the tenant:admin:settings fallback is removed.
+describe('billing administration — sign:billing:manage only', () => {
+  it('only sign:billing:manage authorizes; organization settings authority alone is refused', () => {
     expect(canManageBilling([ESIGN_SCOPE.BILLING_MANAGE])).toBe(true);
-    expect(canManageBilling(['tenant:admin:settings'])).toBe(true);
+    expect(canManageBilling(['tenant:admin:settings'])).toBe(false);
     expect(canManageBilling(ESIGN_ROLE_PERMISSIONS.sign_admin)).toBe(false);
     expect(canManageBilling([])).toBe(false);
   });
 });
 
-function membersSvc(opts: { kind?: string; callerKeys: string[]; targetKeys: string[]; owners?: number; targetIsMember?: boolean }) {
+function membersSvc(opts: { kind?: string; callerKeys: string[]; targetKeys: string[]; targetIsMember?: boolean; replaceError?: unknown }) {
   const memberships: Record<string, { id: string; is_active: boolean } | null> = {
     [ME]: { id: 'm-me', is_active: true },
     [OTHER]: opts.targetIsMember === false ? null : { id: 'm-other', is_active: true },
   };
   let targetKeys = [...opts.targetKeys];
-  const ownerRows = Array.from({ length: opts.owners ?? 1 }, (_, i) => ({ user_id: `o${i}`, is_active: true, role_keys: ['sign_owner'] }));
   const repo = {
     findMembership: vi.fn(async ({ user_id }: { user_id: string }) => memberships[user_id] ?? null),
     listTenantUsers: vi.fn(async () => [
+      { user_id: ME, email: 'me@x.test', display_name: 'Me', is_active: true, role_keys: opts.callerKeys },
       { user_id: OTHER, email: 'o@x.test', display_name: 'Other', is_active: true, role_keys: targetKeys },
-      ...ownerRows,
     ]),
   };
   const identity = {
     findRoleKeysForMembership: vi.fn(async (id: string) => (id === 'm-me' ? opts.callerKeys : targetKeys)),
     resolveRoleIdsByKeys: vi.fn(async (keys: string[]) => keys.map((k) => `id-${k}`)),
     replaceMembershipRoles: vi.fn(async (a: { role_keys: string[] }) => {
+      if (opts.replaceError !== undefined) throw opts.replaceError;
       targetKeys = [...a.role_keys];
       return { added_role_ids: [], removed_role_ids: [] };
     }),
   };
-  return { svc: new SenderMembersService(ctx(opts.kind), repo as never, identity as never), identity };
+  return { svc: new SenderMembersService(ctx(opts.kind), repo as never, identity as never), identity, repo };
 }
 
 describe('Sign member administration', () => {
   const admin = auth(ESIGN_ROLE_PERMISSIONS.sign_admin);
 
   it('changes only the Sign role and keeps every other role of the member', async () => {
-    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['recruiter', 'org_admin', 'sign_viewer'] });
+    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['recruiter', 'tenant_admin', 'sign_viewer'] });
     const v = await svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r');
-    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['recruiter', 'org_admin', 'sign_sender'], tenant_id: TENANT }));
-    expect(v).toMatchObject({ sign_role: 'sign_sender', sign_role_display: 'Sign Sender' });
+    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(
+      expect.objectContaining({ role_keys: ['recruiter', 'tenant_admin', 'sign_sender'], tenant_id: TENANT, owner_role_authority: { actor_user_id: ME } }),
+    );
+    expect(v).toMatchObject({ sign_role: 'sign_sender', sign_role_display: 'Sign Sender', organization_role: 'tenant_admin', organization_role_display: 'Tenant Admin' });
   });
 
   it('null removes Sign access only', async () => {
@@ -209,36 +232,65 @@ describe('Sign member administration', () => {
     expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['recruiter'] }));
   });
 
-  it('an Admin cannot grant or remove the Owner role', async () => {
-    const grant = membersSvc({ callerKeys: ['sign_admin'], targetKeys: [] });
-    await expect(grant.svc.setRole(admin, OTHER, { sign_role: 'sign_owner' }, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'owner_role_requires_owner' } } });
-    const remove = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['sign_owner'], owners: 2 });
-    await expect(remove.svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ statusCode: 403 });
-    expect(grant.identity.replaceMembershipRoles).not.toHaveBeenCalled();
-    expect(remove.identity.replaceMembershipRoles).not.toHaveBeenCalled();
+  // ROLES-1 PR-3 (§1, §3.5, §4.3) — Sign Owner is retired; ownership is tenant_owner.
+  it('lists organization-role holders as the Sign Owner / Admin equivalents; the assignable roles omit sign_owner', async () => {
+    const { svc } = membersSvc({ callerKeys: ['tenant_owner', 'tenant_admin'], targetKeys: ['tenant_admin', 'sign_viewer'] });
+    const out = await svc.list(orgOwnerAuth(), 'r');
+    expect(out.roles.map((r) => r.key)).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
+    expect(out.items.find((m) => m.user_id === ME)).toMatchObject({ organization_role: 'tenant_owner', organization_role_display: 'Tenant Owner', sign_role: null });
+    expect(out.items.find((m) => m.user_id === OTHER)).toMatchObject({ organization_role: 'tenant_admin', sign_role: 'sign_viewer', sign_role_display: 'Sign Viewer' });
   });
 
-  it('an Owner may grant Owner; the last Owner cannot be demoted', async () => {
-    const owner = auth(ESIGN_ROLE_PERMISSIONS.sign_owner);
-    const grant = membersSvc({ callerKeys: ['sign_owner'], targetKeys: [] });
-    await expect(grant.svc.setRole(owner, OTHER, { sign_role: 'sign_owner' }, 'r')).resolves.toMatchObject({ sign_role: 'sign_owner' });
-    const last = membersSvc({ callerKeys: ['sign_owner'], targetKeys: ['sign_owner'], owners: 0 });
-    await expect(last.svc.setRole(owner, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ code: 'ESIGN_LAST_OWNER', statusCode: 409 });
-    expect(last.identity.replaceMembershipRoles).not.toHaveBeenCalled();
+  it('the retired sign_owner key is refused as a Sign role (400) and never written', async () => {
+    for (const callerKeys of [['sign_admin'], ['tenant_owner']]) {
+      const { svc, identity } = membersSvc({ callerKeys, targetKeys: [] });
+      await expect(svc.setRole(admin, OTHER, { sign_role: 'sign_owner' }, 'r')).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        statusCode: 400,
+        context: { details: { allowed: ['sign_admin', 'sign_sender', 'sign_viewer', null] } },
+      });
+      expect(identity.replaceMembershipRoles).not.toHaveBeenCalled();
+    }
+  });
+
+  it('an organization owner is never demoted through Sign members: tenant_owner (and tenant_admin) are carried over', async () => {
+    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['tenant_owner', 'tenant_admin', 'sign_admin'] });
+    const v = await svc.setRole(admin, OTHER, { sign_role: 'sign_viewer' }, 'r');
+    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['tenant_owner', 'tenant_admin', 'sign_viewer'] }));
+    expect(v).toMatchObject({ organization_role: 'tenant_owner', sign_role: 'sign_viewer' });
+    const removed = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['tenant_owner', 'sign_sender'] });
+    await removed.svc.setRole(admin, OTHER, { sign_role: null }, 'r');
+    expect(removed.identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['tenant_owner'] }));
+  });
+
+  it('the last tenant_owner: the DB last-owner backstop (409 TENANT_LAST_OWNER) is answered with 409 ESIGN_LAST_OWNER', async () => {
+    const backstop = new AramoError('TENANT_LAST_OWNER', 'The organization must keep at least one active owner', 409, { requestId: 'r', details: { reason: 'last_owner' } });
+    const { svc } = membersSvc({ callerKeys: ['tenant_owner'], targetKeys: ['tenant_owner', 'sign_admin'], replaceError: backstop });
+    await expect(svc.setRole(orgOwnerAuth(), OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({
+      code: 'ESIGN_LAST_OWNER',
+      statusCode: 409,
+      context: { details: { reason: 'last_owner' } },
+    });
+  });
+
+  it('the identity owner / organization-admin rules propagate unchanged (403)', async () => {
+    const refusal = new AramoError('INSUFFICIENT_PERMISSIONS', 'x', 403, { requestId: 'r', details: { reason: 'owner_role_requires_owner' } });
+    const { svc } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['sign_viewer'], replaceError: refusal });
+    await expect(svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'owner_role_requires_owner' } } });
   });
 
   it('a non-member of this organization reads as not found; an unknown role is refused', async () => {
     const outsider = membersSvc({ callerKeys: ['sign_admin'], targetKeys: [], targetIsMember: false });
     await expect(outsider.svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ statusCode: 404 });
     const bad = membersSvc({ callerKeys: ['sign_admin'], targetKeys: [] });
-    for (const sign_role of ['tenant_admin', 'super_admin', 42, undefined]) {
+    for (const sign_role of ['tenant_admin', 'tenant_owner', 'super_admin', 42, undefined]) {
       await expect(bad.svc.setRole(admin, OTHER, { sign_role }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
     expect(bad.identity.replaceMembershipRoles).not.toHaveBeenCalled();
   });
 
   it('PERSONAL accounts have no member administration', async () => {
-    const { svc } = membersSvc({ kind: 'PERSONAL', callerKeys: ['sign_owner'], targetKeys: [] });
+    const { svc } = membersSvc({ kind: 'PERSONAL', callerKeys: ['tenant_owner'], targetKeys: [] });
     await expect(svc.list(admin, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'personal_account' } } });
   });
 });
@@ -255,7 +307,7 @@ describe('S-3 — envelopes from another application are visible per permission,
   });
 
   it('even the owner or an Owner cannot remind, void or edit an ATS envelope from Sign → 409 managed_by_source_application', async () => {
-    for (const [who, a] of [['owner', roleAuth('sign_sender')], ['Sign Owner', roleAuth('sign_owner')]] as const) {
+    for (const [who, a] of [['owner', roleAuth('sign_sender')], ['organization owner', orgOwnerAuth()]] as const) {
       const { svc, provider, repo } = envelopeSvc(ME, 'BUSINESS', 'SENT', 'aramo-ats');
       await expect(svc.void(a, 'e1', { reason: 'x' }, 'r')).rejects.toMatchObject({ code: 'ENVELOPE_ILLEGAL_TRANSITION', statusCode: 409, context: { details: { reason: 'managed_by_source_application' } } });
       await expect(svc.remind(a, 'e1', 'r')).rejects.toMatchObject({ statusCode: 409 });

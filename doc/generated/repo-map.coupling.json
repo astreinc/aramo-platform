@@ -3924,6 +3924,36 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t2-platform-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/domain-verification.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -10878,6 +10908,11 @@
     {
       "from": "apps/ats-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "apps/ats-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
@@ -10942,6 +10977,11 @@
     {
       "from": "apps/home-web/vite.config.ts",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "apps/home-web/vite.config.ts",
+      "status": "unscoped",
       "to": "libs/fe-foundation/src/index.ts"
     },
     {
@@ -10992,12 +11032,6 @@
       "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/seed.ts"
-    },
-    {
-      "excludedBy": "src/tests/**/*",
-      "from": "apps/platform-admin/src/tests/rtr-template-type-id-drift.spec.ts",
-      "status": "excluded",
-      "to": "libs/documents/prisma/migrations/20260923170000_doc5_seed_rtr_document_type/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -11222,6 +11256,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/api/src/document-signing/signature-availability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/document-templates-platform/platform-document-templates.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign-templates.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11466,6 +11510,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/sender/esign-sender.controller.ts"
     },
     {
@@ -11537,6 +11586,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "libs/documents/src/lib/documents.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/documents/src/lib/template-library.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -18849,6 +18903,11 @@
       "to": "libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql"
     },
     {
+      "from": "doc/runbooks/tenant-last-owner-invariant.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
+    },
+    {
       "from": "doc/runbooks/tenant-llm-key-onboarding.md",
       "status": "unscoped",
       "to": "infrastructure-lightsail/main.tf"
@@ -19988,6 +20047,26 @@
       "to": "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20378,6 +20457,16 @@
       "to": "libs/conversation-transcript/tsconfig.lib.json"
     },
     {
+      "from": "libs/document-templates-web/project.json",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "libs/document-templates-web/project.json",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/tsconfig.lib.json"
+    },
+    {
       "from": "libs/documents-contracts/project.json",
       "status": "unscoped",
       "to": "libs/documents-contracts/src/index.ts"
@@ -20399,6 +20488,16 @@
     },
     {
       "from": "libs/documents/prisma/migrations/20261004120000_rtr_template_1_default_rtr_template_backfill/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
+      "from": "libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
+      "from": "libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql",
       "status": "unscoped",
       "to": "apps/api/src/rtr/rtr-template-content.ts"
     },
@@ -20689,6 +20788,21 @@
       "to": "libs/identity/src/lib/util/tenant-kind.ts"
     },
     {
+      "from": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql",
+      "status": "unscoped",
+      "to": "doc/runbooks/tenant-last-owner-invariant.md"
+    },
+    {
+      "from": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
       "from": "libs/identity/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -20775,6 +20889,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ic1-migration.integration.spec.ts",
       "status": "excluded",
       "to": "tools/db-sync-local.sh"
@@ -20802,6 +20940,30 @@
       "from": "libs/identity/src/tests/identity.integration.spec.ts",
       "status": "excluded",
       "to": "libs/consent/src/tests/consent.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
     },
     {
       "from": "libs/import/prisma/schema.prisma",
@@ -22898,6 +23060,16 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -24667,6 +24839,11 @@
     {
       "from": "tsconfig.base.json",
       "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
+    },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
       "to": "libs/documents-contracts/src/index.ts"
     },
     {
@@ -24875,6 +25052,11 @@
       "from": "vitest.shared.ts",
       "status": "unscoped",
       "to": "libs/conversation-transcript/src/index.ts"
+    },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
     },
     {
       "from": "vitest.shared.ts",

@@ -74,6 +74,7 @@ import { TaskModule } from '@aramo/task';
 import { EsignServiceHttpProvider } from './sign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
+import { DocumentsEsignTemplatesModule } from './documents/documents-esign-templates.module.js';
 import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-intake-publisher.module.js';
 import { RtrModule } from './rtr/rtr.module.js';
 import { TemplateCapabilitiesModule } from './rtr/rtr-template-capabilities.module.js';
@@ -131,6 +132,8 @@ import { CiProcessingModule } from './conversation-intelligence/ci-processing.mo
 import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
+// DOC-TEMPLATE-LIB-1 T-2 — platform-tier Aramo default templates + variable catalog.
+import { PlatformDocumentTemplatesModule } from './document-templates-platform/platform-document-templates.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
 import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orchestration/placement-lifecycle-orchestrator.module.js';
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
@@ -607,12 +610,17 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // DOC-4 (R-4-7) — the executed-artifact write-back seam (source-bytes read +
     // idempotent write-back). Self-contained module (own storage + prisma).
     DocumentsEsignModule,
+    // DOC-TEMPLATE-LIB-1 T-5 — the signed Documents template-library endpoints for Aramo
+    // Sign (list / preview / render). Self-contained module.
+    DocumentsEsignTemplatesModule,
     // DOC-5 (R-5-5) — the RTR orchestrator (request/prepare/send; first
     // SIGNATURE_PROVIDER_PORT consumer). Self-contained composition module.
     RtrModule,
     // DOC-TEMPLATE-ADMIN-RTR-1 — @Global RTR template-content capability (catalog +
     // validation + sample preview) behind the generic TEMPLATE_CAPABILITIES token.
     TemplateCapabilitiesModule,
+    // DOC-TEMPLATE-LIB-1 T-2 — /platform/document-templates + /platform/template-variables.
+    PlatformDocumentTemplatesModule,
     RtrQualifiedTransitionGuardModule,
     EvidenceReferenceVerifierModule,
     // Lane2-DDR §0/§6 — @Global TALENT_RECORD_EXISTENCE_READER for the Pipeline Add-Talent

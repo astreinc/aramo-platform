@@ -32,6 +32,8 @@ export default defineConfig({
       // (the FE apps/libs carry their own vite aliases too); mirrors tsconfig.base.json.
       '@aramo/fe-foundation': resolve(root, 'libs/fe-foundation/src/index.ts'),
       '@aramo/org-admin-web': resolve(root, 'libs/org-admin-web/src/index.ts'),
+      // DOC-TEMPLATE-LIB-1 T-4 — the shared document-template UI (org-admin-web, ats-web).
+      '@aramo/document-templates-web': resolve(root, 'libs/document-templates-web/src/index.ts'),
       // Auth-Decoupling PR-5b — the portable identity core (scope:auth). Mirrors
       // the tsconfig.base.json @aramo/auth-core alias so vitest resolves the moved
       // classes/ports imported by auth.module.ts + the adapters + the app specs.

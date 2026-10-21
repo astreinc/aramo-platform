@@ -176,3 +176,128 @@ export async function previewTemplateVersion(versionId: string): Promise<Templat
 export async function activateTemplateVersion(versionId: string): Promise<TemplateVersionView> {
   return apiClient.post<TemplateVersionView>(`${BASE}/versions/${encodeURIComponent(versionId)}/activate`, {});
 }
+
+// DOC-TEMPLATE-LIB-1 T-4 — author / approver display names for the version history
+// (moved from ats-web's users-api with the screens). The tenant user directory read
+// (tenant:user:read:directory, carried by the org and recruiter sessions). Best-effort:
+// on any failure the map is empty and the caller falls back to the id.
+const DIRECTORY_PATH = '/v1/tenant/users/directory';
+export async function resolveUserNames(userIds?: readonly string[]): Promise<Record<string, string>> {
+  let path = DIRECTORY_PATH;
+  if (userIds !== undefined) {
+    const unique = [...new Set(userIds.filter((id) => id.length > 0))];
+    if (unique.length === 0) return {};
+    path = `${DIRECTORY_PATH}?user_ids=${encodeURIComponent(unique.join(','))}`;
+  }
+  try {
+    const view = await apiClient.get<{ items?: ReadonlyArray<{ user_id: string; display_name: string | null }> }>(path);
+    const map: Record<string, string> = {};
+    for (const u of view.items ?? []) {
+      if (u.display_name !== null) map[u.user_id] = u.display_name;
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+// ── DOC-TEMPLATE-LIB-1 T-4 — the Org Home template library (§8.2) ──────────────────
+// Gallery (own templates ∪ Aramo defaults, current version only), the branded preview of
+// an Aramo default, the active choice per document type, and "Create your own document
+// template" (a TENANT template written from scratch — there is no copy function).
+
+export type TemplateOwnerScope = 'PLATFORM' | 'TENANT';
+
+export interface TemplateLibraryItem {
+  readonly id: string;
+  readonly owner_scope: TemplateOwnerScope;
+  readonly document_type_id: string;
+  readonly name: string;
+  readonly description: string | null;
+  readonly template_kind: string;
+  readonly status: TemplateStatus;
+  readonly client_id: string | null;
+  readonly current_version_id: string | null;
+  readonly current_version_number: number | null;
+  readonly updated_at: string;
+  readonly products: readonly string[] | null;
+  readonly withdraw_effective_at: string | null;
+  readonly configurable: boolean;
+}
+
+export interface TemplateDocumentType {
+  readonly id: string;
+  readonly key: string;
+  readonly name: string;
+  readonly configurable: boolean;
+}
+
+export interface TemplateLibraryView {
+  readonly items: readonly TemplateLibraryItem[];
+  readonly document_types: readonly TemplateDocumentType[];
+}
+
+export interface TemplateDefaultPreview extends TemplateSamplePreview {
+  readonly template_id: string;
+  readonly version_id: string;
+  readonly version_number: number;
+  readonly updated_at: string;
+  readonly letterhead: { readonly organization_name: string | null; readonly logo_available: boolean };
+}
+
+export interface TemplateSelectionView {
+  readonly id: string;
+  readonly tenant_id: string;
+  readonly document_type_id: string;
+  readonly client_id: string | null;
+  readonly template_id: string;
+  readonly selected_by: string;
+  readonly selected_at: string;
+}
+
+export async function fetchTemplateLibrary(): Promise<TemplateLibraryView> {
+  return apiClient.get<TemplateLibraryView>(`${BASE}/library`);
+}
+
+export async function previewTemplateDefault(templateId: string): Promise<TemplateDefaultPreview> {
+  return apiClient.get<TemplateDefaultPreview>(`${BASE}/library/${encodeURIComponent(templateId)}/preview`);
+}
+
+export async function listTemplateSelections(): Promise<readonly TemplateSelectionView[]> {
+  const res = await apiClient.get<{ items: TemplateSelectionView[] }>(`${BASE}/selections`);
+  return res.items;
+}
+
+export async function setTemplateSelection(input: {
+  document_type_id: string;
+  client_id?: string | null;
+  template_id: string;
+}): Promise<TemplateSelectionView> {
+  return apiClient.put<TemplateSelectionView>(`${BASE}/selections`, input);
+}
+
+export async function clearTemplateSelection(input: { document_type_id: string; client_id?: string | null }): Promise<void> {
+  const q = new URLSearchParams({ document_type_id: input.document_type_id });
+  if (input.client_id != null) q.set('client_id', input.client_id);
+  await apiClient.delete<undefined>(`${BASE}/selections?${q.toString()}`);
+}
+
+// "Create your own document template" (ADR-0034 D5): a new TENANT template for the chosen
+// document type plus an EMPTY first draft. Never pre-filled from an Aramo default.
+export async function createOwnTemplate(input: {
+  document_type_id: string;
+  name: string;
+  description?: string;
+}): Promise<{ template: DocumentTemplateView; draft: TemplateVersionView }> {
+  const template = await apiClient.post<DocumentTemplateView>(BASE, {
+    document_type_id: input.document_type_id,
+    name: input.name,
+    template_kind: 'GENERATED',
+    ...(input.description !== undefined && input.description.length > 0 ? { description: input.description } : {}),
+  });
+  const draft = await apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(template.id)}/versions`, {
+    render_schema_version: RTR_HTML_SCHEMA_V1,
+    field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: input.name, html: '' },
+  });
+  return { template, draft };
+}

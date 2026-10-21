@@ -111,12 +111,12 @@ export const SEED_SCOPE_KEYS = [
   'sign:envelope:read:all',    // sign_viewer/admin/owner (every organization envelope)
   'sign:envelope:manage:all',  // sign_admin/owner (lifecycle + drafts of any envelope)
   'sign:contact:read',         // sign_sender/admin/owner
-  'sign:template:use',         // sign_sender/admin/owner (templates not yet built)
-  'sign:template:manage',      // sign_admin/owner (templates not yet built)
+  // DOC-TEMPLATE-LIB-1 T-5 — sign:template:use / sign:template:manage REMOVED (Sign uses
+  // the Documents-owned document_template:read).
   'sign:report:read',          // sign_viewer/admin/owner
   'sign:member:manage',        // sign_admin/owner (assign Sign roles)
   'sign:settings:manage',      // sign_admin/owner
-  'sign:billing:manage',       // sign_owner only
+  'sign:billing:manage',       // tenant_owner only (ROLES-1 §3.4)
   'sign:integration:manage',   // sign_admin/owner (applications + installations, S-4)
   'pipeline:read',              // recruiter+
   // TI-1D-D — set the Requisition-context resume selection (PUT
@@ -175,6 +175,11 @@ export const SEED_SCOPE_KEYS = [
   // NO tenant role holds either; NO platform role holds any tenant scope.
   'platform:skill:read',        // super_admin only — read canonical taxonomy + review queue
   'platform:skill:manage',      // super_admin only — mutate canonical taxonomy
+  // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring
+  // (Aramo defaults + the variable catalog). super_admin only; separate from the
+  // tenant-tier document_template:* scopes, which never authorize a platform write.
+  'platform:document_template:read',    // super_admin only — read defaults + variable catalog
+  'platform:document_template:manage',  // super_admin only — author/publish defaults, edit catalog
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
@@ -516,6 +521,9 @@ export const PLATFORM_SCOPE_KEYS = [
   // SKILL-TAX-1F — platform taxonomy-governance scopes (super_admin only).
   'platform:skill:read',
   'platform:skill:manage',
+  // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog (super_admin only).
+  'platform:document_template:read',
+  'platform:document_template:manage',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 

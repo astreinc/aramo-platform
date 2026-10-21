@@ -198,4 +198,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-1 sender works
     // A different tenant never reads it.
     await expect(sender.getEnvelopeDetail(randomUUID(), env.id)).rejects.toBeInstanceOf(EnvelopeNotFoundError);
   });
+
+  // DOC-TEMPLATE-LIB-1 T-5 — a console draft started FROM A TEMPLATE holds a CORE_REF
+  // document (the frozen Documents revision apps/api rendered) and is still Sign-authored:
+  // recipients/fields can be authored, its recipients become contacts, and only the UUID
+  // refs + hash are stored (no bytes, nothing in any documents schema). ATS CORE_REF
+  // envelopes stay outside.
+  it('authors a template-started draft holding a CORE_REF document; ATS CORE_REF envelopes stay read-only', async () => {
+    const env = await sender.createDraft({ tenant_id: TENANT, subject: 'Right to Represent', created_by: USER });
+    const document_ref = randomUUID();
+    const document_revision_ref = randomUUID();
+    const doc = await sender.addDraftCoreRefDocument({
+      tenant_id: TENANT, envelope_id: env.id, actor_ref: USER, title: 'Right to Represent', document_ref, document_revision_ref, source_sha256: 'b'.repeat(64),
+    });
+    expect(doc).toMatchObject({ source_mode: 'CORE_REF', document_ref, document_revision_ref, source_object_key: null, title: 'Right to Represent' });
+    await sender.replaceDraftRecipients({ tenant_id: TENANT, envelope_id: env.id, recipients: [{ name: 'Jordan Signer', email: 'jordan-t5@x.test' }] });
+    const detail = await sender.getEnvelopeDetail(TENANT, env.id);
+    expect(detail.source_application).toBe('aramo-sign');
+    const signer = detail.signers[0]!;
+    expect(await sender.replaceDraftFields({ tenant_id: TENANT, envelope_id: env.id, fields: [{ envelope_document_id: doc.id, signer_id: signer.id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, width: 200, height: 40, required: true }] })).toBe(1);
+    expect((await sender.listPastRecipients(TENANT, 500)).some((r) => r.email === 'jordan-t5@x.test')).toBe(true);
+    // Not an upload: the uploaded-documents library stays OWNED-only.
+    expect((await sender.listTenantDocuments(TENANT, 500)).some((d) => d.id === doc.id)).toBe(false);
+    // The ledger records the attachment.
+    expect((await sender.listEnvelopeEvents(TENANT, env.id)).some((e) => e.event_type === 'DOCUMENT_ATTACHED')).toBe(true);
+    // Another tenant cannot attach to it.
+    await expect(sender.addDraftCoreRefDocument({ tenant_id: OTHER_TENANT, envelope_id: env.id, actor_ref: USER, title: 'x', document_ref: randomUUID(), document_revision_ref: randomUUID(), source_sha256: 'c'.repeat(64) })).rejects.toBeInstanceOf(EnvelopeNotFoundError);
+    // An ATS envelope (aramo-ats, CORE_REF) still refuses authoring.
+    const ats = await repo.createEnvelope({ tenant_id: TENANT, subject: 'RTR', execution_mode: 'SINGLE_SIGNATURE', created_by: USER, source_application: 'aramo-ats' });
+    await repo.addDocument({ tenant_id: TENANT, envelope_id: ats.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'RTR', source_sha256: 'd'.repeat(64), ordinal: 0 });
+    await expect(sender.addDraftCoreRefDocument({ tenant_id: TENANT, envelope_id: ats.id, actor_ref: USER, title: 'x', document_ref: randomUUID(), document_revision_ref: randomUUID(), source_sha256: 'e'.repeat(64) })).rejects.toBeInstanceOf(EnvelopeNotFoundError);
+    // sign-service's database holds no documents schema at all.
+    expect((await db.query(`SELECT count(*)::int AS n FROM information_schema.schemata WHERE schema_name = 'documents'`)).rows[0].n).toBe(0);
+  });
 });

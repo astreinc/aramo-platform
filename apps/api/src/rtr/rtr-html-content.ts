@@ -188,11 +188,17 @@ export function hasLogoNode(nodes: readonly HtmlNode[]): boolean {
 
 // Sanitise + canonicalise + validate. Returns the canonical html (what is stored and
 // returned to the FE) or the first validation issue.
-export function sanitizeRtrHtml(html: string): { html: string; nodes: HtmlNode[] } | { issue: HtmlValidationIssue } {
+// DOC-TEMPLATE-LIB-1 T-2 — `isKnownKey` lets the capability port validate against the Aramo
+// variable catalog (active, resolvable keys); it defaults to the resolver key set, so the
+// render-time callers (binding / resolver) keep their existing closed check.
+export function sanitizeRtrHtml(
+  html: string,
+  isKnownKey: (key: string) => boolean = isRtrBindingKey,
+): { html: string; nodes: HtmlNode[] } | { issue: HtmlValidationIssue } {
   if (Buffer.byteLength(html, 'utf8') > RTR_HTML_MAX_BYTES) return { issue: { reason: 'content_too_large' } };
   const cleaned = sanitizeHtml(html, SANITIZE_OPTIONS);
   const nodes = canonicalise(parseSanitized(cleaned));
-  const unknown = [...new Set(collectFieldKeys(nodes).filter((k) => !isRtrBindingKey(k)))];
+  const unknown = [...new Set(collectFieldKeys(nodes).filter((k) => !isKnownKey(k)))];
   if (unknown.length > 0) return { issue: { reason: 'unknown_field', keys: unknown } };
   const assets = countAssets(nodes);
   if (assets.nonTenantLogo.length > 0) return { issue: { reason: 'unknown_asset', keys: assets.nonTenantLogo } };

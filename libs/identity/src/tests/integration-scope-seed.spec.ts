@@ -64,14 +64,18 @@ describe('T8-CONNECTOR-A integration:* grant matrix', () => {
     'back_office',
   ];
 
-  it('integration:read is granted to EXACTLY tenant_admin + tenant_owner', async () => {
+  // ROLES-1 PR-2 — the administrative tier is now ats_admin (row 0010) + the organization
+  // roles tenant_admin (inherits every ats_admin scope) and tenant_owner.
+  it('integration:read is granted to EXACTLY ats_admin + tenant_admin + tenant_owner', async () => {
     const roles = await grantingRolesFor('integration:read');
-    expect([...roles].sort()).toEqual(['tenant_admin', 'tenant_owner']);
+    expect([...roles].sort()).toEqual(['ats_admin', 'tenant_admin', 'tenant_owner']);
   });
 
-  it('integration:write is granted to EXACTLY tenant_admin + tenant_owner', async () => {
+  // ROLES-1 PR-2 — the administrative tier is now ats_admin (row 0010) + the organization
+  // roles tenant_admin (inherits every ats_admin scope) and tenant_owner.
+  it('integration:write is granted to EXACTLY ats_admin + tenant_admin + tenant_owner', async () => {
     const roles = await grantingRolesFor('integration:write');
-    expect([...roles].sort()).toEqual(['tenant_admin', 'tenant_owner']);
+    expect([...roles].sort()).toEqual(['ats_admin', 'tenant_admin', 'tenant_owner']);
   });
 
   it('DENIES connector management to recruiter/account_manager/non-admin roles', async () => {

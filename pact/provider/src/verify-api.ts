@@ -523,6 +523,26 @@ const DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261018140000_provider_completion_evidence_role/migration.sql',
 );
+// DOC-TEMPLATE-LIB-1 T-1 (ADR-0034) — DocumentTemplate owner_scope/products/withdraw_*
+// + nullable tenant_id (template + version), TenantTemplateSelection, TemplateVariable
+// catalog seed. Changes the returned DocumentTemplate shape (the regenerated client
+// SELECTs the new columns) → registered (CLAUDE.md law); after the provider-evidence
+// migration. Depends only on DOC-2 objects.
+const DOCUMENTS_DOCLIB_T1_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261021120000_doclib_t1_template_ownership_foundation/migration.sql',
+);
+// DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the organization.* TemplateVariable catalog rows
+// (additive data, products ATS+SIGN). Registered so the provider DB carries the same
+// variable catalog the platform catalog routes return; after T-1 (needs TemplateVariable).
+// (The T-3 RTR conversion 20261021140100_doclib_t3_rtr_platform_default is a DATA-only
+// migration with no shape change that depends on the unregistered DOC-5 RTR DocumentType
+// seed and the identity sentinel — it is intentionally NOT registered, the same rule as
+// the 20261004120000 RTR backfill above.)
+const DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261021140000_doclib_t3_organization_template_variables/migration.sql',
+);
 // DOC-1b — the TalentDocument→documents.Document reconciliation (seed DocumentTypes
 // + ADD document_id + backfill quartet + DROP generic columns); applied AFTER the
 // talent-evidence migrations (it ALTERs TalentDocument and writes into documents).
@@ -3770,6 +3790,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_TEMPLATE_ADMIN_MIGRATION,
         DOCUMENTS_TEMPLATE_INTERNAL_NOTES_MIGRATION,
         DOCUMENTS_PROVIDER_EVIDENCE_MIGRATION,
+        DOCUMENTS_DOCLIB_T1_MIGRATION,
+        DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
         TALENT_EVIDENCE_TR7_MIGRATION,
         TALENT_EVIDENCE_HF1_MIGRATION,
@@ -4598,6 +4620,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // overridden here); returning fixed bytes exercises the HTTP seam without a
         // real bucket — no production/boundary change.
         getObjectBytes: async (): Promise<Buffer> => Buffer.from('%PDF-1.4 pact source bytes', 'utf8'),
+        // DOC-TEMPLATE-LIB-1 T-5 — the frozen-revision write of the Sign template render
+        // (RenderService → AramoS3DocumentStorageAdapter.putArtifact). External infra.
+        putObjectBytes: async (input: { storage_key: string; body: Buffer }): Promise<{ storage_ref: string; sha256: string }> => ({
+          storage_ref: input.storage_key,
+          sha256: require('node:crypto').createHash('sha256').update(input.body).digest('hex') as string,
+        }),
       };
       // PC-6 / TI-1F P0.2 — deterministic file→TEXT extraction is still valid and
       // used by the resume-editions POST (content_hash) + the governed draft
@@ -5216,6 +5244,42 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
       // A revision id with no source artifact ⇒ getSourceBase64 → null → 404. No seed.
       'a document revision without a source artifact exists': async () => undefined,
+      // ===== DOC-TEMPLATE-LIB-1 T-5 — sign-service → apps/api template library =====
+      // Seed the SYSTEM Right to Represent DocumentType (the DOC-5 seed is not registered
+      // here) and an Aramo (PLATFORM) RTR default with one ACTIVE rtr-generated-v1 version
+      // (the RTR-TEMPLATE-1 default content: only {{talent.full_name}}). The tenant has no
+      // selection, so it resolves to this default. Fixed ids + ON CONFLICT ⇒ idempotent;
+      // documents."IdempotencyKey" rows of the tenant are cleared so the render key is new.
+      'an Aramo default template is resolvable for the tenant': async () => {
+        await withClient(async (c) => {
+          const TPL = 'd0c4c000-0000-7000-8000-0000000000d1';
+          const VER = 'd0c4c000-0000-7000-8000-0000000000d2';
+          const RTR_TYPE = 'd0c50005-0000-7000-8000-000000000001';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          await c.query(
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
+             ON CONFLICT ("id") DO NOTHING`,
+            [RTR_TYPE],
+          );
+          await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [TENANT_ID]);
+          await c.query(
+            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","products","created_by","updated_at")
+             VALUES ($1::uuid,NULL,'PLATFORM',$2::uuid,NULL,'Standard Right to Represent','Aramo default (pact seed).','GENERATED','ACTIVE',NULL,ARRAY['ATS','SIGN'],$3::uuid,now())
+             ON CONFLICT ("id") DO NOTHING`,
+            [TPL, RTR_TYPE, ACTOR],
+          );
+          await c.query(
+            `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by","activated_at")
+             VALUES ($1::uuid,NULL,$2::uuid,1,'ACTIVE','rtr-generated-v1',
+               '{"render_schema_version":"rtr-generated-v1","title":"Right to Represent","blocks":[{"type":"HEADING","text":"Right to Represent"},{"type":"TEXT","text":"This authorizes representation of {{talent.full_name}} to the associated client for the associated requisition."}]}'::jsonb,
+               $3::uuid,now())
+             ON CONFLICT ("id") DO NOTHING`,
+            [VER, TPL, ACTOR],
+          );
+          await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
+        });
+      },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the
       // contracted interaction is a NON-completion event the receiver authenticates
       // and acknowledges WITHOUT any write-back (no seed needed). The full

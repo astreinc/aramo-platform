@@ -81,3 +81,62 @@ describe('D-ORG — org consumer (rules 3 and 4)', () => {
     expect(requiredCapabilityForConsumer('bogus')).toEqual({ kind: 'unsupported' });
   });
 });
+
+// DOC-TEMPLATE-LIB-1 T-4 (Directive v1.0 LOCKED §6.2; conforming amendment row 8) — the
+// org credential additionally carries document_template:{read,manage}; the sign credential
+// additionally carries document_template:read (never :manage); the ATS family is unchanged.
+describe('DOC-TEMPLATE-LIB-1 T-4 — document_template:* on the org and sign sessions', () => {
+  const HELD = [
+    'auth:session:read',
+    'tenant:admin:profile',
+    'document_template:read',
+    'document_template:manage',
+    'document_requirement:read',
+    'talent:read',
+    'sign:envelope:send',
+    'platform:document_template:manage',
+  ];
+  it('org = the organization subset + document_template:read + document_template:manage (held only)', () => {
+    for (const tenantHasEsign of [true, false]) {
+      expect(filterScopesForConsumer({ consumer: 'org', scopes: HELD, tenantHasEsign }).sort()).toEqual([
+        'auth:session:read',
+        'document_template:manage',
+        'document_template:read',
+        'tenant:admin:profile',
+      ]);
+    }
+    // A member holding only read (e.g. a recruiter) gets read and nothing it does not hold.
+    expect(
+      filterScopesForConsumer({ consumer: 'org', scopes: ['auth:session:read', 'document_template:read', 'talent:read'], tenantHasEsign: false }),
+    ).toEqual(['auth:session:read', 'document_template:read']);
+  });
+  it('sign = sign:* + the organization subset + document_template:read — never :manage, never other Documents scopes', () => {
+    expect(filterScopesForConsumer({ consumer: 'sign', scopes: HELD, tenantHasEsign: true }).sort()).toEqual([
+      'auth:session:read',
+      'document_template:read',
+      'sign:envelope:send',
+      'tenant:admin:profile',
+    ]);
+    expect(filterScopesForConsumer({ consumer: 'sign', scopes: HELD, tenantHasEsign: false })).toEqual([]);
+  });
+  it('the platform credential never carries the tenant-tier template scopes (and vice versa)', () => {
+    expect(filterScopesForConsumer({ consumer: 'platform', scopes: HELD, tenantHasEsign: true })).toEqual([
+      'platform:document_template:manage',
+    ]);
+    for (const consumer of ['org', 'sign']) {
+      expect(filterScopesForConsumer({ consumer, scopes: HELD, tenantHasEsign: true })).not.toContain(
+        'platform:document_template:manage',
+      );
+    }
+  });
+  it('the ATS family keeps document_template:* exactly as before (held ⇒ carried)', () => {
+    expect(filterScopesForConsumer({ consumer: 'recruiter', scopes: HELD, tenantHasEsign: true })).toEqual([
+      'auth:session:read',
+      'tenant:admin:profile',
+      'document_template:read',
+      'document_template:manage',
+      'document_requirement:read',
+      'talent:read',
+    ]);
+  });
+});

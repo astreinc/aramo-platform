@@ -134,6 +134,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TEMPLATE_DRAFT_ALREADY_EXISTS',
       'TEMPLATE_PREVIEW_REQUIRED',
       'TEMPLATE_BINDING_UNSUPPORTED',
+      // DOC-TEMPLATE-LIB-1 T-6 (§9) — withdrawal: no fallback (409) / lifecycle conflict (409).
+      'TEMPLATE_SELECTION_REQUIRED',
+      'TEMPLATE_PLATFORM_DEFAULT_CONFLICT',
       'DOCUMENT_REQUIREMENT_NOT_FOUND',
       'DOCUMENT_REQUIREMENT_ALREADY_SATISFIED',
       'DOCUMENT_RENDER_FAILED',
@@ -150,10 +153,14 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_STORAGE_QUOTA_EXCEEDED',
       // Sign Unified Product S-1 — removing/demoting the organization's last Sign Owner (409).
       'ESIGN_LAST_OWNER',
+      // ROLES-1 PR-1 (§4.1) — removing a tenant's last active tenant_owner (409).
+      'TENANT_LAST_OWNER',
       // Sign Unified Product S-4 — an action on a revoked Sign installation (409).
       'ESIGN_INSTALLATION_REVOKED',
       // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
       'ESIGN_WEBHOOKS_UNAVAILABLE',
+      // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (403).
+      'ESIGN_FEATURE_NOT_AVAILABLE',
       'SIGNER_NOT_FOUND',
       'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',

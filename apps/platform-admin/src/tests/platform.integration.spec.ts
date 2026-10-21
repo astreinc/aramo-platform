@@ -41,7 +41,6 @@ import { CognitoAdminService } from '../app/platform/cognito/cognito-admin.servi
 import { PlatformController } from '../app/platform/platform.controller.js';
 import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from '../app/platform/tenant-policy-provisioning.service.js';
-import { TenantDocumentTemplateProvisioningService } from '../app/platform/tenant-document-template-provisioning.service.js';
 
 import { ConfigurableAuthzResolver } from './support/configurable-authz-resolver.js';
 import { generateTestKeyPair } from './test-keys.js';
@@ -133,10 +132,11 @@ const PLATFORM_TENANT_PROVISION_SCOPE_ID =
 const PLATFORM_TENANT_READ_SCOPE_ID = '01900000-0000-7000-8000-00000000008a';
 const PLATFORM_ADMIN_INVITE_SCOPE_ID = '01900000-0000-7000-8000-00000000008b';
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
-// IC-3 PR-7 — org_admin (seed id 0x2b0).
-const ORG_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
-// IC-4 PR-9 — the E-Sign owner role (PX-V1 PX-3 id), for the governed Sign grant proof.
-const ESIGN_OWNER_ROLE_ID = '01900000-0000-7000-8000-0000000002a0';
+// ROLES-1 PR-2 — row 0x2b0 is tenant_admin (the organization administrator, formerly org_admin).
+const TENANT_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
+// IC-4 PR-9 — a Sign product role (PX-V1 PX-3 id), for the governed Sign grant proof.
+// ROLES-1 PR-2: sign_admin (sign_owner is retired).
+const ESIGN_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002a1';
 const RECRUITER_ROLE_ID = '01900000-0000-7000-8000-000000000011';
 // AUTHZ-1b fixture swap: hiring_manager retired -> use account_manager
 // (UUID 0x16, in the staffing catalog). The fixture just needs a third
@@ -159,7 +159,6 @@ const __authzResolver = new ConfigurableAuthzResolver();
 
 // IC-3 PR-7 — ATS projection spies (see the providers block).
 const policyPublishSpy = vi.fn(async (_tenantId: string) => undefined);
-const rtrPublishSpy = vi.fn(async (_tenantId: string) => undefined);
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
   'apps/platform-admin — integration (Pattern A invitation flow, real Postgres, mocked Cognito)',
@@ -265,19 +264,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
             description: 'Tenant Owner',
             is_active: true,
           },
-          // IC-3 PR-7 — the product-neutral organization administrator (the
-          // owner role of a tenant provisioned without the ats capability).
+          // ROLES-1 PR-2 — the organization administrator (row 0x2b0); every new
+          // tenant's first owner receives tenant_owner + tenant_admin (§6).
           {
-            id: ORG_ADMIN_ROLE_ID,
-            key: 'org_admin',
-            description: 'Organization Admin',
+            id: TENANT_ADMIN_ROLE_ID,
+            key: 'tenant_admin',
+            description: 'Tenant Admin',
             is_active: true,
           },
-          // IC-4 PR-9 — the E-Sign owner role (assignable only in an esign-entitled tenant).
+          // IC-4 PR-9 — a Sign product role (assignable only in an esign-entitled tenant).
           {
-            id: ESIGN_OWNER_ROLE_ID,
-            key: 'sign_owner',
-            description: 'Sign Owner',
+            id: ESIGN_ADMIN_ROLE_ID,
+            key: 'sign_admin',
+            description: 'Sign Admin',
             is_active: true,
           },
           {
@@ -433,11 +432,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           {
             provide: TenantPolicyProvisioningService,
             useValue: { publishDefaultLifecyclePackage: policyPublishSpy },
-          },
-          // RTR-TEMPLATE-1 — stub the step-5 RTR template-copy dep (no provisioning here).
-          {
-            provide: TenantDocumentTemplateProvisioningService,
-            useValue: { publishDefaultRtrTemplate: rtrPublishSpy },
           },
           CognitoAdminService,
           // HF-AUTH-1 — bind the MODE A resolver so the guard hydrates scopes.
@@ -718,9 +712,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // IC-3 PR-7 — product-neutral provisioning (real PG): Sign-only, ATS+Sign,
     // one tenant + one owner identity, owner role per product set, no ATS
     // projection for a tenant without ats, authorization baseline present.
-    it('IC-3 PR-7 — Sign-only provisioning ([esign]): tenant + org_admin owner + [core, esign]; NO ATS projection; authz baseline exists', async () => {
+    // ROLES-1 PR-2 (§6) — the first owner of every new tenant: tenant_owner + tenant_admin.
+    it('IC-3 PR-7 — Sign-only provisioning ([esign]): tenant + tenant_owner + tenant_admin owner + [core, esign]; NO ATS projection; authz baseline exists', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
@@ -733,28 +727,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect([...entitled].sort()).toEqual(['core', 'sign']);
       const owner = await identityPrisma.user.findUnique({ where: { email: 'owner@signonly.corp' } });
       expect(owner?.tenant_id).toBe(tenantId);
-      const orgAdmin = await identityPrisma.role.findUnique({ where: { key: 'org_admin' } });
       const memRoles = await identityPrisma.userTenantMembershipRole.findMany({
         where: { membership: { user_id: owner!.id, tenant_id: tenantId } },
         include: { role: { select: { key: true } } },
       });
-      expect(memRoles.map((r) => r.role.key)).toEqual(['org_admin']);
-      expect(orgAdmin).not.toBeNull();
+      expect(memRoles.map((r) => r.role.key).sort()).toEqual(['tenant_admin', 'tenant_owner']);
       // authorization baseline for the owner in its one tenant
       const baseline = await identityPrisma.authorizationVersion.findFirst({ where: { tenant_id: tenantId, principal_id: owner!.id } });
       expect(baseline).not.toBeNull();
       // NO ATS projection ran
       expect(policyPublishSpy).not.toHaveBeenCalled();
-      expect(rtrPublishSpy).not.toHaveBeenCalled();
       const tenant = await identityPrisma.tenant.findUnique({ where: { id: tenantId } });
       expect(tenant?.status).toBe('PROVISIONED');
       expect(tenant?.is_active).toBe(true);
     });
 
     // IC-4 PR-9 — PERSONAL tenancy through the REAL console graph.
-    it('IC-4 PR-9 #1/#7/#10 — POST /platform/tenants kind PERSONAL + gmail owner → 201: Tenant PERSONAL, allowed_domain NULL, [core, esign], org_admin owner, ONE membership, authz baseline, NO ATS projection, PROVISIONED', async () => {
+    it('IC-4 PR-9 #1/#7/#10 — POST /platform/tenants kind PERSONAL + gmail owner → 201: Tenant PERSONAL, allowed_domain NULL, [core, esign], tenant_owner + tenant_admin owner, ONE membership, authz baseline, NO ATS projection, PROVISIONED', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       cognitoMock.adminCreateUser.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
@@ -781,10 +771,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { membership_id: memberships[0]!.id },
         include: { role: { select: { key: true } } },
       });
-      expect(memRoles.map((r) => r.role.key)).toEqual(['org_admin']);
+      expect(memRoles.map((r) => r.role.key).sort()).toEqual(['tenant_admin', 'tenant_owner']);
       expect(await identityPrisma.authorizationVersion.findFirst({ where: { tenant_id: tenantId, principal_id: owner!.id } })).not.toBeNull();
       expect(policyPublishSpy).not.toHaveBeenCalled();
-      expect(rtrPublishSpy).not.toHaveBeenCalled();
       // The list row and the detail read surface the kind.
       const list = await request(app.getHttpServer()).get('/platform/tenants').set('Authorization', `Bearer ${await platformJwt()}`);
       expect(list.status).toBe(200);
@@ -830,28 +819,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await identityPrisma.tenant.count({ where: { name: { in: ['Jane Doe Again', 'Gmail Business'] } } })).toBe(0);
     });
 
-    it('IC-4 PR-9 #6 — the personal owner (org_admin) grants sign_owner to itself through the governed role path; the same grant is refused for a tenant without esign (IC-3 PR-8)', async () => {
+    it('IC-4 PR-9 #6 — the personal owner (tenant_owner + tenant_admin) adds a Sign product role through the governed role path; the same grant is refused for a tenant without esign (IC-3 PR-8)', async () => {
       const identitySvc = module.get(IdentityService);
       const owner = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'jane.doe@gmail.com' } });
       const membership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: owner.id } });
       await identitySvc.replaceMembershipRoles({
-        membership_id: membership.id, tenant_id: owner.tenant_id, role_keys: ['org_admin', 'sign_owner'],
-        role_ids: [ORG_ADMIN_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant',
+        membership_id: membership.id, tenant_id: owner.tenant_id, role_keys: ['tenant_owner', 'tenant_admin', 'sign_admin'],
+        role_ids: [TENANT_OWNER_ROLE_ID, TENANT_ADMIN_ROLE_ID, ESIGN_ADMIN_ROLE_ID], request_id: 'rq-pr9-grant',
       });
       const keys = await identitySvc.findRoleKeysForMembership(membership.id);
-      expect(keys.sort()).toEqual(['org_admin', 'sign_owner']);
+      expect(keys.sort()).toEqual(['sign_admin', 'tenant_admin', 'tenant_owner']);
       // An ATS-only business tenant's owner cannot receive a Sign role.
       const acme = await identityPrisma.user.findUniqueOrThrow({ where: { email: 'owner@acme.corp' } });
       const acmeMembership = await identityPrisma.userTenantMembership.findFirstOrThrow({ where: { user_id: acme.id } });
       await expect(identitySvc.replaceMembershipRoles({
-        membership_id: acmeMembership.id, tenant_id: acme.tenant_id, role_keys: ['tenant_owner', 'sign_owner'],
-        role_ids: [TENANT_OWNER_ROLE_ID, ESIGN_OWNER_ROLE_ID], request_id: 'rq-pr9-grant-2',
+        membership_id: acmeMembership.id, tenant_id: acme.tenant_id, role_keys: ['tenant_owner', 'tenant_admin', 'sign_admin'],
+        role_ids: [TENANT_OWNER_ROLE_ID, TENANT_ADMIN_ROLE_ID, ESIGN_ADMIN_ROLE_ID], request_id: 'rq-pr9-grant-2',
       })).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'esign_role_not_entitled' } } });
     });
 
-    it('IC-3 PR-7 — ATS + Sign provisioning: ONE tenant, ONE owner (tenant_owner), all four entitlements, ATS projections run; ATS-only (proof 2) unchanged', async () => {
+    it('IC-3 PR-7 — ATS + Sign provisioning: ONE tenant, ONE owner (tenant_owner + tenant_admin), all four entitlements, ATS projections run; ATS-only (proof 2) unchanged', async () => {
       policyPublishSpy.mockClear();
-      rtrPublishSpy.mockClear();
       const token = await platformJwt();
       const res = await request(app.getHttpServer())
         .post('/platform/tenants')
@@ -866,9 +854,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         where: { membership: { user_id: owners[0]!.id, tenant_id: tenantId } },
         include: { role: { select: { key: true } } },
       });
-      expect(memRoles.map((r) => r.role.key)).toEqual(['tenant_owner']);
+      expect(memRoles.map((r) => r.role.key).sort()).toEqual(['tenant_admin', 'tenant_owner']);
       expect(policyPublishSpy).toHaveBeenCalledWith(tenantId);
-      expect(rtrPublishSpy).toHaveBeenCalledWith(tenantId);
+      // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — no RTR template copy any more: the new tenant has
+      // no documents rows and resolves to the Aramo RTR default.
       // cross-tenant email collision still refused for the Sign-only owner's email
       const dup = await request(app.getHttpServer())
         .post('/platform/tenants')

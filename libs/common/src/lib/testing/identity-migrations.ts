@@ -85,6 +85,24 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // AUTH-SIGNIN-1 / Sign federated owner signup — the narrow provider-pin cohort
   // and per-link provider (two additive tables; no existing read changes).
   'libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql',
+  // ROLES-1 PR-1 (§4.1) — last-owner invariant: plpgsql AFTER ROW triggers on
+  // UserTenantMembershipRole / UserTenantMembership / User (no column, no shape
+  // change). Applied LAST: it reads Tenant.status (lifecycle) and the init tables only.
+  'libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql',
+  // ROLES-1 PR-2 (§5.2) — the role model reconciliation: one guarded DO block (a no-op on a
+  // database without a role catalog, which is every fresh test database — the seed writes
+  // the ROLES-1 model) + the empty identity._roles1_owner_resolution table (S-2). No
+  // returned-shape change. Applied LAST: it reads every earlier identity table.
+  'libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql',
+  // DOC-TEMPLATE-LIB-1 T-4 (§6.3) — document_template grants move to the organization roles
+  // (+ document_template:read for sign_admin / sign_sender). One guarded DO block on fixed
+  // role ids (a no-op on a database without a role catalog). No returned-shape change.
+  // AFTER the ROLES-1 role model (it requires row 0010 = ats_admin, 02b0 = tenant_admin).
+  'libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql',
+  // DOC-TEMPLATE-LIB-1 T-5 (§6.4) — sign:template:use / :manage removed (2 Scope rows on
+  // fixed ids 0x140d/0x140e + their grants on the Sign role rows). One guarded DO block (a
+  // no-op when the rows are absent). No returned-shape change.
+  'libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

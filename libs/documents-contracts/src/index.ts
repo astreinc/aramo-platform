@@ -26,3 +26,18 @@ export {
   signEsignServiceRequest,
   verifyEsignServiceRequest,
 } from './lib/esign-service-request-auth.js';
+export {
+  SIGN_TEMPLATE_LIBRARY_PATH,
+  SIGN_TEMPLATE_BODY_DIGEST_PARAM,
+  type SignTemplateVariableSource,
+  type SignTemplateVariable,
+  type SignTemplateSummary,
+  type SignTemplateListResponse,
+  type SignTemplatePreviewRequest,
+  type SignTemplatePreviewResponse,
+  type SignTemplateRenderRequest,
+  type SignTemplateRenderResponse,
+  type SignTemplateSignatureField,
+  type SignTemplateFieldDefinition,
+  signTemplateBodyDigest,
+} from './lib/sign-template-library.contract.js';

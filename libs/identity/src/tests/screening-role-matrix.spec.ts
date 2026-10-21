@@ -117,11 +117,12 @@ describe('screening:* role matrix — effective seed grants (unit, directive tes
     }
   });
 
-  it('every other seeded role (incl. tenant_admin, tenant_owner, org_admin, super_admin) holds none', async () => {
+  it('every other seeded role (incl. tenant_admin, tenant_owner, ats_admin, super_admin) holds none', async () => {
     const { byRole } = await effectiveGrants();
     const others = Object.keys(SEED_IDS.roles).filter((r) => !SCREENING_HOLDERS.includes(r));
     // The named admin-tier and platform roles must be among the swept set.
-    for (const named of ['tenant_admin', 'tenant_owner', 'org_admin', 'super_admin', 'account_manager']) {
+    // ROLES-1 PR-2 — org_admin is renamed tenant_admin; ats_admin is the row-0010 ATS admin.
+    for (const named of ['tenant_admin', 'tenant_owner', 'ats_admin', 'super_admin', 'account_manager']) {
       expect(others, named).toContain(named);
     }
     for (const role of others) {

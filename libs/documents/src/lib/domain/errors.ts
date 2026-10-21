@@ -107,6 +107,39 @@ export class TemplateBindingUnsupportedError extends Error {
   }
 }
 
+// DOC-TEMPLATE-LIB-1 T-3 (§4.2) — a TenantTemplateSelection may only name a template the
+// resolver can actually use: ACTIVE with a current version, not a withdrawn (past
+// effective) Aramo default, and — for a TENANT template — tenant-wide or scoped to the
+// selection's own client. The tenant selection routes (T-4) map this to a typed 409/422.
+export class TemplateSelectionInvalidError extends Error {
+  constructor(public readonly templateId: string, public readonly reason: string) {
+    super(`DocumentTemplate ${templateId} cannot be selected (${reason})`);
+    this.name = 'TemplateSelectionInvalidError';
+  }
+}
+
+// DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — an Aramo (PLATFORM) default lifecycle write
+// refused by state. reason ∈ template_not_published | already_withdrawn | not_withdrawn |
+// withdrawal_in_effect | platform_default_live. Mapped to 409
+// TEMPLATE_PLATFORM_DEFAULT_CONFLICT (details.reason).
+export type TemplatePlatformDefaultConflictReason =
+  | 'template_not_published'
+  | 'already_withdrawn'
+  | 'not_withdrawn'
+  | 'withdrawal_in_effect'
+  | 'platform_default_live';
+
+export class TemplatePlatformDefaultConflictError extends Error {
+  constructor(
+    public readonly templateId: string,
+    public readonly reason: TemplatePlatformDefaultConflictReason,
+    public readonly details: Record<string, unknown> = {},
+  ) {
+    super(`Aramo default ${templateId}: ${reason}`);
+    this.name = 'TemplatePlatformDefaultConflictError';
+  }
+}
+
 export class DocumentRequirementNotFoundError extends Error {
   constructor(public readonly requirementId: string) {
     super(`DocumentRequirement ${requirementId} not found`);
@@ -129,5 +162,21 @@ export class DocumentStorageNotSupportedError extends Error {
   constructor(public readonly capability: string) {
     super(`DocumentStoragePort capability not yet supported in DOC-1a: ${capability}`);
     this.name = 'DocumentStorageNotSupportedError';
+  }
+}
+
+// DOC-TEMPLATE-LIB-1 T-2 — the Aramo template variable catalog (platform routes map
+// these to NOT_FOUND 404 / VALIDATION_ERROR 409 reason=key_exists).
+export class TemplateVariableNotFoundError extends Error {
+  constructor(public readonly variableId: string) {
+    super(`TemplateVariable ${variableId} not found`);
+    this.name = 'TemplateVariableNotFoundError';
+  }
+}
+
+export class TemplateVariableKeyConflictError extends Error {
+  constructor(public readonly key: string) {
+    super(`TemplateVariable key ${key} already exists`);
+    this.name = 'TemplateVariableKeyConflictError';
   }
 }

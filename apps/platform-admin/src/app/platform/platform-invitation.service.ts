@@ -21,7 +21,6 @@ import {
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
-import { TenantDocumentTemplateProvisioningService } from './tenant-document-template-provisioning.service.js';
 
 // PlatformInvitationService — orchestrates the cross-schema saga (Lead
 // ruling 7):
@@ -99,7 +98,6 @@ export class PlatformInvitationService {
     private readonly identitySvc: IdentityService,
     private readonly entitlementRepo: EntitlementRepository,
     private readonly policyProvisioning: TenantPolicyProvisioningService,
-    private readonly docTemplateProvisioning: TenantDocumentTemplateProvisioningService,
   ) {}
 
   async provisionTenantAndInviteOwner(args: {
@@ -122,8 +120,8 @@ export class PlatformInvitationService {
     // requires a well-formed address and stores allowed_domain NULL), the
     // capability set is CLOSED to PERSONAL_TENANT_CAPABILITIES ([core, esign];
     // any other requested capability → 400 BEFORE Cognito), the owner receives
-    // org_admin (no ats → the N-2 product-neutral owner; never an ATS role) and
-    // no ATS projection runs. Identity registration, tenant creation, product
+    // tenant_owner + tenant_admin (ROLES-1 PR-2 §6 — the organization roles, never
+    // an ATS product role) and no ATS projection runs. Identity registration, tenant creation, product
     // entitlement and Sign sender eligibility stay separate steps.
     kind?: string;
     // Aramo Sign launch — the self-service signup runs this same saga as a
@@ -180,11 +178,13 @@ export class PlatformInvitationService {
           })()
         : desiredRaw;
     const atsEntitled = desired.includes('ats');
-    // The owner role follows the product set: an ATS tenant keeps tenant_owner
-    // (the ATS owner bundle, unchanged); a tenant WITHOUT ats receives
-    // org_admin — the product-neutral organization administrator (no ATS, no
-    // Sign, no platform authority). Sign SENDER roles are PR-8's call.
-    const ownerRoleKey = atsEntitled ? 'tenant_owner' : 'org_admin';
+    // ROLES-1 PR-2 (Directive v1.0 LOCKED §6; ADR-0035 R4) — the first owner of EVERY
+    // new tenant receives the organization roles tenant_owner + tenant_admin, whether
+    // or not the tenant is ATS-entitled (formerly tenant_owner for ATS tenants and
+    // the product-neutral org_admin otherwise). Both are organization roles
+    // (ORG_ROLE_KEYS), assignable in any tenant; each product's rights are exercised
+    // only through a consumer whose product the tenant holds.
+    const ownerRoleKeys = ['tenant_owner', 'tenant_admin'] as const;
 
     // 0a. Pre-check tenant name uniqueness (the service-layer raise still
     // re-checks — this avoids the Cognito side-effect for an obvious
@@ -254,8 +254,8 @@ export class PlatformInvitationService {
     }
 
     // 0b. Resolve role IDs (the Tenant-Owner-first invite hard-fixes
-    // the role to 'tenant_owner').
-    const role_ids = await this.identitySvc.resolveRoleIdsByKeys([ownerRoleKey]);
+    // the roles to tenant_owner + tenant_admin — ROLES-1 PR-2 §6).
+    const role_ids = await this.identitySvc.resolveRoleIdsByKeys([...ownerRoleKeys]);
 
     // 1. Cognito (TENANT pool) — AdminCreateUser. Pattern A: Cognito
     // owns the credential + invitation email; Aramo never holds a
@@ -314,22 +314,24 @@ export class PlatformInvitationService {
       tenant_id = tenant.id;
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded so the
       // in-service D5 union-non-invertibility check has what it needs. The
-      // owner role is hard-fixed to ['tenant_owner'] (a see-all-tier role
+      // owner roles are hard-fixed to ['tenant_owner', 'tenant_admin'] (see-all-tier roles
       // exempted by the validator's bypass) so the bundle math is trivially
       // safe — but the threading is uniform across all callers.
       const created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email: args.owner_email,
         display_name: args.owner_display_name ?? null,
         provider: 'cognito',
         provider_subject: cognito_sub,
         tenant_id,
-        role_keys: [ownerRoleKey],
+        role_keys: [...ownerRoleKeys],
         role_ids,
         actor_user_id: args.actor_user_id,
         request_id: args.request_id,
-        // D-ORG (§3.F) — the owner role is product-partitioned (tenant_owner = ATS,
-        // org_admin = neutral); the entitlement rows are written in step 3, so the
-        // gate evaluates against the set this saga is about to grant.
+        // D-ORG (§3.F) — the entitlement rows are written in step 3, so the product
+        // gate evaluates against the set this saga is about to grant (ROLES-1 PR-2:
+        // the owner roles are organization roles and pass it in any tenant).
         provisioning_capabilities: desired,
       });
       owner_user_id = created.user.id;
@@ -387,9 +389,10 @@ export class PlatformInvitationService {
     // that cannot add talent must be inert, not silently broken. The startup
     // coverage guard (apps/api) and the add-time fail-closed are the reconciling
     // safety nets for the non-atomic gap.
-    // IC-3 PR-7 — the two ATS projections (the default lifecycle policy package
-    // and the default RTR document template) run ONLY for an ATS-entitled
-    // tenant. A Sign-only organization gets no ATS projection, no ATS
+    // IC-3 PR-7 — the ATS projection (the default lifecycle policy package) runs
+    // ONLY for an ATS-entitled tenant. DOC-TEMPLATE-LIB-1 T-3 (§5.3) retired the
+    // second projection (the RTR-TEMPLATE-1 default RTR template copy): a new
+    // tenant resolves to the Aramo (PLATFORM) RTR default, with no tenant row. A Sign-only organization gets no ATS projection, no ATS
     // dependency and no ATS assignment; compensation semantics are unchanged.
     if (atsEntitled) {
       try {
@@ -412,38 +415,6 @@ export class PlatformInvitationService {
           {
             requestId: 'platform.provision',
             details: { tenant_id, reason: 'policy_package_publish_failed' },
-          },
-        );
-      }
-
-      // 5. Documents (RTR-TEMPLATE-1 §7) — publish the tenant's default RTR
-      // template as a byte-identical copy of the platform template. Same
-      // fail-closed compensation class as policy (Lead ruling 7): a tenant that
-      // cannot resolve an RTR template cannot produce an RTR, which gates
-      // submittal, so it must be inert rather than silently broken. The
-      // existing-tenant backfill migration + this seam together guarantee every
-      // tenant resolves exactly one ACTIVE tenant-wide RTR template (INV-12, no
-      // inline fallback). On failure -> SOFT-DISABLE.
-      try {
-        await this.docTemplateProvisioning.publishDefaultRtrTemplate(tenant_id);
-      } catch (err) {
-        this.logger.warn(
-          `RTR template publish failed; soft-disabling tenant ${tenant_id}: ${
-            (err as Error).message
-          }`,
-        );
-        await this.tenantSvc.deactivateTenant({
-          tenant_id,
-          actor_user_id: args.actor_user_id,
-          reason: 'rtr_template_publish_failed',
-        });
-        throw new AramoError(
-          'INTERNAL_ERROR',
-          'RTR template publish failed; tenant soft-disabled',
-          500,
-          {
-            requestId: 'platform.provision',
-            details: { tenant_id, reason: 'rtr_template_publish_failed' },
           },
         );
       }
@@ -573,6 +544,8 @@ export class PlatformInvitationService {
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
       await this.identitySvc.replaceMembershipRoles({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         membership_id: membership.id,
         tenant_id: args.tenant_id,
         role_keys: args.role_keys,
@@ -605,6 +578,8 @@ export class PlatformInvitationService {
       // D-AUTHZ-PLATFORM-INVITE-1: role_keys + request_id threaded for
       // the in-service D5 union-non-invertibility check.
       const created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email,
         display_name: args.display_name ?? null,
         provider: 'cognito',
@@ -661,6 +636,8 @@ export class PlatformInvitationService {
       // createUserFromInvitation as the governed 409 (EMAIL_UNAVAILABLE /
       // INVITATION_ALREADY_EXISTS) — the same rollback applies.
       created = await this.identitySvc.createUserFromInvitation({
+        // ROLES-1 PR-1 (§4.2) — the platform tier (platform:tenant:provision) may grant tenant_owner.
+        owner_role_authority: 'platform',
         email,
         display_name: args.display_name ?? null,
         provider: 'cognito',

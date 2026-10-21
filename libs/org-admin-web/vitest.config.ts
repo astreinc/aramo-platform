@@ -15,6 +15,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@aramo/fe-foundation': resolve(root, '../fe-foundation/src/index.ts'),
+      '@aramo/document-templates-web': resolve(root, '../document-templates-web/src/index.ts'),
     },
   },
   test: {

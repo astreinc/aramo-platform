@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
+// ROLES-1 PR-2 — the bundle grants of row 0010 name ats_admin (formerly tenant_admin); same
+// RoleScope ids. The organization tenant_admin (row 02b0) inherits them via ROLES1_SIGN_SEED_BUNDLES.
 import { OFFER_SEED_ROLE_SCOPE_ROW_IDS } from '../../prisma/seed.js';
 
 // HF-SEED-OFFER-ID — regression guard for the prod P2002 collision that STOPPED the
@@ -27,8 +29,8 @@ const ORIGINAL_IDS: Record<string, number> = {
   'recruiter:offer:transition': 0xc41,
   'account_manager:offer:create': 0xc42,
   'account_manager:offer:transition': 0xc43,
-  'tenant_admin:offer:create': 0xc44,
-  'tenant_admin:offer:transition': 0xc45,
+  'ats_admin:offer:create': 0xc44,
+  'ats_admin:offer:transition': 0xc45,
   'tenant_owner:offer:create': 0xc46,
   'tenant_owner:offer:transition': 0xc47,
 };
@@ -38,8 +40,8 @@ const ADDED_KEYS = [
   'recruiter:offer:read:financial',
   'account_manager:offer:read',
   'account_manager:offer:read:financial',
-  'tenant_admin:offer:read',
-  'tenant_admin:offer:read:financial',
+  'ats_admin:offer:read',
+  'ats_admin:offer:read:financial',
   'tenant_owner:offer:read',
   'tenant_owner:offer:read:financial',
 ];

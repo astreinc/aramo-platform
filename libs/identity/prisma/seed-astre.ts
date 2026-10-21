@@ -33,6 +33,8 @@ export const ASTRE_SEED_IDS = {
   owner_user: '019000a0-0000-7000-8000-000000000002',
   owner_membership: '019000a0-0000-7000-8000-000000000003',
   owner_membership_role: '019000a0-0000-7000-8000-000000000004',
+  // ROLES-1 PR-2 (§6) — the owner's tenant_admin (organization administrator) role.
+  owner_membership_role_org: '019000a0-0000-7000-8000-000000000005',
   audit_events: {
     tenant_created: '019000a0-0000-7000-8000-000000000010',
     user_created: '019000a0-0000-7000-8000-000000000011',
@@ -167,6 +169,25 @@ export async function runAstreSeed(
     },
   });
 
+  // 5b. ROLES-1 PR-2 (Directive v1.0 LOCKED §6) — the owner also holds the
+  //     organization administrator role tenant_admin (row …02b0), like every new
+  //     tenant's first owner. On the existing production database the owner already
+  //     holds that row (the renamed org_admin grant), so this upsert is a no-op there.
+  await db.userTenantMembershipRole.upsert({
+    where: {
+      membership_id_role_id: {
+        membership_id: ASTRE_SEED_IDS.owner_membership,
+        role_id: SEED_IDS.roles.tenant_admin,
+      },
+    },
+    update: {},
+    create: {
+      id: ASTRE_SEED_IDS.owner_membership_role_org,
+      membership_id: ASTRE_SEED_IDS.owner_membership,
+      role_id: SEED_IDS.roles.tenant_admin,
+    },
+  });
+
   // 6. Provisioning audit trail (actor = system ServiceAccount; mirrors the
   //    dev seed's tenant/user/membership-created events + their scope mapping).
   await db.identityAuditEvent.upsert({
@@ -215,7 +236,7 @@ export async function runAstreSeed(
         membership_id: ASTRE_SEED_IDS.owner_membership,
         user_id: ASTRE_SEED_IDS.owner_user,
         tenant_id: ASTRE_SEED_IDS.tenant,
-        role_keys: ['tenant_owner'],
+        role_keys: ['tenant_owner', 'tenant_admin'],
       } as never,
     },
   });
@@ -239,7 +260,7 @@ async function main(): Promise<void> {
     await prisma.$connect();
     const result = await runAstreSeed(prisma);
     console.log(
-      `astre seed complete: tenant=${result.astre_tenant_id} owner=${result.owner_user_id} (${ASTRE_OWNER_EMAIL}, tenant_owner, no sub — links on first login)`,
+      `astre seed complete: tenant=${result.astre_tenant_id} owner=${result.owner_user_id} (${ASTRE_OWNER_EMAIL}, tenant_owner + tenant_admin, no sub — links on first login)`,
     );
   } finally {
     await prisma.$disconnect();

@@ -142,6 +142,19 @@ export const EVENT_TYPES = [
   // DOC-TEMPLATE-ADMIN-RTR-1 Amendment A1 §1 — Discard draft MUST write a template audit
   // event (actor, version, time). subject_id = the discarded TemplateVersion id.
   'identity.document_template.draft_discarded',
+  // ROLES-1 PR-2 (Directive v1.0 LOCKED §5.3) — the role-model reconciliation migration
+  // (20261021130000_roles1_role_model) writes one row per membership role it grants or
+  // removes (actor_type 'system', reason D1 | F4 | SIGN_OWNER). Tenant-scoped; subject_id
+  // is the user. Written ONLY by that migration (names follow the directive verbatim).
+  'ROLES1_RECONCILE_GRANT',
+  'ROLES1_RECONCILE_REVOKE',
+  // DOC-TEMPLATE-LIB-1 T-6 (§9; ADR-0034 D10) — an Aramo (PLATFORM) default template
+  // withdrawal was published / cancelled by a platform operator. GLOBAL (tenant_id NULL):
+  // a PLATFORM template belongs to no tenant. subject_id = the DocumentTemplate id;
+  // payload { document_type_id, withdraw_notice_at, withdraw_effective_at, notice_days?,
+  // reason? }. Written through the non-swallowing repository BEFORE the state change.
+  'identity.document_template.withdrawal_published',
+  'identity.document_template.withdrawal_cancelled',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -212,6 +225,9 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'tenant.lifecycle_transition_rejected',
   // A1 §1 — template draft discard carries the writing tenant's id.
   'identity.document_template.draft_discarded',
+  // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
+  'ROLES1_RECONCILE_GRANT',
+  'ROLES1_RECONCILE_REVOKE',
 ]);
 
 export interface WriteAuditEventInput {

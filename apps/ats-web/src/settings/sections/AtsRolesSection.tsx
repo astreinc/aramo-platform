@@ -10,10 +10,13 @@ import { SettingsSection } from '../components';
 // happens in Organization administration (Users & product access), the single
 // authority for role assignment (PATCH /v1/tenant/users/:id/roles).
 //
-// The list shows the ATS roles: the Sign (`esign_*`) roles and the
-// product-neutral `org_admin` belong to other surfaces (display filter only).
+// The list shows the ATS roles (ats_admin and the staffing roles): the Sign
+// (`sign_*`) roles and the organization roles (tenant_owner, tenant_admin —
+// ROLES-1 PR-2, administered in Organization administration) belong to other
+// surfaces (display filter only).
+const ORG_ROLE_KEYS: readonly string[] = ['tenant_owner', 'tenant_admin'];
 export function isAtsRole(role: RoleCatalogView): boolean {
-  return !role.key.startsWith('sign_') && role.key !== 'org_admin';
+  return !role.key.startsWith('sign_') && !ORG_ROLE_KEYS.includes(role.key);
 }
 
 function hereForReturn(): string {

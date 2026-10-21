@@ -14,7 +14,7 @@ import {
 } from '@aramo/field-masking';
 import { describe, expect, it } from 'vitest';
 
-import { D5_COMPENSATION_BUNDLES, REQ_GATING_SEED_BUNDLES } from '../../prisma/seed.js';
+import { D5_COMPENSATION_BUNDLES, REQ_GATING_SEED_BUNDLES, ROLES1_SIGN_SEED_BUNDLES } from '../../prisma/seed.js';
 import { SEED_ROLE_KEYS } from '../lib/dto/index.js';
 
 // PR-A1 Requisition-Gating Rework — the comp grants now span TWO seed
@@ -32,6 +32,11 @@ function effectiveCompScopes(role: string): string[] {
     if (k === role) for (const s of scopes) out.add(s);
   }
   for (const [k, scopes] of REQ_GATING_SEED_BUNDLES) {
+    if (k === role) for (const s of scopes) if (s.startsWith(COMP_SCOPE_PREFIX)) out.add(s);
+  }
+  // ROLES-1 PR-2 — the organization tenant_admin (row 02b0) receives its comp scopes
+  // through the ROLES-1 bundle (every ats_admin scope).
+  for (const [k, scopes] of ROLES1_SIGN_SEED_BUNDLES) {
     if (k === role) for (const s of scopes) if (s.startsWith(COMP_SCOPE_PREFIX)) out.add(s);
   }
   return [...out];
@@ -56,9 +61,12 @@ function effectiveCompScopes(role: string): string[] {
 // the role-assign path (read of tenant's audit.financials_enabled
 // KNOWN_SETTING), NOT here. This file's job is the bundle-math proof;
 // it doesn't model the GATE.
+// ROLES-1 PR-2 — ats_admin (row 0010, the former tenant_admin ATS superset) keeps the
+// see-all comp bundle; tenant_admin (row 02b0, the organization administrator) inherits it.
 const SEE_ALL_ROLES = new Set([
   'tenant_admin',
   'tenant_owner',
+  'ats_admin',
   'auditor_with_financials',
 ]);
 
@@ -88,12 +96,10 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
     }
   });
 
-  it('see-all roles (TA / TO / auditor_with_financials) hold every compensation:view:* scope', () => {
+  it('see-all roles (TA / TO / ATS admin / auditor_with_financials) hold every compensation:view:* scope', () => {
     for (const role of SEE_ALL_ROLES) {
-      const entry = D5_COMPENSATION_BUNDLES.find(([k]) => k === role);
-      expect(entry, `${role} missing from D5_COMPENSATION_BUNDLES`).toBeDefined();
-      if (entry === undefined) continue;
-      const held = new Set(entry[1]);
+      const held = new Set(effectiveCompScopes(role));
+      expect(held.size, `${role} holds no compensation scope`).toBeGreaterThan(0);
       for (const s of COMPENSATION_VIEW_SCOPES) {
         expect(held.has(s), `${role} missing scope ${s}`).toBe(true);
       }
@@ -160,7 +166,7 @@ describe('AUTHZ-D5 — THE ENFORCED INVARIANT (no role holds view:pay + any spre
     // but NOT compensation:edit:pay), so the view:X→edit:X mirror property no
     // longer applies to it. The remaining authors keep view:pay + edit:pay.
     const authorRoles = new Set([
-      'tenant_admin',
+      'ats_admin',
       'tenant_owner',
       'recruiting_manager',
       'lead_recruiter',
@@ -224,6 +230,10 @@ function maskedKeys(role: string): Set<string> {
 describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
   it('see-all tier (tenant_admin) sees every comp field', () => {
     expect([...maskedKeys('tenant_admin')].sort()).toEqual([...COMPENSATION_FIELD_KEYS].sort());
+  });
+
+  it('see-all tier (ats_admin — ROLES-1 PR-2) sees every comp field', () => {
+    expect([...maskedKeys('ats_admin')].sort()).toEqual([...COMPENSATION_FIELD_KEYS].sort());
   });
 
   it('see-all tier (tenant_owner) sees every comp field', () => {
@@ -329,15 +339,19 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
   // super_admin) so the test doesn't enumerate the role-key string
   // literals.
   it('every role absent from the bundle table sees no comp fields', () => {
-    const bundleRoles = new Set(D5_COMPENSATION_BUNDLES.map(([k]) => k));
+    // ROLES-1 PR-2 — tenant_admin (row 02b0) holds its comp scopes through the ROLES-1
+    // bundle (covered by the see-all proofs above), so it is not an absent role.
+    const bundleRoles = new Set([...D5_COMPENSATION_BUNDLES.map(([k]) => k), 'tenant_admin']);
     const absentRoles = [...SEED_ROLE_KEYS].filter((k) => !bundleRoles.has(k));
     // Sanity: the four ATS roles known to be intentionally absent per the
     // commit plan §2 matrix, plus the four PX-V1 PX-3 E-Sign product roles
     // (sign_owner/admin/sender/viewer) — E-Sign roles hold ONLY esign:* scopes
     // and never any compensation field, so they correctly see no comp fields.
-    // IC-3 PR-7 — org_admin (product-neutral organization administrator) holds
-    // no compensation scope either → 9 absent roles.
-    expect(absentRoles.length).toBe(9);
+    // IC-3 PR-7 — org_admin (product-neutral organization administrator) held
+    // no compensation scope either → 9 absent roles. ROLES-1 PR-2: org_admin is now
+    // tenant_admin (see-all via the ROLES-1 bundle) → 8 absent roles. ROLES-1 PR-3:
+    // sign_owner is retired (not a catalog key) → 7 absent roles.
+    expect(absentRoles.length).toBe(7);
     for (const role of absentRoles) {
       expect(maskedKeys(role).size, `${role} (absent role) leaked comp fields`).toBe(0);
     }

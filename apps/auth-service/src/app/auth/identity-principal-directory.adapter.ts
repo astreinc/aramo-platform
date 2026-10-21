@@ -266,7 +266,7 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
     // fires and the tenant would sit PROVISIONED forever. Here, AFTER every
     // gate has passed (host binding, status, entitlement, scopes) and ONLY for
     // a tenant consumer whose tenant is still PROVISIONED and whose membership
-    // holds an activating owner role (tenant_owner / org_admin), the tenant is
+    // holds the activating owner role (tenant_owner only — ROLES-1 PR-2 §3.4), the tenant is
     // transitioned PROVISIONED → ACTIVE by the system actor. Best-effort and
     // idempotent (transitionTenantStatus no-ops on an already-ACTIVE tenant):
     // an activation failure NEVER fails an otherwise-valid sign-in — the mint

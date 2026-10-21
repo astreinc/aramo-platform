@@ -66,9 +66,23 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
     ]);
     const templateId = randomUUID();
     const versionId = randomUUID();
+    // DOC-TEMPLATE-LIB-1 T-3 — selection-based resolution: the tenant-wide selection names
+    // the tenant's own (TENANT) RTR template; no client selection, no Aramo default.
     const templatesFake = {
-      findActiveTenantTemplateForType: async () => ({ id: templateId, current_version_id: versionId, name: 'Exclusive RTR' }),
-      findVersionById: async () => ({
+      findSelection: async (_tenant: string, _type: string, client: string | null) =>
+        client === null ? { template_id: templateId } : null,
+      findResolvablePlatformDefaults: async () => [],
+      listWithdrawnPlatformDefaultIds: async () => [], // DOC-TEMPLATE-LIB-1 T-6
+      findTemplateByIdOwnerAware: async () => ({
+        id: templateId,
+        current_version_id: versionId,
+        name: 'Exclusive RTR',
+        document_type_id: 'd0c50005-0000-7000-8000-000000000001',
+        owner_scope: 'TENANT',
+        status: 'ACTIVE',
+        withdraw_effective_at: null,
+      }),
+      findVersionByIdOwnerAware: async () => ({
         id: versionId,
         template_id: templateId,
         status: 'ACTIVE',

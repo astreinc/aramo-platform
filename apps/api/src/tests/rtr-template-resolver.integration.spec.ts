@@ -17,8 +17,9 @@ import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr
 // backend-authoritative resolver: the one tenant-wide ACTIVE RIGHT_TO_REPRESENT
 // template resolves + pins its current version; EVERY invalid configuration fails
 // CLOSED with the correct typed code (no inline fallback, INV-12); client-scoped
-// templates are ignored in V1; current_version_id is the authority (later
-// activation moves the resolved version deterministically).
+// templates apply only to their client (DOC-TEMPLATE-LIB-1 T-3 selection-based
+// resolution); current_version_id is the authority (later activation moves the
+// resolved version deterministically).
 
 const ROOT = resolve(__dirname, '../../../..');
 const OFFER_LETTER_TYPE_ID = 'd0c50006-0000-7000-8000-000000000001'; // doc6-seeded
@@ -74,6 +75,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       await templates.activateVersion({ tenant_id: tenant, version_id: ver.id, actor_id: ACTOR, require_preview: false });
       return { templateId: tpl.id, versionId: ver.id };
+    }
+
+    // DOC-TEMPLATE-LIB-1 T-3 — resolution reads the explicit selection; rows inserted raw
+    // (bypassing activateVersion) are made the tenant's tenant-wide selection explicitly.
+    async function selectTenantWide(tenant: string, templateId: string): Promise<void> {
+      await db.query(
+        `INSERT INTO "documents"."TenantTemplateSelection" (id, tenant_id, document_type_id, client_id, template_id, selected_by)
+         VALUES ($1,$2,$3,NULL,$4,$5)`,
+        [randomUUID(), tenant, RIGHT_TO_REPRESENT_TYPE_ID, templateId, ACTOR],
+      );
     }
 
     beforeAll(async () => {
@@ -161,13 +172,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
     });
 
-    it('ignores a CLIENT-scoped template in V1 (NOT_CONFIGURED)', async () => {
+    // DOC-TEMPLATE-LIB-1 T-3 (§4.2) — directive-mandated change: client-scoped templates are
+    // no longer ignored. Approving one selects it for THAT client only, so a request without
+    // (or for another) client still finds nothing tenant-wide; the client's request resolves it.
+    it('a CLIENT-scoped template applies only to its client (tenant-wide still NOT_CONFIGURED)', async () => {
       const tenant = randomUUID();
-      await activeRtrTemplate(tenant, { clientId: randomUUID() });
+      const client = randomUUID();
+      const { versionId } = await activeRtrTemplate(tenant, { clientId: client });
       await expectCode(
         resolver.resolveActive({ tenant_id: tenant, requestId: randomUUID() }),
         'RTR_TEMPLATE_NOT_CONFIGURED',
       );
+      await expectCode(
+        resolver.resolveActive({ tenant_id: tenant, client_id: randomUUID(), requestId: randomUUID() }),
+        'RTR_TEMPLATE_NOT_CONFIGURED',
+      );
+      const resolved = await resolver.resolveActive({ tenant_id: tenant, client_id: client, requestId: randomUUID() });
+      expect(resolved.template_version_id).toBe(versionId);
+      expect(resolved.source).toBe('CLIENT_SELECTION');
     });
 
     it('fails closed when an ACTIVE template has no current version (CONFIGURATION_INVALID)', async () => {
@@ -179,6 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1,$2,$3,NULL,'t','GENERATED','ACTIVE',NULL,$4)`,
         [id, tenant, RIGHT_TO_REPRESENT_TYPE_ID, ACTOR],
       );
+      await selectTenantWide(tenant, id);
       await expectCode(
         resolver.resolveActive({ tenant_id: tenant, requestId: randomUUID() }),
         'RTR_TEMPLATE_CONFIGURATION_INVALID',
@@ -204,6 +227,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [verId, tenant, tplId, RTR_GENERATED_SCHEMA_V1, DEFAULT_RTR_TEMPLATE_CONTENT_V1, ACTOR],
       );
       await db.query(`UPDATE "documents"."DocumentTemplate" SET current_version_id=$1 WHERE id=$2`, [verId, tplId]);
+      await selectTenantWide(tenant, tplId);
       await expectCode(
         resolver.resolveActive({ tenant_id: tenant, requestId: randomUUID() }),
         'RTR_TEMPLATE_CONFIGURATION_INVALID',

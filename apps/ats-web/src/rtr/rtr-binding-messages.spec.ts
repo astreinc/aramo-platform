@@ -14,6 +14,8 @@ describe('rtrTemplateErrorMessage — names the actual missing fact', () => {
     expect(rtrTemplateErrorMessage(err('RTR_TEMPLATE_BINDING_MISSING', { binding_key: 'x.y' }))).toMatch(/template’s fields/);
     expect(rtrTemplateErrorMessage(err('RTR_TEMPLATE_BINDING_MISSING', { reason: 'binding_resolver_missing', binding_key: 'client.name' }))).toMatch(/template’s fields/);
     expect(rtrTemplateErrorMessage(err('RTR_TEMPLATE_NOT_CONFIGURED'))).toMatch(/approved a Right to Represent template/);
+    // DOC-TEMPLATE-LIB-1 T-6 — withdrawn Aramo default with no own template: distinct message.
+    expect(rtrTemplateErrorMessage(err('TEMPLATE_SELECTION_REQUIRED'))).toMatch(/withdrawn.*choose a template/);
     expect(rtrTemplateErrorMessage(err('SOMETHING_ELSE'))).toBeNull();
   });
 });

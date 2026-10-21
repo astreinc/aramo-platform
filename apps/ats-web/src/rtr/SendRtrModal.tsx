@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@aramo/fe-foundation';
-
-import { SafeDoc } from '../settings/documents/dt-html-render';
-import type { BindingMap } from '../settings/documents/dt-ui';
+import { SafeDoc, type BindingMap } from '@aramo/document-templates-web';
 
 const EMPTY_BINDING_MAP: BindingMap = { labelByToken: {}, tokenByLabel: {} };
 import type { RtrComposeBlock } from './rtr-api';

@@ -83,8 +83,12 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
     // at the role-assign path; the SEED of the role itself is
     // unconditional (the GATE is keyed at the membership-write boundary,
     // NOT at the role-existence boundary).
+    // ROLES-1 PR-2 (§1) — row 0010 is ats_admin (formerly tenant_admin); row 02b0 is
+    // tenant_admin (formerly org_admin). org_admin no longer exists. ROLES-1 PR-3: the
+    // retired sign_owner is not a catalog key (RETIRED_ROLE_KEYS; its row stays inactive).
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
       'account_manager',
+      'ats_admin',
       'auditor',
       'auditor_with_financials',
       'back_office',
@@ -92,13 +96,10 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'delivery_manager',
       'finance',
       'lead_recruiter',
-      // IC-3 PR-7 — product-neutral organization administrator.
-      'org_admin',
       'recruiter',
       'recruiting_manager',
       // PX-V1 PX-3 — Sign product roles (namespace-separate from ATS tenant roles).
       'sign_admin',
-      'sign_owner',
       'sign_sender',
       'sign_viewer',
       'sourcer',
@@ -110,7 +111,7 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
 });
 
 // IC-3 PR-8 — deterministic seed proof of the Sign sender authority: the
-// `sign:envelope:send` scope is granted to EXACTLY sign_owner / sign_admin /
+// `sign:envelope:send` scope is granted to EXACTLY sign_admin /
 // sign_sender (ESIGN_SENDER_SEED_BUNDLES); sign_viewer never holds it, and no
 // other seed bundle (ATS roles, org_admin, super_admin) grants ANY esign:* scope.
 describe('IC-3 PR-8 — Sign sender authority is seeded deterministically', () => {
@@ -118,7 +119,8 @@ describe('IC-3 PR-8 — Sign sender authority is seeded deterministically', () =
     const { ESIGN_SENDER_SEED_BUNDLES, SEED_IDS } = await import('../../prisma/seed.js');
     const { ESIGN_PRODUCT_ROLE_KEYS, ESIGN_SENDER_SCOPE_KEY } = await import('../lib/dto/role.dto.js');
     const holders = ESIGN_SENDER_SEED_BUNDLES.filter(([, scopes]) => scopes.includes(ESIGN_SENDER_SCOPE_KEY)).map(([k]) => k).sort();
-    expect(holders).toEqual(['sign_admin', 'sign_owner', 'sign_sender']);
+    // ROLES-1 PR-3 — the retired sign_owner is granted nothing.
+    expect(holders).toEqual(['sign_admin', 'sign_sender']);
     expect(ESIGN_SENDER_SEED_BUNDLES.find(([k]) => k === 'sign_viewer')?.[1]).toEqual(['sign:envelope:read']);
     // Every bundle key is a seeded Sign role with a deterministic role id, and the
     // partition constant covers exactly the bundle keys (no orphan role, no hand list drift).
@@ -135,7 +137,7 @@ describe('IC-3 PR-8 — Sign sender authority is seeded deterministically', () =
 // contract scope is in the catalog with a deterministic id, and no non-Sign role
 // holds any esign:* scope.
 describe('Sign S-1 — the Sign role contract is seeded exactly', () => {
-  it('prior + contract grants = ESIGN_ROLE_PERMISSIONS for each of the four Sign roles', async () => {
+  it('prior + contract grants = ESIGN_ROLE_PERMISSIONS for each of the three Sign roles', async () => {
     const { ESIGN_SENDER_SEED_BUNDLES, ESIGN_ROLE_CONTRACT_SEED_BUNDLES, SEED_IDS } = await import('../../prisma/seed.js');
     const { ESIGN_ROLE_KEYS, ESIGN_ROLE_PERMISSIONS } = await import('../lib/dto/esign-permissions.js');
     const { SEED_SCOPE_KEYS } = await import('../lib/dto/scope.dto.js');
@@ -151,6 +153,24 @@ describe('Sign S-1 — the Sign role contract is seeded exactly', () => {
         expect(SEED_IDS.scopes[s as keyof typeof SEED_IDS.scopes]).toMatch(/^01900000-0000-7000-8000-00000000141[0-3]$|^01900000-0000-7000-8000-00000000140[a-f]$/);
       }
     }
-    expect(contractGrants).toBe(23);
+    // ROLES-1 PR-3 — 23 − sign_owner's 10 (retired: no longer granted) = 13.
+    // DOC-TEMPLATE-LIB-1 T-5 — − sign_admin × sign:template:{use,manage} − sign_sender ×
+    // sign:template:use (removed) → 13 − 3 = 10.
+    expect(contractGrants).toBe(10);
+  });
+});
+
+// ROLES-1 PR-3 (§1, §5.2 step 5, §8) — the retired sign_owner keeps its row (inactive,
+// for history) but no bundle; the frozen id layouts keep every other Sign grant's
+// deterministic RoleScope id unchanged (append-don't-renumber).
+describe('ROLES-1 PR-3 — sign_owner retired in the seed', () => {
+  it('no seed bundle names sign_owner; RETIRED_ROLE_KEYS is outside every catalog constant', async () => {
+    const { ESIGN_SENDER_SEED_BUNDLES, ESIGN_ROLE_CONTRACT_SEED_BUNDLES } = await import('../../prisma/seed.js');
+    const { RETIRED_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, ATS_PRODUCT_ROLE_KEYS, ORG_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
+    expect([...RETIRED_ROLE_KEYS]).toEqual(['sign_owner']);
+    for (const [k] of [...ESIGN_SENDER_SEED_BUNDLES, ...ESIGN_ROLE_CONTRACT_SEED_BUNDLES]) expect(k).not.toBe('sign_owner');
+    for (const list of [SEED_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, ATS_PRODUCT_ROLE_KEYS, ORG_ROLE_KEYS]) {
+      expect(list as readonly string[]).not.toContain('sign_owner');
+    }
   });
 });

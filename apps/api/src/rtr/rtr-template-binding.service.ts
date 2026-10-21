@@ -57,14 +57,104 @@ export class RtrTemplateBindingService {
   ) {}
 
   async bind(input: RtrBindingInput): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
-    if (isHtmlContent(input.content)) return this.bindHtml(input, input.content);
+    return this.bindContent(
+      { content: input.content, template_version_id: input.template_version_id, tenant_id: input.tenant_id, letterhead: input.letterhead, requestId: input.requestId },
+      (used) => this.resolveValues(used, input),
+    );
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-5 (§7; ADR-0034 D7) — Aramo Sign has no ATS context: the same
+  // closed-catalog binding, but every value is SUPPLIED (the tenant-profile values the
+  // caller read + the sender-entered ones). A used key without a supplied value fails
+  // closed exactly like an unresolvable ATS value (RTR_TEMPLATE_BINDING_MISSING), so no
+  // raw {{token}} or empty value can reach the PDF.
+  async bindProvided(input: {
+    content: RtrTemplateContent;
+    letterhead?: LetterheadModel;
+    template_version_id: string;
+    tenant_id: string;
+    values: ReadonlyMap<string, string>;
+    requestId: string;
+  }): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
+    return this.bindContent(input, async (used) => {
+      const out = new Map<string, string>();
+      for (const key of used) {
+        const v = (input.values.get(key) ?? '').trim();
+        if (v.length === 0) throw this.missing(key, input.requestId);
+        out.set(key, v);
+      }
+      return out;
+    });
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-5 — every catalog key a content version uses (title + body tokens,
+  // or the html field nodes), plus talent.full_name (the fixed signature block's printed
+  // name, always bound). Fails closed on an unknown key / unusable html like bind().
+  usedKeys(content: RtrTemplateContent, requestId: string): RtrBindingKey[] {
+    if (isHtmlContent(content)) {
+      const res = sanitizeRtrHtml(content.html);
+      if ('issue' in res) {
+        throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template content is not usable: ${res.issue.reason}`, 422, {
+          requestId,
+          details: { reason: res.issue.reason },
+        });
+      }
+      const used = this.collectTokens([content.title], requestId);
+      for (const key of collectFieldKeys(res.nodes)) {
+        if (!isRtrBindingKey(key)) {
+          throw new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', `RTR template references a binding outside the closed catalog: ${key}`, 422, {
+            requestId,
+            details: { reason: 'unknown_binding', binding_key: key },
+          });
+        }
+        used.add(key);
+      }
+      used.add('talent.full_name');
+      return [...used];
+    }
+    const used = this.collectTokens([content.title, ...content.blocks.map((b) => b.text)], requestId);
+    used.add('talent.full_name');
+    return [...used];
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-5 — the tenant-profile values (the SAME sources the ATS resolvers
+  // read: organization.* from findBrandingById, recruiting_company.name = the legal name).
+  // Only non-blank values; a key the profile lacks is absent (the sender fills it).
+  async organizationValues(tenant_id: string): Promise<Map<string, string>> {
+    const b = await this.tenants.findBrandingById(tenant_id);
+    const legal = await this.tenants.findLegalNameById(tenant_id);
+    const out = new Map<string, string>();
+    const put = (key: RtrBindingKey, v: string | null | undefined): void => {
+      const t = (v ?? '').trim();
+      if (t.length > 0) out.set(key, t);
+    };
+    put('organization.name', organizationName(b));
+    put('organization.address_line1', b?.address_line1);
+    put('organization.address_line2', b?.address_line2);
+    put('organization.city', b?.city);
+    put('organization.region', b?.state_province);
+    put('organization.postal_code', b?.postal_code);
+    put('organization.country', b?.country_code);
+    put('recruiting_company.name', legal);
+    return out;
+  }
+
+  private async bindContent(
+    input: { content: RtrTemplateContent; letterhead?: LetterheadModel; template_version_id: string; tenant_id: string; requestId: string },
+    resolve: (used: Set<RtrBindingKey>) => Promise<Map<string, string>>,
+  ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
+    if (isHtmlContent(input.content)) return this.bindHtml(input, input.content, resolve);
     const content = input.content;
     const used = this.collectTokens([content.title, ...content.blocks.map((b) => b.text)], input.requestId);
     // B2 (spec §9.3) — the fixed signature block's PRINTED NAME is the bound
     // talent.full_name for EVERY version, whether or not the content references it, so it
     // is always resolved (fail closed when missing, like any other binding).
     used.add('talent.full_name');
-    const values = await this.resolveValues(used, input);
+    const values = await resolve(used);
+    // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — an Aramo default rendered for this tenant may carry
+    // the tenant's letterhead (logo captured at render by the orchestrator). A tenant's
+    // own rtr-generated-v1 content never receives one, so its output is byte-identical.
+    const letterhead = input.letterhead !== undefined ? await this.namedLetterhead(input.tenant_id, input.letterhead) : undefined;
     return {
       template_version_id: input.template_version_id,
       // The RENDERER's schema (flat resolved blocks) — distinct from the template
@@ -72,8 +162,16 @@ export class RtrTemplateBindingService {
       render_schema_version: 'v1',
       title: this.substitute(content.title, values, input.requestId),
       blocks: content.blocks.map((b) => ({ type: b.type, text: this.substitute(b.text, values, input.requestId) })),
+      ...(letterhead !== undefined ? { letterhead } : {}),
       signature_block: { printed_name: values.get('talent.full_name') as string },
     };
+  }
+
+  // A1 §2.4 / DOC-TEMPLATE-LIB-1 §4.3 — the organisation name beside the letterhead logo:
+  // the tenant's branding label (display_name), else its legal name, else the workspace name.
+  private async namedLetterhead(tenant_id: string, letterhead: LetterheadModel): Promise<LetterheadModel> {
+    const name = organizationName(await this.tenants.findBrandingById(tenant_id));
+    return { ...letterhead, name };
   }
 
   // A1 §2.3 — rtr-html-v1: keys come from the data-field nodes (same closed catalog, same
@@ -81,8 +179,9 @@ export class RtrTemplateBindingService {
   // The html is re-sanitised here (defence in depth) — a non-clean stored html fails
   // closed as a configuration error.
   private async bindHtml(
-    input: RtrBindingInput,
+    input: { letterhead?: LetterheadModel; template_version_id: string; tenant_id: string; requestId: string },
     content: Extract<RtrTemplateContent, { render_schema_version: 'rtr-html-v1' }>,
+    resolve: (used: Set<RtrBindingKey>) => Promise<Map<string, string>>,
   ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html: string }> {
     const res = sanitizeRtrHtml(content.html);
     if ('issue' in res) {
@@ -102,15 +201,10 @@ export class RtrTemplateBindingService {
       used.add(key);
     }
     used.add('talent.full_name');
-    const values = await this.resolveValues(used, input);
+    const values = await resolve(used);
     // A1 §2.4 — the organisation name beside the letterhead logo: the tenant's branding
     // label (display_name), else its legal name, else the workspace name.
-    let letterhead = input.letterhead;
-    if (letterhead !== undefined) {
-      const b = await this.tenants.findBrandingById(input.tenant_id);
-      const name = (b?.display_name ?? '').trim() || (b?.legal_name ?? '').trim() || (b?.name ?? '').trim();
-      letterhead = { ...letterhead, name: name.length > 0 ? name : null };
-    }
+    const letterhead = input.letterhead !== undefined ? await this.namedLetterhead(input.tenant_id, input.letterhead) : undefined;
     const value = (key: string): string => {
       const v = values.get(key);
       if (v === undefined) throw this.missing(key, input.requestId);
@@ -172,6 +266,19 @@ export class RtrTemplateBindingService {
           );
       }
       return reqPromise;
+    };
+    // DOC-TEMPLATE-LIB-1 T-3 — memoize the tenant-profile read (organization.* keys).
+    type Branding = Awaited<ReturnType<TenantRepository['findBrandingById']>>;
+    let brandingPromise: Promise<Branding> | undefined;
+    const getBranding = (): Promise<Branding> => {
+      if (brandingPromise === undefined) brandingPromise = this.tenants.findBrandingById(input.tenant_id);
+      return brandingPromise;
+    };
+    const setOrganization = async (key: RtrBindingKey, pick: (b: NonNullable<Branding>) => string | null): Promise<void> => {
+      const b = await getBranding();
+      const v = (b === null ? '' : (pick(b) ?? '')).trim();
+      if (v.length === 0) throw this.missing(key, input.requestId);
+      values.set(key, v);
     };
     // Memoize the talent read — full_name + desired_pay_rate both derive from it.
     let talentPromise: ReturnType<TalentRecordRepository['findById']> | undefined;
@@ -247,6 +354,31 @@ export class RtrTemplateBindingService {
           values.set(key, name);
           break;
         }
+        // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — organization (tenant profile) variables.
+        case 'organization.name': {
+          const name = organizationName(await getBranding());
+          if (name === null) throw this.missing(key, input.requestId);
+          values.set(key, name);
+          break;
+        }
+        case 'organization.address_line1':
+          await setOrganization(key, (b) => b.address_line1);
+          break;
+        case 'organization.address_line2':
+          await setOrganization(key, (b) => b.address_line2);
+          break;
+        case 'organization.city':
+          await setOrganization(key, (b) => b.city);
+          break;
+        case 'organization.region':
+          await setOrganization(key, (b) => b.state_province);
+          break;
+        case 'organization.postal_code':
+          await setOrganization(key, (b) => b.postal_code);
+          break;
+        case 'organization.country':
+          await setOrganization(key, (b) => b.country_code);
+          break;
         default: {
           // Defense: a catalog key added without a resolver branch fails closed (never a
           // raw token / empty value in the PDF). Unreachable while the catalog + switch agree.
@@ -280,6 +412,15 @@ export class RtrTemplateBindingService {
       { requestId, details: { binding_key: key } },
     );
   }
+}
+
+// The tenant's organisation name: branding label (display_name), else legal name, else the
+// workspace name. Null when none is on record (unknown tenant).
+export function organizationName(
+  b: { name: string; display_name: string | null; legal_name: string | null } | null,
+): string | null {
+  const name = (b?.display_name ?? '').trim() || (b?.legal_name ?? '').trim() || (b?.name ?? '').trim();
+  return name.length > 0 ? name : null;
 }
 
 // Slice 1 B3 — flatten a (possibly HTML / rich-text) description to plain text for the

@@ -20,6 +20,9 @@ import { SkillDetailView } from './skills/SkillDetailView';
 import { ReviewQueueView } from './skills/ReviewQueueView';
 import { ProposalsListView } from './skills/ProposalsListView';
 import { ProposalDetailView } from './skills/ProposalDetailView';
+import { DocumentTemplatesListView } from './document-templates/DocumentTemplatesListView';
+import { DocumentTemplateDetailView } from './document-templates/DocumentTemplateDetailView';
+import { TemplateVariablesView } from './document-templates/TemplateVariablesView';
 
 // The platform console app (Inc-2 PR-2). Single guarded surface: the whole thing
 // requires platform:tenant:read. Unauthenticated → RouteGuard redirects to
@@ -128,6 +131,41 @@ export function App() {
                     <SkillDetailView session={state.session} />
                   ) : (
                     <ForbiddenState scope="platform:skill:read" />
+                  )
+                }
+              />
+              {/* DOC-TEMPLATE-LIB-1 T-2 (§8.1) — Aramo default document templates +
+                  the template variable catalog. Same pattern as the skills section:
+                  gated on platform:document_template:read (ForbiddenState otherwise);
+                  write controls gate on platform:document_template:manage inside the
+                  views. The API is authoritative. */}
+              <Route
+                path="/document-templates"
+                element={
+                  hasScope(state.session, 'platform:document_template:read') ? (
+                    <DocumentTemplatesListView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:document_template:read" />
+                  )
+                }
+              />
+              <Route
+                path="/document-templates/:id"
+                element={
+                  hasScope(state.session, 'platform:document_template:read') ? (
+                    <DocumentTemplateDetailView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:document_template:read" />
+                  )
+                }
+              />
+              <Route
+                path="/template-variables"
+                element={
+                  hasScope(state.session, 'platform:document_template:read') ? (
+                    <TemplateVariablesView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:document_template:read" />
                   )
                 }
               />

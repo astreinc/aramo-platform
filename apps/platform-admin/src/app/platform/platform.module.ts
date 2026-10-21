@@ -10,17 +10,12 @@ import {
   PrismaService as PolicyStorePrismaService,
 } from '@aramo/policy-store';
 import { SubscriptionModule } from '@aramo/subscription';
-import {
-  PrismaService as DocumentsPrismaService,
-  TemplatesRepository,
-} from '@aramo/documents';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
-import { TenantDocumentTemplateProvisioningService } from './tenant-document-template-provisioning.service.js';
 
 // PlatformModule — wires the platform-admin app's HTTP surface +
 // orchestration. Imports:
@@ -70,14 +65,9 @@ import { TenantDocumentTemplateProvisioningService } from './tenant-document-tem
     PolicyStorePrismaService,
     PolicyStore,
     TenantPolicyProvisioningService,
-    // RTR-TEMPLATE-1 (§7) — documents-store access for the provisioning-time RTR
-    // template copy (scope:platform → scope:boundary is wall-legal, same as
-    // PolicyStore). DocumentsPrismaService is the documents generated client
-    // (distinct class token from PolicyStorePrismaService); TemplatesRepository
-    // takes it. No collision: each PrismaService is a distinct class reference.
-    DocumentsPrismaService,
-    TemplatesRepository,
-    TenantDocumentTemplateProvisioningService,
+    // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
+    // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
+    // (PLATFORM) RTR default. platform-admin no longer touches the documents store.
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
   // Aramo Sign launch — the public signup module reuses the provisioning saga

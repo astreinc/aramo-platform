@@ -67,14 +67,25 @@ interface Props {
   catalogFn?: () => Promise<readonly RoleCatalogView[]>;
 }
 
+// ROLES-1 PR-2 (Directive v1.0 LOCKED §3.3/§3.5) — the organization roles (owner and
+// administrator of the whole tenant; ORG_ROLE_KEYS on the server).
+const ORG_ROLE_KEYS: readonly string[] = ['tenant_owner', 'tenant_admin'];
+
 // The product a role belongs to, for DISPLAY in the Users & invitations columns
 // only (never an access decision — the server authorizes every request). Sign
-// roles are the `esign_*` partition (the E-Sign catalog tier); `org_admin` is the
-// product-neutral organization role; every other tenant role is an ATS role
-// (ATS_PRODUCT_ROLE_KEYS on the server). "Organization admin" = the person holds
-// a role whose catalog scopes include an organization permission (tenant:admin:*).
-function rolesFor(product: 'ats' | 'sign', role_keys: readonly string[]): string[] {
-  return role_keys.filter((k) => (product === 'sign' ? k.startsWith('sign_') : !k.startsWith('sign_') && k !== 'org_admin'));
+// roles are the `sign_*` partition (the Sign catalog tier); the organization roles
+// are shown in the Organization column; every other tenant role is an ATS role
+// (ATS_PRODUCT_ROLE_KEYS on the server). A person without an organization role is
+// an "Organization admin" when one of their roles' catalog scopes includes an
+// organization permission (tenant:admin:*), else a "Member".
+function rolesFor(product: 'org' | 'ats' | 'sign', role_keys: readonly string[]): string[] {
+  return role_keys.filter((k) =>
+    product === 'org'
+      ? ORG_ROLE_KEYS.includes(k)
+      : product === 'sign'
+        ? k.startsWith('sign_')
+        : !k.startsWith('sign_') && !ORG_ROLE_KEYS.includes(k),
+  );
 }
 
 type LoadState =
@@ -262,7 +273,11 @@ export function UsersListView({
     {
       key: 'organization',
       header: 'Organization',
-      render: (u) => (isOrgAdmin(u) ? 'Organization admin' : 'Member'),
+      render: (u) => {
+        const orgRoles = rolesFor('org', u.role_keys);
+        if (orgRoles.length > 0) return <RoleChips role_keys={orgRoles} labelOf={roleLabelOf} />;
+        return isOrgAdmin(u) ? 'Organization admin' : 'Member';
+      },
     },
     {
       key: 'ats',

@@ -1,12 +1,11 @@
-import { createHash } from 'node:crypto';
-
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   DocumentsRepository,
   TemplatesRepository,
   DocumentNotFoundError,
   type DocumentStoragePort,
+  type TemplateTenantLogoPort,
 } from '@aramo/documents';
 import { TalentRecordRepository } from '@aramo/talent-record';
 import { RequisitionRepository } from '@aramo/requisition';
@@ -20,6 +19,7 @@ import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-consta
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
 import { isHtmlContent, type RtrHtmlLogoRef } from './rtr-html-content.js';
+import { captureTenantLetterhead, loadLetterhead } from './rtr-template-letterhead.js';
 
 // DOC-5 / RTR-TEMPLATE-1 — the dedicated apps/api RTR orchestrator. The ONLY layer
 // that may touch both scope:boundary Documents/E-Sign AND scope:ats TalentRecord.
@@ -104,6 +104,8 @@ export interface RtrComposeView {
 
 @Injectable()
 export class RtrOrchestratorService {
+  private readonly logger = new Logger(RtrOrchestratorService.name);
+
   constructor(
     private readonly documents: DocumentsRepository,
     // Shared governed-document signing mechanics (prepare/send/remind/state) — the common
@@ -120,6 +122,11 @@ export class RtrOrchestratorService {
     // requisition rather than supplied by the caller. The binding service already
     // reads it for request(); the orchestrator reads only the id here.
     private readonly requisitions: RequisitionRepository,
+    // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — the tenant-profile logo seam (TEMPLATE_TENANT_LOGO),
+    // used ONLY when the resolved template is an Aramo (PLATFORM) default: the tenant's
+    // logo is captured at render into a per-render tenant TemplateAsset. Absent ⇒ an Aramo
+    // default renders without a letterhead (its content is unchanged).
+    private readonly tenantLogo?: TemplateTenantLogoPort,
   ) {}
 
   // request → the PREPARE boundary (RTR-TEMPLATE-1 §11). Resolve the governed
@@ -135,25 +142,38 @@ export class RtrOrchestratorService {
       requisition_id: input.requisition_id,
       requestId: input.requestId,
     });
-    // 1. Resolve the tenant's ACTIVE RTR template and PIN its exact version.
-    //    Throws RTR_TEMPLATE_NOT_CONFIGURED / _CONFIGURATION_INVALID — no fallback.
+    // 1. Resolve the tenant's RTR template and PIN its exact version. DOC-TEMPLATE-LIB-1
+    //    T-3: selection (tenant, RTR, the requisition's CLIENT company) → selection
+    //    (tenant, RTR, tenant-wide) → the Aramo RTR default. Throws
+    //    RTR_TEMPLATE_NOT_CONFIGURED / _CONFIGURATION_INVALID — no fallback. T-6: a
+    //    withdrawn Aramo default falls to the tenant's own approved RTR template, else
+    //    TEMPLATE_SELECTION_REQUIRED (409).
+    const derived_company_id = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
     const template = await this.resolver.resolveActive({
       tenant_id: input.tenant_id,
+      client_id: derived_company_id,
       requestId: input.requestId,
     });
 
-    // 1b. Derive the CLIENT company from the requisition (the authority for client.name
-    //     and the COMPANY/CLIENT association). A caller-supplied company_id that differs
-    //     is refused — the preview (compose) and the frozen document must name the same
+    // 1b. The CLIENT company is the requisition's (the authority for client.name and the
+    //     COMPANY/CLIENT association). A caller-supplied company_id that differs is
+    //     refused — the preview (compose) and the frozen document must name the same
     //     client. Fails closed before any write.
-    const company_id = await this.resolveRequestCompany(input);
+    const company_id = this.checkRequestCompany(input, derived_company_id);
 
-    // 1c. A1 §2.4 — the version's FROZEN letterhead logo (rtr-html-v1 only): bytes read
-    //     from the TemplateAsset's storage and sha-verified. The renderer never fetches.
+    // 1c. The letterhead.
+    //     - TENANT template (A1 §2.4): the version's FROZEN logo (rtr-html-v1 only): bytes
+    //       read from the TemplateAsset's storage and sha-verified.
+    //     - Aramo (PLATFORM) default (DOC-TEMPLATE-LIB-1 §4.3): the tenant's CURRENT profile
+    //       logo, captured now into a per-render tenant TemplateAsset; the frozen revision
+    //       keeps the rendered bytes. A PLATFORM version's own content carries no tenant asset.
+    //     The renderer never fetches.
     const letterhead =
-      isHtmlContent(template.content) && template.content.logo
-        ? await this.loadLetterhead(input.tenant_id, template.content.logo, input.requestId)
-        : undefined;
+      template.owner_scope === 'PLATFORM'
+        ? await this.captureTenantLetterhead(input.tenant_id, input.created_by, input.requestId)
+        : isHtmlContent(template.content) && template.content.logo
+          ? await this.loadLetterhead(input.tenant_id, template.content.logo, input.requestId)
+          : undefined;
 
     // 2. Resolve the closed binding catalog → a fully-resolved RenderModel pinned
     //    to the exact template version. Throws RTR_TEMPLATE_BINDING_MISSING /
@@ -372,16 +392,17 @@ export class RtrOrchestratorService {
     // 1. Resolve the tenant's ACTIVE RTR template + pin its current version. Throws
     //    RTR_TEMPLATE_NOT_CONFIGURED when none is active, _CONFIGURATION_INVALID when
     //    the active template/version is unusable. No fallback (INV-12).
+    // 2. Derive the requisition's CLIENT company (the authoritative client.name source and,
+    //    DOC-TEMPLATE-LIB-1 T-3, the client the selection is looked up for). Tenant-scoped
+    //    read; null ⇒ empty, which fails closed in bind() IFF the resolved template actually
+    //    references {{client.name}} (RTR_TEMPLATE_BINDING_MISSING).
+    const derived_company_id = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
     const template = await this.resolver.resolveActive({
       tenant_id: input.tenant_id,
+      client_id: derived_company_id,
       requestId: input.requestId,
     });
-
-    // 2. Derive the requisition's CLIENT company (the authoritative client.name source).
-    //    Tenant-scoped read; null ⇒ empty, which fails closed in bind() IFF the active
-    //    template actually references {{client.name}} (RTR_TEMPLATE_BINDING_MISSING).
-    const company_id =
-      (await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id })) ?? '';
+    const company_id = derived_company_id ?? '';
 
     // 3. REAL-BIND the active version's content for THIS (talent, requisition, actor) and
     //    render in memory. Reuses the exact send-path binding/substitution; a missing
@@ -446,8 +467,7 @@ export class RtrOrchestratorService {
   // request() company authority — the requisition's CLIENT company. Null (unknown
   // requisition, or one with no client) fails closed; a supplied id that differs is a
   // mismatch. Both are 422 VALIDATION_ERROR with a typed details.reason.
-  private async resolveRequestCompany(input: RtrRequestInput): Promise<string> {
-    const derived = await this.requisitions.findCompanyId({ tenant_id: input.tenant_id, id: input.requisition_id });
+  private checkRequestCompany(input: RtrRequestInput, derived: string | null): string {
     if (derived === null) {
       throw new AramoError('VALIDATION_ERROR', 'requisition has no client company; an RTR cannot be requested', 422, {
         requestId: input.requestId,
@@ -463,18 +483,19 @@ export class RtrOrchestratorService {
     return derived;
   }
 
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — brand an Aramo default with the tenant's logo (shared
+  // with the Aramo Sign template render, T-5: rtr-template-letterhead.ts).
+  private async captureTenantLetterhead(tenant_id: string, actor_id: string, requestId: string): Promise<LetterheadModel | undefined> {
+    return captureTenantLetterhead(
+      { templates: this.templates, storage: this.storage, logger: this.logger, ...(this.tenantLogo !== undefined ? { tenantLogo: this.tenantLogo } : {}) },
+      tenant_id,
+      actor_id,
+      requestId,
+    );
+  }
+
   private async loadLetterhead(tenant_id: string, logo: RtrHtmlLogoRef, requestId: string): Promise<LetterheadModel> {
-    const invalid = (reason: string): AramoError =>
-      new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'The active Right to Represent template logo is not usable', 422, {
-        requestId,
-        details: { reason },
-      });
-    const asset = await this.templates.findAssetById(tenant_id, logo.asset_id);
-    if (asset === null) throw invalid('logo_asset_missing');
-    const bytes = await this.storage.getArtifact({ storage_key: asset.storage_locator, requestId, maxBytes: 1024 * 1024 });
-    const sha = createHash('sha256').update(bytes).digest('hex');
-    if (sha !== asset.sha256 || sha !== logo.sha256) throw invalid('logo_asset_hash_mismatch');
-    return { image_bytes: new Uint8Array(bytes), image_format: logo.mime === 'image/png' ? 'PNG' : 'JPG', image_sha256: sha, name: null };
+    return loadLetterhead({ templates: this.templates, storage: this.storage }, tenant_id, logo, requestId);
   }
 
   private async frozenTitle(tenant_id: string, document_id: string): Promise<string> {
@@ -503,9 +524,11 @@ export class RtrOrchestratorService {
   private async resolveProvenance(tenant_id: string, document_id: string): Promise<RtrProvenanceView | null> {
     const revision = await this.documents.getCurrentRevision(tenant_id, document_id);
     if (revision === null || revision.template_version_id === null) return null;
-    const version = await this.templates.findVersionById(tenant_id, revision.template_version_id);
+    // DOC-TEMPLATE-LIB-1 §4.4 — owner-aware: a tenant Document may pin a PLATFORM
+    // (Aramo default) version. Tenant-owned results are unchanged.
+    const version = await this.templates.findVersionByIdOwnerAware(tenant_id, revision.template_version_id);
     if (version === null) return null;
-    const template = await this.templates.findTemplateById(tenant_id, version.template_id);
+    const template = await this.templates.findTemplateByIdOwnerAware(tenant_id, version.template_id);
     if (template === null) return null;
     return { name: template.name, version_number: version.version_number };
   }
