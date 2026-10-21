@@ -742,10 +742,13 @@
       "ESIGN_S2S_TIMESTAMP_HEADER",
       "ESIGN_S2S_TIMESTAMP_TOLERANCE_SEC",
       "SIGNATURE_PROVIDER_PORT",
+      "SIGN_TEMPLATE_BODY_DIGEST_PARAM",
+      "SIGN_TEMPLATE_LIBRARY_PATH",
       "canonicalEsignS2sRequest",
       "computeEsignS2sSignature",
       "normalizeEsignS2sQuery",
       "signEsignServiceRequest",
+      "signTemplateBodyDigest",
       "signatureActor",
       "verifyEsignServiceRequest"
     ],
@@ -2990,6 +2993,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -3931,6 +3940,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t4-template-library-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5266,6 +5281,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -6880,6 +6901,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/es2-esign-service-source-auth.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -6956,9 +6983,20 @@
         "project": "sign-service",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sender-templates.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" },
       {
         "from": "pact/consumers/sign-source-consumer/src/source-pull.consumer.test.ts",
+        "project": "sign-source-consumer-pact",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/consumers/sign-source-consumer/src/template-library.consumer.test.ts",
         "project": "sign-source-consumer-pact",
         "status": "unscoped"
       }
@@ -8710,6 +8748,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ci-b6-composition-adapters.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },

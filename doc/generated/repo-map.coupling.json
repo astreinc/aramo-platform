@@ -3936,6 +3936,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/doclib-t5-sign-templates-http.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/doclib-t6-withdrawal-http.integration.spec.ts",
       "status": "excluded",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
@@ -11259,6 +11265,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/documents/documents-esign-templates.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/documents/documents-esign.controller.ts"
     },
     {
@@ -11495,6 +11506,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/integrations/sign-api.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/esign-sender-templates.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -20046,6 +20062,11 @@
       "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20877,6 +20898,18 @@
       "from": "libs/identity/src/tests/doclib-t4-document-template-grants-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/doclib-t5-remove-sign-template-scopes-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
