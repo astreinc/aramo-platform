@@ -942,6 +942,8 @@
       "TENANT_ASSIGNABLE_ROLE_KEYS",
       "TENANT_COGNITO_PORT",
       "TENANT_KINDS",
+      "TENANT_LAST_OWNER_DB_MARKER",
+      "TENANT_OWNER_ROLE_KEY",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
@@ -968,11 +970,13 @@
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
       "isTenantKind",
+      "isTenantLastOwnerViolation",
       "isTenantStatus",
       "normalizeEmail",
       "normalizeIdp",
       "normalizeSlug",
       "requiredCapabilityForConsumer",
+      "rethrowTenantLastOwner",
       "signEntryActivated",
       "signEntryUrl"
     ],
@@ -5180,6 +5184,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/seed-platform-owner.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -8357,6 +8367,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/roles1-owner-grant-rule.spec.ts",
         "project": "identity",
         "status": "excluded"
       },

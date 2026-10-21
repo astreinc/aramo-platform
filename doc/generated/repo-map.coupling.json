@@ -18849,6 +18849,11 @@
       "to": "libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql"
     },
     {
+      "from": "doc/runbooks/tenant-last-owner-invariant.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql"
+    },
+    {
       "from": "doc/runbooks/tenant-llm-key-onboarding.md",
       "status": "unscoped",
       "to": "infrastructure-lightsail/main.tf"
@@ -19988,6 +19993,11 @@
       "to": "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20694,6 +20704,11 @@
       "to": "libs/identity/src/lib/util/tenant-kind.ts"
     },
     {
+      "from": "libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql",
+      "status": "unscoped",
+      "to": "doc/runbooks/tenant-last-owner-invariant.md"
+    },
+    {
       "from": "libs/identity/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -20807,6 +20822,12 @@
       "from": "libs/identity/src/tests/identity.integration.spec.ts",
       "status": "excluded",
       "to": "libs/consent/src/tests/consent.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021120000_roles1_last_owner_invariant/migration.sql"
     },
     {
       "from": "libs/import/prisma/schema.prisma",
