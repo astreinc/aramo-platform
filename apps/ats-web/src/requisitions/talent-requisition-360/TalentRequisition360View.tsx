@@ -496,8 +496,13 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       glyph: rtr.done ? '✓' : '1',
       pill: rtr.pill,
       tone: rtr.tone,
-      ...(card?.rtr_status === 'NOT_SENT' && canSendRtr
-        ? { cta: 'Send RTR', ctaPrimary: true, onCta: () => setRtrOpen(true) }
+      // Remediation Directive v1.0 R2 — Send RTR only from Talent responded (DEF-7, RTR-1 AC-21),
+      // and again after an RTR ended unsigned (DEF-12).
+      ...((card?.rtr_status === 'NOT_SENT' || card?.rtr_status === 'DECLINED' || card?.rtr_status === 'EXPIRED') &&
+      canSendRtr &&
+      pipeline !== null &&
+      ['talent_responded', 'qualifying', 'qualified'].includes(pipeline.status)
+        ? { cta: card?.rtr_status === 'NOT_SENT' ? 'Send RTR' : 'Send a new RTR', ctaPrimary: true, onCta: () => setRtrOpen(true) }
         : card?.rtr_status === 'NOT_SENT' && rtrBlocked !== null
           ? { cta: 'Send RTR', ctaPrimary: false, ctaDisabledReason: RTR_UNAVAILABLE[rtrBlocked].detail }
         : card?.rtr_status === 'SENT' && canRemindRtr

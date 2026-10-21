@@ -7,6 +7,8 @@ import { staticSignatureRouter } from '../document-signing/signature-router.js';
 import { RtrOrchestratorService } from '../rtr/rtr-orchestrator.service.js';
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // COMM-RECRUITER-W1 (W1-C) — RTR duplicate-send guard + same-envelope reminder
 // ORCHESTRATION (fast, provider-faked). The same-envelope session revoke/reissue
 // + token security are proven on real Postgres in
@@ -72,6 +74,7 @@ function makeOrchestrator(opts: {
     {} as never, // templates
     {} as never, // storage
     { findStatusById: async () => 'open' } as never, // v1.2 §5.6 — requisition status (open)
+    episodeReaderAt(), // Remediation v1.0 R2 (DEF-7) — the Talent has responded
   );
   return { orch, createEnvelope, sendEnvelope, remindEnvelopeSigner, findEnvelopeForDocument, documents };
 }

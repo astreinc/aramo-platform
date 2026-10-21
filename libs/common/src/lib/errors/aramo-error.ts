@@ -330,6 +330,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   REQUISITION_STATUS_TERMINAL: 409,
   // Talent Lifecycle R1–R5 Impl Directive v1.2 §7.2 (S4).
   PIPELINE_EVIDENCE_INADMISSIBLE: 422,
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-7).
+  RTR_STAGE_NOT_ELIGIBLE: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

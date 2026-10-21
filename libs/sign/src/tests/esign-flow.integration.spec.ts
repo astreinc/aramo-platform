@@ -192,8 +192,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 E-Sign life
     expect(box.rows[0].published_at).toBeNull();
     const publishedCount = await outbox.drain();
     expect(publishedCount).toBeGreaterThanOrEqual(1);
-    expect(publisher.published[0]!.event_type).toBe('sign.envelope.executed.v1');
-    expect(publisher.published[0]!.artifact_refs.has_certificate).toBe(true);
+    // Remediation v1.0 R2 (DEF-12) — terminal events from earlier tests in this tenant (e.g. a void)
+    // are published by the same drain, so pick THIS envelope's executed event.
+    const executedEvent = publisher.published.find((p) => p.event_type === 'sign.envelope.executed.v1' && p.envelope_id === envelopeId);
+    expect(executedEvent).toBeDefined();
+    expect(executedEvent!.artifact_refs.has_certificate).toBe(true);
     // Re-draining is idempotent — the published row is not re-emitted.
     const publishedAgain = await outbox.drain();
     expect(publishedAgain).toBe(0);

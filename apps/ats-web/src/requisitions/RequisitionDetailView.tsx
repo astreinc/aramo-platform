@@ -1569,6 +1569,7 @@ function TalentJourney({
                     clientName={companyName}
                     requisitionTitle={req.title}
                     recipientEmail={email}
+                    stage={p.status}
                   />
                   {/* Accidental-Add Correction — "Remove from requisition" appears ONLY when the
                       backend deems this episode VOID-eligible (server-authoritative; never from

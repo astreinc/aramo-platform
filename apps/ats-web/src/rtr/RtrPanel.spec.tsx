@@ -35,7 +35,7 @@ function current(partial: Partial<RtrCurrentResponse>): RtrCurrentResponse {
   };
 }
 
-function renderPanel(over?: { canRead?: boolean; canRequest?: boolean; canSend?: boolean }) {
+function renderPanel(over?: { canRead?: boolean; canRequest?: boolean; canSend?: boolean; stage?: string; rtrRequired?: boolean }) {
   return render(
     <RtrPanel
       talentId="t-1"
@@ -44,6 +44,8 @@ function renderPanel(over?: { canRead?: boolean; canRequest?: boolean; canSend?:
       canRead={over?.canRead ?? true}
       canRequest={over?.canRequest ?? true}
       canSend={over?.canSend ?? true}
+      {...(over?.stage === undefined ? {} : { stage: over.stage })}
+      {...(over?.rtrRequired === undefined ? {} : { rtrRequired: over.rtrRequired })}
     />,
   );
 }
@@ -225,5 +227,49 @@ describe('RtrPanel', () => {
     expect(missing.textContent).not.toContain('requisition reference');
     // Fail-closed: the modal stays open and Send is disabled (Aramo never substitutes).
     expect(screen.getByTestId('send-rtr-send')).toBeDisabled();
+  });
+
+  // ---- Pipeline & RTR Recon Remediation Directive v1.0 R2 ----
+  it('R2 DEF-7 — before Talent responded, no Request RTR (explained)', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(null);
+    renderPanel({ stage: 'contacted' });
+    expect(await screen.findByText('Available once the talent responds')).toBeInTheDocument();
+    expect(screen.queryByText('Request RTR')).not.toBeInTheDocument();
+  });
+
+  it('R2 DEF-7 — from Talent responded, Request RTR is offered', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(null);
+    renderPanel({ stage: 'talent_responded' });
+    expect(await screen.findByText('Request RTR')).toBeInTheDocument();
+  });
+
+  it('R2 DEF-12 — a declined RTR shows its outcome and offers a new request', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValueOnce(current({ status: 'DECLINED', document_status: 'DECLINED', preview_available: false })).mockResolvedValue(current({ status: 'REQUESTED' }));
+    vi.mocked(requestRtr).mockResolvedValue({ document_id: 'doc-2' });
+    renderPanel({ stage: 'qualifying' });
+    expect(await screen.findByText('Declined by the talent')).toBeInTheDocument();
+    expect(screen.queryByText('Awaiting signature')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('Request a new RTR'));
+    await waitFor(() => expect(requestRtr).toHaveBeenCalledTimes(1));
+  });
+
+  it('R2 DEF-12 — an expired RTR shows "Expired unsigned"', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'EXPIRED', document_status: 'EXPIRED', preview_available: false }));
+    renderPanel({ stage: 'qualified' });
+    expect(await screen.findByText('Expired unsigned')).toBeInTheDocument();
+    expect(screen.getByText('Request a new RTR')).toBeInTheDocument();
+  });
+
+  it('R2 DEF-15(a) — the "required before qualifying" line appears only when the policy requires it', async () => {
+    vi.mocked(getCurrentRtr).mockResolvedValue(current({ status: 'REQUESTED' }));
+    // The line lives in the Send-for-signature dialog's footnote.
+    const { unmount } = renderPanel();
+    fireEvent.click(await screen.findByText('Send for signature'));
+    expect(await screen.findByText(/The document is frozen from v1 when sent\./)).toBeInTheDocument();
+    expect(screen.queryByText(/A signed RTR is required before qualifying/)).not.toBeInTheDocument();
+    unmount();
+    renderPanel({ rtrRequired: true });
+    fireEvent.click(await screen.findByText('Send for signature'));
+    expect(await screen.findByText(/A signed RTR is required before qualifying/)).toBeInTheDocument();
   });
 });

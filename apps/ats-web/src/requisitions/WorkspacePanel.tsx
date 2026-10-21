@@ -24,7 +24,7 @@ import {
 } from './requisition-talent-board-api';
 import { useRequisitionTalentActions } from './requisition-talent-actions';
 import { talentRequisition360Path } from './talent-requisition-360/route';
-import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, type RtrAffordanceKind } from './rtr-affordance';
+import { rtrAffordanceKind, rtrEndedLabel, RTR_POLICY_UNRESOLVED_DETAIL, type RtrAffordanceKind } from './rtr-affordance';
 import type { TalentView } from './useTalentViewPreference';
 import type { RequisitionView } from './types';
 import type { AttentionItem, TabId } from './RequisitionDetailView';
@@ -728,6 +728,8 @@ function TalentInPlayRow({
       {cells.map((c) =>
         c.label === 'RTR' ? (
           <span key={c.label} className="rc-tip__cell rc-tip__rtrcell">
+            {/* R2 (DEF-12) — an RTR that ended unsigned states its outcome next to Send RTR. */}
+            {rtrEndedLabel(card) !== null ? <span className="rc-tip__val rc-tip__val--warn">{rtrEndedLabel(card)}</span> : null}
             <RtrCell kind={rtrKind} blocked={rtrBlocked} onSendRtr={onSendRtr !== undefined ? stop(onSendRtr) : undefined} onOpen={stop(onOpen)} />
           </span>
         ) : (

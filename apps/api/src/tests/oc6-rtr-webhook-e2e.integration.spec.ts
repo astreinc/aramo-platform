@@ -9,7 +9,7 @@ import type { INestApplication } from '@nestjs/common';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   DocumentsRepository,
   DocumentIdempotencyService,
@@ -20,6 +20,7 @@ import {
 
 import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
 import { EsignWriteBackOrchestrator, EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
+import { EsignSigningEndedRecorder } from '../documents/esign-signing-ended.js';
 
 import { makeDocumentReadinessGate, rtrPolicyStub } from './helpers/rtr-readiness-harness.js';
 
@@ -61,6 +62,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let sql: Client;
     let docsPrisma: DocumentsPrismaService;
     let app: INestApplication;
+    const signingEnded = { record: vi.fn() };
     let baseUrl: string;
     let readiness: ReturnType<typeof makeDocumentReadinessGate>;
 
@@ -144,6 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         applyLegalHold: async () => undefined,
       } as unknown as DocumentStoragePort;
 
+      signingEnded.record.mockResolvedValue('recorded');
       const writeBack = new DocumentExecutedWriteBackService(
         docsPrisma,
         storageStub,
@@ -156,6 +159,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           EsignWriteBackOrchestrator,
           { provide: EsignExecutedArtifactsClient, useValue: stubClient },
           { provide: DocumentExecutedWriteBackService, useValue: writeBack },
+          // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / expired / voided.
+          { provide: EsignSigningEndedRecorder, useValue: signingEnded },
         ],
       }).compile();
 
@@ -234,6 +239,33 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const wrong = await readiness.assess({ tenant_id: TENANT, talent_id: TALENT, requisition_id: WRONG_REQUISITION });
       expect(wrong.satisfied).toBe(false);
       expect(wrong.deny).toBe('SUBMITTAL_RTR_NOT_EXECUTED');
+    });
+
+    // Remediation Directive v1.0 R2 (DEF-12) — a signed DECLINED event reaches the ended-signing
+    // recorder (not the executed write-back) and is acknowledged.
+    it('routes a signed sign.envelope.declined.v1 event to the ended-signing recorder', async () => {
+      const event = {
+        event_id: randomUUID(),
+        event_type: 'sign.envelope.declined.v1',
+        event_version: 1,
+        occurred_at: new Date().toISOString(),
+        tenant_id: TENANT,
+        envelope_id: ENVELOPE_ID,
+        correlation_id: randomUUID(),
+        artifact_refs: { executed_document_ids: [], has_certificate: false },
+      };
+      const rawBody = JSON.stringify(event);
+      const ts = String(Math.floor(Date.now() / 1000));
+      const sig = createHmac('sha256', WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest('base64');
+      const res = await fetch(`${baseUrl}/v1/integrations/sign/events`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', [TS_HEADER]: ts, [SIG_HEADER]: sig },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      expect(signingEnded.record).toHaveBeenCalledWith(
+        expect.objectContaining({ tenant_id: TENANT, envelope_id: ENVELOPE_ID, status: 'DECLINED' }),
+      );
     });
 
     it('rejects an unsigned webhook (auth is enforced, not bypassed by the E2E)', async () => {

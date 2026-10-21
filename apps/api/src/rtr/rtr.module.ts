@@ -19,6 +19,7 @@ import { TalentRecordModule, TalentRecordRepository } from '@aramo/talent-record
 // IdentityCoreModule is the SHARED read surface (exports IdentityRepository +
 // TenantRepository) — NOT forRoot-only IdentityModule (apps/api-root exclusive).
 import { RequisitionModule, RequisitionRepository } from '@aramo/requisition';
+import { PipelineModule, PipelineRepository } from '@aramo/pipeline';
 import { CompanyModule, CompanyRepository } from '@aramo/company';
 import { IdentityCoreModule, IdentityRepository, TenantRepository } from '@aramo/identity';
 
@@ -51,7 +52,7 @@ const RTR_SIGNING = 'RTR_SIGNING';
 @Module({
   // EntitlementModule — EntitlementGuard for the RTR controller's `sign` capability
   // gate; SignatureRoutingModule — provider routing + availability for the send path.
-  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, EntitlementModule, SignatureRoutingModule],
+  imports: [ObjectStorageModule, TalentRecordModule, RequisitionModule, CompanyModule, IdentityCoreModule, EntitlementModule, SignatureRoutingModule, PipelineModule],
   controllers: [RtrController],
   providers: [
     { provide: RTR_DOCS_PRISMA, useFactory: (): DocumentsPrismaService => new DocumentsPrismaService() },
@@ -120,8 +121,9 @@ const RTR_SIGNING = 'RTR_SIGNING';
         templates: TemplatesRepository,
         storage: DocumentStoragePort,
         requisitions: RequisitionRepository,
+        pipelines: PipelineRepository,
       ): RtrOrchestratorService =>
-        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage, requisitions),
+        new RtrOrchestratorService(documents, signing, talent, resolver, binding, templates, storage, requisitions, pipelines),
       inject: [
         RTR_DOCS_REPO,
         RTR_SIGNING,
@@ -131,6 +133,8 @@ const RTR_SIGNING = 'RTR_SIGNING';
         RTR_TEMPLATES_REPO,
         RTR_DOCS_STORAGE,
         RequisitionRepository,
+        // Remediation Directive v1.0 R2 (DEF-7) — the RTR stage check reads the live episode.
+        PipelineRepository,
       ],
     },
   ],

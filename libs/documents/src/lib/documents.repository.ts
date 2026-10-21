@@ -140,6 +140,86 @@ export class DocumentsRepository {
     }
   }
 
+  // Pipeline & RTR Recon Remediation Directive v1.0 §2 R2 (DEF-8; RTR-1 §24 "Do not create duplicate
+  // Documents or envelopes") — create a DRAFT document, OR return the live DRAFT that already exists
+  // for the same tenant × type × associations. The lookup and the insert run in ONE transaction
+  // serialized by a transaction-scoped advisory lock keyed on that identity, so two concurrent
+  // requests produce exactly one document. No migration (no uniqueness index exists for this).
+  async createDocumentReusingDraft(input: CreateDocumentInput): Promise<{ document: { id: string; status: string }; reused: boolean }> {
+    const assoc = input.associations ?? [];
+    const key = [
+      'doc-draft',
+      input.tenant_id,
+      input.document_type_id,
+      ...assoc.map((a) => `${a.resource_type}:${a.resource_id}:${a.relationship}`).sort(),
+    ].join('|');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+      const existing = await tx.document.findFirst({
+        where: {
+          tenant_id: input.tenant_id,
+          document_type_id: input.document_type_id,
+          status: 'DRAFT',
+          AND: assoc.map((a) => ({
+            associations: {
+              some: { resource_type: a.resource_type, resource_id: a.resource_id, relationship: a.relationship },
+            },
+          })),
+        },
+        orderBy: { created_at: 'desc' },
+      });
+      if (existing !== null) return { document: existing, reused: true };
+      const documentId = randomUUID();
+      await tx.document.create({
+        data: {
+          id: documentId,
+          tenant_id: input.tenant_id,
+          document_type_id: input.document_type_id,
+          title: input.title,
+          status: 'DRAFT',
+          execution_mode: input.execution_mode,
+          source_kind: input.source_kind,
+          created_by: input.created_by,
+        },
+      });
+      for (const a of assoc) {
+        await tx.documentAssociation.create({
+          data: {
+            id: randomUUID(),
+            tenant_id: input.tenant_id,
+            document_id: documentId,
+            resource_type: a.resource_type,
+            resource_id: a.resource_id,
+            relationship: a.relationship,
+            created_by: input.created_by,
+          },
+        });
+      }
+      await tx.documentEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          document_id: documentId,
+          event_type: 'DOCUMENT_CREATED',
+          actor_type: 'USER',
+          actor_id: input.created_by,
+          correlation_id: input.correlation_id ?? null,
+          request_id: input.request_id ?? null,
+          payload: { document_type_id: input.document_type_id },
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          event_type: 'document.created.v1',
+          event_payload: { document_id: documentId, document_type_id: input.document_type_id },
+        },
+      });
+      return { document: await tx.document.findFirstOrThrow({ where: { id: documentId } }), reused: false };
+    });
+  }
+
   async createDocumentType(input: {
     tenant_id: string;
     key: string;
@@ -603,7 +683,68 @@ export class DocumentsRepository {
       return tx.document.findFirstOrThrow({ where: { id: input.document_id } });
     });
   }
+
+  // Pipeline & RTR Recon Remediation Directive v1.0 §2 R2 (DEF-12; RTR-TEMPLATE-1 §18 backend-derived
+  // state) — record that the document's signing ENDED without execution: the signer declined
+  // (DECLINED), the window passed (EXPIRED), or the sender withdrew it (VOIDED). Only a document
+  // awaiting signature moves (PREPARED / EXECUTION_PENDING); EXECUTED is never overwritten and a
+  // repeat of the same outcome is a no-op (idempotent redelivery). Returns whether it changed.
+  async markSigningEnded(input: {
+    tenant_id: string;
+    document_id: string;
+    status: 'DECLINED' | 'EXPIRED' | 'VOIDED';
+    actor_id: string;
+    correlation_id?: string;
+    request_id?: string;
+  }): Promise<{ changed: boolean; status: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const won = await tx.document.updateMany({
+        where: {
+          tenant_id: input.tenant_id,
+          id: input.document_id,
+          status: { in: SIGNING_AWAITED_STATUSES },
+        },
+        data: { status: input.status, ...(input.status === 'VOIDED' ? { voided_at: new Date() } : {}) },
+      });
+      if (won.count !== 1) {
+        const current = await tx.document.findFirst({
+          where: { tenant_id: input.tenant_id, id: input.document_id },
+          select: { status: true },
+        });
+        if (current === null) throw new DocumentNotFoundError(input.document_id);
+        return { changed: false, status: current.status };
+      }
+      await tx.documentEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          document_id: input.document_id,
+          event_type: `DOCUMENT_${input.status}`,
+          actor_type: 'SYSTEM',
+          actor_id: input.actor_id,
+          correlation_id: input.correlation_id ?? null,
+          request_id: input.request_id ?? null,
+          payload: {},
+        },
+      });
+      await tx.outboxEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          event_type: `document.${input.status.toLowerCase()}.v1`,
+          event_payload: { document_id: input.document_id },
+        },
+      });
+      return { changed: true, status: input.status };
+    });
+  }
 }
+
+// R2 (DEF-12) — the statuses in which a document is awaiting signature.
+const SIGNING_AWAITED_STATUSES = ['PREPARED', 'EXECUTION_PENDING'];
+
+// R2 (DEF-12) — a document whose signing ended without execution is never the "live" current one.
+const ENDED_UNEXECUTED_STATUSES: ReadonlySet<string> = new Set(['VOIDED', 'DECLINED', 'EXPIRED']);
 
 // The current-document status among a talent's documents (passed created_at desc), mirroring
 // rtr-orchestrator.selectCurrent EXACTLY so a batched board chip matches the per-pair drawer read:
@@ -611,7 +752,7 @@ export class DocumentsRepository {
 // NON-EMPTY arrays (a talent is present only with ≥1 document); the final 'VOIDED' is an
 // unreachable, type-satisfying floor (it maps to the mute NOT_SENT chip, never a false Confirmed).
 function selectCurrentDocStatus(statuses: readonly string[]): string {
-  const live = statuses.find((s) => s !== 'EXECUTED' && s !== 'VOIDED');
+  const live = statuses.find((s) => s !== 'EXECUTED' && !ENDED_UNEXECUTED_STATUSES.has(s));
   const executed = statuses.find((s) => s === 'EXECUTED');
   return live ?? executed ?? statuses[0] ?? 'VOIDED';
 }

@@ -282,6 +282,26 @@ export class EsignRepository {
       actor_ref: input.actor_ref,
       payload: input.payload,
     });
+    // Pipeline & RTR Recon Remediation Directive v1.0 §2 R2 (DEF-12) — a declined / voided / expired
+    // envelope is PUBLISHED to its consuming application through the SAME transactional outbox as
+    // the executed event (refs only, no bytes / PII), in THIS transaction: the state change and its
+    // event commit together. Previously only execution was published, so the ATS never learned an
+    // RTR was declined or expired.
+    const terminalEventType = TERMINAL_OUTBOX_EVENT_TYPES[input.to];
+    if (terminalEventType !== undefined) {
+      await tx.outboxEvent.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          event_type: terminalEventType,
+          event_payload: {
+            envelope_id: input.envelope_id,
+            correlation_id: randomUUID(),
+            artifact_refs: { executed_document_ids: [], has_certificate: false },
+          },
+        },
+      });
+    }
     return tx.signatureEnvelope.findFirstOrThrow({ where: { id: input.envelope_id, tenant_id: input.tenant_id } });
   }
 
@@ -397,3 +417,10 @@ export class EsignRepository {
     });
   }
 }
+
+// R2 (DEF-12) — the terminal envelope statuses published to consumers (besides execution).
+const TERMINAL_OUTBOX_EVENT_TYPES: Readonly<Record<string, string>> = {
+  DECLINED: 'sign.envelope.declined.v1',
+  VOIDED: 'sign.envelope.voided.v1',
+  EXPIRED: 'sign.envelope.expired.v1',
+};

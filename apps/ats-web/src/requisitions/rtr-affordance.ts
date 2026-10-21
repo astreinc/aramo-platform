@@ -39,7 +39,9 @@ export function rtrAffordanceKind(
   if (status === 'NOT_REQUIRED') return 'none'; // EXPLICITLY relaxed → "Not required"
   if (status === 'CONFIRMED') return 'signed';
   if (status === 'SENT') return 'awaiting';
-  // status === 'NOT_SENT' — required but nothing sent to the talent yet.
+  // status === 'NOT_SENT' — required but nothing sent to the talent yet. Pipeline & RTR Recon
+  // Remediation Directive v1.0 R2 (DEF-12) — DECLINED / EXPIRED: the last RTR ended unsigned, so a
+  // new one is needed; it follows the same due / send rule (rtrEndedLabel adds the outcome).
   if (card.owner === 'pipeline' && PRE_RESPONDED_STATES.has(card.owner_state)) return 'due';
   return 'send';
 }
@@ -49,3 +51,11 @@ export function rtrAffordanceKind(
 export const RTR_POLICY_UNRESOLVED_LABEL = 'RTR · Policy not set';
 export const RTR_POLICY_UNRESOLVED_DETAIL =
   "Right to Represent policy isn't set for this client. Ask an admin to set it in the client's submittal policy before qualifying.";
+
+// R2 (DEF-12; RTR-TEMPLATE-1 §18 backend-derived state) — the outcome of an RTR that ended
+// unsigned, shown next to the Send RTR affordance. Null when the last RTR did not end that way.
+export function rtrEndedLabel(card: Pick<BoardCardView, 'rtr_status'>): string | null {
+  if (card.rtr_status === 'DECLINED') return 'RTR · Declined by the talent';
+  if (card.rtr_status === 'EXPIRED') return 'RTR · Expired unsigned';
+  return null;
+}

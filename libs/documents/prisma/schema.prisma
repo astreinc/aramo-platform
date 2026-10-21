@@ -56,7 +56,7 @@ model Document {
   document_type_id     String    @db.Uuid
   template_version_id  String?   @db.Uuid
   title                String
-  status               String // CHECK: DRAFT|PREPARED|EXECUTION_PENDING|EXECUTED|VOIDED|EXPIRED|ARCHIVED
+  status               String // CHECK: DRAFT|PREPARED|EXECUTION_PENDING|EXECUTED|VOIDED|EXPIRED|DECLINED|ARCHIVED (DECLINED: Remediation v1.0 R2)
   execution_mode       String // CHECK: NO_SIGNATURE|ACKNOWLEDGEMENT|SINGLE_SIGNATURE|MULTI_SIGNATURE
   current_revision_id  String?   @db.Uuid // FK -> DocumentRevision added in migration (avoids Prisma cycle)
   source_kind          String // CHECK: TEMPLATE_GENERATED|UPLOADED|EXTERNAL_IMPORT

@@ -12,7 +12,14 @@ import { checkTargetResolves } from './webhook-target.js';
 
 // The lifecycle events Aramo Sign publishes (S-5 subscriptions filter on these;
 // an empty list subscribes to all).
-export const SIGN_WEBHOOK_EVENT_TYPES = ['sign.envelope.executed.v1'] as const;
+// Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — declined / voided / expired are
+// published too, so a consumer (the ATS RTR readiness) never shows a dead envelope as awaiting.
+export const SIGN_WEBHOOK_EVENT_TYPES = [
+  'sign.envelope.executed.v1',
+  'sign.envelope.declined.v1',
+  'sign.envelope.voided.v1',
+  'sign.envelope.expired.v1',
+] as const;
 
 // Sign Unified Product S-4 (directive §4.4.1) — installation administration in the
 // Sign workspace (sign:integration:manage — Sign Admin / Owner). An installation

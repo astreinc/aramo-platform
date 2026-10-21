@@ -1021,6 +1021,9 @@ export const ERROR_CODES = [
   // is not admissible for that stage, could not be verified, or (a recruiter confirmation's
   // source) is not a substantive response. details.reason names which. HTTP 422.
   'PIPELINE_EVIDENCE_INADMISSIBLE',
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-7; RTR-1 AC-21) — an RTR is requested
+  // or sent only from Talent responded onward; the Talent's episode is at an earlier stage. HTTP 409.
+  'RTR_STAGE_NOT_ELIGIBLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

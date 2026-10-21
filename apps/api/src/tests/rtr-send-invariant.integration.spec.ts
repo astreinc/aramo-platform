@@ -26,6 +26,8 @@ import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // RTR-TEMPLATE-1 (§12, §34, INV-3) — the SEND INVARIANT, with guard assertions.
 // send() consumes the already-frozen RTR revision. A template version activated
 // AFTER request cannot change what is sent, and send() must touch NEITHER the
@@ -118,7 +120,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // supplied company_id must match it.
       // v1.2 §5.6 — the pre-send CONTACT_SEND gate reads the requisition status (open here).
       const fakeRequisitions = { findCompanyId: async () => CLIENT_COMPANY, findStatusById: async () => 'open' } as never;
-      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, staticSignatureRouter(fakeSignature)), fakeTalent, resolver, binding, templates, storageStub, fakeRequisitions);
+      orchestrator = new RtrOrchestratorService(docsRepo, new GovernedDocumentSigningService(docsRepo, render, staticSignatureRouter(fakeSignature)), fakeTalent, resolver, binding, templates, storageStub, fakeRequisitions, episodeReaderAt());
     }, 180_000);
 
     afterAll(async () => {

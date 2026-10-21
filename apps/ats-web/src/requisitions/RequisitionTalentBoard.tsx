@@ -20,7 +20,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { governedDropTargets, resolveGovernedMove } from './board-governed-move';
-import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, RTR_POLICY_UNRESOLVED_LABEL } from './rtr-affordance';
+import { rtrAffordanceKind, RTR_POLICY_UNRESOLVED_DETAIL, RTR_POLICY_UNRESOLVED_LABEL, rtrEndedLabel } from './rtr-affordance';
 
 // Requisition Talent Board (TB-2) — the read-only Board experience for Requisition Detail →
 // Talent, pixel-matched to the approved prototype (platform/TalentBoard.dc.html). A projection
@@ -253,6 +253,7 @@ function BoardCard({
   // RTR affordance (shared mapping) — actionable only when the actor can initiate (onSendRtr
   // present). The governed request→send stays the mutation authority.
   const rtrKind = rtrAffordanceKind(card);
+  const rtrEnded = rtrEndedLabel(card); // R2 (DEF-12)
   // Same-envelope RTR reminder (COMM-RECRUITER-W1 W1-C3) — the List view's RtrPanel gate
   // (document:execute). Resolves the authoritative current RTR, then re-notifies it.
   const signSubscribed = useSignSubscribed();
@@ -328,6 +329,7 @@ function BoardCard({
         </span>
         {isRecruiting ? (
           <span className="rc-tboard__facts">
+            {rtrEnded !== null ? <span className="rc-tboard__pill rc-tboard__pill--warn">{rtrEnded}</span> : null}
             {rtrKind === 'hidden' ? null : rtrKind === 'send' && onSendRtr !== undefined ? (
               <Button
                 unstyled

@@ -2020,6 +2020,7 @@ components:
         - REQUISITION_NOT_ADVANCEABLE
         - REQUISITION_STATUS_TERMINAL
         - PIPELINE_EVIDENCE_INADMISSIBLE
+        - RTR_STAGE_NOT_ELIGIBLE
 
     ErrorObject:
       type: object

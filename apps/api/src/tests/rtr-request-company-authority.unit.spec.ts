@@ -11,6 +11,8 @@ import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // Document Templates slice 1 — RtrOrchestratorService.request()/send() authority proofs.
 //   (C) the CLIENT company is derived from the REQUISITION (requisitions.findCompanyId),
 //       exactly as compose does. A caller-supplied company_id that differs is refused
@@ -112,6 +114,7 @@ describe('RTR request() company authority (C) + document title / subject (E)', (
       templatesFake,
       {} as never,
       requisitionsFake,
+      episodeReaderAt(), // Remediation v1.0 R2 (DEF-7) — the Talent has responded
     );
   });
 

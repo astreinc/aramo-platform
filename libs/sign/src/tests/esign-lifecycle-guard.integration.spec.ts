@@ -108,6 +108,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-1 envelope lif
     return (await repo.getEnvelope(TENANT, envelopeId)).status;
   }
 
+  // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — the terminal events published
+  // to consumers through the transactional outbox for this envelope.
+  async function terminalOutboxTypes(envelopeId: string): Promise<string[]> {
+    const r = await db.query(
+      `SELECT event_type FROM "sign"."OutboxEvent" WHERE event_payload->>'envelope_id' = $1 AND event_type <> 'sign.envelope.executed.v1' ORDER BY created_at`,
+      [envelopeId],
+    );
+    return r.rows.map((x: { event_type: string }) => x.event_type);
+  }
+
   async function terminalEventCount(envelopeId: string): Promise<number> {
     const r = await db.query(
       `SELECT count(*)::int AS n FROM "sign"."SignatureEvent" WHERE envelope_id = $1 AND event_type = ANY($2)`,
@@ -154,6 +164,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ES-1 envelope lif
     await prisma?.$disconnect();
     await db?.end();
     await container?.stop();
+  });
+
+  // ── R2 (DEF-12) — a declined / voided / expired envelope is PUBLISHED, once, in-transaction ──
+  describe('terminal envelopes publish their outcome to consumers (Remediation v1.0 R2, DEF-12)', () => {
+    it('DECLINED → exactly one sign.envelope.declined.v1 outbox event', async () => {
+      const e = await sendEnvelope(1);
+      const ctx = await service.exchangeToken(e.signers[0]!.token);
+      await service.decline(TENANT, e.envelopeId, ctx.signer_id, 'no');
+      expect(await terminalOutboxTypes(e.envelopeId)).toEqual(['sign.envelope.declined.v1']);
+    });
+
+    it('VOIDED → exactly one sign.envelope.voided.v1 outbox event', async () => {
+      const e = await sendEnvelope(1);
+      await service.voidEnvelope(TENANT, e.envelopeId, ACTOR, 'withdrawn');
+      expect(await terminalOutboxTypes(e.envelopeId)).toEqual(['sign.envelope.voided.v1']);
+    });
+
+    it('EXPIRED → exactly one sign.envelope.expired.v1 outbox event', async () => {
+      const e = await sendEnvelope(1);
+      await service.expireEnvelope(TENANT, e.envelopeId);
+      expect(await terminalOutboxTypes(e.envelopeId)).toEqual(['sign.envelope.expired.v1']);
+    });
+
+    it('a refused terminal transition publishes nothing (the event commits only with the state change)', async () => {
+      const e = await sendEnvelope(1);
+      await service.voidEnvelope(TENANT, e.envelopeId, ACTOR, 'withdrawn');
+      await expect(service.expireEnvelope(TENANT, e.envelopeId)).rejects.toBeInstanceOf(EnvelopeIllegalTransitionError);
+      expect(await terminalOutboxTypes(e.envelopeId)).toEqual(['sign.envelope.voided.v1']);
+    });
+
+    it('void ∥ decline publishes exactly one terminal event (the winner)', async () => {
+      const e = await sendEnvelope(1);
+      const ctx = await service.exchangeToken(e.signers[0]!.token);
+      const [v] = await Promise.allSettled([
+        service.voidEnvelope(TENANT, e.envelopeId, ACTOR, 'race'),
+        service.decline(TENANT, e.envelopeId, ctx.signer_id, 'race'),
+      ]);
+      expect(await terminalOutboxTypes(e.envelopeId)).toEqual([
+        v.status === 'fulfilled' ? 'sign.envelope.voided.v1' : 'sign.envelope.declined.v1',
+      ]);
+    });
   });
 
   // ── 1. Defect reproduction (RED on the pre-ES-1 code) ──────────────────────

@@ -11,6 +11,8 @@ import { RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service
 import { RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
+import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+
 // SEAM 4 (Requisition Talent in play) — unit proof for the READ-ONLY
 // RtrOrchestratorService.composeForPair. It opens the recruiter "Send RTR" panel
 // BEFORE an RTR Document exists by resolving the tenant's ACTIVE RTR template +
@@ -146,6 +148,7 @@ describe('SEAM 4 — RtrOrchestratorService.composeForPair (read-only Send RTR p
       templatesFake,
       storage as never,
       requisitionsFake,
+      episodeReaderAt(), // Remediation v1.0 R2 (DEF-7) — the Talent has responded
     );
   });
 

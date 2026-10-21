@@ -22919,6 +22919,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261021120000_r2_document_status_declined/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -23440,6 +23445,16 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/signature-routing/prisma/migrations/20261018130000_init_signature_routing/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/signature-routing/prisma/migrations/20261018140500_provider_oauth_state/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
