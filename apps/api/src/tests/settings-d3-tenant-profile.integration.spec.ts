@@ -79,6 +79,12 @@ const IDENTITY_PROFILE = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
 );
+// Sign Signup Amendment A1 — TenantProfileService consults the US billing-region
+// lock (identity.TenantBillingRegionPolicy) on PATCH.
+const IDENTITY_SIGN_SIGNUP_ORG_DETAILS = resolve(
+  ROOT,
+  'libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql',
+);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-settings-d3-spec';
@@ -166,7 +172,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       db = new Client({ connectionString: url });
       await db.connect();
 
-      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_IC4_TENANT_KIND, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE]) {
+      for (const p of [ENTITLEMENT_INIT, IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_IC4_TENANT_KIND, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, IDENTITY_SIGN_SIGNUP_ORG_DETAILS]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       for (const t of [TENANT_A, TENANT_B]) {
