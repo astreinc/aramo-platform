@@ -772,9 +772,39 @@ export class PipelineRepository {
     // here in the canonical domain authority (not via FE hiding). The evidence-
     // bearing commands recordContactEvidence / recordResponseEvidence are the only
     // producers; the recruiter DECISION edges (qualifying / qualified) are exempt.
+    // Pipeline & RTR Recon Remediation Directive v1.0 R4 (DEF-15(f); D-2 Option A; A1-TE TE-1) — a
+    // BACKWARD correction into an evidence-backed stage (talent_responded → contacted, qualifying →
+    // talent_responded) is allowed WITHOUT new evidence when this episode already reached that
+    // stage (its history proves the evidence was recorded then). A correction note is REQUIRED.
+    const backwardIntoEvidenceStage =
+      isEvidenceBackedStage(args.to_status) &&
+      args.evidence_provenance === undefined &&
+      activeStageOrdinal(args.to_status) >= 0 &&
+      activeStageOrdinal(fromStatus) > activeStageOrdinal(args.to_status);
+    if (backwardIntoEvidenceStage) {
+      if (args.note === undefined || args.note.trim().length === 0) {
+        throw new AramoError('VALIDATION_ERROR', 'A note is required to move a talent back a stage', 422, {
+          requestId: args.requestId,
+          details: { pipeline_id: args.id, field: 'note', reason: 'correction_note_required' },
+        });
+      }
+      const reachedBefore = await tx.pipelineStatusHistory.findFirst({
+        where: { tenant_id: args.tenant_id, pipeline_id: args.id, status_to: args.to_status },
+        select: { id: true },
+      });
+      if (reachedBefore === null) {
+        throw new AramoError(
+          'PIPELINE_STAGE_REQUIRES_EVIDENCE',
+          `This episode never reached ${args.to_status}; it can only be established from recorded evidence`,
+          422,
+          { requestId: args.requestId, details: { pipeline_id: args.id, from_status: fromStatus, to_status: args.to_status } },
+        );
+      }
+    }
     if (
       isEvidenceBackedStage(args.to_status) &&
-      args.evidence_provenance === undefined
+      args.evidence_provenance === undefined &&
+      !backwardIntoEvidenceStage
     ) {
       this.logger.log({
         event: 'pipeline_transition_refused',

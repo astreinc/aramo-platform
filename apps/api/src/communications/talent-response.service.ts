@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { AramoError } from '@aramo/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { AramoError, type ContactChannel } from '@aramo/common';
+import { ConsentService } from '@aramo/consent';
 import type { AuthContextType } from '@aramo/auth';
 import { CommunicationsRepository } from '@aramo/communications';
 import { PipelineRepository, isTerminalRequisitionStatus, requisitionPermits, type PipelineView } from '@aramo/pipeline';
@@ -48,6 +49,10 @@ export class TalentResponseService {
     private readonly comms: CommunicationsRepository,
     private readonly pipelines: PipelineRepository,
     private readonly requisitions: RequisitionRepository,
+    // Pipeline & RTR Recon Remediation Directive v1.0 R4 (D-1 Option C) — the contact-consent read
+    // for a confirmation that starts at No contact. Optional so hand-wired specs that never start
+    // at No contact keep working; when absent, a No-contact confirmation is refused (fail-closed).
+    @Optional() private readonly consent?: ConsentService,
   ) {}
 
   async recordResponse(args: {
@@ -176,6 +181,15 @@ export class TalentResponseService {
       }
     }
 
+    // 4b) Remediation Directive v1.0 R4 (D-1 Option C) — a confirmation that STARTS at No contact
+    //     also creates Contacted with no outbound contact behind it, so it requires the Talent's
+    //     contact consent: allowed on the channel they responded on, or on email / phone (the
+    //     defaults a recruiter-created Talent holds). From Contacted onward no consent check is
+    //     added (an ordinary reply follows a consent-checked outbound message).
+    if (pipeline.status === 'no_contact') {
+      await this.assertContactConsent(args, pipeline.talent_record_id);
+    }
+
     // 5) v1.2 §7.5 / §5 (S2) — the requisition status. On closed / canceled the ONLY permitted
     //    operation is a HISTORICAL append: a response that occurred BEFORE the requisition closed
     //    is recorded but NEVER advances the Pipeline (so a backdated entry cannot get around the
@@ -260,6 +274,33 @@ export class TalentResponseService {
       to_status: advanced.status,
     });
     return { ...accountable, pipeline: advanced, advanced: advanced.version !== pipeline.version };
+  }
+
+  private async assertContactConsent(
+    args: { auth: AuthContextType; channel: TalentResponseChannel; requestId: string },
+    talentId: string,
+  ): Promise<void> {
+    const refuse = (): never => {
+      throw new AramoError(
+        'PIPELINE_EVIDENCE_INADMISSIBLE',
+        'This talent has not consented to be contacted, so a response cannot be recorded from No contact',
+        422,
+        { requestId: args.requestId, details: { reason: 'consent_required_from_no_contact' } },
+      );
+    };
+    if (this.consent === undefined) refuse();
+    const responded: ContactChannel = args.channel === 'voice' ? 'phone' : args.channel;
+    const channels: ContactChannel[] = [...new Set<ContactChannel>([responded, 'email', 'phone'])];
+    for (const channel of channels) {
+      const decision = await this.consent!.check(
+        { talent_record_id: talentId, operation: 'communication', channel },
+        undefined,
+        args.auth,
+        args.requestId,
+      );
+      if (decision.result === 'allowed') return;
+    }
+    refuse();
   }
 
   private notAdvanceable(

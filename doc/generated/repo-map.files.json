@@ -1034,6 +1034,8 @@
     "apps/ats-web/src/org/tree-synthesis.spec.ts",
     "apps/ats-web/src/org/tree-synthesis.ts",
     "apps/ats-web/src/org/types.ts",
+    "apps/ats-web/src/pipeline/MoveBackDialog.spec.tsx",
+    "apps/ats-web/src/pipeline/MoveBackDialog.tsx",
     "apps/ats-web/src/pipeline/NotInConsiderationDialog.spec.tsx",
     "apps/ats-web/src/pipeline/NotInConsiderationDialog.tsx",
     "apps/ats-web/src/pipeline/TalentJourneyPanel.spec.tsx",

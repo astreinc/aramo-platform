@@ -18,6 +18,7 @@ import { OfferPanelContainer } from '../../offers/OfferPanelContainer';
 import { transitionErrorMessage } from '../../pipeline/error-messages';
 import { dispositionPipelineEpisode, listPipelinesForRequisition, transitionPipeline, voidPipelineEpisode } from '../../pipeline/pipeline-api';
 import { NotInConsiderationDialog, type NotInConsiderationChoice } from '../../pipeline/NotInConsiderationDialog';
+import { BACKWARD_TARGET, MoveBackDialog } from '../../pipeline/MoveBackDialog';
 import { getTalentJourney, type TalentRequisitionJourney } from '../../pipeline/talent-journey-api';
 import type { PipelineStatus, PipelineView } from '../../pipeline/types';
 import { getCurrentRtr, remindRtr } from '../../rtr/rtr-api';
@@ -197,6 +198,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const [voidOpen, setVoidOpen] = useState(false);
   // Pipeline & RTR Recon Remediation Directive v1.0 R1 (DEF-6) — Not in consideration (with reason).
   const [nicOpen, setNicOpen] = useState(false);
+  // Remediation v1.0 R4 (DEF-15(f)) — the backward correction (note required).
+  const [moveBackOpen, setMoveBackOpen] = useState(false);
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState('');
 
@@ -460,6 +463,15 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     if (pipeline === null) return;
     await dispositionPipelineEpisode(pipeline.id, { ...choice, expected_version: pipeline.version });
     toast.show(`${talentName} marked Not in consideration`);
+    setReload((n) => n + 1);
+  };
+
+  // R4 (DEF-15(f)) — "Move back" is offered for the 4 backward edges to pipeline:change-status.
+  const canMoveBack = canAdvance && pipeline !== null && BACKWARD_TARGET[pipeline.status as PipelineStatus] !== undefined;
+  const confirmMoveBack = async (to: PipelineStatus, note: string): Promise<void> => {
+    if (pipeline === null) return;
+    await transitionPipeline(pipeline.id, { to_status: to, note, expected_version: pipeline.version });
+    toast.show(`${talentName} moved back`);
     setReload((n) => n + 1);
   };
 
@@ -955,6 +967,20 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
                           {talent.is_hot ? 'Remove HOT' : 'Mark as HOT'}
                         </Button>
                       ) : null}
+                      {canMoveBack ? (
+                        <Button
+                          unstyled
+                          type="button"
+                          role="menuitem"
+                          className="tr360-more__item"
+                          onClick={() => {
+                            setMoreOpen(false);
+                            setMoveBackOpen(true);
+                          }}
+                        >
+                          Move back a stage…
+                        </Button>
+                      ) : null}
                       {canMarkNotInConsideration ? (
                         <>
                           <span className="tr360-more__div" />
@@ -991,7 +1017,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
                           </Button>
                         </>
                       ) : null}
-                      {!canEditTalent && voidAction === undefined && !canMarkNotInConsideration ? (
+                      {!canEditTalent && voidAction === undefined && !canMarkNotInConsideration && !canMoveBack ? (
                         <span className="tr360-more__item">No more actions</span>
                       ) : null}
                     </span>
@@ -1114,6 +1140,16 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
           recipientEmail={talent?.email1 ?? null}
           onClose={() => setRtrOpen(false)}
           onSent={() => setReload((n) => n + 1)}
+        />
+      ) : null}
+      {moveBackOpen && pipeline !== null ? (
+        <MoveBackDialog
+          open
+          talentName={talentName}
+          from={pipeline.status as PipelineStatus}
+          onOpenChange={setMoveBackOpen}
+          onConfirm={confirmMoveBack}
+          errorMessage={transitionErrorMessage}
         />
       ) : null}
       {nicOpen ? (

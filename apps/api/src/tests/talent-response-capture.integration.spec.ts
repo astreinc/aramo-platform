@@ -68,6 +68,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     const TENANT = randomUUID();
     const ACTOR = randomUUID();
+    // Remediation v1.0 R4 (D-1 Option C) — consent results per channel; default all allowed.
+    let consentAllowed: ReadonlySet<string> = new Set(['email', 'phone', 'sms', 'other']);
+    const consentStub = {
+      check: async (req: { channel?: string }) => ({ result: consentAllowed.has(req.channel ?? '') ? 'allowed' : 'denied' }),
+    };
 
     function auth(over: Partial<{ tenant: string; actor_kind: string; consumer_type: string }> = {}): AuthContextType {
       return {
@@ -191,7 +196,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       pipelines = new PipelineRepository(pipelinePrisma, undefined, communicationsEvidenceVerifier());
       // Only findStatusById / findClosingInstant are exercised (no policy / capacity paths).
       requisitions = new RequisitionRepository(reqPrisma, {} as never, {} as never, {} as never, {} as never);
-      svc = new TalentResponseService(comms, pipelines, requisitions);
+      // Remediation v1.0 R4 (D-1 Option C) — a consent stand-in (allowed unless a test denies it):
+      // the default Talent holds email + phone contact consent (PO 2026-10-21).
+      svc = new TalentResponseService(comms, pipelines, requisitions, consentStub as never);
       voiceEvidence = new VoiceEvidenceReaderAdapter(comms);
     }, 240_000);
 
@@ -361,7 +368,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('an unbound evidence verifier refuses the milestone (verifier_unbound)', async () => {
       const ep = await seedEpisode();
-      const unverified = new TalentResponseService(comms, new PipelineRepository(pipelinePrisma), requisitions);
+      const unverified = new TalentResponseService(comms, new PipelineRepository(pipelinePrisma), requisitions, consentStub as never);
       const r = await refusal(confirm(ep, {}, unverified));
       expect(r).toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', reason: 'verifier_unbound' });
       expect((await pipelineStatus(ep.id)).status).toBe('no_contact');
@@ -471,6 +478,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(`UPDATE requisition."Requisition" SET status='on_hold' WHERE id=$1`, [ep.req]);
       const res = await confirm(ep);
       expect(res.pipeline.status).toBe('talent_responded');
+    });
+
+    // ---- Pipeline & RTR Recon Remediation Directive v1.0 R4 (D-1 Option C) -----------------------
+    it('R4 D-1: from No contact, a Talent with no contact consent cannot be confirmed (nothing recorded)', async () => {
+      const ep = await seedEpisode();
+      consentAllowed = new Set();
+      try {
+        const r = await refusal(confirm(ep));
+        expect(r).toEqual({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', status: 422, reason: 'consent_required_from_no_contact' });
+        expect(await confirmationCount(ep.id)).toBe(0);
+        expect((await pipelineStatus(ep.id)).status).toBe('no_contact');
+      } finally {
+        consentAllowed = new Set(['email', 'phone', 'sms', 'other']);
+      }
+    });
+
+    it('R4 D-1: from No contact, consent on email or phone is enough (even if the response came by SMS)', async () => {
+      const ep = await seedEpisode();
+      consentAllowed = new Set(['email']);
+      try {
+        const res = await confirm(ep, { channel: 'sms' });
+        expect(res.pipeline.status).toBe('talent_responded');
+      } finally {
+        consentAllowed = new Set(['email', 'phone', 'sms', 'other']);
+      }
+    });
+
+    it('R4 D-1: from Contacted onward, no consent check is added', async () => {
+      const ep = await seedEpisode();
+      await db.query(`UPDATE pipeline."Pipeline" SET status='contacted' WHERE id=$1`, [ep.id]);
+      consentAllowed = new Set();
+      try {
+        const res = await confirm(ep);
+        expect(res.pipeline.status).toBe('talent_responded');
+      } finally {
+        consentAllowed = new Set(['email', 'phone', 'sms', 'other']);
+      }
+    });
+
+    it('R4 D-1: without the consent service bound, a No-contact confirmation is refused (fail-closed)', async () => {
+      const ep = await seedEpisode();
+      const noConsent = new TalentResponseService(comms, pipelines, requisitions);
+      const r = await refusal(confirm(ep, {}, noConsent));
+      expect(r).toMatchObject({ code: 'PIPELINE_EVIDENCE_INADMISSIBLE', reason: 'consent_required_from_no_contact' });
     });
   },
 );

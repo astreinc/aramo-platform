@@ -437,5 +437,59 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
       expect(await historyCount(id)).toBe(3);
     });
+
+    // ---- Pipeline & RTR Recon Remediation Directive v1.0 R4 (DEF-15(f); D-2 Option A) ----------
+    async function toQualifying(tenant: string, id: string): Promise<void> {
+      await repo.reconcileForward({
+        tenant_id: tenant, id, target: 'talent_responded', changed_by_id: randomUUID(),
+        requestId: `r4-up-${id}`, visible_requisition_ids: null,
+        evidence: { kind: 'recruiter_response_confirmation', id: randomUUID() },
+      });
+      await repo.transition({ tenant_id: tenant, id, to_status: 'qualifying', changed_by_id: randomUUID(), requestId: `r4-q-${id}`, expected_version: 2, visible_requisition_ids: null });
+    }
+
+    it('R4 D-2: qualifying → talent_responded and talent_responded → contacted are reachable as corrections with a note', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      await toQualifying(tenant, id);
+      const back1 = await repo.transition({
+        tenant_id: tenant, id, to_status: 'talent_responded', changed_by_id: randomUUID(),
+        requestId: 'r4-b1', expected_version: 3, visible_requisition_ids: null, note: 'Qualified too early — awaiting answers',
+      });
+      expect(back1.status).toBe('talent_responded');
+      const back2 = await repo.transition({
+        tenant_id: tenant, id, to_status: 'contacted', changed_by_id: randomUUID(),
+        requestId: 'r4-b2', expected_version: 4, visible_requisition_ids: null, note: 'The reply was from someone else',
+      });
+      expect(back2.status).toBe('contacted');
+    });
+
+    it('R4 D-2: a correction into an evidence stage without a note is refused (correction_note_required)', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      await toQualifying(tenant, id);
+      await expect(
+        repo.transition({ tenant_id: tenant, id, to_status: 'talent_responded', changed_by_id: randomUUID(), requestId: 'r4-nn', expected_version: 3, visible_requisition_ids: null }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'correction_note_required' } } });
+      expect((await repo.findById({ tenant_id: tenant, id }))?.status).toBe('qualifying');
+    });
+
+    it('R4 D-2: an episode that never reached the stage cannot be "corrected" into it', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      // A legacy row placed at qualifying with no talent_responded in its history.
+      await prisma.pipeline.update({ where: { id }, data: { status: 'qualifying' } });
+      await expect(
+        repo.transition({ tenant_id: tenant, id, to_status: 'talent_responded', changed_by_id: randomUUID(), requestId: 'r4-nr', expected_version: 0, visible_requisition_ids: null, note: 'fix' }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_STAGE_REQUIRES_EVIDENCE' });
+    });
+
+    it('R4 D-2: a FORWARD move into an evidence stage still needs evidence (no note bypass)', async () => {
+      const tenant = randomUUID();
+      const id = await seed(tenant);
+      await expect(
+        repo.transition({ tenant_id: tenant, id, to_status: 'contacted', changed_by_id: randomUUID(), requestId: 'r4-fw', expected_version: 0, visible_requisition_ids: null, note: 'trust me' }),
+      ).rejects.toMatchObject({ code: 'PIPELINE_STAGE_REQUIRES_EVIDENCE' });
+    });
   },
 );
