@@ -135,8 +135,8 @@ describe('DOC-TEMPLATE-LIB-1 T-4 — document_template grants migration (real PG
       expect(seedSets[k]?.has('document_template:read')).toBe(true);
       expect(seedSets[k]?.has('document_template:manage')).toBe(false);
     }
-    // T-4 does not remove sign:template:* (T-5 does).
-    expect(seedSets['sadm']?.has('sign:template:manage')).toBe(true);
+    // T-4 does not remove sign:template:*; T-5 does (seed + 20261021160000 migration).
+    expect(seedSets['sadm']?.has('sign:template:manage')).toBe(false);
   });
 
   it('refuses a database without the ROLES-1 role model — nothing applied', async () => {

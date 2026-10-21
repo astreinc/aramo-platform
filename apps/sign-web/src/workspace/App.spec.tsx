@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { configureAuthConsumer } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -170,11 +170,94 @@ describe('Sign workspace App', () => {
     expect(await screen.findByText('From Aramo ATS')).toBeInTheDocument();
   });
 
-  it('Templates is labelled a future capability with no create action', async () => {
-    vi.stubGlobal('fetch', stubFetch(ctx()));
+  // DOC-TEMPLATE-LIB-1 T-5 — the Templates page follows the plan capability (sign.templates)
+  // and the document_template:read permission the backend reports.
+  it('Templates — plan capability NOT available: the unavailable treatment, no list call, no create action', async () => {
+    const f = stubFetch(ctx({ features: { templates: false }, permissions: { read: true, create: true, send: true, templates: true } }));
+    vi.stubGlobal('fetch', f);
     renderAt('/sign/templates');
-    expect(await screen.findByText('Future capability')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ Create template' })).toBeDisabled();
+    expect(await screen.findByTestId('templates-unavailable')).toHaveTextContent('Templates aren’t available on your plan yet');
+    expect(screen.getByTestId('templates-unavailable-tag')).toHaveTextContent('Not available');
+    expect(f.mock.calls.some(([u]) => String(u).includes('/v1/sign/sender/templates'))).toBe(false);
+    expect(screen.queryByText('Future capability')).toBeNull();
+  });
+
+  it('Templates — available + permitted: lists the organization templates with Use template', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/v1/sign/sender/templates')) {
+          return json({
+            items: [
+              {
+                template_id: 'tpl-1', name: 'Standard Right to Represent', description: null,
+                document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+                owner_scope: 'PLATFORM', resolution: 'PLATFORM_DEFAULT', version_id: 'v1', version_number: 2, updated_at: '2026-10-21T00:00:00Z',
+                variables: [{ key: 'talent.full_name', label: 'Talent full name', group: 'Talent', source: 'SENDER', value: null }],
+              },
+            ],
+            unavailable: [],
+          });
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates');
+    expect(await screen.findByText('Standard Right to Represent')).toBeInTheDocument();
+    expect(screen.getByText(/Aramo default · v2/)).toBeInTheDocument();
+    expect(screen.getByTestId('use-template-tpl-1')).toHaveAttribute('href', '/sign/templates/tpl-1/use');
+    expect(screen.getByTestId('manage-templates-link')).toHaveAttribute('href', 'https://northwind.aramo.ai/org/document-templates');
+  });
+
+  it('Use template — sender-filled fields, then the envelope is created from the template (CORE_REF) and the wizard opens', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const calls: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/v1/sign/sender/templates')) {
+          return json({
+            items: [
+              {
+                template_id: 'tpl-1', name: 'Standard Right to Represent', description: null,
+                document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+                owner_scope: 'PLATFORM', resolution: 'PLATFORM_DEFAULT', version_id: 'v1', version_number: 2, updated_at: '2026-10-21T00:00:00Z',
+                variables: [
+                  { key: 'talent.full_name', label: 'Talent full name', group: 'Talent', source: 'SENDER', value: null },
+                  { key: 'organization.name', label: 'Organization name', group: 'Organization', source: 'ORGANIZATION', value: 'Northwind Staffing' },
+                ],
+              },
+            ],
+            unavailable: [],
+          });
+        }
+        if (u.endsWith('/v1/sign/sender/envelopes/from-template')) {
+          calls.push({ url: u, body: JSON.parse(String(init?.body ?? '{}')) });
+          return json({ envelope: { id: 'env-9' }, template: { template_id: 'tpl-1', version_id: 'v1', version_number: 2 }, suggested_fields: [] }, 201);
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates/tpl-1/use');
+    const input = await screen.findByTestId('template-var-talent.full_name');
+    expect(screen.getAllByText('Northwind Staffing').length).toBeGreaterThan(0);
+    const create = screen.getByTestId('create-from-template');
+    expect(create).toBeDisabled();
+    fireEvent.change(input, { target: { value: 'Jordan Signer' } });
+    expect(create).not.toBeDisabled();
+    fireEvent.click(create);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({ template_id: 'tpl-1', values: { 'talent.full_name': 'Jordan Signer' } });
+    expect(typeof (calls[0]?.body as { idempotency_key?: unknown }).idempotency_key).toBe('string');
+    expect((calls[0]?.body as Record<string, unknown>)['values']).not.toHaveProperty('organization.name');
+  });
+
+  it('Templates — available but no document_template:read: no access message', async () => {
+    vi.stubGlobal('fetch', stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: false } })));
+    renderAt('/sign/templates');
+    expect(await screen.findByTestId('templates-unavailable')).toHaveTextContent('You don’t have access to templates');
   });
 });
 

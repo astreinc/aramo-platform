@@ -469,8 +469,8 @@ export const SEED_IDS = {
     'sign:envelope:read:all': '01900000-0000-7000-8000-00000000140a',
     'sign:envelope:manage:all': '01900000-0000-7000-8000-00000000140b',
     'sign:contact:read': '01900000-0000-7000-8000-00000000140c',
-    'sign:template:use': '01900000-0000-7000-8000-00000000140d',
-    'sign:template:manage': '01900000-0000-7000-8000-00000000140e',
+    // 0x140d / 0x140e were sign:template:use / sign:template:manage — RETIRED by
+    // DOC-TEMPLATE-LIB-1 T-5 (never reused; the identity migration deletes the rows).
     'sign:report:read': '01900000-0000-7000-8000-00000000140f',
     'sign:member:manage': '01900000-0000-7000-8000-000000001410',
     'sign:settings:manage': '01900000-0000-7000-8000-000000001411',
@@ -2948,16 +2948,33 @@ export const ESIGN_SENDER_SEED_BUNDLES: ReadonlyArray<
 // ROLES-1 PR-3 — FROZEN id layout: the retired sign_owner keeps its 10 slots at the head
 // of the range (its former contract = sign_admin's + sign:billing:manage) so the
 // sign_admin / sign_sender / sign_viewer row ids are unchanged; it is never granted.
+// DOC-TEMPLATE-LIB-1 T-5 — the layout is the S-1 contract AS SEEDED (sign:template:use /
+// :manage included in their original positions) so no id moves; the retired template
+// scopes are filtered out of the GRANTS below (their slots 0x1723/0x1724 [sign_owner],
+// 0x172d/0x172e [sign_admin], 0x1734 [sign_sender] are retired, never reused).
+export const RETIRED_SIGN_TEMPLATE_SCOPES: readonly string[] = ['sign:template:use', 'sign:template:manage'];
+const ESIGN_S1_ADMIN_LAYOUT: readonly string[] = [
+  ESIGN_SCOPE.ENVELOPE_READ, ESIGN_SCOPE.ENVELOPE_READ_ALL, ESIGN_SCOPE.ENVELOPE_CREATE, ESIGN_SCOPE.ENVELOPE_SEND, ESIGN_SCOPE.ENVELOPE_MANAGE_ALL,
+  ESIGN_SCOPE.CONTACT_READ, 'sign:template:use', 'sign:template:manage', ESIGN_SCOPE.REPORT_READ,
+  ESIGN_SCOPE.MEMBER_MANAGE, ESIGN_SCOPE.SETTINGS_MANAGE, ESIGN_SCOPE.INTEGRATION_MANAGE,
+];
+const ESIGN_S1_PERMISSION_LAYOUT: Readonly<Record<string, readonly string[]>> = {
+  sign_admin: ESIGN_S1_ADMIN_LAYOUT,
+  sign_sender: [ESIGN_SCOPE.ENVELOPE_READ, ESIGN_SCOPE.ENVELOPE_CREATE, ESIGN_SCOPE.ENVELOPE_SEND, ESIGN_SCOPE.CONTACT_READ, 'sign:template:use'],
+  sign_viewer: ESIGN_ROLE_PERMISSIONS.sign_viewer,
+};
 const ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
-  ['sign_owner', [...ESIGN_ROLE_PERMISSIONS.sign_admin, ESIGN_SCOPE.BILLING_MANAGE]] as const,
-  ...ESIGN_ROLE_KEYS.map((role) => [role, ESIGN_ROLE_PERMISSIONS[role]] as const),
+  ['sign_owner', [...ESIGN_S1_ADMIN_LAYOUT, ESIGN_SCOPE.BILLING_MANAGE]] as const,
+  ...ESIGN_ROLE_KEYS.map((role) => [role, ESIGN_S1_PERMISSION_LAYOUT[role] ?? ESIGN_ROLE_PERMISSIONS[role]] as const),
 ].map(([role, perms]) => {
   const prior = new Set(ESIGN_SENDER_SEED_ID_LAYOUT.find(([k]) => k === role)?.[1] ?? []);
   return [role, perms.filter((s) => !prior.has(s))] as const;
 });
 export const ESIGN_ROLE_CONTRACT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
-> = ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k));
+> = ESIGN_ROLE_CONTRACT_SEED_ID_LAYOUT.filter(([k]) => !(RETIRED_ROLE_KEYS as readonly string[]).includes(k)).map(
+  ([role, scopes]) => [role, scopes.filter((s) => !RETIRED_SIGN_TEMPLATE_SCOPES.includes(s))] as const,
+);
 const ESIGN_ROLE_CONTRACT_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x1720;
@@ -2998,10 +3015,7 @@ const ORG_ADMIN_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 //                   sources below; the migration does the same relationally on the
 //                   live rows — never an assumed count).
 // The sign:template:* pair is excluded (DOC-TEMPLATE-LIB-1 removes it).
-export const ROLES1_EXCLUDED_SIGN_SCOPES: readonly string[] = [
-  ESIGN_SCOPE.TEMPLATE_USE,
-  ESIGN_SCOPE.TEMPLATE_MANAGE,
-];
+export const ROLES1_EXCLUDED_SIGN_SCOPES: readonly string[] = RETIRED_SIGN_TEMPLATE_SCOPES;
 export const ROLES1_OWNER_SIGN_SCOPES: readonly string[] = [
   ...ESIGN_ROLE_PERMISSIONS.sign_admin,
   ESIGN_SCOPE.BILLING_MANAGE,
@@ -3573,8 +3587,6 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:read:all'], 'sign:envelope:read:all', 'Sign S-1 — read every envelope in the organization (not only own). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:envelope:manage:all'], 'sign:envelope:manage:all', 'Sign S-1 — edit drafts and remind/void any envelope in the organization. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:contact:read'], 'sign:contact:read', 'Sign S-1 — read the organization Sign contacts (past recipients). NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['sign:template:use'], 'sign:template:use', 'Sign S-1 — use Sign templates. NO scope.created (scope-seed precedent).');
-  await upsertScope(prisma, SEED_IDS.scopes['sign:template:manage'], 'sign:template:manage', 'Sign S-1 — create and maintain Sign templates. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:report:read'], 'sign:report:read', 'Sign S-1 — read Sign reports. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:member:manage'], 'sign:member:manage', 'Sign S-1 — assign and remove Sign roles for organization members. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['sign:settings:manage'], 'sign:settings:manage', 'Sign S-1 — manage Sign settings. NO scope.created (scope-seed precedent).');

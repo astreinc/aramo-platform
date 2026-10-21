@@ -137,6 +137,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_INSTALLATION_REVOKED: 409,
   // Sign Unified Product S-5 — SIGN_WEBHOOK_SECRET_KEY is not configured.
   ESIGN_WEBHOOKS_UNAVAILABLE: 503,
+  // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (sign.templates).
+  ESIGN_FEATURE_NOT_AVAILABLE: 403,
   SIGNER_NOT_FOUND: 404,
   SIGNER_NOT_YET_ELIGIBLE: 409,
   SIGNING_SESSION_INVALID: 401,

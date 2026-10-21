@@ -1,5 +1,3 @@
-import { createHash } from 'node:crypto';
-
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
@@ -21,6 +19,7 @@ import { RIGHT_TO_REPRESENT_KEY, RIGHT_TO_REPRESENT_TYPE_ID } from './rtr-consta
 import { RtrTemplateResolverService } from './rtr-template-resolver.service.js';
 import { RtrTemplateBindingService } from './rtr-template-binding.service.js';
 import { isHtmlContent, type RtrHtmlLogoRef } from './rtr-html-content.js';
+import { captureTenantLetterhead, loadLetterhead } from './rtr-template-letterhead.js';
 
 // DOC-5 / RTR-TEMPLATE-1 — the dedicated apps/api RTR orchestrator. The ONLY layer
 // that may touch both scope:boundary Documents/E-Sign AND scope:ats TalentRecord.
@@ -484,51 +483,19 @@ export class RtrOrchestratorService {
     return derived;
   }
 
-  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — brand an Aramo default with the tenant's logo, captured
-  // through the existing tenant-logo seam (https only, no redirects, 5 s, 1 MB, PNG/JPEG
-  // magic-checked) into a per-render tenant TemplateAsset, then read back + sha-verified
-  // exactly like a tenant template's frozen logo. No profile logo ⇒ no letterhead. A logo
-  // that cannot be captured (bad URL, fetch failure, wrong type) degrades to no letterhead
-  // rather than blocking the RTR: branding is presentation, the legal content is the
-  // Aramo default's own, and the frozen revision records exactly what was rendered.
+  // DOC-TEMPLATE-LIB-1 T-3 (§4.3) — brand an Aramo default with the tenant's logo (shared
+  // with the Aramo Sign template render, T-5: rtr-template-letterhead.ts).
   private async captureTenantLetterhead(tenant_id: string, actor_id: string, requestId: string): Promise<LetterheadModel | undefined> {
-    if (this.tenantLogo === undefined) return undefined;
-    const info = await this.tenantLogo.info(tenant_id);
-    if (!info.available) return undefined;
-    let captured;
-    try {
-      captured = await this.tenantLogo.capture({ tenant_id, requestId });
-    } catch (e) {
-      if (!(e instanceof AramoError)) throw e;
-      const reason = (e.context.details as { reason?: unknown } | undefined)?.reason;
-      this.logger.warn(`tenant logo not captured for an Aramo default RTR (request ${requestId}): ${String(reason ?? e.code)}`);
-      return undefined;
-    }
-    const asset = await this.templates.createAsset({
+    return captureTenantLetterhead(
+      { templates: this.templates, storage: this.storage, logger: this.logger, ...(this.tenantLogo !== undefined ? { tenantLogo: this.tenantLogo } : {}) },
       tenant_id,
-      asset_kind: 'LOGO',
-      sha256: captured.sha256,
-      mime_type: captured.mime,
-      storage_provider: captured.storage_provider,
-      storage_locator: captured.storage_locator,
-      name: 'tenant.logo',
-      created_by: actor_id,
-    });
-    return this.loadLetterhead(tenant_id, { asset_id: asset.id, sha256: captured.sha256, mime: captured.mime }, requestId);
+      actor_id,
+      requestId,
+    );
   }
 
   private async loadLetterhead(tenant_id: string, logo: RtrHtmlLogoRef, requestId: string): Promise<LetterheadModel> {
-    const invalid = (reason: string): AramoError =>
-      new AramoError('RTR_TEMPLATE_CONFIGURATION_INVALID', 'The active Right to Represent template logo is not usable', 422, {
-        requestId,
-        details: { reason },
-      });
-    const asset = await this.templates.findAssetById(tenant_id, logo.asset_id);
-    if (asset === null) throw invalid('logo_asset_missing');
-    const bytes = await this.storage.getArtifact({ storage_key: asset.storage_locator, requestId, maxBytes: 1024 * 1024 });
-    const sha = createHash('sha256').update(bytes).digest('hex');
-    if (sha !== asset.sha256 || sha !== logo.sha256) throw invalid('logo_asset_hash_mismatch');
-    return { image_bytes: new Uint8Array(bytes), image_format: logo.mime === 'image/png' ? 'PNG' : 'JPG', image_sha256: sha, name: null };
+    return loadLetterhead({ templates: this.templates, storage: this.storage }, tenant_id, logo, requestId);
   }
 
   private async frozenTitle(tenant_id: string, document_id: string): Promise<string> {

@@ -159,11 +159,11 @@ describe('ownership — changing an envelope needs ownership or sign:envelope:ma
 describe('sender context — permissions reflect the role, BUSINESS-only organization powers', () => {
   it('the organization owner in a BUSINESS tenant', async () => {
     const v = await ctx().context(orgOwnerAuth(), 'r');
-    expect(v.permissions).toEqual({ read: true, read_all: true, create: true, send: true, manage_all: true, contacts: true, members: true, billing: true });
+    expect(v.permissions).toEqual({ read: true, read_all: true, create: true, send: true, manage_all: true, contacts: true, members: true, billing: true, templates: false });
   });
   it('Sender', async () => {
     const v = await ctx().context(roleAuth('sign_sender'), 'r');
-    expect(v.permissions).toEqual({ read: true, read_all: false, create: true, send: true, manage_all: false, contacts: true, members: false, billing: false });
+    expect(v.permissions).toEqual({ read: true, read_all: false, create: true, send: true, manage_all: false, contacts: true, members: false, billing: false, templates: false });
   });
   it('PERSONAL never gets organization powers', async () => {
     const v = await ctx('PERSONAL').context(orgOwnerAuth(), 'r');

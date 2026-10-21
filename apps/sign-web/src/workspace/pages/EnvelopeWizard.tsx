@@ -100,7 +100,8 @@ export function EnvelopeWizard({ prepare = false }: { prepare?: boolean }) {
 // ── Step 1 · Documents ───────────────────────────────────────────────────────
 
 function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; next: string }) {
-  const { base } = useWorkspace();
+  const { base, ctx } = useWorkspace();
+  const templatesUsable = ctx.features?.templates === true && ctx.permissions.templates === true;
   const nav = useNavigate();
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
@@ -181,14 +182,15 @@ function DocumentsStep({ env, onChange, next }: { env: EnvelopeDetail; onChange:
             <div style={{ fontWeight: 600, marginTop: 6 }}>Drop PDFs here or click to upload</div>
             <div className="sg-muted">PDF files up to 25 MB each</div>
           </label>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <Btn disabled title="Templates are a future capability">
-              Use a template
-            </Btn>
-            <span className="sg-tag sg-tag--grey" style={{ alignSelf: 'center' }}>
-              Future
-            </span>
-          </div>
+          {/* DOC-TEMPLATE-LIB-1 T-5 — start from one of the organization's document templates
+              (shown only when the plan capability and the template permission allow it). */}
+          {templatesUsable ? (
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              <Btn onClick={() => nav(`${base}/templates`)} data-testid="use-a-template">
+                Use a template
+              </Btn>
+            </div>
+          ) : null}
           {busy !== '' ? (
             <p className="sg-muted" role="status">
               {busy}
@@ -489,7 +491,11 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
 // ── Step 4 · Review & send ───────────────────────────────────────────────────
 
 function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; onSent: () => void }) {
-  const { base } = useWorkspace();
+  const { base, ctx } = useWorkspace();
+  const templatesManageUrl =
+    ctx.features?.templates === true && ctx.permissions.templates === true && ctx.app_home_url !== null
+      ? `${ctx.app_home_url.replace(/\/+$/, '')}/org/document-templates`
+      : null;
   const nav = useNavigate();
   const [subject, setSubject] = useState(env.subject === 'Untitled envelope' && env.documents[0] !== undefined ? env.documents[0].title : env.subject);
   const [error, setError] = useState('');
@@ -580,9 +586,13 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
               <Btn variant="primary" block disabled={!ready.ok || sending} onClick={() => void send()} data-testid="send-envelope">
                 {sending ? 'Sending…' : ready.ok ? 'Send for signature' : 'Resolve the items above to send'}
               </Btn>
-              <Btn block disabled title="Templates are a future capability">
-                Save as template · Future
-              </Btn>
+              {/* DOC-TEMPLATE-LIB-1 T-5 (ADR-0034 D5/D11) — templates are created and approved in
+                  Org Home (Documents-owned), never saved from a Sign envelope. */}
+              {templatesManageUrl !== null ? (
+                <a className="sg-btn sg-btn--block" href={templatesManageUrl} data-testid="manage-templates">
+                  Manage templates in Org Home
+                </a>
+              ) : null}
             </div>
             <p className="sg-help" style={{ marginTop: 10 }}>
               Each signer gets an email with a secure link to sign at sign.aramo.ai. They don’t need an Aramo account.

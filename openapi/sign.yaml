@@ -1169,6 +1169,124 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/templates:
+    get:
+      operationId: listSenderTemplates
+      summary: Document templates the organization can start an envelope from (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service); for each document type the organization's active choice (client → organization → Aramo default) is listed with its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderTemplateList'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/templates/{id}/preview:
+    post:
+      operationId: previewSenderTemplate
+      summary: Organization-branded preview of a template with the sender's values (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Requires document_template:read; refused while sign.templates is not available. Writes nothing.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                values:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sign/sender/envelopes/from-template:
+    post:
+      operationId: createSenderEnvelopeFromTemplate
+      summary: Create a DRAFT envelope from a document template (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF). With `signer`, that first signer is added and the template's signature area is placed for them. Idempotent on idempotency_key for the render.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template_id]
+              properties:
+                template_id:
+                  type: string
+                  format: uuid
+                values:
+                  type: object
+                  additionalProperties:
+                    type: string
+                subject:
+                  type: string
+                  maxLength: 200
+                idempotency_key:
+                  type: string
+                  pattern: '^[A-Za-z0-9_-]{8,128}$'
+                signer:
+                  type: object
+                  required: [name, email]
+                  properties:
+                    name:
+                      type: string
+                    email:
+                      type: string
+      responses:
+        '201':
+          description: The draft envelope (detail), the pinned template version and the template's signature areas.
+          content:
+            application/json:
+              schema:
+                type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/sender/members:
     get:
       operationId: listSignMembers
@@ -2493,6 +2611,16 @@ components:
               type: boolean
             billing:
               type: boolean
+            templates:
+              type: boolean
+              description: DOC-TEMPLATE-LIB-1 T-5 — the session holds document_template:read (start envelopes from templates).
+        features:
+          type: object
+          description: >
+            DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability. templates = the sign.templates capability is available; while false every template route answers ESIGN_FEATURE_NOT_AVAILABLE (403).
+          properties:
+            templates:
+              type: boolean
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -2501,6 +2629,30 @@ components:
           type: [string, 'null']
         app_home_url:
           type: [string, 'null']
+    SenderTemplateList:
+      type: object
+      required: [items, unavailable]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            required: [template_id, name, document_type, owner_scope, version_id, version_number, variables]
+            properties:
+              template_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              owner_scope:
+                type: string
+                enum: [PLATFORM, TENANT]
+              version_number:
+                type: integer
+        unavailable:
+          type: array
+          items:
+            type: object
     SignTokenRequest:
       type: object
       required: [grant_type]

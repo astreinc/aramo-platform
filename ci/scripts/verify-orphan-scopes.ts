@@ -64,8 +64,8 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'sign:envelope:read:all': { cls: 'SERVICE_ENFORCED', reason: 'visibility filter — no owner filter when held (SenderEnvelopeService.visibleOwner, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
   'sign:envelope:manage:all': { cls: 'SERVICE_ENFORCED', reason: 'ownership gate — mutating another member\'s envelope needs it (SenderEnvelopeService.assertMayChange, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
   'sign:billing:manage': { cls: 'SERVICE_ENFORCED', reason: 'billing management authority, sign:billing:manage ONLY (tenant_owner; ROLES-1 PR-2 removed the tenant:admin:settings fallback) — canManageBilling, apps/sign-service/src/app/billing/esign-billing.controller.ts' },
-  'sign:template:use': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — templates are catalogued but not built (libs/subscription feature-availability); enforcement lands with the templates surface' },
-  'sign:template:manage': { cls: 'ACTIVE_RESERVED', reason: 'same — Sign templates not built' },
+  // DOC-TEMPLATE-LIB-1 T-5 — sign:template:use / :manage REMOVED (scope rows + grants
+  // deleted; Sign uses document_template:read), so their classification entries are gone.
   'sign:report:read': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — dedicated Sign reports API not built; the dashboard summary follows envelope visibility' },
   'sign:settings:manage': { cls: 'ACTIVE_RESERVED', reason: 'Sign Unified Product directive §4.3.3 — no Sign-owned settings write surface yet' },
   'sign:integration:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.INTEGRATION_MANAGE) → RequireScopes on the installation administration routes (apps/sign-service/src/app/integrations/integration-admin.controller.ts)' },

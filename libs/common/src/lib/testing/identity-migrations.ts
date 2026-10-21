@@ -99,6 +99,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // role ids (a no-op on a database without a role catalog). No returned-shape change.
   // AFTER the ROLES-1 role model (it requires row 0010 = ats_admin, 02b0 = tenant_admin).
   'libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql',
+  // DOC-TEMPLATE-LIB-1 T-5 (§6.4) — sign:template:use / :manage removed (2 Scope rows on
+  // fixed ids 0x140d/0x140e + their grants on the Sign role rows). One guarded DO block (a
+  // no-op when the rows are absent). No returned-shape change.
+  'libs/identity/prisma/migrations/20261021160000_doclib_t5_remove_sign_template_scopes/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

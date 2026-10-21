@@ -1,7 +1,9 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityRepository, TenantRepository } from '@aramo/identity';
+
+import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
 // the verified auth context (Lead Host & Workspace Ruling v1.0): tenant identity,
@@ -17,6 +19,8 @@ import { ESIGN_SCOPE, IdentityRepository, TenantRepository } from '@aramo/identi
 export const ESIGN_READ_SCOPE = 'sign:envelope:read';
 export const ESIGN_CREATE_SCOPE = 'sign:envelope:create';
 export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
+// DOC-TEMPLATE-LIB-1 T-5 — the Documents-owned template "use" permission Sign checks.
+export const DOCUMENT_TEMPLATE_READ_SCOPE = 'document_template:read';
 
 export type SenderWorkspace = 'sign' | 'personal';
 
@@ -35,7 +39,11 @@ export interface SenderContextView {
     contacts: boolean;
     members: boolean;
     billing: boolean;
+    // DOC-TEMPLATE-LIB-1 T-5 — document_template:read (start envelopes from templates).
+    templates: boolean;
   };
+  // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (sign.templates).
+  features: { templates: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
   personal_sending_enabled: false;
@@ -51,6 +59,9 @@ export class SenderContextService {
   constructor(
     private readonly tenants: TenantRepository,
     private readonly identity: IdentityRepository,
+    // DOC-TEMPLATE-LIB-1 T-5 — optional so existing compositions/tests keep working; absent
+    // ⇒ the production registry (sign.templates NOT_AVAILABLE until activation).
+    @Optional() private readonly features?: SignFeatureGate,
   ) {}
 
   async tenantKind(tenant_id: string, requestId: string): Promise<string> {
@@ -91,6 +102,7 @@ export class SenderContextService {
       members: business && scopes.has(ESIGN_SCOPE.MEMBER_MANAGE),
       // ROLES-1 PR-2 (§3.4) — sign:billing:manage only (the tenant_owner bundle).
       billing: business && scopes.has(ESIGN_SCOPE.BILLING_MANAGE),
+      templates: scopes.has(DOCUMENT_TEMPLATE_READ_SCOPE),
     };
     const tenantBase = tenantHostBase(slug);
     return {
@@ -98,6 +110,7 @@ export class SenderContextService {
       tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
       workspace: business ? 'sign' : 'personal',
       permissions,
+      features: { templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE) },
       can_send: business && permissions.create && permissions.send,
       personal_sending_enabled: false,
       organization_url: business && tenantBase !== null ? `${tenantBase}/org/profile` : null,

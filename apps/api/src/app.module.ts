@@ -74,6 +74,7 @@ import { TaskModule } from '@aramo/task';
 import { EsignServiceHttpProvider } from './sign/esign-service-http.provider.js';
 import { AramoS3DocumentStorageAdapter } from './documents/aramo-s3-document-storage.adapter.js';
 import { DocumentsEsignModule } from './documents/documents-esign.module.js';
+import { DocumentsEsignTemplatesModule } from './documents/documents-esign-templates.module.js';
 import { TalentIntakePublisherModule } from './talent-intake-consumer/talent-intake-publisher.module.js';
 import { RtrModule } from './rtr/rtr.module.js';
 import { TemplateCapabilitiesModule } from './rtr/rtr-template-capabilities.module.js';
@@ -609,6 +610,9 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // DOC-4 (R-4-7) — the executed-artifact write-back seam (source-bytes read +
     // idempotent write-back). Self-contained module (own storage + prisma).
     DocumentsEsignModule,
+    // DOC-TEMPLATE-LIB-1 T-5 — the signed Documents template-library endpoints for Aramo
+    // Sign (list / preview / render). Self-contained module.
+    DocumentsEsignTemplatesModule,
     // DOC-5 (R-5-5) — the RTR orchestrator (request/prepare/send; first
     // SIGNATURE_PROVIDER_PORT consumer). Self-contained composition module.
     RtrModule,

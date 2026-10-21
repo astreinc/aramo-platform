@@ -428,6 +428,8 @@ export const ERROR_CODES = [
   'ESIGN_INSTALLATION_REVOKED',
   // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
   'ESIGN_WEBHOOKS_UNAVAILABLE',
+  // DOC-TEMPLATE-LIB-1 T-5 — the plan capability is not launched (libs/subscription feature availability) (403).
+  'ESIGN_FEATURE_NOT_AVAILABLE',
   'SIGNER_NOT_FOUND',
   // Multi-Signer Amendment §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   'SIGNER_NOT_YET_ELIGIBLE',

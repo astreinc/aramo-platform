@@ -84,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     const scopes = await roleSvc.getScopesByUserAndTenant({ user_id: userId, tenant_id: SEED_IDS.tenant });
     // DOC-TEMPLATE-LIB-1 T-4 (§6.3) — + document_template:read (Sign starts envelopes from
     // templates); templates are Documents-owned, not an ATS scope.
-    expect([...scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
+    expect([...scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send']);
     // The decisive partition: every resolved scope is in the esign namespace (or the
     // Documents template read).
     expect([...scopes].every((s) => s.startsWith('sign:') || s === 'document_template:read')).toBe(true);
@@ -111,7 +111,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
     const entitled = await resolver.resolve(input('sign'));
     expect(entitled.status).toBe('ok');
     // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the sign session also carries document_template:read.
-    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send', 'sign:template:use']);
+    if (entitled.status === 'ok') expect([...entitled.scopes].sort()).toEqual(['document_template:read', 'sign:contact:read', 'sign:envelope:create', 'sign:envelope:read', 'sign:envelope:send']);
     // The recruiter (ATS) consumer is unchanged: it carries whatever non-Sign scope is held —
     // for a Sign-only identity that is just document_template:read.
     expect(await resolver.resolve(input('recruiter'))).toEqual({ status: 'ok', scopes: ['document_template:read'] });

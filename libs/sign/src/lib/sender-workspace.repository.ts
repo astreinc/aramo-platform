@@ -23,7 +23,15 @@ import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/
 // This predicate still bounds what stays Sign-authored only: draft authoring
 // (assertDraft), the uploaded-documents library and the derived contacts list
 // (an ATS recipient is never offered as a Sign contact).
-export const SENDER_AUTHORED = { documents: { none: { source_mode: 'CORE_REF' } } } as const;
+// DOC-TEMPLATE-LIB-1 T-5 — an envelope the Sign console started FROM A TEMPLATE holds a
+// CORE_REF document (the frozen Documents revision apps/api rendered) yet is Sign-authored:
+// it is recognised by its provenance (source_application 'aramo-sign'). Additive: every
+// envelope the old predicate admitted is still admitted, and ATS envelopes ('aramo-ats',
+// CORE_REF) stay outside.
+export const SIGN_CONSOLE_APPLICATION = 'aramo-sign';
+export const SENDER_AUTHORED: { OR: Array<{ source_application: string } | { documents: { none: { source_mode: string } } }> } = {
+  OR: [{ source_application: SIGN_CONSOLE_APPLICATION }, { documents: { none: { source_mode: 'CORE_REF' } } }],
+};
 
 type Db = Pick<PrismaService, 'signatureEnvelope' | 'envelopeDocument' | 'signer' | 'signatureField' | 'signatureEvent'>;
 
@@ -221,14 +229,18 @@ export class EsignSenderRepository {
 
   // Locks the envelope row and asserts DRAFT inside the caller's transaction. An
   // envelope holding a CORE_REF (ATS/Core) document is outside the sender
-  // workspace and reads as not found.
+  // workspace and reads as not found — unless the Sign console itself started it from
+  // a template (DOC-TEMPLATE-LIB-1 T-5: source_application 'aramo-sign').
   private async assertDraft(tx: Pick<PrismaService, '$queryRaw'>, tenant_id: string, envelope_id: string): Promise<void> {
     const rows = await tx.$queryRaw<{ status: string }[]>`
       SELECT e.status FROM sign."SignatureEnvelope" e
       WHERE e.id = ${envelope_id}::uuid AND e.tenant_id = ${tenant_id}::uuid
-        AND NOT EXISTS (
-          SELECT 1 FROM sign."EnvelopeDocument" d
-          WHERE d.envelope_id = e.id AND d.source_mode = 'CORE_REF'
+        AND (
+          e.source_application = ${SIGN_CONSOLE_APPLICATION}
+          OR NOT EXISTS (
+            SELECT 1 FROM sign."EnvelopeDocument" d
+            WHERE d.envelope_id = e.id AND d.source_mode = 'CORE_REF'
+          )
         )
       FOR UPDATE OF e`;
     const row = rows[0];
@@ -276,6 +288,51 @@ export class EsignSenderRepository {
           source_object_key: input.source_object_key,
           content_type: input.content_type,
           byte_size: input.byte_size,
+          title: input.title,
+          source_sha256: input.source_sha256,
+          ordinal: (last?.ordinal ?? -1) + 1,
+        },
+      });
+      await this.repo.appendEvent(tx, {
+        tenant_id: input.tenant_id,
+        envelope_id: input.envelope_id,
+        event_type: 'DOCUMENT_ATTACHED',
+        actor_type: 'SERVICE',
+        actor_ref: input.actor_ref,
+        payload: { envelope_document_id: row.id, title: row.title },
+      });
+      return row;
+    });
+  }
+
+  // DOC-TEMPLATE-LIB-1 T-5 — attach a frozen Documents revision (CORE_REF) to a Sign
+  // console draft: the document apps/api rendered from a template. Sign stores only the
+  // UUID references + the source hash; the bytes stay in Documents and are pulled over
+  // the signed channel (DocumentSourceHttpAdapter) — never copied into Sign storage.
+  async addDraftCoreRefDocument(input: {
+    tenant_id: string;
+    envelope_id: string;
+    actor_ref: string;
+    title: string;
+    document_ref: string;
+    document_revision_ref: string;
+    source_sha256: string;
+  }): Promise<SenderDocumentRow> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      const last = await tx.envelopeDocument.findFirst({
+        where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id },
+        orderBy: { ordinal: 'desc' },
+        select: { ordinal: true },
+      });
+      const row = await tx.envelopeDocument.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          envelope_id: input.envelope_id,
+          source_mode: 'CORE_REF',
+          document_ref: input.document_ref,
+          document_revision_ref: input.document_revision_ref,
           title: input.title,
           source_sha256: input.source_sha256,
           ordinal: (last?.ordinal ?? -1) + 1,

@@ -159,6 +159,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'ESIGN_INSTALLATION_REVOKED',
       // Sign Unified Product S-5 — webhook subscriptions need the service secret key (503).
       'ESIGN_WEBHOOKS_UNAVAILABLE',
+      // DOC-TEMPLATE-LIB-1 T-5 — a Sign plan capability that is not available (403).
+      'ESIGN_FEATURE_NOT_AVAILABLE',
       'SIGNER_NOT_FOUND',
       'SIGNER_NOT_YET_ELIGIBLE',
       'SIGNING_SESSION_INVALID',

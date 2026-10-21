@@ -153,8 +153,10 @@ describe('Sign S-1 — the Sign role contract is seeded exactly', () => {
         expect(SEED_IDS.scopes[s as keyof typeof SEED_IDS.scopes]).toMatch(/^01900000-0000-7000-8000-00000000141[0-3]$|^01900000-0000-7000-8000-00000000140[a-f]$/);
       }
     }
-    // ROLES-1 PR-3 — 23 − sign_owner's 10 (retired: no longer granted).
-    expect(contractGrants).toBe(13);
+    // ROLES-1 PR-3 — 23 − sign_owner's 10 (retired: no longer granted) = 13.
+    // DOC-TEMPLATE-LIB-1 T-5 — − sign_admin × sign:template:{use,manage} − sign_sender ×
+    // sign:template:use (removed) → 13 − 3 = 10.
+    expect(contractGrants).toBe(10);
   });
 });
 

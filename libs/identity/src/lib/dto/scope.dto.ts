@@ -111,8 +111,8 @@ export const SEED_SCOPE_KEYS = [
   'sign:envelope:read:all',    // sign_viewer/admin/owner (every organization envelope)
   'sign:envelope:manage:all',  // sign_admin/owner (lifecycle + drafts of any envelope)
   'sign:contact:read',         // sign_sender/admin/owner
-  'sign:template:use',         // sign_sender/admin/owner (templates not yet built)
-  'sign:template:manage',      // sign_admin/owner (templates not yet built)
+  // DOC-TEMPLATE-LIB-1 T-5 — sign:template:use / sign:template:manage REMOVED (Sign uses
+  // the Documents-owned document_template:read).
   'sign:report:read',          // sign_viewer/admin/owner
   'sign:member:manage',        // sign_admin/owner (assign Sign roles)
   'sign:settings:manage',      // sign_admin/owner

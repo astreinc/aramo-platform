@@ -8,7 +8,8 @@ import { EnvelopeSent, EnvelopeWizard, NewEnvelope } from './pages/EnvelopeWizar
 import { BillingPanel } from './pages/Billing';
 import { InboxPage } from './pages/Inbox';
 import { SettingsPage } from './pages/Settings';
-import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage, TemplatesPage } from './pages/WorkspacePages';
+import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage } from './pages/WorkspacePages';
+import { TemplatesPage } from './pages/Templates';
 import { LoginPage } from './routes/LoginPage';
 import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
 import { ConsoleShell } from './shell';

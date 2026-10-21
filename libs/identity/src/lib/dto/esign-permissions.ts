@@ -20,8 +20,9 @@ export const ESIGN_SCOPE = {
   // Lifecycle and draft changes on ANY envelope in the organization.
   ENVELOPE_MANAGE_ALL: 'sign:envelope:manage:all',
   CONTACT_READ: 'sign:contact:read',
-  TEMPLATE_USE: 'sign:template:use',
-  TEMPLATE_MANAGE: 'sign:template:manage',
+  // DOC-TEMPLATE-LIB-1 T-5 (§6.4; Conforming Amendment #7) — sign:template:use and
+  // sign:template:manage are REMOVED: templates are Documents-owned and Sign uses
+  // document_template:read (held by sign_admin, sign_sender and the organization roles).
   REPORT_READ: 'sign:report:read',
   // Assign and remove Sign roles for organization members.
   MEMBER_MANAGE: 'sign:member:manage',
@@ -41,18 +42,19 @@ export type EsignRoleKey = (typeof ESIGN_ROLE_KEYS)[number];
 const S = ESIGN_SCOPE;
 const ADMIN: readonly EsignScope[] = [
   S.ENVELOPE_READ, S.ENVELOPE_READ_ALL, S.ENVELOPE_CREATE, S.ENVELOPE_SEND, S.ENVELOPE_MANAGE_ALL,
-  S.CONTACT_READ, S.TEMPLATE_USE, S.TEMPLATE_MANAGE, S.REPORT_READ,
+  S.CONTACT_READ, S.REPORT_READ,
   S.MEMBER_MANAGE, S.SETTINGS_MANAGE, S.INTEGRATION_MANAGE,
 ];
 
 // The complete, final permission set of each built-in Sign role (§4.3.4).
 //   Admin  = everything except billing administration (billing — sign:billing:manage —
 //            is held only by the organization owner, tenant_owner; ROLES-1 §3.4).
-//   Sender = own envelopes (read, author, send, remind, void), contacts, template use.
+//   Sender = own envelopes (read, author, send, remind, void), contacts. (Template use is
+//            document_template:read — DOC-TEMPLATE-LIB-1 T-5.)
 //   Viewer = every organization envelope, read-only, and reports.
 export const ESIGN_ROLE_PERMISSIONS: Readonly<Record<EsignRoleKey, readonly EsignScope[]>> = {
   sign_admin: ADMIN,
-  sign_sender: [S.ENVELOPE_READ, S.ENVELOPE_CREATE, S.ENVELOPE_SEND, S.CONTACT_READ, S.TEMPLATE_USE],
+  sign_sender: [S.ENVELOPE_READ, S.ENVELOPE_CREATE, S.ENVELOPE_SEND, S.CONTACT_READ],
   sign_viewer: [S.ENVELOPE_READ, S.ENVELOPE_READ_ALL, S.REPORT_READ],
 };
 

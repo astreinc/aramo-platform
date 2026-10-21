@@ -168,7 +168,9 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     expect(bundles.get('tenant_owner')?.size).toBe(157);
     expect(bundles.get('tenant_admin')?.size).toBe(156);
     expect(bundles.get('ats_admin')?.size).toBe(139);
-    expect(pairs).toBe(929);
+    // DOC-TEMPLATE-LIB-1 T-5: −3 (sign_admin × sign:template:{use,manage}, sign_sender ×
+    // sign:template:use) → 926.
+    expect(pairs).toBe(926);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

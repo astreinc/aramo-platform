@@ -974,6 +974,18 @@ export class TemplatesRepository {
     });
   }
 
+  // DOC-TEMPLATE-LIB-1 T-5 — the field definitions of a version the tenant may read (its
+  // own, or an Aramo default's — owner-aware like findVersionByIdOwnerAware). Empty when
+  // the version is unknown / another tenant's.
+  async listFieldDefinitionsOwnerAware(tenant_id: string, template_version_id: string) {
+    const v = await this.findVersionByIdOwnerAware(tenant_id, template_version_id);
+    if (v === null) return [];
+    return this.prisma.templateFieldDefinition.findMany({
+      where: { template_version_id },
+      orderBy: { ordinal: 'asc' },
+    });
+  }
+
   // ── Assets (content-hashed render inputs) ─────────────────────────────────
   async createAsset(input: {
     tenant_id: string;

@@ -31,7 +31,11 @@ export interface SenderContext {
     contacts?: boolean;
     members?: boolean;
     billing?: boolean;
+    // DOC-TEMPLATE-LIB-1 T-5 — document_template:read (start envelopes from templates).
+    templates?: boolean;
   };
+  // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (absent = not available).
+  features?: { templates?: boolean };
   can_send: boolean;
   personal_sending_enabled: false;
   organization_url: string | null;
@@ -196,6 +200,47 @@ export interface Evidence {
 
 const enc = encodeURIComponent;
 
+// DOC-TEMPLATE-LIB-1 T-5 — Documents-owned templates as the Sign console uses them. Sign
+// holds no template data: sign-service reads them through the Documents API.
+export interface TemplateVariable {
+  key: string;
+  label: string;
+  group: string;
+  // ORGANIZATION — from the organization profile; SENDER — filled in by the sender.
+  source: 'ORGANIZATION' | 'SENDER';
+  value: string | null;
+}
+
+export interface SenderTemplate {
+  template_id: string;
+  name: string;
+  description: string | null;
+  document_type: { id: string; key: string; name: string };
+  owner_scope: 'PLATFORM' | 'TENANT';
+  resolution: string;
+  version_id: string;
+  version_number: number;
+  updated_at: string;
+  variables: TemplateVariable[];
+}
+
+export interface TemplatePreview {
+  template_id: string;
+  version_id: string;
+  version_number: number;
+  title: string;
+  blocks: { type: string; text: string }[];
+  html: string | null;
+  letterhead: { organization_name: string | null; logo_available: boolean };
+  variables: TemplateVariable[];
+}
+
+export interface FromTemplateResult {
+  envelope: EnvelopeDetail;
+  template: { template_id: string; version_id: string; version_number: number };
+  suggested_fields: { field_type: 'SIGNATURE' | 'SIGN_DATE'; page_number: number; x: number; y: number; width: number; height: number }[];
+}
+
 // Aramo Sign launch — self-service billing (/v1/sign/billing/*). The backend is
 // the only authority for the plan, status and usage; the console only renders
 // them and hands the browser to the provider-hosted checkout / portal pages.
@@ -338,6 +383,16 @@ export const senderApi = {
   setMemberRole: (userId: string, sign_role: SignRoleKey | null) =>
     apiClient.put<SignMember>(`${BASE}/members/${encodeURIComponent(userId)}/sign-role`, { sign_role }),
   activity: (limit = 200) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/activity?limit=${limit}`),
+  // DOC-TEMPLATE-LIB-1 T-5 — templates (Documents-owned) and envelopes started from one.
+  templates: () => apiClient.get<{ items: SenderTemplate[]; unavailable: { document_type_id: string; reason: string }[] }>(`${BASE}/templates`),
+  previewTemplate: (id: string, values: Record<string, string>) => apiClient.post<TemplatePreview>(`${BASE}/templates/${enc(id)}/preview`, { values }),
+  fromTemplate: (body: {
+    template_id: string;
+    values: Record<string, string>;
+    subject?: string;
+    idempotency_key?: string;
+    signer?: { name: string; email: string };
+  }) => apiClient.post<FromTemplateResult>(`${BASE}/envelopes/from-template`, body),
 };
 
 // PDF bytes for the editor / preview. Binary, so it bypasses the JSON client but
@@ -380,6 +435,9 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
     if (e.code === 'ESIGN_BILLING_CONFLICT') return 'Your organization doesn’t have a billing account yet. Choose a plan first.';
+    if (e.code === 'ESIGN_FEATURE_NOT_AVAILABLE') return 'Templates aren’t available on your Aramo Sign plan yet.';
+    if (e.code === 'RTR_TEMPLATE_BINDING_MISSING') return 'Fill in every template field before creating the envelope.';
+    if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
     if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
     if (e.status === 403) return 'You don’t have permission to do that.';

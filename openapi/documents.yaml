@@ -943,6 +943,136 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/documents/esign/templates:
+    get:
+      operationId: listSignTemplates
+      summary: Templates a tenant can start an Aramo Sign envelope from (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Service-to-service read callable ONLY by sign-service (aramo-sign-s2s-v1, the same
+        signed scheme as getRevisionSource). For each configurable document type, the template
+        the tenant's explicit choice resolves to (client → tenant → Aramo default, current
+        version only; ADR-0034 D6). Product tags are recorded, not enforced (D9). Each variable
+        reports whether the tenant profile supplies it (ORGANIZATION) or the sender fills it
+        (SENDER). The request carries no user scope: sign-service checks the caller's session
+        (document_template:read) before calling.
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: client_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      responses:
+        '200':
+          description: The resolved templates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTemplateListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/{id}/preview:
+    post:
+      operationId: previewSignTemplate
+      summary: Tenant-branded preview of the resolved template (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1). The body is bound by the
+        signed `body_sha256` query parameter (sha256 hex of the key-sorted canonical JSON
+        body). Renders the template's current version with the tenant's organization values,
+        the sender's values and samples for the rest. Writes nothing.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - name: tenant_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignTemplatePreviewRequest'
+      responses:
+        '200':
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTemplatePreviewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
+  /v1/documents/esign/templates/{id}/render:
+    post:
+      operationId: renderSignTemplate
+      summary: Render the resolved template into a frozen Document revision for an Aramo Sign envelope (DOC-TEMPLATE-LIB-1 T-5).
+      description: >
+        Service-to-service, sign-service only (aramo-sign-s2s-v1); the body is bound by the
+        signed `body_sha256`. The first Sign-initiated Documents write — performed by apps/api
+        (sign-service never writes the documents schema). Binds the tenant-profile values and
+        the sender's values (every talent / requisition / client / recruiter variable is
+        sender-filled), applies the tenant letterhead to an Aramo default, creates a Document
+        and a FROZEN DocumentRevision pinned to the exact template_version_id, and returns the
+        CORE_REF document_revision_ref. Idempotent on `idempotency_key`: the same key and body
+        return the same revision; the same key with another body is 409.
+      parameters:
+        - $ref: '#/components/parameters/TemplateIdPath'
+        - name: tenant_id
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+        - name: idempotency_key
+          in: query
+          required: true
+          schema: { type: string, pattern: '^[A-Za-z0-9_-]{8,128}$' }
+        - $ref: '#/components/parameters/EsignS2sBodyDigest'
+        - $ref: '#/components/parameters/EsignS2sTimestamp'
+        - $ref: '#/components/parameters/EsignS2sSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignTemplateRenderRequest'
+      responses:
+        '201':
+          description: The frozen revision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignTemplateRenderResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/EsignS2sUnauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '503':
+          $ref: '#/components/responses/EsignS2sUnavailable'
   /v1/integrations/sign/events:
     post:
       operationId: receiveEsignLifecycleEvent
@@ -1030,6 +1160,36 @@ components:
       schema:
         type: string
         format: uuid
+    TemplateIdPath:
+      name: id
+      in: path
+      required: true
+      description: The template id (UUID).
+      schema:
+        type: string
+        format: uuid
+    EsignS2sTimestamp:
+      name: X-Aramo-Esign-S2S-Timestamp
+      in: header
+      required: true
+      description: Unix epoch seconds when the request was signed (aramo-sign-s2s-v1). Rejected if outside ±300s of now.
+      schema:
+        type: string
+    EsignS2sSignature:
+      name: X-Aramo-Esign-S2S-Signature
+      in: header
+      required: true
+      description: base64(HMAC-SHA256(secret, canonical aramo-sign-s2s-v1 string)).
+      schema:
+        type: string
+    EsignS2sBodyDigest:
+      name: body_sha256
+      in: query
+      required: true
+      description: sha256 (hex) of the key-sorted canonical JSON request body. Signed with the query, so it binds the body to the signature; a body that does not match is refused (401).
+      schema:
+        type: string
+        pattern: '^[0-9a-f]{64}$'
   responses:
     BadRequest:
       description: The request failed validation.
@@ -1051,6 +1211,18 @@ components:
             $ref: '#/components/schemas/ErrorResponse'
     UnprocessableEntity:
       description: The content was refused by server-side validation (details.reason names why).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    EsignS2sUnauthorized:
+      description: Missing, malformed, stale or invalid sign-service request signature, or a body that does not match body_sha256 (AUTH_REQUIRED).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    EsignS2sUnavailable:
+      description: sign-service request authentication is not configured (ESIGN_SERVICE_AUTH_UNAVAILABLE); fails closed.
       content:
         application/json:
           schema:
@@ -1905,3 +2077,159 @@ components:
           type: integer
         required:
           type: boolean
+    SignTemplateVariable:
+      type: object
+      additionalProperties: false
+      required: [key, label, group, source, value]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        group: { type: string }
+        source:
+          type: string
+          enum: [ORGANIZATION, SENDER]
+        value:
+          type: [string, 'null']
+          description: The tenant-profile value of an ORGANIZATION variable; null for SENDER.
+    SignTemplateSummary:
+      type: object
+      additionalProperties: false
+      required: [template_id, name, description, document_type, owner_scope, resolution, version_id, version_number, updated_at, variables]
+      properties:
+        template_id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        document_type:
+          type: object
+          additionalProperties: false
+          required: [id, key, name]
+          properties:
+            id: { type: string, format: uuid }
+            key: { type: string }
+            name: { type: string }
+        owner_scope:
+          type: string
+          enum: [PLATFORM, TENANT]
+        resolution:
+          type: string
+          enum: [CLIENT_SELECTION, TENANT_SELECTION, PLATFORM_DEFAULT, WITHDRAWAL_FALLBACK]
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        updated_at: { type: string, format: date-time }
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignTemplateVariable'
+    SignTemplateListResponse:
+      type: object
+      additionalProperties: false
+      required: [items, unavailable]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignTemplateSummary'
+        unavailable:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [document_type_id, reason]
+            properties:
+              document_type_id: { type: string, format: uuid }
+              reason: { type: string }
+    SignTemplatePreviewRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        values:
+          type: object
+          additionalProperties: { type: string }
+    SignTemplatePreviewResponse:
+      type: object
+      additionalProperties: false
+      required: [template_id, version_id, version_number, title, blocks, html, letterhead, variables]
+      properties:
+        template_id: { type: string, format: uuid }
+        version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        title: { type: string }
+        blocks:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, text]
+            properties:
+              type: { type: string }
+              text: { type: string }
+        html:
+          type: [string, 'null']
+          description: Allowlisted html (rtr-html-v1 content) with values substituted; null for block content.
+        letterhead:
+          type: object
+          additionalProperties: false
+          required: [organization_name, logo_available]
+          properties:
+            organization_name: { type: [string, 'null'] }
+            logo_available: { type: boolean }
+        variables:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignTemplateVariable'
+    SignTemplateRenderRequest:
+      type: object
+      additionalProperties: false
+      required: [values, created_by]
+      properties:
+        values:
+          type: object
+          additionalProperties: { type: string }
+        created_by: { type: string, format: uuid }
+        client_id: { type: [string, 'null'], format: uuid }
+    SignTemplateSignatureField:
+      type: object
+      additionalProperties: false
+      required: [field_type, page_number, x, y, width, height]
+      properties:
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGN_DATE]
+        page_number: { type: integer, description: 0-based }
+        x: { type: number }
+        y: { type: number }
+        width: { type: number }
+        height: { type: number }
+    SignTemplateRenderResponse:
+      type: object
+      additionalProperties: false
+      required: [document_id, document_revision_ref, source_sha256, byte_size, title, template_id, template_version_id, version_number, signature_fields, field_definitions]
+      properties:
+        document_id: { type: string, format: uuid }
+        document_revision_ref: { type: string, format: uuid }
+        source_sha256: { type: string }
+        byte_size: { type: integer }
+        title: { type: string }
+        template_id: { type: string, format: uuid }
+        template_version_id: { type: string, format: uuid }
+        version_number: { type: integer }
+        signature_fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignTemplateSignatureField'
+        field_definitions:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field_key, field_type, signer_role, required, page_number, x, y, width, height]
+            properties:
+              field_key: { type: string }
+              field_type: { type: string }
+              signer_role: { type: [string, 'null'] }
+              required: { type: boolean }
+              page_number: { type: [integer, 'null'] }
+              x: { type: [number, 'null'] }
+              y: { type: [number, 'null'] }
+              width: { type: [number, 'null'] }
+              height: { type: [number, 'null'] }
