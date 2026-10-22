@@ -20047,37 +20047,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20092,37 +20062,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260601000000_add_site_axis/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260604000000_add_authz_team_models/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20137,37 +20077,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260620000000_add_site_hierarchy/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260624000000_add_invitation_and_invite_status/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20182,37 +20092,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260626120000_add_tenant_slug/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20227,37 +20107,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20260901000000_hf_auth_1_authorization_version/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000000_ic1_user_tenant_owner_expand/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20272,37 +20122,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000001_ic1_user_tenant_owner_backfill/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261016000000_ic1_user_tenant_cardinality/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20317,37 +20137,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261019120000_sign_self_service_signup/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261020200000_sign_signup_idp_pin/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20362,37 +20152,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20407,37 +20167,7 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261021160100_doclib_t5_remove_sign_template_scopes/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022100000_sign_signup_org_details/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -20452,52 +20182,12 @@
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
       "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql"
-    },
-    {
-      "from": "libs/common/src/lib/testing/identity-migrations.ts",
-      "status": "production",
-      "to": "libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
