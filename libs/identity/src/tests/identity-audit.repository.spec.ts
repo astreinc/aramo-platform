@@ -86,8 +86,21 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
-  it('EVENT_TYPES contains 69 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/unverified-purge) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(69);
+  it('EVENT_TYPES contains 77 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/attempt-purge + 5 ORG-UX-1 template governance + 3 ORG-UX-1 tenant-user resend/revoke/email-change) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(77);
+    // ORG-UX-1 §5.4 / §8.3 — tenant-scoped governance + Users & invitations events.
+    for (const t of [
+      'identity.document_template.adopted',
+      'identity.document_template.created',
+      'identity.document_template.version_activated',
+      'identity.document_template.selection_set',
+      'identity.document_template.selection_cleared',
+      'identity.tenant_user.invitation_resent',
+      'identity.tenant_user.invitation_revoked',
+      'identity.tenant_user.email_changed',
+    ] as const) {
+      expect(TENANT_SCOPED_EVENT_TYPES.has(t), t).toBe(true);
+    }
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.domain.claim.authoritative')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
@@ -195,7 +208,7 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       'identity.personal.risk.closed',
       'identity.personal.risk.send_location_signal',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(60); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(68); // Personal send-location +1; ORG-UX-1 +8 (5 template governance + 3 tenant-user resend/revoke/email-change). // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +10
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

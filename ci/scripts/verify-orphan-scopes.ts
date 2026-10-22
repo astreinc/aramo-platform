@@ -60,7 +60,11 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'sign:envelope:create': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_CREATE_SCOPE) → RequireScopes on every sender draft-authoring route (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
   // Sign Unified Product S-1 — the Sign permission contract (esign-permissions.ts).
   'sign:contact:read': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.CONTACT_READ) → RequireScopes on GET /v1/sign/sender/contacts (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
-  'sign:member:manage': { cls: 'DYNAMICALLY_ENFORCED', reason: 'EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE) → RequireScopes on the Sign member routes (apps/sign-service/src/app/sender/esign-sender.controller.ts)' },
+  // ORG-UX-1 (Directive v1.0 LOCKED §6, P7; conforming amendment row 10) — Sign's member role
+  // routes are retired (Organization → Users & product access is the single role authority).
+  // The scope stays granted (no grant migration) and still decides the Sign settings
+  // members card's visibility (SenderContextService permissions.members).
+  'sign:member:manage': { cls: 'ACTIVE_RESERVED', reason: 'ORG-UX-1 §6: Sign member routes retired; retained (granted, no migration) as the Sign Settings members-card visibility flag in SenderContextService.context — role assignment is Organization-owned (PATCH /v1/tenant/users/:id/roles)' },
   'sign:envelope:read:all': { cls: 'SERVICE_ENFORCED', reason: 'visibility filter — no owner filter when held (SenderEnvelopeService.visibleOwner, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
   'sign:envelope:manage:all': { cls: 'SERVICE_ENFORCED', reason: 'ownership gate — mutating another member\'s envelope needs it (SenderEnvelopeService.assertMayChange, apps/sign-service/src/app/sender/sender-envelope.service.ts)' },
   'sign:billing:manage': { cls: 'SERVICE_ENFORCED', reason: 'billing management authority, sign:billing:manage ONLY (tenant_owner; ROLES-1 PR-2 removed the tenant:admin:settings fallback) — canManageBilling, apps/sign-service/src/app/billing/esign-billing.controller.ts' },

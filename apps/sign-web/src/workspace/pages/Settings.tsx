@@ -1,14 +1,19 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Navigate, useParams } from 'react-router-dom';
+import { NavLink, Navigate, useLocation, useParams } from 'react-router-dom';
 import { logout, ssoEntryHref } from '@aramo/fe-foundation';
 
-import { errorMessage, senderApi, type SignMember, type SignRoleKey } from '../api';
+import { orgLinkWithReturn } from '../org-link';
 import { Btn, Check, Field, Icon, LinkBtn, Sel, TextIn } from '../ui';
 import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
 import { CloseAccountSection } from './AccountClose';
+
+// ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
+function useOrgLink(): (orgUrl: string) => string {
+  const { pathname } = useLocation();
+  return (orgUrl) => orgLinkWithReturn(orgUrl, `${window.location.origin}${pathname}`);
+}
 
 // Sign Settings (change log §B): Personal (Shared · read-only vs Sign-only),
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
@@ -23,7 +28,8 @@ const SECTIONS = [
   // (organization owner / admin: tenant:admin:domain). Key matches Billing's
   // DOMAIN_SETTINGS_HREF (/sign/settings/domain).
   { key: 'domain', label: 'Domain' },
-  { key: 'members', label: 'Members' },
+  // ORG-UX-1 §6 — a pointer to Organization → Users & product access (no role editing here).
+  { key: 'members', label: 'Users & roles' },
   { key: 'branding', label: 'Branding' },
   { key: 'security', label: 'Signing security' },
   { key: 'integrations', label: 'Integrations' },
@@ -42,6 +48,7 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
         .filter((k) => k !== 'domain' || scopes.includes('tenant:admin:domain'));
   if (!allowed.includes(section)) return <Navigate to={`${base}/settings/personal`} replace />;
   const org = ctx.organization_url;
+  const orgLink = useOrgLink();
   return (
     <div className="sg-page sg-page--wide">
       <h1 className="sg-h1" style={{ marginBottom: 18 }}>
@@ -55,21 +62,16 @@ export function SettingsPage({ scopes = [] }: { scopes?: readonly string[] } = {
             </NavLink>
           ))}
           {!personalWs && org !== null ? (
-            <>
-              <a href={org} target="_blank" rel="noopener noreferrer" data-testid="settings-org-profile">
-                Organization profile <Icon name="ext" size={12} />
-              </a>
-              <a href={org.replace(/\/profile$/, '/users')} target="_blank" rel="noopener noreferrer" data-testid="settings-org-users">
-                Users &amp; roles <Icon name="ext" size={12} />
-              </a>
-            </>
+            <a href={orgLink(org)} data-testid="settings-org-profile">
+              Organization profile <Icon name="ext" size={12} />
+            </a>
           ) : null}
         </nav>
         <div className="sg-grid">
           {section === 'personal' ? <PersonalSection /> : null}
           {section === 'billing' ? <BillingPanel /> : null}
           {section === 'domain' ? <DomainCard /> : null}
-          {section === 'members' ? <MembersSection /> : null}
+          {section === 'members' ? <UsersRolesSection /> : null}
           {section === 'branding' ? <BrandingSection /> : null}
           {section === 'security' ? <SecuritySection /> : null}
           {section === 'integrations' ? <IntegrationsSection /> : null}
@@ -153,6 +155,7 @@ function PersonalSection() {
 
 function BrandingSection() {
   const { ctx } = useWorkspace();
+  const orgLink = useOrgLink();
   return (
     <div className="sg-grid sg-grid--2" style={{ alignItems: 'start' }}>
       <section className="sg-card">
@@ -187,7 +190,7 @@ function BrandingSection() {
           </div>
           <p className="sg-help">The organization name and logo come from Organization administration, shared by every Aramo app.</p>
           {ctx.organization_url !== null ? (
-            <a className="sg-btn sg-btn--sm" href={ssoEntryHref(ctx.organization_url, 'org')} target="_blank" rel="noopener noreferrer">
+            <a className="sg-btn sg-btn--sm" href={orgLink(ctx.organization_url)}>
               Open organization profile <Icon name="ext" size={12} />
             </a>
           ) : null}
@@ -329,101 +332,35 @@ function AuditSection() {
 // organization role (Tenant Owner / Tenant Admin — the Sign Owner / Admin
 // equivalents) is shown read-only next to the Sign role, and a member holding one
 // already has that Sign access whatever their Sign role.
-function MembersSection() {
-  const { ctx, toast } = useWorkspace();
-  const [rows, setRows] = useState<SignMember[] | null>(null);
-  const [roles, setRoles] = useState<{ key: SignRoleKey; display: string }[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    senderApi
-      .members()
-      .then((r) => {
-        if (!live) return;
-        setRows(r.items);
-        setRoles(r.roles);
-      })
-      .catch((e) => live && setError(errorMessage(e)));
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const change = async (m: SignMember, value: string) => {
-    setBusy(m.user_id);
-    try {
-      const next = value === '' ? null : (value as SignRoleKey);
-      const updated = await senderApi.setMemberRole(m.user_id, next);
-      setRows((cur) => (cur ?? []).map((r) => (r.user_id === updated.user_id ? updated : r)));
-      const who = m.display_name ?? m.email;
-      toast(
-        next === null
-          ? updated.organization_role_display
-            ? `Removed the Sign role of ${who} (full Sign access stays with ${updated.organization_role_display})`
-            : `Removed Sign access for ${who}`
-          : `${who} is now ${updated.sign_role_display ?? 'updated'}`,
-      );
-    } catch (e) {
-      toast(errorMessage(e));
-    } finally {
-      setBusy(null);
-    }
-  };
-
+// ORG-UX-1 (Directive v1.0 LOCKED §6, H1/P7, Lead Correction C) — Sign no longer assigns
+// roles. Organization → Users & product access is the single role-assignment surface (by
+// an organization administrator: tenant_owner / tenant_admin). This card only points
+// there; Sign-specific settings stay with sign_admin.
+function UsersRolesSection() {
+  const { ctx } = useWorkspace();
+  const target = ctx.organization_roles_url ?? null;
+  const orgLink = useOrgLink();
   return (
-    <section className="sg-card" data-testid="settings-members">
-      <div className="sg-card__head">Members</div>
-      <div className="sg-card__body">
-        <p className="sg-help" style={{ marginBottom: 12 }}>
-          Sign roles decide what each person can do in Aramo Sign. Senders work with their own envelopes; Viewers see every envelope in the organization; Admins
-          manage members and every envelope. Tenant Owners and Tenant Admins have full Sign access through their organization role, and only a Tenant Owner
-          manages the plan.
-        </p>
-        {error !== null ? <div className="sg-note">{error}</div> : null}
-        {rows === null && error === null ? <div className="sg-muted">Loading…</div> : null}
-        {rows !== null ? (
-          <table className="sg-table" data-testid="members-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Email</th>
-                <th>Organization role</th>
-                <th>Sign role</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((m) => (
-                <tr key={m.user_id}>
-                  <td>
-                    {m.display_name ?? '—'}
-                    {m.user_id === ctx.user.id ? <span className="sg-tag sg-tag--grey" style={{ marginLeft: 6 }}>You</span> : null}
-                    {!m.active ? <span className="sg-tag sg-tag--warn" style={{ marginLeft: 6 }}>Inactive</span> : null}
-                  </td>
-                  <td>{m.email}</td>
-                  <td data-testid={`member-org-role-${m.user_id}`}>{m.organization_role_display ?? '—'}</td>
-                  <td>
-                    <Sel
-                      aria-label={`Sign role for ${m.display_name ?? m.email}`}
-                      value={m.sign_role ?? ''}
-                      disabled={busy !== null || !m.active}
-                      onChange={(e) => void change(m, e.target.value)}
-                    >
-                      <option value="">{m.organization_role_display ? `Included with ${m.organization_role_display}` : 'No Sign access'}</option>
-                      {roles.map((r) => (
-                        <option key={r.key} value={r.key}>
-                          {r.display}
-                        </option>
-                      ))}
-                    </Sel>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : null}
-      </div>
-    </section>
+    <div className="sg-col">
+      <section className="sg-card" data-testid="settings-users-roles">
+        <div className="sg-card__head">
+          <div>
+            <h3>Users &amp; roles</h3>
+            <p className="sg-help">Roles for every Aramo app are managed in your organization.</p>
+          </div>
+        </div>
+        <div className="sg-card__body">
+          {ctx.org_admin === true && target !== null ? (
+            <a className="sg-btn sg-btn--primary sg-btn--sm" href={orgLink(target)} data-testid="settings-manage-in-org">
+              Manage in Organization → Users &amp; product access
+            </a>
+          ) : (
+            <p className="sg-help" data-testid="settings-ask-org-admin">
+              Ask your organization admin to change roles.
+            </p>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }

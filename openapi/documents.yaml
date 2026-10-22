@@ -198,7 +198,7 @@ paths:
     post:
       operationId: createDocumentTemplate
       summary: Create a document template.
-      description: Creates a DRAFT template (GENERATED, UPLOADED_PDF, or HYBRID). Requires `document_template:manage`.
+      description: Creates a DRAFT template (GENERATED, UPLOADED_PDF, or HYBRID). Requires `document_template:author` (ORG-UX-1 §4.1). Writes `identity.document_template.created`.
       requestBody:
         required: true
         content:
@@ -227,6 +227,46 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/DocumentTemplate'
+  /v1/document-templates/adopt:
+    post:
+      operationId: adoptDocumentTemplate
+      summary: Adopt an Aramo starting point as an independent draft in Our templates.
+      description: |
+        ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B). Copies the Aramo (PLATFORM)
+        default's current version — content and field definitions — into a new TENANT-owned
+        DRAFT template (v1). The new template records `adopted_from_template_id` /
+        `adopted_from_version_id` for audit only: later changes to the Aramo default never
+        reach it. Nothing is used until a `document_template:manage` holder approves it.
+        Requires `document_template:author`. Unknown or non-PLATFORM id → 404; a withdrawn
+        or unpublished default → 409 with details.reason `template_not_adoptable`. Writes
+        `identity.document_template.adopted`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [library_template_id]
+              properties:
+                library_template_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: The adopted draft.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [template, version]
+                properties:
+                  template:
+                    $ref: '#/components/schemas/DocumentTemplate'
+                  version:
+                    type: object
+                    description: The DRAFT v1 (TemplateVersion read view).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/document-templates/notices:
     get:
       operationId: listDocumentTemplateWithdrawalNotices
@@ -292,8 +332,10 @@ paths:
       operationId: listDocumentTemplateSelections
       summary: The tenant's active template choice per document type (and client).
       description: |
-        DOC-TEMPLATE-LIB-1 T-4. A document type with no tenant-wide row uses the Aramo
-        default. Requires `document_template:read`.
+        DOC-TEMPLATE-LIB-1 T-4. ORG-UX-1 §5.3: a document type with no tenant-wide row has
+        NO fallback to the Aramo default (sending requires an approved tenant template); a
+        row with `legacy_platform: true` is a grandfathered choice of an Aramo default.
+        Requires `document_template:read`.
       responses:
         '200':
           description: The selections.
@@ -311,11 +353,13 @@ paths:
       operationId: setDocumentTemplateSelection
       summary: Set the active template for a document type (and optional client).
       description: |
-        DOC-TEMPLATE-LIB-1 T-4. The template must be an Aramo default or one of the tenant's
-        own templates, of the same document type, ACTIVE (else 404 for a template the tenant
-        cannot see, 422 VALIDATION_ERROR with details.reason `template_not_active`,
-        `template_withdrawn` or `template_client_mismatch`). Replaces any existing choice for
-        the same (document type, client). Requires `document_template:manage`.
+        DOC-TEMPLATE-LIB-1 T-4; ORG-UX-1 §5.3. The template must be one of the tenant's own
+        approved templates of the same document type (else 404 for a template the tenant
+        cannot see, 422 VALIDATION_ERROR with details.reason `platform_template_not_selectable`
+        for an Aramo default — adopt it instead — `template_not_active` or
+        `template_client_mismatch`). Replaces any existing choice for the same (document
+        type, client) and clears its legacy flag. Requires `document_template:manage`.
+        Writes `identity.document_template.selection_set`.
       requestBody:
         required: true
         content:
@@ -337,7 +381,7 @@ paths:
           $ref: '#/components/responses/UnprocessableEntity'
     delete:
       operationId: clearDocumentTemplateSelection
-      summary: Clear the active template choice (revert to the Aramo default).
+      summary: Clear the active template choice (no fallback to the Aramo default — ORG-UX-1 §5.3).
       description: |
         DOC-TEMPLATE-LIB-1 T-4. Removes the choice for (document type, client); without a
         client, the tenant-wide choice. Idempotent (204 whether or not a choice existed).
@@ -383,7 +427,7 @@ paths:
         Saves the template name on the TEMPLATE (DocumentTemplate.name; shared by every
         version — not draft content, so it does not re-arm the preview gate). The name is
         trimmed and must be 1..120 characters. Tenant-scoped (unknown or cross-tenant ids
-        are 404). Returns the same template view as GET. Requires `document_template:manage`.
+        are 404). Returns the same template view as GET. Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -407,7 +451,7 @@ paths:
     post:
       operationId: createTemplateVersion
       summary: Create a DRAFT template version.
-      description: Version numbers auto-increment. Requires `document_template:manage`.
+      description: Version numbers auto-increment. Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
@@ -449,7 +493,7 @@ paths:
       description: |
         Creates a DRAFT vN+1 whose editable content is copied from the template's
         current ACTIVE version. One DRAFT per template — refused (409) if one is already
-        open. Requires `document_template:manage`.
+        open. Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -506,7 +550,7 @@ paths:
         preview-before-approve gate. For `rtr-html-v1` content the html is sanitised server-side
         against the A1 allowlist and the sanitised form is stored and returned; an unknown field key →
         422 VALIDATION_ERROR (details.reason = unknown_field, details.keys); a misplaced / repeated logo
-        node → 422 (logo_position); over 64 KB → 422 (content_too_large). Requires `document_template:manage`.
+        node → 422 (logo_position); over 64 KB → 422 (content_too_large). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       requestBody:
@@ -537,7 +581,7 @@ paths:
         Deletes a DRAFT version (and its field definitions). DRAFT-only — ACTIVE/RETIRED
         versions are immutable (409 TEMPLATE_IMMUTABLE). The template's current_version_id
         and ACTIVE version are unchanged; the one-DRAFT slot is freed. Tenant-scoped
-        (unknown or cross-tenant ids are 404). Requires `document_template:manage`.
+        (unknown or cross-tenant ids are 404). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -554,7 +598,7 @@ paths:
       description: |
         Validates the content and substitutes safe sample values, then records the
         preview to arm the activation gate. Creates NO business document, association,
-        requirement or envelope. Requires `document_template:manage`.
+        requirement or envelope. Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -580,7 +624,7 @@ paths:
         fetches the network. Activation freezes the asset reference with the version. No Tenant profile logo →
         409 VALIDATION_ERROR (details.reason = no_tenant_logo); an unusable logo → 422 (details.reason =
         logo_url_not_https | logo_url_host_refused | logo_url_invalid | logo_too_large | logo_type_invalid |
-        logo_fetch_failed). Requires `document_template:manage`.
+        logo_fetch_failed). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -601,7 +645,7 @@ paths:
     delete:
       operationId: removeTemplateVersionLogo
       summary: Remove the logo from a DRAFT version.
-      description: Removes the logo reference AND the logo node from the DRAFT content (the asset row is kept for versions that still reference it). DRAFT only. Requires `document_template:manage`.
+      description: Removes the logo reference AND the logo node from the DRAFT content (the asset row is kept for versions that still reference it). DRAFT only. Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       responses:
@@ -656,7 +700,7 @@ paths:
     post:
       operationId: addTemplateField
       summary: Add a field definition to a DRAFT version.
-      description: Rejected once the version is ACTIVE (immutable). Requires `document_template:manage`.
+      description: Rejected once the version is ACTIVE (immutable). Requires `document_template:author` (ORG-UX-1 §4.1).
       parameters:
         - $ref: '#/components/parameters/VersionId'
       requestBody:
@@ -1498,6 +1542,14 @@ components:
           type: [string, 'null']
           format: date-time
           description: PLATFORM defaults only.
+        adopted_from_template_id:
+          type: [string, 'null']
+          format: uuid
+          description: ORG-UX-1 §5.1 — the Aramo default an adopted tenant template was copied from. Audit/provenance only.
+        adopted_from_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: ORG-UX-1 §5.1 — the default's version at adoption time. Audit/provenance only.
     TemplateWithdrawalNoticesResponse:
       type: object
       required: [notices]
@@ -1792,6 +1844,9 @@ components:
         template_id: { type: string, format: uuid }
         selected_by: { type: string, format: uuid }
         selected_at: { type: string, format: date-time }
+        legacy_platform:
+          type: [boolean, 'null']
+          description: ORG-UX-1 §5.3 (T-A) — true for a grandfathered selection of an Aramo default.
     SetTemplateSelectionRequest:
       type: object
       required: [document_type_id, template_id]

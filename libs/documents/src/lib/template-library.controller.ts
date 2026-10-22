@@ -25,6 +25,7 @@ import {
   type TemplateTenantBrandingPort,
 } from './template-capabilities.port.js';
 import { TemplateNotFoundError, TemplateSelectionInvalidError } from './domain/errors.js';
+import { TEMPLATE_AUDIT, type TemplateAuditPort } from './template-audit.port.js';
 import { templateErrorToHttp } from './templates.controller.js';
 
 // DOC-TEMPLATE-LIB-1 T-4 — Implementation Directive v1.0 (LOCKED) §8.2 (ADR-0034 D3, D4,
@@ -99,6 +100,8 @@ export class DocumentTemplateLibraryController {
     private readonly repo: TemplatesRepository,
     @Optional() @Inject(TEMPLATE_CAPABILITIES) private readonly caps?: TemplateCapabilitiesPort,
     @Optional() @Inject(TEMPLATE_TENANT_BRANDING) private readonly branding?: TemplateTenantBrandingPort,
+    // ORG-UX-1 §5.4 — selection set / cleared are audited (non-swallowing seam).
+    @Optional() @Inject(TEMPLATE_AUDIT) private readonly audit?: TemplateAuditPort,
   ) {}
 
   @Get('library')
@@ -208,8 +211,9 @@ export class DocumentTemplateLibraryController {
     validate(typeof body?.template_id === 'string' && UUID_RE.test(body.template_id), 'template_id must be a uuid', requestId);
     const client_id = body.client_id ?? null;
     validate(client_id === null || (typeof client_id === 'string' && UUID_RE.test(client_id)), 'client_id must be a uuid or null', requestId);
+    let row: Awaited<ReturnType<TemplatesRepository['upsertSelection']>>;
     try {
-      return await this.repo.upsertSelection({
+      row = await this.repo.upsertSelection({
         tenant_id: auth.tenant_id,
         document_type_id: body.document_type_id,
         client_id,
@@ -219,6 +223,15 @@ export class DocumentTemplateLibraryController {
     } catch (e) {
       throw toHttp(e, requestId);
     }
+    await this.audit?.recordGovernance({
+      action: 'selection_set',
+      tenant_id: auth.tenant_id,
+      actor_id: auth.sub,
+      subject_id: body.template_id,
+      payload: { document_type_id: body.document_type_id, client_id },
+      requestId,
+    });
+    return row;
   }
 
   @Delete('selections')
@@ -233,6 +246,16 @@ export class DocumentTemplateLibraryController {
     validate(typeof documentTypeId === 'string' && UUID_RE.test(documentTypeId), 'document_type_id must be a uuid', requestId);
     const client_id = clientId === undefined || clientId === '' ? null : clientId;
     validate(client_id === null || UUID_RE.test(client_id), 'client_id must be a uuid', requestId);
-    await this.repo.deleteSelection(auth.tenant_id, documentTypeId as string, client_id);
+    const existed = await this.repo.deleteSelection(auth.tenant_id, documentTypeId as string, client_id);
+    if (existed) {
+      await this.audit?.recordGovernance({
+        action: 'selection_cleared',
+        tenant_id: auth.tenant_id,
+        actor_id: auth.sub,
+        subject_id: documentTypeId as string,
+        payload: { document_type_id: documentTypeId as string, client_id },
+        requestId,
+      });
+    }
   }
 }

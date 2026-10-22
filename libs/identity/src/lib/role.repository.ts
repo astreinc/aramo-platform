@@ -84,6 +84,30 @@ export class RoleRepository {
     return row.site_id;
   }
 
+  // ORG-UX-1 (LOCKED §4.3, Lead Correction A) — the active ROLE KEYS the principal holds
+  // in the tenant, read with the SAME membership filter as the site-aware scope reader
+  // (tenant-wide memberships, plus site-X ones when a site is given). Organization
+  // administration is decided from these keys (tenant_owner / tenant_admin), never from
+  // scope possession. Deterministic order (asc).
+  async findActiveRoleKeysForUserInTenantAndSite(args: {
+    user_id: string;
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<string[]> {
+    const siteFilter =
+      args.site_id === undefined
+        ? { site_id: null }
+        : { OR: [{ site_id: null }, { site_id: args.site_id }] };
+    const assignments = await this.prisma.userTenantMembershipRole.findMany({
+      where: {
+        membership: { user_id: args.user_id, tenant_id: args.tenant_id, is_active: true, ...siteFilter },
+        role: { is_active: true },
+      },
+      select: { role: { select: { key: true } } },
+    });
+    return [...new Set(assignments.map((a) => a.role.key))].sort();
+  }
+
   // PR-A1a site-aware resolver (Ruling 4): returns the union of
   //   (a) tenant-wide membership scopes (site_id IS NULL), and
   //   (b) memberships whose site_id matches the provided site.

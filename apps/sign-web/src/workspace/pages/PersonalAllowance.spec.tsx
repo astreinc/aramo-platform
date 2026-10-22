@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 import { errorMessage, nextSendTime, sendRefusalMessage, type BillingAccount, type SenderContext } from '../api';
 
-import { PersonalAllowance } from './PersonalAllowance';
+import { AllowanceChip, PersonalAllowance } from './PersonalAllowance';
 
 // Aramo Sign Personal (Free) — the workspace shows the Personal allowance (2 a
 // day, 5 a month) and words every Personal send refusal clearly; a limit offers
@@ -86,6 +86,7 @@ describe('Personal allowance in the workspace', () => {
       </MemoryRouter>,
     );
     expect(await screen.findByTestId('personal-allowance-day')).toHaveTextContent('1 of 2 today');
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('2 of 5 left this month · 1 of 2 left today');
     expect(screen.getByTestId('personal-allowance-month')).toHaveTextContent('3 of 5 this month');
     expect(screen.queryByTestId('personal-note')).toBeNull();
     expect(screen.queryByTestId('personal-upgrade')).toBeNull();
@@ -107,6 +108,20 @@ describe('Personal allowance in the workspace', () => {
     second.unmount();
     render(<PersonalAllowance loader={() => Promise.resolve(account(5, 0))} />);
     expect(await screen.findByText('You’ve used all your envelopes for this month.')).toBeInTheDocument();
+  });
+
+  it('the chip reads "{n} of 5 left this month · {n} of 2 left today": green, amber at 0 today, red at 0 this month', () => {
+    const { unmount } = render(<AllowanceChip used={2} limit={5} daily={{ used: 1, limit: 2 }} />);
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('3 of 5 left this month · 1 of 2 left today');
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveAttribute('data-tone', 'green');
+    unmount();
+    const day = render(<AllowanceChip used={3} limit={5} daily={{ used: 2, limit: 2 }} />);
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent('2 of 5 left this month · 0 of 2 left today');
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveAttribute('data-tone', 'amber');
+    day.unmount();
+    render(<AllowanceChip used={5} limit={5} daily={{ used: 0, limit: 2 }} />);
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveTextContent(/^0 of 5 left this month$/);
+    expect(screen.getByTestId('personal-allowance-chip')).toHaveAttribute('data-tone', 'red');
   });
 
   it('renders nothing without a sending subscription', async () => {

@@ -549,6 +549,14 @@ const DOCUMENTS_R2_DECLINED_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261021170000_r2_document_status_declined/migration.sql',
 );
+// ORG-UX-1 (LOCKED §5.1/§5.3) — DocumentTemplate.adopted_from_{template,version}_id +
+// TenantTemplateSelection.legacy_platform (ADD-not-rename). Changes the returned
+// DocumentTemplate / selection shapes (the regenerated client SELECTs the new columns) →
+// registered (CLAUDE.md law); after R2. Its T-A data block skips without identity.Tenant.
+const DOCUMENTS_ORG_UX_1_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3815,6 +3823,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION,
         // R2 (DEF-12) — DECLINED status + the signature-routing store.
         DOCUMENTS_R2_DECLINED_MIGRATION,
+        DOCUMENTS_ORG_UX_1_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -5305,6 +5314,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             [VER, TPL, ACTOR],
           );
           await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
+          // ORG-UX-1 (LOCKED §5.3, T-A) — gallery-first: a tenant resolves an Aramo default ONLY
+          // through a grandfathered (legacy_platform) selection, exactly as the 20261022130000
+          // migration writes one for a tenant that relied on the default. Without it the state
+          // would mean "must adopt first" (409 TEMPLATE_SELECTION_REQUIRED).
+          await c.query(
+            `INSERT INTO documents."TenantTemplateSelection" ("id","tenant_id","document_type_id","client_id","template_id","selected_by","updated_at","legacy_platform")
+             VALUES (gen_random_uuid(),$1::uuid,$2::uuid,NULL,$3::uuid,$4::uuid,now(),true)
+             ON CONFLICT ("tenant_id","document_type_id","client_id") DO UPDATE SET "template_id" = EXCLUDED."template_id", "legacy_platform" = true`,
+            [TENANT_ID, RTR_TYPE, TPL, ACTOR],
+          );
         });
       },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the

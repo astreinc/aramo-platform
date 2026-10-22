@@ -15,6 +15,12 @@ export const MY_PRODUCTS_PATH = '/v1/me/products';
 export type ProductKey = 'ats' | 'sign' | 'org';
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
 
+// ORG-UX-1 (Directive v1.0 LOCKED §4.3, Lead Correction A) — what the Organization
+// workspace shows this principal, server-evaluated from the role model (never derived
+// from scopes here): admin = every Organization section; templates = Our templates +
+// Template gallery only; none = App Home only. Present on the `org` entry.
+export type OrgAccess = 'admin' | 'templates' | 'none';
+
 export interface ProductAvailability {
   readonly key: ProductKey;
   /** The tenant holds the product capability (subscription). */
@@ -26,6 +32,8 @@ export interface ProductAvailability {
   /** The in-host entry path when available (e.g. /ats/), else null. */
   readonly entry_path: string | null;
   readonly reason: ProductUnavailableReason | null;
+  /** ORG-UX-1 §4.3 — `org` entry only. */
+  readonly org_access?: OrgAccess;
 }
 
 export interface ProductAvailabilityView {
@@ -48,6 +56,13 @@ function isAvailabilityView(v: unknown): v is ProductAvailabilityView {
         typeof (p as { available?: unknown }).available === 'boolean',
     )
   );
+}
+
+/** ORG-UX-1 §4.3 — the Organization access the backend granted ('none' when unknown). */
+export function orgAccessOf(view: ProductAvailabilityView | null): OrgAccess {
+  const org = view?.products.find((p) => p.key === 'org');
+  const a = org?.org_access;
+  return a === 'admin' || a === 'templates' ? a : 'none';
 }
 
 export async function fetchMyProducts(): Promise<ProductAvailabilityView> {

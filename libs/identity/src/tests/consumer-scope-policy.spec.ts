@@ -96,7 +96,7 @@ describe('DOC-TEMPLATE-LIB-1 T-4 — document_template:* on the org and sign ses
     'sign:envelope:send',
     'platform:document_template:manage',
   ];
-  it('org = the organization subset + document_template:read + document_template:manage (held only)', () => {
+  it('org = the organization subset + document_template:author/:manage (+ :read alongside them) (held only)', () => {
     for (const tenantHasEsign of [true, false]) {
       expect(filterScopesForConsumer({ consumer: 'org', scopes: HELD, tenantHasEsign }).sort()).toEqual([
         'auth:session:read',
@@ -105,10 +105,15 @@ describe('DOC-TEMPLATE-LIB-1 T-4 — document_template:* on the org and sign ses
         'tenant:admin:profile',
       ]);
     }
-    // A member holding only read (e.g. a recruiter) gets read and nothing it does not hold.
+    // ORG-UX-1 §4.1 (amendment row 9) — read ALONE never rides the org session: a recruiter's
+    // read-for-sending does not open the Org template pages.
     expect(
       filterScopesForConsumer({ consumer: 'org', scopes: ['auth:session:read', 'document_template:read', 'talent:read'], tenantHasEsign: false }),
-    ).toEqual(['auth:session:read', 'document_template:read']);
+    ).toEqual(['auth:session:read']);
+    // An author carries author + read (the template list/get reads).
+    expect(
+      filterScopesForConsumer({ consumer: 'org', scopes: ['auth:session:read', 'document_template:read', 'document_template:author'], tenantHasEsign: false }).sort(),
+    ).toEqual(['auth:session:read', 'document_template:author', 'document_template:read']);
   });
   it('sign = sign:* + the organization subset + document_template:read — never :manage, never other Documents scopes', () => {
     expect(filterScopesForConsumer({ consumer: 'sign', scopes: HELD, tenantHasEsign: true }).sort()).toEqual([

@@ -182,7 +182,7 @@ describe('sender context — templates permission + feature availability', () =>
     findSlugById: async () => 'acme',
     findOrganizationNameById: async () => 'Acme',
   };
-  const identity = { findUserById: async () => ({ email: 'u@x.test', display_name: 'U' }) };
+  const identity = { findUserById: async () => ({ email: 'u@x.test', display_name: 'U' }), findMembership: async () => null, findRoleKeysForMembership: async () => [] };
   it('NOT_AVAILABLE (default) → features.templates false; permission follows document_template:read', async () => {
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
     expect(v.features).toEqual({ templates: false });

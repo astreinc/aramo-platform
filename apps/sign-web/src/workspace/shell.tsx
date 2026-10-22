@@ -143,7 +143,7 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
         sidebar
       )}
       <div className="sg-main">
-        <TopBar onMenu={() => (narrow ? setDrawer((d) => !d) : setCollapsed((c) => !c))} scopes={scopes} />
+        <TopBar onMenu={() => (narrow ? setDrawer((d) => !d) : setCollapsed((c) => !c))} />
         <main>{children}</main>
         {/* Aramo Sign Personal (Free) — the legal documents that bind this account. */}
         <LegalLinks personal={personal} />
@@ -173,7 +173,7 @@ function usePopover(): [boolean, (v?: boolean) => void, React.RefObject<HTMLDivE
   return [open, (v?: boolean) => setOpen((o) => (v === undefined ? !o : v)), ref];
 }
 
-function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly string[] }) {
+function TopBar({ onMenu }: { onMenu: () => void }) {
   const { ctx, base } = useWorkspace();
   const nav = useNavigate();
   const [q, setQ] = useState('');
@@ -193,7 +193,9 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
     e.preventDefault();
     nav(`${base}/envelopes${q.trim() === '' ? '' : `?q=${encodeURIComponent(q.trim())}`}`);
   };
-  const isOrgAdmin = scopes.includes('tenant:admin:profile') || scopes.includes('tenant:admin:user-manage');
+  // ORG-UX-1 (LOCKED §4.3, Lead Correction A) — organization administration is the ROLE
+  // model (tenant_owner / tenant_admin), reported by the backend; never scope possession.
+  const isOrgAdmin = ctx.org_admin === true;
   const name = ctx.user.display_name ?? ctx.user.email ?? 'You';
 
   return (
@@ -236,7 +238,7 @@ function TopBar({ onMenu, scopes }: { onMenu: () => void; scopes: readonly strin
                 </span>
               </div>
               {isOrgAdmin && ctx.organization_url !== null ? (
-                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(ctx.organization_url.replace(/\/profile$/, '/users'), 'org')}>
+                <a className="sg-pop__row" role="menuitem" href={ssoEntryHref(ctx.organization_url.replace(/\/org\/profile$/, '/org/'), 'org')}>
                   <span>
                     <strong>Organization</strong>
                     <div className="sg-muted">Users, access and organization settings</div>

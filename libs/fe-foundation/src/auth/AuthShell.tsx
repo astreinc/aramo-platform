@@ -93,9 +93,24 @@ function ShieldIcon() {
   );
 }
 
-export function AuthShell({ product, children }: { product: AuthProduct; children: ReactNode }) {
+export interface AuthShellProps {
+  product: AuthProduct;
+  children: ReactNode;
+  /** Replaces the brand panel's footer line (default: the identity-provider note). */
+  idpNote?: ReactNode;
+  /** Accessible name of the card region (default "Sign in"). */
+  cardLabel?: string;
+  /** Extra class on the card, for a product-specific card width or padding. */
+  cardClassName?: string;
+  /** Extra class on the root frame. */
+  className?: string;
+}
+
+// All optional props are additive: omitted, the frame renders exactly as the
+// sign-in and signed-out screens always have.
+export function AuthShell({ product, children, idpNote, cardLabel, cardClassName, className }: AuthShellProps) {
   return (
-    <div className="aramo-auth" data-testid="aramo-signin">
+    <div className={className !== undefined ? `aramo-auth ${className}` : 'aramo-auth'} data-testid="aramo-signin">
       <aside className="aramo-auth__brand">
         <svg className="aramo-auth__watermark" width="420" height="420" viewBox="0 0 64 64" aria-hidden="true">
           {MARK_SPOKES}
@@ -115,7 +130,7 @@ export function AuthShell({ product, children }: { product: AuthProduct; childre
         </div>
         <div className="aramo-auth__idp-note">
           <ShieldIcon />
-          Sign-in is handled by your organization&apos;s identity provider.
+          {idpNote ?? <>Sign-in is handled by your organization&apos;s identity provider.</>}
         </div>
       </aside>
       <div className="aramo-auth__side">
@@ -124,7 +139,7 @@ export function AuthShell({ product, children }: { product: AuthProduct; childre
           <span>{product.name}</span>
         </div>
         <main className="aramo-auth__main">
-          <div className="aramo-auth__card" role="region" aria-label="Sign in" aria-live="polite">
+          <div className={cardClassName !== undefined ? `aramo-auth__card ${cardClassName}` : 'aramo-auth__card'} role="region" aria-label={cardLabel ?? 'Sign in'} aria-live="polite">
             {children}
           </div>
         </main>

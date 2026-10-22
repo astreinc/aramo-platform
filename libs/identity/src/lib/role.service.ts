@@ -27,6 +27,16 @@ export class RoleService {
     return this.roleRepo.findActiveMembershipSite(args);
   }
 
+  // ORG-UX-1 (LOCKED §4.3) — active role keys under the same membership filter as
+  // getScopesByUserTenantAndSite (site undefined = tenant-wide memberships only).
+  async getRoleKeysByUserTenantAndSite(args: {
+    user_id: string;
+    tenant_id: string;
+    site_id?: string;
+  }): Promise<string[]> {
+    return this.roleRepo.findActiveRoleKeysForUserInTenantAndSite(args);
+  }
+
   // PR-A1a Ruling 4 site-aware variant. When site_id is provided, the
   // returned set is the union of tenant-wide and site-X membership
   // scopes. When site_id is undefined, only tenant-wide membership

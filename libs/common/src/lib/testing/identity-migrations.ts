@@ -114,6 +114,12 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // PersonalSignupInvite. New tables only (FKs to Tenant / User); no existing table or
   // response shape changes.
   'libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql',
+  // ORG-UX-1 (LOCKED §4.1/§4.2) — document_template:author (Scope row ensured on the seed id
+  // 0x1d9) granted to tenant_owner/tenant_admin/account_manager/recruiting_manager/
+  // lead_recruiter + tenant:admin:user-manage revoked from account_manager/recruiting_manager.
+  // One guarded DO block on fixed role ids (a no-op without a role catalog). No
+  // returned-shape change. AFTER the ROLES-1 role model.
+  'libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql',
   // Personal Free — GeoLite2 evidence + review-lifted phone step (additive).
   'libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql',
 ];

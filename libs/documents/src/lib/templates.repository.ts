@@ -293,6 +293,9 @@ export class TemplatesRepository {
   }) {
     const t = await this.findTemplateByIdOwnerAware(input.tenant_id, input.template_id);
     if (t === null || t.document_type_id !== input.document_type_id) throw new TemplateNotFoundError(input.template_id);
+    // ORG-UX-1 §5.3 (conforming amendment row 4) — new selections name approved TENANT
+    // templates only; an Aramo default is adopted, never selected directly.
+    if (t.owner_scope === 'PLATFORM') throw new TemplateSelectionInvalidError(input.template_id, 'platform_template_not_selectable');
     if (t.status !== 'ACTIVE' || t.current_version_id === null) {
       throw new TemplateSelectionInvalidError(input.template_id, 'template_not_active');
     }
@@ -351,12 +354,101 @@ export class TemplatesRepository {
               ${input.template_id}::uuid, ${input.selected_by}::uuid, now(), now(), now())
       ON CONFLICT ("tenant_id", "document_type_id", "client_id")
       DO UPDATE SET "template_id" = EXCLUDED."template_id", "selected_by" = EXCLUDED."selected_by",
-                    "selected_at" = now(), "updated_at" = now()
+                    "selected_at" = now(), "updated_at" = now(), "legacy_platform" = NULL
       RETURNING "id"::text, "tenant_id"::text, "document_type_id"::text, "client_id"::text, "template_id"::text,
                 "selected_by"::text, "selected_at"`;
     const row = rows[0];
     if (row === undefined) throw new Error('TenantTemplateSelection upsert returned no row');
     return row;
+  }
+
+  // ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B) — ADOPT an Aramo default:
+  // create an INDEPENDENT tenant-owned template + a DRAFT v1 whose content (and field
+  // definitions) is a full copy of the default's CURRENT version at adoption time. The
+  // tenant row records adopted_from_* for audit/provenance only — nothing ever reads them
+  // to resolve, render or update, so later changes to the default never reach this copy.
+  // Only a published, live (ACTIVE, pinned, not withdrawn) default may be adopted.
+  async adoptPlatformTemplate(input: {
+    tenant_id: string;
+    library_template_id: string;
+    created_by: string;
+    transform?: DraftTransform;
+  }) {
+    const source = await this.prisma.documentTemplate.findFirst({
+      where: { id: input.library_template_id, owner_scope: 'PLATFORM', tenant_id: null },
+    });
+    if (source === null) throw new TemplateNotFoundError(input.library_template_id);
+    const now = new Date();
+    if (
+      source.status !== 'ACTIVE' ||
+      source.current_version_id === null ||
+      (source.withdraw_effective_at !== null && source.withdraw_effective_at <= now)
+    ) {
+      throw new TemplateSelectionInvalidError(input.library_template_id, 'template_not_adoptable');
+    }
+    const version = await this.prisma.templateVersion.findFirst({
+      where: { id: source.current_version_id, template_id: source.id, tenant_id: null, status: 'ACTIVE' },
+      include: { fields: true },
+    });
+    if (version === null) throw new TemplateSelectionInvalidError(input.library_template_id, 'template_not_adoptable');
+    const base = {
+      render_schema_version: version.render_schema_version,
+      // A deep copy: the tenant draft never shares a JSON reference with the default.
+      field_schema: version.field_schema === null ? undefined : (JSON.parse(JSON.stringify(version.field_schema)) as unknown),
+    };
+    const start = input.transform !== undefined ? input.transform(base) : base;
+    return this.prisma.$transaction(async (tx) => {
+      const template = await tx.documentTemplate.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          document_type_id: source.document_type_id,
+          client_id: null,
+          name: source.name,
+          description: source.description,
+          template_kind: source.template_kind,
+          status: 'DRAFT',
+          created_by: input.created_by,
+          adopted_from_template_id: source.id,
+          adopted_from_version_id: version.id,
+        },
+      });
+      const draft = await tx.templateVersion.create({
+        data: {
+          id: randomUUID(),
+          tenant_id: input.tenant_id,
+          template_id: template.id,
+          version_number: 1,
+          status: 'DRAFT',
+          render_schema_version: start.render_schema_version,
+          field_schema: (start.field_schema ?? undefined) as never,
+          internal_notes: null,
+          created_by: input.created_by,
+          content_fingerprint: templateContentFingerprint(start.field_schema ?? null),
+        },
+      });
+      for (const f of version.fields) {
+        await tx.templateFieldDefinition.create({
+          data: {
+            id: randomUUID(),
+            template_version_id: draft.id,
+            field_key: f.field_key,
+            field_type: f.field_type,
+            binding_key: f.binding_key,
+            required: f.required,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            format_rule: f.format_rule,
+            signer_role: f.signer_role,
+            ordinal: f.ordinal,
+          },
+        });
+      }
+      return { template, version: draft };
+    });
   }
 
   // ── Versions ─────────────────────────────────────────────────────────────
@@ -868,10 +960,12 @@ export class TemplatesRepository {
     }> = [];
     for (const w of withdrawals) {
       if (w.withdraw_notice_at === null || w.withdraw_effective_at === null) continue;
-      const selected = selections.filter((s) => s.template_id === w.id).map((s) => s.client_id);
-      const hasTenantWide = selections.some((s) => s.document_type_id === w.document_type_id && s.client_id === null);
-      const relies_on_default =
-        !hasTenantWide && w.status === 'ACTIVE' && (await this.findLivePlatformDefault(w.document_type_id, w.id)) === null;
+      // ORG-UX-1 §5.3 — gallery-first: a tenant relies on an Aramo default ONLY through a
+      // grandfathered (legacy) selection naming it; a tenant with no selection has no
+      // fallback to any default, so it is never affected by a withdrawal.
+      const legacy = selections.filter((s) => s.template_id === w.id && s.legacy_platform === true);
+      const selected = legacy.map((s) => s.client_id);
+      const relies_on_default = legacy.some((s) => s.client_id === null);
       if (selected.length === 0 && !relies_on_default) continue;
       const own = await this.prisma.documentTemplate.count({
         where: {

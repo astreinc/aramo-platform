@@ -13,7 +13,12 @@ export type AuditCategory =
   | 'user'
   | 'org'
   | 'session'
-  | 'system';
+  | 'system'
+  // ORG-UX-1 (Directive v1.0 LOCKED §8.10) — mirrors libs/identity categoryOf's
+  // `domain` (domain verification + P3 claim/exception/delegation) and `template`
+  // (Org template governance) branches.
+  | 'domain'
+  | 'template';
 
 export interface AuditActorView {
   readonly id: string | null;

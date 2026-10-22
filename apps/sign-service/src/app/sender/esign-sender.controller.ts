@@ -24,7 +24,6 @@ import { clientIp } from '../personal/personal-send.gate.js';
 
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SenderEnvelopeService, type UploadDocumentBody } from './sender-envelope.service.js';
-import { SenderMembersService } from './sender-members.service.js';
 
 // PX-V1 §8 (D-2) — the AUTHENTICATED SENDER surface on sign-service: the third
 // E-Sign auth zone, distinct from the internal service-to-service envelopes
@@ -45,7 +44,6 @@ export class EsignSenderController {
   constructor(
     private readonly ctx: SenderContextService,
     private readonly envelopes: SenderEnvelopeService,
-    private readonly members: SenderMembersService,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -210,24 +208,6 @@ export class EsignSenderController {
   @EsignSenderBoundary(ESIGN_SCOPE.CONTACT_READ)
   contacts(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, () => this.envelopes.contacts(auth, requestId));
-  }
-
-  // Sign Unified Product S-1 — Sign member administration (sign:member:manage).
-  @Get('members')
-  @EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE)
-  listMembers(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
-    return this.run(requestId, () => this.members.list(auth, requestId));
-  }
-
-  @Put('members/:userId/sign-role')
-  @EsignSenderBoundary(ESIGN_SCOPE.MEMBER_MANAGE)
-  setMemberRole(
-    @AuthContext() auth: AuthContextType,
-    @RequestId() requestId: string,
-    @Param('userId') userId: string,
-    @Body() body: { sign_role?: unknown },
-  ) {
-    return this.run(requestId, () => this.members.setRole(auth, userId, body, requestId));
   }
 
   @Get('activity')

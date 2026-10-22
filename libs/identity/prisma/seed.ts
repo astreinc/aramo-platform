@@ -180,6 +180,8 @@ export const SEED_IDS = {
     // DOC-2 — Templates + Requirements scopes (contiguous 0x1d4+ range).
     'document_template:read': '01900000-0000-7000-8000-0000000001d4',
     'document_template:manage': '01900000-0000-7000-8000-0000000001d5',
+    // ORG-UX-1 (§4.1) — template AUTHORING (adopt/create/edit drafts), split from approval.
+    'document_template:author': '01900000-0000-7000-8000-0000000001d9',
     'document_requirement:read': '01900000-0000-7000-8000-0000000001d6',
     'document_requirement:manage': '01900000-0000-7000-8000-0000000001d7',
     // PX-V1 PX-3 — E-Sign sender product scopes (dedicated 0x1e0+ range).
@@ -1005,7 +1007,10 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
 //     compliance:*) DO NOT EXIST yet — gap-and-noted to a future
 //     Onboarding/Operations DDR. The role lands with its current-
 //     capability bundle so invitations and assignments can reference it.
-export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+// AUTHZ1_ID_LAYOUT is the FROZEN original bundle: it only pins the RoleScope row ids
+// (iteration order), so retiring a pair (ORGUX1_RETIRED_GRANTS below) never shifts the
+// id of a later pair. AUTHZ1_BUNDLES is the layout minus the retired pairs.
+const AUTHZ1_ID_LAYOUT: ReadonlyArray<readonly [string, readonly string[]]> = [
   // tenant_owner — 47 scopes (full tenant_admin set incl. AUTHZ-D4a's 4 new
   // scopes; position-only distinction from tenant_admin).
   ['tenant_owner', [
@@ -1151,6 +1156,20 @@ export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]>
   ]],
 ];
 
+// ORG-UX-1 (Directive v1.0 LOCKED §4.2, P1 Option A; conforming amendment row 12) —
+// organization-wide user management leaves the ATS management roles: account_manager and
+// recruiting_manager no longer hold tenant:admin:user-manage (ADR-0035 R2: product roles
+// don't grant organization administration). Their fixed RoleScope ids are retired, not
+// reused. The 20261022140000_org_ux_1_template_author_grants migration revokes the live rows.
+export const ORGUX1_RETIRED_GRANTS: ReadonlyArray<readonly [string, string]> = [
+  ['account_manager', 'tenant:admin:user-manage'],
+  ['recruiting_manager', 'tenant:admin:user-manage'],
+];
+export const AUTHZ1_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = AUTHZ1_ID_LAYOUT.map(
+  ([role, scopes]) =>
+    [role, scopes.filter((scope) => !ORGUX1_RETIRED_GRANTS.some(([r, k]) => r === role && k === scope))] as const,
+);
+
 // AUTHZ-1 / AUTHZ-1b — role.created audit-event manifest for the 9
 // staffing-tenant roles. Pattern mirrors the A1A2_NEW_SCOPES manifest
 // used for scope.created events; the closed-list test validates catalog
@@ -1186,7 +1205,7 @@ const AUTHZ1_ROLE_AUDIT_EVENTS: Array<{
 const AUTHZ1_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
   const map: Record<string, string> = {};
   let i = 0x400;
-  for (const [role, scopes] of AUTHZ1_BUNDLES) {
+  for (const [role, scopes] of AUTHZ1_ID_LAYOUT) {
     for (const scope of scopes) {
       map[`${role}:${scope}`] =
         `01900000-0000-7000-8000-${i.toString(16).padStart(12, '0')}`;
@@ -3146,6 +3165,18 @@ export const DOCLIB_T4_SIGN_TEMPLATE_READ_BUNDLES: ReadonlyArray<readonly [strin
   ['sign_sender', ['document_template:read']],
 ];
 
+// ORG-UX-1 (Directive v1.0 LOCKED §4.1; conforming amendment rows 5/7) — template
+// AUTHORING. The organization roles plus the ATS management tier (H2/H3) author tenant
+// templates; approval/selection stays document_template:manage (tenant_owner/tenant_admin).
+// 5 grants. Ids: orgUx1RoleScopeId (identical to the migration's for the same pair).
+export const ORGUX1_TEMPLATE_AUTHOR_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['tenant_owner', ['document_template:author']],
+  ['tenant_admin', ['document_template:author']],
+  ['account_manager', ['document_template:author']],
+  ['recruiting_manager', ['document_template:author']],
+  ['lead_recruiter', ['document_template:author']],
+];
+
 // The display names (leading phrase) — written by the seed on a fresh database and
 // by the 20261021130000_roles1_role_model migration on an existing one (byte-equal).
 export const ROLES1_ROLE_DESCRIPTIONS = {
@@ -3169,6 +3200,13 @@ export function roles1RoleScopeId(role_id: string, scope_id: string): string {
 // the SQL `md5(...)::uuid` cast in 20261021150000_doclib_t4_document_template_grants.
 export function doclibT4RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`doclib-t4:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// ORG-UX-1 — md5('org-ux-1:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261022140000_org_ux_1_template_author_grants.
+export function orgUx1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`org-ux-1:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -3612,6 +3650,7 @@ export async function runIdentitySeed(
   await upsertScope(prisma, SEED_IDS.scopes['document:manage'], 'document:manage', 'DOC-2 (reconciled from document_type:manage, R22) — manage document types + templates config (admin act). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_template:read'], 'document_template:read', 'DOC-2 — read document templates and template versions (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_template:manage'], 'document_template:manage', 'DOC-2 — create/activate/retire document templates and versions (admin act). NO scope.created (scope-seed precedent).');
+  await upsertScope(prisma, SEED_IDS.scopes['document_template:author'], 'document_template:author', 'ORG-UX-1 §4.1 — author tenant document templates: open the Org template pages, browse/preview the Aramo gallery, adopt, create, edit/preview/discard drafts. NOT approval/selection (document_template:manage). Granted to tenant_owner, tenant_admin, account_manager, recruiting_manager, lead_recruiter. NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:read'], 'document_requirement:read', 'DOC-2 — read document requirements and requirement status (tenant-scoped). NO scope.created (scope-seed precedent).');
   await upsertScope(prisma, SEED_IDS.scopes['document_requirement:manage'], 'document_requirement:manage', 'DOC-2 — create/satisfy/waive document requirements (admin act; waiver authority). NO scope.created (scope-seed precedent).');
   // PX-V1 PX-3 — E-Sign sender product scopes (dedicated ESIGN_SENDER_SEED_BUNDLES).
@@ -4702,6 +4741,20 @@ export async function runIdentitySeed(
         where: { role_id_scope_id: { role_id, scope_id } },
         update: {},
         create: { id: doclibT4RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+
+  // ORG-UX-1 (§4.1) — document_template:author for the organization roles and the ATS
+  // management tier. Ids: orgUx1RoleScopeId (identical to the migration's for the same pair).
+  for (const [roleKey, scopeKeys] of ORGUX1_TEMPLATE_AUTHOR_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: orgUx1RoleScopeId(role_id, scope_id), role_id, scope_id },
       });
     }
   }

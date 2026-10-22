@@ -5,7 +5,9 @@
 // immutability, the one-DRAFT invariant, the §18 preview-before-approve gate, and
 // the closed §15 binding catalog. Types are hand-mirrored (ats-web must NOT import
 // @aramo/documents — a forbidden domain edge) and track the server rows. RBAC
-// mirrors the server: document_template:read → view; :manage → mutate.
+// mirrors the server (ORG-UX-1 Directive v1.0 LOCKED §4.1): document_template:read →
+// view; :author → adopt / create / edit, preview and discard drafts / logo / fields;
+// :manage → approve (activate) and selections. A manage holder may author too.
 
 import { apiClient } from '@aramo/fe-foundation';
 
@@ -13,6 +15,21 @@ const BASE = '/v1/document-templates';
 
 export const DOC_TEMPLATE_READ_SCOPE = 'document_template:read';
 export const DOC_TEMPLATE_MANAGE_SCOPE = 'document_template:manage';
+export const DOC_TEMPLATE_AUTHOR_SCOPE = 'document_template:author';
+
+// ORG-UX-1 §4.1 — UX affordance helpers (the server is the boundary). Authoring is
+// author-or-manage; approval (activate) and selections stay manage-only, so an author
+// never sees Approve. Reading the screens is open to any of the three scopes.
+type ScopedSession = { readonly scopes: readonly string[] } | null | undefined;
+export function canAuthorTemplates(session: ScopedSession): boolean {
+  return session != null && (session.scopes.includes(DOC_TEMPLATE_AUTHOR_SCOPE) || session.scopes.includes(DOC_TEMPLATE_MANAGE_SCOPE));
+}
+export function canApproveTemplates(session: ScopedSession): boolean {
+  return session != null && session.scopes.includes(DOC_TEMPLATE_MANAGE_SCOPE);
+}
+export function canReadTemplates(session: ScopedSession): boolean {
+  return session != null && (session.scopes.includes(DOC_TEMPLATE_READ_SCOPE) || canAuthorTemplates(session));
+}
 
 // The seeded Right-to-Represent DocumentType id (public, non-secret; mirrors the
 // server RIGHT_TO_REPRESENT_TYPE_ID). The RTR detail resolves the tenant's template
@@ -39,6 +56,10 @@ export interface DocumentTemplateView {
   readonly current_version_id: string | null;
   readonly created_at: string;
   readonly updated_at: string;
+  // ORG-UX-1 §5.1 — provenance of an adopted template (audit/display only; ADD-only,
+  // optional in this mirror).
+  readonly adopted_from_template_id?: string | null;
+  readonly adopted_from_version_id?: string | null;
 }
 
 export interface TemplateVersionView {
@@ -139,7 +160,7 @@ export function versionLogoUrl(versionId: string, assetId: string | null): strin
   return `${BASE}/versions/${encodeURIComponent(versionId)}/logo/content${assetId != null ? `?v=${encodeURIComponent(assetId)}` : ''}`;
 }
 
-// Rename the template (document_template:manage). The name is a TEMPLATE attribute
+// Rename the template (document_template:author). The name is a TEMPLATE attribute
 // (shared by every version), not draft content — it does not re-arm the §18 gate.
 export async function updateDocumentTemplate(id: string, input: { name: string }): Promise<DocumentTemplateView> {
   return apiClient.patch<DocumentTemplateView>(`${BASE}/${encodeURIComponent(id)}`, input);
@@ -253,6 +274,8 @@ export interface TemplateSelectionView {
   readonly template_id: string;
   readonly selected_by: string;
   readonly selected_at: string;
+  // ORG-UX-1 §5.3 (T-A) — a grandfathered selection of an Aramo default (nullable flag).
+  readonly legacy_platform?: boolean | null;
 }
 
 export async function fetchTemplateLibrary(): Promise<TemplateLibraryView> {
@@ -268,6 +291,9 @@ export async function listTemplateSelections(): Promise<readonly TemplateSelecti
   return res.items;
 }
 
+// Selections are document_template:manage. ORG-UX-1 §5.3: PUT accepts only approved
+// TENANT templates (a PLATFORM id → 422 platform_template_not_selectable); activation
+// already sets the tenant-wide selection, so the Org pages offer no selection control.
 export async function setTemplateSelection(input: {
   document_type_id: string;
   client_id?: string | null;
@@ -300,4 +326,15 @@ export async function createOwnTemplate(input: {
     field_schema: { render_schema_version: RTR_HTML_SCHEMA_V1, title: input.name, html: '' },
   });
   return { template, draft };
+}
+
+// ORG-UX-1 §5.1 (Lead Correction B) — ADOPT an Aramo gallery default: an independent
+// TENANT-owned template plus a DRAFT v1 holding a full copy of the default's current
+// content (document_template:author). Nothing is used until it is approved.
+export async function adoptTemplate(
+  libraryTemplateId: string,
+): Promise<{ template: DocumentTemplateView; version: TemplateVersionView }> {
+  return apiClient.post<{ template: DocumentTemplateView; version: TemplateVersionView }>(`${BASE}/adopt`, {
+    library_template_id: libraryTemplateId,
+  });
 }

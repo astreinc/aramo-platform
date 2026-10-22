@@ -35,6 +35,7 @@ export function AddressAutocomplete({
   onSelect,
   invalid,
   describedBy,
+  className,
 }: {
   id: string;
   token: string;
@@ -43,6 +44,8 @@ export function AddressAutocomplete({
   onSelect: (s: AddressSuggestion) => void;
   invalid?: boolean;
   describedBy?: string;
+  /** Extra class on the input (the signup activation styles it). */
+  className?: string;
 }) {
   const listId = useId();
   const [query, setQuery] = useState<string | null>(null); // set only by typing
@@ -138,6 +141,7 @@ export function AddressAutocomplete({
     <div className="sg-combo">
       <TextIn
         id={id}
+        {...(className !== undefined ? { className } : {})}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={expanded}

@@ -36,7 +36,10 @@ export type AuditCategory =
   | 'user'
   | 'org'
   | 'session'
-  | 'system';
+  | 'system'
+  // ORG-UX-1 (Directive v1.0 LOCKED §8.10) — the Org Audit "Domain" and "Templates" areas.
+  | 'domain'
+  | 'template';
 
 export function categoryOf(eventType: EventType): AuditCategory {
   if (
@@ -46,6 +49,10 @@ export function categoryOf(eventType: EventType): AuditCategory {
     return 'setting';
   }
   if (eventType.startsWith('identity.session.')) return 'session';
+  // ORG-UX-1 §8.10 — domain verification + Domain-Enforcement P3 claim / exception /
+  // delegation events, and Org template governance events, get their own areas.
+  if (eventType.startsWith('identity.domain.')) return 'domain';
+  if (eventType.startsWith('identity.document_template.')) return 'template';
   if (
     eventType.startsWith('identity.role.') ||
     eventType.startsWith('identity.scope.') ||
@@ -134,6 +141,13 @@ export function summarizeDetail(
     }
     case 'identity.invitation.created':
       return 'Invited a user to the tenant';
+    // ORG-UX-1 §8.3 (G9).
+    case 'identity.tenant_user.invitation_resent':
+      return str(payload['sent']) === 'confirmation' ? 'Resent the sign-in reminder' : 'Resent an invitation';
+    case 'identity.tenant_user.invitation_revoked':
+      return 'Revoked an invitation';
+    case 'identity.tenant_user.email_changed':
+      return 'Changed an invited user\'s email and resent the invitation';
     case 'identity.invitation.accepted':
       return 'Accepted a tenant invitation';
     case 'identity.invitation.rejected_cross_tenant':
@@ -242,6 +256,26 @@ export function summarizeDetail(
       return 'Issued a personal pilot invite';
     case 'identity.personal.signup.attempts_purged':
       return 'Deleted expired and refused personal signup attempts';
+    // ORG-UX-1 §8.10 — P3 verification delegation (previously unsummarized).
+    case 'identity.domain.verification.delegation.issued':
+      return 'Asked someone else to verify the email domain';
+    case 'identity.domain.verification.delegation.used':
+      return 'The domain verification link was used';
+    case 'identity.domain.verification.delegation.revoked':
+      return 'Revoked a domain verification link';
+    // ORG-UX-1 §5.4 — Org template governance.
+    case 'identity.document_template.adopted':
+      return 'Adopted an Aramo starting point as a document template draft';
+    case 'identity.document_template.created':
+      return 'Created a document template';
+    case 'identity.document_template.version_activated': {
+      const n = payload['version_number'];
+      return typeof n === 'number' ? `Approved a document template (v${n})` : 'Approved a document template';
+    }
+    case 'identity.document_template.selection_set':
+      return 'Chose the active document template';
+    case 'identity.document_template.selection_cleared':
+      return 'Cleared the active document template choice';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

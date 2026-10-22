@@ -44,7 +44,6 @@ import { IdentitySenderDirectoryAdapter } from './identity-sender-directory.adap
 import { EsignSenderController } from './sender/esign-sender.controller.js';
 import { SenderContextService } from './sender/sender-context.service.js';
 import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
-import { SenderMembersService } from './sender/sender-members.service.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
@@ -159,7 +158,6 @@ import { SignAccountService } from './account/sign-account.service.js';
     AramoSignAllowanceGate,
     SenderContextService,
     SenderEnvelopeService,
-    SenderMembersService,
     EsignOwnerActivationService,
     EsignBillingReconcileWorker,
     AramoSignStorageGate,

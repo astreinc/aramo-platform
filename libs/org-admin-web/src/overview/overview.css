@@ -1,0 +1,49 @@
+/* ORG-UX-1 — Overview (handoff §6.1). Tokens from ../ui/org-ui.css. */
+.ov-stack { display: flex; flex-direction: column; gap: 14px; }
+
+/* Summary tiles: 4 clickable cards. */
+.ov-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 12px; }
+.ov-tile {
+  background: var(--ox-card); border: 1px solid var(--ox-line); border-radius: 13px; box-shadow: var(--ox-shadow);
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; color: var(--ox-ink); text-decoration: none; min-width: 0;
+}
+.ov-tile:hover { border-color: #c9d4f2; }
+.ov-tile:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+.ov-tile__label { font-size: 12.5px; font-weight: 600; color: var(--ox-muted); }
+.ov-tile__value { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ov-tile__sub { font-size: 12px; color: var(--ox-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.ov-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; align-items: start; }
+.ov-card { overflow: hidden; }
+
+/* Setup checklist. */
+.ov-bar { width: 120px; height: 6px; border-radius: 4px; background: var(--ox-grey-tint); overflow: hidden; flex: none; }
+.ov-bar > span { display: block; height: 100%; background: var(--ox-green); }
+.ov-check-row {
+  width: 100%; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--ox-line-soft);
+  padding: 12px 20px; text-align: left; color: var(--ox-ink); text-decoration: none; box-sizing: border-box;
+}
+.ov-check-row:last-child { border-bottom: 0; }
+.ov-check-row:hover { background: #fafbfc; }
+.ov-check-row:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: -2px; }
+.ov-dot {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none; box-sizing: border-box;
+  color: var(--ox-green); font-size: 11px; font-weight: 700; background: #fff; border: 1.5px solid #c6cdd4;
+}
+.ov-dot--done { background: var(--ox-green-tint); border: 0; }
+.ov-check-text { flex: 1; min-width: 0; }
+.ov-check-label { display: block; font-size: 13.5px; font-weight: 600; }
+.ov-check-hint { display: block; font-size: 12px; color: var(--ox-amber); }
+.ov-check-hint--done { color: var(--ox-faint); }
+.ov-check-cta { font-size: 12.5px; font-weight: 600; color: var(--ox-blue); white-space: nowrap; }
+
+/* Recent changes. */
+.ov-audit-link { color: var(--ox-blue); font-size: 13px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.ov-audit-link:hover { text-decoration: underline; }
+.ov-audit-row { padding: 11px 20px; border-bottom: 1px solid var(--ox-line-soft); display: flex; gap: 12px; align-items: baseline; }
+.ov-audit-row:last-child { border-bottom: 0; }
+.ov-audit-when { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--ox-faint); width: 92px; flex: none; }
+.ov-audit-text { font-size: 13px; line-height: 1.45; min-width: 0; overflow-wrap: anywhere; }
+.ov-audit-text b { font-weight: 600; }
+.ov-audit-target { color: var(--ox-muted); }
+.ov-empty { padding: 16px 20px; font-size: 13px; color: var(--ox-muted); }

@@ -24,10 +24,31 @@ import {
 // useCompactRailPage(): under 1280px the rail opens collapsed regardless of the
 // stored value; an explicit toggle during that visit wins (and is written
 // through as usual). At 1280px and wider the stored value applies.
+//
+// ORG-UX-1 (Directive v1.0 LOCKED §7.1; App Home & Organization handoff §7) — below
+// 900px EVERY page shows the rail collapsed to 64px icons (section headings become
+// dividers). The stored preference is untouched and applies again when the window widens.
 
 export const NAV_COLLAPSED_KEY = 'aramo.nav.collapsed';
 const LEGACY_KEY = 'rc-rail-collapsed';
 const COMPACT_BELOW = 1280;
+// ORG-UX-1 §7.1 — the narrow-window breakpoint (handoff §7 "below 900px").
+export const NARROW_QUERY = '(max-width: 899px)';
+
+function useNarrowViewport(): boolean {
+  const query = (): boolean =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(NARROW_QUERY).matches;
+  const [narrow, setNarrow] = useState<boolean>(query);
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = (): void => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener?.('change', onChange);
+    return () => mq.removeEventListener?.('change', onChange);
+  }, []);
+  return narrow;
+}
 
 export function readNavCollapsed(): boolean {
   try {
@@ -79,9 +100,11 @@ export function NavCollapseProvider({ children }: { readonly children: ReactNode
   const [compactPage, setCompactPageState] = useState(false);
   // An explicit toggle during a compact-page visit wins for that visit.
   const [visitOverride, setVisitOverride] = useState<boolean | null>(null);
+  const narrow = useNarrowViewport();
 
-  const collapsed =
-    compactPage && visitOverride !== null
+  const collapsed = narrow
+    ? true
+    : compactPage && visitOverride !== null
       ? visitOverride
       : compactPage && viewportWidth() < COMPACT_BELOW
         ? true

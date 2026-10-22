@@ -130,7 +130,8 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // Exactly: org set ∪ ats_admin ∪ Sign admin set ∪ the organization template pair
     // (DOC-TEMPLATE-LIB-1 T-4 §6.3: document_template:manage left ats_admin, kept here).
     expect([...admin].sort()).toEqual(
-      [...new Set([...ORG_ADMIN_SCOPE_KEYS, ...ats, ...ROLES1_ADMIN_SIGN_SCOPES, 'document_template:read', 'document_template:manage'])].sort(),
+      // ORG-UX-1 §4.1 — + document_template:author.
+      [...new Set([...ORG_ADMIN_SCOPE_KEYS, ...ats, ...ROLES1_ADMIN_SIGN_SCOPES, 'document_template:read', 'document_template:manage', 'document_template:author'])].sort(),
     );
   });
 
@@ -166,13 +167,16 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // (sign_admin, sign_sender × document_template:read) → 942. tenant_owner/tenant_admin
     // already held both template scopes (sizes unchanged). ROLES-1 PR-3: −13 (the retired
     // sign_owner's 3 sender + 10 contract grants are no longer seeded) = 929.
-    expect(bundles.get('tenant_owner')?.size).toBe(158); // Remediation v1.0 R3 +1 pipeline:re-add → 158.
-    expect(bundles.get('tenant_admin')?.size).toBe(157); // Remediation v1.0 R3 +1 pipeline:re-add (derived from ats_admin) → 157.
+    expect(bundles.get('tenant_owner')?.size).toBe(159); // Remediation v1.0 R3 +1 pipeline:re-add → 158; ORG-UX-1 +1 document_template:author → 159.
+    expect(bundles.get('tenant_admin')?.size).toBe(158); // Remediation v1.0 R3 +1 pipeline:re-add (derived from ats_admin) → 157; ORG-UX-1 +1 author → 158.
     expect(bundles.get('ats_admin')?.size).toBe(140); // Remediation v1.0 R3 +1 pipeline:re-add → 140.
     // DOC-TEMPLATE-LIB-1 T-5: −3 (sign_admin × sign:template:{use,manage}, sign_sender ×
     // sign:template:use) → 926. Remediation v1.0 R3: +5 pipeline:re-add (ats_admin, lead_recruiter,
     // recruiting_manager, tenant_owner + tenant_admin derived) → 931.
-    expect(pairs).toBe(931);
+    // ORG-UX-1 (§4.1/§4.2): +5 document_template:author (tenant_owner, tenant_admin,
+    // account_manager, recruiting_manager, lead_recruiter) −2 tenant:admin:user-manage
+    // (account_manager, recruiting_manager) → 934.
+    expect(pairs).toBe(934);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

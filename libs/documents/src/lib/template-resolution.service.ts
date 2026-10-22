@@ -28,6 +28,14 @@ import { TemplatesRepository } from './templates.repository.js';
 //   * with no selection, a live replacement default is resolved; during a notice window
 //     the default with no withdrawal is preferred over the one being withdrawn.
 // Already generated documents keep their pinned version (nothing here touches a pin).
+//
+// ORG-UX-1 (Directive v1.0 LOCKED §5.3; conforming amendments rows 4/6) — GALLERY-FIRST.
+// Aramo defaults are starting points, never used directly: step 3 ("no selection → the
+// Aramo default") is REMOVED. A selection naming a PLATFORM template is honoured ONLY when
+// it is a grandfathered legacy selection (legacy_platform = true, written once by the T-A
+// migration 20261022130000 for tenants that relied on the default); any other PLATFORM
+// selection is ignored. With no usable selection the outcome is SELECTION_REQUIRED (adopt
+// or create, then approve) when the type has an Aramo starting point, else NOT_CONFIGURED.
 
 export type TemplateResolutionSource = 'CLIENT_SELECTION' | 'TENANT_SELECTION' | 'PLATFORM_DEFAULT' | 'WITHDRAWAL_FALLBACK';
 
@@ -79,6 +87,8 @@ export class TemplateResolutionService {
       if (template === null || template.document_type_id !== input.document_type_id) {
         return { outcome: 'INVALID', template_id: sel.template_id, reason: 'selected_template_missing' };
       }
+      // ORG-UX-1 §5.3 — only a grandfathered selection may name an Aramo default.
+      if (template.owner_scope === 'PLATFORM' && sel.legacy_platform !== true) continue;
       // A withdrawn Aramo default (past effective) is never resolved — move on, and
       // remember the tenant relied on it (D10 fallback below).
       if (template.owner_scope === 'PLATFORM' && isWithdrawn(template.withdraw_effective_at, at)) {
@@ -92,28 +102,15 @@ export class TemplateResolutionService {
     }
     if (withdrawn.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, withdrawn);
 
+    // ORG-UX-1 §5.3 — no usable selection: the Aramo default is NOT resolved. When the
+    // type has an Aramo starting point (live, or withdrawn) the tenant must adopt or create
+    // and approve its own template (SELECTION_REQUIRED); otherwise nothing is configured.
     const defaults = await this.templates.findResolvablePlatformDefaults(input.document_type_id, at);
-    if (defaults.length === 0) {
-      // No live default: when the type HAD one whose withdrawal has taken effect, the
-      // tenant was relying on it — D10 fallback; otherwise nothing was ever configured.
-      const gone = await this.templates.listWithdrawnPlatformDefaultIds(input.document_type_id, at);
-      if (gone.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, gone);
-      return { outcome: 'NOT_CONFIGURED' };
-    }
-    // Notice window: prefer the default with no published withdrawal (one-live-default
-    // rule — a replacement may be published once the old default's withdrawal is set).
-    const notWithdrawing = defaults.filter((d) => d.withdraw_effective_at === null);
-    const eligible = notWithdrawing.length > 0 ? notWithdrawing : defaults;
-    if (eligible.length > 1) {
-      // More than one live Aramo default for one type and no tenant choice: never pick one.
-      return {
-        outcome: 'INVALID',
-        template_id: null,
-        reason: 'platform_default_ambiguous',
-        details: { template_ids: eligible.map((d) => d.id) },
-      };
-    }
-    return this.pin(input.tenant_id, eligible[0] as TemplateRow, 'PLATFORM_DEFAULT');
+    if (defaults.length > 0) return { outcome: 'SELECTION_REQUIRED', withdrawn_template_ids: [] };
+    const gone = await this.templates.listWithdrawnPlatformDefaultIds(input.document_type_id, at);
+    // T-6 unchanged: a withdrawn default the type relied on → the tenant's own approved template.
+    if (gone.length > 0) return this.withdrawalFallback(input.tenant_id, input.document_type_id, client, gone);
+    return { outcome: 'NOT_CONFIGURED' };
   }
 
   // D10 — the tenant's own approved template for the type (client first, then
